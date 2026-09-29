@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:dev-doctor": "PORTAL_BASE=/dev/doctor/ npm run build",
+    "build:dev": "PORTAL_BASE=/dev/clinician/ npm run build",
     "lint": "oxlint",
     "preview": "vite preview",
     "verify:routes": "./scripts/walk-routes.sh",
