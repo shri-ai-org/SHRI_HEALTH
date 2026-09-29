@@ -1,0 +1,463 @@
+/* ===========================================================================
+   Shri Health — design tokens (SHRI_health.md §3), both themes.
+
+   Scoped to `.shri-root` so nothing leaks into the Indostates screens that
+   share this bundle, and switched by `<html data-theme="light|dark">` as the
+   spec asks. The existing app only ever sets `night`, which matches nothing
+   here, and it never reads `--card`, `--accent` and friends — so the two token
+   sets coexist without touching each other.
+   =========================================================================== */
+
+/* ------------------------------------------------------------ PAGE BACKDROP
+   The app surface is full-bleed, so the backdrop now belongs to the page
+   itself: `ShriApp` puts `shri-active` on <html> while it is mounted, and the
+   gradient (light) / backdrop colour (dark) paints the canvas behind the
+   surface — what shows on overscroll. The Indostates body colour and its fixed
+   `body::before` backdrop stand down for as long as the class is there. */
+html.shri-active {
+  --page-bg:
+    radial-gradient(900px 600px at 0% 0%, #b4f1e7 0%, rgba(180, 241, 231, 0) 70%),
+    radial-gradient(900px 700px at 100% 0%, #f2a7c3 0%, rgba(242, 167, 195, 0) 70%),
+    radial-gradient(1000px 700px at 100% 100%, #f5b7ec 0%, rgba(245, 183, 236, 0) 70%),
+    radial-gradient(900px 700px at 0% 100%, #aeb4f7 0%, rgba(174, 180, 247, 0) 70%),
+    #d9d3ee;
+}
+html.shri-active[data-theme='dark'] {
+  --page-bg: #cbd0db;
+}
+html.shri-active body {
+  background: var(--page-bg);
+}
+html.shri-active body::before {
+  display: none;
+}
+
+/* ------------------------------------------------------------ §3.1 LIGHT */
+.shri-root {
+  /* Notched phones: every edge of the shell reads these, never env() directly. */
+  --sa-t: env(safe-area-inset-top, 0px);
+  --sa-r: env(safe-area-inset-right, 0px);
+  --sa-b: env(safe-area-inset-bottom, 0px);
+  --sa-l: env(safe-area-inset-left, 0px);
+  /* The surface padding (§3.4: 22 top/bottom) with the insets folded in. */
+  --shell-pt: max(22px, var(--sa-t));
+  --shell-pb: max(22px, var(--sa-b));
+  /* The < 768px bottom tab bar and the room it takes above the inset. */
+  --tabbar-h: 64px;
+  /* My Day pins to the viewport at ≥ 1280px: the app bar (56) and its margin
+     (18) and the surface padding are not the page. Never shorter than 960px. */
+  --myday-h: max(calc(100dvh - 74px - var(--shell-pt) - var(--shell-pb)), 960px);
+  /* A screen's frame fills at least the same room, so its action bar rests at
+     the foot of the viewport even when the screen is short — where the toast
+     stack and the assistant bubble expect it, clear above it. Below 768px the
+     surface padding holds the tab bar instead. */
+  --frame-min-h: calc(100dvh - 74px - var(--shell-pt) - var(--shell-pb));
+
+  --surface: #f2f2f4;
+  --card: #ffffff;
+  --inner: #f5f5f7;
+  --control: #f2f2f4;
+  --hover: #f4f4f7;
+  --hover-strong: #ececf1;
+  --line: #efeff3;
+  --line-strong: #e4e4ea;
+
+  --text: #111114;
+  --text-2: #55555f;
+  --text-3: #6c6c76;
+  /* AA for 11–12px text on the card, the inner fill and the surface (4.6:1 on #f2f2f4); was #8a8a94 at 3.1–3.4:1. */
+  --muted: #6c6c76;
+  --chev: #b4b4bd;
+
+  --rail: #0b0b10;
+  --accent: #9b9cf7;
+  --accent-soft: #ececfe;
+  --accent-ink: #0b0b10;
+  --accent-2: #4f6bff; /* the spec names this only in dark; light borrows the Patients Today blue */
+  --ai: #7c7df0;
+  --primary: #0b0b10;
+  --primary-hover: #2a2a33;
+  --on-primary: #ffffff;
+
+  --crit-bg: #ffe8e8; --crit-fg: #c42f2f; --crit: #ff5b5b;
+  /* A solid destructive button: its label stays AA on the fill (the bright --crit is a mark, not a surface for text). */
+  --crit-solid: #c42f2f; --on-crit-solid: #ffffff;
+  --warn-bg: #fff0e0; --warn-fg: #8a4b0c; --warn: #ff9a3d;
+  --norm-bg: #e3f7ea; --norm-fg: #16693a; --norm: #3dbe72;
+  --pend-bg: #e9e9fe; --pend-fg: #3f40b8; --pend: #9b9cf7;
+  --neu-bg: #f2f2f4;  --neu-fg: #33333b;  --neu: #b4b4bd;
+
+  --shadow-pop: 0 16px 40px rgba(18, 20, 26, 0.14);
+  --shadow-drawer: -20px 0 50px rgba(18, 20, 26, 0.14);
+  --shadow-modal: 0 30px 80px rgba(18, 20, 26, 0.3);
+  --glow-accent: 0 6px 14px rgba(155, 156, 247, 0.45);
+  --scrim: rgba(11, 11, 16, 0.28);
+
+  /* §12 focus ring, §2 fonts */
+  --focus-ring: rgba(155, 156, 247, 0.45);
+  --font-shri: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Native-script names (§5.4 rule 4): each script falls through to its own face. */
+  --font-tamil: 'Noto Sans Tamil', 'Noto Sans Malayalam', 'Noto Sans Devanagari', 'Noto Sans Kannada', 'Inter', system-ui, sans-serif;
+  --font-serif: 'DM Serif Display', Georgia, serif;
+
+  /* Odds and ends the spec states as literals */
+  --now-row-bg: #f1f1fe;
+  --attn-crit-row: #fff4f4;
+  /* The other month's days are buttons (they open the day), so their numbers need AA too; was #c4c4cc at 1.7:1. */
+  --other-month: #6c6c76;
+  --todo-box-border: #c4c4cc;
+  --note-box-bg: #fafafb;
+  --flags-ring: #e4e4fb;
+  --rail-more: #1c1c24;
+  --rail-hover: rgba(155, 156, 247, 0.22);
+  --stop: #c42f2f;
+  --pend-ring: #9b9cf7;
+  /* The old build's assistant face keeps its own colours, so it sits on white in both themes (src/styles/theme.css:186). */
+  --bubble-bg: #ffffff;
+  --bubble-icon: #9b9cf7;
+  --bubble-ring: 0 0 0 6px rgba(155, 156, 247, 0.25), 0 12px 30px rgba(11, 11, 16, 0.35);
+  /* The selected day is ringed in both themes, so it never reads as a hover. */
+  --day-selected-ring: var(--primary);
+  --preview-tile: radial-gradient(circle at 50% 45%, #3a3a44, #0b0b10 70%);
+
+  /* §5.2 KPI colours — light: pastel card, solid badge, deep number */
+  --kpi-label: #33333b;
+  /* AA on every tinted KPI fill, the pink critical one included (5.2:1 on #ffe8e8); was #6c6c76 at 4.4:1 there. */
+  --kpi-sub: #62626c;
+  --kpi-today-bg: #e9edff;      --kpi-today-badge: #4f6bff;      --kpi-today-icon: #fff;      --kpi-today-num: #2d3fb8;      --kpi-today-border: transparent;
+  --kpi-waiting-bg: #fff1e3;    --kpi-waiting-badge: #ff8a1f;    --kpi-waiting-icon: #fff;    --kpi-waiting-num: #9a4a00;    --kpi-waiting-border: transparent;
+  --kpi-inroom-bg: #dff7f2;     --kpi-inroom-badge: #14b8a6;     --kpi-inroom-icon: #fff;     --kpi-inroom-num: #0b6b61;     --kpi-inroom-border: transparent;
+  --kpi-admissions-bg: #f0ebff; --kpi-admissions-badge: #8b5cf6; --kpi-admissions-icon: #fff; --kpi-admissions-num: #5b2fc0; --kpi-admissions-border: transparent;
+  --kpi-icu-bg: #ffe9f1;        --kpi-icu-badge: #ec4899;        --kpi-icu-icon: #fff;        --kpi-icu-num: #a01b5e;        --kpi-icu-border: transparent;
+  --kpi-critical-bg: #ffe8e8;   --kpi-critical-badge: #ff4d4d;   --kpi-critical-icon: #fff;   --kpi-critical-num: #b42318;   --kpi-critical-border: transparent;
+  --kpi-critical-glow: none;
+
+  /* §5.5 place tiles */
+  --place-opd-bg: #f2f2f4;  --place-opd-fg: #111114;
+  --place-tele-bg: #e9e9fe; --place-tele-fg: #3f40b8;
+  --place-ward-bg: #e3f7ea; --place-ward-fg: #16693a;
+  --place-icu-bg: #ffe8e8;  --place-icu-fg: #c42f2f;
+  --place-ed-bg: #fff0e0;   --place-ed-fg: #8a4b0c;
+}
+
+/* ------------------------------------------------------------- §3.2 DARK */
+/* Paper, for print previews: white with dark ink in both themes, because it is what leaves the printer. */
+.shri-root {
+  --paper: #ffffff;
+  --paper-ink: #111827;
+  --paper-heading: #374151;
+  --paper-muted: #6b7280;
+  --paper-faint: #9ca3af;
+  --paper-line: #e5e7eb;
+  /* On the CT image, which is black in both themes (src/styles/theme.css:265-267): measured against the image, not the page. */
+  --on-image-ai: #a5b4fc;
+  --on-image-crit: #fca5a5;
+  --on-image-ink: rgb(255 255 255 / 0.72);
+  /* The video tile, black in both themes like the scan (src/screens/m27/Telehealth.tsx). */
+  --video-bg: #0a0d14;
+  --video-tile: #151b28;
+  --video-avatar: #1a2030;
+  --video-icon: #6b7690;
+  --video-name: #8b94a8;
+}
+
+html[data-theme='dark'] .shri-root {
+  --surface: #0a0a0b;
+  --card: #262628;
+  --inner: #333336;
+  --control: #333336;
+  --hover: #333336;
+  --hover-strong: #3a3a3d;
+  --line: #3a3a3d;
+  --line-strong: #48484c;
+
+  --text: #ffffff;
+  --text-2: #c9c9ce;
+  --text-3: #a3a3a9;
+  /* AA on the inner fill #333336 and the lime-tinted Now row (4.8:1 on #333336); was #8c8c92 at 3.6–3.8:1. */
+  --muted: #a0a0a6;
+  --chev: #6e6e74;
+
+  --rail: #262628;
+  --accent: #d4ff3a;
+  --accent-soft: rgba(212, 255, 58, 0.1);
+  --accent-ink: #0a0a0b;
+  --accent-2: #1f4cff;
+  --ai: #d4ff3a;
+  --primary: #ffffff;
+  --primary-hover: #e4e4e8;
+  --on-primary: #0a0a0b;
+
+  --crit-bg: rgba(255, 77, 77, 0.16);  --crit-fg: #ff8a8a; --crit: #ff4d4d;
+  --crit-solid: #ff6b6b; --on-crit-solid: #1a0707;
+  --warn-bg: rgba(255, 176, 32, 0.16); --warn-fg: #ffc766; --warn: #ffb020;
+  --norm-bg: rgba(52, 211, 153, 0.16); --norm-fg: #6ee7b7; --norm: #34d399;
+  --pend-bg: rgba(31, 76, 255, 0.24);  --pend-fg: #9db2ff; --pend: #1f4cff;
+  --neu-bg: #333336;                   --neu-fg: #c9c9ce;  --neu: #6e6e74;
+
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --shadow-drawer: -20px 0 50px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 30px 80px rgba(0, 0, 0, 0.6);
+  --glow-accent: 0 0 0 4px rgba(212, 255, 58, 0.18);
+  --scrim: rgba(0, 0, 0, 0.5);
+
+  --focus-ring: rgba(212, 255, 58, 0.5);
+
+  --now-row-bg: rgba(212, 255, 58, 0.08);
+  --attn-crit-row: rgba(255, 77, 77, 0.1);
+  --other-month: #9c9ca2;
+  --todo-box-border: #48484c;
+  --note-box-bg: #1c1c1e;
+  --flags-ring: rgba(212, 255, 58, 0.25);
+  --rail-more: #333336;
+  --rail-hover: #3a3a3d;
+  --pend-ring: #9db2ff;
+  --bubble-bg: #ffffff;
+  --bubble-icon: #0a0a0b;
+  --bubble-ring: 0 0 0 6px rgba(212, 255, 58, 0.18);
+  --day-selected-ring: #4e6000;
+
+  --kpi-label: #c9c9ce;
+  --kpi-sub: #8c8c92;
+  --kpi-today-bg: #262628;      --kpi-today-badge: #d4ff3a;      --kpi-today-icon: #0a0a0b;   --kpi-today-num: #fff;      --kpi-today-border: rgba(212, 255, 58, 0.35);
+  --kpi-waiting-bg: #262628;    --kpi-waiting-badge: #ffb020;    --kpi-waiting-icon: #0a0a0b; --kpi-waiting-num: #fff;    --kpi-waiting-border: rgba(255, 176, 32, 0.35);
+  --kpi-inroom-bg: #262628;     --kpi-inroom-badge: #22d3ee;     --kpi-inroom-icon: #0a0a0b;  --kpi-inroom-num: #fff;     --kpi-inroom-border: rgba(34, 211, 238, 0.35);
+  --kpi-admissions-bg: #262628; --kpi-admissions-badge: #1f4cff; --kpi-admissions-icon: #fff; --kpi-admissions-num: #fff; --kpi-admissions-border: rgba(31, 76, 255, 0.5);
+  --kpi-icu-bg: #262628;        --kpi-icu-badge: #ff5fa2;        --kpi-icu-icon: #0a0a0b;     --kpi-icu-num: #fff;        --kpi-icu-border: rgba(255, 95, 162, 0.35);
+  --kpi-critical-bg: rgba(255, 77, 77, 0.12); --kpi-critical-badge: #ff4d4d; --kpi-critical-icon: #fff; --kpi-critical-num: #fff; --kpi-critical-border: rgba(255, 77, 77, 0.5);
+  --kpi-critical-glow: 0 0 24px rgba(255, 77, 77, 0.22);
+
+  --place-opd-bg: #333336;                   --place-opd-fg: #ffffff;
+  --place-tele-bg: rgba(31, 76, 255, 0.24);  --place-tele-fg: #9db2ff;
+  --place-ward-bg: rgba(52, 211, 153, 0.16); --place-ward-fg: #6ee7b7;
+  --place-icu-bg: rgba(255, 77, 77, 0.16);   --place-icu-fg: #ff8a8a;
+  --place-ed-bg: rgba(255, 176, 32, 0.16);   --place-ed-fg: #ffc766;
+}
+
+/* ---------------------------------------------------- TAILWIND BRIDGE
+   `inline` is what makes `bg-sh-card` emit `var(--card)` at the use site, so
+   it resolves against `.shri-root` and its dark override. */
+@theme inline {
+  --color-sh-surface: var(--surface);
+  --color-sh-card: var(--card);
+  --color-sh-inner: var(--inner);
+  --color-sh-control: var(--control);
+  --color-sh-hover: var(--hover);
+  --color-sh-hover-strong: var(--hover-strong);
+  --color-sh-line: var(--line);
+  --color-sh-line-strong: var(--line-strong);
+  --color-sh-text: var(--text);
+  --color-sh-text-2: var(--text-2);
+  --color-sh-text-3: var(--text-3);
+  --color-sh-muted: var(--muted);
+  --color-sh-chev: var(--chev);
+  --color-sh-rail: var(--rail);
+  --color-sh-accent: var(--accent);
+  --color-sh-accent-soft: var(--accent-soft);
+  --color-sh-accent-ink: var(--accent-ink);
+  --color-sh-accent-2: var(--accent-2);
+  --color-sh-ai: var(--ai);
+  --color-sh-primary: var(--primary);
+  --color-sh-primary-hover: var(--primary-hover);
+  --color-sh-on-primary: var(--on-primary);
+  --color-sh-crit: var(--crit);
+  --color-sh-crit-bg: var(--crit-bg);
+  --color-sh-crit-fg: var(--crit-fg);
+  --color-sh-crit-solid: var(--crit-solid);
+  --color-sh-on-crit-solid: var(--on-crit-solid);
+  --color-sh-warn: var(--warn);
+  --color-sh-warn-bg: var(--warn-bg);
+  --color-sh-warn-fg: var(--warn-fg);
+  --color-sh-norm: var(--norm);
+  --color-sh-norm-bg: var(--norm-bg);
+  --color-sh-norm-fg: var(--norm-fg);
+  --color-sh-pend: var(--pend);
+  --color-sh-pend-bg: var(--pend-bg);
+  --color-sh-pend-fg: var(--pend-fg);
+  --color-sh-neu-bg: var(--neu-bg);
+  --color-sh-neu-fg: var(--neu-fg);
+  --color-sh-scrim: var(--scrim);
+
+  --shadow-sh-pop: var(--shadow-pop);
+  --shadow-sh-drawer: var(--shadow-drawer);
+  --shadow-sh-modal: var(--shadow-modal);
+  --shadow-sh-glow: var(--glow-accent);
+
+  --font-sh: var(--font-shri);
+  --font-sh-tamil: var(--font-tamil);
+  --font-sh-serif: var(--font-serif);
+
+  --radius-sh-card: 24px;
+  --radius-sh-kpi: 20px;
+  --radius-sh-modal: 28px;
+  --radius-sh-inner: 16px;
+
+  --ease-sh: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ------------------------------------------------------- BASE OVERRIDES
+   Same layer as glass.css, higher specificity: Inter, a true 14px base and
+   the spec's focus ring win inside the Shri surface; utilities still win over
+   both. */
+@layer base {
+  .shri-root {
+    font-family: var(--font-shri);
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .shri-root :focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+  .shri-root button,
+  .shri-root a {
+    -webkit-tap-highlight-color: transparent;
+  }
+  .shri-root select option {
+    background: var(--card);
+    color: var(--text);
+  }
+  html[data-theme='dark'] {
+    color-scheme: dark;
+  }
+}
+
+/* ------------------------------------------------------------ COMPONENTS */
+@layer components {
+  /* 44 × 44 targets at every width. A transparent ::before, centred on the
+     control and never smaller than it, is the hit area — so a 34px round
+     button or a text "Why?" link keeps its look and its place in the layout
+     while the finger gets 44px. It is part of the element, so clicks, hover
+     and elementFromPoint all land on the control itself. Positioned controls
+     (absolute/fixed/sticky utilities) already contain it: utilities outrank
+     this layer. */
+  .shri-root :where(button, a[href], [role='button'], [role='tab'], [role='checkbox'], [role='switch'], [role='menuitem'], [role='radio'], [role='option']) {
+    position: relative;
+  }
+  .shri-root :where(button, a[href], [role='button'], [role='tab'], [role='checkbox'], [role='switch'], [role='menuitem'], [role='radio'], [role='option'])::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+
+  /* One class per tone hands every pill, chip and dot its trio. */
+  .sh-tone-crit { --t: var(--crit); --t-bg: var(--crit-bg); --t-fg: var(--crit-fg); }
+  .sh-tone-warn { --t: var(--warn); --t-bg: var(--warn-bg); --t-fg: var(--warn-fg); }
+  .sh-tone-norm { --t: var(--norm); --t-bg: var(--norm-bg); --t-fg: var(--norm-fg); }
+  .sh-tone-pend { --t: var(--pend); --t-bg: var(--pend-bg); --t-fg: var(--pend-fg); }
+  .sh-tone-neu  { --t: var(--neu);  --t-bg: var(--neu-bg);  --t-fg: var(--neu-fg); }
+
+  /* §5.2 — each KPI card reads its own five colours. */
+  .sh-kpi[data-kpi='today']      { --k-bg: var(--kpi-today-bg);      --k-badge: var(--kpi-today-badge);      --k-icon: var(--kpi-today-icon);      --k-num: var(--kpi-today-num);      --k-border: var(--kpi-today-border); }
+  .sh-kpi[data-kpi='waiting']    { --k-bg: var(--kpi-waiting-bg);    --k-badge: var(--kpi-waiting-badge);    --k-icon: var(--kpi-waiting-icon);    --k-num: var(--kpi-waiting-num);    --k-border: var(--kpi-waiting-border); }
+  .sh-kpi[data-kpi='inroom']     { --k-bg: var(--kpi-inroom-bg);     --k-badge: var(--kpi-inroom-badge);     --k-icon: var(--kpi-inroom-icon);     --k-num: var(--kpi-inroom-num);     --k-border: var(--kpi-inroom-border); }
+  .sh-kpi[data-kpi='admissions'] { --k-bg: var(--kpi-admissions-bg); --k-badge: var(--kpi-admissions-badge); --k-icon: var(--kpi-admissions-icon); --k-num: var(--kpi-admissions-num); --k-border: var(--kpi-admissions-border); }
+  .sh-kpi[data-kpi='icu']        { --k-bg: var(--kpi-icu-bg);        --k-badge: var(--kpi-icu-badge);        --k-icon: var(--kpi-icu-icon);        --k-num: var(--kpi-icu-num);        --k-border: var(--kpi-icu-border); }
+  .sh-kpi[data-kpi='critical']   { --k-bg: var(--kpi-critical-bg);   --k-badge: var(--kpi-critical-badge);   --k-icon: var(--kpi-critical-icon);   --k-num: var(--kpi-critical-num);   --k-border: var(--kpi-critical-border); box-shadow: var(--kpi-critical-glow); }
+
+  /* §5.5 — place tiles. */
+  .sh-place[data-place='opd']  { --p-bg: var(--place-opd-bg);  --p-fg: var(--place-opd-fg); }
+  .sh-place[data-place='tele'] { --p-bg: var(--place-tele-bg); --p-fg: var(--place-tele-fg); }
+  .sh-place[data-place='ward'] { --p-bg: var(--place-ward-bg); --p-fg: var(--place-ward-fg); }
+  .sh-place[data-place='icu']  { --p-bg: var(--place-icu-bg);  --p-fg: var(--place-icu-fg); }
+  .sh-place[data-place='ed']   { --p-bg: var(--place-ed-bg);   --p-fg: var(--place-ed-fg); }
+
+  /* §3.2 signature effects — dark only. Light keeps a plain card. */
+  .sh-frosted {
+    background: var(--card);
+    border: 1px solid var(--line);
+  }
+  html[data-theme='dark'] .shri-root .sh-frosted {
+    background: rgba(70, 70, 76, 0.55);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+  html[data-theme='dark'] .shri-root .sh-stripes-today {
+    background-image: repeating-linear-gradient(135deg, #d4ff3a 0 5px, transparent 5px 11px);
+  }
+
+  /* §5.5 — list bottom fade while there is more to scroll. */
+  .sh-fade-bottom {
+    mask-image: linear-gradient(#000 85%, transparent);
+    -webkit-mask-image: linear-gradient(#000 85%, transparent);
+  }
+  /* A sideways row that still hides a card on one side, or both. */
+  .sh-fade-right {
+    mask-image: linear-gradient(to right, #000 82%, transparent);
+    -webkit-mask-image: linear-gradient(to right, #000 82%, transparent);
+  }
+  .sh-fade-left {
+    mask-image: linear-gradient(to left, #000 82%, transparent);
+    -webkit-mask-image: linear-gradient(to left, #000 82%, transparent);
+  }
+  .sh-fade-x {
+    mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
+  }
+  /* Scrolls, but draws no scrollbar — for a snap row whose fade already says there is more. */
+  .sh-scroll-none {
+    scrollbar-width: none;
+  }
+  .sh-scroll-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* §5.4 — the pulsing accent dot in the "Now" pill and the NOW row. */
+  .sh-now-dot {
+    animation: sh-now 2s ease-in-out infinite;
+  }
+  /* §5.2 — Critical badge pulse while a critical item is unacknowledged. */
+  .sh-badge-pulse {
+    animation: sh-badge-pulse 2s ease-out infinite;
+  }
+  /* §6.7 — toggle knob. */
+  .sh-knob {
+    transition: margin-left 200ms cubic-bezier(0.3, 0, 0, 1.2);
+  }
+  /* §3.2 — outlined arrow buttons rotate 45° on hover (dark). */
+  html[data-theme='dark'] .shri-root .sh-arrow:hover svg {
+    transform: rotate(45deg);
+  }
+  .sh-arrow svg {
+    transition: transform 200ms var(--ease-sh);
+  }
+
+  .sh-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  .sh-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+  .sh-scrollbar::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; }
+  .sh-scrollbar::-webkit-scrollbar-track { background: transparent; }
+
+  .sh-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .sh-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+}
+
+@keyframes sh-now {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.72); }
+}
+@keyframes sh-badge-pulse {
+  0% { box-shadow: 0 6px 14px color-mix(in srgb, var(--k-badge) 35%, transparent), 0 0 0 0 color-mix(in srgb, var(--k-badge) 40%, transparent); }
+  70% { box-shadow: 0 6px 14px color-mix(in srgb, var(--k-badge) 35%, transparent), 0 0 0 8px color-mix(in srgb, var(--k-badge) 0%, transparent); }
+  100% { box-shadow: 0 6px 14px color-mix(in srgb, var(--k-badge) 35%, transparent), 0 0 0 0 color-mix(in srgb, var(--k-badge) 0%, transparent); }
+}
+/* `shdark:` — the Shri dark theme as a Tailwind variant. The existing app
+   never uses `dark:` (its theme is `night`), so this stays private. */
+@custom-variant shdark (&:where(html[data-theme='dark'], html[data-theme='dark'] *));
+
+@media (max-width: 767.98px) {
+  .shri-root {
+    --frame-min-h: calc(100dvh - 74px - var(--shell-pt) - var(--tabbar-h) - 16px - var(--sa-b));
+  }
+}

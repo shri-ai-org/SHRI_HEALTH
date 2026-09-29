@@ -1,0 +1,57 @@
+/* ===========================================================================
+   Shri Health — the one stylesheet entry.
+
+   Tailwind (scanning this build's own sources only), the project breakpoints,
+   the handful of base rules every page needs, then the tokens. Nothing from
+   src/styles is loaded: those are the Indostates skin.
+   =========================================================================== */
+
+@import 'tailwindcss' source('..');
+@import './tokens.css';
+
+/* The project breakpoints — sm 768 (phone ⇢ tablet), md 1024 (the ward
+   tablet), lg 1280, xl 1440, wall 1920. The same values the old build used, so
+   every `max-sm:` / `lg:` in this build means what it always has. */
+@theme {
+  --breakpoint-sm: 768px;
+  --breakpoint-md: 1024px;
+  --breakpoint-lg: 1280px;
+  --breakpoint-xl: 1440px;
+  --breakpoint-wall: 1920px;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* All transitions become instant for anyone who asks for less motion;
+     framer-motion honours the same setting through <MotionConfig>. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

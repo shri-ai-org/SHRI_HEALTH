@@ -1,0 +1,44 @@
+# Shri Health — what the repository (and so every deployment) leaves out.
+# The app is doctors-portal/: its source, scripts, public assets and config.
+
+# Documents and design specs — kept on disk, never committed or deployed.
+*.md
+
+# Dependencies and build output — `npm ci` and `npm run build` recreate them.
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+*.tsbuildinfo
+
+# Source imaging: the CT DICOMs that the PNG slices in public/ncct/ were
+# exported from (scripts/ncct-import.mjs), and design screenshots.
+*.dcm
+UI.png
+
+# Secrets and environment files.
+.env
+.env.*
+!.env.example
+*.pem
+
+# Tool and assistant scratch.
+.claude/
+.playwright-mcp/
+coverage/
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors and operating systems.
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.sw?

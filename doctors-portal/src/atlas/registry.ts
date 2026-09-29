@@ -1,0 +1,1413 @@
+/**
+ * UI_ATLAS.md §9 — the screen registry, restricted to the Doctors Portal scope.
+ *
+ * This file is the spine of the application. The router, the nav rail, the
+ * breadcrumb, the page header, the assistant's "from:" line, the density and
+ * theme defaults, and the declared states all derive from it. Nothing about a
+ * screen is stated twice.
+ *
+ * The atlas's completeness guarantee applies here too: a registry row with a
+ * route must have a component, and a route must have a row. `verifyRegistry()`
+ * asserts it at startup in development.
+ *
+ * Routes are verbatim from the atlas, with `{id}` rewritten as `:id`. They are
+ * client-side UI routes — the atlas is explicit that they are screen addresses,
+ * not endpoints.
+ */
+
+import type { ArchetypeId } from './archetypes'
+import { ARCHETYPE_SPECS } from './archetypes'
+import type { ComplianceId } from './compliance'
+import type { ReferencedPersonaId, PersonaId } from './personas'
+import { PERSONAS } from './personas'
+import type { DeclaredState } from './states'
+import type { Z7bDisposition, ZoneId } from './zones'
+
+export type Tier = 'T1' | 'T2' | 'T3'
+
+export type ModuleId = 'M-02' | 'M-05' | 'M-06' | 'M-08' | 'M-09' | 'M-13' | 'M-15' | 'M-16' | 'M-18' | 'M-27' | 'M-28'
+
+/** GP-02 nav rail sections. "A module the user cannot enter is absent, not disabled." */
+export type NavSection =
+  | 'home'
+  | 'queue'
+  | 'inpatients'
+  | 'results'
+  | 'orders'
+  | 'discharge'
+  | 'imaging'
+  | 'stroke'
+  | 'telehealth'
+  | 'assistant'
+  | null
+
+export interface ScreenSpec {
+  id: string
+  module: ModuleId
+  name: string
+  /** Verbatim from the atlas. null means a modal, overlay or in-place view. */
+  route: string | null
+  /** How a routeless screen surfaces. */
+  surface?: 'modal' | 'overlay' | 'in-place'
+  archetype: ArchetypeId
+  tier: Tier
+  /** As the atlas lists them — primary persona first. */
+  personas: ReferencedPersonaId[]
+  /** §4.2 capability IDs. AI-911 is implicit on every screen and not repeated. */
+  ai: string[]
+  zones: ZoneId[]
+  density: 'compact' | 'comfortable' | 'wall'
+  /** §5.3 night-theme-mandatory list. Night is the product default; where a user has switched to light, these screens prompt. */
+  nightDefault: boolean
+  /** §6.1 — the one line every screen spec carries about the assistant bubble. */
+  z7b: Z7bDisposition
+  /**
+   * No shell at all — no Z1, no Z2, no Z7b. `ARC-12` walls get this from their
+   * archetype; `S-02-01` sets it explicitly, because an unauthenticated screen
+   * cannot carry a facility switcher, a nav rail built from capabilities, or an
+   * assistant whose retrieval §6.1 requires be filtered to what the caller may
+   * already read. Before sign-in there is no caller.
+   */
+  bare?: boolean
+  /** Whether Z3 (GP-05 patient banner) renders. */
+  patientScoped: boolean
+  /** Verbatim from the screen spec. */
+  oneLiner: string
+  navSection: NavSection
+  /** Capability required to enter. Default deny (§3.2 rule 3). */
+  permission: string
+  compliance?: ComplianceId[]
+  /** States the spec declares n/a, with the atlas's reason. */
+  statesNotApplicable?: Partial<Record<DeclaredState, string>>
+}
+
+/** The full shell: every zone a standard clinical screen uses. */
+const SHELL: ZoneId[] = ['Z1', 'Z2', 'Z4', 'Z5', 'Z7b']
+const SHELL_PATIENT: ZoneId[] = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z7b']
+const SHELL_PATIENT_RAIL: ZoneId[] = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'Z7b']
+const SHELL_AUTHOR: ZoneId[] = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'Z7a', 'Z7b']
+const SHELL_RAIL: ZoneId[] = ['Z1', 'Z2', 'Z4', 'Z5', 'Z6', 'Z7b']
+
+export const SCREENS: ScreenSpec[] = [
+  // ══════════════════════════════════════════════════════ M-06 · the core
+  // "The clinician's workspace — where the record is actually written."
+  {
+    id: 'S-06-01',
+    module: 'M-06',
+    name: 'My Day',
+    route: '/clinician',
+    archetype: 'ARC-20',
+    tier: 'T1',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-613', 'AI-201', 'AI-608'],
+    zones: SHELL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: "The consultant's day, ranked by who needs them first.",
+    navSection: 'home',
+    permission: 'ip.encounter.read',
+    statesNotApplicable: { LOCKED: 'not an authoring screen' },
+  },
+  {
+    id: 'S-06-03',
+    module: 'M-06',
+    name: 'Consultation note',
+    route: '/encounter/:id/note',
+    archetype: 'ARC-15',
+    tier: 'T1',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-101', 'AI-103', 'AI-203', 'AI-501', 'AI-114'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'The consultation note that is already written by the time the patient leaves.',
+    navSection: null,
+    permission: 'op.note.write',
+    compliance: ['CMP-NABH-05', 'CMP-NABH-10', 'CMP-NABH-11', 'CMP-ABDM-03'],
+  },
+  {
+    id: 'S-06-04',
+    module: 'M-06',
+    name: 'Ambient scribe',
+    route: null,
+    surface: 'overlay',
+    archetype: 'ARC-21',
+    tier: 'T1',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-101', 'AI-104', 'AI-110'],
+    zones: ['Z4', 'Z5', 'Z7a'],
+    density: 'compact',
+    nightDefault: false,
+    // §6.1 — an overlay over S-06-03 carries no bubble of its own.
+    z7b: 'n/a',
+    patientScoped: true,
+    oneLiner: 'The scribe drafting all four sections from the visit, on request.',
+    navSection: null,
+    permission: 'op.note.write',
+  },
+  {
+    id: 'S-06-05',
+    module: 'M-06',
+    name: 'Problems and coding',
+    route: '/encounter/:id/problems',
+    archetype: 'ARC-15',
+    tier: 'T2',
+    personas: ['P-04'],
+    ai: ['AI-501', 'AI-204'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'The problem list, coded properly the first time.',
+    navSection: null,
+    permission: 'problem.write',
+  },
+  {
+    id: 'S-06-06',
+    module: 'M-06',
+    name: 'Timeline',
+    route: '/patient/:id/timeline',
+    archetype: 'ARC-25',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-105'],
+    zones: SHELL_PATIENT_RAIL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'The whole record, in time order, unsummarised.',
+    navSection: null,
+    permission: 'op.encounter.read',
+  },
+  {
+    id: 'S-06-07',
+    module: 'M-06',
+    name: 'Prescription',
+    route: '/encounter/:id/rx',
+    archetype: 'ARC-07',
+    tier: 'T1',
+    personas: ['P-04'],
+    ai: ['AI-305', 'AI-205', 'AI-206'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    // "the deck's most important screen after the flagship" — where the AI is
+    // overruled by a deterministic hard stop.
+    oneLiner: 'Prescribing — and the one screen where the AI is visibly overruled.',
+    navSection: null,
+    permission: 'rx.write',
+    compliance: ['CMP-NABH-05', 'CMP-NABH-11', 'CMP-ABDM-07', 'CMP-DRUG-03'],
+  },
+  {
+    id: 'S-06-08',
+    module: 'M-06',
+    name: 'Patient instructions',
+    route: '/encounter/:id/instructions',
+    archetype: 'ARC-15',
+    tier: 'T2',
+    personas: ['P-04', 'P-07'],
+    ai: ['AI-111', 'AI-110'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'What the patient is told, in the language they read.',
+    navSection: null,
+    permission: 'op.note.write',
+    compliance: ['CMP-DPDP-02'],
+  },
+  {
+    id: 'S-06-09',
+    module: 'M-06',
+    name: 'Co-sign',
+    route: '/clinician/cosign',
+    archetype: 'ARC-08',
+    tier: 'T3',
+    personas: ['P-04'],
+    ai: ['AI-114'],
+    zones: SHELL_RAIL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: "What still needs a consultant's signature.",
+    navSection: 'home',
+    permission: 'note.cosign',
+    compliance: ['CMP-NABH-03', 'CMP-NABH-10'],
+  },
+  {
+    id: 'S-06-10',
+    module: 'M-06',
+    name: 'Templates and order sets',
+    route: '/clinician/templates',
+    archetype: 'ARC-18',
+    tier: 'T3',
+    personas: ['P-04', 'P-02'],
+    ai: ['AI-302'],
+    zones: [...SHELL, 'Z8'],
+    density: 'comfortable',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Order sets and templates — personal, then governed.',
+    navSection: 'home',
+    permission: 'template.write',
+  },
+
+  // ── The patient record — a hub, and one focused screen per part of the
+  //    history, so no single screen has to carry all of it.
+  {
+    id: 'S-06-11',
+    module: 'M-06',
+    name: 'Patient record',
+    route: '/patient/:id/record',
+    archetype: 'ARC-20',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-105'],
+    zones: SHELL_PATIENT,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'One patient on one page — summary, report, the latest scan and the AI’s readings; each part one tab away.',
+    navSection: null,
+    permission: 'op.encounter.read',
+  },
+  {
+    id: 'S-06-12',
+    module: 'M-06',
+    name: 'Previous reports',
+    route: '/patient/:id/reports',
+    archetype: 'ARC-10',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-402'],
+    zones: SHELL_PATIENT,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Every report on the record — imaging, discharge summaries, operative notes, ECGs.',
+    navSection: null,
+    permission: 'op.encounter.read',
+  },
+  {
+    id: 'S-06-13',
+    module: 'M-06',
+    name: 'Test results',
+    route: '/patient/:id/results',
+    archetype: 'ARC-01',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-212'],
+    zones: SHELL_PATIENT,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: "One patient's results, grouped by test, with the trend beside each.",
+    navSection: null,
+    permission: 'op.encounter.read',
+  },
+  {
+    id: 'S-06-14',
+    module: 'M-06',
+    name: 'Saved notes',
+    route: '/patient/:id/notes',
+    archetype: 'ARC-02',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-101'],
+    zones: SHELL_PATIENT,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'What was written last time, and what was dictated today, in one place.',
+    navSection: null,
+    permission: 'op.encounter.read',
+  },
+  {
+    id: 'S-06-15',
+    module: 'M-06',
+    name: 'Current condition',
+    route: '/patient/:id/condition',
+    archetype: 'ARC-02',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-105', 'AI-201'],
+    zones: SHELL_PATIENT,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'How the patient is now — status, what to watch, and the AI read of the record.',
+    navSection: null,
+    permission: 'op.encounter.read',
+  },
+  {
+    id: 'S-06-16',
+    module: 'M-06',
+    name: 'Prescriptions',
+    route: '/patient/:id/prescriptions',
+    archetype: 'ARC-02',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: [],
+    zones: SHELL_PATIENT,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'What the patient takes now, and every prescription before it.',
+    navSection: null,
+    permission: 'op.encounter.read',
+  },
+  {
+    id: 'S-06-17',
+    module: 'M-06',
+    name: 'Appointments',
+    route: '/patient/:id/appointments',
+    archetype: 'ARC-02',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: [],
+    zones: SHELL_PATIENT,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'When the patient is next due, what to prepare, and every visit before.',
+    navSection: null,
+    permission: 'op.encounter.read',
+  },
+
+  // ══════════════════════════════════════ M-09 · Orders, CPOE & Results
+  {
+    id: 'S-09-01',
+    module: 'M-09',
+    name: 'New orders',
+    route: '/encounter/:id/orders/new',
+    archetype: 'ARC-07',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-301', 'AI-302', 'AI-304', 'AI-205'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'One basket for everything a clinician can order.',
+    navSection: null,
+    permission: 'order.write',
+  },
+  {
+    id: 'S-09-02',
+    module: 'M-09',
+    name: 'Order sets',
+    route: '/orders/sets',
+    archetype: 'ARC-07',
+    tier: 'T3',
+    personas: ['P-04'],
+    ai: ['AI-302', 'AI-303'],
+    zones: SHELL_RAIL,
+    density: 'comfortable',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Order sets and pathways, applied rather than remembered.',
+    navSection: 'orders',
+    permission: 'order.write',
+  },
+  {
+    id: 'S-09-03',
+    module: 'M-09',
+    name: 'Orders',
+    route: '/encounter/:id/orders',
+    archetype: 'ARC-01',
+    tier: 'T2',
+    personas: ['P-04', 'P-07'],
+    ai: ['AI-308'],
+    zones: SHELL_PATIENT_RAIL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Which orders are actually happening.',
+    navSection: null,
+    permission: 'order.write',
+  },
+  {
+    id: 'S-09-04',
+    module: 'M-09',
+    name: 'Results',
+    route: '/results/inbox',
+    archetype: 'ARC-01',
+    tier: 'T1',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-212', 'AI-213'],
+    zones: SHELL_RAIL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Results ranked by how much they should worry you.',
+    navSection: 'results',
+    permission: 'result.read',
+  },
+  {
+    id: 'S-09-05',
+    module: 'M-09',
+    name: 'Result detail',
+    route: '/results/:id',
+    archetype: 'ARC-25',
+    tier: 'T2',
+    personas: ['P-04'],
+    ai: ['AI-212', 'AI-109'],
+    zones: SHELL_PATIENT_RAIL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'One result, its trend and what it means alongside it.',
+    navSection: null,
+    permission: 'result.read',
+  },
+  {
+    id: 'S-09-06',
+    module: 'M-09',
+    name: 'Critical result acknowledgement',
+    route: null,
+    surface: 'modal',
+    archetype: 'ARC-16',
+    tier: 'T2',
+    personas: ['P-04', 'P-07'],
+    ai: ['AI-213'],
+    zones: ['Z5', 'Z8'],
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'n/a',
+    patientScoped: true,
+    oneLiner: 'A critical value reaching a named human who must answer for it.',
+    navSection: null,
+    permission: 'result.read',
+  },
+  {
+    id: 'S-09-08',
+    module: 'M-09',
+    name: 'Test stewardship',
+    route: '/orders/stewardship',
+    archetype: 'ARC-08',
+    tier: 'T2',
+    personas: ['P-04', 'P-25'],
+    ai: ['AI-304'],
+    zones: SHELL_RAIL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Which tests are being ordered that need not be.',
+    navSection: 'orders',
+    permission: 'order.write',
+  },
+
+  // ══════════════════════════════════ M-08 · Inpatient, doctor slice
+  {
+    id: 'S-08-03',
+    module: 'M-08',
+    name: 'Inpatients',
+    route: '/ip/patients',
+    archetype: 'ARC-01',
+    tier: 'T2',
+    personas: ['P-04', 'P-05', 'P-08'],
+    ai: ['AI-613', 'AI-201'],
+    zones: SHELL_RAIL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: "A consultant's inpatient list, ordered by who needs them first.",
+    navSection: 'inpatients',
+    permission: 'ip.encounter.read',
+  },
+  {
+    id: 'S-08-04',
+    module: 'M-08',
+    name: 'Progress note',
+    route: '/ip/encounter/:id/note',
+    archetype: 'ARC-15',
+    tier: 'T1',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-102', 'AI-103', 'AI-201', 'AI-301', 'AI-501'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner:
+      'Where the consultant records the daily ward-round note, with an AI scribe drafting from dictation.',
+    navSection: null,
+    permission: 'ip.note.write',
+    compliance: ['CMP-NABH-10', 'CMP-NABH-11'],
+  },
+  {
+    id: 'S-08-07',
+    module: 'M-08',
+    name: 'Admission assessment',
+    route: '/ip/encounter/:id/assessment',
+    archetype: 'ARC-15',
+    tier: 'T3',
+    personas: ['P-04', 'P-07'],
+    ai: ['AI-103', 'AI-211'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'The admission assessment the 24-hour NABH clock is counting down to.',
+    navSection: null,
+    permission: 'ip.note.write',
+    compliance: ['CMP-NABH-01', 'CMP-NABH-11'],
+  },
+
+  // ══════════════════════════════ M-13 · Discharge & care transitions
+  // §5.3 night-theme-mandatory: all S-13-*.
+  {
+    id: 'S-13-01',
+    module: 'M-13',
+    name: 'Discharge board',
+    route: '/discharge/board',
+    archetype: 'ARC-04',
+    tier: 'T1',
+    personas: ['P-09', 'P-08', 'P-04'],
+    ai: ['AI-610', 'AI-514'],
+    zones: SHELL,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Who goes home today, known at 07:00 instead of 16:00.',
+    navSection: 'discharge',
+    permission: 'ip.encounter.read',
+  },
+  {
+    id: 'S-13-02',
+    module: 'M-13',
+    name: 'Discharge summary',
+    route: '/encounter/:id/discharge-summary',
+    archetype: 'ARC-15',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-106', 'AI-501', 'AI-110'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'The discharge summary, drafted from the admission and blocked until complete.',
+    navSection: null,
+    permission: 'discharge.write',
+    compliance: ['CMP-NABH-10', 'CMP-NABH-11', 'CMP-ABDM-03', 'CMP-DPDP-02'],
+  },
+  {
+    id: 'S-13-03',
+    module: 'M-13',
+    name: 'Medication reconciliation',
+    route: '/encounter/:id/med-rec',
+    archetype: 'ARC-09',
+    tier: 'T2',
+    personas: ['P-14', 'P-04'],
+    ai: ['AI-306', 'AI-205'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Admission meds against discharge meds, reconciled line by line.',
+    navSection: null,
+    permission: 'rx.write',
+  },
+  {
+    id: 'S-13-06',
+    module: 'M-13',
+    name: 'Death and MCCD',
+    route: '/encounter/:id/death',
+    archetype: 'ARC-03',
+    tier: 'T2',
+    personas: ['P-04', 'P-24'],
+    ai: ['AI-810', 'AI-501'],
+    zones: SHELL_AUTHOR,
+    density: 'comfortable',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Death certification, and the handover that follows it.',
+    navSection: null,
+    permission: 'discharge.sign',
+    compliance: ['CMP-STAT-03', 'CMP-STAT-01', 'CMP-NABH-11'],
+  },
+
+  // ══════════════════════════════ M-05 · Scheduling, doctor slice
+  {
+    id: 'S-05-03',
+    module: 'M-05',
+    name: 'OPD queue',
+    route: '/op-queue',
+    archetype: 'ARC-04',
+    tier: 'T1',
+    personas: ['P-03', 'P-04'],
+    ai: ['AI-607', 'AI-601'],
+    zones: SHELL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'The waiting room told the truth about how long it will be.',
+    navSection: 'queue',
+    permission: 'op.encounter.read',
+  },
+  {
+    id: 'S-05-04',
+    module: 'M-05',
+    name: 'Session templates',
+    route: '/schedule/templates',
+    archetype: 'ARC-18',
+    tier: 'T3',
+    personas: ['P-02', 'P-04'],
+    ai: ['AI-608'],
+    zones: [...SHELL, 'Z8'],
+    density: 'comfortable',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: "A clinician's recurring session pattern.",
+    navSection: 'queue',
+    permission: 'schedule.write',
+  },
+  {
+    id: 'S-05-05',
+    module: 'M-05',
+    name: 'Blocks and leave',
+    route: '/schedule/blocks',
+    archetype: 'ARC-05',
+    tier: 'T3',
+    personas: ['P-04', 'P-02'],
+    ai: ['AI-608'],
+    zones: SHELL_RAIL,
+    density: 'comfortable',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Leave, blocks and one-off overrides.',
+    navSection: 'queue',
+    permission: 'schedule.write',
+  },
+  {
+    id: 'S-05-06',
+    module: 'M-05',
+    name: 'Referrals',
+    route: '/referrals',
+    archetype: 'ARC-01',
+    tier: 'T2',
+    personas: ['P-04', 'P-03'],
+    ai: ['AI-609'],
+    zones: SHELL_RAIL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Referrals in, triaged rather than queued.',
+    navSection: 'queue',
+    permission: 'referral.read',
+  },
+
+  // ══════════════════════════════════════════════ M-02 · Access
+  {
+    id: 'S-02-05',
+    module: 'M-02',
+    name: 'Break-glass access',
+    route: null,
+    surface: 'modal',
+    archetype: 'ARC-16',
+    tier: 'T2',
+    personas: ['P-04', 'P-35'],
+    ai: ['AI-908'],
+    zones: ['Z5', 'Z8'],
+    density: 'comfortable',
+    nightDefault: false,
+    z7b: 'n/a',
+    patientScoped: false,
+    oneLiner: 'Break-glass — proceeding when there is no care relationship.',
+    navSection: null,
+    permission: 'patient.breakglass',
+  },
+
+  // ═══════════════════════════ M-18 · Stroke-AI Command Centre (flagship)
+  // §5.3 night-theme-mandatory: all S-18-*.
+  {
+    id: 'S-18-01',
+    module: 'M-18',
+    name: 'Stroke network wall',
+    route: '/stroke/wall',
+    archetype: 'ARC-12',
+    tier: 'T1',
+    personas: ['P-41', 'P-37', 'P-35'],
+    ai: ['AI-209', 'AI-616', 'AI-612'],
+    // ARC-12: Z5 only. No Z1, no Z2, no input affordances, no Z7b bubble.
+    zones: ['Z5'],
+    density: 'wall',
+    nightDefault: true,
+    z7b: 'absent',
+    patientScoped: false,
+    oneLiner: 'The network, live, on a wall and on a phone.',
+    navSection: 'stroke',
+    permission: 'stroke.case.read',
+  },
+  {
+    id: 'S-18-02',
+    module: 'M-18',
+    name: 'Case view',
+    route: null,
+    surface: 'in-place',
+    archetype: 'ARC-13',
+    tier: 'T2',
+    personas: ['P-35', 'P-37'],
+    ai: ['AI-209', 'AI-404'],
+    zones: ['Z5'],
+    density: 'wall',
+    nightDefault: true,
+    z7b: 'absent',
+    patientScoped: true,
+    oneLiner: 'One case, expanded without leaving the wall.',
+    navSection: null,
+    permission: 'stroke.case.read',
+  },
+  {
+    id: 'S-18-03',
+    module: 'M-18',
+    name: 'Site readiness',
+    route: '/stroke/network/sites',
+    archetype: 'ARC-20',
+    tier: 'T2',
+    personas: ['P-41'],
+    ai: ['AI-816', 'AI-622'],
+    zones: SHELL,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Whether each spoke can actually do its part tonight.',
+    navSection: 'stroke',
+    permission: 'stroke.case.read',
+  },
+  {
+    id: 'S-18-04',
+    module: 'M-18',
+    name: 'Code stroke',
+    route: '/stroke/activate',
+    archetype: 'ARC-15',
+    tier: 'T2',
+    personas: ['P-06', 'P-39', 'P-38', 'P-07'],
+    ai: ['AI-209'],
+    zones: ['Z1', 'Z2', 'Z4', 'Z5', 'Z7a', 'Z7b'],
+    density: 'comfortable',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'One tap that starts everything.',
+    navSection: 'stroke',
+    permission: 'stroke.activate',
+  },
+  {
+    id: 'S-18-05',
+    module: 'M-18',
+    name: 'Intake',
+    route: '/stroke/case/:id/intake',
+    archetype: 'ARC-15',
+    tier: 'T2',
+    personas: ['P-07', 'P-38'],
+    ai: ['AI-112', 'AI-209'],
+    zones: SHELL_AUTHOR,
+    density: 'comfortable',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'The six things that actually change the decision.',
+    navSection: null,
+    permission: 'stroke.case.write',
+  },
+  {
+    id: 'S-18-06',
+    module: 'M-18',
+    name: 'Case clock',
+    route: '/stroke/case/:id/clock',
+    archetype: 'ARC-13',
+    tier: 'T1',
+    personas: ['P-35', 'P-37', 'P-06'],
+    ai: ['AI-209', 'AI-303'],
+    zones: SHELL_PATIENT,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Every clock in the room, on one screen, with an owner for the next action.',
+    navSection: null,
+    permission: 'stroke.case.read',
+  },
+  {
+    id: 'S-18-07',
+    module: 'M-18',
+    name: 'Task board',
+    route: '/stroke/case/:id/tasks',
+    archetype: 'ARC-04',
+    tier: 'T2',
+    personas: ['P-37', 'P-07'],
+    ai: ['AI-619', 'AI-303'],
+    zones: SHELL_PATIENT,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Eight things happening at once, each with an owner and a timer.',
+    navSection: null,
+    permission: 'stroke.case.read',
+  },
+  {
+    id: 'S-18-08',
+    module: 'M-18',
+    name: 'Timestamps',
+    route: '/stroke/case/:id/events',
+    archetype: 'ARC-09',
+    tier: 'T2',
+    personas: ['P-37'],
+    ai: ['AI-112'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'When two clocks disagree about the door time.',
+    navSection: null,
+    permission: 'stroke.case.write',
+  },
+  {
+    id: 'S-18-09',
+    module: 'M-18',
+    name: 'Team',
+    route: '/stroke/case/:id/team',
+    archetype: 'ARC-01',
+    tier: 'T2',
+    personas: ['P-37'],
+    ai: ['AI-623'],
+    zones: SHELL_PATIENT_RAIL,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Who was paged, and who actually answered.',
+    navSection: null,
+    permission: 'stroke.case.read',
+  },
+  {
+    id: 'S-18-10',
+    module: 'M-18',
+    name: 'Telestroke queue',
+    route: '/stroke/telestroke/queue',
+    archetype: 'ARC-01',
+    tier: 'T2',
+    personas: ['P-35'],
+    ai: ['AI-613', 'AI-404'],
+    zones: SHELL_RAIL,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Requests from the spokes, ranked by clock and severity.',
+    navSection: 'stroke',
+    permission: 'stroke.case.read',
+  },
+  {
+    id: 'S-18-11',
+    module: 'M-18',
+    name: 'Telestroke session',
+    route: '/stroke/case/:id/telestroke',
+    archetype: 'ARC-22',
+    tier: 'T2',
+    personas: ['P-35', 'P-38'],
+    ai: ['AI-101', 'AI-104', 'AI-203'],
+    zones: ['Z1', 'Z3', 'Z5', 'Z6', 'Z7b'],
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Video, imaging and the NIHSS on one surface.',
+    navSection: null,
+    permission: 'stroke.telestroke.write',
+  },
+  {
+    id: 'S-18-12',
+    module: 'M-18',
+    name: 'NIHSS',
+    route: '/stroke/case/:id/nihss',
+    archetype: 'ARC-14',
+    tier: 'T2',
+    personas: ['P-35', 'P-38'],
+    ai: ['AI-112', 'AI-221'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'A 15-item NIHSS scored over video, with the examiner recorded.',
+    navSection: null,
+    permission: 'stroke.nihss.write',
+  },
+  {
+    id: 'S-18-13',
+    module: 'M-18',
+    name: 'Spoke console',
+    route: '/stroke/spoke',
+    archetype: 'ARC-15',
+    tier: 'T1',
+    personas: ['P-38'],
+    ai: ['AI-209', 'AI-203'],
+    zones: ['Z1', 'Z2', 'Z4', 'Z5', 'Z7a', 'Z7b'],
+    // Deliberately comfortable: "a general physician in Pollachi, alone, at 02:00."
+    density: 'comfortable',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Six fields for a general physician who is alone at 02:00.',
+    navSection: 'stroke',
+    permission: 'stroke.case.read',
+  },
+  {
+    id: 'S-18-14',
+    module: 'M-18',
+    name: 'Imaging triage',
+    route: '/stroke/case/:id/imaging',
+    archetype: 'ARC-11',
+    tier: 'T1',
+    personas: ['P-35', 'P-13'],
+    ai: ['AI-403', 'AI-404', 'AI-407'],
+    zones: SHELL_PATIENT_RAIL,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: "LVO found, and on the neurologist's phone four minutes later.",
+    navSection: null,
+    permission: 'imaging.read',
+  },
+  {
+    id: 'S-18-15',
+    module: 'M-18',
+    name: 'ASPECTS',
+    route: '/stroke/case/:id/aspects',
+    archetype: 'ARC-11',
+    tier: 'T2',
+    personas: ['P-13', 'P-35'],
+    ai: ['AI-405'],
+    zones: SHELL_PATIENT_RAIL,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'ASPECTS scored by the model and adjusted by the human, both kept.',
+    navSection: null,
+    permission: 'stroke.aspects.write',
+  },
+  {
+    id: 'S-18-16',
+    module: 'M-18',
+    name: 'Perfusion',
+    route: '/stroke/case/:id/perfusion',
+    archetype: 'ARC-11',
+    tier: 'T2',
+    personas: ['P-35', 'P-36'],
+    ai: ['AI-406'],
+    zones: SHELL_PATIENT_RAIL,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Core, penumbra and whether there is tissue worth saving.',
+    navSection: null,
+    permission: 'imaging.read',
+  },
+  {
+    id: 'S-18-17',
+    module: 'M-18',
+    name: 'Thrombolysis',
+    route: '/stroke/case/:id/thrombolysis',
+    archetype: 'ARC-14',
+    tier: 'T1',
+    personas: ['P-35', 'P-38'],
+    ai: ['AI-203', 'AI-205', 'AI-305'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Eligibility, dose, consent and cost — with cost never blocking.',
+    navSection: null,
+    permission: 'stroke.thrombolysis.write',
+    compliance: ['CMP-NABH-06', 'CMP-NABH-11'],
+  },
+  {
+    id: 'S-18-18',
+    module: 'M-18',
+    name: 'EVT selection',
+    route: '/stroke/case/:id/evt',
+    archetype: 'ARC-14',
+    tier: 'T2',
+    personas: ['P-36', 'P-35'],
+    ai: ['AI-406', 'AI-221'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'Selecting for thrombectomy, and recording the disagreement.',
+    navSection: null,
+    permission: 'stroke.evt.write',
+  },
+  {
+    id: 'S-18-19',
+    module: 'M-18',
+    name: 'Transfer',
+    route: '/stroke/case/:id/transfer',
+    archetype: 'ARC-08',
+    tier: 'T2',
+    personas: ['P-37', 'P-35'],
+    ai: ['AI-611', 'AI-616', 'AI-617'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'One action that holds an ambulance, a cath lab, an anaesthetist and a bed.',
+    navSection: null,
+    permission: 'stroke.transfer.approve',
+  },
+  {
+    id: 'S-18-21',
+    module: 'M-18',
+    name: 'Stroke-AI Console',
+    route: '/stroke/ai-console',
+    archetype: 'ARC-11',
+    tier: 'T1',
+    personas: ['P-35', 'P-36', 'P-38'],
+    ai: ['AI-403', 'AI-404', 'AI-405', 'AI-406', 'AI-407'],
+    zones: SHELL,
+    density: 'comfortable',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'The scan, the reading, and the decision it unlocks — on one surface.',
+    navSection: 'stroke',
+    permission: 'stroke.case.read',
+  },
+  {
+    id: 'S-18-20',
+    module: 'M-18',
+    name: 'Stroke registry',
+    route: '/stroke/registry',
+    archetype: 'ARC-19',
+    tier: 'T2',
+    personas: ['P-37', 'P-41'],
+    ai: ['AI-221', 'AI-802', 'AI-708'],
+    zones: SHELL,
+    density: 'comfortable',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Ninety days later, still chasing the call the award depends on.',
+    navSection: 'stroke',
+    permission: 'stroke.case.read',
+  },
+
+  // ══════════════════════════════════════════════ M-28 · Assistants
+  {
+    id: 'S-28-02',
+    module: 'M-28',
+    name: 'Clinician assistant',
+    route: '/assistant/clinician',
+    archetype: 'ARC-21',
+    tier: 'T1',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-911', 'AI-901', 'AI-105'],
+    zones: ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z7a'],
+    density: 'compact',
+    nightDefault: false,
+    // §6.1 — "this screen IS the assistant; the GP-17 bubble is its entry
+    // point, not an element on it."
+    z7b: 'n/a',
+    patientScoped: true,
+    oneLiner:
+      "The clinician's assistant — process, guidelines and the chart already in front of them.",
+    navSection: 'assistant',
+    permission: 'op.encounter.read',
+    compliance: ['CMP-DPDP-01', 'CMP-DPDP-02'],
+  },
+  {
+    id: 'S-28-09',
+    module: 'M-28',
+    name: 'Stroke command assistant',
+    route: '/assistant/stroke',
+    archetype: 'ARC-21',
+    tier: 'T2',
+    personas: ['P-35', 'P-37', 'P-38'],
+    ai: ['AI-911', 'AI-303'],
+    zones: ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z7a'],
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'n/a',
+    patientScoped: true,
+    oneLiner: 'The stroke assistant — pathway, clocks and criteria, on a phone at 02:00.',
+    navSection: 'assistant',
+    permission: 'stroke.case.read',
+    compliance: ['CMP-DPDP-01'],
+  },
+
+  // ══════════════════════════════ Adjuncts the pathway navigates into
+  {
+    id: 'S-15-01',
+    module: 'M-15',
+    name: 'Imaging worklist',
+    route: '/radiology/worklist',
+    archetype: 'ARC-01',
+    tier: 'T2',
+    personas: ['P-13', 'P-04'],
+    ai: ['AI-402', 'AI-404'],
+    zones: SHELL,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Every study on the record, the AI-flagged ones first — pick a patient, then open the scan.',
+    navSection: 'imaging',
+    permission: 'imaging.read',
+  },
+  {
+    id: 'S-15-04',
+    module: 'M-15',
+    name: 'Imaging',
+    route: '/radiology/study/:id/view',
+    archetype: 'ARC-11',
+    tier: 'T1',
+    personas: ['P-13', 'P-04'],
+    ai: ['AI-402', 'AI-407', 'AI-408'],
+    zones: SHELL_PATIENT_RAIL,
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'The viewer, with the AI overlay a radiologist will actually leave on.',
+    navSection: 'imaging',
+    permission: 'imaging.read',
+  },
+  {
+    id: 'S-15-06',
+    module: 'M-15',
+    name: 'Critical finding escalation',
+    route: null,
+    surface: 'modal',
+    archetype: 'ARC-16',
+    tier: 'T2',
+    personas: ['P-13'],
+    ai: ['AI-407'],
+    zones: ['Z5', 'Z8'],
+    density: 'compact',
+    nightDefault: true,
+    z7b: 'n/a',
+    patientScoped: true,
+    oneLiner: 'A critical imaging finding reaching a named clinician.',
+    navSection: null,
+    permission: 'imaging.critical.escalate',
+  },
+  {
+    id: 'S-27-02',
+    module: 'M-27',
+    name: 'Teleconsult queue',
+    route: '/tele/queue',
+    archetype: 'ARC-01',
+    tier: 'T3',
+    personas: ['P-04'],
+    ai: ['AI-613'],
+    zones: SHELL_RAIL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: "The clinician's teleconsult queue.",
+    navSection: 'telehealth',
+    permission: 'tele.write',
+  },
+  {
+    id: 'S-27-03',
+    module: 'M-27',
+    name: 'Teleconsult session',
+    route: '/tele/session/:id',
+    archetype: 'ARC-22',
+    tier: 'T2',
+    personas: ['P-04', 'P-33'],
+    ai: ['AI-101', 'AI-104', 'AI-203'],
+    zones: ['Z1', 'Z3', 'Z5', 'Z6', 'Z7b'],
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'The teleconsult session itself.',
+    navSection: null,
+    permission: 'tele.write',
+  },
+  {
+    id: 'S-27-04',
+    module: 'M-27',
+    name: 'Tele-prescription',
+    route: '/tele/session/:id/rx',
+    archetype: 'ARC-07',
+    tier: 'T2',
+    personas: ['P-04'],
+    ai: ['AI-310', 'AI-305', 'AI-205'],
+    zones: SHELL_AUTHOR,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: true,
+    oneLiner: 'The tele-prescription, and the drugs it cannot contain.',
+    navSection: null,
+    permission: 'tele.sign',
+    compliance: ['CMP-DRUG-06', 'CMP-ABDM-07'],
+  },
+  {
+    id: 'S-16-08',
+    module: 'M-16',
+    name: 'ADR reporting',
+    route: '/pharmacy/adr',
+    archetype: 'ARC-15',
+    tier: 'T3',
+    personas: ['P-14', 'P-04'],
+    ai: ['AI-815'],
+    zones: ['Z1', 'Z2', 'Z4', 'Z5', 'Z7a', 'Z7b'],
+    density: 'comfortable',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Reporting an adverse drug reaction to PvPI.',
+    navSection: null,
+    permission: 'adr.write',
+    compliance: ['CMP-DRUG-04'],
+  },
+]
+
+// ─────────────────────────────────────────────────────────────── lookups
+
+const byId = new Map(SCREENS.map((s) => [s.id, s]))
+
+export function screen(id: string): ScreenSpec {
+  const s = byId.get(id)
+  if (!s) throw new Error(`Screen ${id} is not in the registry`)
+  return s
+}
+
+export function maybeScreen(id: string): ScreenSpec | undefined {
+  return byId.get(id)
+}
+
+/** Screens with an addressable route, in registry order. */
+export const ROUTED_SCREENS = SCREENS.filter((s) => s.route !== null)
+
+/** Modals, overlays and in-place views — five of them. */
+export const OVERLAY_SCREENS = SCREENS.filter((s) => s.route === null)
+
+/**
+ * Resolve a live pathname back to its screen spec, honouring `:param` segments.
+ * The atlas warns that `/encounter/:id/*` is shared with nurse-only screens and
+ * `/patient/:id/*` with non-doctor screens, so matching is exact per segment
+ * rather than by prefix.
+ */
+export function screenForPath(pathname: string): ScreenSpec | undefined {
+  const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean)
+  return ROUTED_SCREENS.find((s) => {
+    const pattern = s.route!.split('/').filter(Boolean)
+    if (pattern.length !== parts.length) return false
+    return pattern.every((seg, i) => seg.startsWith(':') || seg === parts[i])
+  })
+}
+
+/** Substitute `:id` and friends into a registry route. */
+export function buildPath(id: string, params: Record<string, string> = {}): string {
+  const route = screen(id).route
+  if (!route) throw new Error(`Screen ${id} has no route — it is a ${screen(id).surface}`)
+  return route.replace(/:([A-Za-z]+)/g, (_, key: string) => {
+    const value = params[key]
+    if (value === undefined) throw new Error(`Route ${route} needs a :${key}`)
+    return encodeURIComponent(value)
+  })
+}
+
+/**
+ * Where a citation points. Sources read like `S-27-03 · M-27.10`; the screen
+ * id is what can be opened, with the §8 sample ids filled the way the route
+ * walk fills them. Returns undefined where the source is not a screen in this
+ * build, so the caller can say so instead of pretending.
+ */
+export function routeForSource(source: string): string | undefined {
+  const m = /S-\d\d-\d\d/.exec(source)
+  const spec = m ? maybeScreen(m[0]) : undefined
+  const route = spec?.route
+  if (!route) return undefined
+  if (route.startsWith('/patient/')) return route.replace(':id', 'ICH-0044051')
+  if (route.startsWith('/stroke/case/')) return route.replace(':id', '0141')
+  if (route.startsWith('/radiology/study/')) return route.replace(':id', 'ST-9914')
+  if (route === '/results/:id') return '/results/R-88410'
+  if (route.startsWith('/tele/session/')) return route.replace(':id', 'E-118430')
+  if (route.startsWith('/ip/encounter/')) return route.replace(':id', 'E-118366')
+  return route.replace(':id', 'E-118402')
+}
+
+/** Which of the seven selectable personas can reach this screen. */
+export function selectablePersonas(spec: ScreenSpec): PersonaId[] {
+  return PERSONAS.filter((p) => (spec.personas as string[]).includes(p))
+}
+
+export function screensInModule(module: ModuleId): ScreenSpec[] {
+  return SCREENS.filter((s) => s.module === module)
+}
+
+export function screensInSection(section: NavSection): ScreenSpec[] {
+  return SCREENS.filter((s) => s.navSection === section)
+}
+
+/**
+ * Screens that carry no shell and no assistant bubble — `ARC-12` walls, which
+ * get it from the archetype, and `S-02-01`, which declares it on the row.
+ */
+export function isBare(spec: ScreenSpec): boolean {
+  return spec.bare === true || ARCHETYPE_SPECS[spec.archetype].bare === true
+}
+
+/** §6.1 — the bubble renders only where the screen's Z7b line says GP-17. */
+export function showsAssistantBubble(spec: ScreenSpec): boolean {
+  return spec.z7b === 'GP-17'
+}
+
+export const TIER_COUNTS = SCREENS.reduce<Record<Tier, number>>(
+  (acc, s) => {
+    acc[s.tier] += 1
+    return acc
+  },
+  { T1: 0, T2: 0, T3: 0 },
+)
