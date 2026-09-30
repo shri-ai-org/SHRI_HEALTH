@@ -19,10 +19,10 @@ function formatTick(v: number): string {
 }
 
 /** `bare`: the line alone, where the value is already written beside it (a vitals cell). */
-export function Sparkline({ points, unit, label, bare = false }: { points: TrendPoint[]; unit: string; label: string; bare?: boolean }) {
+export function Sparkline({ points, unit, label, bare = false, width = 96 }: { points: TrendPoint[]; unit: string; label: string; bare?: boolean; width?: number }) {
   if (points.length < 2) return null
 
-  const w = 96
+  const w = width
   const h = 26
   const values = points.map((p) => p.value)
   const lo = Math.min(...values)
