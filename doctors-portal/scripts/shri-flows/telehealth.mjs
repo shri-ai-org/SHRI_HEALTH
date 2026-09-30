@@ -14,12 +14,12 @@ export default ({ page, expect, toastSays }) => {
       async run() {
         await page.open('/tele/queue')
         expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-27-02"]')`), 'S-27-02 is drawn')
-        expect((await page.text()).includes('3 today'), 'the count')
+        expect((await page.text()).includes('2 today'), 'the count')
         let rows = await queue()
-        expect(rows.length === 3 && rows[2].includes('Fatima Bi') && rows[2].includes('telephone fallback'), `the telephone fallback goes last by readiness: ${rows}`)
+        expect(rows.length === 2 && rows[0].includes('Arjun Nair') && rows[1].includes('Fatima Bi') && rows[1].includes('telephone fallback'), `the telephone fallback goes last by readiness: ${rows}`)
         await page.open('/tele/queue?ai=off', { fresh: false })
         rows = await queue()
-        expect(rows[0].includes('09:05') && rows[1].includes('09:35') && rows[2].includes('10:05'), `appointment time with the AI off: ${rows}`)
+        expect(rows[0].includes('10:05') && rows[1].includes('11:30'), `appointment time with the AI off: ${rows}`)
         await page.click('ul[aria-label="Today\'s teleconsults"] > li > button', 'Arjun Nair')
         await page.until(`/^\\/tele\\/session\\/[^/]+$/.test(location.pathname) && !!document.querySelector('[data-screen-id="S-27-03"]')`, 3000, 'the session opens')
       },

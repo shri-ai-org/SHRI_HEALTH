@@ -204,23 +204,37 @@ export const VITALS_HISTORY: Record<string, VitalSeries[]> = {
       { ...SPO2, points: fourHourly(end, [98, 98, 99, 99, 99, 99, 99]) },
     ]
   })(),
-  // Fatima — admitted overnight at 22:40 for dialysis today; four-hourly since, and her weight since the last session
-  'SD-P-09': (() => {
-    const end = minutesAgo(90)
-    return [
-      { ...BP, points: fourHourly(end, [148, 150, 152]) },
-      { ...PULSE, points: fourHourly(end, [80, 84, 82]) },
-      {
-        ...WEIGHT,
-        points: [
-          { at: d(9, 19, 18, 0), value: 54.0 },
-          { at: end, value: 55.6 },
-        ],
-      },
-      { ...SPO2, points: fourHourly(end, [98, 97, 97]) },
-      { ...TEMP, points: fourHourly(end, [36.8, 36.6, 36.7]) },
-    ]
-  })(),
+  // Fatima — outpatient haemodialysis: before and after her last two sessions, and this morning's home readings for the teleconsult
+  'SD-P-09': [
+    {
+      ...BP,
+      points: [
+        { at: d(9, 17, 13, 50), value: 154 },
+        { at: d(9, 17, 18, 0), value: 136 },
+        { at: d(9, 19, 13, 50), value: 158 },
+        { at: d(9, 19, 18, 0), value: 138 },
+        { at: minutesAgo(90), value: 152 },
+      ],
+    },
+    {
+      ...WEIGHT,
+      points: [
+        { at: d(9, 17, 13, 50), value: 55.4 },
+        { at: d(9, 17, 18, 0), value: 54.2 },
+        { at: d(9, 19, 13, 50), value: 55.2 },
+        { at: d(9, 19, 18, 0), value: 54.0 },
+        { at: minutesAgo(90), value: 55.6 },
+      ],
+    },
+    {
+      ...PULSE,
+      points: [
+        { at: d(9, 17, 13, 50), value: 80 },
+        { at: d(9, 19, 13, 50), value: 84 },
+        { at: minutesAgo(90), value: 82 },
+      ],
+    },
+  ],
   'SD-P-12': (() => {
     const end = minutesAgo(130)
     return [

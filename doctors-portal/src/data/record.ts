@@ -338,7 +338,7 @@ const APPOINTMENTS_BASE: Appointment[] = [
   { id: 'AP-0903', patientId: 'SD-P-09', at: on(10, 5, 10, 0), kind: 'Follow-up', status: 'Booked', clinic: 'Nephrology OPD', with: 'Nephrologist', purpose: 'Monthly dialysis review', prepare: ['Monthly bloods on the morning of dialysis'] },
   // SD-P-10
   { id: 'AP-1001', patientId: 'SD-P-10', at: on(8, 7, 16, 0), kind: 'Follow-up', status: 'Completed', clinic: 'Dermatology OPD', with: 'Dr. Ananya Iyer', purpose: 'Start isotretinoin' },
-  { id: 'AP-1002', patientId: 'SD-P-10', at: on(9, 21, 9, 5), kind: 'Teleconsult', status: 'Today', clinic: 'Teleconsult', with: 'Dr. Ananya Iyer', purpose: 'Week-6 review', location: 'Video' },
+  { id: 'AP-1002', patientId: 'SD-P-10', at: on(9, 21, 11, 30), kind: 'Teleconsult', status: 'Today', clinic: 'Teleconsult', with: 'Dr. Ananya Iyer', purpose: 'Week-6 review', location: 'Video' },
   { id: 'AP-1003', patientId: 'SD-P-10', at: on(10, 19, 16, 0), kind: 'Teleconsult', status: 'Booked', clinic: 'Teleconsult', with: 'Dr. Ananya Iyer', purpose: 'Week-10 review', prepare: ['Liver tests and lipids the week before'] },
   // SD-P-11
   { id: 'AP-1101', patientId: 'SD-P-11', at: on(9, 7, 11, 0), kind: 'Review', status: 'Completed', clinic: 'Ward 4B', with: 'Dr. Ananya Iyer', purpose: 'Discharge after subdural evacuation' },

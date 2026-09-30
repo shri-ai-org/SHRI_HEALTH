@@ -1454,7 +1454,7 @@ const FLOWS = [
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-08-03"]')`), 'S-08-03 is drawn')
       // textContent: the group's label is upper-cased by CSS, which innerText would report.
       const all = await page.evaluate(`document.querySelector('[data-screen-id="S-08-03"]').textContent`)
-      expect(all.includes('7 under you · 3 high risk · 7 round notes outstanding') && all.includes('Needs attention'), 'the counts and the pinned group, in the old words')
+      expect(all.includes('6 under you · 3 high risk · 6 round notes outstanding') && all.includes('Needs attention'), `the counts and the pinned group, in the old words: ${all.slice(0, 300)}`)
       await page.open('/ip/patients?location=icu', { fresh: false })
       const icu = await page.evaluate(`[...document.querySelectorAll('ul[aria-label^="Inpatients"] li button')].map((b) => b.textContent)`)
       expect(icu.length === 1 && icu[0].includes('Joseph Mathew'), `the ICU only: ${icu}`)
@@ -1559,7 +1559,7 @@ const FLOWS = [
       await page.open('/discharge/board')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-13-01"]')`), 'S-13-01 is drawn')
       const text = await page.text()
-      expect(text.includes('2 cleared for discharge · 2 waiting on a gate · 0 discharged'), 'the counts, by recorded readiness')
+      expect(text.includes('1 cleared for discharge · 2 waiting on a gate · 0 discharged'), `the counts, by recorded readiness: ${text.slice(0, 300)}`)
       expect(!/predicted|forecast|likelihood|tomorrow|07:00/i.test(text), 'no forecast anywhere on the board')
       await page.click('[role="tab"]', 'Waiting on')
       await page.until(`location.search === '?scope=waiting'`, 3000, 'the scope is in the address')
@@ -1580,6 +1580,26 @@ const FLOWS = [
       expect(before.includes('Kavya Reddy'), `Kavya Reddy is an inpatient before: ${before}`)
 
       await page.open('/discharge/board', { fresh: false })
+      await page.click('button', 'Board view')
+      await page.until(`document.querySelectorAll('section[aria-label]').length >= 3`, 3000, 'the three columns')
+      // The drag itself: a cleared card dropped on Discharged asks first; Cancel leaves her where she was.
+      const drag = (name) =>
+        page.evaluate(`(() => {
+          const card = document.querySelector('article[aria-label="' + ${JSON.stringify(name)} + '"]')
+          const target = document.querySelector('section[aria-label="Discharged"]')
+          const data = new DataTransfer()
+          card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: data }))
+          target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }))
+          target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }))
+          card.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: data }))
+          return true
+        })()`)
+      await drag('Kavya Reddy')
+      await page.until(`document.querySelector('[role="alertdialog"]')?.textContent.includes('Discharge Kavya Reddy?')`, 3000, 'a drop asks before it discharges')
+      await page.click('[role="alertdialog"] button', 'Cancel')
+      await page.until(`!document.querySelector('[role="alertdialog"]')`, 3000, 'Cancel closes it')
+      expect(await page.evaluate(`!!document.querySelector('section[aria-label="Cleared for discharge"] article[aria-label="Kavya Reddy"]')`), 'cancelled, she stays cleared')
+      await page.click('button', 'List view')
       await page.click('button[aria-label="Discharge Kavya Reddy"]')
       await page.until(`document.querySelector('[role="alertdialog"]')?.textContent.includes('Discharge Kavya Reddy?')`, 3000, 'the confirmation')
       expect(
@@ -1588,7 +1608,7 @@ const FLOWS = [
       )
       await page.click('[role="alertdialog"] button', 'Discharge')
       await toastSays('Kavya Reddy discharged', 'Bed released to the bed board. The summary is unsigned — it goes to the sign queue.')
-      expect((await page.text()).includes('1 cleared for discharge · 2 waiting on a gate · 1 discharged'), 'the counts move')
+      expect((await page.text()).includes('0 cleared for discharge · 2 waiting on a gate · 1 discharged'), 'the counts move')
       const row = (await auditRows()).find((r) => r.event === 'PATIENT.DISCHARGED')
       expect(row && row.subject === 'SD-P-06' && row.actor === 'Dr. Ananya Iyer' && /bed 4B-19 released · summary unsigned, to the sign queue/.test(row.detail), `the audit row: ${JSON.stringify(row)}`)
       const sent = await page.evaluate(`JSON.parse(localStorage.getItem('shri.notifications')).state.sent[0]`)
@@ -1618,23 +1638,6 @@ const FLOWS = [
         3000,
         'on the board the refusal is named on the target column',
       )
-      // The drag itself: a cleared card dropped on Discharged asks first; Cancel leaves her where she was.
-      const drag = (name) =>
-        page.evaluate(`(() => {
-          const card = document.querySelector('article[aria-label="' + ${JSON.stringify(name)} + '"]')
-          const target = document.querySelector('section[aria-label="Discharged"]')
-          const data = new DataTransfer()
-          card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: data }))
-          target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }))
-          target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }))
-          card.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: data }))
-          return true
-        })()`)
-      await drag('Fatima Bi')
-      await page.until(`document.querySelector('[role="alertdialog"]')?.textContent.includes('Discharge Fatima Bi?')`, 3000, 'a drop asks before it discharges')
-      await page.click('[role="alertdialog"] button', 'Cancel')
-      await page.until(`!document.querySelector('[role="alertdialog"]')`, 3000, 'Cancel closes it')
-      expect(await page.evaluate(`!!document.querySelector('section[aria-label="Cleared for discharge"] article[aria-label="Fatima Bi"]')`), 'cancelled, she stays cleared')
       await drag('R. Lakshmanan')
       await page.until(`document.querySelector('section[aria-label="Discharged"] [role="alert"]')?.textContent.includes('R. Lakshmanan is deteriorating.')`, 3000, 'a gated drop is refused on the target, in the old words')
       expect(await page.evaluate(`!!document.querySelector('section[aria-label="Waiting on"] article[aria-label="R. Lakshmanan"]')`), 'and the card has not moved')
@@ -1646,7 +1649,7 @@ const FLOWS = [
     async run() {
       await page.open('/discharge/board', { persona: 'P-06' })
       const text = await page.text()
-      expect(text.includes('2 cleared for discharge') && text.includes('Kavya Reddy'), 'P-06 reads the board')
+      expect(text.includes('1 cleared for discharge') && text.includes('Kavya Reddy'), 'P-06 reads the board')
       expect(!(await page.evaluate(`!!document.querySelector('button[aria-label^="Discharge "]')`)), 'no Discharge without discharge.write')
       await page.click('button', 'Board view')
       expect(await page.evaluate(`[...document.querySelectorAll('section[aria-label] article')].every((a) => a.getAttribute('draggable') !== 'true')`), 'no card can be dragged')

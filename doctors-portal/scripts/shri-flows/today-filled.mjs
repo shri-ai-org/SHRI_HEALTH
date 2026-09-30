@@ -31,14 +31,13 @@ const AT_LEAST = { Results: 3, Reports: 1, Notes: 2, Medicines: 1, Appointments:
  */
 const EXCEPT = { 'ICH-0044297': { Medicines: 0, Appointments: 2 } }
 
-export default ({ page, expect }) => [
-  {
-    name: "Today's patients are filled: all thirteen on OPD and Inpatients have vitals with history, a trend, an image or document, results, two notes, three appointments and a timeline",
+// One flow per patient, each on a fresh page, so thirteen records never share one long-lived tab.
+export default ({ page, expect }) =>
+  Object.entries(TODAY).map(([uhid, name]) => ({
+    name: `Today's patients are filled — ${name}: vitals with history, a trend, an image or document, results, notes, appointments and a timeline`,
     async run() {
-      let first = true
-      for (const [uhid, name] of Object.entries(TODAY)) {
-        await page.open(`/patient/${uhid}`, { fresh: first })
-        first = false
+      {
+        await page.open(`/patient/${uhid}`)
         await page.until(`document.querySelectorAll('#record-panel section.rounded-sh-card').length >= 6`, 4000, `${name}: the overview`)
         const card = (title) => `[...document.querySelectorAll('#record-panel section.rounded-sh-card')].find((c) => (c.querySelector('h2')?.textContent ?? '').trim().startsWith('${title}'))`
         const got = await page.evaluate(`(() => {
@@ -72,5 +71,4 @@ export default ({ page, expect }) => [
         expect(events >= 6, `${name}: ${events} timeline entries`)
       }
     },
-  },
-]
+  }))

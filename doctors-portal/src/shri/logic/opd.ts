@@ -44,7 +44,8 @@ const NEW_PATIENT: RowMark = { label: 'New patient', icon: 'UserPlus', tone: 'no
 const TELECONSULT_PLACE = { icon: 'Video', label: 'Teleconsult' }
 const OPD_PLACE = { icon: 'UserRound', label: 'OPD' }
 
-const RANK: Record<LiveStatus, number> = { 'Admission in progress': 0, Waiting: 1, 'In room': 2, Teleconsult: 2.5, 'Not arrived': 3, Seen: 4 }
+/** A teleconsult still to come and a patient not yet arrived are both still to come — ordered between them by their time. */
+const RANK: Record<LiveStatus, number> = { 'Admission in progress': 0, Waiting: 1, 'In room': 2, Teleconsult: 3, 'Not arrived': 3, Seen: 4 }
 
 function mark(live: LiveStatus, tele?: TeleRow): RowMark {
   switch (live) {

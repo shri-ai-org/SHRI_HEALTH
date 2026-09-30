@@ -14,7 +14,7 @@
  */
 
 import type { Encounter, Problem } from './clinical'
-import { minutesAgo } from './format'
+import { minutesAgo, minutesAhead } from './format'
 import type { Appointment, PastNote, PrescriptionRecord, RecordReport } from './record'
 
 function on(month: number, day: number, h = 10, m = 0, year = 2026): Date {
@@ -255,5 +255,5 @@ export const PROBLEMS_EXT: Problem[] = [
 export const ENCOUNTERS_EXT: Encounter[] = [
   { id: 'E-118395', encounterNo: 'OP/26-27/118395', patientId: 'SD-P-04', type: 'OP', startedAt: minutesAgo(48), consultantStaffId: 'SD-S-01', department: 'Obstetrics', token: 'MED-039' },
   { id: 'E-118371', encounterNo: 'IP/26-27/118371', patientId: 'SD-P-06', type: 'IP', startedAt: on(9, 19, 11, 0), consultantStaffId: 'SD-S-01', department: 'Paediatrics', ward: '4B' },
-  { id: 'E-118412', encounterNo: 'IP/26-27/118412', patientId: 'SD-P-09', type: 'IP', startedAt: on(9, 20, 22, 40), consultantStaffId: 'SD-S-01', department: 'Nephrology', ward: '4B' },
+  { id: 'E-118452', encounterNo: 'OP/26-27/118452', patientId: 'SD-P-09', type: 'TELE', startedAt: minutesAhead(85), consultantStaffId: 'SD-S-01', department: 'Nephrology' },
 ]

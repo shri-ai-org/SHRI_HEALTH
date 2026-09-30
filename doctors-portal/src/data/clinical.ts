@@ -93,7 +93,7 @@ const ENCOUNTERS_BASE: Encounter[] = [
     encounterNo: 'OP/26-27/118430',
     patientId: 'SD-P-10',
     type: 'TELE',
-    startedAt: minutesAhead(25),
+    startedAt: minutesAhead(170),
     consultantStaffId: 'SD-S-01',
     department: 'Dermatology',
   },
@@ -1976,14 +1976,6 @@ export const INPATIENTS: WorklistRow[] = [
     chronologicalAt: minutesAgo(180),
   },
   {
-    patientId: 'SD-P-09',
-    bed: '4B-06',
-    risk: 'LOW',
-    reason: 'Stable, dialysis today',
-    pending: [],
-    chronologicalAt: minutesAgo(200),
-  },
-  {
     patientId: 'SD-P-06',
     bed: '4B-19',
     risk: 'LOW',
@@ -2011,9 +2003,10 @@ export const INPATIENTS: WorklistRow[] = [
 ]
 
 /**
- * The OP clinic's booked rows. Four of these patients are also in a bed
- * (`INPATIENTS`), and `opdRows` leaves them out, so today's OPD is six — the
- * next token MED-042.
+ * The OP clinic's booked rows. Three of these patients are also in a bed
+ * (`INPATIENTS`: Abdul Rahman, Joseph, and Kavya until she is discharged),
+ * and `opdRows` leaves them out. With the two teleconsults (Fatima by phone,
+ * Arjun by video) today's OPD is seven.
  */
 /**
  * Today's teleconsult queue (S-27-02). My Day lists these patients in OPD
@@ -2032,18 +2025,10 @@ export const TELECONSULT_QUEUE: TeleRow[] = [
   {
     id: 'E-118430',
     patientId: 'SD-P-10',
-    scheduledAt: minutesAhead(25),
+    scheduledAt: minutesAhead(170),
     reason: 'Acne on isotretinoin, week-6 review',
     videoReady: true,
     rankReason: 'On time, video tested, photographs already uploaded',
-  },
-  {
-    id: 'E-118441',
-    patientId: 'SD-P-01',
-    scheduledAt: minutesAhead(55),
-    reason: 'Thyroid results discussion',
-    videoReady: true,
-    rankReason: 'Results are back and normal — likely a short consultation',
   },
   {
     id: 'E-118452',
@@ -2067,10 +2052,8 @@ export interface ClinicRow {
 }
 
 export const CLINIC_LIST: ClinicRow[] = [
-  { token: 'MED-038', patientId: 'SD-P-09', bookedAt: new Date(2026, 8, 21, 8, 0), arrivedAt: minutesAgo(55), status: 'Seen' },
   { token: 'MED-039', patientId: 'SD-P-04', bookedAt: new Date(2026, 8, 21, 8, 10), arrivedAt: minutesAgo(48), status: 'Seen' },
   { token: 'MED-040', patientId: 'SD-P-06', bookedAt: new Date(2026, 8, 21, 8, 20), arrivedAt: minutesAgo(40), status: 'Seen' },
-  { token: 'MED-041', patientId: 'SD-P-10', bookedAt: new Date(2026, 8, 21, 8, 30), arrivedAt: minutesAgo(32), status: 'Seen' },
   {
     token: 'MED-042',
     patientId: 'SD-P-01',
@@ -2145,10 +2128,10 @@ export const COSIGN_QUEUE: CoSignRow[] = [
   {
     id: 'CS-02',
     patientId: 'SD-P-09',
-    documentKind: 'Admission assessment',
+    documentKind: 'Consultation note',
     authoredBy: 'Dr. Ananya Iyer',
     authoredByPersona: 'P-05 Resident',
-    authoredAt: minutesAgo(210),
+    authoredAt: new Date(2026, 8, 19, 18, 30),
     qualityFlags: [],
     kind: 'cosign',
   },
@@ -2236,16 +2219,6 @@ export const DISCHARGE_BOARD: DischargeRow[] = [
     blockers: ['Discharge summary unsigned'],
     financialClearance: 'Clear',
     reason: 'Afebrile 18h, oral intake established, no active orders',
-  },
-  {
-    patientId: 'SD-P-09',
-    bed: '4B-06',
-    likelihood: 'Today',
-    confidence: 0.78,
-    band: 'MED',
-    blockers: ['Dialysis session at 14:00', 'Transport not arranged'],
-    financialClearance: 'Clear',
-    reason: 'Routine chronic admission, dialysis completes at 16:30',
   },
   {
     patientId: 'SD-P-02',

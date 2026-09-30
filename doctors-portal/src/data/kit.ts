@@ -249,7 +249,7 @@ export const PATIENTS: Patient[] = [
     abha: 'fatima.bi@abdm',
     abhaStatus: 'Linked',
     allergies: [],
-    bed: '4B-06',
+    bed: null,
     facilityCode: 'ICH',
     consultant: 'Dr. Ananya Iyer',
     weightKg: 54,

@@ -25,7 +25,6 @@ import {
   RISK_STRIPS,
   TIMELINE,
   VITALS,
-  encounter,
   encounterForPatient,
   ordersFor,
   timelineFor,
@@ -88,7 +87,8 @@ function clinicalDay(persona: PersonaId, state: DayState): DayBlock[] {
   const clinic = opdRows(admissions)
   const attention = inpatients.filter((r) => r.risk === 'HIGH').length
   const followUps = clinic.filter((c) => isFollowUp(c.patientId)).length
-  const tele = encounter('E-118430')
+  // The teleconsult block starts with the first one booked and counts them all (by phone or video).
+  const teleFirst = [...TELECONSULT_QUEUE].sort((x, y) => x.scheduledAt.getTime() - y.scheduledAt.getTime())[0]
   const cosign = COSIGN_QUEUE.filter((c) => coSigned[c.id] === undefined)
   const discharges = DISCHARGE_BOARD.filter((d) => d.likelihood === 'Today')
   const canSign = persona === 'P-04'
@@ -124,9 +124,9 @@ function clinicalDay(persona: PersonaId, state: DayState): DayBlock[] {
     },
     {
       id: 'tele',
-      at: tele.startedAt,
+      at: teleFirst.scheduledAt,
       title: 'Teleconsult',
-      summary: `1 patient · ${tele.department}`,
+      summary: `${TELECONSULT_QUEUE.length} ${TELECONSULT_QUEUE.length === 1 ? 'patient' : 'patients'}`,
       icon: 'Video',
       to: '/tele/queue',
     },
