@@ -36,7 +36,7 @@ export const IMAGING_STUDIES_EXT: ImagingStudy[] = [
     status: 'Reported',
     reportedBy: 'Dr. Neha Bhatt',
     impression: 'Single live intrauterine fetus, 28 weeks by biometry. Liquor adequate. Form F completed.',
-    findings: ['Head circumference 259 mm, in keeping with 28 weeks. Retained image: the transthalamic plane it was measured on.'],
+    findings: ['Head circumference 263 mm — two sweeps, 262 and 264 mm — in keeping with 28 weeks. Both transthalamic planes retained.'],
   },
   {
     id: 'ST-9535',
@@ -48,8 +48,8 @@ export const IMAGING_STUDIES_EXT: ImagingStudy[] = [
     priority: 'Routine',
     status: 'Reported',
     reportedBy: 'Dr. Neha Bhatt',
-    impression: 'Clear lungs. No consolidation or effusion.',
-    findings: ['Heart size and mediastinum normal for age. Taken with the fever work-up to exclude pneumonia.'],
+    impression: 'Clear lungs on both films. No consolidation or effusion.',
+    findings: ['Two AP films, the second repeated for rotation. Heart size and mediastinum normal for age. Taken with the fever work-up to exclude pneumonia.'],
   },
   {
     id: 'ST-9862',

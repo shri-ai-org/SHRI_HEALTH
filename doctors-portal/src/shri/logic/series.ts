@@ -27,6 +27,12 @@ export interface SeriesView {
   topRight: string[]
   /** Where the pixels came from, under the image: "Image: TCIA COVID-19-AR · CC BY 4.0". */
   credit?: string
+  /** What frame `n` is, where a study holds distinct images: "PA", "Lateral", "Sweep 2 · HC 298.6 mm". */
+  frameNote?: (n: number) => string | undefined
+  /** mm per displayed-image pixel [row, column]; absent means the image is uncalibrated. */
+  pixelSpacing?: [number, number]
+  /** What one step is called: "slice", "frame", "image". */
+  frameWord?: 'slice' | 'frame' | 'image'
 }
 
 /** A head CT's view: the corner text, labels and slice files the NCCT viewer always drew. */
@@ -46,7 +52,9 @@ export function ncctView(study: NcctStudy): SeriesView {
 
 
 /** What a frame is called, by the kind of series: a slice of a stack, a frame of a loop. */
-const FRAME_WORD: Record<ImageSeries['kind'], string> = { stack: 'slice', loop: 'frame', single: 'image' }
+const FRAME_WORD: Record<ImageSeries['kind'], 'slice' | 'frame' | 'image'> = { stack: 'slice', loop: 'frame', single: 'image' }
+/** A study of distinct images (a PA and a lateral) steps image by image, not slice by slice. */
+const wordFor = (s: ImageSeries): 'slice' | 'frame' | 'image' => (s.frameLabels ? 'image' : FRAME_WORD[s.kind])
 
 /** "W 1500 : L −600" from the importer's "W1500L-600"; percentile-windowed pixels say so. */
 function windowLine(w: string): string {
@@ -56,17 +64,23 @@ function windowLine(w: string): string {
 
 /** An open-dataset series' view: its modality and view in the corner, its source under the image. */
 export function imageView(s: ImageSeries, description: string): SeriesView {
-  const word = FRAME_WORD[s.kind]
+  const word = wordFor(s)
   const of = (n: number) => (s.frames > 1 ? `, ${word} ${n} of ${s.frames}` : '')
   return {
     key: s.key,
     kind: s.kind,
     frames: s.frames,
     path: (n) => framePath(s.key, n),
-    label: (n) => `${description}${of(n)}`,
-    alt: (n) => `${s.modality} ${s.bodyPart.toLowerCase()}, ${s.view}${of(n)}`,
+    label: (n) => `${description}${of(n)}${s.frameLabels?.[n - 1] ? `, ${s.frameLabels[n - 1]}` : ''}`,
+    alt: (n) => `${s.modality} ${s.bodyPart.toLowerCase()}, ${s.frameLabels?.[n - 1] ?? s.view}${of(n)}`,
+    frameNote: (n) => s.frameLabels?.[n - 1],
+    frameWord: word,
+    pixelSpacing: s.pixelSpacing,
     topLeft: [`${s.modality} · ${s.bodyPart}`, s.view],
-    topRight: [s.kind === 'single' ? `${s.columns} × ${s.rows}` : s.kind === 'loop' ? `${s.frames} frames` : `${s.frames} of ${s.seriesTotal} slices`, windowLine(s.window)],
+    topRight: [
+      s.kind === 'single' ? `${s.columns} × ${s.rows}` : s.kind === 'loop' ? `${s.frames} frames` : s.frameLabels ? `${s.frames} images` : `${s.frames} of ${s.seriesTotal} slices`,
+      windowLine(s.window),
+    ],
     credit: `Image: ${s.source.credit} · ${s.source.licence}`,
   }
 }

@@ -37,6 +37,8 @@ const HC18 = {
 }
 
 const cxr = (uid) => ({ type: 'tcia', seriesUid: `1.3.6.1.4.1.14519.5.2.1.9999.103.${uid}`, cached: `cxr/1.3.6.1.4.1.14519.5.2.1.9999.103.${uid}`, ...COVID_AR })
+/** One series of a COVID-19-AR study fetched whole by imaging-src/fetch_multi.py, read where it lies. */
+const cxrPart = (study, series) => ({ type: 'tcia', seriesUid: series, cached: `cxr-multi/${study}/${series}`, ...COVID_AR })
 const commons = (file, licence, author, extra = {}) => ({
   type: extra.video ? 'video' : 'file',
   url: `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file)}`,
@@ -45,7 +47,8 @@ const commons = (file, licence, author, extra = {}) => ({
   page: `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(file.replaceAll(' ', '_'))}`,
   credit: `${author}, Wikimedia Commons`,
 })
-const hc18 = (file) => ({ type: 'local', file: `hc18/${file}`, ...HC18 })
+/** An HC18 image with its own calibration — the pixel size the dataset's table gives for it. */
+const hc18 = (file, spacing) => ({ type: 'local', file: `hc18/${file}`, spacing, ...HC18 })
 const KERMANY = {
   dataset: 'Kermany et al., paediatric chest X-ray',
   licence: 'CC BY 4.0',
@@ -93,12 +96,16 @@ export const SOURCES = [
   },
   {
     key: 'xr-0601',
-    for: 'ST-9535 · SD-P-06 chest X-ray',
-    kind: 'single',
+    for: 'ST-9535 · SD-P-06 chest X-ray — two AP films',
+    kind: 'stack',
     modality: 'X-ray',
     bodyPart: 'Chest',
     view: 'AP (paediatric)',
-    source: { type: 'local', file: 'kermany/NORMAL-5997885-0001.jpeg', ...KERMANY },
+    source: KERMANY,
+    parts: [
+      { label: 'AP · film 1', source: { type: 'local', file: 'kermany/NORMAL-1064313-0001.jpeg', ...KERMANY } },
+      { label: 'AP · film 2', source: { type: 'local', file: 'kermany/NORMAL-1064313-0002.jpeg', ...KERMANY } },
+    ],
   },
   {
     key: 'us-0701',
@@ -120,21 +127,29 @@ export const SOURCES = [
   },
   {
     key: 'us-0401',
-    for: 'ST-9790 · SD-P-04 growth scan, 32 weeks',
-    kind: 'single',
+    for: 'ST-9790 · SD-P-04 growth scan, 32 weeks — two sweeps of the same head',
+    kind: 'stack',
     modality: 'Ultrasound',
     bodyPart: 'Fetal head',
     view: 'Transthalamic plane',
-    source: hc18('755_HC.png'),
+    source: HC18,
+    parts: [
+      { label: 'Sweep 1 · HC 290.8 mm', source: hc18('736_HC.png', 0.198546075821) },
+      { label: 'Sweep 2 · HC 298.6 mm', source: hc18('736_2HC.png', 0.198599994183) },
+    ],
   },
   {
     key: 'us-0402',
-    for: 'ST-9611 · SD-P-04 growth scan, 28 weeks',
-    kind: 'single',
+    for: 'ST-9611 · SD-P-04 growth scan, 28 weeks — two sweeps of the same head',
+    kind: 'stack',
     modality: 'Ultrasound',
     bodyPart: 'Fetal head',
     view: 'Transthalamic plane',
-    source: hc18('700_HC.png'),
+    source: HC18,
+    parts: [
+      { label: 'Sweep 1 · HC 262.3 mm', source: hc18('690_HC.png', 0.177614071539) },
+      { label: 'Sweep 2 · HC 263.5 mm', source: hc18('690_2HC.png', 0.177533690419) },
+    ],
   },
 
   // ── New OPD patients (src/data/cohort-ext.ts) ─────────────────────────
@@ -158,12 +173,17 @@ export const SOURCES = [
   },
   {
     key: 'xr-1801',
-    for: 'ST-9622 · SD-P-18 chest X-ray',
-    kind: 'single',
+    for: 'ST-9622 · SD-P-18 chest X-ray — PA and AP',
+    kind: 'stack',
     modality: 'X-ray',
     bodyPart: 'Chest',
-    view: 'AP',
-    source: cxr('1132654489087211561216505460207'),
+    view: 'PA and AP',
+    source: COVID_AR,
+    parts: [
+      { label: 'PA', source: cxrPart('619618535226', '152198164874') },
+      // The source files this series as "Lateral L", but the image is a second frontal film — labelled for what it shows.
+      { label: 'AP', source: cxrPart('619618535226', '779128607806') },
+    ],
   },
   {
     key: 'mr-2001',
@@ -194,12 +214,16 @@ export const SOURCES = [
   },
   {
     key: 'us-2401',
-    for: 'ST-9716 · SD-P-24 anomaly scan',
-    kind: 'single',
+    for: 'ST-9716 · SD-P-24 anomaly scan — two sweeps of the same head',
+    kind: 'stack',
     modality: 'Ultrasound',
     bodyPart: 'Fetal head',
     view: 'Transthalamic plane',
-    source: hc18('661_HC.png'),
+    source: HC18,
+    parts: [
+      { label: 'Sweep 1 · HC 219.1 mm', source: hc18('652_HC.png', 0.1635005974) },
+      { label: 'Sweep 2 · HC 222.3 mm', source: hc18('652_2HC.png', 0.162851579728) },
+    ],
   },
   {
     key: 'us-2501',
@@ -232,12 +256,16 @@ export const SOURCES = [
   // ── The emergency department (src/data/ed.ts) ─────────────────────────
   {
     key: 'xr-2801',
-    for: 'ST-9950 · SD-P-28 chest X-ray',
-    kind: 'single',
+    for: 'ST-9950 · SD-P-28 chest X-ray — AP and lateral',
+    kind: 'stack',
     modality: 'X-ray',
     bodyPart: 'Chest',
-    view: 'AP (portable)',
-    source: cxr('2416018246777850621206766272624'),
+    view: 'AP (semi-upright) and lateral',
+    source: COVID_AR,
+    parts: [
+      { label: 'AP · semi-upright', source: cxrPart('868468670465', '050453805249') },
+      { label: 'Lateral', source: cxrPart('868468670465', '540676582892') },
+    ],
   },
   {
     key: 'xr-2901',
@@ -296,12 +324,29 @@ export const SOURCES = [
   },
   {
     key: 'xr-3401',
-    for: 'ST-9943 · SD-P-34 pelvis and hip X-ray',
-    kind: 'single',
+    for: 'ST-9943 · SD-P-34 pelvis and hip X-ray — AP and axial',
+    kind: 'stack',
     modality: 'X-ray',
     bodyPart: 'Pelvis and left hip',
-    view: 'AP',
+    view: 'AP and axial',
     source: commons('Mediale Schenkelhalsfraktur links 83W - CR ap - 001.jpg', 'CC BY-SA 4.0', 'Hellerhoff'),
+    parts: [
+      { label: 'Pelvis AP', source: commons('Mediale Schenkelhalsfraktur links 83W - CR ap - 001.jpg', 'CC BY-SA 4.0', 'Hellerhoff') },
+      { label: 'Left hip axial', source: commons('Mediale Schenkelhalsfraktur links 83W - CR Huefte axial - 001.jpg', 'CC BY-SA 4.0', 'Hellerhoff') },
+    ],
+  },
+  {
+    key: 'xr-3402',
+    for: 'ST-9944 · SD-P-34 chest X-ray before surgery — PA and lateral',
+    kind: 'stack',
+    modality: 'X-ray',
+    bodyPart: 'Chest',
+    view: 'PA and lateral',
+    source: COVID_AR,
+    parts: [
+      { label: 'PA', source: cxrPart('817173839042', '375077795803') },
+      { label: 'Lateral', source: cxrPart('817173839042', '524183740029') },
+    ],
   },
   {
     key: 'xr-3501',

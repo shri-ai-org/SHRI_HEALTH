@@ -502,7 +502,7 @@ const FLOWS = [
       const banner = await page.evaluate(`document.querySelector('[aria-label="Patient"]').textContent.replace(/\\u00a0/g, ' ')`)
       for (const t of ['R. Lakshmanan', '62/M', 'ICH-0044051 · 4B-12 · LOS 4d · Dr. Ananya Iyer', 'Allergy: Penicillin', 'Payer: PM-JAY', 'ABHA Linked'])
         expect(banner.includes(t), `the banner says "${t}": ${banner}`)
-      const tabs = await page.evaluate(`[...document.querySelectorAll('[role="tablist"] [role="tab"]')].map((t) => t.textContent)`)
+      const tabs = await page.evaluate(`[...document.querySelectorAll('[role="tab"][id^="record-tab-"]')].map((t) => t.textContent)`)
       expect(tabs.join('|') === 'Overview|Condition2|Results8|Reports3|Notes2|Medicines3|Appointments3', `the seven parts with their counts: ${tabs}`)
       expect(await page.evaluate(`document.querySelector('[role="tab"][aria-selected="true"]').textContent === 'Overview'`), 'Overview is the selected part')
       const text = await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)

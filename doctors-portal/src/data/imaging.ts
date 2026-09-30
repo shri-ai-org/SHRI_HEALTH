@@ -207,7 +207,7 @@ const IMAGING_STUDIES_BASE: ImagingStudy[] = [
     status: 'Reported',
     reportedBy: 'Dr. Neha Bhatt',
     impression: 'Single live intrauterine fetus, 32 weeks by biometry. Liquor adequate. Form F completed.',
-    findings: ['Head circumference 295 mm, in keeping with 32 weeks. Retained image: the transthalamic plane it was measured on.'],
+    findings: ['Head circumference 295 mm — the mean of two sweeps, 291 and 299 mm — in keeping with 32 weeks. Both transthalamic planes retained.'],
   },
 ]
 

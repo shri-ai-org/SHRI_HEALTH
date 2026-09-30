@@ -19,7 +19,7 @@ us-0101	ST-9531 · SD-P-01 thyroid ultrasound
 	Drahreg01, Wikimedia Commons · CC BY-SA 3.0
 	https://commons.wikimedia.org/wiki/File:Hashimoto-Thyreoiditis.JPG
 
-xr-0601	ST-9535 · SD-P-06 chest X-ray
+xr-0601	ST-9535 · SD-P-06 chest X-ray — two AP films
 	Kermany, Zhang, Goldbaum (Mendeley Data), de-identified · CC BY 4.0
 	https://data.mendeley.com/datasets/rscbjbr9sj/3
 
@@ -31,11 +31,11 @@ us-0901	ST-9541 · SD-P-09 ultrasound KUB
 	Cerevisae, Wikimedia Commons · CC BY-SA 4.0
 	https://commons.wikimedia.org/wiki/File:Ultrasound_of_left_kidney_renal_parenchymal_disease.jpg
 
-us-0401	ST-9790 · SD-P-04 growth scan, 32 weeks
+us-0401	ST-9790 · SD-P-04 growth scan, 32 weeks — two sweeps of the same head
 	HC18 challenge set (van den Heuvel et al.), de-identified · CC BY 4.0
 	https://zenodo.org/records/1327317
 
-us-0402	ST-9611 · SD-P-04 growth scan, 28 weeks
+us-0402	ST-9611 · SD-P-04 growth scan, 28 weeks — two sweeps of the same head
 	HC18 challenge set (van den Heuvel et al.), de-identified · CC BY 4.0
 	https://zenodo.org/records/1327317
 
@@ -43,7 +43,7 @@ ec-1701	ST-9570 · SD-P-17 exercise stress echo
 	Oliveira J et al., Cardiovasc Ultrasound 2009;7:24, Wikimedia Commons · CC BY 2.0
 	https://commons.wikimedia.org/wiki/File:Exercise_echocardiography_in_diabetic_patients_-_1476-7120-7-24-S4.wmv.ogv
 
-xr-1801	ST-9622 · SD-P-18 chest X-ray
+xr-1801	ST-9622 · SD-P-18 chest X-ray — PA and AP
 	TCIA COVID-19-AR, de-identified · CC BY 4.0
 	https://www.cancerimagingarchive.net/collection/covid-19-ar/
 
@@ -59,7 +59,7 @@ xr-2201	ST-9701 · SD-P-22 knee X-ray
 	James Heilman, MD, Wikimedia Commons · CC BY-SA 4.0
 	https://commons.wikimedia.org/wiki/File:Osteoarthritis_on_X-ray.jpg
 
-us-2401	ST-9716 · SD-P-24 anomaly scan
+us-2401	ST-9716 · SD-P-24 anomaly scan — two sweeps of the same head
 	HC18 challenge set (van den Heuvel et al.), de-identified · CC BY 4.0
 	https://zenodo.org/records/1327317
 
@@ -75,7 +75,7 @@ us-2701	ST-9602 · SD-P-27 ultrasound abdomen
 	Nevit Dilmen, Wikimedia Commons · CC BY-SA 3.0
 	https://commons.wikimedia.org/wiki/File:Ultrasound_image_of_gallbladder_stone_Gallstone_091937515.jpg
 
-xr-2801	ST-9950 · SD-P-28 chest X-ray
+xr-2801	ST-9950 · SD-P-28 chest X-ray — AP and lateral
 	TCIA COVID-19-AR, de-identified · CC BY 4.0
 	https://www.cancerimagingarchive.net/collection/covid-19-ar/
 
@@ -103,9 +103,13 @@ xr-3301	ST-9936 · SD-P-33 chest X-ray
 	TCIA COVID-19-AR, de-identified · CC BY 4.0
 	https://www.cancerimagingarchive.net/collection/covid-19-ar/
 
-xr-3401	ST-9943 · SD-P-34 pelvis and hip X-ray
+xr-3401	ST-9943 · SD-P-34 pelvis and hip X-ray — AP and axial
 	Hellerhoff, Wikimedia Commons · CC BY-SA 4.0
 	https://commons.wikimedia.org/wiki/File:Mediale_Schenkelhalsfraktur_links_83W_-_CR_ap_-_001.jpg
+
+xr-3402	ST-9944 · SD-P-34 chest X-ray before surgery — PA and lateral
+	TCIA COVID-19-AR, de-identified · CC BY 4.0
+	https://www.cancerimagingarchive.net/collection/covid-19-ar/
 
 xr-3501	ST-9937 · SD-P-35 chest X-ray
 	TCIA COVID-19-AR, de-identified · CC BY 4.0

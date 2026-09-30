@@ -142,8 +142,8 @@ export function StudyViewer({
   const active = showOverlay ? overlays.filter((o) => slice >= o.from && slice <= o.to) : []
   const marked = overlays.length > 0
   const first = overlays[0]
-  const noun = series.kind === 'loop' ? 'frame' : 'slice'
-  const Noun = series.kind === 'loop' ? 'Frame' : 'Slice'
+  const noun = series.frameWord ?? (series.kind === 'loop' ? 'frame' : 'slice')
+  const Noun = noun.charAt(0).toUpperCase() + noun.slice(1)
 
   return (
     <div className={cn('min-w-0', className)}>
@@ -223,11 +223,10 @@ export function StudyViewer({
             </span>
           ))}
         </p>
-        {series.kind !== 'single' && (
-          <p className="pointer-events-none absolute bottom-[8px] left-[12px] text-[11px] tabular-nums text-(--on-image-ink)">
-            {series.kind === 'loop' ? 'Frame' : 'Im'} {slice} / {series.frames}
-          </p>
-        )}
+        <p className="pointer-events-none absolute bottom-[8px] left-[12px] text-[11px] tabular-nums text-(--on-image-ink)">
+          {series.kind === 'single' ? '1 image' : `${series.kind === 'loop' ? 'Frame' : 'Im'} ${slice} / ${series.frames}`}
+          {series.frameNote?.(slice) ? ` · ${series.frameNote(slice)}` : ''}
+        </p>
         {active.length > 0 && <p className="pointer-events-none absolute bottom-[8px] right-[12px] text-[11px] font-semibold text-(--on-image-ai)">AI overlay on</p>}
       </div>
 

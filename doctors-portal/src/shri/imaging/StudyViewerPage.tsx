@@ -29,7 +29,7 @@
 
 import { Brain, Check, Columns2, FileText, List, MessageSquare, PhoneCall, Save, ScanLine, Send, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { promptsFor, resolveAnswer, type AssistantAnswer } from '@/data/assistant'
 import { formatDateTime, formatTime } from '@/data/format'
@@ -67,13 +67,16 @@ import { EscalateDialog } from './EscalateDialog'
 
 export function StudyViewerPage() {
   const { id } = useParams()
+  // "?frame=n" — the overview's Report viewer opens the study at the image it was showing.
+  const [params] = useSearchParams()
+  const frame = Number(params.get('frame')) || undefined
   const record = maybeImagingStudy(id ?? '')
   const series = record ? ncctFor(record) : undefined
   const image = record ? imageFor(record) : undefined
   if (!record) return <StudyNotFound id={id} />
-  if (image) return <ImageStudy key={record.id} study={record} image={image} />
+  if (image) return <ImageStudy key={record.id} study={record} image={image} frame={frame} />
   if (!series) return <ReportOnly study={record} />
-  return <Viewer key={record.id} record={record} study={series} />
+  return <Viewer key={record.id} record={record} study={series} frame={frame} />
 }
 
 /** An address that names no study. Says so, rather than opening someone else's scan. */
@@ -124,7 +127,7 @@ function ReportBody({ study: s }: { study: ImagingStudy }) {
  * CT beyond the head. The image and its report; no AI read, because no model
  * reads these here. Where the pixels came from is on the frame and in the rail.
  */
-function ImageStudy({ study: s, image }: { study: ImagingStudy; image: ImageSeries }) {
+function ImageStudy({ study: s, image, frame }: { study: ImagingStudy; image: ImageSeries; frame?: number }) {
   const navigate = useNavigate()
   const may = useMayOpenPath()
   const p = patient(s.patientId)
@@ -176,7 +179,7 @@ function ImageStudy({ study: s, image }: { study: ImagingStudy; image: ImageSeri
     >
       <div className="grid grid-cols-1 gap-[20px] xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:items-start">
         <div className="min-w-0">
-          <StudyViewer series={view} />
+          <StudyViewer series={view} initialSlice={frame} />
         </div>
         <div className="flex min-w-0 flex-col gap-[16px]">
           <ReportBody study={s} />
@@ -219,7 +222,7 @@ interface Turn {
   answer: AssistantAnswer
 }
 
-function Viewer({ record, study }: { record: ImagingStudy; study: NcctStudy }) {
+function Viewer({ record, study, frame }: { record: ImagingStudy; study: NcctStudy; frame?: number }) {
   const navigate = useNavigate()
   const may = useMayOpenPath()
   const me = useCurrentStaff()
@@ -244,7 +247,7 @@ function Viewer({ record, study }: { record: ImagingStudy; study: NcctStudy }) {
   const [sideBySide, setSideBySide] = useState(false)
   // One slice for both panes, so the original and the marked image are always the same cut.
   const firstMark = overlays[0]
-  const [slice, setSlice] = useState(firstMark ? Math.round((firstMark.from + firstMark.to) / 2) : Math.max(1, Math.round(study.slices / 2)))
+  const [slice, setSlice] = useState(frame ?? (firstMark ? Math.round((firstMark.from + firstMark.to) / 2) : Math.max(1, Math.round(study.slices / 2))))
   const [escalate, setEscalate] = useState(false)
   const [note, setNote] = useState('')
   const [noteMeta, setNoteMeta] = useState<{ model: string; band: string } | null>(null)

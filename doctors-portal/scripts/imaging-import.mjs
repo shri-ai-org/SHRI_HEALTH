@@ -28,7 +28,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { SOURCES } from './imaging-sources.mjs'
@@ -50,6 +50,8 @@ kind, src, out_dir, want, window = sys.argv[1], sys.argv[2], sys.argv[3], int(sy
 MAX = int(sys.argv[6])
 REDACT = json.loads(sys.argv[7])
 CLIP = json.loads(sys.argv[8])
+# mm per source pixel, where the dataset states it outside the file (HC18's table); DICOM carries its own.
+SRC_SPACING = json.loads(sys.argv[9])
 os.makedirs(out_dir, exist_ok=True)
 
 def fit(img):
@@ -103,6 +105,10 @@ def dicom_frames(path):
     d0 = dss[0]
     meta = {'rows': int(getattr(d0, 'Rows', 0)), 'columns': int(getattr(d0, 'Columns', 0)), 'seriesTotal': n,
             'seriesDescription': str(getattr(d0, 'SeriesDescription', '') or ''), 'modality': str(getattr(d0, 'Modality', '') or '')}
+    ps = getattr(d0, 'PixelSpacing', None) or getattr(d0, 'ImagerPixelSpacing', None)
+    if ps is not None and len(ps) == 2: meta['ps'] = [float(ps[0]), float(ps[1])]
+    thick = getattr(d0, 'SliceThickness', None)
+    if thick: meta['sliceThickness'] = float(thick)
     return out, meta
 
 def image_frames(path):
@@ -161,6 +167,12 @@ for i, f in enumerate(frames, start=1):
     for box in REDACT: ImageDraw.Draw(f).rectangle(box, fill=0)
     f.save(os.path.join(out_dir, 'frame-%02d.png' % i), optimize=True)
 meta['frames'] = len(frames)
+# mm per exported pixel: the source's spacing, scaled by how much the frame was shrunk.
+ps = meta.pop('ps', None) or ([SRC_SPACING, SRC_SPACING] if SRC_SPACING else None)
+if ps and meta.get('columns'):
+    out_w = Image.open(os.path.join(out_dir, 'frame-01.png')).width
+    k = meta['columns'] / out_w
+    meta['pixelSpacing'] = [round(ps[0] * k, 4), round(ps[1] * k, 4)]
 print(json.dumps(meta))
 `
 
@@ -202,17 +214,41 @@ function materialise(s) {
   return { kind: src.type === 'video' ? 'video' : 'image', path: file }
 }
 
-function importOne(s) {
-  const out = join(OUT_IMAGES, s.key)
-  rmSync(out, { recursive: true, force: true })
-  const { kind, path } = materialise(s)
-  const want = s.kind === 'stack' ? 28 : s.kind === 'loop' ? 24 : 1
-  const r = spawnSync('python3', ['-c', PY, kind, path, out, String(want), s.window ?? 'auto', String(MAX_PX), JSON.stringify(s.redact ?? []), JSON.stringify(s.clip ?? null)], { encoding: 'utf8' })
+/** Converts one source into `out`; returns what the converter measured. */
+function convert(s, source, out, want, cacheKey = s.key) {
+  const { kind, path } = materialise({ ...s, key: cacheKey, source })
+  const r = spawnSync(
+    'python3',
+    ['-c', PY, kind, path, out, String(want), s.window ?? 'auto', String(MAX_PX), JSON.stringify(s.redact ?? []), JSON.stringify(s.clip ?? null), JSON.stringify(source.spacing ?? null)],
+    { encoding: 'utf8' },
+  )
   if (r.status !== 0) throw new Error(`${s.key}: ${r.stderr}`)
   const meta = JSON.parse(r.stdout.trim().split('\n').pop())
   if (meta.error) throw new Error(`${s.key}: ${meta.error}`)
-  console.log(`  ${s.key.padEnd(8)} ${s.modality.padEnd(10)} ${String(meta.frames).padStart(2)} frame(s) · ${s.source.dataset}`)
-  return { ...meta, frames: readdirSync(out).filter((f) => f.startsWith('frame-')).length }
+  return meta
+}
+
+function importOne(s) {
+  const out = join(OUT_IMAGES, s.key)
+  rmSync(out, { recursive: true, force: true })
+  let meta
+  if (s.parts) {
+    // Several images of one study — a PA and a lateral, two sweeps of the same fetal head — one frame each, in order.
+    mkdirSync(out, { recursive: true })
+    s.parts.forEach((part, i) => {
+      const tmp = `${out}.part${i}`
+      rmSync(tmp, { recursive: true, force: true })
+      const m = convert(s, part.source, tmp, 1, `${s.key}.part${i}`)
+      meta ??= { ...m, seriesTotal: s.parts.length }
+      renameSync(join(tmp, 'frame-01.png'), join(out, `frame-${String(i + 1).padStart(2, '0')}.png`))
+      rmSync(tmp, { recursive: true, force: true })
+    })
+  } else {
+    meta = convert(s, s.source, out, s.kind === 'stack' ? 28 : s.kind === 'loop' ? 24 : 1)
+  }
+  const frames = readdirSync(out).filter((f) => f.startsWith('frame-')).length
+  console.log(`  ${s.key.padEnd(8)} ${s.modality.padEnd(10)} ${String(frames).padStart(2)} frame(s) · ${s.source.dataset}${meta.pixelSpacing ? ` · ${meta.pixelSpacing[1]} mm/px` : ''}`)
+  return { ...meta, frames }
 }
 
 const only = process.argv.slice(2)
@@ -245,6 +281,9 @@ for (const s of SOURCES) {
       rows: meta.rows,
       columns: meta.columns,
       seriesTotal: meta.seriesTotal,
+      ...(s.parts ? { frameLabels: s.parts.map((p) => p.label) } : {}),
+      ...(meta.pixelSpacing ? { pixelSpacing: meta.pixelSpacing } : {}),
+      ...(meta.sliceThickness ? { sliceThickness: meta.sliceThickness } : {}),
       window: s.window ?? 'auto',
       source: { dataset: s.source.dataset, licence: s.source.licence, url: s.source.page ?? s.source.url ?? `https://www.cancerimagingarchive.net/collection/${s.source.dataset.toLowerCase().replace(/^tcia /, '')}/`, credit: s.source.credit ?? s.source.dataset },
     },
@@ -277,6 +316,11 @@ export interface ImageSeries {
   columns: number
   /** Images the source held before subsampling. */
   seriesTotal: number
+  /** What each frame is, where a study holds several distinct images ("PA", "Lateral"). */
+  frameLabels?: string[]
+  /** mm per exported pixel [row, column], from the source's own calibration; absent means uncalibrated. */
+  pixelSpacing?: [number, number]
+  sliceThickness?: number
   /** How the pixels were windowed at export: "W1500L-600", or "auto" (percentile / the file's own). */
   window: string
   source: { dataset: string; licence: string; url: string; credit: string }
