@@ -4,16 +4,19 @@
  * each. The results inbox is organised around the doctor's day; this is
  * organised around one patient's body — so a test appears once, with its
  * latest value, its flag in words, the reference range and, where there is a
- * series, the shape of the trend. Each row opens the full result.
+ * series, the shape of the trend. Each row opens the full result. Cultures
+ * and other microbiology follow in their own card — what was sent, what grew,
+ * and the sensitivities, with any allergy on the record beside its drug.
  */
 
-import { ChevronRight, FlaskConical } from 'lucide-react'
+import { ChevronRight, FlaskConical, Microscope, OctagonAlert } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { RESULT_TRENDS, resultsFor, type ResultRow } from '@/data/clinical'
 import { formatDate, formatTime } from '@/data/format'
 import type { Patient } from '@/data/kit'
+import { allergyFor, microFor, type MicroResult, type Susceptibility } from '@/data/results-ext'
 import { useClinical } from '@/store/clinical'
 
 import { useAiActive } from '../state/ai'
@@ -97,14 +100,88 @@ function Results({ patient: p }: { patient: Patient }) {
             }
           />
         ) : (
-          <ul className="-mx-[8px] flex flex-col">
+          <ul aria-label="Test results" className="-mx-[8px] flex flex-col">
             {shown.map((r, i) => (
               <ResultLine key={r.id} r={r} reviewed={isReviewed(r)} first={i === 0} />
             ))}
           </ul>
         )}
       </Card>
+
+      <Microbiology patient={p} />
     </>
+  )
+}
+
+const SUSCEPTIBILITY: Record<Susceptibility, { word: string; tone: 'norm' | 'warn' | 'crit' }> = {
+  S: { word: 'Sensitive', tone: 'norm' },
+  I: { word: 'Intermediate', tone: 'warn' },
+  R: { word: 'Resistant', tone: 'crit' },
+}
+
+/** Cultures, microscopy and molecular tests — drawn only when the patient has any. */
+function Microbiology({ patient: p }: { patient: Patient }) {
+  const micro = microFor(p.id)
+  if (micro.length === 0) return null
+  return (
+    <Card
+      titleSize="sm"
+      title={
+        <span className="inline-flex items-center gap-[10px]">
+          Microbiology
+          <CountBubble className="bg-sh-control">{micro.length}</CountBubble>
+        </span>
+      }
+    >
+      <ul aria-label="Microbiology" className="flex flex-col">
+        {micro.map((m, i) => (
+          <MicroLine key={m.id} m={m} allergies={p.allergies} first={i === 0} />
+        ))}
+      </ul>
+    </Card>
+  )
+}
+
+function MicroLine({ m, allergies, first }: { m: MicroResult; allergies: string[]; first: boolean }) {
+  return (
+    <li className={first ? 'pb-[14px]' : 'border-t border-sh-line py-[14px]'} aria-label={`${m.test}, ${m.status.toLowerCase()}`}>
+      <div className="flex flex-wrap items-center gap-x-[8px] gap-y-[4px]">
+        <Icon icon={Microscope} size={15} className="text-sh-text-2" />
+        <span className="text-[14px] font-semibold text-sh-text">{m.test}</span>
+        <Chip word={m.status} tone={m.status === 'Final' ? 'neu' : 'warn'} />
+      </div>
+      <p className="mt-[4px] text-[12px] tabular-nums text-sh-text-3">
+        {m.specimen} · collected {formatDate(m.collectedAt)} {formatTime(m.collectedAt)} · reported {formatDate(m.reportedAt)} {formatTime(m.reportedAt)}
+      </p>
+      {m.gram && <p className="mt-[8px] text-[13px] text-sh-text-2">{m.gram}</p>}
+      <p className="mt-[6px] text-[15px] font-medium text-sh-text">
+        {m.growth}
+        {m.count && <span className="ml-[6px] text-[13px] font-normal tabular-nums text-sh-text-2">{m.count}</span>}
+      </p>
+      {m.sensitivities && (
+        <ul aria-label={`Sensitivities — ${m.test}`} className="mt-[10px] grid grid-cols-1 gap-x-[16px] gap-y-[6px] rounded-[14px] bg-sh-inner px-[14px] py-[10px] sm:grid-cols-2">
+          {m.sensitivities.map((x) => {
+            const allergy = allergyFor(x.drug, allergies)
+            const t = SUSCEPTIBILITY[x.result]
+            return (
+              <li key={x.drug} className="flex min-w-0 flex-wrap items-center justify-between gap-[8px] text-[13px]">
+                <span className="min-w-0 text-sh-text">
+                  {x.drug}
+                  {allergy && (
+                    <span className="ml-[6px] inline-flex items-center gap-[4px] text-[12px] font-medium text-sh-crit-fg">
+                      <Icon icon={OctagonAlert} size={12} />
+                      {allergy} allergy on record
+                    </span>
+                  )}
+                </span>
+                <Chip word={t.word} tone={t.tone} />
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {m.comment && <p className="mt-[8px] text-[12px] text-sh-text-3">{m.comment}</p>}
+    </li>
   )
 }
 

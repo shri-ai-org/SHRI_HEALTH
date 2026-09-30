@@ -15,6 +15,7 @@ import type { ConfidenceBand } from '@/atlas/confidence'
 import type { Gate } from '@/atlas/gates'
 
 import { minutesAgo, minutesAhead } from './format'
+import { RESULTS_EXT, RESULT_TRENDS_EXT } from './results-ext'
 
 // ───────────────────────────────────────────────────────────────── Encounters
 
@@ -735,7 +736,7 @@ export interface ResultRow {
   acknowledgedBy?: string
 }
 
-export const RESULTS: ResultRow[] = [
+const RESULTS_BASE: ResultRow[] = [
   {
     /** The critical one. W-06-3 s2! — interrupts a NAMED clinician. */
     id: 'R-88410',
@@ -1617,8 +1618,11 @@ export const RESULTS: ResultRow[] = [
   },
 ]
 
-/** The trend series behind S-09-05, for the result detail chart. */
-export const RESULT_TRENDS: Record<string, { at: Date; value: number }[]> = {
+/** Every result, the first set and the later ones (`results-ext.ts`). */
+export const RESULTS: ResultRow[] = [...RESULTS_BASE, ...RESULTS_EXT]
+
+/** The trend series behind S-09-05, for the result detail chart — the first set, and the later ones merged in below. */
+const RESULT_TRENDS_BASE: Record<string, { at: Date; value: number }[]> = {
   'R-88410': [
     { at: new Date(2026, 8, 19, 6, 0), value: 4.4 },
     { at: new Date(2026, 8, 19, 18, 0), value: 4.9 },
@@ -1699,6 +1703,8 @@ export const RESULT_TRENDS: Record<string, { at: Date; value: number }[]> = {
     { at: minutesAgo(130), value: 96 },
   ],
 }
+
+export const RESULT_TRENDS: Record<string, { at: Date; value: number }[]> = { ...RESULT_TRENDS_EXT, ...RESULT_TRENDS_BASE }
 
 /**
  * A result's series as chart points, each flagged against the reference

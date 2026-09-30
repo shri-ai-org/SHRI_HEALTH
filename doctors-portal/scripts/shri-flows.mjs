@@ -503,7 +503,7 @@ const FLOWS = [
       for (const t of ['R. Lakshmanan', '62/M', 'ICH-0044051 · 4B-12 · LOS 4d · Dr. Ananya Iyer', 'Allergy: Penicillin', 'Payer: PM-JAY', 'ABHA Linked'])
         expect(banner.includes(t), `the banner says "${t}": ${banner}`)
       const tabs = await page.evaluate(`[...document.querySelectorAll('[role="tablist"] [role="tab"]')].map((t) => t.textContent)`)
-      expect(tabs.join('|') === 'Overview|Condition2|Results5|Reports3|Notes2|Medicines3|Appointments3', `the seven parts with their counts: ${tabs}`)
+      expect(tabs.join('|') === 'Overview|Condition2|Results8|Reports3|Notes2|Medicines3|Appointments3', `the seven parts with their counts: ${tabs}`)
       expect(await page.evaluate(`document.querySelector('[role="tab"][aria-selected="true"]').textContent === 'Overview'`), 'Overview is the selected part')
       const text = await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)
       for (const t of ['Report viewer', 'NO ACUTE STROKE ON THIS SCAN', 'Vitals', 'AI insights', 'Test results', 'Trend', 'Patient report', 'Community-acquired pneumonia'])
@@ -596,18 +596,29 @@ const FLOWS = [
     },
   },
   {
-    name: 'Record · Results (S-06-13): the three counts, grouped by test, filtered, each row to its full result',
+    name: 'Record · Results (S-06-13): the three counts, grouped by test, filtered, each row to its full result; cultures with their sensitivities and the allergy beside its drug',
     async run() {
       await page.open('/patient/ICH-0044051/results')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-13"]')`), 'S-06-13 is drawn')
       const tiles = await page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] > div:first-child > div')].map((t) => t.textContent)`)
-      expect(tiles[0].includes('Results on file5') && tiles[1].includes('Outside range4') && tiles[2].includes('To review3'), `the three counts: ${tiles}`)
-      const rows = () => page.evaluate(`document.querySelectorAll('[role="tabpanel"] ul > li').length`)
+      expect(tiles[0].includes('Results on file8') && tiles[1].includes('Outside range7') && tiles[2].includes('To review6'), `the three counts: ${tiles}`)
+      const rows = () => page.evaluate(`document.querySelectorAll('ul[aria-label="Test results"] > li').length`)
       await page.click('[role="tablist"][aria-label="Which results"] [role="tab"]', 'To review')
-      expect((await rows()) === 3, 'three to review')
+      expect((await rows()) === 6, 'six to review')
+      // The sputum: microscopy and culture with no pathogen, and GeneXpert — no organism yet, as the record says.
+      const micro = await page.evaluate(`[...document.querySelectorAll('ul[aria-label="Microbiology"] > li')].map((l) => l.textContent)`)
+      expect(micro.length === 2 && micro.some((t) => t.includes('no pathogen isolated')) && micro.some((t) => t.includes('MTB not detected')), `the sputum results: ${micro}`)
       await page.click('[role="tablist"][aria-label="Which results"] [role="tab"]', 'All')
-      await page.click('[role="tabpanel"] ul > li button', 'CRP')
+      await page.click('ul[aria-label="Test results"] > li button', 'CRP')
       await page.until(`location.pathname.startsWith('/results/')`, 3000, 'a row opens its full result')
+      // Cultures carry their sensitivities; an allergy on the record sits beside its drug, never read as a choice.
+      await page.open('/patient/ICH-0043910/results', { fresh: false })
+      const cultures = await page.evaluate(`[...document.querySelectorAll('ul[aria-label="Microbiology"] > li')].map((l) => l.getAttribute('aria-label'))`)
+      expect(cultures.length === 3 && cultures.every((c) => c.endsWith('final')), `three final cultures: ${cultures}`)
+      const cotrim = await page.evaluate(`[...document.querySelectorAll('ul[aria-label^="Sensitivities — Urine culture"] > li')].find((l) => l.textContent.startsWith('Co-trimoxazole'))?.textContent ?? ''`)
+      expect(cotrim.includes('Sulfa allergy on record') && cotrim.includes('Resistant'), `co-trimoxazole: ${cotrim}`)
+      const mero = await page.evaluate(`[...document.querySelectorAll('ul[aria-label^="Sensitivities — Urine culture"] > li')].find((l) => l.textContent.startsWith('Meropenem'))?.textContent ?? ''`)
+      expect(mero.includes('Sensitive') && !mero.includes('allergy'), `meropenem: ${mero}`)
     },
   },
   {
