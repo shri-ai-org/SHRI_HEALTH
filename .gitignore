@@ -16,6 +16,8 @@ dist-ssr/
 # exported from (scripts/ncct-import.mjs), and design screenshots.
 *.dcm
 UI.png
+# The raw downloads scripts/imaging-import.mjs converts; the frames it writes are committed.
+doctors-portal/imaging-src/
 
 # Secrets and environment files.
 .env

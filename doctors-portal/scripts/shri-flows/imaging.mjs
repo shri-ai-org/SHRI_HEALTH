@@ -162,9 +162,15 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick }) => {
         expect(!(await page.text()).includes('Attested'), 'and is never "Attested"')
         await page.open('/radiology/study/ST-0000/view', { fresh: false })
         expect((await page.text()).includes('No study at this address.'), 'an unknown study says so, and opens nobody’s scan')
-        await page.open('/radiology/study/ST-4471/view', { fresh: false })
+        await page.open('/radiology/study/ST-9905/view', { fresh: false })
         const t = await page.text()
         expect(t.includes('report only') && t.includes('Images for this study are not in this demo'), 'a report-only study shows its report')
+        // An open-dataset image: the frame loads, its source is credited under it, and no model reads it.
+        await page.open('/radiology/study/ST-4471/view', { fresh: false })
+        await page.until(`[...document.querySelectorAll('img')].some((i) => i.src.includes('/imaging/xr-0301/frame-01.png') && i.naturalWidth > 0)`, 5000, 'the X-ray frame loads')
+        const x = await page.text()
+        expect(x.includes('Image: TCIA COVID-19-AR') && x.includes('CC BY 4.0'), 'the image is credited')
+        expect(x.includes('No model reads X-rays here'), 'and no AI read is claimed')
       },
     },
     {

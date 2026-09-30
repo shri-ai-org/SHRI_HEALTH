@@ -10,7 +10,7 @@
  * with it off, newest first and no flags. The filter is in the address.
  */
 
-import { Check, Clock, Image, Radio, ScanLine, TriangleAlert } from 'lucide-react'
+import { Brain, Check, Clock, FilePen, HeartPulse, Image, Radio, ScanLine, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -28,6 +28,7 @@ import { Worklist, type WorklistColumn } from '../ui/Worklist'
 type Filter = 'all' | 'flagged' | 'awaiting' | 'reported'
 const FILTERS: readonly Filter[] = ['all', 'flagged', 'awaiting', 'reported']
 const FLAG_RANK = { critical: 0, caution: 1, normal: 2 } as const
+const MODALITY_ICON: Record<ImagingStudy['modality'], LucideIcon> = { CT: ScanLine, 'X-ray': Image, Ultrasound: Radio, MRI: Brain, Echo: HeartPulse }
 
 export function WorklistPage() {
   const navigate = useNavigate()
@@ -41,7 +42,8 @@ export function WorklistPage() {
     const f = aiFlagFor(s)
     return f && f.tone !== 'normal'
   })
-  const awaiting = IMAGING_STUDIES.filter((s) => s.status === 'Awaiting report')
+  // A preliminary report is still waiting for its final one.
+  const awaiting = IMAGING_STUDIES.filter((s) => s.status !== 'Reported')
   const reported = IMAGING_STUDIES.filter((s) => s.status === 'Reported')
 
   const rows = useMemo(() => {
@@ -55,7 +57,7 @@ export function WorklistPage() {
       const ra = fa ? FLAG_RANK[fa.tone] : 3
       const rb = fb ? FLAG_RANK[fb.tone] : 3
       if (ra !== rb) return ra - rb
-      if (a.status !== b.status) return a.status === 'Awaiting report' ? -1 : 1
+      if ((a.status === 'Reported') !== (b.status === 'Reported')) return a.status === 'Reported' ? 1 : -1
       return b.acquiredAt.getTime() - a.acquiredAt.getTime()
     })
   }, [filter, aiActive, aiSort, flagged, awaiting, reported])
@@ -92,9 +94,9 @@ export function WorklistPage() {
       role: 'context',
       cell: (s) => (
         <span className="inline-flex items-center gap-[6px]">
-          <Icon icon={s.modality === 'CT' ? ScanLine : s.modality === 'X-ray' ? Image : Radio} size={13} />
+          <Icon icon={MODALITY_ICON[s.modality]} size={13} />
           {s.id} · {s.description}
-          {!s.ncctKey && ' · report only'}
+          {!s.ncctKey && !s.imageKey && ' · report only'}
         </span>
       ),
     },
@@ -120,6 +122,10 @@ export function WorklistPage() {
         s.status === 'Awaiting report' ? (
           <PillTag tone="warn" size="xs" icon={Clock} className="font-semibold">
             Awaiting report
+          </PillTag>
+        ) : s.status === 'Preliminary' ? (
+          <PillTag tone="warn" size="xs" icon={FilePen} className="font-semibold">
+            Preliminary
           </PillTag>
         ) : (
           <PillTag tone="neu" size="xs" icon={Check} className="font-semibold">

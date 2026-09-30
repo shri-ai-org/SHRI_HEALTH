@@ -1,0 +1,108 @@
+Images under /imaging — real, de-identified, openly licensed. Each folder is one series.
+The patient named on screen is a sample patient of the demo; the source below is provenance only.
+The head CTs under /ncct are from CQ500 (qure.ai), CC BY-NC-SA 4.0.
+Burned-in text naming a source patient has been blacked out; frames are otherwise as published, resized.
+
+xr-0301	ST-4471 · SD-P-03 chest X-ray
+	TCIA COVID-19-AR, de-identified · CC BY 4.0
+	https://www.cancerimagingarchive.net/collection/covid-19-ar/
+
+xr-0201	ST-9861 · SD-P-02 chest X-ray after CABG
+	TCIA COVID-19-AR, de-identified · CC BY 4.0
+	https://www.cancerimagingarchive.net/collection/covid-19-ar/
+
+xr-0701	ST-9868 · SD-P-07 chest X-ray in ICU
+	TCIA COVID-19-AR, de-identified · CC BY 4.0
+	https://www.cancerimagingarchive.net/collection/covid-19-ar/
+
+us-0101	ST-9531 · SD-P-01 thyroid ultrasound
+	Drahreg01, Wikimedia Commons · CC BY-SA 3.0
+	https://commons.wikimedia.org/wiki/File:Hashimoto-Thyreoiditis.JPG
+
+us-0401	ST-9790 · SD-P-04 growth scan, 32 weeks
+	HC18 challenge set (van den Heuvel et al.), de-identified · CC BY 4.0
+	https://zenodo.org/records/1327317
+
+us-0402	ST-9611 · SD-P-04 growth scan, 28 weeks
+	HC18 challenge set (van den Heuvel et al.), de-identified · CC BY 4.0
+	https://zenodo.org/records/1327317
+
+ec-1701	ST-9570 · SD-P-17 exercise stress echo
+	Oliveira J et al., Cardiovasc Ultrasound 2009;7:24, Wikimedia Commons · CC BY 2.0
+	https://commons.wikimedia.org/wiki/File:Exercise_echocardiography_in_diabetic_patients_-_1476-7120-7-24-S4.wmv.ogv
+
+xr-1801	ST-9622 · SD-P-18 chest X-ray
+	TCIA COVID-19-AR, de-identified · CC BY 4.0
+	https://www.cancerimagingarchive.net/collection/covid-19-ar/
+
+mr-2001	ST-9744 · SD-P-20 MRI brain
+	Dr. Laurent Hermoye (Imagilys), Wikimedia Commons · CC BY-SA 3.0
+	https://commons.wikimedia.org/wiki/File:Brain_MRI_T1_movie.gif
+
+us-2101	ST-9682 · SD-P-21 ultrasound abdomen
+	Hellerhoff, Wikimedia Commons · CC BY-SA 3.0
+	https://commons.wikimedia.org/wiki/File:Steatosis_hepatis_-_Sonographie_001.jpg
+
+xr-2201	ST-9701 · SD-P-22 knee X-ray
+	James Heilman, MD, Wikimedia Commons · CC BY-SA 4.0
+	https://commons.wikimedia.org/wiki/File:Osteoarthritis_on_X-ray.jpg
+
+us-2301	ST-9655 · SD-P-23 ultrasound KUB
+	Cerevisae, Wikimedia Commons · CC BY-SA 4.0
+	https://commons.wikimedia.org/wiki/File:Ultrasound_of_left_kidney_renal_parenchymal_disease.jpg
+
+us-2401	ST-9716 · SD-P-24 anomaly scan
+	HC18 challenge set (van den Heuvel et al.), de-identified · CC BY 4.0
+	https://zenodo.org/records/1327317
+
+us-2501	ST-9690 · SD-P-25 ultrasound KUB
+	K. L. Hansen, M. B. Nielsen, C. Ewertsen, Wikimedia Commons · CC BY 4.0
+	https://commons.wikimedia.org/wiki/File:Ultrasonography_of_hydronephrosis_due_to_ureteropelvic_junction_obstruction.jpg
+
+xr-2601	ST-9588 · SD-P-26 mammogram
+	Hellerhoff, Wikimedia Commons · CC BY-SA 4.0
+	https://commons.wikimedia.org/wiki/File:Oelzysten_in_der_Mammographie_68W_-_MG_cc_-_001.jpg
+
+us-2701	ST-9602 · SD-P-27 ultrasound abdomen
+	Nevit Dilmen, Wikimedia Commons · CC BY-SA 3.0
+	https://commons.wikimedia.org/wiki/File:Ultrasound_image_of_gallbladder_stone_Gallstone_091937515.jpg
+
+xr-2801	ST-9950 · SD-P-28 chest X-ray
+	TCIA COVID-19-AR, de-identified · CC BY 4.0
+	https://www.cancerimagingarchive.net/collection/covid-19-ar/
+
+xr-2901	ST-9946 · SD-P-29 chest X-ray
+	TCIA COVID-19-AR, de-identified · CC BY 4.0
+	https://www.cancerimagingarchive.net/collection/covid-19-ar/
+
+ct-2901	ST-9947 · SD-P-29 CT abdomen
+	TCIA Pancreas-CT (NIH Clinical Center), de-identified · CC BY 3.0
+	https://www.cancerimagingarchive.net/collection/pancreas-ct/
+
+mr-3001	ST-9958 · SD-P-30 MRI brain
+	Shazia Mirza and Sankalp Gokhale, Wikimedia Commons · CC BY 4.0
+	https://commons.wikimedia.org/wiki/File:DWE_MRI_of_cerebral_infarction.png
+
+xr-3101	ST-9939 · SD-P-31 chest X-ray
+	Mikael Häggström, Wikimedia Commons · CC0
+	https://commons.wikimedia.org/wiki/File:Chest_radiograph_of_a_lung_with_Kerley_B_lines.jpg
+
+us-3201	ST-9941 · SD-P-32 ultrasound abdomen
+	Hellerhoff, Wikimedia Commons · CC BY-SA 4.0
+	https://commons.wikimedia.org/wiki/File:Phlegmonoese_Appendizitis_40W_-_US_-_001.jpg
+
+xr-3301	ST-9936 · SD-P-33 chest X-ray
+	TCIA COVID-19-AR, de-identified · CC BY 4.0
+	https://www.cancerimagingarchive.net/collection/covid-19-ar/
+
+xr-3401	ST-9943 · SD-P-34 pelvis and hip X-ray
+	Hellerhoff, Wikimedia Commons · CC BY-SA 4.0
+	https://commons.wikimedia.org/wiki/File:Mediale_Schenkelhalsfraktur_links_83W_-_CR_ap_-_001.jpg
+
+xr-3501	ST-9937 · SD-P-35 chest X-ray
+	TCIA COVID-19-AR, de-identified · CC BY 4.0
+	https://www.cancerimagingarchive.net/collection/covid-19-ar/
+
+us-3501	ST-9938 · SD-P-35 ultrasound KUB
+	Cerevisae, Wikimedia Commons · CC BY-SA 4.0
+	https://commons.wikimedia.org/wiki/File:Ultrasound_of_right_kidney_moderate_hydronephrosis.jpg

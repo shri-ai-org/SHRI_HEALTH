@@ -33,7 +33,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { promptsFor, resolveAnswer, type AssistantAnswer } from '@/data/assistant'
 import { formatDateTime, formatTime } from '@/data/format'
-import { maybeImagingStudy, ncctFor, type ImagingStudy } from '@/data/imaging'
+import { imageFor, maybeImagingStudy, ncctFor, type ImagingStudy } from '@/data/imaging'
+import type { ImageSeries } from '@/data/imaging.generated'
 import { patient } from '@/data/kit'
 import { NCCT_WINDOW, type NcctStudy } from '@/data/ncct.generated'
 import { IMAGING_TRIAGE, maybeStrokeCase } from '@/data/stroke'
@@ -48,6 +49,7 @@ import { useMayOpenPath } from '../app/landing'
 import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
 import { NCCT_MODEL, citationLink, criticalFindingFor } from '../logic/imaging'
+import { imageView } from '../logic/series'
 import { RecordDoors } from '../record/RecordDoors'
 import { StrokeAIReport } from '../stroke/StrokeAIReport'
 import { useAiActive, useForcedState } from '../state/ai'
@@ -57,7 +59,7 @@ import { Disclosure, Why } from '../ui/Disclosure'
 import { EmptyState } from '../ui/EmptyState'
 import { TextInput } from '../ui/forms'
 import { KeyValue } from '../ui/KeyValue'
-import { NcctViewer } from '../ui/NcctViewer'
+import { NcctViewer, StudyViewer } from '../ui/NcctViewer'
 import { Card, ConfidenceMark, Diamond, Pill, PillTag } from '../ui/primitives'
 import { VoiceField } from '../ui/VoiceField'
 
@@ -67,7 +69,9 @@ export function StudyViewerPage() {
   const { id } = useParams()
   const record = maybeImagingStudy(id ?? '')
   const series = record ? ncctFor(record) : undefined
+  const image = record ? imageFor(record) : undefined
   if (!record) return <StudyNotFound id={id} />
+  if (image) return <ImageStudy key={record.id} study={record} image={image} />
   if (!series) return <ReportOnly study={record} />
   return <Viewer key={record.id} record={record} study={series} />
 }
@@ -95,6 +99,96 @@ function StudyNotFound({ id }: { id?: string }) {
   )
 }
 
+/** The report as the radiologist wrote it: impression, findings, who and when. */
+function ReportBody({ study: s }: { study: ImagingStudy }) {
+  return (
+    <Card titleSize="sm" title="Report" right={<span className="text-[12px] text-sh-text-2">{s.status}</span>}>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-sh-text-2">Impression</p>
+      <p className="mt-[4px] text-[17px]/[1.5] text-sh-text">{s.impression}</p>
+      {s.findings && (
+        <ul className="mt-[12px] flex flex-col gap-[4px] text-[14px] text-sh-text-2">
+          {s.findings.map((f) => (
+            <li key={f}>{f}</li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-[12px] text-[12px] tabular-nums text-sh-text-2">
+        {s.reportedBy ?? 'Awaiting radiologist'} · {formatDateTime(s.acquiredAt)}
+      </p>
+    </Card>
+  )
+}
+
+/**
+ * A study backed by an open-dataset image — X-ray, ultrasound, MRI, echo, a
+ * CT beyond the head. The image and its report; no AI read, because no model
+ * reads these here. Where the pixels came from is on the frame and in the rail.
+ */
+function ImageStudy({ study: s, image }: { study: ImagingStudy; image: ImageSeries }) {
+  const navigate = useNavigate()
+  const may = useMayOpenPath()
+  const p = patient(s.patientId)
+  const view = imageView(image, s.description)
+  const worklist = '/radiology/worklist'
+  return (
+    <ScreenFrame
+      screenId="S-15-04"
+      patient={p}
+      sub={`${s.id} · ${s.description} · acquired ${formatDateTime(s.acquiredAt)}`}
+      chips={
+        <PillTag tone="neu" size="sm" icon={ScanLine}>
+          {image.modality} · {image.view}
+        </PillTag>
+      }
+      actions={
+        may(worklist) && (
+          <Pill variant="card" size="xl" icon={List} iconSize={17} onClick={() => navigate(worklist)}>
+            Worklist
+          </Pill>
+        )
+      }
+      rail={
+        <div className="flex flex-col gap-[16px]">
+          <Card titleSize="sm" title="Study">
+            <dl className="divide-y divide-(--line)">
+              <KeyValue label="Acquired">
+                <span className="tabular-nums">{formatDateTime(s.acquiredAt)}</span>
+              </KeyValue>
+              <KeyValue label="Series">
+                {image.bodyPart} · {image.view}
+              </KeyValue>
+              <KeyValue label={image.frames > 1 ? 'Frames' : 'Matrix'}>
+                <span className="tabular-nums">{image.frames > 1 ? `${image.frames} ${image.kind === 'loop' ? 'frames' : 'slices'}` : `${image.columns} × ${image.rows}`}</span>
+              </KeyValue>
+              <KeyValue label="Report">{s.status}</KeyValue>
+              <KeyValue label="Source">
+                <a href={image.source.url} target="_blank" rel="noreferrer" className="underline decoration-(--line-strong) underline-offset-2 hover:text-sh-text">
+                  {image.source.dataset}
+                </a>{' '}
+                · {image.source.licence} · de-identified
+              </KeyValue>
+            </dl>
+          </Card>
+          <RecordDoors patient={p} exclude={['imaging']} label={null} />
+        </div>
+      }
+      railTitle="Study"
+    >
+      <div className="grid grid-cols-1 gap-[20px] xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:items-start">
+        <div className="min-w-0">
+          <StudyViewer series={view} />
+        </div>
+        <div className="flex min-w-0 flex-col gap-[16px]">
+          <ReportBody study={s} />
+          <Card titleSize="sm" title="AI read">
+            <p className="text-[14px] text-sh-text-2">No model reads {image.modality === 'X-ray' ? 'X-rays' : image.modality === 'MRI' ? 'MRI' : image.modality === 'Echo' ? 'echocardiograms' : image.modality === 'CT' ? 'CT outside the head' : 'ultrasound'} here — the report above is the radiologist's alone.</p>
+          </Card>
+        </div>
+      </div>
+    </ScreenFrame>
+  )
+}
+
 /** A study whose report is on the record but whose pixels are not in this demo. */
 function ReportOnly({ study: s }: { study: ImagingStudy }) {
   const p = patient(s.patientId)
@@ -110,22 +204,9 @@ function ReportOnly({ study: s }: { study: ImagingStudy }) {
       }
     >
       <div className="flex max-w-[768px] flex-col gap-[20px]">
-        <Card titleSize="sm" title="Report" right={<span className="text-[12px] text-sh-text-2">{s.status}</span>}>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-sh-text-2">Impression</p>
-          <p className="mt-[4px] text-[17px]/[1.5] text-sh-text">{s.impression}</p>
-          {s.findings && (
-            <ul className="mt-[12px] flex flex-col gap-[4px] text-[14px] text-sh-text-2">
-              {s.findings.map((f) => (
-                <li key={f}>{f}</li>
-              ))}
-            </ul>
-          )}
-          <p className="mt-[12px] text-[12px] tabular-nums text-sh-text-2">
-            {s.reportedBy ?? 'Awaiting radiologist'} · {formatDateTime(s.acquiredAt)}
-          </p>
-        </Card>
+        <ReportBody study={s} />
         <Alert tone="info" title="Images for this study are not in this demo">
-          The report is on the record; the pixels are not loaded here. Only the head CTs carry real images — open one from the worklist.
+          The report is on the record; no openly licensed image fits this study, so none is shown in its place.
         </Alert>
         <RecordDoors patient={p} />
       </div>

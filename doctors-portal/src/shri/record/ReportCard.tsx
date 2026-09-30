@@ -1,8 +1,9 @@
 /**
  * §7.5 Report viewer (column A) — the latest thing on file that can be looked
- * at (`src/screens/m06/record/ReportViewer.tsx`): the patient's own CT on the
- * dark preview tile, with the model's verdict beneath while AI is on; failing
- * that, the newest document report. With nothing on file the page does not
+ * at (`src/screens/m06/record/ReportViewer.tsx`): the patient's own images on
+ * the dark preview tile — a head CT with the model's verdict beneath while AI
+ * is on; an X-ray, ultrasound, MRI or echo with its report's impression (no
+ * model reads those) — failing that, the newest document report. With nothing on file the page does not
  * draw the card at all — the Reports tab's count says so, without a hole.
  *
  * The tile is the viewer itself, compact, as the old card had it: every slice
@@ -15,16 +16,17 @@ import { Activity, Brain, FileText, HeartPulse, ImageOff, ScanLine, Waves, type 
 import { useNavigate } from 'react-router-dom'
 
 import { formatDate, formatTime } from '@/data/format'
-import { ncctFor, viewableStudyFor } from '@/data/imaging'
+import { ncctFor, viewableStudyFor, type ImagingStudy } from '@/data/imaging'
 import type { Patient } from '@/data/kit'
 import { reportsFor } from '@/data/record'
 import { maybeStrokeCase } from '@/data/stroke'
 import { overlaysFor, triageVerdict } from '@/data/strokeai'
 
 import { recordPath } from '../logic/record'
+import { seriesViewFor } from '../logic/series'
 import type { Tone } from '../mocks/types'
 import { useAiActive } from '../state/ai'
-import { NcctViewer, ViewerPlaceholder } from '../ui/NcctViewer'
+import { NcctViewer, StudyViewer, ViewerPlaceholder } from '../ui/NcctViewer'
 import { Card, Chip, Diamond, Pill, RoundButton } from '../ui/primitives'
 
 import { TextLink } from './bits'
@@ -53,9 +55,7 @@ export function ReportCard({ patient: p, className }: { patient: Patient; classN
         right={
           <span className="flex items-center gap-[8px]">
             {c && <RoundButton icon={Brain} size={36} iconSize={16} variant="control" label="Open in the Stroke-AI Console" onClick={() => navigate(`/stroke/ai-console?case=${c.id}`)} />}
-            <Pill variant="control" size="md" icon={ScanLine} onClick={() => navigate(`/radiology/study/${study.id}/view`)}>
-              Open in Imaging
-            </Pill>
+            <OpenInImaging study={study} />
           </span>
         }
         className={className}
@@ -72,6 +72,20 @@ export function ReportCard({ patient: p, className }: { patient: Patient; classN
         )}
         <p className="mt-[4px] text-[12px] tabular-nums text-sh-text-3">
           {study.reportedBy ?? 'Awaiting radiologist'} · {formatDate(study.acquiredAt)} {formatTime(study.acquiredAt)}
+        </p>
+      </Card>
+    )
+  }
+
+  const view = study ? seriesViewFor(study) : undefined
+  if (study && view) {
+    return (
+      <Card titleSize="sm" title="Report viewer" right={<OpenInImaging study={study} />} className={className}>
+        <StudyViewer key={view.key} series={view} className="mx-auto w-full max-w-[360px]" compact />
+        <p className="sh-clamp-2 mt-[12px] text-[13px] text-sh-text-2">{study.impression}</p>
+        <p className="mt-[4px] text-[12px] tabular-nums text-sh-text-3">
+          {study.description} · {study.reportedBy ?? 'Awaiting radiologist'}
+          {study.status === 'Preliminary' ? ' · preliminary' : ''} · {formatDate(study.acquiredAt)} {formatTime(study.acquiredAt)}
         </p>
       </Card>
     )
@@ -118,5 +132,14 @@ export function ReportCard({ patient: p, className }: { patient: Patient; classN
         </ul>
       )}
     </Card>
+  )
+}
+
+function OpenInImaging({ study }: { study: ImagingStudy }) {
+  const navigate = useNavigate()
+  return (
+    <Pill variant="control" size="md" icon={ScanLine} onClick={() => navigate(`/radiology/study/${study.id}/view`)}>
+      Open in Imaging
+    </Pill>
   )
 }

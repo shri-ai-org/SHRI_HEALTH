@@ -7,7 +7,7 @@
 import type { ConfidenceBand } from '@/atlas/confidence'
 import { RISK_STRIPS, resultsFor } from '@/data/clinical'
 import { formatDate, formatDateTime, formatTime } from '@/data/format'
-import { ncctFor, viewableStudyFor } from '@/data/imaging'
+import { ncctFor, ncctStudyFor } from '@/data/imaging'
 import type { Patient } from '@/data/kit'
 import { conditionFor } from '@/data/record'
 import { IMAGING_TRIAGE, maybeStrokeCase } from '@/data/stroke'
@@ -118,7 +118,8 @@ export function readingsFor(p: Patient): Reading[] {
     })
   }
 
-  const study = viewableStudyFor(p.id)
+  // The model reads head CTs only; an X-ray or ultrasound on file has no AI line.
+  const study = ncctStudyFor(p.id)
   const series = study ? ncctFor(study) : undefined
   if (study && series) {
     const sc = maybeStrokeCase(series.strokeCaseId)

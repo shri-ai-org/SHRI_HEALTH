@@ -316,7 +316,7 @@ export const NOTE_DRAFT_SD_P_03: NoteSectionSeed[] = [
     inputs: [
       { label: 'CRP 184 mg/L, 21-Sep-2026 06:40', source: 'Result R-88402' },
       { label: 'Blood culture, no growth at 48h', source: 'Result R-88310' },
-      { label: 'Chest X-ray PA 19-Sep-2026', source: 'Study ST-4471' },
+      { label: 'Chest X-ray AP 19-Sep-2026', source: 'Study ST-4471' },
     ],
   },
   {
@@ -2293,8 +2293,8 @@ export const TIMELINE: Record<string, TimelineEvent[]> = {
     {
       at: new Date(2026, 8, 19, 10, 15),
       kind: 'imaging',
-      label: 'Chest X-ray PA',
-      detail: 'Right lower lobe consolidation, no effusion.',
+      label: 'Chest X-ray AP',
+      detail: 'Right lower zone airspace shadowing, patchier at the left base. No effusion.',
       by: 'Dr. Neha Bhatt',
       ai: 'AI-402',
     },

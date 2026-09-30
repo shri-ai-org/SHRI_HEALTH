@@ -5,19 +5,25 @@
  * A head CT here is backed by a real, de-identified CQ500 series
  * (`ncct.generated.ts`, imported by `scripts/ncct-import.mjs`), so the viewer
  * shows the actual slices and the AI flag is derived from that series' own
- * ground-truth labels. The X-rays and ultrasounds are report-only: the report
- * is on the record, the pixels are not in this demo — and the screen says so
- * rather than showing somebody else's scan.
+ * ground-truth labels. The other modalities — X-ray, ultrasound, MRI, echo,
+ * CT beyond the head — are backed, where an open dataset has an image that
+ * fits, by real de-identified images (`imaging.generated.ts`, imported by
+ * `scripts/imaging-import.mjs` from `scripts/imaging-sources.mjs`), and the
+ * report is written to what that image shows. A study with no fitting image
+ * stays report-only, and the screen says so rather than showing somebody
+ * else's scan. The later studies are in `imaging-ext.ts`.
  *
  * Study numbers are the ones the rest of the record already cites
  * (ST-9914 in the stroke triage, ST-4471 on R. Lakshmanan's timeline).
  */
 
+import { IMAGE_SERIES, type ImageSeries } from './imaging.generated'
+import { IMAGING_STUDIES_EXT } from './imaging-ext'
 import type { NcctStudy } from './ncct.generated'
 import { NCCT_STUDIES } from './ncct.generated'
 import { maybeStrokeCase } from './stroke'
 
-export type Modality = 'CT' | 'X-ray' | 'Ultrasound'
+export type Modality = 'CT' | 'X-ray' | 'Ultrasound' | 'MRI' | 'Echo'
 
 export interface ImagingStudy {
   id: string
@@ -25,10 +31,13 @@ export interface ImagingStudy {
   modality: Modality
   description: string
   acquiredAt: Date
-  /** The imported series behind the viewer. Absent for a report-only study. */
+  /** The imported head-CT series behind the viewer (`ncct.generated.ts`). */
   ncctKey?: string
+  /** The imported open-dataset series behind the viewer (`imaging.generated.ts`). Neither key: report-only. */
+  imageKey?: string
   priority: 'STAT' | 'Urgent' | 'Routine'
-  status: 'Awaiting report' | 'Reported'
+  /** Preliminary: read and reported provisionally — the final report is still to come. */
+  status: 'Awaiting report' | 'Preliminary' | 'Reported'
   reportedBy?: string
   /** The radiologist's impression, one or two sentences. */
   impression: string
@@ -36,7 +45,7 @@ export interface ImagingStudy {
   findings?: string[]
 }
 
-export const IMAGING_STUDIES: ImagingStudy[] = [
+const IMAGING_STUDIES_BASE: ImagingStudy[] = [
   {
     id: 'ST-9921',
     patientId: 'SD-P-14',
@@ -147,17 +156,19 @@ export const IMAGING_STUDIES: ImagingStudy[] = [
       'Right-sided mixed-density subdural haematoma over the convexity, with mass effect and leftward midline shift.',
     findings: ['Mixed density suggests acute-on-chronic blood. No skull fracture on the imaged levels.'],
   },
-  // ── Report-only studies. The report is real; the pixels are not in this demo.
+  // ── Open-dataset images (`imaging-sources.mjs`); each report says what its image shows.
   {
     id: 'ST-4471',
     patientId: 'SD-P-03',
     modality: 'X-ray',
-    description: 'Chest X-ray PA',
+    description: 'Chest X-ray AP',
     acquiredAt: new Date(2026, 8, 19, 10, 15),
+    imageKey: 'xr-0301',
     priority: 'Routine',
     status: 'Reported',
     reportedBy: 'Dr. Neha Bhatt',
-    impression: 'Right lower lobe consolidation. No effusion, no pneumothorax.',
+    impression: 'Airspace shadowing in the right lower zone, with patchier change at the left base. No effusion, no pneumothorax.',
+    findings: ['Heart size normal for an AP film. No lines or tubes.'],
   },
   {
     id: 'ST-9868',
@@ -165,10 +176,12 @@ export const IMAGING_STUDIES: ImagingStudy[] = [
     modality: 'X-ray',
     description: 'Chest X-ray AP (portable)',
     acquiredAt: new Date(2026, 8, 21, 6, 10),
+    imageKey: 'xr-0701',
     priority: 'Urgent',
     status: 'Reported',
     reportedBy: 'Dr. Neha Bhatt',
-    impression: 'Endotracheal tube and central line in position. Bilateral patchy airspace shadowing, unchanged.',
+    impression: 'Central venous catheter and nasogastric tube in position. Bilateral patchy airspace shadowing, unchanged.',
+    findings: ['The nasogastric tube tip lies in the stomach. No pneumothorax.'],
   },
   {
     id: 'ST-9861',
@@ -176,10 +189,12 @@ export const IMAGING_STUDIES: ImagingStudy[] = [
     modality: 'X-ray',
     description: 'Chest X-ray AP (post-operative)',
     acquiredAt: new Date(2026, 8, 20, 7, 30),
+    imageKey: 'xr-0201',
     priority: 'Routine',
     status: 'Reported',
     reportedBy: 'Dr. Neha Bhatt',
-    impression: 'Sternal wires intact. Small left basal atelectasis. No pneumothorax, drains in position.',
+    impression: 'Sternal wires intact. Left basal atelectasis. No pneumothorax.',
+    findings: ['A venous catheter loops through the right heart. Right lung clear.'],
   },
   {
     id: 'ST-9790',
@@ -187,12 +202,17 @@ export const IMAGING_STUDIES: ImagingStudy[] = [
     modality: 'Ultrasound',
     description: 'Obstetric ultrasound — growth scan',
     acquiredAt: new Date(2026, 8, 19, 11, 0),
+    imageKey: 'us-0401',
     priority: 'Routine',
     status: 'Reported',
     reportedBy: 'Dr. Neha Bhatt',
     impression: 'Single live intrauterine fetus, 32 weeks by biometry. Liquor adequate. Form F completed.',
+    findings: ['Head circumference 295 mm, in keeping with 32 weeks. Retained image: the transthalamic plane it was measured on.'],
   },
 ]
+
+/** Every study, the first set and the later ones (`imaging-ext.ts`). */
+export const IMAGING_STUDIES: ImagingStudy[] = [...IMAGING_STUDIES_BASE, ...IMAGING_STUDIES_EXT]
 
 const studiesById = new Map(IMAGING_STUDIES.map((s) => [s.id, s]))
 
@@ -207,13 +227,22 @@ export function imagingFor(patientId: string): ImagingStudy[] {
   )
 }
 
-/** The patient's most recent study with real pixels behind it. */
+/** The patient's most recent study with real pixels behind it, whatever its modality. */
 export function viewableStudyFor(patientId: string): ImagingStudy | undefined {
-  return imagingFor(patientId).find((s) => s.ncctKey !== undefined)
+  return imagingFor(patientId).find((s) => ncctFor(s) !== undefined || imageFor(s) !== undefined)
+}
+
+/** The patient's most recent head CT with pixels — the one the AI reads. */
+export function ncctStudyFor(patientId: string): ImagingStudy | undefined {
+  return imagingFor(patientId).find((s) => ncctFor(s) !== undefined)
 }
 
 export function ncctFor(study: ImagingStudy): NcctStudy | undefined {
   return study.ncctKey ? NCCT_STUDIES[study.ncctKey] : undefined
+}
+
+export function imageFor(study: ImagingStudy): ImageSeries | undefined {
+  return study.imageKey ? IMAGE_SERIES[study.imageKey] : undefined
 }
 
 /**

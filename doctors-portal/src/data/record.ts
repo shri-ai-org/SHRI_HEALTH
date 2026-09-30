@@ -921,7 +921,7 @@ export function reportsFor(patientId: string): RecordReport[] {
     summary: s.impression,
     body: s.findings,
     studyId: s.id,
-    viewable: s.ncctKey !== undefined,
+    viewable: s.ncctKey !== undefined || s.imageKey !== undefined,
   }))
   return [...imaging, ...DOCUMENTS.filter((d) => d.patientId === patientId)].sort((a, b) => b.at.getTime() - a.at.getTime())
 }

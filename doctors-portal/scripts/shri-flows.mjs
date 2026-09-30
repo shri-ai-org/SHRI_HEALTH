@@ -580,15 +580,19 @@ const FLOWS = [
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-12"]')`), 'S-06-12 is drawn')
       expect(await page.evaluate(`document.querySelector('[role="tab"][aria-selected="true"][id="record-tab-reports"]') !== null`), 'the Reports part is selected')
       const titles = () => page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] li .font-semibold')].map((e) => e.textContent)`)
-      expect((await titles()).join('|') === 'NCCT head|12-lead ECG|Chest X-ray PA', `every report, newest first: ${await titles()}`)
+      expect((await titles()).join('|') === 'NCCT head|12-lead ECG|Chest X-ray AP', `every report, newest first: ${await titles()}`)
       await page.click('[role="tablist"][aria-label="Which reports"] [role="tab"]', 'Documents')
       expect((await titles()).join('|') === '12-lead ECG', `documents only: ${await titles()}`)
       await page.click('[role="tablist"][aria-label="Which reports"] [role="tab"]', 'All')
       await page.click('[role="tabpanel"] button', 'Full report')
       expect(await page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] button')].some((b) => b.textContent.trim() === 'Less' && b.getAttribute('aria-expanded') === 'true')`), 'the body opens')
-      expect(await page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] button')].some((b) => b.textContent.trim() === 'Report only')`), 'a study without images says so')
+      // Both of this patient's studies carry images — the head CT and the chest X-ray.
+      expect(!(await page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] button')].some((b) => b.textContent.trim() === 'Report only')`)), 'no study here is report-only')
       await page.click('[role="tabpanel"] button', 'Open images')
       await page.until(`location.pathname.startsWith('/radiology/study/')`, 3000, 'real pixels open the viewer')
+      // Priya Raman's day-2 MRI has no open image that fits — it says so.
+      await page.open('/patient/ICH-0044281/reports', { fresh: false })
+      expect(await page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] button')].some((b) => b.textContent.trim() === 'Report only')`), 'a study without images says so')
     },
   },
   {

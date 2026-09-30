@@ -1,33 +1,36 @@
 /**
- * The NCCT viewer — ported from `src/components/ncct.tsx` (NcctViewer :41),
- * the one imaging surface in the product, used by the record's Report viewer,
- * the imaging study (S-15-04), the Stroke-AI Console (S-18-21) and the non-LVO
- * triage (S-18-14 to 16).
+ * The study viewer — the one imaging surface in the product, used by the
+ * record's Report viewer, the imaging study (S-15-04), the Stroke-AI Console
+ * (S-18-21) and the non-LVO triage (S-18-14 to 16). Ported from
+ * `src/components/ncct.tsx` (NcctViewer :41) and generalised to every
+ * modality this build has real pixels for (`src/data/imaging.generated.ts`):
+ *   · a STACK (CT, MRI) — wheel, slider, ‹ › and the arrow keys step slices;
+ *   · a SINGLE image (X-ray) — zoom, and drag to pan while zoomed;
+ *   · a LOOP (ultrasound, echo) — play/pause and step frame by frame; it never
+ *     starts on its own, and under reduced motion Play steps one frame.
+ * Every frame is a PNG exported at import time and loaded at runtime, never
+ * bundled; the window the pixels were exported with is stated on the frame,
+ * and so is where the image came from (its dataset and licence).
  *
- * Real head-CT pixels, windowed to W 80 / L 40 at import (`scripts/ncct-
- * import.mjs`) and served as PNG slices; the window is stated on the frame.
  * The rules it keeps: the UNMARKED image is always one control away (AIP-04);
  * the AI marks a region and never writes a diagnosis on the image; the frame
- * is black in both themes, its chrome measured against the image.
+ * is black in both themes, its chrome measured against the image. A new
+ * series starts afresh (its middle, or its finding; unzoomed; marks on); the
+ * wheel steps the stack without scrolling the page; marks zoom with the image;
+ * there is no overlay switch without a mark. Two panes can share one frame
+ * through `slice` / `onSlice`.
  *
- * Every control the old viewer had is here — wheel, slider, ‹ › (disabled at
- * the ends), ↑→ / ↓← while focused, zoom 1 → 1.5 → 2, the overlay switch, the
- * corner text. Where the old one fell short: its marks stayed put while the
- * image zoomed under them (here they zoom with it); it kept the last study's
- * slice and zoom when handed another (here a new study starts afresh); the
- * wheel stepped a slice and scrolled the page at once (here it steps only);
- * and its switch said "AI overlay on" over a study with nothing marked (here
- * there is no switch without a mark). Two panes can share one slice through
- * `slice` / `onSlice`.
+ * `NcctViewer` is the head-CT face of it, unchanged for its callers.
  */
 
-import { ChevronLeft, ChevronRight, Eye, EyeOff, Scan, type LucideIcon } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Pause, Play, Scan, type LucideIcon } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 
-import { NCCT_WINDOW, slicePath, type NcctStudy } from '@/data/ncct.generated'
+import type { NcctStudy } from '@/data/ncct.generated'
 import type { NcctOverlay } from '@/data/strokeai'
 
 import { cn } from '../lib/cn'
+import { ncctView, type SeriesView } from '../logic/series'
 
 import { Icon } from './primitives'
 
@@ -35,9 +38,10 @@ import { Icon } from './primitives'
 export type { NcctOverlay }
 
 const ZOOMS = [1, 1.5, 2] as const
+const LOOP_MS = 90
 
-export function NcctViewer({
-  study,
+export function StudyViewer({
+  series,
   overlays = [],
   footer,
   initialSlice,
@@ -46,34 +50,38 @@ export function NcctViewer({
   className,
   compact,
 }: {
-  study: NcctStudy
+  series: SeriesView
   overlays?: NcctOverlay[]
   /** Rendered under the image — the model line, the attest bar. */
   footer?: ReactNode
   initialSlice?: number
-  /** A slice held by the caller, so two panes move together. */
+  /** A frame held by the caller, so two panes move together. */
   slice?: number
   onSlice?: (slice: number) => void
   className?: string
   /** A narrow frame — a shorter slider and an icon-only zoom, so the controls stay on one line. */
   compact?: boolean
 }) {
-  const start = initialSlice ?? Math.max(1, Math.round(study.slices / 2))
+  const start = initialSlice ?? (series.kind === 'stack' ? Math.max(1, Math.round(series.frames / 2)) : 1)
   const [own, setOwn] = useState(start)
   const [showOverlay, setShowOverlay] = useState(true)
   const [zoom, setZoom] = useState<(typeof ZOOMS)[number]>(1)
-  // A different study starts afresh — its middle (or its finding), unzoomed, marks on.
-  const [forStudy, setForStudy] = useState(study.key)
-  if (forStudy !== study.key) {
-    setForStudy(study.key)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [playing, setPlaying] = useState(false)
+  // A different series starts afresh — its middle (or its finding), unzoomed, marks on, paused.
+  const [forSeries, setForSeries] = useState(series.key)
+  if (forSeries !== series.key) {
+    setForSeries(series.key)
     setOwn(start)
     setZoom(1)
+    setPan({ x: 0, y: 0 })
     setShowOverlay(true)
+    setPlaying(false)
   }
 
-  const slice = Math.min(study.slices, Math.max(1, controlled ?? own))
+  const slice = Math.min(series.frames, Math.max(1, controlled ?? own))
   const frame = useRef<HTMLDivElement>(null)
-  // The slice as of the last step, not the last render — a fast wheel sends several events between renders.
+  // The frame as of the last step, not the last render — a fast wheel sends several events between renders.
   const current = useRef(slice)
   useEffect(() => {
     current.current = slice
@@ -81,12 +89,12 @@ export function NcctViewer({
 
   const go = useCallback(
     (next: number) => {
-      const clamped = Math.min(study.slices, Math.max(1, next))
+      const clamped = Math.min(series.frames, Math.max(1, next))
       current.current = clamped
       setOwn(clamped)
       onSlice?.(clamped)
     },
-    [study.slices, onSlice],
+    [series.frames, onSlice],
   )
   const step = useCallback((delta: number) => go(current.current + delta), [go])
 
@@ -94,7 +102,7 @@ export function NcctViewer({
      stack: a non-passive listener, so the page does not scroll underneath. */
   useEffect(() => {
     const el = frame.current
-    if (!el) return
+    if (!el || series.kind === 'single') return
     function onWheel(e: WheelEvent) {
       if (Math.abs(e.deltaY) < 2) return
       e.preventDefault()
@@ -102,11 +110,40 @@ export function NcctViewer({
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [step])
+  }, [step, series.kind])
+
+  /* A loop plays only when asked, and wraps; with reduced motion Play steps one frame instead. */
+  const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  useEffect(() => {
+    if (!playing || series.kind !== 'loop') return
+    const t = window.setInterval(() => go(current.current >= series.frames ? 1 : current.current + 1), LOOP_MS)
+    return () => window.clearInterval(t)
+  }, [playing, series.kind, series.frames, go])
+
+  /* Zoomed in, a drag pans the image; unzoomed there is nothing to pan. */
+  const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
+  function onPointerDown(e: PointerEvent<HTMLDivElement>) {
+    if (zoom === 1) return
+    drag.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y }
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+  function onPointerMove(e: PointerEvent<HTMLDivElement>) {
+    const d = drag.current
+    if (!d || !frame.current) return
+    const w = frame.current.clientWidth
+    const lim = ((zoom - 1) / 2) * 100
+    const clamp = (v: number) => Math.max(-lim, Math.min(lim, v))
+    setPan({ x: clamp(d.px + ((e.clientX - d.x) / w) * 100), y: clamp(d.py + ((e.clientY - d.y) / w) * 100) })
+  }
+  function onPointerUp() {
+    drag.current = null
+  }
 
   const active = showOverlay ? overlays.filter((o) => slice >= o.from && slice <= o.to) : []
   const marked = overlays.length > 0
   const first = overlays[0]
+  const noun = series.kind === 'loop' ? 'frame' : 'slice'
+  const Noun = series.kind === 'loop' ? 'Frame' : 'Slice'
 
   return (
     <div className={cn('min-w-0', className)}>
@@ -114,8 +151,9 @@ export function NcctViewer({
         ref={frame}
         tabIndex={0}
         role="group"
-        aria-label={`Non-contrast CT head, slice ${slice} of ${study.slices}`}
+        aria-label={series.label(slice)}
         onKeyDown={(e) => {
+          if (series.kind === 'single') return
           if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
             e.preventDefault()
             step(1)
@@ -124,16 +162,14 @@ export function NcctViewer({
             step(-1)
           }
         }}
-        className="relative aspect-square w-full touch-pan-y overflow-hidden rounded-[16px] bg-black"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        className={cn('relative aspect-square w-full touch-pan-y overflow-hidden rounded-[16px] bg-black', zoom > 1 && 'cursor-grab active:cursor-grabbing')}
       >
-        {/* The image and its marks zoom together, so a mark stays on what it marks. */}
-        <div className="absolute inset-0 transition-transform duration-150 motion-reduce:transition-none" style={{ transform: `scale(${zoom})` }}>
-          <img
-            src={slicePath(study.key, slice)}
-            alt={`Axial non-contrast CT, slice ${slice} of ${study.slices}`}
-            draggable={false}
-            className="absolute inset-0 size-full select-none object-contain"
-          />
+        {/* The image and its marks zoom (and pan) together, so a mark stays on what it marks. */}
+        <div className="absolute inset-0 transition-transform duration-150 motion-reduce:transition-none" style={{ transform: `translate(${pan.x}%, ${pan.y}%) scale(${zoom})` }}>
+          <img src={series.path(slice)} alt={series.alt(slice)} draggable={false} className="absolute inset-0 size-full select-none object-contain" />
           {/* AIP-04 — the mark sits OVER the image and lifts off it completely. */}
           {active.length > 0 && (
             <svg data-ncct-overlay viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 size-full" aria-hidden="true">
@@ -174,17 +210,24 @@ export function NcctViewer({
 
         {/* Corner metadata, the way a reading workstation lays it out. */}
         <p className="pointer-events-none absolute left-[12px] top-[8px] text-[11px]/[1.35] text-(--on-image-ink)">
-          NCCT head · axial
-          <br />
-          {study.seriesDescription}
+          {series.topLeft.map((t, i) => (
+            <span key={i} className="block">
+              {t}
+            </span>
+          ))}
         </p>
         <p className="pointer-events-none absolute right-[12px] top-[8px] text-right text-[11px]/[1.35] tabular-nums text-(--on-image-ink)">
-          {study.sliceThickness} mm · {study.kvp} kV
-          <br />W {NCCT_WINDOW.width} : L {NCCT_WINDOW.level}
+          {series.topRight.map((t, i) => (
+            <span key={i} className="block">
+              {t}
+            </span>
+          ))}
         </p>
-        <p className="pointer-events-none absolute bottom-[8px] left-[12px] text-[11px] tabular-nums text-(--on-image-ink)">
-          Im {slice} / {study.slices}
-        </p>
+        {series.kind !== 'single' && (
+          <p className="pointer-events-none absolute bottom-[8px] left-[12px] text-[11px] tabular-nums text-(--on-image-ink)">
+            {series.kind === 'loop' ? 'Frame' : 'Im'} {slice} / {series.frames}
+          </p>
+        )}
         {active.length > 0 && <p className="pointer-events-none absolute bottom-[8px] right-[12px] text-[11px] font-semibold text-(--on-image-ai)">AI overlay on</p>}
       </div>
 
@@ -205,47 +248,64 @@ export function NcctViewer({
           </button>
         )}
 
-        <span className="inline-flex items-center rounded-full bg-sh-control">
+        {series.kind === 'loop' && (
           <button
             type="button"
-            onClick={() => step(-1)}
-            disabled={slice <= 1}
-            aria-label="Previous slice"
-            className="inline-flex size-[44px] items-center justify-center rounded-full text-sh-text-2 hover:bg-sh-hover disabled:opacity-40"
+            onClick={() => (reduced ? step(1) : setPlaying((v) => !v))}
+            aria-pressed={playing}
+            aria-label={playing ? 'Pause' : 'Play'}
+            className="inline-flex size-[44px] items-center justify-center rounded-full bg-sh-control text-sh-text-2 hover:bg-sh-hover"
           >
-            <Icon icon={ChevronLeft} size={16} />
+            <Icon icon={playing ? Pause : Play} size={16} />
           </button>
-          <input
-            type="range"
-            min={1}
-            max={study.slices}
-            value={slice}
-            onChange={(e) => go(Number(e.target.value))}
-            aria-label="Slice"
-            aria-valuetext={`Slice ${slice} of ${study.slices}`}
-            className={cn('h-[44px] accent-(--ai)', compact ? 'w-[72px]' : 'w-[128px]')}
-          />
-          <button
-            type="button"
-            onClick={() => step(1)}
-            disabled={slice >= study.slices}
-            aria-label="Next slice"
-            className="inline-flex size-[44px] items-center justify-center rounded-full text-sh-text-2 hover:bg-sh-hover disabled:opacity-40"
-          >
-            <Icon icon={ChevronRight} size={16} />
-          </button>
-        </span>
+        )}
+
+        {series.kind !== 'single' && (
+          <span className="inline-flex items-center rounded-full bg-sh-control">
+            <button
+              type="button"
+              onClick={() => step(-1)}
+              disabled={slice <= 1}
+              aria-label={`Previous ${noun}`}
+              className="inline-flex size-[44px] items-center justify-center rounded-full text-sh-text-2 hover:bg-sh-hover disabled:opacity-40"
+            >
+              <Icon icon={ChevronLeft} size={16} />
+            </button>
+            <input
+              type="range"
+              min={1}
+              max={series.frames}
+              value={slice}
+              onChange={(e) => go(Number(e.target.value))}
+              aria-label={Noun}
+              aria-valuetext={`${Noun} ${slice} of ${series.frames}`}
+              className={cn('h-[44px] accent-(--ai)', compact ? 'w-[72px]' : 'w-[128px]')}
+            />
+            <button
+              type="button"
+              onClick={() => step(1)}
+              disabled={slice >= series.frames}
+              aria-label={`Next ${noun}`}
+              className="inline-flex size-[44px] items-center justify-center rounded-full text-sh-text-2 hover:bg-sh-hover disabled:opacity-40"
+            >
+              <Icon icon={ChevronRight} size={16} />
+            </button>
+          </span>
+        )}
 
         {/* The frame's own "Im n / N" says it in a narrow card; the slider reads it out either way. */}
-        {!compact && (
+        {!compact && series.kind !== 'single' && (
           <span className="text-[13px] tabular-nums text-sh-text-2">
-            {slice} / {study.slices}
+            {slice} / {series.frames}
           </span>
         )}
 
         <button
           type="button"
-          onClick={() => setZoom((z) => ZOOMS[(ZOOMS.indexOf(z) + 1) % ZOOMS.length])}
+          onClick={() => {
+            setZoom((z) => ZOOMS[(ZOOMS.indexOf(z) + 1) % ZOOMS.length])
+            setPan({ x: 0, y: 0 })
+          }}
           aria-label={zoom === 1 ? 'Zoom' : `Zoom ${Math.round(zoom * 100)}%`}
           title={zoom === 1 ? 'Zoom' : `Zoom ${Math.round(zoom * 100)}%`}
           className={cn(
@@ -265,9 +325,16 @@ export function NcctViewer({
         </p>
       )}
 
+      {series.credit && <p className="mt-[6px] text-[11px] text-sh-text-3">{series.credit}</p>}
+
       {footer}
     </div>
   )
+}
+
+/** The head-CT viewer, as every stroke and imaging screen calls it. */
+export function NcctViewer({ study, ...rest }: { study: NcctStudy } & Omit<Parameters<typeof StudyViewer>[0], 'series'>) {
+  return <StudyViewer series={ncctView(study)} {...rest} />
 }
 
 /**
