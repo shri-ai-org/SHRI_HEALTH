@@ -39,7 +39,7 @@ export function AppBar() {
   const f = FACILITIES.find((x) => x.code === facilityCode) ?? FACILITIES[0]
 
   return (
-    <header className="flex h-[56px] items-center gap-[12px] max-sm:gap-[8px]" role="banner">
+    <header className="flex h-[56px] items-center gap-[12px] max-sm:gap-[6px]" role="banner">
       <RoundButton
         icon={MenuIcon}
         label={railOpen ? 'Collapse navigation' : 'Expand navigation'}
@@ -60,7 +60,7 @@ export function AppBar() {
           aria-haspopup="menu"
           aria-expanded={menu === 'facility'}
           title="Facility — changes your authorization scope"
-          className="flex h-[48px] items-center gap-[10px] rounded-full bg-sh-card pl-[16px] pr-[12px] text-sh-text transition-colors duration-150 hover:bg-sh-hover max-sm:gap-[8px] max-sm:px-[14px]"
+          className="flex h-[48px] items-center gap-[10px] rounded-full bg-sh-card pl-[16px] pr-[12px] text-sh-text transition-colors duration-150 hover:bg-sh-hover max-sm:h-[44px] max-sm:gap-[8px] max-sm:px-[12px]"
         >
           <Icon icon={Building2} size={18} />
           <span className="text-[14px] font-semibold">{f.code}</span>
@@ -72,7 +72,7 @@ export function AppBar() {
 
       <div className="flex-1" />
 
-      <RoundButton icon={Search} label="Patient search" variant="card" size={48} iconSize={20} className="sm:hidden" onClick={openSearch} />
+      <RoundButton icon={Search} label="Patient search" variant="card" size={48} iconSize={20} className="max-sm:size-[44px] sm:hidden" onClick={openSearch} />
 
       <RoundButton
         icon={theme === 'light' ? Moon : Sun}
@@ -81,7 +81,7 @@ export function AppBar() {
         size={48}
         iconSize={20}
         onClick={toggleTheme}
-        className="max-[360px]:hidden"
+        className="max-sm:size-[44px] max-[360px]:hidden"
       />
 
       <div className="relative">
@@ -94,6 +94,7 @@ export function AppBar() {
           aria-haspopup="menu"
           aria-expanded={menu === 'notifications'}
           onClick={() => toggleMenu('notifications')}
+          className="max-sm:size-[44px]"
         />
         {unread > 0 && (
           <span
@@ -132,7 +133,7 @@ export function AppBar() {
           aria-haspopup="menu"
           aria-expanded={menu === 'user'}
           aria-label={`${me.name} — user menu`}
-          className="flex h-[48px] items-center gap-[10px] rounded-full bg-sh-card pl-[4px] pr-[12px] text-sh-text transition-colors duration-150 hover:bg-sh-hover max-sm:pr-[4px]"
+          className="flex h-[48px] items-center gap-[10px] rounded-full bg-sh-card pl-[4px] pr-[12px] text-sh-text transition-colors duration-150 hover:bg-sh-hover max-sm:h-[44px] max-sm:pr-[4px]"
         >
           <span className="inline-flex size-[40px] items-center justify-center rounded-full bg-sh-primary text-sh-on-primary">
             <Icon icon={UserRound} size={20} />

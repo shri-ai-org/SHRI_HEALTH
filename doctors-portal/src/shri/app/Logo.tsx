@@ -2,29 +2,41 @@ import { Link } from 'react-router-dom'
 
 import { cn } from '../lib/cn'
 
+import logoMark from './logo-mark.webp'
 import { P } from './paths'
 
-/** §9 — the 8-point asterisk mark, 28px. */
-export function LogoMark({ size = 28, className }: { size?: number; className?: string }) {
-  return (
-    <svg viewBox="0 0 32 32" width={size} height={size} fill="currentColor" className={cn('shrink-0', className)} aria-hidden="true">
-      <path d="M16 2c1 0 1.6.8 1.6 1.8v7.6l5.4-5.4c.7-.7 1.8-.7 2.4 0 .7.7.7 1.8 0 2.4L20 13.8h7.6c1 0 1.8.7 1.8 1.7s-.8 1.8-1.8 1.8H20l5.4 5.4c.7.7.7 1.8 0 2.4-.7.7-1.8.7-2.4 0l-5.4-5.4v7.6c0 1-.7 1.8-1.7 1.8s-1.8-.8-1.8-1.8v-7.6l-5.4 5.4c-.7.7-1.8.7-2.4 0-.7-.7-.7-1.8 0-2.4l5.4-5.4H4.1c-1 0-1.8-.8-1.8-1.8s.8-1.7 1.8-1.7h7.6L6.3 8.4c-.7-.7-.7-1.8 0-2.4.7-.7 1.8-.7 2.4 0l5.4 5.4V3.8C14.1 2.8 15 2 16 2z" />
-    </svg>
-  )
+/**
+ * §9 — the Shri Health mark, 36px tall. Drawn from brand/logo-source.png by
+ * scripts/brand-assets.py at twice this height; small enough that Vite inlines
+ * it, so it paints with the page and costs no request.
+ */
+/** The mark's exported size (brand-assets.py), so the frame is reserved before it paints. */
+const MARK_W = 43
+const MARK_H = 72
+
+export function LogoMark({ size = 36, className }: { size?: number; className?: string }) {
+  return <img src={logoMark} alt="" width={Math.round((size * MARK_W) / MARK_H)} height={size} decoding="async" className={cn('shrink-0 select-none', className)} draggable={false} />
 }
 
-/** §4.1 #2 — mark + "Shri Health", links to My Day, hidden under 768px. */
+/**
+ * §4.1 #2 — mark + "Shri Health", links to My Day. Under 768px the mark alone,
+ * as a picture rather than a link: the bottom bar's Home is My Day there, and
+ * the row has no room for a second 44px target.
+ */
 export function Logo() {
   return (
-    <Link
-      to={P.myDay}
-      className="flex items-center gap-[10px] rounded-full pr-2 text-sh-text max-sm:hidden"
-      aria-label="Shri Health — My Day"
-    >
-      <LogoMark />
-      <span className="whitespace-nowrap text-[24px]/none font-medium tracking-[-0.02em] shdark:font-sh-serif shdark:text-[30px] shdark:font-normal shdark:tracking-normal">
-        Shri Health
-      </span>
-    </Link>
+    <>
+      <LogoMark size={32} className="sm:hidden" />
+      <Link
+        to={P.myDay}
+        className="flex min-h-[44px] items-center gap-[10px] rounded-full pr-2 text-sh-text max-sm:hidden"
+        aria-label="Shri Health — My Day"
+      >
+        <LogoMark />
+        <span className="whitespace-nowrap text-[24px]/none font-medium tracking-[-0.02em] shdark:font-sh-serif shdark:text-[30px] shdark:font-normal shdark:tracking-normal">
+          Shri Health
+        </span>
+      </Link>
+    </>
   )
 }
