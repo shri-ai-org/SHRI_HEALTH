@@ -49,7 +49,7 @@ import { useMayOpenPath } from '../app/landing'
 import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
 import { NCCT_MODEL, citationLink, criticalFindingFor } from '../logic/imaging'
-import { imageView } from '../logic/series'
+import { imageView, ncctView } from '../logic/series'
 import { RecordDoors } from '../record/RecordDoors'
 import { StrokeAIReport } from '../stroke/StrokeAIReport'
 import { useAiActive, useForcedState } from '../state/ai'
@@ -59,11 +59,14 @@ import { Disclosure, Why } from '../ui/Disclosure'
 import { EmptyState } from '../ui/EmptyState'
 import { TextInput } from '../ui/forms'
 import { KeyValue } from '../ui/KeyValue'
-import { NcctViewer, StudyViewer } from '../ui/NcctViewer'
+
 import { Card, ConfidenceMark, Diamond, Pill, PillTag } from '../ui/primitives'
 import { VoiceField } from '../ui/VoiceField'
 
 import { EscalateDialog } from './EscalateDialog'
+import { SeriesStrip } from './viewer/SeriesStrip'
+import { StudyPanel } from './viewer/StudyPanel'
+import { Workstation } from './viewer/Workstation'
 
 export function StudyViewerPage() {
   const { id } = useParams()
@@ -133,6 +136,7 @@ function ImageStudy({ study: s, image, frame }: { study: ImagingStudy; image: Im
   const p = patient(s.patientId)
   const view = imageView(image, s.description)
   const worklist = '/radiology/worklist'
+  const [slice, setSlice] = useState(frame ?? 1)
   return (
     <ScreenFrame
       screenId="S-15-04"
@@ -177,12 +181,14 @@ function ImageStudy({ study: s, image, frame }: { study: ImagingStudy; image: Im
       }
       railTitle="Study"
     >
+      <SeriesStrip study={s} />
       <div className="grid grid-cols-1 gap-[20px] xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:items-start">
         <div className="min-w-0">
-          <StudyViewer series={view} initialSlice={frame} />
+          <Workstation series={view} studyId={s.id} slice={slice} onSlice={setSlice} />
         </div>
         <div className="flex min-w-0 flex-col gap-[16px]">
           <ReportBody study={s} />
+          <StudyPanel study={s} series={view} image={image} onGo={setSlice} />
           <Card titleSize="sm" title="AI read">
             <p className="text-[14px] text-sh-text-2">No model reads {image.modality === 'X-ray' ? 'X-rays' : image.modality === 'MRI' ? 'MRI' : image.modality === 'Echo' ? 'echocardiograms' : image.modality === 'CT' ? 'CT outside the head' : 'ultrasound'} here — the report above is the radiologist's alone.</p>
           </Card>
@@ -235,6 +241,7 @@ function Viewer({ record, study, frame }: { record: ImagingStudy; study: NcctStu
   const voiceNotes = useClinical((s) => s.voiceNotes)
 
   const studyId = record.id
+  const view = useMemo(() => ncctView(study), [study])
   const c = maybeStrokeCase(study.strokeCaseId)
   const p = patient(record.patientId)
   const findings = useMemo(() => ncctFindings(study.truth, c), [study, c])
@@ -378,7 +385,7 @@ function Viewer({ record, study, frame }: { record: ImagingStudy; study: NcctStu
               {sideBySide && (
                 <div className="min-w-0">
                   <p className="mb-[6px] text-[11px] font-semibold uppercase tracking-[0.08em] text-sh-text-2">Original</p>
-                  <NcctViewer study={study} overlays={[]} slice={slice} onSlice={setSlice} compact />
+                  <Workstation series={view} studyId={studyId} overlays={[]} slice={slice} onSlice={setSlice} tools={false} />
                 </div>
               )}
               <div className="min-w-0">
@@ -387,7 +394,7 @@ function Viewer({ record, study, frame }: { record: ImagingStudy; study: NcctStu
                     <Diamond /> With overlay
                   </p>
                 )}
-                <NcctViewer study={study} overlays={aiActive ? overlays : []} slice={slice} onSlice={setSlice} compact={sideBySide} />
+                <Workstation series={view} studyId={studyId} overlays={aiActive ? overlays : []} slice={slice} onSlice={setSlice} tools={!sideBySide} />
               </div>
             </div>
 
@@ -524,6 +531,20 @@ function Viewer({ record, study, frame }: { record: ImagingStudy; study: NcctStu
                 <p className="mt-[8px] text-[12px] tabular-nums text-sh-text-2">{record.reportedBy ?? 'Awaiting radiologist'}</p>
               </Card>
             )}
+
+            {/* The reader's marks, key images, report and header — the workstation's panel. */}
+            <StudyPanel
+              study={record}
+              series={view}
+              tags={[
+                ['Series', study.seriesDescription],
+                ['Slice thickness', `${study.sliceThickness} mm`],
+                ['kVp', String(study.kvp)],
+                ['Window at export', `W ${NCCT_WINDOW.width} / L ${NCCT_WINDOW.level} (brain)`],
+                ['Source', `CQ500 (qure.ai) · ${study.sourcePatientId} · CC BY-NC-SA 4.0 · de-identified`],
+              ]}
+              onGo={setSlice}
+            />
 
             {/* Questions about THIS scan, answered with their citations. */}
             {aiActive && (

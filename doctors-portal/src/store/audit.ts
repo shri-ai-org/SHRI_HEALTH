@@ -66,6 +66,12 @@ export type AuditEvent =
   | 'IMAGING.CRITICAL_ESCALATED'
   /** S-15-04: a reading note saved against a study. */
   | 'IMAGING.NOTE_SAVED'
+  | 'IMAGING.ANNOTATION_ADDED'
+  | 'IMAGING.ANNOTATION_DELETED'
+  | 'IMAGING.KEY_IMAGE'
+  | 'IMAGING.REPORT_DRAFTED'
+  | 'IMAGING.REPORT_SIGNED'
+  | 'IMAGING.ADDENDUM_SIGNED'
   // — M-18 stroke, part A (S-18-01…10)
   /** S-18-04: a code stroke activated — one tap, never gated; the clock starts and the team is paged. */
   | 'STROKE.CODE_ACTIVATED'
@@ -186,6 +192,12 @@ const LABELS: Record<AuditEvent, string> = {
   'PATIENT.LEFT_AMA': 'Left against medical advice',
   'IMAGING.CRITICAL_ESCALATED': 'Critical finding escalated',
   'IMAGING.NOTE_SAVED': 'Reading note saved',
+  'IMAGING.ANNOTATION_ADDED': 'Mark added to an image',
+  'IMAGING.ANNOTATION_DELETED': 'Mark deleted from an image',
+  'IMAGING.KEY_IMAGE': 'Key image marked',
+  'IMAGING.REPORT_DRAFTED': 'Imaging report drafted',
+  'IMAGING.REPORT_SIGNED': 'Imaging report signed',
+  'IMAGING.ADDENDUM_SIGNED': 'Imaging addendum signed',
   // — M-18 stroke, part A
   'STROKE.CODE_ACTIVATED': 'Code stroke activated',
   'STROKE.INTAKE_SAVED': 'Stroke intake saved',

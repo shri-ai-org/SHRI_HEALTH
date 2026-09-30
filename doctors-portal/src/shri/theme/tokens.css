@@ -153,6 +153,8 @@ html.shri-active body::before {
   --on-image-ai: #a5b4fc;
   --on-image-crit: #fca5a5;
   --on-image-ink: rgb(255 255 255 / 0.72);
+  /* The reader's own marks — yellow, as a reading workstation draws them, apart from the AI's violet. */
+  --on-image-mark: #fde047;
   /* The video tile, black in both themes like the scan (src/screens/m27/Telehealth.tsx). */
   --video-bg: #0a0d14;
   --video-tile: #151b28;
