@@ -43,10 +43,10 @@ const ENCOUNTERS_BASE: Encounter[] = [
     encounterNo: 'OP/26-27/118402',
     patientId: 'SD-P-01',
     type: 'OP',
-    startedAt: minutesAgo(6),
+    startedAt: minutesAgo(14),
     consultantStaffId: 'SD-S-01',
     department: 'General Medicine',
-    token: 'MED-042',
+    token: 'MED-045',
   },
   {
     id: 'E-118366',
@@ -103,10 +103,10 @@ const ENCOUNTERS_BASE: Encounter[] = [
     encounterNo: 'OP/26-27/118455',
     patientId: 'SD-P-11',
     type: 'OP',
-    startedAt: minutesAgo(14),
+    startedAt: minutesAgo(26),
     consultantStaffId: 'SD-S-01',
     department: 'General Medicine',
-    token: 'MED-045',
+    token: 'MED-041',
   },
   {
     id: 'E-118340',
@@ -143,10 +143,10 @@ const ENCOUNTERS_BASE: Encounter[] = [
     encounterNo: 'OP/26-27/118460',
     patientId: 'SD-P-15',
     type: 'OP',
-    startedAt: minutesAhead(22),
+    startedAt: minutesAgo(18),
     consultantStaffId: 'SD-S-01',
     department: 'General Medicine',
-    token: 'MED-046',
+    token: 'MED-042',
   },
   {
     id: 'E-118398',
@@ -2054,13 +2054,23 @@ export interface ClinicRow {
 export const CLINIC_LIST: ClinicRow[] = [
   { token: 'MED-039', patientId: 'SD-P-04', bookedAt: new Date(2026, 8, 21, 8, 10), arrivedAt: minutesAgo(48), status: 'Seen' },
   { token: 'MED-040', patientId: 'SD-P-06', bookedAt: new Date(2026, 8, 21, 8, 20), arrivedAt: minutesAgo(40), status: 'Seen' },
+  // ── Follow-ups with a head CT on the record, first in the morning's queue.
+  {
+    token: 'MED-041',
+    patientId: 'SD-P-11',
+    bookedAt: new Date(2026, 8, 21, 8, 30),
+    arrivedAt: minutesAgo(26),
+    status: 'Waiting',
+    predictedWaitMin: 4,
+    band: 'HIGH',
+  },
   {
     token: 'MED-042',
-    patientId: 'SD-P-01',
+    patientId: 'SD-P-15',
     bookedAt: new Date(2026, 8, 21, 8, 40),
     arrivedAt: minutesAgo(18),
     status: 'Waiting',
-    predictedWaitMin: 4,
+    predictedWaitMin: 12,
     band: 'HIGH',
   },
   {
@@ -2080,24 +2090,15 @@ export const CLINIC_LIST: ClinicRow[] = [
     predictedWaitMin: 28,
     band: 'MED',
   },
-  // ── Follow-ups with a head CT on the record.
   { token: 'MED-036', patientId: 'SD-P-16', bookedAt: new Date(2026, 8, 21, 7, 40), arrivedAt: minutesAgo(75), status: 'Seen' },
   {
     token: 'MED-045',
-    patientId: 'SD-P-11',
+    patientId: 'SD-P-01',
     bookedAt: new Date(2026, 8, 21, 9, 10),
     arrivedAt: minutesAgo(14),
     status: 'Waiting',
     predictedWaitMin: 24,
     band: 'HIGH',
-  },
-  {
-    token: 'MED-046',
-    patientId: 'SD-P-15',
-    bookedAt: new Date(2026, 8, 21, 9, 20),
-    status: 'Not arrived',
-    predictedWaitMin: 38,
-    band: 'MED',
   },
 ]
 
@@ -2333,10 +2334,10 @@ export const TIMELINE: Record<string, TimelineEvent[]> = {
       ai: 'AI-212',
     },
     {
-      at: minutesAgo(18),
+      at: minutesAgo(14),
       kind: 'admission',
       label: 'Arrived, ABHA Scan & Share',
-      detail: 'Token MED-042. Demographics pulled from ABHA; nothing typed.',
+      detail: 'Token MED-045. Demographics pulled from ABHA; nothing typed.',
       by: 'Front office',
       ai: 'AI-702',
     },

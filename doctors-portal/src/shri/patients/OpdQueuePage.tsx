@@ -155,9 +155,12 @@ export function OpdQueuePage() {
     { key: 'state', label: 'Status', role: 'status', cell: statusChip },
   ]
 
+  const waiting = rows.filter((r) => r.live === 'Waiting' || r.live === 'Admission in progress')
+  // The longest wait of whoever is waiting now, from their own arrival — never a fixed figure.
+  const longest = Math.max(0, ...waiting.map((r) => (NOW.getTime() - (r.clinic?.arrivedAt?.getTime() ?? NOW.getTime())) / 60000))
   const cols: BoardColumn<OpdRow>[] = [
     { key: 'notarrived', label: 'Not arrived', tone: 'neu', rows: rows.filter((r) => r.live === 'Not arrived') },
-    { key: 'waiting', label: 'Waiting', tone: 'warn', capacity: `longest ${formatElapsed(18)}`, rows: rows.filter((r) => r.live === 'Waiting' || r.live === 'Admission in progress') },
+    { key: 'waiting', label: 'Waiting', tone: 'warn', capacity: waiting.length > 0 ? `longest ${formatElapsed(longest)}` : undefined, rows: waiting },
     { key: 'video', label: 'Teleconsult', tone: 'pend', rows: rows.filter((r) => r.live === 'Teleconsult') },
     { key: 'inroom', label: 'In room', tone: 'norm', rows: rows.filter((r) => r.live === 'In room') },
     { key: 'seen', label: 'Seen', tone: 'neu', rows: rows.filter((r) => r.live === 'Seen') },

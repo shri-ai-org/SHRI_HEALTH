@@ -311,7 +311,7 @@ export interface Appointment {
 const APPOINTMENTS_BASE: Appointment[] = [
   // SD-P-01
   { id: 'AP-0101', patientId: 'SD-P-01', at: on(3, 14, 10, 30), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Thyroid review' },
-  { id: 'AP-0102', patientId: 'SD-P-01', at: on(9, 21, 8, 40), kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Thyroid review with results', location: 'Room 4, OPD block' },
+  { id: 'AP-0102', patientId: 'SD-P-01', at: on(9, 21, 9, 10), kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Thyroid review with results', location: 'Room 4, OPD block' },
   { id: 'AP-0103', patientId: 'SD-P-01', at: on(12, 21, 9, 0), kind: 'Investigation', status: 'Booked', clinic: 'Laboratory', with: 'Phlebotomy', purpose: 'Ferritin and haemoglobin recheck', prepare: ['No fasting needed'] },
   { id: 'AP-0104', patientId: 'SD-P-01', at: on(3, 22, 10, 0, 2027), kind: 'Follow-up', status: 'Booked', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Six-monthly thyroid review', prepare: ['Thyroid function test a week before', 'Bring the levothyroxine strip'] },
   // SD-P-02
@@ -342,7 +342,7 @@ const APPOINTMENTS_BASE: Appointment[] = [
   { id: 'AP-1003', patientId: 'SD-P-10', at: on(10, 19, 16, 0), kind: 'Teleconsult', status: 'Booked', clinic: 'Teleconsult', with: 'Dr. Ananya Iyer', purpose: 'Week-10 review', prepare: ['Liver tests and lipids the week before'] },
   // SD-P-11
   { id: 'AP-1101', patientId: 'SD-P-11', at: on(9, 7, 11, 0), kind: 'Review', status: 'Completed', clinic: 'Ward 4B', with: 'Dr. Ananya Iyer', purpose: 'Discharge after subdural evacuation' },
-  { id: 'AP-1102', patientId: 'SD-P-11', at: on(9, 21, 9, 10), kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Three-week review — anticoagulation decision', location: 'Room 4, OPD block' },
+  { id: 'AP-1102', patientId: 'SD-P-11', at: on(9, 21, 8, 30), kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Three-week review — anticoagulation decision', location: 'Room 4, OPD block' },
   { id: 'AP-1103', patientId: 'SD-P-11', at: on(9, 28, 9, 0), kind: 'Investigation', status: 'Booked', clinic: 'Laboratory', with: 'Phlebotomy', purpose: 'Sodium recheck' },
   { id: 'AP-1104', patientId: 'SD-P-11', at: on(10, 12, 10, 30), kind: 'Follow-up', status: 'Booked', clinic: 'Neurosurgery OPD', with: 'Neurosurgeon', purpose: 'Review with a repeat CT head', prepare: ['CT head on arrival — no fasting needed', 'Bring a family member'] },
   // SD-P-12
@@ -355,7 +355,7 @@ const APPOINTMENTS_BASE: Appointment[] = [
   { id: 'AP-1402', patientId: 'SD-P-14', at: new Date(2026, 8, 21, 3, 10), kind: 'Transfer', status: 'Today', clinic: 'Neuro-ICU, hub', with: 'AMB-ITP-02', purpose: 'Transfer to the hub for neurosurgery', location: 'Tiruppur → Coimbatore' },
   // SD-P-15
   { id: 'AP-1501', patientId: 'SD-P-15', at: on(9, 9, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Recurrent headache' },
-  { id: 'AP-1502', patientId: 'SD-P-15', at: on(9, 21, 9, 20), kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Two-week review on propranolol', location: 'Room 4, OPD block' },
+  { id: 'AP-1502', patientId: 'SD-P-15', at: on(9, 21, 8, 40), kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Two-week review on propranolol', location: 'Room 4, OPD block' },
   { id: 'AP-1503', patientId: 'SD-P-15', at: on(12, 21, 10, 0), kind: 'Follow-up', status: 'Booked', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Three-month migraine review', prepare: ['Bring the headache diary'] },
   // SD-P-16
   { id: 'AP-1601', patientId: 'SD-P-16', at: on(9, 14, 22, 50), kind: 'Review', status: 'Completed', clinic: 'Emergency', with: 'Emergency team', purpose: 'Head injury assessment' },
