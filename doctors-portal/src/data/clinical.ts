@@ -15,7 +15,9 @@ import type { ConfidenceBand } from '@/atlas/confidence'
 import type { Gate } from '@/atlas/gates'
 
 import { minutesAgo, minutesAhead } from './format'
+import { ENCOUNTERS_EXT, PROBLEMS_EXT } from './record-ext'
 import { RESULTS_EXT, RESULT_TRENDS_EXT } from './results-ext'
+import { VITALS_EXT, type VitalRow } from './vitals-history'
 
 // ───────────────────────────────────────────────────────────────── Encounters
 
@@ -35,7 +37,7 @@ export interface Encounter {
   ward?: string
 }
 
-export const ENCOUNTERS: Encounter[] = [
+const ENCOUNTERS_BASE: Encounter[] = [
   {
     id: 'E-118402',
     encounterNo: 'OP/26-27/118402',
@@ -157,6 +159,9 @@ export const ENCOUNTERS: Encounter[] = [
     token: 'MED-036',
   },
 ]
+
+/** The first set, and the later entries (`record-ext.ts`). */
+export const ENCOUNTERS: Encounter[] = [...ENCOUNTERS_BASE, ...ENCOUNTERS_EXT]
 
 const encountersById = new Map(ENCOUNTERS.map((e) => [e.id, e]))
 
@@ -434,7 +439,7 @@ export interface Problem {
   leaf: boolean
 }
 
-export const PROBLEMS: Problem[] = [
+const PROBLEMS_BASE: Problem[] = [
   {
     id: 'PR-01',
     patientId: 'SD-P-01',
@@ -520,6 +525,9 @@ export const PROBLEMS: Problem[] = [
   { id: 'PR-23', patientId: 'SD-P-15', label: 'Migraine without aura', icd10: 'G43.009', snomed: '56097005', onset: '2019', status: 'Open', leaf: true },
   { id: 'PR-24', patientId: 'SD-P-16', label: 'Concussion without loss of consciousness', icd10: 'S06.0X0', snomed: '110030002', onset: '14-Sep-2026', status: 'Open', leaf: true },
 ]
+
+/** The first set, and the later entries (`record-ext.ts`). */
+export const PROBLEMS: Problem[] = [...PROBLEMS_BASE, ...PROBLEMS_EXT]
 
 export function problemsFor(patientId: string): Problem[] {
   return PROBLEMS.filter((p) => p.patientId === patientId)
@@ -1963,7 +1971,7 @@ export const INPATIENTS: WorklistRow[] = [
     patientId: 'SD-P-02',
     bed: '2A-04',
     risk: 'MODERATE',
-    reason: 'Day 2 post-CABG, drains in situ',
+    reason: 'Day 2 post-CABG, drains out',
     pending: ['Progress note'],
     chronologicalAt: minutesAgo(180),
   },
@@ -2025,7 +2033,7 @@ export const TELECONSULT_QUEUE: TeleRow[] = [
     id: 'E-118430',
     patientId: 'SD-P-10',
     scheduledAt: minutesAhead(25),
-    reason: 'Chronic plaque psoriasis, review after topical therapy',
+    reason: 'Acne on isotretinoin, week-6 review',
     videoReady: true,
     rankReason: 'On time, video tested, photographs already uploaded',
   },
@@ -2193,7 +2201,7 @@ export const REFERRALS: ReferralRow[] = [
     id: 'REF-03',
     fromDoctor: 'Dr. L. Pereira',
     fromFacility: 'Pollachi General Practice',
-    patientName: 'Arjun Nair',
+    patientName: 'Faisal Ahmed',
     speciality: 'Dermatology',
     reason: 'Chronic plaque psoriasis, not responding to topical therapy',
     receivedAt: new Date(2026, 8, 20, 16, 30),
@@ -2527,8 +2535,8 @@ export function timelineFor(patientId: string): TimelineEvent[] {
   return (TIMELINE[patientId] ?? []).slice().sort((a, b) => b.at.getTime() - a.at.getTime())
 }
 
-/** Vitals for the patient banner risk strip and the objective section. */
-export const VITALS: Record<string, { label: string; value: string; flag: 'Normal' | '↑ High' | '↓ Low'; at: Date }[]> = {
+/** Vitals for the patient banner risk strip and the objective section — the first set; `VITALS` below adds `vitals-history.ts`. */
+const VITALS_BASE: Record<string, VitalRow[]> = {
   'SD-P-03': [
     { label: 'Respiratory rate', value: '26 /min', flag: '↑ High', at: minutesAgo(50) },
     { label: 'SpO₂', value: '92% on 4 L', flag: '↓ Low', at: minutesAgo(50) },
@@ -2599,6 +2607,14 @@ export const VITALS: Record<string, { label: string; value: string; flag: 'Norma
     { label: 'GCS', value: '15', flag: 'Normal', at: minutesAgo(72) },
   ],
 }
+
+/** Every patient's latest vitals: the first set, with the readings it lacked (`vitals-history.ts`) after them. */
+export const VITALS: Record<string, VitalRow[]> = Object.fromEntries(
+  [...new Set([...Object.keys(VITALS_BASE), ...Object.keys(VITALS_EXT)])].map((id) => {
+    const base = VITALS_BASE[id] ?? []
+    return [id, [...base, ...(VITALS_EXT[id] ?? []).filter((v) => !base.some((b) => b.label === v.label))]]
+  }),
+)
 
 /** The banner's deterioration strip — AI-201, AIP-05. */
 export interface RiskStrip {

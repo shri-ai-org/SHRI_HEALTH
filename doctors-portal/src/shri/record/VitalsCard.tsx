@@ -12,10 +12,12 @@ import { Activity } from 'lucide-react'
 import { VITALS } from '@/data/clinical'
 import { formatTime } from '@/data/format'
 import type { Patient } from '@/data/kit'
+import { vitalsHistoryFor } from '@/data/vitals-history'
 
 import { cn } from '../lib/cn'
 import { EmptyState } from '../ui/EmptyState'
 import { Card } from '../ui/primitives'
+import { Sparkline } from '../ui/Sparkline'
 
 import { ClinicalFlag } from './bits'
 
@@ -27,6 +29,7 @@ function split(value: string): { number: string; rest: string } {
 
 export function VitalsCard({ patient: p, className }: { patient: Patient; className?: string }) {
   const rows = VITALS[p.id] ?? []
+  const history = vitalsHistoryFor(p.id)
   return (
     <Card
       titleSize="sm"
@@ -40,6 +43,8 @@ export function VitalsCard({ patient: p, className }: { patient: Patient; classN
         <dl className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-[8px]">
           {rows.map((r) => {
             const { number, rest } = split(r.value)
+            // The line only where there is a history — never a trend drawn from one reading.
+            const h = history.find((x) => x.label === r.label)
             return (
               <div key={r.label} className={cn('flex min-w-0 flex-col gap-[2px] rounded-[14px] bg-sh-inner px-[12px] py-[8px]')}>
                 <dt className="truncate text-[12px] text-sh-text-2">{r.label}</dt>
@@ -50,6 +55,11 @@ export function VitalsCard({ patient: p, className }: { patient: Patient; classN
                   </span>
                   {r.flag !== 'Normal' && <ClinicalFlag flag={r.flag} />}
                 </dd>
+                {h && h.points.length > 1 && (
+                  <dd className="mt-[2px]">
+                    <Sparkline points={h.points} unit={h.unit} label={`${r.label} over ${h.points.length} readings`} bare />
+                  </dd>
+                )}
               </div>
             )
           })}

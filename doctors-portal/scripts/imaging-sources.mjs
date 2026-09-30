@@ -9,7 +9,9 @@
  * pairing can be checked from either side.
  *
  * Licences: TCIA COVID-19-AR CC BY 4.0 · TCIA Pancreas-CT CC BY 3.0 · HC18
- * (Zenodo 1327317) CC BY 4.0 · Wikimedia Commons files as listed per file.
+ * (Zenodo 1327317) CC BY 4.0 · Kermany et al. paediatric chest X-ray
+ * (Mendeley Data rscbjbr9sj v3) CC BY 4.0 · Wikimedia Commons files as
+ * listed per file.
  * CC BY-SA files keep their licence as frames; the credit line under every
  * image names the author and the licence, and public/imaging/SOURCES.txt
  * lists them all.
@@ -44,6 +46,12 @@ const commons = (file, licence, author, extra = {}) => ({
   credit: `${author}, Wikimedia Commons`,
 })
 const hc18 = (file) => ({ type: 'local', file: `hc18/${file}`, ...HC18 })
+const KERMANY = {
+  dataset: 'Kermany et al., paediatric chest X-ray',
+  licence: 'CC BY 4.0',
+  page: 'https://data.mendeley.com/datasets/rscbjbr9sj/3',
+  credit: 'Kermany, Zhang, Goldbaum (Mendeley Data), de-identified',
+}
 
 export const SOURCES = [
   // ── The 15 on the record ──────────────────────────────────────────────
@@ -82,6 +90,33 @@ export const SOURCES = [
     bodyPart: 'Thyroid',
     view: 'Right lobe, longitudinal',
     source: commons('Hashimoto-Thyreoiditis.JPG', 'CC BY-SA 3.0', 'Drahreg01'),
+  },
+  {
+    key: 'xr-0601',
+    for: 'ST-9535 · SD-P-06 chest X-ray',
+    kind: 'single',
+    modality: 'X-ray',
+    bodyPart: 'Chest',
+    view: 'AP (paediatric)',
+    source: { type: 'local', file: 'kermany/NORMAL-5997885-0001.jpeg', ...KERMANY },
+  },
+  {
+    key: 'us-0701',
+    for: 'ST-9862 · SD-P-07 ultrasound KUB',
+    kind: 'single',
+    modality: 'Ultrasound',
+    bodyPart: 'Right kidney',
+    view: 'Sagittal',
+    source: commons('Normal adult kidney.jpg', 'CC BY 4.0', 'K. L. Hansen, M. B. Nielsen, C. Ewertsen'),
+  },
+  {
+    key: 'us-0901',
+    for: 'ST-9541 · SD-P-09 ultrasound KUB',
+    kind: 'single',
+    modality: 'Ultrasound',
+    bodyPart: 'Left kidney',
+    view: 'Sagittal',
+    source: commons('Ultrasound of left kidney renal parenchymal disease.jpg', 'CC BY-SA 4.0', 'Cerevisae'),
   },
   {
     key: 'us-0401',
@@ -156,15 +191,6 @@ export const SOURCES = [
     bodyPart: 'Left knee',
     view: 'AP, standing',
     source: commons('Osteoarthritis on X-ray.jpg', 'CC BY-SA 4.0', 'James Heilman, MD'),
-  },
-  {
-    key: 'us-2301',
-    for: 'ST-9655 · SD-P-23 ultrasound KUB',
-    kind: 'single',
-    modality: 'Ultrasound',
-    bodyPart: 'Left kidney',
-    view: 'Sagittal',
-    source: commons('Ultrasound of left kidney renal parenchymal disease.jpg', 'CC BY-SA 4.0', 'Cerevisae'),
   },
   {
     key: 'us-2401',

@@ -92,6 +92,7 @@ export const RESULTS_EXT: ResultRow[] = [
   row('R-90601', 'SD-P-06', 'Platelets', '190', '×10⁹/L', '150 – 410', 'Normal', d(9, 20, 9, 0), 'Within range, up from 160 the evening before', { priorValue: '160', delta: '+30 in 15h', refLow: 150, refHigh: 410 }),
   row('R-90602', 'SD-P-06', 'White cell count', '4.2', '×10⁹/L', '5.0 – 14.5 (age 6)', '↓ Low', d(9, 20, 9, 0), 'Below the range for her age', { refLow: 5, refHigh: 14.5 }),
   row('R-90603', 'SD-P-06', 'Haemoglobin', '11.8', 'g/dL', '11.5 – 15.5 (age 6)', 'Normal', d(9, 20, 9, 0), 'Within the range for her age', { refLow: 11.5, refHigh: 15.5 }),
+  row('R-90604', 'SD-P-06', 'Urine routine', 'No pus cells · protein nil', '', 'No pus cells · nil', 'Normal', d(9, 19, 13, 0), 'No sign of a urinary infection'),
 
   // ── SD-P-07 · Joseph Mathew — septic shock from a urinary source, day 7
   row('R-90701', 'SD-P-07', 'Serum lactate', '2.9', 'mmol/L', '0.5 – 2.0', '↑ High', minutesAgo(95), 'Up from 2.2 yesterday, after falling from 5.8 on admission', { priorValue: '2.2', delta: '+0.7 in 26h', refLow: 0.5, refHigh: 2 }),
@@ -103,6 +104,12 @@ export const RESULTS_EXT: ResultRow[] = [
   row('R-90902', 'SD-P-09', 'Intact PTH', '486', 'pg/mL', '15 – 65', '↑ High', d(9, 19, 7, 0), 'Above range, with the phosphate also high', { ...seen, refLow: 15, refHigh: 65 }),
   row('R-90903', 'SD-P-09', 'Blood urea (pre-dialysis)', '24.6', 'mmol/L', '2.5 – 7.8', '↑ High', d(9, 19, 7, 0), 'Pre-dialysis value, as expected between sessions', { ...seen, refLow: 2.5, refHigh: 7.8 }),
   row('R-90904', 'SD-P-09', 'Hepatitis B surface antigen', 'Negative', '', 'Negative', 'Normal', d(9, 19, 7, 0), 'The dialysis unit’s quarterly screen'),
+  row('R-90905', 'SD-P-09', 'Hepatitis C antibody', 'Negative', '', 'Negative', 'Normal', d(9, 19, 7, 0), 'The dialysis unit’s quarterly screen'),
+  row('R-90906', 'SD-P-09', 'HIV 1 and 2 antibodies', 'Non-reactive', '', 'Non-reactive', 'Normal', d(9, 19, 7, 0), 'The dialysis unit’s quarterly screen'),
+
+  // ── SD-P-10 · Arjun Nair — isotretinoin, week 6 bloods
+  row('R-91001', 'SD-P-10', 'AST', '26', 'U/L', '10 – 40', 'Normal', d(9, 12, 9, 30), 'Within range', { refLow: 10, refHigh: 40 }),
+  row('R-91002', 'SD-P-10', 'Total cholesterol', '172', 'mg/dL', '< 200', 'Normal', d(9, 12, 9, 30), 'Within range, up from 158 before treatment', { priorValue: '158', refLow: 0, refHigh: 200 }),
 
   // ── SD-P-11 · Selvi Murugan — three weeks after subdural evacuation
   row('R-91101', 'SD-P-11', 'Platelets', '212', '×10⁹/L', '150 – 410', 'Normal', minutesAgo(60), 'Within range', { refLow: 150, refHigh: 410 }),
@@ -124,6 +131,10 @@ export const RESULTS_EXT: ResultRow[] = [
   row('R-91402', 'SD-P-14', 'Platelets', '198', '×10⁹/L', '150 – 410', 'Normal', d(9, 21, 2, 40), 'Within range', { refLow: 150, refHigh: 410 }),
   row('R-91403', 'SD-P-14', 'Serum creatinine', '102', 'µmol/L', '62 – 106', 'Normal', d(9, 21, 2, 40), 'Within range', { refLow: 62, refHigh: 106 }),
   row('R-91404', 'SD-P-14', 'Blood group and antibody screen', 'B positive · screen negative', '', '—', 'Normal', d(9, 21, 2, 55), 'Grouped for reversal and theatre'),
+
+  // ── SD-P-16 · Rahul Verma — minor head injury, the bloods in Emergency
+  row('R-91601', 'SD-P-16', 'Capillary glucose', '104', 'mg/dL', '70 – 140', 'Normal', d(9, 14, 23, 5), 'Within range', { refLow: 70, refHigh: 140 }),
+  row('R-91602', 'SD-P-16', 'Platelets', '248', '×10⁹/L', '150 – 410', 'Normal', d(9, 14, 23, 30), 'Within range', { refLow: 150, refHigh: 410 }),
 
   // ── SD-P-15 · Lakshmi Narayanan — migraine
   row('R-91501', 'SD-P-15', 'TSH', '1.8', 'mIU/L', '0.4 – 4.0', 'Normal', d(9, 9, 10, 0), 'Within range', { refLow: 0.4, refHigh: 4 }),
@@ -160,9 +171,9 @@ export const RESULT_TRENDS_EXT: Record<string, { at: Date; value: number }[]> = 
     { at: d(9, 19, 6, 30), value: 1.2 },
     { at: minutesAgo(120), value: 3.8 },
   ],
-  // SD-P-04 — haemoglobin on iron
+  // SD-P-04 — haemoglobin on iron, from the booking visit
   'R-89040': [
-    { at: d(8, 22, 10, 0), value: 10.2 },
+    { at: d(7, 20, 10, 0), value: 10.4 },
     { at: d(9, 19, 10, 0), value: 10.6 },
   ],
   // SD-P-06
@@ -202,14 +213,24 @@ export const RESULT_TRENDS_EXT: Record<string, { at: Date; value: number }[]> = 
     { at: d(8, 19, 7, 0), value: 1.8 },
     { at: d(9, 19, 7, 0), value: 1.9 },
   ],
-  // SD-P-10 — baseline before isotretinoin, and week 8
+  // SD-P-10 — baseline before isotretinoin, and week 6
   'R-89080': [
-    { at: d(7, 15, 9, 30), value: 24 },
+    { at: d(7, 28, 9, 30), value: 24 },
     { at: d(9, 12, 9, 30), value: 28 },
   ],
   'R-89081': [
-    { at: d(7, 15, 9, 30), value: 112 },
+    { at: d(7, 28, 9, 30), value: 112 },
     { at: d(9, 12, 9, 30), value: 138 },
+  ],
+  // SD-P-10 — cholesterol before treatment and at week 6
+  'R-91002': [
+    { at: d(7, 28, 9, 30), value: 158 },
+    { at: d(9, 12, 9, 30), value: 172 },
+  ],
+  // SD-P-15 — ESR, March and September
+  'R-89150': [
+    { at: d(3, 10, 10, 0), value: 10 },
+    { at: d(9, 9, 10, 0), value: 12 },
   ],
   // SD-P-11 — haemoglobin since the evacuation
   'R-89111': [
@@ -246,7 +267,7 @@ export interface MicroResult {
   patientId: string
   /** "Blood culture — set 1 of 2", "Sputum Gram stain and culture", "Sputum GeneXpert MTB/RIF". */
   test: string
-  specimen: 'Blood' | 'Urine' | 'Sputum' | 'Tracheal aspirate' | 'Wound swab' | 'CSF'
+  specimen: 'Blood' | 'Urine' | 'Sputum' | 'Tracheal aspirate' | 'Wound swab' | 'Screening swab' | 'CSF'
   collectedAt: Date
   reportedAt: Date
   status: 'Preliminary' | 'Final'
@@ -295,6 +316,40 @@ export const MICRO_RESULTS: MicroResult[] = [
     status: 'Final',
     growth: 'MTB not detected',
     comment: 'Rifampicin resistance not applicable.',
+  },
+  // SD-P-02 — the screen before cardiac surgery
+  {
+    id: 'M-7201',
+    patientId: 'SD-P-02',
+    test: 'MRSA screen — nose and groin',
+    specimen: 'Screening swab',
+    collectedAt: d(9, 12, 9, 30),
+    reportedAt: d(9, 13, 16, 0),
+    status: 'Final',
+    growth: 'MRSA not detected',
+  },
+  // SD-P-04 — the booking visit's screen for bacteria in the urine
+  {
+    id: 'M-7401',
+    patientId: 'SD-P-04',
+    test: 'Urine culture (antenatal screen)',
+    specimen: 'Urine',
+    collectedAt: d(7, 20, 10, 30),
+    reportedAt: d(7, 22, 11, 0),
+    status: 'Final',
+    growth: 'No growth',
+  },
+  // SD-P-06 — the fever work-up; five days before it is final
+  {
+    id: 'M-7601',
+    patientId: 'SD-P-06',
+    test: 'Blood culture',
+    specimen: 'Blood',
+    collectedAt: d(9, 19, 11, 30),
+    reportedAt: d(9, 21, 7, 30),
+    status: 'Preliminary',
+    growth: 'No growth at 48 hours',
+    comment: 'Final report at 5 days.',
   },
   // SD-P-07 — the urinary source, and the same organism in both blood-culture sets
   {

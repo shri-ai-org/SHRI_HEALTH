@@ -19,6 +19,7 @@ import { can } from '@/atlas/personas'
 import { canAdmit } from '@/data/admissions'
 import type { Patient } from '@/data/kit'
 import { formatTime } from '@/data/format'
+import { vitalsHistoryFor } from '@/data/vitals-history'
 import { useAdmissions } from '@/store/admissions'
 import { useClinical } from '@/store/clinical'
 import { useSession } from '@/store/session'
@@ -118,7 +119,7 @@ function Hub({ patient: p }: { patient: Patient }) {
 
       {/* Below: the one trend that matters, and the patient's report. */}
       <div className="grid grid-cols-1 gap-[16px] lg:grid-cols-2">
-        <TrendCard series={series} />
+        <TrendCard series={series} vitals={vitalsHistoryFor(p.id)} />
         <PatientReportCard patient={p} />
       </div>
     </>

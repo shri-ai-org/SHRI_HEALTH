@@ -17,6 +17,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { trendPointsFor, type ResultRow } from '@/data/clinical'
 import { formatDate } from '@/data/format'
+import type { VitalSeries } from '@/data/vitals-history'
 
 import { cn } from '../lib/cn'
 import { EmptyState } from '../ui/EmptyState'
@@ -31,13 +32,43 @@ const PAD_X = 14
 
 type Point = ReturnType<typeof trendPointsFor>[number]
 
+const VITAL = 'vital:'
+
+/**
+ * A vitals series in the shape the chart reads — used only when the patient has
+ * no result with a series, so the card charts what is there (Rahul's head-injury
+ * observations) instead of standing empty. It never opens a result page.
+ */
+function vitalRow(v: VitalSeries): ResultRow {
+  const last = v.points[v.points.length - 1]
+  return {
+    id: `${VITAL}${v.label}`,
+    patientId: '',
+    test: v.label,
+    value: String(last.value),
+    unit: v.unit,
+    refRange: v.low !== undefined && v.high !== undefined ? `${v.low} – ${v.high}` : '—',
+    flag: 'Normal',
+    reportedAt: last.at,
+    critical: false,
+    acknowledged: true,
+    aiReason: '',
+    band: 'HIGH',
+    refLow: v.low,
+    refHigh: v.high,
+  }
+}
+
 export function TrendCard({
-  series,
+  series: results,
+  vitals = [],
   title = 'Trend',
   showOpen = true,
   className,
 }: {
   series: ResultRow[]
+  /** Charted only when no result has a series. */
+  vitals?: VitalSeries[]
   title?: string
   /** "Open result" — absent on the result's own page, where it would open itself. */
   showOpen?: boolean
@@ -46,6 +77,8 @@ export function TrendCard({
   const navigate = useNavigate()
   const [chosen, setChosen] = useState<string | null>(null)
   const [view, setView] = useState<'chart' | 'values'>('chart')
+  const fromVitals = results.length === 0
+  const series = fromVitals ? vitals.filter((v) => v.points.length > 1).slice(0, 3).map(vitalRow) : results
   const r = series.find((x) => x.id === chosen) ?? series[0]
   // Nothing repeated yet: the card keeps its place and says so, rather than leaving the row a card short.
   if (!r)
@@ -54,7 +87,14 @@ export function TrendCard({
         <EmptyState compact icon={ChartLine} why="No result has two or more values yet" />
       </Card>
     )
-  const points = trendPointsFor(r)
+  const vital = fromVitals ? vitals.find((v) => `${VITAL}${v.label}` === r.id) : undefined
+  const points: Point[] = vital
+    ? vital.points.map((pt) => ({
+        at: pt.at,
+        value: pt.value,
+        flag: vital.high !== undefined && pt.value > vital.high ? 'high' : vital.low !== undefined && pt.value < vital.low ? 'low' : undefined,
+      }))
+    : trendPointsFor(r)
   const decimals = points.some((pt) => !Number.isInteger(pt.value)) ? 1 : 0
   const fmt = (n: number) => n.toFixed(decimals)
   // Over a year or more, the axis names the month and year; otherwise the day.
@@ -69,7 +109,7 @@ export function TrendCard({
       right={
         series.length > 1 && (
           // Wrapped rows sit 16px apart so each pill keeps a 44px target of its own.
-          <div role="group" aria-label="Which result to trend" className="flex flex-wrap justify-end gap-x-[6px] gap-y-[16px]">
+          <div role="group" aria-label={fromVitals ? 'Which vital sign to trend' : 'Which result to trend'} className="flex flex-wrap justify-end gap-x-[6px] gap-y-[16px]">
             {series.map((t) => {
               const on = t.id === r.id
               return (
@@ -85,7 +125,7 @@ export function TrendCard({
     >
       <p className="text-[12px] text-sh-text-3">
         {r.test}
-        {r.unit ? ` · ${r.unit}` : ''} · {points.length} results · {range}
+        {r.unit ? ` · ${r.unit}` : ''} · {points.length} {fromVitals ? 'readings — no result has a series yet' : 'results'} · {range}
       </p>
 
       {view === 'chart' ? <TrendChart r={r} points={points} fmt={fmt} when={when} /> : <ValuesTable r={r} points={points} fmt={fmt} when={when} />}
@@ -94,7 +134,7 @@ export function TrendCard({
         <Pill variant="control" size="md" onClick={() => setView(view === 'chart' ? 'values' : 'chart')}>
           {view === 'chart' ? 'Show the values' : 'Show the chart'}
         </Pill>
-        {showOpen && (
+        {showOpen && !fromVitals && (
           <Pill variant="primary" size="md" className="ml-auto" onClick={() => navigate(`/results/${r.id}`)}>
             Open result
           </Pill>

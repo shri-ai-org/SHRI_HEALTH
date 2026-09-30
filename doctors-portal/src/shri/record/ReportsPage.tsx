@@ -8,7 +8,7 @@
  */
 
 import {
-  ChevronDown, ChevronRight, DoorOpen, FileText, Gavel, HeartPulse, Radio, ScanLine, ScrollText, Syringe, type LucideIcon,
+  Activity, Camera, ChevronDown, ChevronRight, DoorOpen, FileText, Gavel, HeartPulse, Radio, ScanLine, ScrollText, Syringe, type LucideIcon,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -33,6 +33,8 @@ const KIND_ICON: Record<RecordReport['kind'], LucideIcon> = {
   Echocardiogram: HeartPulse,
   Ultrasound: Radio,
   'Medico-legal': Gavel,
+  'Fetal monitoring': Activity,
+  'Clinical photographs': Camera,
 }
 
 export function ReportsPage() {

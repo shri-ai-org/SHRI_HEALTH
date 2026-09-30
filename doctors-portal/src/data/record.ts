@@ -15,6 +15,7 @@
 import type { ConfidenceBand } from '@/atlas/confidence'
 
 import { imagingFor } from './imaging'
+import { APPOINTMENTS_RECORD_EXT, DOCUMENTS_EXT, PAST_NOTES_EXT, PRESCRIPTIONS_EXT } from './record-ext'
 import { NOW, minutesAgo } from './format'
 
 function on(month: number, day: number, h = 10, m = 0, year = 2026): Date {
@@ -307,7 +308,7 @@ export interface Appointment {
   location?: string
 }
 
-export const APPOINTMENTS: Appointment[] = [
+const APPOINTMENTS_BASE: Appointment[] = [
   // SD-P-01
   { id: 'AP-0101', patientId: 'SD-P-01', at: on(3, 14, 10, 30), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Thyroid review' },
   { id: 'AP-0102', patientId: 'SD-P-01', at: on(9, 21, 8, 40), kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'Thyroid review with results', location: 'Room 4, OPD block' },
@@ -361,6 +362,9 @@ export const APPOINTMENTS: Appointment[] = [
   { id: 'AP-1602', patientId: 'SD-P-16', at: on(9, 21, 7, 40), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Ananya Iyer', purpose: 'One-week head-injury review' },
 ]
 
+/** The first set, and the later entries (`record-ext.ts`). */
+export const APPOINTMENTS: Appointment[] = [...APPOINTMENTS_BASE, ...APPOINTMENTS_RECORD_EXT]
+
 /** Oldest first — the order a history reads in. */
 export function appointmentsFor(patientId: string): Appointment[] {
   return APPOINTMENTS.filter((a) => a.patientId === patientId).sort((a, b) => a.at.getTime() - b.at.getTime())
@@ -393,7 +397,7 @@ export interface PastNote {
   plan: string
 }
 
-export const PAST_NOTES: PastNote[] = [
+const PAST_NOTES_BASE: PastNote[] = [
   {
     id: 'PN-0101',
     patientId: 'SD-P-01',
@@ -636,6 +640,9 @@ export const PAST_NOTES: PastNote[] = [
   },
 ]
 
+/** The first set, and the later entries (`record-ext.ts`). */
+export const PAST_NOTES: PastNote[] = [...PAST_NOTES_BASE, ...PAST_NOTES_EXT]
+
 /** Newest first. */
 export function pastNotesFor(patientId: string): PastNote[] {
   return PAST_NOTES.filter((n) => n.patientId === patientId).sort((a, b) => b.at.getTime() - a.at.getTime())
@@ -664,7 +671,7 @@ export interface PrescriptionRecord {
   items: RxItem[]
 }
 
-export const PRESCRIPTION_HISTORY: PrescriptionRecord[] = [
+const PRESCRIPTION_HISTORY_BASE: PrescriptionRecord[] = [
   {
     id: 'RX-0101',
     patientId: 'SD-P-01',
@@ -853,6 +860,9 @@ export const PRESCRIPTION_HISTORY: PrescriptionRecord[] = [
   },
 ]
 
+/** The first set, and the later entries (`record-ext.ts`). */
+export const PRESCRIPTION_HISTORY: PrescriptionRecord[] = [...PRESCRIPTION_HISTORY_BASE, ...PRESCRIPTIONS_EXT]
+
 /** Newest first. */
 export function prescriptionsFor(patientId: string): PrescriptionRecord[] {
   return PRESCRIPTION_HISTORY.filter((r) => r.patientId === patientId).sort((a, b) => b.at.getTime() - a.at.getTime())
@@ -871,7 +881,7 @@ export interface RecordReport {
   id: string
   patientId: string
   at: Date
-  kind: 'Imaging' | 'Discharge summary' | 'Operative note' | 'ECG' | 'Echocardiogram' | 'Ultrasound' | 'Medico-legal'
+  kind: 'Imaging' | 'Discharge summary' | 'Operative note' | 'ECG' | 'Echocardiogram' | 'Ultrasound' | 'Medico-legal' | 'Fetal monitoring' | 'Clinical photographs'
   title: string
   by: string
   summary: string
@@ -883,7 +893,7 @@ export interface RecordReport {
 }
 
 /** The documents that are not imaging studies — imaging is joined in from `imaging.ts`. */
-const DOCUMENTS: RecordReport[] = [
+const DOCUMENTS_BASE: RecordReport[] = [
   { id: 'DOC-0201', patientId: 'SD-P-02', at: on(9, 10, 12, 0), kind: 'Echocardiogram', title: 'Transthoracic echocardiogram', by: 'Cardiology', summary: 'LVEF 50%, mild inferior hypokinesia, no significant valve disease.' },
   { id: 'DOC-0202', patientId: 'SD-P-02', at: on(9, 19, 13, 30), kind: 'Operative note', title: 'CABG ×3 — operative note', by: 'Cardiothoracic surgeon', summary: 'LIMA–LAD, SVG–OM1, SVG–RCA. Uncomplicated.' },
   { id: 'DOC-0301', patientId: 'SD-P-03', at: new Date(2026, 8, 21, 0, 50), kind: 'ECG', title: '12-lead ECG', by: 'Dr. Ananya Iyer', summary: 'Sinus tachycardia 108. No acute ST change. Recorded during the overnight seizure alert.' },
@@ -908,6 +918,8 @@ const DOCUMENTS: RecordReport[] = [
   { id: 'DOC-1301', patientId: 'SD-P-13', at: on(9, 20, 18, 20), kind: 'ECG', title: '12-lead ECG', by: 'Emergency', summary: 'Sinus rhythm 64. No atrial fibrillation captured — Holter to follow.' },
   { id: 'DOC-1601', patientId: 'SD-P-16', at: on(9, 15, 9, 0), kind: 'Medico-legal', title: 'Medico-legal injury report', by: 'Emergency team', summary: 'Simple injuries — right forearm abrasion; minor head injury with normal CT. Copy issued to police.' },
 ]
+
+const DOCUMENTS: RecordReport[] = [...DOCUMENTS_BASE, ...DOCUMENTS_EXT]
 
 /** Every report on the record, imaging included, newest first. */
 export function reportsFor(patientId: string): RecordReport[] {

@@ -17,9 +17,10 @@ import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { screen } from '@/atlas/registry'
-import { timelineFor, type TimelineEvent } from '@/data/clinical'
+import type { TimelineEvent } from '@/data/clinical'
 import { NOW, formatDate, formatDateTime, formatTime } from '@/data/format'
 import { patientByAnyId } from '@/data/kit'
+import { recordTimelineFor } from '@/data/timeline'
 
 import { ScreenFrame } from '../app/ScreenFrame'
 import { ScreenHeader } from '../app/ScreenHeader'
@@ -85,7 +86,7 @@ function Timeline({ patientId }: { patientId: string }) {
   const [summaryOpen, setSummaryOpen] = useState(false)
   const summary = SUMMARIES[p.id]
 
-  const events = timelineFor(p.id)
+  const events = recordTimelineFor(p.id)
   const filtered = kind === 'all' ? events : events.filter((e) => e.kind === kind)
   const today = formatDate(NOW)
   const todayCount = events.filter((e) => formatDate(e.at) === today).length

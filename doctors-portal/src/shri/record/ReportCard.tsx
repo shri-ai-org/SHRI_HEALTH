@@ -12,7 +12,7 @@
  * the middle of the first finding, or the middle of the stack.
  */
 
-import { Activity, Brain, FileText, HeartPulse, ImageOff, ScanLine, Waves, type LucideIcon } from 'lucide-react'
+import { Activity, Brain, Camera, FileText, HeartPulse, ImageOff, ScanLine, Waves, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { formatDate, formatTime } from '@/data/format'
@@ -32,7 +32,7 @@ import { Card, Chip, Diamond, Pill, RoundButton } from '../ui/primitives'
 import { TextLink } from './bits'
 
 /** The frame's neutral icon, by what the report is. */
-const KIND_ICON: Partial<Record<string, LucideIcon>> = { Imaging: ScanLine, Ultrasound: Waves, ECG: Activity, Echocardiogram: HeartPulse }
+const KIND_ICON: Partial<Record<string, LucideIcon>> = { Imaging: ScanLine, Ultrasound: Waves, ECG: Activity, Echocardiogram: HeartPulse, 'Fetal monitoring': Activity, 'Clinical photographs': Camera }
 
 const VERDICT_TONE: Record<'critical' | 'caution' | 'normal', Tone> = { critical: 'crit', caution: 'warn', normal: 'norm' }
 
@@ -116,7 +116,7 @@ export function ReportCard({ patient: p, className }: { patient: Patient; classN
       <ViewerPlaceholder
         fill
         icon={KIND_ICON[report.kind] ?? FileText}
-        line={imaging ? 'Report only — the images for this study are not in this demo.' : `A ${report.kind.toLowerCase()} — no images with this report`}
+        line={imaging ? 'Report only — the images for this study are not in this demo.' : `${report.kind} — no images with this report`}
         className="mx-auto max-w-[360px]"
       />
       <div className="mt-[12px] text-[15px]/[1.3] font-medium text-sh-text">{report.title}</div>

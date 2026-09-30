@@ -19,6 +19,18 @@ us-0101	ST-9531 · SD-P-01 thyroid ultrasound
 	Drahreg01, Wikimedia Commons · CC BY-SA 3.0
 	https://commons.wikimedia.org/wiki/File:Hashimoto-Thyreoiditis.JPG
 
+xr-0601	ST-9535 · SD-P-06 chest X-ray
+	Kermany, Zhang, Goldbaum (Mendeley Data), de-identified · CC BY 4.0
+	https://data.mendeley.com/datasets/rscbjbr9sj/3
+
+us-0701	ST-9862 · SD-P-07 ultrasound KUB
+	K. L. Hansen, M. B. Nielsen, C. Ewertsen, Wikimedia Commons · CC BY 4.0
+	https://commons.wikimedia.org/wiki/File:Normal_adult_kidney.jpg
+
+us-0901	ST-9541 · SD-P-09 ultrasound KUB
+	Cerevisae, Wikimedia Commons · CC BY-SA 4.0
+	https://commons.wikimedia.org/wiki/File:Ultrasound_of_left_kidney_renal_parenchymal_disease.jpg
+
 us-0401	ST-9790 · SD-P-04 growth scan, 32 weeks
 	HC18 challenge set (van den Heuvel et al.), de-identified · CC BY 4.0
 	https://zenodo.org/records/1327317
@@ -46,10 +58,6 @@ us-2101	ST-9682 · SD-P-21 ultrasound abdomen
 xr-2201	ST-9701 · SD-P-22 knee X-ray
 	James Heilman, MD, Wikimedia Commons · CC BY-SA 4.0
 	https://commons.wikimedia.org/wiki/File:Osteoarthritis_on_X-ray.jpg
-
-us-2301	ST-9655 · SD-P-23 ultrasound KUB
-	Cerevisae, Wikimedia Commons · CC BY-SA 4.0
-	https://commons.wikimedia.org/wiki/File:Ultrasound_of_left_kidney_renal_parenchymal_disease.jpg
 
 us-2401	ST-9716 · SD-P-24 anomaly scan
 	HC18 challenge set (van den Heuvel et al.), de-identified · CC BY 4.0

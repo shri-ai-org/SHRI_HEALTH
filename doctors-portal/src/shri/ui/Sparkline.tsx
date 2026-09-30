@@ -18,7 +18,8 @@ function formatTick(v: number): string {
   return v.toFixed(1)
 }
 
-export function Sparkline({ points, unit, label }: { points: TrendPoint[]; unit: string; label: string }) {
+/** `bare`: the line alone, where the value is already written beside it (a vitals cell). */
+export function Sparkline({ points, unit, label, bare = false }: { points: TrendPoint[]; unit: string; label: string; bare?: boolean }) {
   if (points.length < 2) return null
 
   const w = 96
@@ -39,11 +40,13 @@ export function Sparkline({ points, unit, label }: { points: TrendPoint[]; unit:
         <path d={path} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
         <circle cx={x(points.length - 1)} cy={y(last.value)} r="2.8" fill="var(--accent)" />
       </svg>
-      <span className="flex items-center gap-[4px] whitespace-nowrap text-[13px] font-semibold tabular-nums text-sh-text">
-        {formatTick(last.value)}
-        <span className="font-normal text-sh-text-3">{unit}</span>
-        <Icon icon={rising ? ArrowUp : ArrowDown} size={12} className="text-sh-text-3" />
-      </span>
+      {!bare && (
+        <span className="flex items-center gap-[4px] whitespace-nowrap text-[13px] font-semibold tabular-nums text-sh-text">
+          {formatTick(last.value)}
+          <span className="font-normal text-sh-text-3">{unit}</span>
+          <Icon icon={rising ? ArrowUp : ArrowDown} size={12} className="text-sh-text-3" />
+        </span>
+      )}
     </span>
   )
 }
