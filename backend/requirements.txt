@@ -7,5 +7,12 @@ numpy
 soundfile
 torch
 torchaudio
+# The default engine: IndicConformer (ONNX) hears Tamil, IndicTrans2 writes English. Both models are gated on
+# Hugging Face — accept their terms once and `hf auth login` before the first start.
+onnxruntime
+huggingface_hub
+transformers>=4.40,<4.50   # IndicTransToolkit breaks on transformers 5
+sentencepiece
+IndicTransToolkit
 # Optional: DeepFilterNet denoising. The service runs without it if it does not install or load on the host.
 deepfilternet

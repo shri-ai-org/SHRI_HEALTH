@@ -48,7 +48,12 @@ ABBREVIATIONS = {
     'k/c/o': 'known case of',
 }
 
+# These are also caught in lower case ("bp is a little high"); the rest only as capitals, since "od",
+# "hs" or "sos" in lower case are as likely to be something else.
+CASELESS = {'BP', 'HR', 'RBS', 'FBS', 'PPBS'}
+
 _ABBR = re.compile(r'(?<![\w/])(' + '|'.join(re.escape(k) for k in sorted(ABBREVIATIONS, key=len, reverse=True)) + r')(?![\w/])')
+_ABBR_LOWER = re.compile(r'(?<![\w/])(' + '|'.join(re.escape(k) for k in sorted(CASELESS, key=len, reverse=True)) + r')(?![\w/])', re.IGNORECASE)
 
 
 def _collapse_repeats(text: str) -> str:
@@ -75,6 +80,7 @@ def clean_text(text: str | None) -> str:
     for pat in HALLUCINATIONS:
         t = re.sub(pat, ' ', t, flags=re.IGNORECASE)
     t = _ABBR.sub(lambda m: ABBREVIATIONS[m.group(1)], t)
+    t = _ABBR_LOWER.sub(lambda m: ABBREVIATIONS[m.group(1).upper()], t)
     t = re.sub(r'\s+', ' ', t).strip(' -–—')
     t = _collapse_repeats(t)
     t = re.sub(r'\s+([,.;:!?])', r'\1', t)

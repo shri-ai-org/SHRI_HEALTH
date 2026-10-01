@@ -64,6 +64,7 @@ while (Date.now() - t0 < SECONDS * 1000) {
 }
 await evaluate(`document.querySelector('[role="dialog"] button[aria-label="Stop recording"]')?.click(); true`)
 const stopAt = Date.now()
+let steady = 0
 for (let i = 0; i < 80; i += 1) {
   await sleep(250)
   const v = await evaluate(`document.querySelector('#dictation-draft')?.value ?? ''`)
@@ -71,8 +72,10 @@ for (let i = 0; i < 80; i += 1) {
   if (v !== last) {
     console.log(`after Stop +${((Date.now() - stopAt) / 1000).toFixed(1)}s  ${v}`)
     last = v
-  }
-  if (!processing && i > 2) break
+    steady = 0
+  } else steady += 1
+  // Done once processing has ended and the typing has caught up (the text held for a second).
+  if (!processing && steady >= 4) break
 }
 console.log(`\nFINAL: ${last}`)
 process.exit(0)

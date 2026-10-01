@@ -13,6 +13,11 @@ def test_shorthand_expands_only_as_a_whole_word():
     assert clean_text('BPD measured') == 'BPD measured.'  # not "blood pressureD"
 
 
+def test_bp_in_lower_case_expands_but_other_shorthand_needs_capitals():
+    assert clean_text('bp is a little high please increase the dose') == 'Blood pressure is a little high please increase the dose.'
+    assert clean_text('the sos call came in') == 'The sos call came in.'
+
+
 def test_known_hallucinations_are_dropped():
     assert clean_text('Thank you for watching.') == ''
     assert clean_text('Review in two weeks. Thanks for watching!') == 'Review in two weeks.'
