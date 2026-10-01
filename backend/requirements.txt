@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+websockets
+faster-whisper
+silero-vad
+numpy
+soundfile
+torch
+torchaudio
+# Optional: DeepFilterNet denoising. The service runs without it if it does not install or load on the host.
+deepfilternet

@@ -19,6 +19,14 @@ UI.png
 # The raw downloads scripts/imaging-import.mjs converts; the frames it writes are committed.
 doctors-portal/imaging-src/
 
+# The speech service (backend/): its virtualenv and Python caches are rebuilt from
+# requirements.txt; the evaluation audio (FLEURS) is downloaded, not committed; the
+# models live in the Hugging Face cache, outside the repo.
+backend/.venv/
+backend-data/
+__pycache__/
+*.pyc
+
 # Secrets and environment files.
 .env
 .env.*
