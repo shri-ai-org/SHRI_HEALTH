@@ -26,6 +26,7 @@ import { useUI } from '@/store/ui'
 import { cn } from '../lib/cn'
 import type { DictationPhase } from '../logic/dictation'
 import { TYPED_MODEL } from '../logic/speech'
+import { useNoteDrafts } from '../state/noteDrafts'
 import { useShri, type NoteModalState } from '../state/store'
 import { useModalFrame } from '../ui/frames'
 import { useFocusTrap } from '../ui/hooks'
@@ -57,11 +58,15 @@ function Modal({ m }: { m: NoteModalState }) {
   const { title, sub, name } = heading(m)
   const patientId = m.kind === 'patient' ? m.patientId : undefined
 
-  const [text, setText] = useState('')
+  // The draft is kept on this device as it changes, so closing the box or reloading keeps it.
+  const draftKey = m.kind === 'todo' ? 'todo' : `patient:${patientId ?? ''}`
+  const keepDraft = useNoteDrafts((s) => s.keep)
+  const clearDraft = useNoteDrafts((s) => s.clear)
+  const [text, setText] = useState(() => useNoteDrafts.getState().drafts[draftKey]?.text ?? '')
   const [phase, setPhase] = useState<DictationPhase>('idle')
   const field = useRef<VoiceFieldHandle>(null)
   // Save reads these synchronously: stopping a take in progress lands its words and its run in the same tick.
-  const textRef = useRef('')
+  const textRef = useRef(text)
   /** The last take that heard words. */
   const takeRef = useRef<DictatedMeta | null>(null)
   /** The doctor's own change since that take landed. */
@@ -72,6 +77,7 @@ function Modal({ m }: { m: NoteModalState }) {
     textRef.current = v
     if (source !== 'dictation') editedRef.current = true
     setText(v)
+    keepDraft(draftKey, v)
   }
 
   /** Audit event one of two: the transcript existed. */
@@ -97,6 +103,7 @@ function Modal({ m }: { m: NoteModalState }) {
     const model = take ? take.model : TYPED_MODEL
     const band: ConfidenceBand = take ? take.band : 'HIGH'
     saveVoiceNote({ patientId: patientId ?? UNATTACHED, body, by: me.name, model, band })
+    clearDraft(draftKey)
     /** Audit event two of two: what was committed, by whom, under which gate. */
     record({
       event: 'NOTE.DRAFT_SAVED',
@@ -116,6 +123,13 @@ function Modal({ m }: { m: NoteModalState }) {
   }
 
   function discard() {
+    field.current?.stop()
+    clearDraft(draftKey)
+    close()
+  }
+
+  /** Close keeps the draft for next time; Discard throws it away. */
+  function closeKeeping() {
     field.current?.stop()
     close()
   }
@@ -140,7 +154,7 @@ function Modal({ m }: { m: NoteModalState }) {
             <h2 className="truncate text-[17px]/[1.2] font-medium tracking-[-0.012em] text-sh-text">{title}</h2>
             <p className="mt-[3px] truncate text-[12px] text-sh-text-3">{sub}</p>
           </div>
-          <RoundButton icon={X} label="Close" size={38} onClick={discard} />
+          <RoundButton icon={X} label="Close — the draft is kept" size={38} onClick={closeKeeping} />
         </header>
 
         {/* On a phone the sheet is near full height, so the note box takes the room. */}
@@ -163,14 +177,14 @@ function Modal({ m }: { m: NoteModalState }) {
         />
 
         <footer className="mt-[14px] flex items-center gap-[8px]">
-          <span className="text-[12px] text-sh-text-3">{words > 0 ? `${words} ${words === 1 ? 'word' : 'words'} · not saved yet` : ' '}</span>
+          <span className="text-[12px] text-sh-text-3">{words > 0 ? `${words} ${words === 1 ? 'word' : 'words'} · draft kept on this device` : ' '}</span>
           <Pill variant="control" size="lg" icon={X} className="ml-auto" onClick={discard}>
             Discard
           </Pill>
           <Pill
             variant="primary"
             size="lg"
-            disabled={phase === 'requesting' || words === 0}
+            disabled={phase === 'requesting' || phase === 'processing' || words === 0}
             title={words === 0 ? 'Dictate or type the note first' : undefined}
             className="disabled:opacity-40"
             onClick={save}

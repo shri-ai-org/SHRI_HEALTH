@@ -38,10 +38,13 @@ import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
 import { cn } from '../lib/cn'
-import { dictationWhy, useDictation, useVoiceArbiter, type DictationPhase, type DictationRun } from '../logic/dictation'
+import { STREAM_MODEL } from '../logic/asrStream'
+import { dictationWhy, useVoiceArbiter, type DictationPhase, type DictationRun, type DictationState } from '../logic/dictation'
+import { useVoiceEngine } from '../logic/voiceEngine'
 import { useAiActive } from '../state/ai'
 
 import { TextArea } from './forms'
+import { useTypewriter } from '../logic/typewriter'
 import { ConfidenceMark, Diamond, Icon, Pill, RoundButton } from './primitives'
 
 export interface DictatedMeta {
@@ -162,7 +165,9 @@ export function VoiceField({
     window.setTimeout(() => boxRef.current?.focus(), 0)
   }
 
-  const d = useDictation({ arbiterId: id, onEnd: land })
+  const d = useVoiceEngine({ arbiterId: id, onEnd: land })
+  /** Shri Health's own speech service: Tamil and English in, English out — and, by the brief, no AI labels on it. */
+  const streaming = d.engine === 'stream'
   useImperativeHandle(handle, () => ({ stop: d.stop }), [d.stop])
 
   useEffect(() => {
@@ -171,20 +176,23 @@ export function VoiceField({
 
   const recording = d.phase === 'recording'
   const requesting = d.phase === 'requesting'
-  const listening = recording || requesting
+  /** After Stop, while the service settles the last words — the box waits for them. */
+  const processing = d.phase === 'processing'
+  const listening = recording || requesting || processing
   const onPhaseRef = useRef(onPhase)
   onPhaseRef.current = onPhase
   useEffect(() => onPhaseRef.current?.(d.phase), [d.phase])
 
-  /** The words go INTO the box as they are spoken, after what was already there. */
-  const liveSpoken = recording ? joinSpeech(d.settled, d.interim) : ''
+  /** The words go INTO the box as they are spoken, after what was already there — typed in, from the service. */
+  const liveSpoken = recording || processing ? joinSpeech(d.settled, d.interim) : ''
+  const typed = useTypewriter(liveSpoken, streaming)
   useEffect(() => {
-    if (!recording || base.current === null || liveSpoken === '') return
-    const next = join(base.current, liveSpoken)
+    if (!(recording || processing) || base.current === null || typed === '') return
+    const next = join(base.current, typed)
     if (next !== valueRef.current) onChange(next, 'dictation')
     // `onChange` and `join` are stable in meaning; the words are what drive this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recording, liveSpoken])
+  }, [recording, processing, typed])
 
   function start() {
     base.current = value
@@ -231,8 +239,8 @@ export function VoiceField({
       rows={rows}
       value={value}
       disabled={disabled}
-      readOnly={recording}
-      aria-busy={recording}
+      readOnly={recording || processing}
+      aria-busy={recording || processing}
       aria-label={note ? label : undefined}
       data-autofocus={autoFocus ? 'true' : undefined}
       aria-describedby={hint ? `${id}-hint` : undefined}
@@ -241,12 +249,12 @@ export function VoiceField({
         onChange(e.target.value)
       }}
       placeholder={
-        recording ? 'Listening…' : hasMic ? (placeholder ?? `Type the ${label.toLowerCase()}, or press the microphone…`) : (typedPlaceholder ?? `Type the ${label.toLowerCase()}…`)
+        recording ? 'Listening…' : processing ? 'Processing…' : hasMic ? (placeholder ?? `Type the ${label.toLowerCase()}, or press the microphone…`) : (typedPlaceholder ?? `Type the ${label.toLowerCase()}…`)
       }
       className={cn(
         hasMic && (note ? 'pb-[58px]' : 'pr-[52px]'),
         note && 'min-h-0 resize-none rounded-[18px] border border-sh-line bg-(--note-box-bg) hover:bg-(--note-box-bg)',
-        recording && 'inset-ring-2 inset-ring-sh-accent',
+        (recording || processing) && 'inset-ring-2 inset-ring-sh-accent',
         boxClassName,
       )}
     />
@@ -277,8 +285,16 @@ export function VoiceField({
         {hasMic &&
           (note ? (
             <div className="absolute bottom-[10px] left-[10px] right-[10px] flex items-center gap-[10px]">
-              {listening ? (
-                <Pill size="md" onClick={d.stop} className="bg-(--stop) text-white hover:bg-(--stop) hover:brightness-95" aria-label="Stop recording" title="Stop recording">
+              {processing ? (
+                <Processing />
+              ) : listening ? (
+                <Pill
+                  size="md"
+                  onClick={d.stop}
+                  className={cn('bg-(--stop) text-white hover:bg-(--stop) hover:brightness-95', streaming && recording && 'motion-safe:animate-[sh-mic-glow_1.8s_ease-in-out_infinite]')}
+                  aria-label="Stop recording"
+                  title="Stop recording"
+                >
                   <Icon icon={Square} size={12} className="fill-current" />
                   Stop
                 </Pill>
@@ -287,12 +303,22 @@ export function VoiceField({
                   {micLabel}
                 </Pill>
               )}
-              {recording && <Listening d={d} label="Listening · live recognition" />}
+              {recording && <Listening d={d} label={streaming ? 'Listening…' : 'Listening · live recognition'} plain={streaming} />}
             </div>
           ) : (
             <div className="absolute bottom-[8px] right-[8px]">
-              {listening ? (
-                <RoundButton icon={Square} size={36} iconSize={14} variant="primary" label="Stop recording" onClick={d.stop} />
+              {processing ? (
+                <RoundButton icon={Loader} size={36} iconSize={14} variant="control" label="Processing…" disabled onClick={() => undefined} className="[&_svg]:animate-spin motion-reduce:[&_svg]:animate-none" />
+              ) : listening ? (
+                <RoundButton
+                  icon={Square}
+                  size={36}
+                  iconSize={14}
+                  variant="primary"
+                  label="Stop recording"
+                  onClick={d.stop}
+                  className={cn(streaming && recording && 'motion-safe:animate-[sh-mic-glow_1.8s_ease-in-out_infinite]')}
+                />
               ) : (
                 <RoundButton
                   icon={Mic}
@@ -313,20 +339,28 @@ export function VoiceField({
       {requesting && <RequestingLine className="mt-[8px]" />}
       {recording && !note && (
         <div className="mt-[8px] flex flex-wrap items-center gap-x-[10px] gap-y-[4px]">
-          <Listening d={d} label="Listening · live" />
+          <Listening d={d} label={streaming ? 'Listening…' : 'Listening · live'} plain={streaming} />
         </div>
       )}
-      {recording && note && (
+      {processing && !note && <Processing className="mt-[8px]" />}
+      {recording && note && !streaming && (
         <p className="mt-[8px] truncate text-[12px] text-sh-text-3">
           {d.model} · {langLabel}
         </p>
       )}
+      {d.engineNotice && !listening && <p className="mt-[8px] text-[12px] text-sh-text-3">{d.engineNotice}</p>}
 
       {/* Why the microphone could not be used, said plainly. The box above stays typeable. */}
       {notice && !recording && <DictationNotice className="mt-[10px]">{notice}</DictationNotice>}
 
       {/* One quiet provenance line under dictated text. */}
-      {!listening && hasText && dictatedMeta && (
+      {!listening && hasText && dictatedMeta && dictatedMeta.model === STREAM_MODEL && note && edited && (
+        <p className="mt-[8px] inline-flex items-center gap-[5px] text-[12px] font-medium text-sh-norm-fg">
+          <Icon icon={PenLine} size={12} />
+          edited by you
+        </p>
+      )}
+      {!listening && hasText && dictatedMeta && dictatedMeta.model !== STREAM_MODEL && (
         <div className="mt-[8px] flex flex-wrap items-center gap-x-[10px] gap-y-[4px] text-[12px] text-sh-text-2">
           <span className="inline-flex min-w-0 items-center gap-[5px]">
             <Diamond />
@@ -401,7 +435,7 @@ export function VoiceField({
 }
 
 /** The levels off the microphone, the clock, and what is listening. */
-function Listening({ d, label }: { d: ReturnType<typeof useDictation>; label: string }) {
+function Listening({ d, label, plain }: { d: DictationState; label: string; plain?: boolean }) {
   return (
     <>
       <span className="flex h-[18px] items-center gap-[3px]" aria-hidden="true">
@@ -411,10 +445,20 @@ function Listening({ d, label }: { d: ReturnType<typeof useDictation>; label: st
       </span>
       <span className="text-[12px] tabular-nums text-sh-text-2">{formatClock(d.elapsedSec)}</span>
       <span className="inline-flex min-w-0 items-center gap-[5px] truncate text-[12px] text-sh-text-2">
-        <Diamond />
+        {!plain && <Diamond />}
         {label}
       </span>
     </>
+  )
+}
+
+/** After Stop, while the last words are being turned into English. */
+function Processing({ className }: { className?: string }) {
+  return (
+    <p role="status" className={cn('flex items-center gap-[8px] text-[13px] text-sh-text-2', className)}>
+      <Icon icon={Loader} size={14} className="shrink-0 animate-spin motion-reduce:animate-none" />
+      Processing…
+    </p>
   )
 }
 

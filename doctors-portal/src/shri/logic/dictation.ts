@@ -105,7 +105,8 @@ export const useVoiceArbiter = create<{
 
 /* ------------------------------------------------------------------ hook */
 
-export type DictationPhase = 'idle' | 'requesting' | 'recording' | 'review' | 'unavailable'
+/** `processing` — after Stop, while a streaming engine settles its last words (`asrStream.ts`); the browser's recogniser never enters it. */
+export type DictationPhase = 'idle' | 'requesting' | 'recording' | 'processing' | 'review' | 'unavailable'
 
 /** One final result from the recogniser — roughly, one utterance between pauses. */
 export interface HeardSegment {

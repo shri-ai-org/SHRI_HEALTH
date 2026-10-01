@@ -454,6 +454,11 @@ html[data-theme='dark'] .shri-root {
   70% { box-shadow: 0 6px 14px color-mix(in srgb, var(--k-badge) 35%, transparent), 0 0 0 8px color-mix(in srgb, var(--k-badge) 0%, transparent); }
   100% { box-shadow: 0 6px 14px color-mix(in srgb, var(--k-badge) 35%, transparent), 0 0 0 0 color-mix(in srgb, var(--k-badge) 0%, transparent); }
 }
+/* The microphone while it listens: a soft ring that breathes, never a flash. */
+@keyframes sh-mic-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+  50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
 /* `shdark:` — the Shri dark theme as a Tailwind variant. The existing app
    never uses `dark:` (its theme is `night`), so this stays private. */
 @custom-variant shdark (&:where(html[data-theme='dark'], html[data-theme='dark'] *));
