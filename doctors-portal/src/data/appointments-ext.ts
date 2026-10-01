@@ -1,7 +1,7 @@
 /**
  * Appointments added to the sample record after the old kit, in its style —
- * the old file (`record.ts`) stays as it was. Each is booked with Dr. Ananya
- * Iyer into one of her own session templates (`schedule.ts`), for a reason
+ * the old file (`record.ts`) stays as it was. Each is booked with Dr.
+ * Rajsrinivas into one of the doctor's own session templates (`schedule.ts`), for a reason
  * the patient's record already gives:
  *   • Sunita Devi (SD-P-04), gestational diabetes at 32 weeks — the weekly
  *     glucose review, in Tuesday's endocrine follow-up session;
@@ -24,7 +24,7 @@ export const APPOINTMENTS_EXT: Appointment[] = [
     kind: 'Follow-up',
     status: 'Booked',
     clinic: 'Endocrine OPD',
-    with: 'Dr. Ananya Iyer',
+    with: 'Dr. Rajsrinivas',
     purpose: 'Weekly glucose review — gestational diabetes',
     prepare: ['Bring the home glucose readings (fasting and 1 hour after meals)'],
     location: 'Room 4, OPD block',
@@ -36,7 +36,7 @@ export const APPOINTMENTS_EXT: Appointment[] = [
     kind: 'Follow-up',
     status: 'Booked',
     clinic: 'General Medicine OPD',
-    with: 'Dr. Ananya Iyer',
+    with: 'Dr. Rajsrinivas',
     purpose: 'Sodium recheck result and anticoagulation plan',
     location: 'Room 4, OPD block',
   },

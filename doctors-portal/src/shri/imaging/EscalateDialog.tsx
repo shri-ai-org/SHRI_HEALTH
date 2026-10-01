@@ -11,7 +11,7 @@
  *
  * Where the old modal fell short: it recorded nothing but a toast — here the
  * escalation is on the audit trail and sent to the clinician told; and its
- * recipient opened on Dr. Ananya Iyer, whom the list leaves out when she is
+ * recipient opened on Dr. Rajsrinivas, whom the list leaves out when they are
  * the one escalating — here it opens on the first clinician the list offers.
  */
 
@@ -40,8 +40,10 @@ export function EscalateDialog({ open, finding, studyId, patientId, onClose }: {
   const toast = useUI((s) => s.toast)
   const audit = useAudit((s) => s.record)
   const send = useNotifications((s) => s.send)
-  const clinicians = STAFF.filter((s) => s.identifierKind === 'HPR' && s.name !== me.name)
-  const [recipient, setRecipient] = useState(clinicians[0]?.name ?? '')
+  const clinicians = STAFF.filter((s) => s.identifierKind === 'HPR' && s.id !== me.id)
+  // The choice is held by staff id: several clinicians can share a name.
+  const [recipientId, setRecipientId] = useState(clinicians[0]?.id ?? '')
+  const recipient = clinicians.find((s) => s.id === recipientId)?.name ?? ''
   const [channel, setChannel] = useState<string>(CHANNELS[0])
   const [detail, setDetail] = useState('')
   const [attested, setAttested] = useState(false)
@@ -94,9 +96,9 @@ export function EscalateDialog({ open, finding, studyId, patientId, onClose }: {
           </p>
         </div>
         <Field label="Who you told" required htmlFor="esc-recipient">
-          <Select id="esc-recipient" value={recipient} onChange={(e) => setRecipient(e.target.value)}>
+          <Select id="esc-recipient" value={recipientId} onChange={(e) => setRecipientId(e.target.value)}>
             {clinicians.map((s) => (
-              <option key={s.id} value={s.name}>
+              <option key={s.id} value={s.id}>
                 {s.name} · {s.personaLabel}
               </option>
             ))}

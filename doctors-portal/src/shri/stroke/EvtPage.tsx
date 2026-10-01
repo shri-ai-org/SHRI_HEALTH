@@ -62,7 +62,9 @@ function Selection({ c }: { c: StrokeCase }) {
   const p = patient(c.patientId)
 
   const [disagreeOpen, setDisagreeOpen] = useState(false)
-  const [disagreeBy, setDisagreeBy] = useState('Dr. Rohit Desai')
+  // The choice is held by staff id: several clinicians can share a name.
+  const [disagreeById, setDisagreeById] = useState('SD-S-02')
+  const disagreeBy = STAFF.find((s) => s.id === disagreeById)?.name ?? ''
   const [disagreeReason, setDisagreeReason] = useState('')
   const [selected, setSelected] = useState(false)
 
@@ -187,9 +189,9 @@ function Selection({ c }: { c: StrokeCase }) {
         onCancel={closeDialog}
       >
         <div className="flex flex-col gap-[12px]">
-          <Select value={disagreeBy} onChange={(e) => setDisagreeBy(e.target.value)} aria-label="Who disagrees">
+          <Select value={disagreeById} onChange={(e) => setDisagreeById(e.target.value)} aria-label="Who disagrees">
             {STAFF.filter((s) => s.identifierKind === 'HPR').map((s) => (
-              <option key={s.id} value={s.name}>
+              <option key={s.id} value={s.id}>
                 {s.name} · {s.personaLabel}
               </option>
             ))}

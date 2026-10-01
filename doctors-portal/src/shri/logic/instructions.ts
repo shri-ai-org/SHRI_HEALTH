@@ -17,7 +17,7 @@ Take it first thing in the morning, at least 30 minutes before you eat or drink 
 
 If you take calcium or iron tablets, leave at least four hours between those and your thyroid tablet. They stop it being absorbed properly.
 
-In six months, have a blood test for your thyroid. Book an appointment with Dr. Iyer for after the test, and bring the results.
+In six months, have a blood test for your thyroid. Book an appointment with Dr. Rajsrinivas for after the test, and bring the results.
 
 Come back sooner if the tiredness returns, you feel cold all the time, or your weight changes without you trying.`
 

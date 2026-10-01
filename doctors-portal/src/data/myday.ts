@@ -875,7 +875,7 @@ export function cardFor(patientId: string, lastSeen: Date, urgency: Urgency): My
  * clinician authored, or the start of the shift.
  */
 export function derivedLastSeen(patientId: string): Date {
-  const mine = timelineFor(patientId).find((e) => e.by.startsWith('Dr. Ananya'))
+  const mine = timelineFor(patientId).find((e) => e.by.startsWith('Dr. Rajsrinivas'))
   // No entry of their own on this record means they have not seen this patient
   // this admission, so the cut-off is the start of the shift.
   return mine?.at ?? SHIFT_START

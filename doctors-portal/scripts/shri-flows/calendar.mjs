@@ -68,7 +68,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays }) => {
         // Her record says the same: the move under Changed, and the new time as next.
         await page.open('/patient/ICH-0044208/appointments', { fresh: false })
         const record = await page.text()
-        expect(record.includes('Moved by Dr. Ananya Iyer to Tue 29 Sep, 14:00') && record.includes('Changed'), 'the record keeps the move')
+        expect(record.includes('Moved by Dr. Rajsrinivas to Tue 29 Sep, 14:00') && record.includes('Changed'), 'the record keeps the move')
         expect(!(await page.evaluate(`document.querySelector('h1').parentElement.textContent`)).includes('22-Sep'), 'and nothing on the blocked day is next any more')
 
         // Unblocking is confirmed and tells the front office.
@@ -92,7 +92,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays }) => {
         await selectIn('#cx-reason', 'Patient asked to cancel')
         await page.click('[role="alertdialog"] button', 'Cancel the appointment')
         await toastSays('Appointment cancelled')
-        expect((await page.text()).includes('Cancelled by Dr. Ananya Iyer · Patient asked to cancel'), 'kept with its reason')
+        expect((await page.text()).includes('Cancelled by Dr. Rajsrinivas · Patient asked to cancel'), 'kept with its reason')
         const office = (await sentItems()).find((n) => n.recipient === 'front office' && n.title === 'Appointment cancelled — Selvi Murugan')
         expect(office && office.detail.includes('Reason: Patient asked to cancel.'), `the front office has the reason: ${JSON.stringify(office)}`)
         expect((await auditRows()).some((r) => r.event === 'APPOINTMENT.CANCELLED' && r.subject === 'SD-P-11'), 'on record')

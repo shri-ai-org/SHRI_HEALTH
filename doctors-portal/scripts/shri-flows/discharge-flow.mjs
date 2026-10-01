@@ -71,7 +71,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick, setInput 
         const why = await dialog()
         for (const t of ['Receiving facility', 'Accepting clinician', 'Reason for transfer', 'Escort', 'Transport', 'Clinical handover', 'Acceptance']) expect(why.includes(t), `the transfer asks for ${t}`)
         await pick('#tr-facility', 'ITP')
-        await type('#tr-clinician', 'Dr. Ramesh Iyer, pulmonology')
+        await type('#tr-clinician', 'Dr. Logesh, pulmonology')
         await pick('#tr-escort', 'Doctor')
         await pick('#tr-transport', 'ALS ambulance')
         await type('#tr-reason', 'Needs non-invasive ventilation, which this ward cannot give.')
@@ -80,7 +80,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick, setInput 
         await page.evaluate(`${primary('Transfer R. Lakshmanan')}.click()`)
         await toastSays('R. Lakshmanan transferred to Indostates Tiruppur', 'The receiving team and the front office are told.')
         const row = (await auditRows()).find((r) => r.event === 'PATIENT.TRANSFERRED')
-        expect(row && row.subject === 'SD-P-03' && row.detail.includes('accepted by Dr. Ramesh Iyer, pulmonology · ALS ambulance, Doctor escort'), `on record: ${JSON.stringify(row)}`)
+        expect(row && row.subject === 'SD-P-03' && row.detail.includes('accepted by Dr. Logesh, pulmonology · ALS ambulance, Doctor escort'), `on record: ${JSON.stringify(row)}`)
         const sent = await sentItems()
         expect(sent.some((n) => n.recipient === 'colleague' && n.title === 'Transfer — R. Lakshmanan') && sent.some((n) => n.recipient === 'front office' && n.severity === 'urgent'), `the receiving team and the front office: ${JSON.stringify(sent)}`)
         expect((await page.text()).includes('Transferred 08:40'), 'the header says what happened')
@@ -117,13 +117,13 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick, setInput 
         await page.open('/patient/ICH-0044051')
         await page.click('button', 'Discharge')
         await page.until(`document.querySelector('[role="dialog"]')`, 3000, 'the sheet')
-        await type('#tr-clinician', 'Dr. Ramesh Iyer')
+        await type('#tr-clinician', 'Dr. Logesh')
         await page.click('[role="dialog"] button', 'Open')
         await page.until(`location.pathname === '/encounter/E-118366/discharge-summary'`, 3000, 'out to the summary')
         await page.click('button[aria-label^="Back"]')
         await page.until(`location.pathname === '/patient/ICH-0044051'`, 3000, 'back to the record')
         await page.click('button', 'Discharge')
-        await page.until(`document.querySelector('#tr-clinician')?.value === 'Dr. Ramesh Iyer'`, 3000, 'the draft is kept')
+        await page.until(`document.querySelector('#tr-clinician')?.value === 'Dr. Logesh'`, 3000, 'the draft is kept')
       },
     },
   ]

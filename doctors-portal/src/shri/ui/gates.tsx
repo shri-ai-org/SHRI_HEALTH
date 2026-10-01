@@ -177,7 +177,9 @@ export function DualSignatureGate({
 }) {
   const [reason, setReason] = useState<RejectionReason>('Other')
   const [reasonText, setReasonText] = useState('')
-  const [coSigner, setCoSigner] = useState('')
+  // The choice is held by identifier: several consultants can share a name.
+  const [coSignerId, setCoSignerId] = useState('')
+  const coSigner = coSignerOptions.find((c) => c.identifier === coSignerId)?.name ?? ''
   const [pin, setPin] = useState('')
   const [attested, setAttested] = useState(false)
   const [wasOpen, setWasOpen] = useState(open)
@@ -189,7 +191,7 @@ export function DualSignatureGate({
     if (open) {
       setReason('Other')
       setReasonText('')
-      setCoSigner('')
+      setCoSignerId('')
       setPin('')
       setAttested(false)
     }
@@ -252,12 +254,12 @@ export function DualSignatureGate({
 
         <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
           <Field label="Second consultant" htmlFor={`${id}-cosigner`} required>
-            <Select id={`${id}-cosigner`} value={coSigner} onChange={(e) => setCoSigner(e.target.value)}>
+            <Select id={`${id}-cosigner`} value={coSignerId} onChange={(e) => setCoSignerId(e.target.value)}>
               <option value="">Select a consultant…</option>
               {coSignerOptions
                 .filter((c) => c.name !== prescriber)
                 .map((c) => (
-                  <option key={c.identifier} value={c.name}>
+                  <option key={c.identifier} value={c.identifier}>
                     {c.name} · {c.identifier}
                   </option>
                 ))}

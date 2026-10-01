@@ -229,6 +229,8 @@ async function stubSpeech({ speech = true } = {}) {
         }
         window.SpeechRecognition = FakeRecognition
         window.webkitSpeechRecognition = FakeRecognition
+        // These takes are the browser recogniser's, not the speech service a dev server dials by default.
+        try { if (!localStorage.getItem('shri.asrUrl')) localStorage.setItem('shri.asrUrl', 'off') } catch {}
         if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream
         window.__say = (text, confidence) => {
           const r = [{ transcript: text, confidence }]
@@ -237,7 +239,7 @@ async function stubSpeech({ speech = true } = {}) {
           window.__sr.onresult({ resultIndex: results.length - 1, results })
         }
       })()`
-    : `(() => { delete window.SpeechRecognition; delete window.webkitSpeechRecognition; window.webkitSpeechRecognition = undefined; window.SpeechRecognition = undefined })()`
+    : `(() => { try { if (!localStorage.getItem('shri.asrUrl')) localStorage.setItem('shri.asrUrl', 'off') } catch {}; delete window.SpeechRecognition; delete window.webkitSpeechRecognition; window.webkitSpeechRecognition = undefined; window.SpeechRecognition = undefined })()`
   const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source })
   return () => send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
 }
@@ -255,11 +257,14 @@ const toastSays = (title, detail) =>
   )
 
 /** Chooses an option in a <select> the way a person would, so React sees the change. */
+// By value, or else by the first option whose label starts with it (staff pickers hold ids).
 const pick = (selector, value) =>
   page.evaluate(`(() => {
     const el = document.querySelector(${JSON.stringify(selector)})
     if (!el) throw new Error('no select: ' + ${JSON.stringify(selector)})
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, ${JSON.stringify(value)})
+    const want = ${JSON.stringify(value)}
+    const option = [...el.options].find((o) => o.value === want) ?? [...el.options].find((o) => o.textContent.trim().startsWith(want))
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, option ? option.value : want)
     el.dispatchEvent(new Event('change', { bubbles: true }))
     return el.value
   })()`)
@@ -300,7 +305,7 @@ const FLOWS = [
       await page.open('/')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-01"]')`), 'S-06-01 is drawn')
       const text = await page.text()
-      for (const t of ['Good morning, Dr. Iyer', 'Mon 21-Sep-2026 · General Medicine · Indostates Health Hospital, Coimbatore'])
+      for (const t of ['Good morning, Dr. Rajsrinivas', 'Mon 21-Sep-2026 · General Medicine · Indostates Health Hospital, Coimbatore'])
         expect(text.includes(t), `greeting line "${t}"`)
       const critical = await page.evaluate(`document.querySelector('[data-kpi="critical"]').textContent`)
       expect(critical.includes('Serum potassium 6.8 mmol/L · Mathew'), `the critical KPI names the unacknowledged result: ${critical}`)
@@ -322,9 +327,9 @@ const FLOWS = [
       await toastSays('Marked seen', 'Joseph Mathew · changes cleared')
       expect(await page.evaluate(`[...document.querySelectorAll('aside[role="dialog"] button')].some((b) => b.textContent.trim() === 'Seen' && b.disabled)`), 'Seen, and not again')
       const row = (await auditRows()).find((r) => r.event === 'PATIENT.MARKED_SEEN')
-      expect(row && row.subject === 'SD-P-07' && row.actor === 'Dr. Ananya Iyer' && /changes cleared/.test(row.detail), `the audit row: ${JSON.stringify(row)}`)
+      expect(row && row.subject === 'SD-P-07' && row.actor === 'Dr. Rajsrinivas' && /changes cleared/.test(row.detail), `the audit row: ${JSON.stringify(row)}`)
       await page.click('aside[role="dialog"] button', 'Audit — 1 event')
-      expect((await panelText()).includes('Marked seen · Dr. Ananya Iyer'), 'the trail is readable in the panel')
+      expect((await panelText()).includes('Marked seen · Dr. Rajsrinivas'), 'the trail is readable in the panel')
       await page.key('Escape')
       await page.until(`!document.querySelector('aside[role="dialog"]')`, 3000, 'Esc closed the panel')
       expect(!(await attentionNames()).some((n) => n.includes('Joseph Mathew')), 'a patient marked seen drops off Attention')
@@ -500,7 +505,7 @@ const FLOWS = [
       await page.open('/patient/ICH-0044051')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-11"]')`), 'S-06-11 is drawn')
       const banner = await page.evaluate(`document.querySelector('[aria-label="Patient"]').textContent.replace(/\\u00a0/g, ' ')`)
-      for (const t of ['R. Lakshmanan', '62/M', 'ICH-0044051 · 4B-12 · LOS 4d · Dr. Ananya Iyer', 'Allergy: Penicillin', 'Payer: PM-JAY', 'ABHA Linked'])
+      for (const t of ['R. Lakshmanan', '62/M', 'ICH-0044051 · 4B-12 · LOS 4d · Dr. Rajsrinivas', 'Allergy: Penicillin', 'Payer: PM-JAY', 'ABHA Linked'])
         expect(banner.includes(t), `the banner says "${t}": ${banner}`)
       const tabs = await page.evaluate(`[...document.querySelectorAll('[role="tab"][id^="record-tab-"]')].map((t) => t.textContent)`)
       expect(tabs.join('|') === 'Overview|Condition2|Results8|Reports3|Notes2|Medicines3|Appointments3', `the seven parts with their counts: ${tabs}`)
@@ -855,7 +860,7 @@ const FLOWS = [
       await page.until(`document.querySelector('[role="alertdialog"]')?.textContent.includes('Prescription blocked')`, 3000, 'the gate opens')
       const gate = await page.evaluate(`document.querySelector('[role="alertdialog"]').textContent`)
       expect(gate.includes('The AI is currently off.') && gate.includes('This block still fired'), 'the gate says the rule fired with the AI off')
-      expect(gate.includes('Allergy documented 11-Aug-2021 by Dr. Ananya Iyer.'), 'who documented the allergy, and when')
+      expect(gate.includes('Allergy documented 11-Aug-2021 by Dr. Rajsrinivas.'), 'who documented the allergy, and when')
       expect(!(await page.evaluate(`!!document.querySelector('[role="alertdialog"] button[aria-label="Close"]')`)), 'no ✕ on the gate')
       await page.key('Escape')
       for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x: 8, y: 8, button: 'left', clickCount: 1 })
@@ -879,14 +884,14 @@ const FLOWS = [
       const proceed = `[...document.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent.includes('Override and proceed'))`
       expect(await page.evaluate(`${proceed}.disabled`), 'nothing filled: it cannot proceed')
       const options = await page.evaluate(`[...document.querySelector('select[id$="-cosigner"]').options].map((o) => o.textContent)`)
-      expect(!options.some((o) => o.includes('Dr. Ananya Iyer')) && options.some((o) => o.includes('Dr. Rohit Desai')), `the prescriber is not offered as the second consultant: ${options}`)
+      expect(!options.some((o) => o.includes('Dr. Rajsrinivas')) && options.some((o) => o.includes('Dr. Logesh')), `the prescriber is not offered as the second consultant: ${options}`)
       await page.type('[role="alertdialog"] textarea', 'Too short')
       await page.click('[role="alertdialog"] button', 'Cancel')
       await page.until(`document.querySelector('[role="alertdialog"]')?.textContent.includes('Prescription blocked')`, 3000, 'Cancel goes back to the gate, not past it')
       await page.click('[role="alertdialog"] button', 'Override — needs a second consultant')
       await page.until(`document.querySelector('[role="alertdialog"] textarea')?.value === ''`, 3000, 'the dialog opens empty again')
       await page.type('[role="alertdialog"] textarea', 'Too short')
-      await pick('select[id$="-cosigner"]', 'Dr. Rohit Desai')
+      await pick('select[id$="-cosigner"]', 'Dr. Logesh')
       await page.type('input[id$="-pin"]', '12')
       await page.click('[role="alertdialog"] [role="checkbox"]')
       expect(await page.evaluate(`${proceed}.disabled`), 'a nine-character reason and a two-digit PIN are not enough')
@@ -896,9 +901,9 @@ const FLOWS = [
       await page.click('[role="alertdialog"] button', 'Override and proceed')
       await toastSays('Hard stop overridden', 'AI.SAF.HARD_STOP_OVERRIDDEN emitted. Both identities recorded.')
       const row = (await auditRows()).find((r) => r.event === 'AI.SAF.HARD_STOP_OVERRIDDEN')
-      expect(row && row.gate === 'G4' && row.actor === 'Dr. Ananya Iyer' && row.detail.includes('second consultant Dr. Rohit Desai'), `both identities on record: ${JSON.stringify(row)}`)
+      expect(row && row.gate === 'G4' && row.actor === 'Dr. Rajsrinivas' && row.detail.includes('second consultant Dr. Logesh'), `both identities on record: ${JSON.stringify(row)}`)
       const text = await page.text()
-      expect(text.includes('Hard stop overridden with a dual signature') && text.includes('Second consultant: Dr. Rohit Desai'), 'the override is stated on the page')
+      expect(text.includes('Hard stop overridden with a dual signature') && text.includes('Second consultant: Dr. Logesh'), 'the override is stated on the page')
       // The override was signed for co-amoxiclav. Another beta-lactam raises its own.
       await page.type('[aria-label="Search the formulary"]', 'pipera')
       await page.key('Enter')
@@ -936,7 +941,7 @@ const FLOWS = [
       expect(row && row.subject === 'SD-P-03' && row.detail.startsWith('3 items'), `RX.SIGNED: ${JSON.stringify(row)}`)
       await page.reload()
       const text = await page.text()
-      expect(text.includes('Read-only') && text.includes('Signed by Dr. Ananya Iyer'), 'signed: locked, naming who')
+      expect(text.includes('Read-only') && text.includes('Signed by Dr. Rajsrinivas'), 'signed: locked, naming who')
       expect((await page.evaluate(`document.getElementById('E-118366:RX-L-02:dose').value`)) === '20 mg once daily', 'what was signed is what is shown after a reload')
       await page.click('button', 'Print A5, bilingual')
       await page.until(`document.querySelector('[role="dialog"]')?.textContent.includes('Print preview · A5')`, 3000, 'the A5 preview')
@@ -1084,16 +1089,16 @@ const FLOWS = [
         expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-09"]')`), 'S-06-09 is drawn')
         const row = await page.evaluate(`[...document.querySelectorAll('button[data-row]')].map((b) => b.textContent).find((t) => t.includes('Joseph Mathew')) ?? ''`)
         expect(row.includes('Inpatient progress note'), `the note is filed under its own patient: "${row}"`)
-        await page.click('button[aria-label="Co-sign — Inpatient progress note for Joseph Mathew by Dr. Ananya Iyer"]')
+        await page.click('button[aria-label="Co-sign — Inpatient progress note for Joseph Mathew by Dr. Rajsrinivas"]')
         await page.until(`document.querySelector('[role="alertdialog"]')?.textContent.includes('Co-sign this entry?')`, 3000, 'the stamp asks first')
         await page.click('[role="alertdialog"] button', 'Co-sign')
-        await toastSays('Co-signed', 'Stamped Dr. Ananya Iyer · IN-HPR-2291840')
+        await toastSays('Co-signed', 'Stamped Dr. Rajsrinivas · IN-HPR-2291840')
         const audit = (await auditRows()).find((r) => r.event === 'NOTE.COSIGNED')
         expect(audit && audit.subject === 'SD-P-07' && audit.detail.includes('IP number'), `NOTE.COSIGNED: ${JSON.stringify(audit)}`)
         expect((await page.text()).includes('Actioned this session') && (await page.text()).includes('Joseph Mathew · Inpatient progress note'), 'actioned, by patient and document')
         await page.open('/encounter/E-118201/note', { fresh: false })
         const note = await page.text()
-        expect(note.includes('Read-only') && note.includes('co-signed by Dr. Ananya Iyer'), 'the note is signed, with both names')
+        expect(note.includes('Read-only') && note.includes('co-signed by Dr. Rajsrinivas'), 'the note is signed, with both names')
       } finally {
         await unstub()
       }
@@ -1108,7 +1113,7 @@ const FLOWS = [
         await saveForCoSign('E-118402', 'Hypothyroidism · E03.9')
         await becomePersona('P-04')
         await page.open('/clinician/cosign', { fresh: false })
-        await page.click('button[aria-label="Return — Consultation note for Meera Krishnan by Dr. Ananya Iyer"]')
+        await page.click('button[aria-label="Return — Consultation note for Meera Krishnan by Dr. Rajsrinivas"]')
         await page.until(`document.querySelector('[role="alertdialog"]')?.textContent.includes('Return this entry to the author?')`, 3000, 'the return asks first')
         const confirm = `[...document.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent.includes('Return with a comment'))`
         expect(await page.evaluate(`${confirm}.disabled`), 'no return without what needs changing')
@@ -1122,7 +1127,7 @@ const FLOWS = [
         await becomePersona('P-05')
         await page.open('/encounter/E-118402/note', { fresh: false })
         const note = await page.text()
-        expect(note.includes('Returned by Dr. Ananya Iyer') && note.includes('State the TSH result in the assessment.'), 'the author sees what needs changing on the note')
+        expect(note.includes('Returned by Dr. Rajsrinivas') && note.includes('State the TSH result in the assessment.'), 'the author sees what needs changing on the note')
         await page.click('button', 'Save for co-sign')
         await page.click('[role="alertdialog"] button', 'Save for co-sign')
         await toastSays('Saved for co-sign')
@@ -1176,7 +1181,7 @@ const FLOWS = [
       await page.reload()
       await page.click('[role="tab"]', 'All')
       const row = await page.evaluate(`[...document.querySelectorAll('li')].map((l) => l.textContent).find((t) => t.includes('Acute asthma — adult')) ?? ''`)
-      expect(row.includes('2 items · Personal · Dr. Ananya Iyer'), `kept, and its maker's: "${row}"`)
+      expect(row.includes('2 items · Personal · Dr. Rajsrinivas'), `kept, and its maker's: "${row}"`)
       await page.click('button[aria-label="Promote Acute asthma — adult"]')
       await page.until(`document.querySelector('[role="alertdialog"]')?.textContent.includes('"Acute asthma — adult" would become available')`, 3000, 'the dialog names the set made here')
       await setInput('[role="alertdialog"] input[type="date"]', '2026-01-01')
@@ -1184,11 +1189,11 @@ const FLOWS = [
       expect(await page.evaluate(`${promote}.disabled`) && (await page.evaluate(`document.querySelector('[role="alertdialog"]').textContent`)).includes('A review date after today'), 'a review date already past is refused')
       await setInput('[role="alertdialog"] input[type="date"]', '2027-06-30')
       await page.click('[role="alertdialog"] button', 'Promote with an owner')
-      await toastSays('Promoted to facility-wide', 'Owner Dr. Vivek Sharma · review due 30-Jun-2027. Recorded as a governance act.')
+      await toastSays('Promoted to facility-wide', 'Owner Dr. Logesh · review due 30-Jun-2027. Recorded as a governance act.')
       const audit = (await auditRows()).find((r) => r.event === 'ORDERSET.PROMOTED')
-      expect(audit && audit.detail.includes('owner Dr. Vivek Sharma') && audit.detail.includes('30-Jun-2027'), `the governance act is on record: ${JSON.stringify(audit)}`)
+      expect(audit && audit.detail.includes('owner Dr. Logesh') && audit.detail.includes('30-Jun-2027'), `the governance act is on record: ${JSON.stringify(audit)}`)
       const after = await page.evaluate(`[...document.querySelectorAll('li')].map((l) => l.textContent).find((t) => t.includes('Acute asthma — adult')) ?? ''`)
-      expect(after.includes('Facility-wide · Dr. Vivek Sharma') && !after.includes('Promote'), `promoted: "${after}"`)
+      expect(after.includes('Facility-wide · Dr. Logesh') && !after.includes('Promote'), `promoted: "${after}"`)
       await setInput('input[aria-label="Effective on"]', '2026-09-20')
       const then = await page.text()
       expect(then.includes('The library as it stood on 20-Sep-2026') && !then.includes('Acute asthma — adult'), 'the day before, the set did not exist yet')
@@ -1251,14 +1256,14 @@ const FLOWS = [
       await page.click('[role="alertdialog"] button', 'Not me — reassign')
       const reassign = `[...document.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent.trim() === 'Reassign')`
       expect(await page.evaluate(`${reassign}.disabled`), 'not until someone is named')
-      await pick('[role="alertdialog"] select', 'Dr. Rohit Desai')
+      await pick('[role="alertdialog"] select', 'Dr. Rajsrinivas')
       await page.click('[role="alertdialog"] button', 'Reassign')
-      await toastSays('Reassigned to Dr. Rohit Desai', 'It is still unacknowledged, and the escalation clock keeps running.')
-      expect((await auditRows()).some((r) => r.event === 'RESULT.REASSIGNED' && r.detail.includes('to Dr. Rohit Desai')), 'RESULT.REASSIGNED is on record')
+      await toastSays('Reassigned to Dr. Rajsrinivas', 'It is still unacknowledged, and the escalation clock keeps running.')
+      expect((await auditRows()).some((r) => r.event === 'RESULT.REASSIGNED' && r.detail.includes('to Dr. Rajsrinivas')), 'RESULT.REASSIGNED is on record')
       const sent = await page.evaluate(`JSON.parse(localStorage.getItem('shri.notifications')).state.sent[0]`)
       expect(sent && sent.recipient === 'colleague' && sent.severity === 'critical', `sent to the colleague: ${JSON.stringify(sent)}`)
       const text = await page.text()
-      expect(text.includes('Reassigned to Dr. Rohit Desai — still unacknowledged.') && text.includes('reassigned to Dr. Rohit Desai'), 'still owed, and to whom it went')
+      expect(text.includes('Reassigned to Dr. Rajsrinivas — still unacknowledged.') && text.includes('reassigned to Dr. Rajsrinivas'), 'still owed, and to whom it went')
       await page.click('button[aria-label^="Acknowledge Serum potassium 6.8"]')
       await page.until(`!!document.querySelector('[role="alertdialog"] [role="checkbox"]')`, 3000, 'it opens afresh, at the attestation')
     },
@@ -1351,8 +1356,8 @@ const FLOWS = [
       await page.open('/encounter/E-118402/orders/new')
       const meera = await page.text()
       expect(!meera.includes('suggestions') && meera.includes('The basket is empty. Search on the left, or apply an order set.'), "no one else's suggestions for Meera Krishnan")
-      await page.open('/encounter/E-118402/orders/new?set=OS.AIYER-THYROID', { fresh: false })
-      await toastSays('Thyroid follow-up — Dr. Iyer applied', '3 orders added to the basket.')
+      await page.open('/encounter/E-118402/orders/new?set=OS.RAJSRINIVAS-THYROID', { fresh: false })
+      await toastSays('Thyroid follow-up — Dr. Rajsrinivas applied', '3 orders added to the basket.')
       await page.until(`location.search === ''`, 3000, 'the address forgets the set, so a reload does not apply it twice')
       await page.open('/encounter/NOPE-3/orders/new')
       expect((await page.text()).includes('No encounter at this address.'), 'an unknown encounter says so')
@@ -1543,11 +1548,11 @@ const FLOWS = [
         await page.open('/clinician/cosign', { fresh: false })
         const queued = await page.evaluate(`[...document.querySelectorAll('button[data-row]')].map((b) => b.textContent).find((t) => t.includes('Joseph Mathew')) ?? ''`)
         expect(queued.includes('Admission assessment'), `in the queue as what it is: "${queued}"`)
-        await page.click('button[aria-label="Co-sign — Admission assessment for Joseph Mathew by Dr. Ananya Iyer"]')
+        await page.click('button[aria-label="Co-sign — Admission assessment for Joseph Mathew by Dr. Rajsrinivas"]')
         await page.click('[role="alertdialog"] button', 'Co-sign')
         await toastSays('Co-signed')
         await page.open('/ip/encounter/E-118201/assessment', { fresh: false })
-        expect((await page.text()).includes('co-signed by Dr. Ananya Iyer'), 'the assessment is signed with both names')
+        expect((await page.text()).includes('co-signed by Dr. Rajsrinivas'), 'the assessment is signed with both names')
       } finally {
         await unstub()
       }
@@ -1610,13 +1615,13 @@ const FLOWS = [
       await toastSays('Kavya Reddy discharged', 'Bed released to the bed board. The summary is unsigned — it goes to the sign queue.')
       expect((await page.text()).includes('0 cleared for discharge · 2 waiting on a gate · 1 discharged'), 'the counts move')
       const row = (await auditRows()).find((r) => r.event === 'PATIENT.DISCHARGED')
-      expect(row && row.subject === 'SD-P-06' && row.actor === 'Dr. Ananya Iyer' && /bed 4B-19 released · summary unsigned, to the sign queue/.test(row.detail), `the audit row: ${JSON.stringify(row)}`)
+      expect(row && row.subject === 'SD-P-06' && row.actor === 'Dr. Rajsrinivas' && /bed 4B-19 released · summary unsigned, to the sign queue/.test(row.detail), `the audit row: ${JSON.stringify(row)}`)
       const sent = await page.evaluate(`JSON.parse(localStorage.getItem('shri.notifications')).state.sent[0]`)
       expect(sent && sent.recipient === 'front office' && sent.title === 'Bed 4B-19 released' && sent.detail === 'Kavya Reddy discharged home · summary to follow', `sent to the front office: ${JSON.stringify(sent)}`)
 
       await page.click('[role="tab"]', 'Discharged')
       const gone = await page.text()
-      expect(gone.includes('Kavya Reddy') && gone.includes('discharged 08:40 by Dr. Ananya Iyer') && gone.includes('Summary unsigned — it is in the sign queue'), 'Discharged shows her, when, by whom, and the summary owed')
+      expect(gone.includes('Kavya Reddy') && gone.includes('discharged 08:40 by Dr. Rajsrinivas') && gone.includes('Summary unsigned — it is in the sign queue'), 'Discharged shows her, when, by whom, and the summary owed')
       expect(!(await page.evaluate(`!!document.querySelector('button[aria-label="Discharge Kavya Reddy"]')`)), 'no second Discharge is offered')
 
       await page.reload()
@@ -1739,19 +1744,19 @@ const FLOWS = [
         await page.open('/clinician/cosign', { fresh: false })
         const queued = await page.evaluate(`[...document.querySelectorAll('button[data-row]')].map((b) => b.textContent).find((t) => t.includes('Joseph Mathew')) ?? ''`)
         expect(queued.includes('Discharge summary'), `in the queue as what it is: "${queued}"`)
-        await page.click('button[aria-label="Co-sign — Discharge summary for Joseph Mathew by Dr. Ananya Iyer"]')
+        await page.click('button[aria-label="Co-sign — Discharge summary for Joseph Mathew by Dr. Rajsrinivas"]')
         await page.click('[role="alertdialog"] button', 'Co-sign')
         await toastSays('Co-signed')
         const sent = await page.evaluate(`JSON.parse(localStorage.getItem('shri.notifications')).state.sent`)
         expect(sent.some((n) => n.recipient === 'patient' && n.detail.startsWith('Joseph Mathew')), `a co-signed summary goes out too: ${JSON.stringify(sent)}`)
         await page.open('/encounter/E-118201/discharge-summary', { fresh: false })
-        expect((await page.text()).includes('co-signed by Dr. Ananya Iyer'), 'signed with both names')
+        expect((await page.text()).includes('co-signed by Dr. Rajsrinivas'), 'signed with both names')
 
         // Discharge now, sign later: a patient already discharged, the summary still to write.
-        await page.evaluate(`(() => { const c = JSON.parse(localStorage.getItem('indostates.clinical')); c.state.discharges['SD-P-03'] = { patientId: 'SD-P-03', encounterId: 'E-118366', at: '2026-09-21T03:10:00.000Z', by: 'Dr. Ananya Iyer', kind: 'discharge', bed: '4B-12', summarySigned: false }; localStorage.setItem('indostates.clinical', JSON.stringify(c)); return true })()`)
+        await page.evaluate(`(() => { const c = JSON.parse(localStorage.getItem('indostates.clinical')); c.state.discharges['SD-P-03'] = { patientId: 'SD-P-03', encounterId: 'E-118366', at: '2026-09-21T03:10:00.000Z', by: 'Dr. Rajsrinivas', kind: 'discharge', bed: '4B-12', summarySigned: false }; localStorage.setItem('indostates.clinical', JSON.stringify(c)); return true })()`)
         await page.open('/encounter/E-118366/discharge-summary?ai=off', { fresh: false })
         const owed = await page.text()
-        expect(owed.includes('R. Lakshmanan was discharged at 08:40 by Dr. Ananya Iyer') && owed.includes('The discharge stands.'), 'the discharge stands, the summary is owed')
+        expect(owed.includes('R. Lakshmanan was discharged at 08:40 by Dr. Rajsrinivas') && owed.includes('The discharge stands.'), 'the discharge stands, the summary is owed')
         expect(!owed.includes('Draft with AI'), 'AI off: no Draft with AI')
       } finally {
         await unstub()
@@ -1796,7 +1801,7 @@ const FLOWS = [
       expect(row && row.subject === 'SD-P-03' && row.detail.includes('5 medicines: 2 continued, 1 changed, 1 stopped, 1 new'), `on record: ${JSON.stringify(row)}`)
 
       await page.open('/encounter/E-118366/med-rec', { fresh: false })
-      expect((await page.text()).includes('Confirmed by Dr. Ananya Iyer'), 'who confirmed it')
+      expect((await page.text()).includes('Confirmed by Dr. Rajsrinivas'), 'who confirmed it')
       expect(await page.evaluate(`[...document.querySelectorAll('select[aria-label^="Decision for"]')].every((s) => s.disabled)`), 'the list is fixed')
       await page.open('/discharge/board?scope=waiting', { fresh: false })
       expect(!(await page.text()).includes('Medication reconciliation open'), 'and the board reads it')
@@ -2055,7 +2060,7 @@ const FLOWS = [
       await page.open('/login?next=%2Fop-queue%3Ftype%3Dfollow-up', { fresh: false })
       await page.until(`location.pathname === '/op-queue'`, 3000, 'and one with ?next= on where it was going')
       expect((await page.path()) === '/op-queue?type=follow-up', `the query comes too: ${await page.path()}`)
-      await page.click('button[aria-label^="Dr. Ananya Iyer"], button[aria-haspopup="menu"]', 'Dr. Ananya Iyer')
+      await page.click('button[aria-label^="Dr. Rajsrinivas"], button[aria-haspopup="menu"]', 'Dr. Rajsrinivas')
       expect(!(await page.text()).includes('Sign out'), 'nothing to sign out of')
     },
   },

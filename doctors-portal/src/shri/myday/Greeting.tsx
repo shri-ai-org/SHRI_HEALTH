@@ -1,6 +1,6 @@
 /**
  * §5.1 — the salutation follows the clock, the name follows the session (the
- * old greeting's rule: "Dr. Iyer" for "Dr. Ananya Iyer"), then the day ·
+ * old greeting's rule: "Dr." and the surname alone), then the day ·
  * speciality · facility line.
  */
 

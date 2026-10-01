@@ -13,7 +13,8 @@
 // Configured by VITE_ASR_URL (e.g. ws://localhost:8765/ws/transcribe, or the
 // deployed wss://…/dev/clinician-asr/ws/transcribe) and, where the service wants
 // one, VITE_ASR_TOKEN. A `shri.asrUrl` entry in this device's localStorage points
-// a build at another service without rebuilding (the flows use it for their mock).
+// a build at another service without rebuilding (the flows use it for their mock),
+// and `off` keeps it on the browser's recogniser.
 // A dev server with neither talks to the service on this machine's port 8765
 // (`python app.py` in backend/), and falls back as above when it isn't running.
 
@@ -32,6 +33,7 @@ const ASR_TOKEN: string | undefined = import.meta.env.VITE_ASR_TOKEN || undefine
 export function asrUrl(): string | undefined {
   try {
     const local = window.localStorage.getItem('shri.asrUrl')
+    if (local === 'off') return undefined
     if (local) return local
   } catch {
     /* storage blocked — the build's own setting stands */

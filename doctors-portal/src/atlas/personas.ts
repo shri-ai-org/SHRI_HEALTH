@@ -6,8 +6,8 @@
  *      CAPABILITIES. "P-04 Consultant is a persona label for humans reading
  *      this document; the system checks `ip.note.write`, never
  *      `role == consultant`."
- *   2. Every decision is evaluated within a subject scope. "May Dr. Iyer read a
- *      chart" is not a question. "May Dr. Iyer read THIS patient's chart" is.
+ *   2. Every decision is evaluated within a subject scope. "May Dr. Rajsrinivas read a
+ *      chart" is not a question. "May Dr. Rajsrinivas read THIS patient's chart" is.
  *   3. Default is deny, evaluated at request time — never baked into a token.
  *
  * Only the eleven doctor personas exist in this build; the other 34 are out of

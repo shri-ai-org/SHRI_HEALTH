@@ -88,9 +88,9 @@ export const STROKE_CASES: StrokeCase[] = [
     destinationFacility: 'ICH',
     lkw: at(1, 20),
     activatedAt: at(2, 16),
-    activatedBy: 'Dr. Priya Menon',
+    activatedBy: 'Dr. Logesh',
     status: 'active',
-    breakGlassBy: 'Dr. Rohit Desai',
+    breakGlassBy: 'Dr. Rajsrinivas',
     nihss: 14,
     payer: 'TPA cashless',
     imaging: {
@@ -113,7 +113,7 @@ export const STROKE_CASES: StrokeCase[] = [
     destinationFacility: 'ICH',
     lkw: at(0, 35),
     activatedAt: at(0, 52),
-    activatedBy: 'Dr. Ananya Iyer',
+    activatedBy: 'Dr. Rajsrinivas',
     status: 'de-activated',
     deactivationReason: 'Seizure with post-ictal deficit — stroke mimic. De-activated 01:12.',
     nihss: 4,
@@ -139,7 +139,7 @@ export const STROKE_CASES: StrokeCase[] = [
     destinationFacility: 'ICH',
     lkw: on(18, 22, 5),
     activatedAt: on(18, 22, 31),
-    activatedBy: 'Dr. Ananya Iyer',
+    activatedBy: 'Dr. Rajsrinivas',
     status: 'closed',
     outcome: 'Haemorrhage on CT — thrombolysis contraindicated. Admitted to the stroke unit for blood-pressure control.',
     nihss: 7,
@@ -167,7 +167,7 @@ export const STROKE_CASES: StrokeCase[] = [
     destinationFacility: 'ICH',
     lkw: on(19, 12, 0),
     activatedAt: on(20, 17, 52),
-    activatedBy: 'Dr. Ananya Iyer',
+    activatedBy: 'Dr. Rajsrinivas',
     status: 'closed',
     outcome: 'Established infarct about 30 hours after last seen well — no reperfusion option. Admitted; neurosurgery informed.',
     nihss: 18,
@@ -196,7 +196,7 @@ export const STROKE_CASES: StrokeCase[] = [
     destinationFacility: 'ICH',
     lkw: at(1, 50),
     activatedAt: at(2, 24),
-    activatedBy: 'Dr. Rohit Desai',
+    activatedBy: 'Dr. Rajsrinivas',
     status: 'active',
     nihss: 21,
     payer: 'ESI',
@@ -323,7 +323,7 @@ export const CASE_INTERVALS: ClockInterval[] = [
     stampedAt: null,
     state: 'RUNNING',
     nextAction: 'Administer tenecteplase and stamp the needle',
-    owner: 'Dr. Rohit Desai',
+    owner: 'Dr. Rajsrinivas',
   },
   {
     key: 'dido',
@@ -345,7 +345,7 @@ export const CASE_INTERVALS: ClockInterval[] = [
     stampedAt: null,
     state: 'PENDING',
     nextAction: 'Cath lab CATH-1 reserved from 03:40',
-    owner: 'Dr. Samir Kulkarni',
+    owner: 'Dr. Rajsrinivas',
   },
 ]
 
@@ -514,7 +514,7 @@ export const THROMBOLYSIS_DOSE = {
   unit: 'mg/kg',
   weightKg: 78,
   weightCapturedAt: at(2, 22),
-  weightSource: 'Estimated by Dr. Priya Menon — no bed scale at IPL',
+  weightSource: 'Estimated by Dr. Logesh — no bed scale at IPL',
   totalMg: 19.5,
   administration: 'single IV bolus over 5 seconds',
   /** "Show the independent second dose check as mandatory even when the AI is off." */
@@ -598,7 +598,7 @@ export const TRANSFER_RESERVATION: Reservation[] = [
   {
     key: 'anaesthetist',
     resource: 'Anaesthetist',
-    detail: 'On-call rota · Dr. S. Iyengar, 12 min from site',
+    detail: 'On-call rota · Dr. Logesh, 12 min from site',
     status: 'available',
     ownerModule: 'M-23 HR & Rostering',
   },
@@ -630,7 +630,7 @@ export const NETWORK_SITES = [
     name: 'Indostates Health Hospital, Coimbatore',
     role: 'hub' as const,
     ctStatus: 'free' as const,
-    neurologist: 'Dr. Rohit Desai (phone)',
+    neurologist: 'Dr. Rajsrinivas (phone)',
     strokeBeds: { free: 2, total: 4 },
     cathLab: 'free' as const,
     /** AI-816 / AI-622 readiness signals for S-18-03. */
@@ -704,12 +704,12 @@ export interface StrokeTask {
 
 export const STROKE_TASKS: StrokeTask[] = [
   { id: 'T-01', label: 'NCCT + CTA acquired', owner: 'Radiographer, IPL', column: 'Done', dueInMin: null },
-  { id: 'T-02', label: 'AI triage reviewed and confirmed', owner: 'Dr. Rohit Desai', column: 'Done', dueInMin: null },
-  { id: 'T-03', label: 'NIHSS scored over video', owner: 'Dr. Rohit Desai', column: 'Done', dueInMin: null },
+  { id: 'T-02', label: 'AI triage reviewed and confirmed', owner: 'Dr. Rajsrinivas', column: 'Done', dueInMin: null },
+  { id: 'T-03', label: 'NIHSS scored over video', owner: 'Dr. Rajsrinivas', column: 'Done', dueInMin: null },
   {
     id: 'T-04',
     label: 'BP treated to target < 185/110',
-    owner: 'Dr. Priya Menon',
+    owner: 'Dr. Logesh',
     column: 'In progress',
     dueInMin: 6,
     reason: 'Blocks thrombolysis — highest-value next action',
@@ -717,7 +717,7 @@ export const STROKE_TASKS: StrokeTask[] = [
   {
     id: 'T-05',
     label: 'Consent for thrombolysis',
-    owner: 'Dr. Priya Menon',
+    owner: 'Dr. Logesh',
     column: 'In progress',
     dueInMin: 8,
     reason: 'Family reached by phone at 02:44',
@@ -779,11 +779,11 @@ export const TIMESTAMP_CONFLICTS = [
 // ───────────────────────── S-18-09 · Team paging & acknowledgement
 
 export const PAGING_LOG = [
-  { role: 'Stroke neurologist', name: 'Dr. Rohit Desai', pagedAt: at(2, 16), ackAt: at(2, 18), channel: 'Push + call' },
+  { role: 'Stroke neurologist', name: 'Dr. Rajsrinivas', pagedAt: at(2, 16), ackAt: at(2, 18), channel: 'Push + call' },
   { role: 'Stroke coordinator', name: 'Sr. Grace Fernandes', pagedAt: at(2, 16), ackAt: at(2, 17), channel: 'Push' },
   { role: 'Radiographer, IPL', name: 'On duty', pagedAt: at(2, 16), ackAt: at(2, 21), channel: 'Ward phone' },
-  { role: 'Neuro-interventionist', name: 'Dr. Samir Kulkarni', pagedAt: at(2, 38), ackAt: null, channel: 'Push + call' },
-  { role: 'Anaesthetist on call', name: 'Dr. S. Iyengar', pagedAt: at(2, 38), ackAt: at(2, 44), channel: 'Push' },
+  { role: 'Neuro-interventionist', name: 'Dr. Rajsrinivas', pagedAt: at(2, 38), ackAt: null, channel: 'Push + call' },
+  { role: 'Anaesthetist on call', name: 'Dr. Logesh', pagedAt: at(2, 38), ackAt: at(2, 44), channel: 'Push' },
 ]
 
 // ────────────────────── S-18-10 · Telestroke request queue

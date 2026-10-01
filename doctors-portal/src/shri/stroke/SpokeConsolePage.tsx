@@ -188,7 +188,7 @@ export function SpokeConsolePage() {
               type="button"
               onClick={() => {
                 setActivated(true)
-                toast({ tone: 'critical', title: 'Code stroke activated', detail: 'The clock has started and the hub has been paged. Dr. Rohit Desai is on call.' })
+                toast({ tone: 'critical', title: 'Code stroke activated', detail: 'The clock has started and the hub has been paged. Dr. Rajsrinivas is on call.' })
               }}
               className="mx-auto mt-[24px] flex min-h-[80px] w-full max-w-[448px] items-center justify-center gap-[12px] rounded-sh-card bg-sh-crit-solid px-[32px] text-[18px] font-bold text-sh-on-crit-solid shadow-sh-pop transition-[filter] duration-150 hover:brightness-110 active:scale-[0.99] md:text-[20px]"
             >
@@ -199,7 +199,7 @@ export function SpokeConsolePage() {
         ) : (
           <>
             <Alert tone="info" icon={CircleCheck} title="Activated — the clock is running and the hub is paged">
-              STROKE/26-27/{ACTIVE_CASE.id} · Dr. Rohit Desai has acknowledged. Answer the six questions below while you wait for the video call; each one saves as you go.
+              STROKE/26-27/{ACTIVE_CASE.id} · Dr. Rajsrinivas has acknowledged. Answer the six questions below while you wait for the video call; each one saves as you go.
             </Alert>
 
             {(may(to.session) || may(to.clock)) && (
@@ -314,11 +314,11 @@ export function SpokeConsolePage() {
       <ConfirmDialog
         open={calling}
         title={`Call the stroke hub at ${HUB.name}?`}
-        consequence="Rings the on-call stroke neurologist, Dr. Rohit Desai, on the hub's stroke line. The call is logged against this case with the time."
+        consequence="Rings the on-call stroke neurologist, Dr. Rajsrinivas, on the hub's stroke line. The call is logged against this case with the time."
         confirmLabel="Call now"
         onConfirm={() => {
           setCalling(false)
-          toast({ tone: 'info', title: 'Calling Dr. Rohit Desai', detail: `Hub stroke line · logged against the case at ${formatTime(caseNow)}.` })
+          toast({ tone: 'info', title: 'Calling Dr. Rajsrinivas', detail: `Hub stroke line · logged against the case at ${formatTime(caseNow)}.` })
         }}
         onCancel={() => setCalling(false)}
       />

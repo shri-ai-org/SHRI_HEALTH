@@ -73,7 +73,9 @@ function Eligibility({ c }: { c: StrokeCase }) {
   const [bpSystolic, setBpSystolic] = useState('')
   const [bpDiastolic, setBpDiastolic] = useState('')
   const [treating, setTreating] = useState(false)
-  const [checker, setChecker] = useState('')
+  // The choice is held by staff id: several clinicians can share a name.
+  const [checkerId, setCheckerId] = useState('')
+  const checker = secondCheckers(me).find((s) => s.id === checkerId)?.name ?? ''
   const [consent, setConsent] = useState(false)
   const [confirmGive, setConfirmGive] = useState(false)
   const [doacResolution, setDoacResolution] = useState<string | undefined>()
@@ -348,10 +350,10 @@ function Eligibility({ c }: { c: StrokeCase }) {
                 <div className="mt-[10px] flex flex-wrap items-end gap-[8px]">
                   <label className="flex min-w-[224px] flex-1 flex-col gap-[4px] text-[13px] font-medium text-sh-text-2">
                     Who checked it
-                    <Select value={checker} onChange={(e) => setChecker(e.target.value)} aria-label="Second checker" className="h-[48px] bg-sh-card">
+                    <Select value={checkerId} onChange={(e) => setCheckerId(e.target.value)} aria-label="Second checker" className="h-[48px] bg-sh-card">
                       <option value="">Select…</option>
                       {secondCheckers(me).map((s) => (
-                        <option key={s.id} value={s.name}>
+                        <option key={s.id} value={s.id}>
                           {s.name} · {s.personaLabel}
                         </option>
                       ))}

@@ -127,7 +127,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 58,
   },
   {
@@ -144,7 +144,7 @@ export const PATIENTS: Patient[] = [
     bed: '2A-04',
     facilityCode: 'ICH',
     losDays: 2,
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 74,
   },
   {
@@ -167,7 +167,7 @@ export const PATIENTS: Patient[] = [
     bed: '4B-12',
     facilityCode: 'ICH',
     losDays: 4,
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 66,
   },
   {
@@ -184,7 +184,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 68,
   },
   {
@@ -202,7 +202,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: 'ED-02',
     facilityCode: 'IPL',
-    consultant: 'Dr. Priya Menon',
+    consultant: 'Dr. Logesh',
     weightKg: 78,
   },
   {
@@ -218,7 +218,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: '4B-19',
     facilityCode: 'ICH',
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 19,
   },
   {
@@ -235,7 +235,7 @@ export const PATIENTS: Patient[] = [
     bed: 'ICU-1',
     facilityCode: 'ICH',
     losDays: 6,
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 62,
   },
   {
@@ -251,7 +251,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 54,
   },
   {
@@ -267,7 +267,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 70,
   },
 
@@ -290,7 +290,7 @@ export const PATIENTS: Patient[] = [
     allergies: ['Aspirin'],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 52,
   },
   {
@@ -309,7 +309,7 @@ export const PATIENTS: Patient[] = [
     bed: '4B-08',
     facilityCode: 'ICH',
     losDays: 3,
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 81,
   },
   {
@@ -328,7 +328,7 @@ export const PATIENTS: Patient[] = [
     bed: '4B-15',
     facilityCode: 'ICH',
     losDays: 1,
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 63,
   },
   {
@@ -346,7 +346,7 @@ export const PATIENTS: Patient[] = [
     allergies: ['Sulfa'],
     bed: 'ICU-2',
     facilityCode: 'ITP',
-    consultant: 'Dr. Rohit Desai',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 70,
   },
   {
@@ -364,7 +364,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 60,
   },
   {
@@ -384,7 +384,7 @@ export const PATIENTS: Patient[] = [
     facilityCode: 'ICH',
     /** Road-traffic head injury — a medico-legal case, flagged in the banner. */
     mlc: true,
-    consultant: 'Dr. Ananya Iyer',
+    consultant: 'Dr. Rajsrinivas',
     weightKg: 72,
   },
 ]
@@ -424,7 +424,7 @@ export interface Staff {
 export const STAFF: Staff[] = [
   {
     id: 'SD-S-01',
-    name: 'Dr. Ananya Iyer',
+    name: 'Dr. Rajsrinivas',
     persona: 'P-04',
     personaLabel: 'Consultant, general medicine',
     facilityCode: 'ICH',
@@ -434,7 +434,7 @@ export const STAFF: Staff[] = [
   },
   {
     id: 'SD-S-02',
-    name: 'Dr. Rohit Desai',
+    name: 'Dr. Rajsrinivas',
     persona: 'P-35',
     personaLabel: 'Stroke neurologist (on-call)',
     facilityCode: 'ICH',
@@ -444,7 +444,7 @@ export const STAFF: Staff[] = [
   },
   {
     id: 'SD-S-03',
-    name: 'Dr. Priya Menon',
+    name: 'Dr. Logesh',
     persona: 'P-38',
     personaLabel: 'Spoke physician (general medicine)',
     facilityCode: 'IPL',
@@ -454,7 +454,7 @@ export const STAFF: Staff[] = [
   },
   {
     id: 'SD-S-04',
-    name: 'Dr. Samir Kulkarni',
+    name: 'Dr. Rajsrinivas',
     persona: 'P-36',
     personaLabel: 'Neuro-interventionist',
     facilityCode: 'ICH',
@@ -482,7 +482,7 @@ export const STAFF: Staff[] = [
   },
   {
     id: 'SD-S-07',
-    name: 'Dr. Neha Bhatt',
+    name: 'Dr. Logesh',
     persona: 'P-13',
     personaLabel: 'Radiologist',
     facilityCode: 'ICH',
@@ -519,7 +519,7 @@ export const STAFF: Staff[] = [
   },
   {
     id: 'SD-S-11',
-    name: 'Dr. Vivek Sharma',
+    name: 'Dr. Logesh',
     persona: 'P-02',
     personaLabel: 'Medical superintendent',
     facilityCode: 'ICH',
@@ -545,8 +545,8 @@ export function staff(id: string): Staff {
 
 /**
  * The staff member who is signed in when the app runs as a given persona.
- * SD-S-01 Dr. Ananya Iyer is the default; the resident has no §8.3 entry, so
- * she is presented as a registrar under her own name rather than inventing a
+ * SD-S-01 Dr. Rajsrinivas is the default; the resident has no §8.3 entry, so
+ * they are presented as a registrar under their own name rather than inventing a
  * thirteenth cast member (§8.6).
  */
 export const STAFF_FOR_PERSONA: Record<PersonaId, string> = {

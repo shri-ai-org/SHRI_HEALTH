@@ -120,13 +120,13 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick }) => {
         await page.until(`document.querySelector('[role="alertdialog"]')?.textContent.includes('Escalate a critical finding')`, 3000, 'the escalation')
         await page.evaluate(`[...document.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent.trim() === 'Record the escalation').click()`)
         expect((await page.evaluate(`document.querySelector('[role="alertdialog"]').textContent`)).includes('Say what you told them'), 'what was said is required')
-        await pick('#esc-recipient', 'Dr. Rohit Desai')
+        await pick('#esc-recipient', 'Dr. Rajsrinivas')
         await page.type('[id="escalation-detail-ST-9921"]', 'Right basal ganglia bleed with IVH, INR 3.8 — reversal and BP control now.')
         await page.click('[role="alertdialog"] [role="checkbox"]', 'I have communicated this finding')
         await page.evaluate(`[...document.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent.trim() === 'Record the escalation').click()`)
-        await toastSays('Escalated to Dr. Rohit Desai', 'Recorded against study ST-9921 and the patient record.')
+        await toastSays('Escalated to Dr. Rajsrinivas', 'Recorded against study ST-9921 and the patient record.')
         const esc = (await auditRows()).find((r) => r.event === 'IMAGING.CRITICAL_ESCALATED')
-        expect(esc && esc.subject === 'SD-P-14' && esc.detail.includes('told Dr. Rohit Desai'), `on record: ${JSON.stringify(esc)}`)
+        expect(esc && esc.subject === 'SD-P-14' && esc.detail.includes('told Dr. Rajsrinivas'), `on record: ${JSON.stringify(esc)}`)
         expect((await sentItems()).some((n) => n.recipient === 'colleague' && n.title === 'Critical finding — Santhosh Babu'), 'sent to the clinician told')
 
         // G3: Accept waits for the fixed checkbox; attested only once accepted.

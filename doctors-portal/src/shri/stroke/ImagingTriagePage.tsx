@@ -279,11 +279,11 @@ function LvoView({ c }: { c: StrokeCase }) {
         consequence={
           calling === 'radiologist'
             ? 'Rings the on-call radiologist for an immediate read. The request and the time are logged against the case.'
-            : 'Rings Dr. Samir Kulkarni and pages the cath lab. The escalation and the time are logged against the case.'
+            : 'Rings Dr. Rajsrinivas and pages the cath lab. The escalation and the time are logged against the case.'
         }
         confirmLabel="Call now"
         onConfirm={() => {
-          const who = calling === 'radiologist' ? 'the radiologist on call' : 'Dr. Samir Kulkarni'
+          const who = calling === 'radiologist' ? 'the radiologist on call' : 'Dr. Rajsrinivas'
           setCalling(null)
           toast({ tone: 'info', title: `Calling ${who}`, detail: `Logged against case ${c.caseNo}.` })
         }}

@@ -226,7 +226,7 @@ export function WallPage() {
                   <dt className="text-[15px] text-sh-text-2 md:text-[18px]">On call</dt>
                   <dd>
                     <PillTag tone="neu" size="sm" icon={Phone}>
-                      Dr. R. Desai (phone)
+                      Dr. Rajsrinivas (phone)
                     </PillTag>
                   </dd>
                 </div>

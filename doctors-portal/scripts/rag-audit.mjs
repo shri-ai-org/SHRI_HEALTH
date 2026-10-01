@@ -133,7 +133,7 @@ const composed = await evaluate(`
     const base = { persona: 'P-04', acknowledgements: {}, seenAt: {}, admissions: {}, breakGlass: {} }
     const admission = {
       id: 'ADM-audit', patientId: 'SD-P-01', type: 'ward', priority: 'urgent',
-      requestedBy: 'Dr. Ananya Iyer', requestedById: 'audit', requestedAt: Date.now(),
+      requestedBy: 'Dr. Rajsrinivas', requestedById: 'audit', requestedAt: Date.now(),
     }
     const sessions = {
       plain: base,

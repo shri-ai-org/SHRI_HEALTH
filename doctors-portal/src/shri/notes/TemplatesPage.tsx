@@ -66,7 +66,9 @@ export function TemplatesPage() {
   const [scope, setScope] = useScope<Scope>(['due', 'all'], 'due')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [promoting, setPromoting] = useState<string | null>(null)
-  const [owner, setOwner] = useState('Dr. Vivek Sharma')
+  // The choice is held by staff id: several clinicians can share a name.
+  const [ownerId, setOwnerId] = useState('SD-S-11')
+  const owner = STAFF.find((s) => s.id === ownerId)?.name ?? ''
   const [reviewDue, setReviewDue] = useState('2027-03-31')
   const [creating, setCreating] = useState(false)
   const [newSet, setNewSet] = useState({ name: '', items: '' })
@@ -267,9 +269,9 @@ export function TemplatesPage() {
       >
         <div className="flex flex-col gap-[12px]">
           <Field label="Accountable owner" required htmlFor={`${ids}-owner`}>
-            <Select id={`${ids}-owner`} value={owner} onChange={(e) => setOwner(e.target.value)}>
+            <Select id={`${ids}-owner`} value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
               {STAFF.filter((s) => s.identifierKind === 'HPR').map((s) => (
-                <option key={s.id} value={s.name}>
+                <option key={s.id} value={s.id}>
                   {s.name} · {s.personaLabel}
                 </option>
               ))}

@@ -49,7 +49,8 @@ export function CriticalAck({ result: asked, onClose }: { result: ResultRow | nu
   const [attested, setAttested] = useState(false)
   const [action, setAction] = useState('')
   const [reassigning, setReassigning] = useState(false)
-  const [to, setTo] = useState('')
+  // The choice is held by staff id: several consultants can share a name.
+  const [toId, setToId] = useState('')
   /** The result on screen — kept while the dialog closes, so it leaves with its content. */
   const [result, setResult] = useState(asked)
   const [openFor, setOpenFor] = useState(asked)
@@ -63,13 +64,14 @@ export function CriticalAck({ result: asked, onClose }: { result: ResultRow | nu
       setAttested(false)
       setAction('')
       setReassigning(false)
-      setTo('')
+      setToId('')
     }
   }
 
   const p = result ? patient(result.patientId) : undefined
   const enc = p ? encounterForPatient(p.id) : undefined
-  const consultants = STAFF.filter((s) => s.identifierKind === 'HPR' && s.name !== me.name)
+  const consultants = STAFF.filter((s) => s.identifierKind === 'HPR' && s.id !== me.id)
+  const to = consultants.find((c) => c.id === toId)?.name ?? ''
 
   function confirm(thenDocument: boolean) {
     if (!result || !p || !attested) return
@@ -180,10 +182,10 @@ export function CriticalAck({ result: asked, onClose }: { result: ResultRow | nu
 
           {reassigning ? (
             <Field label="Reassign to" htmlFor={`${id}-to`} required hint="The consultant it belongs to. It stays unacknowledged until they acknowledge it.">
-              <Select id={`${id}-to`} value={to} onChange={(e) => setTo(e.target.value)}>
+              <Select id={`${id}-to`} value={toId} onChange={(e) => setToId(e.target.value)}>
                 <option value="">Choose a consultant…</option>
                 {consultants.map((c) => (
-                  <option key={c.id} value={c.name}>
+                  <option key={c.id} value={c.id}>
                     {c.name} · {c.personaLabel}
                   </option>
                 ))}

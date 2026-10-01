@@ -11,7 +11,7 @@
  *
  * Where the old screen fell short: the transcript and the extracted NIHSS were
  * the index case's (Mr Malhotra, NIHSS 14) on every case, and the spoke
- * physician was always Dr. Priya Menon. Here the transcript and the AI-112
+ * physician was always Dr. Logesh. Here the transcript and the AI-112
  * extraction show only on the case they were spoken on, and the spoke is the
  * physician who activated the case. Links to screens the persona cannot open
  * are absent (GP-02).
@@ -44,7 +44,7 @@ import { NoCase } from './NotLvo'
 
 /** The index case's examination, as it was spoken. Seconds into the session. */
 const TRANSCRIPT = [
-  { at: 12, who: 'Hub', text: 'Dr. Menon, I can see you. Can you turn the camera to the patient?' },
+  { at: 12, who: 'Hub', text: 'Dr. Logesh, I can see you. Can you turn the camera to the patient?' },
   { at: 24, who: 'Spoke', text: 'One moment. There — can you see his face?' },
   { at: 38, who: 'Hub', text: 'Yes. Mr Malhotra, can you smile for me? Good. Now show me your teeth.' },
   { at: 56, who: 'Hub', text: 'Right lower facial weakness. Now both arms out in front of you, palms up.' },

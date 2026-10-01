@@ -247,7 +247,7 @@ export function StrokeAIReport({ strokeCase, study }: { strokeCase: StrokeCase; 
       {/* Signatures — a report without a named human is not a report. */}
       <div className="grid min-w-0 gap-[12px] sm:grid-cols-3">
         {[
-          { role: 'Reporting radiologist', who: 'Dr. Anitha Venkatesan', detail: `Reviewed ${formatTime(img.deliveredAt)}` },
+          { role: 'Reporting radiologist', who: 'Dr. Logesh', detail: `Reviewed ${formatTime(img.deliveredAt)}` },
           { role: 'Treating clinician', who: strokeCase.activatedBy, detail: `Authorised ${formatTime(strokeCase.activatedAt)}` },
           { role: 'Receiving team', who: facility(strokeCase.destinationFacility).name, detail: img.receiving },
         ].map((s) => (
