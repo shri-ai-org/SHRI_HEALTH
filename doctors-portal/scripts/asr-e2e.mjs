@@ -7,6 +7,7 @@
  *
  * Usage:
  *   BASE=http://localhost:5181 ASR=ws://127.0.0.1:8765/ws/transcribe WAV=clip.wav SECONDS=14 node scripts/asr-e2e.mjs
+ *   (ASR=default uses the build's own address instead)
  */
 
 import { spawn } from 'node:child_process'
@@ -47,7 +48,8 @@ const evaluate = async (expression) => (await send('Runtime.evaluate', { express
 
 await send('Page.navigate', { url: `${BASE}/` })
 await sleep(2500)
-await evaluate(`localStorage.setItem('shri.asrUrl', ${JSON.stringify(ASR)}); true`)
+// ASR=default leaves the address to the build (a dev server's own default), to check that path too.
+if (ASR !== 'default') await evaluate(`localStorage.setItem('shri.asrUrl', ${JSON.stringify(ASR)}); true`)
 await send('Page.reload')
 await sleep(2500)
 await evaluate(`document.querySelector('button[aria-label="Dictate a to-do note"]').click(); true`)
