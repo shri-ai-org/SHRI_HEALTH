@@ -11,6 +11,7 @@ Settings, from the environment — nothing else configures the service.
   ASR_PARTIALS        1 to send live partials, 0 for finals at each pause only (default 1, except Whisper on CPU)
   ASR_TOKEN           a shared token the socket requires as ?token= (default: none)
   ASR_ORIGINS         comma-separated browser origins allowed to connect (default: any)
+  ASR_MAX_SESSIONS    dictations at once; one more is refused, and its browser uses its own recogniser (default 2)
   ASR_HOST, ASR_PORT  where uvicorn listens (default 127.0.0.1:8765)
 """
 
@@ -41,6 +42,7 @@ class Settings:
     partials: bool = os.getenv('ASR_PARTIALS', '1' if os.getenv('ASR_ENGINE', 'indic') == 'indic' or _has_cuda() else '0') == '1'
     token: str = os.getenv('ASR_TOKEN', '')
     origins: tuple = tuple(o.strip() for o in os.getenv('ASR_ORIGINS', '').split(',') if o.strip())
+    max_sessions: int = int(os.getenv('ASR_MAX_SESSIONS', '2'))
     host: str = os.getenv('ASR_HOST', '127.0.0.1')
     port: int = int(os.getenv('ASR_PORT', '8765'))
 

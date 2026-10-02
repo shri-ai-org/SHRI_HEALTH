@@ -3,7 +3,7 @@ Streams a WAV to the speech service as a microphone would — 250 ms of 16 kHz
 Int16 at a time, in real time — and prints every partial and final with how long
 after the start it arrived.
 
-Usage:  python -m tools.stream_file clip.wav [--url ws://127.0.0.1:8765/ws/transcribe] [--fast]
+Usage:  python -m tools.stream_file clip.wav [--url ws://127.0.0.1:8765/ws/transcribe] [--fast] [--origin https://shri-ai.org]
 """
 
 import argparse
@@ -36,11 +36,12 @@ async def main():
     ap.add_argument('--url', default='ws://127.0.0.1:8765/ws/transcribe')
     ap.add_argument('--fast', action='store_true', help='send as fast as possible, not in real time')
     ap.add_argument('--tail', type=float, default=1.5, help='seconds of silence after the clip, so the last pause closes')
+    ap.add_argument('--origin', help='the browser origin to send, for a service started with ASR_ORIGINS')
     args = ap.parse_args()
 
     pcm = to_pcm16(args.wav) + b'\x00\x00' * int(16000 * args.tail)
     t0 = time.time()
-    async with websockets.connect(args.url, max_size=None) as ws:
+    async with websockets.connect(args.url, max_size=None, origin=args.origin) as ws:
 
         async def reader():
             async for raw in ws:

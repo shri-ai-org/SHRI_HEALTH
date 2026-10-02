@@ -40,6 +40,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname
 log = logging.getLogger('asr.app')
 
 ENGINE: dict = {}
+# Dictations in progress. On a shared server one more than ASR_MAX_SESSIONS is refused before the
+# handshake, which the browser treats as unreachable and falls back to its own recogniser.
+ACTIVE = {'sessions': 0}
 
 # A session longer than this is ended — one dictation, not an open microphone.
 MAX_SESSION_SECONDS = 15 * 60
@@ -70,6 +73,18 @@ async def transcribe(ws: WebSocket):
     if SETTINGS.token and ws.query_params.get('token') != SETTINGS.token:
         await ws.close(code=4401)
         return
+    if ACTIVE['sessions'] >= SETTINGS.max_sessions:
+        log.info('refused: %d dictations already in progress', ACTIVE['sessions'])
+        await ws.close(code=4429)
+        return
+    ACTIVE['sessions'] += 1
+    try:
+        await _serve(ws)
+    finally:
+        ACTIVE['sessions'] -= 1
+
+
+async def _serve(ws: WebSocket):
     await ws.accept()
     engine = ENGINE.get('engine')
     if engine is None:

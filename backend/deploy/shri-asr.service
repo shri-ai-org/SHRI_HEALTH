@@ -1,0 +1,28 @@
+# Shri Health speech service (Tamil + English → English) for https://shri-ai.org/dev/clinician/.
+# Install:  sudo cp ~/shri-asr/deploy/shri-asr.service /etc/systemd/system/ && sudo systemctl enable --now shri-asr
+# Capped so it cannot starve the other services on this machine: 2 threads (measured: as fast as 4,
+# 0.25× real time), a lower priority, two cores at most, 6 GB at most (it uses about 3.4 GB).
+[Unit]
+Description=Shri Health speech service (IndicConformer + IndicTrans2, FastAPI WebSocket)
+After=network.target
+
+[Service]
+User=thulasi
+WorkingDirectory=/home/thulasi/shri-asr
+Environment=PYTHONPATH=.
+Environment=HF_HUB_OFFLINE=1
+Environment=ASR_ENGINE=indic
+Environment=ASR_THREADS=2
+Environment=ASR_MAX_SESSIONS=2
+Environment=ASR_ORIGINS=https://shri-ai.org
+Environment=ASR_HOST=127.0.0.1
+Environment=ASR_PORT=8765
+ExecStart=/home/thulasi/shri-asr/.venv/bin/python app.py
+Nice=10
+CPUQuota=200%
+MemoryMax=6G
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
