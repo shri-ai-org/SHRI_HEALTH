@@ -381,6 +381,7 @@ function Panel({ item: it }: { item: AttentionItem }) {
               icon={Mic}
               label="Add note"
               size={48}
+              variant="accent"
               onClick={() => openNoteModal({ kind: 'patient', patientId: it.patientId, listening: true })}
               className="max-[400px]:justify-self-center"
             />

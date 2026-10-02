@@ -201,7 +201,7 @@ export function useStreamingDictation(opts?: DictationOptions & { onUnreachable?
         }
         ws.onclose = () => {
           if (token !== run.current.token || !run.current.opened) return
-          endRun(run.current.active && live.current.stream ? 'The transcription service closed the connection. What was heard is kept — press Dictate to continue.' : null)
+          endRun(run.current.active && live.current.stream ? 'The transcription service closed the connection. What was heard is kept — press the mic to continue.' : null)
         }
         ws.onmessage = (e) => {
           if (token !== run.current.token) return

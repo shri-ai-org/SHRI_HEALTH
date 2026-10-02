@@ -420,7 +420,7 @@ export function useDictation(opts?: DictationOptions): DictationState {
           if (e.error === 'not-allowed' || e.error === 'service-not-allowed') return fail(NOTICE.blocked)
           if (e.error === 'audio-capture') return fail(NOTICE.noMic)
           if (e.error === 'language-not-supported') return fail(languageNotice(languageRef.current))
-          fail(`Speech recognition stopped (${e.error}). What was heard is kept — press Dictate again, or type instead.`)
+          fail(`Speech recognition stopped (${e.error}). What was heard is kept — press the mic again, or type instead.`)
         }
 
         rec.onend = () => {

@@ -42,9 +42,7 @@ export function NotesPage() {
       id={id}
       section="notes"
       actions={(p) => (
-        <Pill variant="primary" size="xl" icon={Mic} iconSize={17} onClick={() => openNoteModal({ kind: 'patient', patientId: p.id, listening: true })}>
-          Add note
-        </Pill>
+        <RoundButton icon={Mic} size={48} iconSize={19} variant="accent" label="Add note" onClick={() => openNoteModal({ kind: 'patient', patientId: p.id, listening: true })} />
       )}
     >
       {(p) => <Notes patient={p} />}
@@ -175,7 +173,7 @@ function VoiceNoteRow({ patient: p, note: n, first }: { patient: Patient; note: 
   return (
     <li className={first ? 'pb-[12px]' : 'border-t border-sh-line py-[12px]'}>
       <div className="flex flex-wrap items-start gap-[12px]">
-        <span className="inline-flex size-[36px] shrink-0 items-center justify-center rounded-[12px] bg-sh-accent-soft text-sh-text" aria-hidden="true">
+        <span className="inline-flex size-[36px] shrink-0 items-center justify-center rounded-[12px] bg-sh-accent text-sh-accent-ink" aria-hidden="true">
           <Icon icon={Mic} size={16} />
         </span>
         <div className="min-w-0 flex-1 basis-[260px]">

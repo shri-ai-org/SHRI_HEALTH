@@ -39,11 +39,11 @@ export const UNSCORED_CONFIDENCE = 0.7
 export const NOTICE = {
   insecure: 'The microphone needs a secure page — open this site over https or on localhost.',
   unsupported: 'This browser can’t turn speech into text. Use Chrome, Edge or Safari — or type instead.',
-  blocked: 'Microphone access was blocked. Allow it from the padlock / site settings in the address bar, then press Dictate again.',
+  blocked: 'Microphone access was blocked. Allow it from the padlock / site settings in the address bar, then press the mic again.',
   noMic: 'No microphone was found on this device.',
   network:
     'The browser’s speech service could not be reached (Brave and some privacy settings block it). Use Chrome, Edge or Safari, or type instead.',
-  keepsStopping: 'Speech recognition keeps stopping on its own. What was heard is kept — press Dictate again, or type instead.',
+  keepsStopping: 'Speech recognition keeps stopping on its own. What was heard is kept — press the mic again, or type instead.',
   wouldNotStart: 'Speech recognition would not start in this browser. Type instead.',
 } as const
 
@@ -58,6 +58,6 @@ export function mediaErrorNotice(err: unknown): string {
   if (name === 'NotAllowedError' || name === 'SecurityError') return NOTICE.blocked
   if (name === 'NotFoundError' || name === 'OverconstrainedError') return NOTICE.noMic
   if (name === 'NotReadableError' || name === 'AbortError')
-    return 'The microphone is in use by another app or tab. Close it there, then press Dictate again — or type instead.'
-  return 'The microphone could not be opened. Press Dictate again, or type instead.'
+    return 'The microphone is in use by another app or tab. Close it there, then press the mic again — or type instead.'
+  return 'The microphone could not be opened. Press the mic again, or type instead.'
 }

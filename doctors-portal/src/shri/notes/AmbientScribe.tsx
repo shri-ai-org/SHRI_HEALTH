@@ -142,7 +142,7 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
         <span
           className={cn(
             'inline-flex size-[36px] shrink-0 items-center justify-center rounded-full',
-            recording ? 'bg-sh-crit-bg text-sh-crit-fg' : unavailable ? 'bg-sh-warn-bg text-sh-warn-fg' : 'bg-sh-card text-sh-text-2',
+            recording ? 'bg-sh-crit-bg text-sh-crit-fg' : unavailable ? 'bg-sh-warn-bg text-sh-warn-fg' : d.phase === 'review' ? 'bg-sh-card text-sh-text-2' : 'bg-sh-accent text-sh-accent-ink',
           )}
           aria-hidden="true"
         >

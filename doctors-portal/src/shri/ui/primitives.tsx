@@ -165,7 +165,7 @@ const roundButton = cva(
         control: 'bg-sh-control text-sh-text hover:bg-sh-hover-strong',
         card: 'bg-sh-card text-sh-text hover:bg-sh-hover',
         primary: 'bg-sh-primary text-sh-on-primary hover:bg-sh-primary-hover',
-        accent: 'bg-sh-accent text-sh-accent-ink',
+        accent: 'bg-sh-accent text-sh-accent-ink hover:brightness-95',
         ghost: 'bg-transparent text-sh-text-2 hover:bg-sh-hover',
         outline: 'bg-transparent text-sh-text border-[1.5px] border-current hover:bg-sh-hover',
         inner: 'bg-sh-inner text-sh-text hover:bg-sh-hover-strong',
@@ -275,7 +275,7 @@ export function Toggle({
 const avatar = cva('inline-flex shrink-0 select-none items-center justify-center rounded-full font-semibold uppercase tracking-[0.02em]', {
   variants: {
     variant: {
-      accent: 'bg-sh-accent text-sh-accent-ink',
+      accent: 'bg-sh-accent text-sh-accent-ink hover:brightness-95',
       pend: 'bg-sh-pend-bg text-sh-pend-fg',
       primary: 'bg-sh-primary text-sh-on-primary',
       inner: 'bg-sh-inner text-sh-text',

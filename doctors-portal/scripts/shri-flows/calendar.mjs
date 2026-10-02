@@ -44,6 +44,27 @@ export default ({ page, expect, auditRows, sentItems, toastSays }) => {
       },
     },
     {
+      name: 'Calendar: the day grid shows busy and free hour by hour — its totals fill 07–19, and a session hour reads busy',
+      async run() {
+        await page.open('/')
+        const grid = (day) => page.evaluate(`document.querySelector('[role="img"][aria-label^="${day}:"]')?.getAttribute('aria-label') ?? ''`)
+        const hours = (day) => page.evaluate(`[...document.querySelectorAll('ul[aria-label="Hour by hour, ${day}"] li')].map((li) => li.textContent)`)
+        const minutes = (label, word) => {
+          const m = label.match(new RegExp(`${word} (?:(\\d+) hours?)? ?(?:(\\d+) minutes?)?`))
+          return m ? Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0) : 0
+        }
+        await page.until(`!!document.querySelector('[role="img"][aria-label^="Monday 21 September:"]')`, 3000, 'today’s grid')
+        const today = await grid('Monday 21 September')
+        expect(minutes(today, 'busy') + minutes(today, 'free') + minutes(today, 'blocked') === 720, `busy, free and blocked make 12 hours: ${today}`)
+        expect((await hours('Monday 21 September')).length === 12, 'twelve hours, 07–19, for screen readers')
+        await page.click('button[role="gridcell"][aria-label^="Tuesday 22 September 2026"]')
+        await page.until(`!!document.querySelector('[role="img"][aria-label^="Tuesday 22 September:"]')`, 3000, 'Tuesday’s grid')
+        const tue = await hours('Tuesday 22 September')
+        expect(tue.some((h) => h.startsWith('14:00–15:00 · busy')), `the endocrine session hour is busy: ${tue.join(' | ')}`)
+        expect(tue.some((h) => h.startsWith('07:00–08:00 · free')), 'the early morning is free')
+      },
+    },
+    {
       name: 'Calendar: blocking a day lists who is booked before anything is done; the booking moves to the first free slot of its clinic; the front office is told the reason, the patient only the new time; on record; unblocking tells the front office',
       async run() {
         await page.open('/')

@@ -182,9 +182,8 @@ function AttentionRow({ item, onOpen, onDictate }: { item: AttentionItem; onOpen
       <RoundButton
         icon={Mic}
         size={44}
-        variant="control"
+        variant="accent"
         label={`Add note about ${name}`}
-        className="hover:bg-sh-accent hover:text-sh-accent-ink"
         onClick={onDictate}
       />
     </li>
@@ -241,7 +240,7 @@ function Tasks({ items }: { items: FinishItem[] }) {
                   onClick={() => navigate(canonical(t.to))}
                   className="flex min-h-[44px] w-full items-center gap-[12px] rounded-[14px] px-[8px] py-[4px] text-left transition-colors duration-150 hover:bg-sh-hover"
                 >
-                  <span className="inline-flex size-[32px] shrink-0 items-center justify-center rounded-[10px] bg-sh-inner text-sh-text">
+                  <span className={cn('inline-flex size-[32px] shrink-0 items-center justify-center rounded-[10px]', t.icon === 'Mic' ? 'bg-sh-accent text-sh-accent-ink' : 'bg-sh-inner text-sh-text')}>
                     <Icon icon={iconFor(t.icon)} size={16} />
                   </span>
                   <span className="min-w-0 flex-1">

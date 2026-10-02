@@ -288,20 +288,16 @@ export function VoiceField({
               {processing ? (
                 <Processing />
               ) : listening ? (
-                <Pill
-                  size="md"
+                <RoundButton
+                  icon={Square}
+                  size={44}
+                  iconSize={14}
+                  label="Stop recording"
                   onClick={d.stop}
-                  className={cn('bg-(--stop) text-white hover:bg-(--stop) hover:brightness-95', streaming && recording && 'motion-safe:animate-[sh-mic-glow_1.8s_ease-in-out_infinite]')}
-                  aria-label="Stop recording"
-                  title="Stop recording"
-                >
-                  <Icon icon={Square} size={12} className="fill-current" />
-                  Stop
-                </Pill>
+                  className={cn('bg-(--stop) text-white hover:bg-(--stop) hover:brightness-95 [&_svg]:fill-current', streaming && recording && 'motion-safe:animate-[sh-mic-glow_1.8s_ease-in-out_infinite]')}
+                />
               ) : (
-                <Pill variant="accent" size="md" icon={Mic} onClick={start}>
-                  {micLabel}
-                </Pill>
+                <RoundButton icon={Mic} size={44} iconSize={19} variant="accent" label={micLabel} onClick={start} />
               )}
               {recording && <Listening d={d} label={streaming ? 'Listening…' : 'Listening · live recognition'} plain={streaming} />}
             </div>
@@ -324,7 +320,7 @@ export function VoiceField({
                   icon={Mic}
                   size={36}
                   iconSize={16}
-                  variant="control"
+                  variant="accent"
                   label={someoneElse ? 'Another field is listening' : micLabel}
                   aria-label={micLabel}
                   disabled={someoneElse}

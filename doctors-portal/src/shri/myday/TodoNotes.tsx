@@ -63,13 +63,13 @@ export function TodoNotes({ className }: { className?: string }) {
           )
         )}
         <div className="ml-auto flex items-center gap-[6px]">
-          <RoundButton icon={Mic} size={40} variant="control" label="Dictate a to-do note" onClick={() => openNoteModal({ kind: 'todo', listening: true })} />
+          <RoundButton icon={Mic} size={40} variant="accent" label="Dictate a to-do note" onClick={() => openNoteModal({ kind: 'todo', listening: true })} />
           <RoundButton icon={Plus} size={40} variant="primary" label="Type a to-do note" strokeWidth={2.2} onClick={() => openNoteModal({ kind: 'todo', listening: false })} />
         </div>
       </header>
 
       {ordered.length === 0 ? (
-        <p className="text-[14px] text-sh-text-2">Nothing noted for today yet. Dictate one with the microphone, or type one with +.</p>
+        <p className="text-[14px] text-sh-text-2">Nothing noted for today yet. Use the mic, or + to type.</p>
       ) : (
         <ul aria-label="To-do notes" className="sh-scrollbar -mx-[4px] flex min-h-0 flex-1 flex-col gap-[6px] overflow-y-auto px-[4px]">
           {ordered.map((t) => (

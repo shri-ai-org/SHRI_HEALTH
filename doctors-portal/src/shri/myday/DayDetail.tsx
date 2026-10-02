@@ -3,7 +3,7 @@
  * view's popover (`DayPeek`), so it is one implementation in two places. From
  * the live calendar (`logic/schedule.ts`): the doctor's blocked time, their
  * sessions (a session inside blocked time says so), the patients booked with
- * them, and an hour strip of all three. A booking of the doctor's own that is
+ * them, and an hour-by-hour grid of busy and free time (`HourGrid`). A booking of the doctor's own that is
  * still to come can be moved or cancelled here; any date from today on can
  * have time blocked. No AI brief: the calendar shows what is booked, not a
  * summary of it.
@@ -24,14 +24,8 @@ import { useShri } from '../state/store'
 import { iconFor } from '../ui/icons'
 import { Icon, Pill, PillTag, RoundButton } from '../ui/primitives'
 
+import { HourGrid } from './HourGrid'
 import type { CalendarDay } from './useMyDay'
-
-const DAY_START = 7 * 60
-const DAY_SPAN = 12 * 60
-const NOW_MIN = NOW.getHours() * 60 + NOW.getMinutes()
-const HOURS = ['07', '10', '13', '16', '19']
-const pct = (minutes: number) => `${Math.min(100, Math.max(0, ((minutes - DAY_START) / DAY_SPAN) * 100))}%`
-const minutesOf = (d: Date) => d.getHours() * 60 + d.getMinutes()
 
 /** "Today" / "Earlier" / "Coming up" — the old day panel's three. */
 function relation(day: CalendarDay) {
@@ -106,7 +100,7 @@ export function DayDetail({ day, headerEnd, onLeave, className }: { day: Calenda
         <p className="mt-[12px] rounded-[14px] bg-sh-inner px-[14px] py-[14px] text-[14px] text-sh-text-2">A clear day — nothing is booked.</p>
       ) : (
         <>
-          <HourStrip day={day} />
+          <HourGrid day={day} />
 
           {day.sessions.length > 0 && (
             <div className="mt-[14px]">
@@ -190,50 +184,5 @@ export function LoadMeter({ level, critical, word }: { level: number; critical: 
         return <span key={h} className={cn('w-[5px] rounded-[2px]', filled ? (last && critical ? 'bg-sh-crit' : 'bg-sh-accent') : 'bg-sh-line-strong')} style={{ height: h }} />
       })}
     </span>
-  )
-}
-
-/** 07–19h: sessions as bars, blocked time as a hatched band, bookings as dots, today's now-line. */
-function HourStrip({ day }: { day: CalendarDay }) {
-  return (
-    <div className="mt-[12px]">
-      <div className="relative h-[34px] overflow-hidden rounded-[10px] bg-sh-inner" aria-hidden="true">
-        {day.blocks.map((e) => {
-          const start = e.block!.allDay ? DAY_START : minutesOf(e.at)
-          const end = e.block!.allDay ? DAY_START + DAY_SPAN : minutesOf(e.until!)
-          return (
-            <span
-              key={e.id}
-              className="absolute inset-y-0 bg-[repeating-linear-gradient(135deg,var(--crit-bg)_0_6px,transparent_6px_10px)]"
-              style={{ left: pct(start), width: `calc(${pct(end)} - ${pct(start)})` }}
-              title={`Blocked · ${e.block!.reason}`}
-            />
-          )
-        })}
-        {day.sessions.map((e) => {
-          const start = minutesOf(e.at)
-          const end = e.until ? minutesOf(e.until) : start + 30
-          return (
-            <span
-              key={e.id}
-              className={cn('absolute top-[8px] h-[18px] rounded-[6px] bg-sh-accent', e.blocked && 'opacity-30')}
-              style={{ left: pct(start), width: `calc(${pct(end)} - ${pct(start)})` }}
-              title={`${e.title} ${fmtTime(e.at)}${e.until ? `–${fmtTime(e.until)}` : ''}`}
-            />
-          )
-        })}
-        {day.bookings.map((e) => (
-          <span key={e.id} className="absolute top-[13px] size-[8px] -translate-x-1/2 rounded-full bg-sh-primary" style={{ left: pct(minutesOf(e.at)) }} title={`${e.title} ${fmtTime(e.at)}`} />
-        ))}
-        {day.isToday && <span className="absolute inset-y-0 w-[2px] -translate-x-1/2 bg-sh-crit" style={{ left: pct(NOW_MIN) }} />}
-      </div>
-      <div className="relative mt-[3px] h-[12px] text-[10px]/[12px] tabular-nums text-sh-muted" aria-hidden="true">
-        {HOURS.map((h, i) => (
-          <span key={h} className={cn('absolute', i === 0 ? '' : i === HOURS.length - 1 ? '-translate-x-full' : '-translate-x-1/2')} style={{ left: `${(i / (HOURS.length - 1)) * 100}%` }}>
-            {h}
-          </span>
-        ))}
-      </div>
-    </div>
   )
 }

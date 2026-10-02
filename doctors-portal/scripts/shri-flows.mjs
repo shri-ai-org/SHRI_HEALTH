@@ -390,7 +390,7 @@ const FLOWS = [
     name: 'My Day: to-do notes — type one, tick it, delete it, in the old words, audited',
     async run() {
       await page.open('/')
-      expect((await page.text()).includes('Nothing noted for today yet. Dictate one with the microphone, or type one with +.'), 'the empty copy')
+      expect((await page.text()).includes('Nothing noted for today yet. Use the mic, or + to type.'), 'the empty copy')
       await page.click('button[aria-label="Type a to-do note"]')
       await page.until(`document.querySelector('[role="dialog"][aria-label="To-do note"]')`, 3000, 'the to-do note dialog')
       await page.type('[role="dialog"] textarea[aria-label="Your note"]', 'Call the lab about the repeat potassium')
@@ -464,7 +464,7 @@ const FLOWS = [
         await page.until(`document.querySelector('[role="dialog"][aria-label="To-do note"]')`, 3000, 'the to-do dialog')
         const text = await page.evaluate(`document.querySelector('[role="dialog"]').textContent`)
         expect(text.includes('This browser can’t turn speech into text. Use Chrome, Edge or Safari — or type instead.'), `the old notice: ${text.slice(0, 300)}`)
-        expect(await page.evaluate(`![...document.querySelectorAll('[role="dialog"] button')].some((b) => /^Dictate/.test(b.textContent.trim()))`), 'no microphone to press — absent, not greyed')
+        expect(await page.evaluate(`!document.querySelector('[role="dialog"] button[aria-label^="Dictate"]')`), 'no microphone to press — absent, not greyed')
         expect((await page.evaluate(`document.querySelector('#dictation-draft').placeholder`)) === 'Type the note…', 'the typing placeholder')
         await page.type('#dictation-draft', 'Chase the echo report')
         await page.click('[role="dialog"] button', 'Save')
@@ -634,7 +634,7 @@ const FLOWS = [
         await page.open('/patient/ICH-0044051/notes')
         expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-14"]')`), 'S-06-14 is drawn')
         for (const words of ['Plan to switch to meropenem', 'Discuss with the family']) {
-          await page.click('button', 'Add note')
+          await page.click('button[aria-label="Add note"]')
           await page.until(`document.querySelector('#dictation-draft')`, 3000, 'the note dialog')
           await page.type('#dictation-draft', words)
           await page.click('[role="dialog"] button', 'Save')
