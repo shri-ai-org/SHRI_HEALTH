@@ -2000,16 +2000,13 @@ const FLOWS = [
     },
   },
   {
-    name: 'Shell: facility switch — the four facilities, the old caution toast',
+    name: 'Shell: the hospital’s logo leads to indostates.com, the Shri Health mark to shri-ai.org/dev/',
     async run() {
       await page.open('/')
-      await page.click('button[title^="Facility"]')
-      const rows = await page.evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((r) => r.textContent)`)
-      expect(rows.length === 4 && ['ICH', 'ITP', 'IPL', 'IUD'].every((c) => rows.some((r) => r.startsWith(c))), `four facilities: ${rows}`)
-      await page.click('[role="menu"] [role="menuitem"]', 'Pollachi')
-      await page.until(`document.body.innerText.includes('Scope changed to IPL')`, 3000, 'the caution toast')
-      expect((await page.text()).includes('What you may read and write has changed with it.'), 'its detail, word for word')
-      expect(await page.evaluate(`document.querySelector('button[title^="Facility"]').textContent.includes('IPL')`), 'the pill shows the new scope')
+      const links = await page.evaluate(`[...document.querySelectorAll('header[role="banner"] a')].map((a) => [a.getAttribute('href'), a.getAttribute('aria-label') ?? a.querySelector('img')?.alt])`)
+      expect(links.some(([href, name]) => href === 'https://indostates.com' && /Indostates Health/.test(name)), `the Indostates logo, named, to its site: ${JSON.stringify(links)}`)
+      expect(links.some(([href, name]) => href === 'https://shri-ai.org/dev/' && /Shri Health/.test(name)), `the Shri Health mark to shri-ai.org/dev/: ${JSON.stringify(links)}`)
+      expect(!(await page.evaluate(`!!document.querySelector('button[title^="Facility"]')`)), 'no facility pill any more')
     },
   },
   {
@@ -2102,10 +2099,12 @@ const FLOWS = [
     name: 'Toasts stack on the shared store, dismissable, announced not focused',
     async run() {
       await page.open('/')
-      await page.click('button[title^="Facility"]')
-      await page.click('[role="menu"] button, [role="menu"] [role="menuitem"]')
+      await page.click('button[aria-label="Type a to-do note"]')
+      await page.until(`document.querySelector('#dictation-draft')`, 3000, 'the to-do dialog')
+      await page.type('#dictation-draft', 'Call the lab about the culture')
+      await page.click('[role="dialog"] button', 'Save')
       await page.until(`document.querySelector('[role="status"] button[aria-label="Dismiss"]')`, 3000, 'a toast with Dismiss')
-      const inStatus = await page.evaluate(`[...document.querySelectorAll('[role="status"]')].some((r) => r.textContent.includes('Scope changed'))`)
+      const inStatus = await page.evaluate(`[...document.querySelectorAll('[role="status"]')].some((r) => r.textContent.includes('To-do note saved'))`)
       expect(inStatus, 'the toast text is inside role="status"')
       const focused = await page.evaluate(`!!document.activeElement?.closest('[role="status"]')`)
       expect(!focused, 'a new toast must not take focus')

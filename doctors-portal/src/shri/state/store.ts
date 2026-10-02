@@ -26,7 +26,7 @@ export type NoteModalState =
   | { kind: 'patient'; patientId: string; listening: boolean }
   | { kind: 'todo'; listening: boolean }
 
-export type MenuId = 'facility' | 'notifications' | 'user'
+export type MenuId = 'notifications' | 'user'
 
 export interface ShriState {
   /* ---- persisted */
@@ -187,7 +187,7 @@ function devOpen(): Partial<ShriState> {
     else if (k === 'peek' && v) {
       out.peekDay = v
       out.peekPinned = true
-    } else if (k === 'menu' && (v === 'facility' || v === 'notifications' || v === 'user')) out.menu = v
+    } else if (k === 'menu' && (v === 'notifications' || v === 'user')) out.menu = v
     else if (k === 'rail') out.railOpen = true
     else if (k === 'tab' && (v === 'opd' || v === 'ip')) out.patientTab = v
     else if (k === 'filter' && (v === 'waiting' || v === 'inroom' || v === 'admissions' || v === 'icu')) out.patientFilter = v

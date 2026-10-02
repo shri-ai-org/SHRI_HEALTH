@@ -85,7 +85,7 @@ html.shri-active body::before {
   --warn-bg: #fff0e0; --warn-fg: #8a4b0c; --warn: #ff9a3d;
   --norm-bg: #e3f7ea; --norm-fg: #16693a; --norm: #3dbe72;
   /* The day grid's cell edges (myday/HourGrid): the accent and --norm are under 3:1 on white, so light gets deeper edges. */
-  --busy-edge: #5b5ce0; --free-edge: #16693a;
+  --busy-edge: #5b5ce0; --free-edge: #16693a; --free-fill: #c9eed8;
   --pend-bg: #e9e9fe; --pend-fg: #3f40b8; --pend: #9b9cf7;
   --neu-bg: #f2f2f4;  --neu-fg: #33333b;  --neu: #b4b4bd;
 
@@ -196,7 +196,7 @@ html[data-theme='dark'] .shri-root {
   --crit-solid: #ff6b6b; --on-crit-solid: #1a0707;
   --warn-bg: rgba(255, 176, 32, 0.16); --warn-fg: #ffc766; --warn: #ffb020;
   --norm-bg: rgba(52, 211, 153, 0.16); --norm-fg: #6ee7b7; --norm: #34d399;
-  --busy-edge: #d4ff3a; --free-edge: #34d399;
+  --busy-edge: #d4ff3a; --free-edge: #34d399; --free-fill: rgba(52, 211, 153, 0.3);
   --pend-bg: rgba(31, 76, 255, 0.24);  --pend-fg: #9db2ff; --pend: #1f4cff;
   --neu-bg: #333336;                   --neu-fg: #c9c9ce;  --neu: #6e6e74;
 

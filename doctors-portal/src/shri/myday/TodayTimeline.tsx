@@ -5,7 +5,8 @@
  * becomes its chips, with the numbers the plan marks as critical, warning or
  * pending in those tones. A block opens the screen it names. When the card is
  * shorter than the day (a 960px page on a short laptop), the rows scroll inside
- * it with the same bottom fade as Patients Today.
+ * it with the same bottom fade as Patients Today. Above the rows, the day's busy
+ * and free time hour by hour — the calendar's grid, compact (`HourGrid`).
  */
 
 import { Check, ChevronRight, Clock } from 'lucide-react'
@@ -21,6 +22,7 @@ import type { Tone } from '../mocks/types'
 import { iconFor } from '../ui/icons'
 import { Card, Chip, Diamond, Icon } from '../ui/primitives'
 
+import { HourGrid } from './HourGrid'
 import { useMyDay } from './useMyDay'
 
 const EMPHASIS_TONE: Record<NonNullable<DayBlock['emphasis']>[number]['tone'], Tone> = { critical: 'crit', warning: 'warn', pending: 'pend' }
@@ -83,6 +85,8 @@ export function TodayTimeline({ className }: { className?: string }) {
           </span>
         )}
       </header>
+
+      <HourGrid day={d.dayInfo(NOW)} compact className="mb-[10px] mt-0" />
 
       {/* Rows bleed 10px into the card gutter so the times line up with the title. */}
       <div ref={listRef} onScroll={measure} className={cn('sh-scrollbar -mx-[10px] flex min-h-0 flex-1 flex-col overflow-y-auto', more && 'sh-fade-bottom')}>

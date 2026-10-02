@@ -1,9 +1,6 @@
-import { Link } from 'react-router-dom'
-
 import { cn } from '../lib/cn'
 
 import logoMark from './logo-mark.webp'
-import { P } from './paths'
 
 /**
  * §9 — the Shri Health mark, 36px tall. Drawn from brand/logo-source.png by
@@ -18,25 +15,25 @@ export function LogoMark({ size = 36, className }: { size?: number; className?: 
   return <img src={logoMark} alt="" width={Math.round((size * MARK_W) / MARK_H)} height={size} decoding="async" className={cn('shrink-0 select-none', className)} draggable={false} />
 }
 
+/** Where the mark leads: Shri AI's index of its portals. */
+export const SHRI_HOME = 'https://shri-ai.org/dev/'
+
 /**
- * §4.1 #2 — mark + "Shri Health", links to My Day. Under 768px the mark alone,
- * as a picture rather than a link: the bottom bar's Home is My Day there, and
- * the row has no room for a second 44px target.
+ * §4.1 #2 — mark + "Shri Health", linking to shri-ai.org/dev/. Under 768px the
+ * mark alone, still the same link, on a 44px target.
  */
 export function Logo() {
   return (
     <>
-      <LogoMark size={32} className="sm:hidden" />
-      <Link
-        to={P.myDay}
-        className="flex min-h-[44px] items-center gap-[10px] rounded-full pr-2 text-sh-text max-sm:hidden"
-        aria-label="Shri Health — My Day"
-      >
+      <a href={SHRI_HOME} className="inline-flex size-[44px] shrink-0 items-center justify-center rounded-full sm:hidden" aria-label="Shri Health — shri-ai.org">
+        <LogoMark size={32} />
+      </a>
+      <a href={SHRI_HOME} className="flex min-h-[44px] items-center gap-[10px] rounded-full pr-2 text-sh-text max-sm:hidden" aria-label="Shri Health — shri-ai.org">
         <LogoMark />
         <span className="whitespace-nowrap text-[24px]/none font-medium tracking-[-0.02em] shdark:font-sh-serif shdark:text-[30px] shdark:font-normal shdark:tracking-normal">
           Shri Health
         </span>
-      </Link>
+      </a>
     </>
   )
 }

@@ -6,7 +6,9 @@
  * that hour. Today's past hours fade and the now-line marks the minute. Above:
  * busy, free and booked totals, and the next free time — the swatches are the
  * legend, so the grid carries almost no words. Colour is never the only signal:
- * filled vs hollow, the hatch and ⊘, and the dots.
+ * filled vs hollow, the hatch and ⊘, and the dots. `compact` is the Today
+ * card's: the same grid on its own soft panel, slimmer edges, and the hour list
+ * left to the calendar's copy.
  */
 
 import { format } from 'date-fns'
@@ -31,7 +33,7 @@ function cellLine(c: HourCell) {
   return `${when} · ${state}${c.titles.length ? ` · ${c.titles.join(', ')}` : ''}${who}`
 }
 
-export function HourGrid({ day }: { day: CalendarDay }) {
+export function HourGrid({ day, compact = false, className }: { day: CalendarDay; compact?: boolean; className?: string }) {
   const g = hourGrid(day)
   const nowF = (NOW.getHours() * 60 + NOW.getMinutes() - GRID_START * 60) / 60
   const showNow = day.isToday && nowF >= 0 && nowF <= GRID_HOURS
@@ -46,14 +48,14 @@ export function HourGrid({ day }: { day: CalendarDay }) {
     .join(', ')
 
   return (
-    <div className="mt-[12px]">
-      <div className="flex flex-wrap items-center gap-x-[14px] gap-y-[4px] text-[12px]/[16px] font-medium tabular-nums text-sh-text-2" aria-hidden="true">
+    <div className={cn('mt-[12px]', compact && 'rounded-[14px] bg-sh-inner px-[12px] pb-[6px] pt-[8px]', className)}>
+      <div className={cn('flex flex-wrap items-center gap-x-[14px] gap-y-[4px] font-medium tabular-nums text-sh-text-2', 'text-[12px]/[16px]')} aria-hidden="true">
         <span className="inline-flex items-center gap-[5px]" title="Busy">
           <span className="size-[11px] rounded-[3px] border-[1.5px] border-(--busy-edge) bg-sh-accent" />
           {duration(g.busyMin)}
         </span>
         <span className="inline-flex items-center gap-[5px]" title="Free">
-          <span className="size-[11px] rounded-[3px] border-[1.5px] border-(--free-edge) bg-sh-norm-bg" />
+          <span className="size-[11px] rounded-[3px] border-[1.5px] border-(--free-edge) bg-(--free-fill)" />
           {duration(g.freeMin)}
         </span>
         {g.blockedMin > 0 && (
@@ -76,36 +78,41 @@ export function HourGrid({ day }: { day: CalendarDay }) {
         )}
       </div>
 
-      <div className="relative mt-[8px]">
+      <div className={cn('relative', compact ? 'mt-[6px]' : 'mt-[7px]')}>
         <div role="img" aria-label={summary} className="grid grid-cols-12" style={{ gap: GAP }}>
           {g.cells.map((c) => (
             <span
               key={c.hour}
               title={cellLine(c)}
               className={cn(
-                'relative h-[40px] overflow-hidden rounded-[7px] border-[1.5px] bg-sh-norm-bg',
+                'relative overflow-hidden bg-(--free-fill)',
+                compact ? 'h-[22px] rounded-[6px] border' : 'h-[24px] rounded-[6px] border-[1.5px]',
                 c.busyMin === 60 ? 'border-(--busy-edge)' : c.blockedMin === 60 ? 'border-sh-crit' : 'border-(--free-edge)',
                 c.past && 'opacity-45',
               )}
             >
               {c.blockedMin > 0 && <span className={cn('absolute inset-x-0 top-0', HATCH)} style={{ height: `${(c.blockedMin / 60) * 100}%` }} />}
               {c.busyMin > 0 && <span className={cn('absolute inset-x-0 bottom-0 bg-sh-accent', c.busyMin < 60 && 'border-t-[2px] border-(--busy-edge)')} style={{ height: `${(c.busyMin / 60) * 100}%` }} />}
-              {c.blockedMin === 60 && <Icon icon={Ban} size={13} className="absolute inset-0 m-auto text-sh-crit-fg" />}
+              {c.blockedMin === 60 && <Icon icon={Ban} size={compact ? 10 : 12} className="absolute inset-0 m-auto text-sh-crit-fg" />}
               {c.bookings > 0 && (
-                <span className="absolute inset-x-0 bottom-[5px] flex items-center justify-center gap-[2px]">
+                <span className="absolute inset-x-0 bottom-[3px] flex items-center justify-center gap-[2px]">
                   {Array.from({ length: Math.min(3, c.bookings) }, (_, i) => (
-                    <span key={i} className="size-[5px] rounded-full bg-sh-accent-ink" />
+                    <span key={i} className="size-[4px] rounded-full bg-sh-accent-ink" />
                   ))}
-                  {c.bookings > 3 && <span className="text-[9px]/[9px] font-bold text-sh-accent-ink">+</span>}
+                  {c.bookings > 3 && <span className="text-[8px]/[8px] font-bold text-sh-accent-ink">+</span>}
                 </span>
               )}
             </span>
           ))}
         </div>
-        {showNow && <span className="pointer-events-none absolute -inset-y-[3px] w-[2px] -translate-x-1/2 rounded-full bg-sh-crit" style={{ left: along(nowF) }} aria-hidden="true" />}
+        {showNow && (
+          <span className="pointer-events-none absolute -inset-y-[4px] w-[2px] -translate-x-1/2 rounded-full bg-sh-crit" style={{ left: along(nowF) }} aria-hidden="true">
+            <span className="absolute -left-[2px] -top-[2px] size-[6px] rounded-full bg-sh-crit" />
+          </span>
+        )}
       </div>
 
-      <div className="relative mt-[4px] h-[12px] text-[10px]/[12px] tabular-nums text-sh-muted" aria-hidden="true">
+      <div className={cn('relative tabular-nums text-sh-muted', 'mt-[3px] h-[12px] text-[10px]/[12px]')} aria-hidden="true">
         {Array.from({ length: GRID_HOURS / 2 + 1 }, (_, i) => i * 2).map((k) => (
           <span key={k} className={cn('absolute', k === 0 ? '' : k === GRID_HOURS ? '-translate-x-full' : '-translate-x-1/2')} style={{ left: k === 0 ? 0 : k === GRID_HOURS ? '100%' : along(k) }}>
             {String(GRID_START + k).padStart(2, '0')}
@@ -113,11 +120,13 @@ export function HourGrid({ day }: { day: CalendarDay }) {
         ))}
       </div>
 
-      <ul className="sr-only" aria-label={`Hour by hour, ${format(day.date, 'EEEE d MMMM')}`}>
-        {g.cells.map((c) => (
-          <li key={c.hour}>{cellLine(c)}</li>
-        ))}
-      </ul>
+      {!compact && (
+        <ul className="sr-only" aria-label={`Hour by hour, ${format(day.date, 'EEEE d MMMM')}`}>
+          {g.cells.map((c) => (
+            <li key={c.hour}>{cellLine(c)}</li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

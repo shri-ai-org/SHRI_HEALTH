@@ -3,14 +3,15 @@
  * `--card` with white icons, which the tokens already do.
  *
  * On a phone (< 768px) it has to fit 288px: the rail toggle goes (there is no
- * rail — the tab bar replaces it), gaps close to 8px, and the facility and
- * user pills drop their chevrons (they still open their menus). Under 360px
- * the theme toggle moves into the user menu.
+ * rail — the tab bar replaces it), gaps close to 8px, the Indostates logo at
+ * the far right shrinks (and goes under 420px), and the user pill drops its
+ * chevron (it still opens its menu). Under 360px the theme toggle moves into
+ * the user menu.
  */
 
-import { Bell, Building2, ChevronDown, Menu as MenuIcon, Moon, Search, Sun, UserRound } from 'lucide-react'
+import { Bell, ChevronDown, Menu as MenuIcon, Moon, Search, Sun, UserRound } from 'lucide-react'
 
-import { FACILITIES, LANGUAGES, type LanguageCode } from '@/data/kit'
+import { LANGUAGES, type LanguageCode } from '@/data/kit'
 import { useCurrentStaff, useSession } from '@/store/session'
 
 import { cn } from '../lib/cn'
@@ -18,7 +19,8 @@ import { useShri } from '../state/store'
 import { Icon, RoundButton } from '../ui/primitives'
 
 import { Logo } from './Logo'
-import { FacilityMenu } from './menus/FacilityMenu'
+import indostatesLogoDark from './indostates-logo-dark.webp'
+import indostatesLogo from './indostates-logo.webp'
 import { NotificationsMenu } from './menus/NotificationsMenu'
 import { useNotices } from './menus/useNotices'
 import { UserMenu } from './menus/UserMenu'
@@ -28,7 +30,6 @@ export function AppBar() {
   const railOpen = useShri((s) => s.railOpen)
   const theme = useShri((s) => s.theme)
   const toggleTheme = useShri((s) => s.toggleTheme)
-  const facilityCode = useSession((s) => s.facilityCode)
   const language = useSession((s) => s.language)
   const setLanguage = useSession((s) => s.setLanguage)
   const me = useCurrentStaff()
@@ -36,7 +37,6 @@ export function AppBar() {
   const toggleMenu = useShri((s) => s.toggleMenu)
   const openSearch = useShri((s) => s.openSearch)
   const unread = useNotices().inbox.length
-  const f = FACILITIES.find((x) => x.code === facilityCode) ?? FACILITIES[0]
 
   return (
     <header className="flex h-[56px] items-center gap-[12px] max-sm:gap-[6px]" role="banner">
@@ -52,23 +52,6 @@ export function AppBar() {
       />
 
       <Logo />
-
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => toggleMenu('facility')}
-          aria-haspopup="menu"
-          aria-expanded={menu === 'facility'}
-          title="Facility — changes your authorization scope"
-          className="flex h-[48px] items-center gap-[10px] rounded-full bg-sh-card pl-[16px] pr-[12px] text-sh-text transition-colors duration-150 hover:bg-sh-hover max-sm:h-[44px] max-sm:gap-[8px] max-sm:px-[12px]"
-        >
-          <Icon icon={Building2} size={18} />
-          <span className="text-[14px] font-semibold">{f.code}</span>
-          <span className="whitespace-nowrap text-[14px] text-sh-text-2 max-lg:hidden">{f.short}</span>
-          <Icon icon={ChevronDown} size={16} className="text-sh-chev max-sm:hidden" />
-        </button>
-        <FacilityMenu />
-      </div>
 
       <div className="flex-1" />
 
@@ -143,6 +126,16 @@ export function AppBar() {
         </button>
         <UserMenu />
       </div>
+
+      {/* The hospital's own mark, far right, linking to its site. Two copies: the dark theme's lifts the grey lettering. Under 420px the row has no room for it. */}
+      <a
+        href="https://indostates.com"
+        title="Indostates Health — indostates.com"
+        className="flex h-[48px] shrink-0 items-center rounded-full px-[8px] transition-colors duration-150 hover:bg-sh-hover max-sm:h-[44px] max-sm:px-[4px] max-[420px]:hidden"
+      >
+        <img src={indostatesLogo} width={175} height={36} alt="Indostates Health — go to indostates.com" decoding="async" className="h-[36px] w-auto shdark:hidden max-sm:h-[26px]" />
+        <img src={indostatesLogoDark} width={175} height={36} alt="Indostates Health — go to indostates.com" decoding="async" className="hidden h-[36px] w-auto shdark:block max-sm:h-[26px]" />
+      </a>
     </header>
   )
 }

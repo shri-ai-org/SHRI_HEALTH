@@ -40,3 +40,31 @@ m.save('src/shri/app/logo-mark.webp', 'WEBP', quality=90, method=6)
 for f in ['public/favicon.ico', 'public/favicon-32.png', 'public/apple-touch-icon.png', 'src/shri/app/logo-mark.webp']:
     print(f'{f:32} {os.path.getsize(f):>6} bytes')
 print('mark', m.size)
+
+# The Indostates Health logo for the AppBar (brand/indostates-logo-source.png, white-backed). The white
+# is turned to transparency ("colour to alpha"), so the logo sits on the bar in either theme; the dark
+# theme's copy lifts the grey lettering to near-white, keeping the blue, so it stays readable.
+logo = Image.open('brand/indostates-logo-source.png').convert('RGB')
+W, H = logo.size
+data = []
+dark = []
+for r, g, b in logo.getdata():
+    a = 255 - min(r, g, b)
+    if a < 18:
+        data.append((0, 0, 0, 0))
+        dark.append((0, 0, 0, 0))
+        continue
+    k = a / 255
+    c = [max(0, min(255, round((v - 255 * (1 - k)) / k))) for v in (r, g, b)]
+    data.append((*c, a))
+    grey = max(c) - min(c) < 40
+    dark.append((236, 236, 240, a) if grey else (min(255, c[0] + 50), min(255, c[1] + 55), min(255, c[2] + 50), a))
+for name, px in [('indostates-logo', data), ('indostates-logo-dark', dark)]:
+    im = Image.new('RGBA', (W, H))
+    im.putdata(px)
+    im = im.crop(im.getchannel('A').point(lambda a: 255 if a > 24 else 0).getbbox())
+    h = 72  # 2× its 36 px height in the bar
+    im = im.resize((round(im.width * h / im.height), h), Image.LANCZOS)
+    path = f'src/shri/app/{name}.webp'
+    im.save(path, 'WEBP', quality=90, method=6)
+    print(f'{path:40} {os.path.getsize(path):>6} bytes', im.size)
