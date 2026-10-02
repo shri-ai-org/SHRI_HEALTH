@@ -132,7 +132,7 @@ function SimulateCritical() {
 /** §11 LOADING — blocks where the cards will be. */
 function PageSkeleton() {
   return (
-    <div className={cn('flex flex-col', PAGE_H)} aria-busy="true" aria-label="Loading My Day">
+    <div className={cn('flex flex-col', PAGE_H)} aria-busy="true" aria-label="Loading Dashboard">
       <Skeleton className="h-[36px] w-[360px] max-w-full" />
       <Skeleton className="mt-[8px] h-[18px] w-[420px] max-w-full" />
       <div className="mb-[2px] mt-[14px] grid h-[74px] grid-cols-6 gap-[12px] max-lg:h-auto max-lg:grid-cols-3 max-sm:flex max-sm:overflow-hidden">

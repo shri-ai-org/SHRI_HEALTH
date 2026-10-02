@@ -255,7 +255,7 @@ export function dayBrief(day: Date, entries: CalendarEntry[]): DayBrief {
     band,
     confidence,
     inputs: [
-      { label: isToday ? "Today's day plan" : 'Session templates and the base week', source: isToday ? 'My Day' : 'S-05-04 · S-05-05' },
+      { label: isToday ? "Today's day plan" : 'Session templates and the base week', source: isToday ? 'Dashboard' : 'S-05-04 · S-05-05' },
       { label: 'Appointments booked with you', source: 'Appointments' },
       { label: 'Session start and finish times, 12 weeks', source: 'Clinic session history' },
     ],

@@ -395,7 +395,7 @@ const FLOWS = [
       await page.until(`document.querySelector('[role="dialog"][aria-label="To-do note"]')`, 3000, 'the to-do note dialog')
       await page.type('[role="dialog"] textarea[aria-label="Your note"]', 'Call the lab about the repeat potassium')
       await page.click('[role="dialog"] button', 'Save')
-      await toastSays('To-do note saved', 'On My Day, under To-do notes')
+      await toastSays('To-do note saved', 'On the Dashboard, under To-do notes')
       const saved = (await auditRows()).find((r) => r.event === 'NOTE.DRAFT_SAVED')
       expect(saved && saved.gate === 'G2' && saved.model === 'Typed — no speech recognition' && saved.detail === 'Typed note saved · 7 words', `NOTE.DRAFT_SAVED: ${JSON.stringify(saved)}`)
       expect(!(await auditRows()).some((r) => r.event === 'AI.SCRIBE.TRANSCRIPT_CREATED'), 'typed, so no transcript row')
@@ -468,7 +468,7 @@ const FLOWS = [
         expect((await page.evaluate(`document.querySelector('#dictation-draft').placeholder`)) === 'Type the note…', 'the typing placeholder')
         await page.type('#dictation-draft', 'Chase the echo report')
         await page.click('[role="dialog"] button', 'Save')
-        await toastSays('To-do note saved', 'On My Day, under To-do notes')
+        await toastSays('To-do note saved', 'On the Dashboard, under To-do notes')
       } finally {
         await unstub()
       }
@@ -1976,14 +1976,14 @@ const FLOWS = [
     async run() {
       await page.open('/')
       const p04 = await railLabels()
-      for (const l of ['My Day', 'Patient search', 'My patients', 'Results', 'Discharge', 'Stroke-AI Console', 'Telehealth', 'Assistant', 'More'])
+      for (const l of ['Dashboard', 'Patient search', 'My patients', 'Results', 'Discharge', 'Stroke-AI Console', 'Telehealth', 'Assistant', 'More'])
         expect(p04.includes(l), `P-04 rail has ${l}: ${p04}`)
       await page.open('/', { persona: 'P-05' })
       const p05 = await railLabels()
       expect(!p05.includes('Stroke-AI Console') && !p05.includes('Telehealth'), `P-05 has no stroke or telehealth: ${p05}`)
       await page.open('/radiology/worklist', { persona: 'P-13' })
       const p13 = await railLabels()
-      expect(!p13.includes('My Day') && p13.includes('More'), `P-13: no My Day, Imaging under More: ${p13}`)
+      expect(!p13.includes('Dashboard') && p13.includes('More'), `P-13: no Dashboard, Imaging under More: ${p13}`)
       // P-13 may open OPD but not Inpatients: My patients is there, with the one list and no tab to the other.
       await page.open('/op-queue', { persona: 'P-13', fresh: false })
       expect(!(await page.evaluate(`!!document.querySelector('[role="tablist"][aria-label="My patients"]')`)), 'P-13: no Inpatients tab')
@@ -2040,10 +2040,10 @@ const FLOWS = [
     name: 'Shell: Back names where it goes when opened cold; ⓘ shows the atlas trace',
     async run() {
       await page.open('/patient/ICH-0044120')
-      expect(await page.evaluate(`!!document.querySelector('button[aria-label="Back to My Day"]')`), 'cold: Back to My Day')
+      expect(await page.evaluate(`!!document.querySelector('button[aria-label="Back to Dashboard"]')`), 'cold: Back to Dashboard')
       await page.click('button[aria-label="About this screen"]')
       await page.until(`document.querySelector('[role="dialog"][aria-label^="About"]')?.innerText.includes('S-06-11 · M-06')`, 3000, 'the screen id and module')
-      await page.click('button[aria-label="Back to My Day"]')
+      await page.click('button[aria-label="Back to Dashboard"]')
       await page.until(`location.pathname === '/'`, 3000, 'back on My Day')
     },
   },

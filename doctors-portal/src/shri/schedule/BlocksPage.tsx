@@ -61,7 +61,7 @@ export function BlocksPage() {
       <div className="flex max-w-[1040px] flex-col gap-[16px]">
         <Card titleSize="sm" title="Your blocked time">
           {upcoming.length === 0 ? (
-            <EmptyState compact icon={Ban} why="Nothing is blocked. Block time here, or from any day on My Day's calendar." />
+            <EmptyState compact icon={Ban} why="Nothing is blocked. Block time here, or from any day on the Dashboard calendar." />
           ) : (
             <ul aria-label="Your blocked time" className="flex flex-col gap-[8px]">
               {upcoming.map((b) => (

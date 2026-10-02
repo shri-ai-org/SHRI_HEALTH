@@ -18,7 +18,7 @@ export function NotFound() {
           className="mt-[18px] inline-flex h-[44px] w-fit items-center gap-[6px] rounded-full bg-sh-primary pl-[14px] pr-[18px] text-[13px] font-medium text-sh-on-primary hover:bg-sh-primary-hover"
         >
           <Icon icon={ChevronLeft} size={16} />
-          My Day
+          Dashboard
         </Link>
       </Card>
     </div>

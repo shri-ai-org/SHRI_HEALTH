@@ -67,7 +67,7 @@ const NAME_ALLOW = new Set([
   'OPD', 'ICU', 'ED', 'AI', 'CT', 'MLC', 'ADR', 'NABH', 'ABDM', 'MCCD', 'CPOE', 'OT', 'NIHSS', 'ASPECTS', 'EVT', 'DIDO',
   'PvPI', 'mRS-90',
 ])
-const NAME_EXCEPTIONS = new Set(['My Day', 'Stroke-AI Console'])
+const NAME_EXCEPTIONS = new Set(['Dashboard', 'Stroke-AI Console'])
 function sentenceCase(name) {
   if (NAME_EXCEPTIONS.has(name)) return true
   const words = name.split(' ')

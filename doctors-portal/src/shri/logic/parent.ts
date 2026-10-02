@@ -15,7 +15,7 @@ export interface Parent {
  * route naturally sits under. `null` means this IS the top (the landing).
  */
 export function parentOf(pathname: string, landing: string): Parent | null {
-  const home: Parent = { to: landing, label: landing === '/' ? 'My Day' : (screenForPath(landing)?.name ?? 'My Day') }
+  const home: Parent = { to: landing, label: landing === '/' ? 'Dashboard' : (screenForPath(landing)?.name ?? 'Dashboard') }
   const patient = /^\/patient\/([^/]+)(?:\/([^/]+))?\/?$/.exec(pathname)
   if (patient) return patient[2] === undefined ? home : { to: `/patient/${patient[1]}`, label: 'Patient record' }
   if (pathname.startsWith('/radiology/study/')) return { to: '/radiology/worklist', label: 'Imaging worklist' }

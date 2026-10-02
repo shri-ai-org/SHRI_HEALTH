@@ -244,7 +244,7 @@ function attentionSource(item: AttentionItem, p: Patient): Omit<Citation, 'n'> {
   if (item.id.startsWith('stroke-')) {
     return { label, source: `Stroke case ${item.id.slice('stroke-'.length)}`, to: `/stroke/case/${item.id.slice('stroke-'.length)}/clock` }
   }
-  return { label, source: item.ai ?? 'S-06-01 · My Day', to: `/patient/${p.uhid}/record` }
+  return { label, source: item.ai ?? 'S-06-01 · Dashboard', to: `/patient/${p.uhid}/record` }
 }
 
 function attention(live: LiveContext): AssistantAnswer {
@@ -252,7 +252,7 @@ function attention(live: LiveContext): AssistantAnswer {
   const c = citer()
 
   if (items.length === 0) {
-    const ref = c.add({ label: 'Needs Action · Attention', source: 'S-06-01 · My Day', to: '/clinician' })
+    const ref = c.add({ label: 'Needs Action · Attention', source: 'S-06-01 · Dashboard', to: '/clinician' })
     return answer(
       `Nothing is waiting on you right now — no unacknowledged critical result, no new deterioration and nothing to co-sign. ${ref}`,
       c.list,

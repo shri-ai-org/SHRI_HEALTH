@@ -62,7 +62,7 @@ export class RouteBoundary extends Component<Props, State> {
               className="inline-flex h-[44px] items-center gap-[6px] rounded-full bg-sh-primary pl-[14px] pr-[18px] text-[13px] font-medium text-sh-on-primary hover:bg-sh-primary-hover"
             >
               <Icon icon={ChevronLeft} size={16} />
-              My Day
+              Dashboard
             </Link>
           </div>
         </Card>

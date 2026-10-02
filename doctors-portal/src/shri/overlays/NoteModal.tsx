@@ -117,7 +117,7 @@ function Modal({ m }: { m: NoteModalState }) {
     toast({
       tone: 'success',
       title: name ? 'Note saved as a draft' : 'To-do note saved',
-      detail: name ? `${name} · not signed` : 'On My Day, under To-do notes',
+      detail: name ? `${name} · not signed` : 'On the Dashboard, under To-do notes',
     })
     close()
   }

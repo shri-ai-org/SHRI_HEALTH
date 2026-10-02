@@ -38,7 +38,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   {
     section: 'home',
-    label: 'My Day',
+    label: 'Dashboard',
     short: 'Home',
     icon: 'House',
     to: '/clinician',

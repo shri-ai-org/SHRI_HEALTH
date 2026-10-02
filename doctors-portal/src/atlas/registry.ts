@@ -94,7 +94,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-01',
     module: 'M-06',
-    name: 'My Day',
+    name: 'Dashboard',
     route: '/clinician',
     archetype: 'ARC-20',
     tier: 'T1',
