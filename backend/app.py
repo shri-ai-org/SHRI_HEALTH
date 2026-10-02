@@ -68,6 +68,7 @@ def health():
 async def transcribe(ws: WebSocket):
     origin = ws.headers.get('origin', '')
     if SETTINGS.origins and origin not in SETTINGS.origins:
+        log.info('refused: origin %r is not in ASR_ORIGINS', origin)
         await ws.close(code=4403)
         return
     if SETTINGS.token and ws.query_params.get('token') != SETTINGS.token:
