@@ -51,7 +51,9 @@ await sleep(2500)
 // ASR=default leaves the address to the build (a dev server's own default), to check that path too.
 if (ASR !== 'default') await evaluate(`localStorage.setItem('shri.asrUrl', ${JSON.stringify(ASR)}); true`)
 await send('Page.reload')
-await sleep(2500)
+// A deployed page can take longer than a dev server to load: wait for the mic, not a fixed time.
+for (let i = 0; i < 100 && !(await evaluate(`!!document.querySelector('button[aria-label="Dictate a to-do note"]')`)); i += 1) await sleep(200)
+if (!(await evaluate(`!!document.querySelector('button[aria-label="Dictate a to-do note"]')`))) throw new Error(`no To-do mic on ${BASE}/`)
 await evaluate(`document.querySelector('button[aria-label="Dictate a to-do note"]').click(); true`)
 const t0 = Date.now()
 let last = ''
