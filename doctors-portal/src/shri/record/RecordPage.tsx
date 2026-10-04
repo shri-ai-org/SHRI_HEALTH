@@ -36,6 +36,7 @@ import { PatientReportCard } from './PatientReportCard'
 import { RecordFrame } from './RecordFrame'
 import { ReportCard } from './ReportCard'
 import { ResultsCard } from './ResultsCard'
+import { NotesCard } from './NotesCard'
 import { TrendCard } from './TrendCard'
 import { VitalsCard } from './VitalsCard'
 
@@ -114,7 +115,13 @@ function Hub({ patient: p }: { patient: Patient }) {
             <InsightsCard patient={p} className="min-h-0 flex-1" />
           </div>
         </div>
-        <ResultsCard patient={p} />
+        {/* Test results as tall as its content (capped, scrolling inside), and the patient's notes in the rest of the column. */}
+        <div className="flex min-w-0 flex-col gap-[16px]">
+          <ResultsCard patient={p} className="lg:max-h-[340px]" />
+          <div className="flex min-h-0 flex-col lg:h-0 lg:min-h-[240px] lg:grow">
+            <NotesCard patient={p} className="min-h-0 flex-1" />
+          </div>
+        </div>
       </div>
 
       {/* Below: the one trend that matters, and the patient's report. */}

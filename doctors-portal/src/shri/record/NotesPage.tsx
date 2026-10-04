@@ -7,25 +7,22 @@
  * earlier note opens to its four sections; closed, it is one line.
  */
 
-import { ChevronDown, ChevronRight, FileText, Mic, PenLine, Signature, Stethoscope, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileText, Mic, PenLine, Signature, Stethoscope } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { formatDate, formatTime } from '@/data/format'
 import type { Patient } from '@/data/kit'
 import { pastNotesFor, type PastNote } from '@/data/record'
-import { useAudit } from '@/store/audit'
-import { useClinical, type VoiceNote } from '@/store/clinical'
-import { useCurrentStaff } from '@/store/session'
-import { useUI } from '@/store/ui'
 
 import { useMayOpenPath } from '../app/landing'
 import { consultPath, noteActionLabel, useSessionNotesFor, useVoiceNotesFor } from '../logic/record'
 import { useShri } from '../state/store'
 import { EmptyState } from '../ui/EmptyState'
-import { Card, CountBubble, Diamond, Icon, Pill, PillTag, RoundButton } from '../ui/primitives'
+import { Card, CountBubble, Icon, Pill, PillTag, RoundButton } from '../ui/primitives'
 
 import { RecordFrame } from './RecordFrame'
+import { VoiceNoteRow } from './VoiceNoteRow'
 
 const SOAP: { key: 'subjective' | 'objective' | 'assessment' | 'plan'; label: string }[] = [
   { key: 'subjective', label: 'Subjective' },
@@ -146,70 +143,6 @@ function Notes({ patient: p }: { patient: Patient }) {
         </Card>
       )}
     </>
-  )
-}
-
-function VoiceNoteRow({ patient: p, note: n, first }: { patient: Patient; note: VoiceNote; first: boolean }) {
-  const me = useCurrentStaff()
-  const sign = useClinical((s) => s.signVoiceNote)
-  const remove = useClinical((s) => s.deleteVoiceNote)
-  const record = useAudit((s) => s.record)
-  const toast = useUI((s) => s.toast)
-  const words = n.body.trim().split(/\s+/).length
-
-  function doSign() {
-    sign(p.id, n.id, me.name)
-    record({ event: 'NOTE.SIGNED', actor: me.name, actorId: me.id, subject: p.id, model: n.model, detail: `Dictated note signed · ${words} words` })
-    toast({ tone: 'success', title: 'Note signed', detail: `${p.name} · now part of the record` })
-  }
-
-  function discard() {
-    remove(p.id, n.id)
-    // The save was on record, so the discard is too.
-    record({ event: 'NOTE.DRAFT_DISCARDED', actor: me.name, actorId: me.id, subject: p.id, model: n.model, detail: `Unsigned draft discarded · ${words} words` })
-    toast({ tone: 'info', title: 'Draft discarded', detail: p.name })
-  }
-
-  return (
-    <li className={first ? 'pb-[12px]' : 'border-t border-sh-line py-[12px]'}>
-      <div className="flex flex-wrap items-start gap-[12px]">
-        <span className="inline-flex size-[36px] shrink-0 items-center justify-center rounded-[12px] bg-sh-accent text-sh-accent-ink" aria-hidden="true">
-          <Icon icon={Mic} size={16} />
-        </span>
-        <div className="min-w-0 flex-1 basis-[260px]">
-          <p className="whitespace-pre-line text-[14px]/[1.5] text-sh-text">{n.body}</p>
-          <p className="mt-[4px] flex flex-wrap items-center gap-x-[8px] gap-y-[2px] text-[12px] tabular-nums text-sh-text-3">
-            <span>
-              {n.by} · {formatDate(new Date(n.at))} {formatTime(new Date(n.at))}
-            </span>
-            <span className="inline-flex items-center gap-[4px]">
-              <Diamond />
-              {/^typed/i.test(n.model) ? 'typed' : 'dictated'}
-            </span>
-            {n.status === 'signed' && n.signedAt && (
-              <span>
-                · signed {formatTime(new Date(n.signedAt))}
-                {n.signedBy ? ` by ${n.signedBy}` : ''}
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-[6px]">
-          {n.status === 'draft' ? (
-            <>
-              <Pill variant="primary" size="md" icon={Signature} onClick={doSign}>
-                Sign
-              </Pill>
-              <RoundButton icon={Trash2} size={36} iconSize={16} variant="ghost" label="Discard this draft" className="text-sh-text-3 hover:text-sh-crit-fg" onClick={discard} />
-            </>
-          ) : (
-            <PillTag tone="norm" size="sm" icon={Signature}>
-              Signed
-            </PillTag>
-          )}
-        </div>
-      </div>
-    </li>
   )
 }
 

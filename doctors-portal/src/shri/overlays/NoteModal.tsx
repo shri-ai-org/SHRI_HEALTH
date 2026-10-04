@@ -42,7 +42,7 @@ export function NoteModal() {
 function heading(m: NoteModalState): { title: string; sub: string; name?: string } {
   if (m.kind === 'todo') return { title: 'To-do note', sub: 'Not attached to a patient' }
   const p = patient(m.patientId)
-  return { title: 'Add note', sub: `${p.name} · ${p.age}/${p.sex} · ${p.uhid}`, name: p.name }
+  return { title: m.noteId ? 'Edit note' : 'Add note', sub: `${p.name} · ${p.age}/${p.sex} · ${p.uhid}`, name: p.name }
 }
 
 const wordsIn = (t: string) => (t.trim() === '' ? 0 : t.trim().split(/\s+/).length)
@@ -52,17 +52,21 @@ function Modal({ m }: { m: NoteModalState }) {
   const me = useCurrentStaff()
   const record = useAudit((s) => s.record)
   const saveVoiceNote = useClinical((s) => s.saveVoiceNote)
+  const editVoiceNote = useClinical((s) => s.editVoiceNote)
   const toast = useUI((s) => s.toast)
   const ref = useFocusTrap<HTMLDivElement>(true)
   const frame = useModalFrame(560)
   const { title, sub, name } = heading(m)
   const patientId = m.kind === 'patient' ? m.patientId : undefined
+  /** Editing an unsigned draft: it opens with its own words, and Save rewrites it rather than adding a note. */
+  const noteId = m.kind === 'patient' ? m.noteId : undefined
+  const editing = noteId ? useClinical.getState().voiceNotes[patientId!]?.find((n) => n.id === noteId && n.status === 'draft') : undefined
 
   // The draft is kept on this device as it changes, so closing the box or reloading keeps it.
-  const draftKey = m.kind === 'todo' ? 'todo' : `patient:${patientId ?? ''}`
+  const draftKey = m.kind === 'todo' ? 'todo' : editing ? `edit:${editing.id}` : `patient:${patientId ?? ''}`
   const keepDraft = useNoteDrafts((s) => s.keep)
   const clearDraft = useNoteDrafts((s) => s.clear)
-  const [text, setText] = useState(() => useNoteDrafts.getState().drafts[draftKey]?.text ?? '')
+  const [text, setText] = useState(() => useNoteDrafts.getState().drafts[draftKey]?.text ?? editing?.body ?? '')
   const [phase, setPhase] = useState<DictationPhase>('idle')
   const field = useRef<VoiceFieldHandle>(null)
   // Save reads these synchronously: stopping a take in progress lands its words and its run in the same tick.
@@ -102,6 +106,14 @@ function Modal({ m }: { m: NoteModalState }) {
     const take = takeRef.current
     const model = take ? take.model : TYPED_MODEL
     const band: ConfidenceBand = take ? take.band : 'HIGH'
+    if (editing && patientId) {
+      editVoiceNote(patientId, editing.id, body)
+      clearDraft(draftKey)
+      record({ event: 'NOTE.DRAFT_EDITED', actor: me.name, actorId: me.id, subject: patientId, model, gate: 'G2', detail: `Unsigned draft edited${take ? ', with dictation' : ''} · ${body.split(/\s+/).length} words` })
+      toast({ tone: 'success', title: 'Draft updated', detail: `${name} · not signed` })
+      close()
+      return
+    }
     saveVoiceNote({ patientId: patientId ?? UNATTACHED, body, by: me.name, model, band })
     clearDraft(draftKey)
     /** Audit event two of two: what was committed, by whom, under which gate. */

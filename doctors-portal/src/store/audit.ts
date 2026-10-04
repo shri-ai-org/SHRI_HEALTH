@@ -25,6 +25,7 @@ export type AuditEvent =
   | 'NOTE.DRAFT_SAVED'
   /** A saved draft thrown away before it was signed — the save was on record, so the discard is too. */
   | 'NOTE.DRAFT_DISCARDED'
+  | 'NOTE.DRAFT_EDITED'
   | 'NOTE.SIGNED'
   | 'NOTE.COSIGN_QUEUED'
   /** CMP-NABH-03 — a registrar's entry countersigned by a consultant. */
@@ -169,6 +170,7 @@ const LABELS: Record<AuditEvent, string> = {
   'AI.SCRIBE.TRANSCRIPT_CREATED': 'Dictation captured',
   'NOTE.DRAFT_SAVED': 'Note draft saved',
   'NOTE.DRAFT_DISCARDED': 'Note draft discarded',
+  'NOTE.DRAFT_EDITED': 'Note draft edited before signing',
   'NOTE.SIGNED': 'Note signed',
   'NOTE.COSIGN_QUEUED': 'Queued for co-sign',
   'NOTE.COSIGNED': 'Co-signed',

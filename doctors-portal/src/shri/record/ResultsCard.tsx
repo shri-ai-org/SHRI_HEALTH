@@ -20,7 +20,6 @@ import type { Patient } from '@/data/kit'
 import { microFor } from '@/data/results-ext'
 import { useClinical } from '@/store/clinical'
 
-import { cn } from '../lib/cn'
 import { recordPath } from '../logic/record'
 import { EmptyState } from '../ui/EmptyState'
 import { Card, Chip, Icon } from '../ui/primitives'
@@ -67,7 +66,7 @@ export function ResultsCard({ patient: p, className }: { patient: Patient; class
         </span>
       }
       right={<TextLink onClick={() => navigate(recordPath(p, 'results'))}>See all</TextLink>}
-      className={cn('lg:[contain:size]', className)}
+      className={className}
     >
       <div className="flex items-center gap-[16px]">
         <Donut counts={counts} total={results.length} />

@@ -142,8 +142,10 @@ export const RESULTS_EXT: ResultRow[] = [
 
 /** The series behind these results, and behind results in `clinical.ts` that had none — never replacing one it had. Each ends on its row. */
 export const RESULT_TRENDS_EXT: Record<string, { at: Date; value: number }[]> = {
-  // SD-P-01 — haemoglobin, March to now
+  // SD-P-01 — haemoglobin over the year, falling with the iron stores
   'R-89020': [
+    { at: d(9, 15, 10, 0, 2025), value: 12.8 },
+    { at: d(1, 12, 10, 0), value: 12.5 },
     { at: d(3, 16, 10, 0), value: 12.2 },
     { at: d(9, 18, 11, 20), value: 11.9 },
   ],
@@ -173,11 +175,14 @@ export const RESULT_TRENDS_EXT: Record<string, { at: Date; value: number }[]> = 
   ],
   // SD-P-04 — haemoglobin on iron, from the booking visit
   'R-89040': [
+    { at: d(5, 18, 9, 30), value: 11.2 },
     { at: d(7, 20, 10, 0), value: 10.4 },
+    { at: d(8, 22, 9, 30), value: 10.2 },
     { at: d(9, 19, 10, 0), value: 10.6 },
   ],
   // SD-P-06
   'R-90601': [
+    { at: d(9, 18, 19, 0), value: 178 },
     { at: d(9, 19, 17, 30), value: 160 },
     { at: d(9, 20, 9, 0), value: 190 },
   ],
@@ -216,20 +221,26 @@ export const RESULT_TRENDS_EXT: Record<string, { at: Date; value: number }[]> = 
   // SD-P-10 — baseline before isotretinoin, and week 6
   'R-89080': [
     { at: d(7, 28, 9, 30), value: 24 },
+    { at: d(8, 18, 9, 0), value: 26 },
     { at: d(9, 12, 9, 30), value: 28 },
   ],
   'R-89081': [
     { at: d(7, 28, 9, 30), value: 112 },
+    { at: d(8, 18, 9, 0), value: 124 },
     { at: d(9, 12, 9, 30), value: 138 },
   ],
   // SD-P-10 — cholesterol before treatment and at week 6
   'R-91002': [
     { at: d(7, 28, 9, 30), value: 158 },
+    { at: d(8, 18, 9, 0), value: 165 },
     { at: d(9, 12, 9, 30), value: 172 },
   ],
   // SD-P-15 — ESR, March and September
   'R-89150': [
+    { at: d(9, 8, 10, 0, 2025), value: 8 },
+    { at: d(12, 15, 10, 0, 2025), value: 14 },
     { at: d(3, 10, 10, 0), value: 10 },
+    { at: d(6, 16, 10, 0), value: 9 },
     { at: d(9, 9, 10, 0), value: 12 },
   ],
   // SD-P-11 — haemoglobin since the evacuation
@@ -253,7 +264,10 @@ export const RESULT_TRENDS_EXT: Record<string, { at: Date; value: number }[]> = 
   ],
   // SD-P-15
   'R-89151': [
+    { at: d(9, 8, 10, 0, 2025), value: 12.1 },
+    { at: d(12, 15, 10, 0, 2025), value: 12.6 },
     { at: d(3, 10, 10, 0), value: 12.4 },
+    { at: d(6, 16, 10, 0), value: 12.7 },
     { at: d(9, 9, 10, 0), value: 12.9 },
   ],
 }

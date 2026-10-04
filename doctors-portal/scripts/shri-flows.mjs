@@ -641,7 +641,7 @@ const FLOWS = [
           await page.until(`!document.querySelector('#dictation-draft')`, 3000, 'saved and closed')
         }
         await page.until(`document.querySelector('[role="tabpanel"]').textContent.includes('Plan to switch to meropenem')`, 3000, 'the drafts are listed')
-        const signBtn = `[...document.querySelectorAll('[role="tabpanel"] li')].find((li) => li.textContent.includes('Plan to switch')).querySelector('button')`
+        const signBtn = `[...[...document.querySelectorAll('[role="tabpanel"] li')].find((li) => li.textContent.includes('Plan to switch')).querySelectorAll('button')].find((b) => b.textContent.trim() === 'Sign')`
         await page.evaluate(`${signBtn}.click()`)
         await toastSays('Note signed', 'R. Lakshmanan · now part of the record')
         const signed = (await auditRows()).find((r) => r.event === 'NOTE.SIGNED')
@@ -2000,12 +2000,12 @@ const FLOWS = [
     },
   },
   {
-    name: 'Shell: the hospital’s logo leads to indostates.com, the Shri Health mark to shri-ai.org/dev/',
+    name: 'Shell: the hospital’s logo leads to indostates.com, the Shri Health mark to shri-ai.org',
     async run() {
       await page.open('/')
       const links = await page.evaluate(`[...document.querySelectorAll('header[role="banner"] a')].map((a) => [a.getAttribute('href'), a.getAttribute('aria-label') ?? a.querySelector('img')?.alt])`)
       expect(links.some(([href, name]) => href === 'https://indostates.com' && /Indostates Health/.test(name)), `the Indostates logo, named, to its site: ${JSON.stringify(links)}`)
-      expect(links.some(([href, name]) => href === 'https://shri-ai.org/dev/' && /Shri Health/.test(name)), `the Shri Health mark to shri-ai.org/dev/: ${JSON.stringify(links)}`)
+      expect(links.some(([href, name]) => href === 'https://shri-ai.org' && /Shri Health/.test(name)), `the Shri Health mark to shri-ai.org: ${JSON.stringify(links)}`)
       expect(!(await page.evaluate(`!!document.querySelector('button[title^="Facility"]')`)), 'no facility pill any more')
     },
   },

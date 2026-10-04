@@ -400,6 +400,8 @@ interface ClinicalState {
   }) => string
   /** A patient's dictated draft becomes part of the record once signed. */
   signVoiceNote: (patientId: string, id: string, by: string) => void
+  /** Rewrites a draft before it is signed; a signed note is never changed. */
+  editVoiceNote: (patientId: string, id: string, body: string) => void
   /** Ticks a to-do note off (or back on). */
   toggleVoiceNoteDone: (patientId: string, id: string) => void
   deleteVoiceNote: (patientId: string, id: string) => void
@@ -433,6 +435,8 @@ export interface VoiceNote {
   signedBy?: string
   /** To-do notes only: ticked off. */
   done?: boolean
+  /** ISO timestamp of the last edit to the draft. */
+  editedAt?: string
 }
 
 let voiceSeq = 0
@@ -879,6 +883,14 @@ export const useClinical = create<ClinicalState>()(
             [patientId]: (get().voiceNotes[patientId] ?? []).map((n) =>
               n.id === id ? { ...n, status: 'signed', signedAt: new Date().toISOString(), signedBy: by } : n,
             ),
+          },
+        }),
+
+      editVoiceNote: (patientId, id, body) =>
+        set({
+          voiceNotes: {
+            ...get().voiceNotes,
+            [patientId]: (get().voiceNotes[patientId] ?? []).map((n) => (n.id === id && n.status === 'draft' ? { ...n, body, editedAt: new Date().toISOString() } : n)),
           },
         }),
 

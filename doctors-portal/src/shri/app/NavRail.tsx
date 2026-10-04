@@ -133,112 +133,123 @@ export function NavRail() {
   }, [onMorePage, setMoreOpen])
 
   return (
-    <motion.nav
-      aria-label="Main"
-      animate={{ width: open ? 220 : 76 }}
-      transition={T220}
-      className="sh-scrollbar sticky top-(--shell-pt) flex h-fit max-h-[calc(100dvh_-_var(--shell-pt)_-_var(--shell-pb))] flex-col self-start overflow-y-auto rounded-[40px] bg-sh-rail px-[13px] py-[14px] max-sm:hidden"
-      style={{ width: open ? 220 : 76 }}
-    >
-      <ul className="flex flex-col gap-[4px]">
-        {items.map((it) => {
-          const isActive = it.key === active
-          const label = it.title ?? it.label
-          const cls = cn(
-            'group relative flex w-full items-center gap-[12px] rounded-full pl-[15px] pr-[12px] text-left text-[14px] font-medium transition-colors duration-150',
-            isActive ? 'mb-[6px] h-[50px] bg-sh-accent text-sh-accent-ink' : 'h-[46px] text-white/85 hover:bg-(--rail-hover) hover:text-white',
-          )
-          const inner = (
-            <>
-              <span className="relative inline-flex size-[20px] shrink-0 items-center justify-center">
-                <Icon icon={it.icon} size={20} />
-                {it.key === 'results' && critical && (
-                  <span className="absolute -right-[3px] -top-[2px] size-[7px] rounded-full bg-sh-crit ring-2 ring-sh-rail" aria-hidden="true" />
-                )}
-              </span>
-              <AnimatePresence initial={false}>
-                {open && (
-                  <motion.span
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1, transition: { duration: 0.15, delay: 0.08 } }}
-                    exit={{ opacity: 0, transition: { duration: 0.08 } }}
-                    className="truncate"
-                  >
-                    {it.label}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </>
-          )
-          return (
-            <li key={it.key}>
-              {it.to ? (
-                <Link
-                  to={it.to}
-                  className={cls}
-                  aria-current={current(isActive, it.to)}
-                  title={label}
-                  aria-label={it.key === 'results' && critical ? `${it.label}, critical results waiting` : it.label}
-                >
-                  {inner}
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  className={cls}
-                  title={label}
-                  aria-label={it.label}
-                  aria-current={isActive ? 'true' : undefined}
-                  aria-expanded={it.action === 'more' ? moreOpen : undefined}
-                  onClick={() => {
-                    if (it.action === 'search') openSearch()
-                    else setMoreOpen(!moreOpen)
-                  }}
-                >
-                  {inner}
-                </button>
-              )}
-              {it.action === 'more' && (
+    <>
+      <motion.nav
+        aria-label="Main"
+        animate={{ width: open ? 220 : 76 }}
+        transition={T220}
+        className="sh-scrollbar sticky top-(--shell-pt) flex h-fit max-h-[calc(100dvh_-_var(--shell-pt)_-_var(--shell-pb))] flex-col self-start overflow-y-auto rounded-[40px] bg-sh-rail px-[13px] py-[14px] max-sm:hidden"
+        style={{ width: open ? 220 : 76 }}
+      >
+        <ul className="flex flex-col gap-[4px]">
+          {items.map((it) => {
+            const isActive = it.key === active
+            const label = it.title ?? it.label
+            const cls = cn(
+              'group relative flex w-full items-center gap-[12px] rounded-full pl-[15px] pr-[12px] text-left text-[14px] font-medium transition-colors duration-150',
+              isActive ? 'mb-[6px] h-[50px] bg-sh-accent text-sh-accent-ink' : 'h-[46px] text-white/85 hover:bg-(--rail-hover) hover:text-white',
+            )
+            const inner = (
+              <>
+                <span className="relative inline-flex size-[20px] shrink-0 items-center justify-center">
+                  <Icon icon={it.icon} size={20} />
+                  {it.key === 'results' && critical && (
+                    <span className="absolute -right-[3px] -top-[2px] size-[7px] rounded-full bg-sh-crit ring-2 ring-sh-rail" aria-hidden="true" />
+                  )}
+                </span>
                 <AnimatePresence initial={false}>
-                  {moreOpen && (
-                    <motion.ul
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1, transition: T220 }}
-                      exit={{ height: 0, opacity: 0, transition: { duration: 0.15 } }}
-                      className="mt-[4px] overflow-hidden rounded-[22px] bg-(--rail-more)"
+                  {open && (
+                    <motion.span
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1, transition: { duration: 0.15, delay: 0.08 } }}
+                      exit={{ opacity: 0, transition: { duration: 0.08 } }}
+                      className="truncate"
                     >
-                      {more.map((m) => {
-                        const on = m.key === active
-                        return (
-                          // 44px links, whole inside the group: its overflow-hidden (for the open/close) clips any hit area past
-                          // it, the rounded corners included — so the first and last sit 10px in, clear of the curve.
-                          <li key={m.key} className="px-[3px] py-[2px] first:pt-[10px] last:pb-[10px]">
-                            <Link
-                              to={m.to!}
-                              title={m.label}
-                              aria-label={m.label}
-                              aria-current={current(on, m.to)}
-                              className={cn(
-                                'flex h-[44px] items-center gap-[12px] rounded-full pl-[12px] pr-[10px] text-[14px] font-medium transition-colors duration-150',
-                                on ? 'bg-sh-accent text-sh-accent-ink' : 'text-white/85 hover:bg-(--rail-hover) hover:text-white',
-                              )}
-                            >
-                              <Icon icon={m.icon} size={20} />
-                              {open && <span className="truncate">{m.label}</span>}
-                            </Link>
-                          </li>
-                        )
-                      })}
-                    </motion.ul>
+                      {it.label}
+                    </motion.span>
                   )}
                 </AnimatePresence>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-      {open && <p className="mt-[14px] px-[6px] text-[11px]/[1.4] text-sh-muted">A module you cannot enter is absent here, not greyed out.</p>}
-    </motion.nav>
+              </>
+            )
+            return (
+              <li key={it.key}>
+                {it.to ? (
+                  <Link
+                    to={it.to}
+                    className={cls}
+                    aria-current={current(isActive, it.to)}
+                    title={label}
+                    aria-label={it.key === 'results' && critical ? `${it.label}, critical results waiting` : it.label}
+                  >
+                    {inner}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className={cls}
+                    title={label}
+                    aria-label={it.label}
+                    aria-current={isActive ? 'true' : undefined}
+                    aria-expanded={it.action === 'more' ? moreOpen : undefined}
+                    onClick={() => {
+                      if (it.action === 'search') openSearch()
+                      else setMoreOpen(!moreOpen)
+                    }}
+                  >
+                    {inner}
+                  </button>
+                )}
+                {it.action === 'more' && (
+                  <AnimatePresence initial={false}>
+                    {moreOpen && (
+                      <motion.ul
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1, transition: T220 }}
+                        exit={{ height: 0, opacity: 0, transition: { duration: 0.15 } }}
+                        className="mt-[4px] overflow-hidden rounded-[22px] bg-(--rail-more)"
+                      >
+                        {more.map((m) => {
+                          const on = m.key === active
+                          return (
+                            // 44px links, whole inside the group: its overflow-hidden (for the open/close) clips any hit area past
+                            // it, the rounded corners included — so the first and last sit 10px in, clear of the curve.
+                            <li key={m.key} className="px-[3px] py-[2px] first:pt-[10px] last:pb-[10px]">
+                              <Link
+                                to={m.to!}
+                                title={m.label}
+                                aria-label={m.label}
+                                aria-current={current(on, m.to)}
+                                className={cn(
+                                  'flex h-[44px] items-center gap-[12px] rounded-full pl-[12px] pr-[10px] text-[14px] font-medium transition-colors duration-150',
+                                  on ? 'bg-sh-accent text-sh-accent-ink' : 'text-white/85 hover:bg-(--rail-hover) hover:text-white',
+                                )}
+                              >
+                                <Icon icon={m.icon} size={20} />
+                                {open && <span className="truncate">{m.label}</span>}
+                              </Link>
+                            </li>
+                          )
+                        })}
+                      </motion.ul>
+                    )}
+                  </AnimatePresence>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+        {open && <p className="mt-[14px] px-[6px] text-[11px]/[1.4] text-sh-muted">A module you cannot enter is absent here, not greyed out.</p>}
+      </motion.nav>
+      {/* Which build this is, at the bottom left as in care-entry: when it was made (India time), and its commit on hover. */}
+      <p
+        className="fixed bottom-[10px] left-[64px] z-10 -translate-x-1/2 text-center text-[10px]/[13px] font-medium tabular-nums text-sh-text-3 max-sm:hidden"
+        title={`Build ${__BUILD_STAMP__} · commit ${__BUILD_COMMIT__}`}
+      >
+        Version
+        <br />
+        <span className="whitespace-nowrap">{__BUILD_STAMP__}</span>
+      </p>
+    </>
   )
 }
 
@@ -324,6 +335,9 @@ export function NavTabBar() {
                 </button>
               )
             })}
+            <p className="px-[12px] pt-[6px] text-[11px] tabular-nums text-sh-text-3" title={`Build ${__BUILD_STAMP__} · commit ${__BUILD_COMMIT__}`}>
+              Version {__BUILD_STAMP__}
+            </p>
           </motion.div>
         )}
       </AnimatePresence>

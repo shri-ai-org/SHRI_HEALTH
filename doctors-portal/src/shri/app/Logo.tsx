@@ -15,11 +15,11 @@ export function LogoMark({ size = 36, className }: { size?: number; className?: 
   return <img src={logoMark} alt="" width={Math.round((size * MARK_W) / MARK_H)} height={size} decoding="async" className={cn('shrink-0 select-none', className)} draggable={false} />
 }
 
-/** Where the mark leads: Shri AI's index of its portals. */
-export const SHRI_HOME = 'https://shri-ai.org/dev/'
+/** Where the mark leads: Shri AI's home page. */
+export const SHRI_HOME = 'https://shri-ai.org'
 
 /**
- * §4.1 #2 — mark + "Shri Health", linking to shri-ai.org/dev/. Under 768px the
+ * §4.1 #2 — mark + "Shri Health", linking to shri-ai.org. Under 768px the
  * mark alone, still the same link, on a 44px target.
  */
 export function Logo() {

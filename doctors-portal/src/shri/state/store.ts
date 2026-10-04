@@ -23,7 +23,7 @@ import type { PatientFilter, PatientTab, ThemeId } from '../mocks/types'
 import { setAiFabric } from './ai'
 
 export type NoteModalState =
-  | { kind: 'patient'; patientId: string; listening: boolean }
+  | { kind: 'patient'; patientId: string; listening: boolean; /** Reopens this unsigned draft to edit it. */ noteId?: string }
   | { kind: 'todo'; listening: boolean }
 
 export type MenuId = 'notifications' | 'user'
