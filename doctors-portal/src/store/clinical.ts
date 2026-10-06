@@ -15,6 +15,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 import type { Problem, RxLine } from '@/data/clinical'
+import type { IcdCode } from '@/data/icd10'
 
 /** A problem added this session: the seeded list's shape, plus who added it and when. */
 export type AddedProblem = Problem & { addedBy: string; addedAt: string }
@@ -84,6 +85,8 @@ export interface RxLineEdit {
   instructions?: string
   /** A PRN line's stated 24-hour maximum (CMP-NABH-05). */
   maxDaily?: string
+  /** The line's indication, ICD-10 coded; null clears it. Optional — never blocks signing. */
+  indication?: IcdCode | null
 }
 
 export interface RxRecord {
@@ -139,6 +142,8 @@ export interface DischargeRecord {
   followUp?: DischargeFollowUp
   transfer?: TransferOut
   lama?: LeftAgainstAdvice
+  /** The final diagnosis, ICD-10 coded — the first is the principal. Optional. */
+  diagnoses?: IcdCode[]
 }
 
 /** A follow-up booked on discharge, or the recorded reason there is none. */
@@ -180,6 +185,8 @@ export interface DeathRecord {
   causes: { a: string; b: string; c: string }
   /** Part II. */
   contributing: string
+  /** ICD-10 codes beside the causes — each optional; the words above are what the certificate states. */
+  codes?: { a?: IcdCode; b?: IcdCode; c?: IcdCode; contributing?: IcdCode[] }
   mlc: boolean
   /** CMP-STAT-01 — the police station and docket, and the acknowledgement received. */
   police?: { stationDocket: string; acknowledged: boolean }

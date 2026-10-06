@@ -59,6 +59,7 @@ export const useAdmissions = create<AdmissionsState>()(
           type: req.type,
           priority: req.priority,
           note: req.note?.trim() || undefined,
+          diagnosis: req.diagnosis,
           requestedBy: req.requestedBy.name,
           requestedById: req.requestedBy.id,
           requestedAt: at,

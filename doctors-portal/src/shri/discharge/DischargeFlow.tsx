@@ -34,11 +34,13 @@ import { useClinical } from '@/store/clinical'
 
 import { useMayOpenPath } from '../app/landing'
 import { cn } from '../lib/cn'
+import { useProblemsFor } from '../logic/record'
 import { FOLLOW_UP_CLINICS, SUMMARY_SECTIONS, inpatientBed, recordGates, severityFor, summaryKey, useDischarge } from '../logic/discharge'
 import { medRecGaps, medRowsFor } from '../logic/medrec'
 import { useDischargeFlow, type FlowDraft, type FlowKind } from '../state/dischargeFlow'
 import { Alert } from '../ui/Alert'
 import { Dialog } from '../ui/Dialog'
+import { IcdField } from '../ui/IcdPicker'
 import { CheckboxRow, Field, Select, TextInput } from '../ui/forms'
 import { Icon, Pill, PillTag } from '../ui/primitives'
 import { ValidationSummary } from '../ui/states'
@@ -75,6 +77,13 @@ function Sheet({ patient: p, onClose }: { patient: Patient; onClose: () => void 
   const medRecs = useClinical((s) => s.medRecs)
   const instructions = useClinical((s) => s.instructions)
   const [showValidation, setShowValidation] = useState(false)
+  // Offered, never chosen for the doctor: the admission's provisional code, then the open problems.
+  const problemList = useProblemsFor(p.id)
+  const provisional = admissions[p.id]?.diagnosis
+  const dxSuggestions = [
+    ...(provisional ? [provisional] : []),
+    ...problemList.filter((pr) => pr.status === 'Open' && pr.leaf && pr.icd10 !== provisional?.code).map((pr) => ({ code: pr.icd10, label: pr.label })),
+  ]
 
   const bed = inpatientBed(p.id, admissions)
   const enc = encounterForPatient(p.id)
@@ -156,6 +165,7 @@ function Sheet({ patient: p, onClose }: { patient: Patient; onClose: () => void 
         kind === 'lama'
           ? { signedBy: (draft.lamaSignedBy ?? '').trim(), relationship: draft.lamaRelationship ?? '', witness: (draft.lamaWitness ?? '').trim(), reason: (draft.lamaReason ?? '').trim() }
           : undefined,
+      diagnoses: draft.diagnoses?.length ? draft.diagnoses : undefined,
     })
     if (ok) clear(p.id)
     onClose()
@@ -292,6 +302,18 @@ function Sheet({ patient: p, onClose }: { patient: Patient; onClose: () => void 
               Financial clearance is outstanding: {board.financialClearance}. It goes to the front office with this {kind === 'transfer' ? 'transfer' : 'record'}; it does not hold the patient.
             </p>
           )}
+        </Section>
+
+        <Section title="Final diagnosis">
+          <IcdField
+            id={`dc-dx-${p.id}`}
+            label="ICD-10 codes (optional)"
+            value={draft.diagnoses ?? []}
+            onChange={(diagnoses) => set({ diagnoses })}
+            suggestions={dxSuggestions}
+            multiple
+            hint="The first code is the principal diagnosis. It goes on the discharge record and into the audit."
+          />
         </Section>
 
         {kind === 'discharge' && (

@@ -58,7 +58,7 @@ export function outstandingFor(row: DischargeRow, summarySigned: boolean, medRec
 export const summaryKey = (encounterId: string) => `${encounterId}:discharge`
 
 /** What a discharge flow adds to the record: its kind and the answers that go with it. */
-export type DischargeExtra = Partial<Pick<DischargeRecord, 'kind' | 'careOf' | 'followUp' | 'transfer' | 'lama'>>
+export type DischargeExtra = Partial<Pick<DischargeRecord, 'kind' | 'careOf' | 'followUp' | 'transfer' | 'lama' | 'diagnoses'>>
 
 const KIND_EVENT = { discharge: 'PATIENT.DISCHARGED', transfer: 'PATIENT.TRANSFERRED', lama: 'PATIENT.LEFT_AMA', death: 'PATIENT.DISCHARGED' } as const
 
@@ -89,6 +89,7 @@ export function useDischarge() {
       detail: [
         enc ? encounterLabel(enc) : undefined,
         where,
+        extra.diagnoses?.length ? `final diagnosis ICD-10 ${extra.diagnoses.map((d) => `${d.code} ${d.label}`).join('; ')}` : undefined,
         kind === 'transfer' && extra.transfer ? `accepted by ${extra.transfer.clinician} · ${extra.transfer.transport}, ${extra.transfer.escort} escort · ${extra.transfer.reason}` : undefined,
         kind === 'lama' && extra.lama ? `form signed by ${extra.lama.signedBy} (${extra.lama.relationship}) · witness ${extra.lama.witness} · ${extra.lama.reason}` : undefined,
         followUp,

@@ -8,11 +8,12 @@
  * each with its count. A list the persona cannot open is absent, never greyed.
  */
 
-import { BedDouble, UserRound, type LucideIcon } from 'lucide-react'
+import { BedDouble, Layers, UserRound, type LucideIcon } from 'lucide-react'
 import { useMemo, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { inpatientRows } from '@/data/admissions'
+import { PATIENTS } from '@/data/kit'
 import { useAdmissions } from '@/store/admissions'
 import { useClinical } from '@/store/clinical'
 
@@ -22,11 +23,13 @@ import { cn } from '../lib/cn'
 import { useOpdLive } from '../logic/opd'
 import { CountBubble, Icon } from '../ui/primitives'
 
-export type PatientsTab = 'opd' | 'ip'
+export type PatientsTab = 'opd' | 'ip' | 'cohorts'
 
 const TABS: { key: PatientsTab; label: string; to: string; icon: LucideIcon }[] = [
   { key: 'opd', label: 'OPD', to: '/op-queue', icon: UserRound },
   { key: 'ip', label: 'Inpatients', to: '/ip/patients', icon: BedDouble },
+  // Every patient the doctor may see, to segregate by diagnosis and demographics (S-05-10).
+  { key: 'cohorts', label: 'Cohorts', to: '/patients/cohorts', icon: Layers },
 ]
 
 function useTabCounts(): Record<PatientsTab, number> {
@@ -35,7 +38,7 @@ function useTabCounts(): Record<PatientsTab, number> {
   // The OPD count is My Day's "Patients Today": the same live rows.
   const opd = useOpdLive().length
   const ip = useMemo(() => inpatientRows(admissions).filter((r) => !discharges[r.patientId]).length, [admissions, discharges])
-  return { opd, ip }
+  return { opd, ip, cohorts: PATIENTS.length }
 }
 
 function PatientsTabs({ current }: { current: PatientsTab }) {
@@ -92,7 +95,7 @@ export function MyPatientsFrame({
     <ScreenFrame screenId={screenId} heading="My patients" sub={sub} actions={actions}>
       <div className="flex flex-col gap-[16px]">
         <PatientsTabs current={tab} />
-        <div id="patients-panel" role="tabpanel" aria-label={tab === 'opd' ? 'OPD' : 'Inpatients'} className="flex flex-col gap-[16px]">
+        <div id="patients-panel" role="tabpanel" aria-label={TABS.find((t) => t.key === tab)?.label} className="flex flex-col gap-[16px]">
           {children}
         </div>
       </div>

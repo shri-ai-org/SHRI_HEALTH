@@ -136,6 +136,8 @@ export const PERSONA_SPECS: Record<PersonaId, PersonaSpec> = {
       'tele.sign',
       'adr.write',
       'record.export',
+      // Segregating patients by ICD-10 diagnosis and demographics, for study (S-05-10).
+      'cohort.read',
     ],
     landing: '/clinician',
   },
@@ -241,6 +243,7 @@ export const PERSONA_SPECS: Record<PersonaId, PersonaSpec> = {
       'result.read',
       'imaging.read',
       'patient.breakglass',
+      'cohort.read',
     ],
     landing: '/stroke/wall',
     note: 'Phone-first, wall-second — the inverse of every other persona.',

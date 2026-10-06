@@ -17,14 +17,17 @@ import { createAdmission } from '@/api/admissions'
 import { PRIORITY_LABEL, TYPE_LABEL, type AdmissionPriority, type AdmissionType } from '@/data/admissions'
 import { encounterForPatient } from '@/data/clinical'
 import { ageSex } from '@/data/format'
+import type { IcdCode } from '@/data/icd10'
 import { patient, type Patient } from '@/data/kit'
 import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
 
 import { cn } from '../lib/cn'
+import { useProblemsFor } from '../logic/record'
 import { useShri } from '../state/store'
 import { Alert } from '../ui/Alert'
 import { useModalFrame } from '../ui/frames'
+import { IcdField } from '../ui/IcdPicker'
 import { useFocusTrap } from '../ui/hooks'
 import { Icon, Pill, RoundButton, ToneDot } from '../ui/primitives'
 import { VoiceField } from '../ui/VoiceField'
@@ -50,6 +53,11 @@ function Modal({ patient: p, onClose }: { patient: Patient; onClose: () => void 
   const [type, setType] = useState<AdmissionType>('ward')
   const [priority, setPriority] = useState<AdmissionPriority | null>(null)
   const [note, setNote] = useState('')
+  const [diagnosis, setDiagnosis] = useState<IcdCode[]>([])
+  // The patient's open problems, one tap each; any other code by search.
+  const openProblems = useProblemsFor(p.id)
+    .filter((pr) => pr.status === 'Open' && pr.leaf)
+    .map((pr) => ({ code: pr.icd10, label: pr.label }))
   const [sending, setSending] = useState(false)
   /** Said in the modal as well as the toast: on a phone the sheet covers the toast stack. */
   const [failed, setFailed] = useState(false)
@@ -65,9 +73,10 @@ function Modal({ patient: p, onClose }: { patient: Patient; onClose: () => void 
         type,
         priority,
         note,
+        diagnosis: diagnosis[0],
         requestedBy: { id: me.id, name: me.name },
       })
-      toast({ tone: 'info', title: `Admission in progress — ${p.name}`, detail: `${TYPE_LABEL[type]} · ${PRIORITY_LABEL[priority]}` })
+      toast({ tone: 'info', title: `Admission in progress — ${p.name}`, detail: `${TYPE_LABEL[type]} · ${PRIORITY_LABEL[priority]}${diagnosis[0] ? ` · ${diagnosis[0].code}` : ''}` })
       onClose()
     } catch {
       setSending(false)
@@ -159,6 +168,15 @@ function Modal({ patient: p, onClose }: { patient: Patient; onClose: () => void 
             })}
           </div>
         </div>
+
+        <IcdField
+          id={`admit-dx-${p.id}`}
+          label="Provisional diagnosis (ICD-10, optional)"
+          value={diagnosis}
+          onChange={setDiagnosis}
+          suggestions={openProblems}
+          className="mt-[18px]"
+        />
 
         <VoiceField
           id={`admit-note-${p.id}`}

@@ -25,6 +25,7 @@ import { PrescriptionPage } from '../notes/PrescriptionPage'
 import { ProblemsPage } from '../notes/ProblemsPage'
 import { TemplatesPage } from '../notes/TemplatesPage'
 import { NewOrdersPage } from '../orders/NewOrdersPage'
+import { CohortsPage } from '../patients/CohortsPage'
 import { OpdQueuePage } from '../patients/OpdQueuePage'
 import { AdrReportPage } from '../pharmacy/AdrReportPage'
 import { OrderSetsPage } from '../orders/OrderSetsPage'
@@ -85,6 +86,7 @@ export const SCREEN_COMPONENTS: Partial<Record<string, ComponentType>> = {
   'S-06-16': PrescriptionsPage,
   'S-06-17': AppointmentsPage,
   'S-05-03': OpdQueuePage,
+  'S-05-10': CohortsPage,
   'S-05-04': SessionTemplatesPage,
   'S-05-05': BlocksPage,
   'S-05-06': ReferralsPage,

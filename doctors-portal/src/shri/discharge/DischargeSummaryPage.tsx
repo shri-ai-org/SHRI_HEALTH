@@ -26,7 +26,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { can } from '@/atlas/personas'
-import { problemsFor, type Encounter } from '@/data/clinical'
+import type { Encounter } from '@/data/clinical'
 import { NOW, formatDate, formatDateTime, formatTime } from '@/data/format'
 import { LANGUAGES, patient } from '@/data/kit'
 import { decided, useAI } from '@/store/ai'
@@ -50,13 +50,16 @@ import {
 } from '../logic/discharge'
 import { encounterLabel, maybeEncounter } from '../logic/encounter'
 import { DEFAULT_LANGUAGE } from '../logic/instructions'
+import { useProblemsFor } from '../logic/record'
 import { NoSuchEncounter } from '../notes/ConsultationPage'
 import { useAiActive, useForcedState } from '../state/ai'
+import { useDischargeFlow } from '../state/dischargeFlow'
 import { GhostSection } from '../ui/ai'
 import { Alert } from '../ui/Alert'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Why } from '../ui/Disclosure'
 import { CheckboxRow, Select } from '../ui/forms'
+import { IcdField } from '../ui/IcdPicker'
 import { Card, Icon, Pill, PillTag } from '../ui/primitives'
 import { PrintPreview } from '../ui/PrintPreview'
 import { LockedBanner, ValidationSummary } from '../ui/states'
@@ -96,6 +99,11 @@ function DischargeSummary({ enc }: { enc: Encounter }) {
 
   const p = patient(enc.patientId)
   const discharged = useClinical((s) => s.discharges[p.id])
+  // The coded final diagnosis is the discharge flow's own draft — entered here or there, it is one list.
+  const problemList = useProblemsFor(p.id)
+  const dxDraft = useDischargeFlow((s) => s.drafts[p.id]?.diagnoses) ?? []
+  const updateFlow = useDischargeFlow((s) => s.update)
+  const coded = discharged?.diagnoses ?? dxDraft
   const language = useClinical((s) => s.patientLanguages[p.id]) ?? DEFAULT_LANGUAGE
   const drafts = summaryDraftFor(p.id)
 
@@ -250,7 +258,7 @@ function DischargeSummary({ enc }: { enc: Encounter }) {
             { label: 'Admission note', source: `IP number ${enc.encounterNo.split('/').slice(1).join('/')}` },
             { label: 'Signed progress notes', source: 'Notes, whole admission' },
             { label: 'Results across the admission', source: `Results for ${p.id}` },
-            ...problemsFor(p.id).map((pr) => ({ label: `${pr.label} (${pr.icd10})`, source: 'Problem list' })),
+            ...problemList.map((pr) => ({ label: `${pr.label} (${pr.icd10})`, source: 'Problem list' })),
           ],
           evidence: ['Assembled from signed entries only — it does not read unsigned drafts.'],
           model: MODEL,
@@ -408,6 +416,19 @@ function DischargeSummary({ enc }: { enc: Encounter }) {
         )}
         {!locked && (showValidation || forced === 'VALIDATION') && problems.length > 0 && <ValidationSummary problems={problems} />}
 
+        <Card titleSize="sm" title="Coded diagnosis" headerClassName="mb-[4px]">
+          <IcdField
+            id={`ds-dx-${p.id}`}
+            label={discharged ? 'ICD-10, as recorded at discharge' : 'ICD-10 codes (optional)'}
+            value={coded}
+            onChange={(diagnoses) => updateFlow(p.id, { diagnoses })}
+            suggestions={problemList.filter((pr) => pr.status === 'Open' && pr.leaf).map((pr) => ({ code: pr.icd10, label: pr.label }))}
+            multiple
+            disabled={!!discharged}
+            hint={discharged ? undefined : 'The first code is the principal diagnosis. The same list is in the discharge itself.'}
+          />
+        </Card>
+
         <Card titleSize="sm" title="Summary" headerClassName="mb-[4px]">
           <p className="mb-[12px] text-[12px] text-sh-text-3">Six sections, all required · dictate or type{drafts && aiActive ? ', or Draft with AI' : ''}</p>
           <div className="flex flex-col gap-[20px]">{SUMMARY_SECTIONS.map(section)}</div>
@@ -461,6 +482,7 @@ function DischargeSummary({ enc }: { enc: Encounter }) {
         meta={`${enc.encounterNo} · signed by ${signedLine} · ${signedAt} · English${language === 'EN' ? '' : ' only'}`}
         sections={[
           ...SUMMARY_SECTIONS.map((s) => ({ heading: s.label, body: valueOf(s.key) })),
+          ...(coded.length ? [{ heading: 'Diagnosis (ICD-10)', body: coded.map((d) => `${d.code} ${d.label}`).join('\n') }] : []),
           ...(language === 'EN' ? [] : [{ heading: 'Language', body: SUMMARY_ENGLISH_ONLY }]),
         ]}
       />

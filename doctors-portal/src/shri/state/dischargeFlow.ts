@@ -10,6 +10,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import type { IcdCode } from '@/data/icd10'
+
 export type FlowKind = 'discharge' | 'transfer' | 'lama'
 
 export interface FlowDraft {
@@ -33,6 +35,8 @@ export interface FlowDraft {
   lamaRelationship: string
   lamaWitness: string
   lamaReason: string
+  /** The final diagnosis, ICD-10 coded — the first is the principal. Optional. */
+  diagnoses: IcdCode[]
 }
 
 interface DischargeFlowState {

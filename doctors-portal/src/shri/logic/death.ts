@@ -45,6 +45,18 @@ export const NOW_LOCAL = `${NOW.getFullYear()}-${pad(NOW.getMonth() + 1)}-${pad(
 /** Part I as it reads on the certificate: (a) due to (b), due to (c) where there is one. */
 export const chainText = (c: DeathRecord['causes']) => `(a) ${c.a} due to (b) ${c.b}${c.c.trim() ? `, due to (c) ${c.c}` : ''}`
 
+/** "ICD-10 (a) I61.5 · (b) D68.32 · II I48.91" — the codes given, in certificate order; empty when none were. */
+export function codesText(codes: DeathRecord['codes']): string | undefined {
+  if (!codes) return undefined
+  const parts = [
+    codes.a && `(a) ${codes.a.code}`,
+    codes.b && `(b) ${codes.b.code}`,
+    codes.c && `(c) ${codes.c.code}`,
+    codes.contributing?.length && `II ${codes.contributing.map((d) => d.code).join(', ')}`,
+  ].filter(Boolean)
+  return parts.length ? `ICD-10 ${parts.join(' · ')}` : undefined
+}
+
 export function useCertifyDeath() {
   const me = useCurrentStaff()
   const certify = useClinical((s) => s.certifyDeath)
@@ -71,10 +83,13 @@ export function useCertifyDeath() {
       detail: [
         `MCCD Form 4${enc ? ` · ${encounterLabel(enc)}` : ''}`,
         chainText(record.causes),
+        codesText(record.codes),
         record.mlc ? `medico-legal, police acknowledgement filed (${record.police?.stationDocket})` : 'not medico-legal',
         `released to ${record.handover.releasedTo}`,
         'registration queued',
-      ].join(' · '),
+      ]
+        .filter(Boolean)
+        .join(' · '),
     })
     send({
       severity: 'routine',

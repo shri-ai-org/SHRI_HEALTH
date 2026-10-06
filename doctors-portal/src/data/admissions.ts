@@ -23,6 +23,7 @@
 import { CLINIC_LIST, INPATIENTS } from './clinical'
 import type { ClinicRow, WorklistRow } from './clinical'
 import { NOW } from './format'
+import type { IcdCode } from './icd10'
 import { PATIENTS } from './kit'
 import type { Patient } from './kit'
 
@@ -39,6 +40,8 @@ export interface Admission {
   type: AdmissionType
   priority: AdmissionPriority
   note?: string
+  /** The provisional diagnosis, ICD-10 coded — optional. */
+  diagnosis?: IcdCode
   requestedBy: string
   requestedById: string
   /** Real epoch ms. The front office works on the wall clock, not the demo's frozen moment. */
@@ -59,6 +62,7 @@ export interface CreateAdmissionRequest {
   type: AdmissionType
   priority: AdmissionPriority
   note?: string
+  diagnosis?: IcdCode
   requestedBy: { id: string; name: string }
 }
 
@@ -129,7 +133,7 @@ export function inpatientRows(admissions: Admissions): WorklistRow[] {
     .map<WorklistRow>((a) => ({
       patientId: a.patientId,
       bed: a.bed ?? null,
-      reason: `Admitted today · ${TYPE_LABEL[a.type]}`,
+      reason: `Admitted today · ${TYPE_LABEL[a.type]}${a.diagnosis ? ` · ${a.diagnosis.code} ${a.diagnosis.label}` : ''}`,
       pending: ['Admission assessment'],
       chronologicalAt: NOW,
     }))

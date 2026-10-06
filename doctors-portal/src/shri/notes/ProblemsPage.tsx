@@ -12,8 +12,7 @@
  * page; and confirming the list is on the audit trail.
  */
 
-import { Ban, Check, Pencil, Plus, TriangleAlert } from 'lucide-react'
-import { useState } from 'react'
+import { Ban, Check, Pencil, TriangleAlert } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 
 import { CODE_SUGGESTIONS } from '@/data/clinical'
@@ -31,8 +30,8 @@ import { useProblemsFor } from '../logic/record'
 import { FieldChip, SuggestionCard } from '../ui/ai'
 import { Alert } from '../ui/Alert'
 import { Why } from '../ui/Disclosure'
-import { TextInput } from '../ui/forms'
-import { Card, Chip, CountBubble, Icon, Pill, PillTag } from '../ui/primitives'
+import { IcdPicker } from '../ui/IcdPicker'
+import { Card, Chip, CountBubble, Pill, PillTag } from '../ui/primitives'
 
 import { NoSuchEncounter } from './ConsultationPage'
 
@@ -54,18 +53,13 @@ function Problems({ encounterId }: { encounterId: string }) {
   const confirmProblem = useClinical((s) => s.confirmProblem)
   const listConfirmed = useClinical((s) => s.problemListConfirmed[enc.id])
   const confirmProblemList = useClinical((s) => s.confirmProblemList)
-  const [search, setSearch] = useState('')
 
   const problems = useProblemsFor(p.id)
   const flagged = problems.filter((pr) => pr.consistencyFlag)
   const confirmed = problems.filter((pr) => confirmations[pr.id] !== undefined)
   const confirm = (problemId: string) => confirmProblem(problemId, me.name, NOW.toISOString())
 
-  const q = search.trim().toLowerCase()
-  const matches = q ? DIAGNOSES.filter((d) => d.label.toLowerCase().includes(q) || d.icd10.toLowerCase().includes(q)) : []
-
   function add(d: { label: string; icd10: string }) {
-    setSearch('')
     // One entry per code: a code the list already holds, seeded or added, adds nothing.
     if (problems.some((pr) => pr.icd10 === d.icd10) || !addProblem(p.id, d, me.name, NOW.toISOString())) {
       toast({ tone: 'info', title: `${d.label} is already on the list`, detail: `Coded ${d.icd10}` })
@@ -240,28 +234,18 @@ function Problems({ encounterId }: { encounterId: string }) {
       </Card>
 
       <Card titleSize="sm" title="Add a problem" headerClassName="mb-[4px]">
-        <p className="mb-[12px] text-[12px] text-sh-text-3">Search SNOMED and ICD-10</p>
+        <p className="mb-[12px] text-[12px] text-sh-text-3">Search ICD-10 by code, diagnosis or the words you would use (stroke, TB, CKD…)</p>
         <label htmlFor="dx-search" className="mb-[6px] block text-[13px] font-medium text-sh-text-2">
           Search
         </label>
-        <TextInput id="dx-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="pneumonia · J18.9 · stroke…" autoComplete="off" className="max-w-[480px]" />
-        {matches.length > 0 && (
-          <ul className="mt-[8px] flex max-w-[480px] flex-col gap-[4px]">
-            {matches.map((d) => (
-              <li key={d.icd10}>
-                <button
-                  type="button"
-                  onClick={() => add(d)}
-                  className="flex min-h-[44px] w-full items-center gap-[10px] rounded-[14px] px-[12px] text-left transition-colors duration-150 hover:bg-sh-hover"
-                >
-                  <Icon icon={Plus} size={14} className="shrink-0 text-sh-text-3" />
-                  <span className="min-w-0 flex-1 truncate text-[14px] text-sh-text">{d.label}</span>
-                  <Chip word={d.icd10} tone="neu" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <IcdPicker
+          id="dx-search"
+          extra={DIAGNOSES.map((d) => ({ code: d.icd10, label: d.label, leaf: true }))}
+          selected={problems.map((pr) => pr.icd10)}
+          onPick={(e) => add({ label: e.label, icd10: e.code })}
+          placeholder="pneumonia · J18.9 · stroke…"
+          ariaLabel="Search ICD-10 to add a problem"
+        />
 
         {/* AI-501's rule and its worked example, folded together. */}
         <Why label="Why a parent code is refused" className="mt-[12px]">

@@ -28,6 +28,7 @@ import { can, canSignNotes } from '@/atlas/personas'
 import { bannedIn } from '@/data/abbreviations'
 import { CODE_SUGGESTIONS, type Encounter, type NoteSectionSeed, type SectionKey } from '@/data/clinical'
 import { NOW, formatDateTime, formatTime } from '@/data/format'
+import { icdLabel } from '@/data/icd10'
 import { DIAGNOSES, type Patient } from '@/data/kit'
 import { useScribeDrafts, type ScribeDraft } from '@/data/scribe'
 import { useAI, useOutstanding } from '@/store/ai'
@@ -45,7 +46,7 @@ import { useAiActive, useForcedState } from '../state/ai'
 import { FieldChip, GhostSection } from '../ui/ai'
 import { Alert } from '../ui/Alert'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
-import { TextInput } from '../ui/forms'
+import { IcdPicker } from '../ui/IcdPicker'
 import { Card, Chip, Icon, Pill, PillTag, RoundButton } from '../ui/primitives'
 import { PrintPreview } from '../ui/PrintPreview'
 import { LockedBanner, ValidationSummary } from '../ui/states'
@@ -122,7 +123,6 @@ export function NoteAuthoring({
   const draftFor = (key: SectionKey): string | undefined => scribeDraft?.sections[key]
   const patientProblems = useProblemsFor(p.id)
 
-  const [codeQuery, setCodeQuery] = useState('')
   const [blurred, setBlurred] = useState<Record<string, boolean>>({})
   const [confirmSign, setConfirmSign] = useState(false)
   const [addendumOpen, setAddendumOpen] = useState(false)
@@ -164,11 +164,6 @@ export function NoteAuthoring({
     for (const d of DIAGNOSES) add({ icd10: d.icd10, label: d.label, leaf: true })
     return out
   }, [patientProblems])
-  const codeMatches = useMemo(() => {
-    const q = codeQuery.trim().toLowerCase()
-    if (q.length < 2) return []
-    return codeIndex.filter((o) => o.icd10.toLowerCase().includes(q) || o.label.toLowerCase().includes(q)).slice(0, 6)
-  }, [codeQuery, codeIndex])
 
   /** Validation on blur, never on keystroke. The stored text is the only text that counts. */
   const problems = useMemo(() => {
@@ -253,7 +248,8 @@ export function NoteAuthoring({
     />
   )
 
-  const chosen = codeIndex.find((o) => o.icd10 === record.code)
+  // The note's own index first (the AI's proposals, the patient's problems), then the dictionary.
+  const chosen = codeIndex.find((o) => o.icd10 === record.code) ?? (record.code ? { icd10: record.code, label: icdLabel(record.code), leaf: true } : undefined)
   /**
    * AI-501's proposals are drawn from a pneumonia record. The old build offered them on every note;
    * here they are offered only where the patient's own problems share the code's category — a
@@ -512,41 +508,13 @@ export function NoteAuthoring({
 
               {/* The manual path the copy promises. Never hidden. */}
               {!locked && (
-                <div className="relative max-w-[440px]">
-                  <TextInput
-                    id={`${enc.id}-code-search`}
-                    value={codeQuery}
-                    onChange={(e) => setCodeQuery(e.target.value)}
-                    placeholder="Search ICD-10 by code or diagnosis…"
-                    aria-label="Search ICD-10"
-                    autoComplete="off"
-                  />
-                  {codeQuery.trim().length >= 2 && (
-                    <ul role="listbox" aria-label="ICD-10 matches" className="sh-frosted absolute z-20 mt-[6px] w-full overflow-hidden rounded-[16px] py-[4px] shadow-sh-pop">
-                      {codeMatches.length === 0 && <li className="px-[14px] py-[10px] text-[13px] text-sh-text-3">No match in this build&rsquo;s index.</li>}
-                      {codeMatches.map((o) => (
-                        <li key={o.icd10}>
-                          <button
-                            type="button"
-                            role="option"
-                            aria-selected={o.icd10 === record.code}
-                            disabled={!o.leaf}
-                            title={o.leaf ? undefined : 'Parent-only code — a category cannot be signed'}
-                            onClick={() => {
-                              setNoteCode(enc.id, o.icd10)
-                              setCodeQuery('')
-                            }}
-                            className="flex min-h-[44px] w-full items-center gap-[12px] px-[14px] text-left transition-colors duration-150 hover:bg-sh-hover disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <span className="w-[64px] shrink-0 text-[13px] font-semibold tabular-nums text-sh-text">{o.icd10}</span>
-                            <span className="min-w-0 flex-1 truncate text-[13px] text-sh-text">{o.label}</span>
-                            {!o.leaf && <Chip word="parent only" tone="warn" />}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                <IcdPicker
+                  id={`${enc.id}-code-search`}
+                  extra={codeIndex.map((o) => ({ code: o.icd10, label: o.label, leaf: o.leaf }))}
+                  selected={record.code ? [record.code] : []}
+                  onPick={(o) => setNoteCode(enc.id, o.code)}
+                  className="max-w-[440px]"
+                />
               )}
             </div>
           </Card>

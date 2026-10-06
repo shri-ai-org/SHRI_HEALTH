@@ -29,21 +29,24 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Encounter } from '@/data/clinical'
 import { NOW, formatDateTime } from '@/data/format'
-import { DIAGNOSES, patient } from '@/data/kit'
+import type { IcdCode } from '@/data/icd10'
+import { patient } from '@/data/kit'
 import { useClinical, type DeathRecord } from '@/store/clinical'
 import { useCurrentStaff } from '@/store/session'
 
 import { useMayOpenPath } from '../app/landing'
 import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
-import { DEATH_STEPS, FAMILY_INFORMED, IDENTIFICATION, NOW_LOCAL, chainRepeats, chainText, useCertifyDeath } from '../logic/death'
+import { DEATH_STEPS, FAMILY_INFORMED, IDENTIFICATION, NOW_LOCAL, chainRepeats, chainText, codesText, useCertifyDeath } from '../logic/death'
 import { maybeEncounter } from '../logic/encounter'
+import { useProblemsFor } from '../logic/record'
 import { NoSuchEncounter } from '../notes/ConsultationPage'
 import { useAiActive, useForcedState } from '../state/ai'
 import { Alert } from '../ui/Alert'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Why } from '../ui/Disclosure'
 import { CheckboxRow, Field, Select, TextArea, TextInput } from '../ui/forms'
+import { IcdField } from '../ui/IcdPicker'
 import { Card, Icon, Pill, PillTag } from '../ui/primitives'
 import { ValidationSummary } from '../ui/states'
 
@@ -84,6 +87,19 @@ function Wizard({ enc }: { enc: Encounter }) {
   const [antecedent1, setAntecedent1] = useState('')
   const [antecedent2, setAntecedent2] = useState('')
   const [contributing, setContributing] = useState('')
+  // An ICD-10 code beside each cause, each optional; the patient's problems are offered first.
+  const [codeA, setCodeA] = useState<IcdCode[]>([])
+  const [codeB, setCodeB] = useState<IcdCode[]>([])
+  const [codeC, setCodeC] = useState<IcdCode[]>([])
+  const [codesII, setCodesII] = useState<IcdCode[]>([])
+  const dxChips = useProblemsFor(p.id)
+    .filter((pr) => pr.leaf)
+    .map((pr) => ({ code: pr.icd10, label: pr.label }))
+  /** Picking a code for an empty cause line also writes its words. */
+  const coder = (setCode: (v: IcdCode[]) => void, text: string, setText: (v: string) => void) => (v: IcdCode[]) => {
+    setCode(v)
+    if (v[0] && text.trim() === '') setText(v[0].label)
+  }
   const [isMlc, setIsMlc] = useState(p.mlc ?? false)
   const [stationDocket, setStationDocket] = useState('')
   const [policeAck, setPoliceAck] = useState(false)
@@ -149,6 +165,7 @@ function Wizard({ enc }: { enc: Encounter }) {
       familyInformed,
       causes: { a: immediate.trim(), b: antecedent1.trim(), c: antecedent2.trim() },
       contributing: contributing.trim(),
+      codes: { a: codeA[0], b: codeB[0], c: codeC[0], contributing: codesII.length ? codesII : undefined },
       mlc: isMlc,
       police: isMlc ? { stationDocket: stationDocket.trim(), acknowledged: policeAck } : undefined,
       handover: { releasedTo: releasedTo.trim(), identification, belongings: belongings.trim() },
@@ -248,19 +265,17 @@ function Wizard({ enc }: { enc: Encounter }) {
             <Card titleSize="sm" title="Part I · the causal sequence">
               <div className="flex max-w-[640px] flex-col gap-[14px]">
                 <Field label="(a) Immediate cause" required htmlFor="cod-a">
-                  <TextInput id="cod-a" list="dx-list" value={immediate} disabled={locked} onChange={(e) => setImmediate(e.target.value)} placeholder="The condition directly leading to death" />
+                  <TextInput id="cod-a" value={immediate} disabled={locked} onChange={(e) => setImmediate(e.target.value)} placeholder="The condition directly leading to death" />
                 </Field>
+                <IcdField id="cod-a-icd" label="ICD-10 for (a), optional" value={codeA} onChange={coder(setCodeA, immediate, setImmediate)} suggestions={dxChips} disabled={locked} />
                 <Field label="(b) Due to, or as a consequence of" required htmlFor="cod-b">
-                  <TextInput id="cod-b" list="dx-list" value={antecedent1} disabled={locked} onChange={(e) => setAntecedent1(e.target.value)} placeholder="The antecedent cause" />
+                  <TextInput id="cod-b" value={antecedent1} disabled={locked} onChange={(e) => setAntecedent1(e.target.value)} placeholder="The antecedent cause" />
                 </Field>
+                <IcdField id="cod-b-icd" label="ICD-10 for (b), optional" value={codeB} onChange={coder(setCodeB, antecedent1, setAntecedent1)} suggestions={dxChips} disabled={locked} />
                 <Field label="(c) Due to, or as a consequence of" htmlFor="cod-c">
-                  <TextInput id="cod-c" list="dx-list" value={antecedent2} disabled={locked} onChange={(e) => setAntecedent2(e.target.value)} placeholder="The underlying cause, if there is one" />
+                  <TextInput id="cod-c" value={antecedent2} disabled={locked} onChange={(e) => setAntecedent2(e.target.value)} placeholder="The underlying cause, if there is one" />
                 </Field>
-                <datalist id="dx-list">
-                  {DIAGNOSES.map((d) => (
-                    <option key={d.icd10} value={`${d.label} (${d.icd10})`} />
-                  ))}
-                </datalist>
+                <IcdField id="cod-c-icd" label="ICD-10 for (c), optional" value={codeC} onChange={coder(setCodeC, antecedent2, setAntecedent2)} suggestions={dxChips} disabled={locked} />
               </div>
             </Card>
             <Card titleSize="sm" title="Part II · other significant conditions" headerClassName="mb-[4px]">
@@ -268,6 +283,7 @@ function Wizard({ enc }: { enc: Encounter }) {
               <Field label="Contributing conditions" htmlFor="cod-ii" className="max-w-[640px]">
                 <TextArea id="cod-ii" rows={3} value={contributing} disabled={locked} onChange={(e) => setContributing(e.target.value)} placeholder="Type 2 diabetes, chronic kidney disease…" />
               </Field>
+              <IcdField id="cod-ii-icd" label="ICD-10 for Part II, optional" value={codesII} onChange={setCodesII} suggestions={dxChips} multiple disabled={locked} className="mt-[14px] max-w-[640px]" />
             </Card>
 
             {/* AI-810 speaks only when it disagrees. A coherent chain earns silence. */}
@@ -375,6 +391,7 @@ function Certified({ record }: { record: DeathRecord }) {
     ['Family informed', record.familyInformed],
     ['Part I', chainText(record.causes)],
     ['Part II', record.contributing || '—'],
+    ['ICD-10', codesText(record.codes)?.replace(/^ICD-10 /, '') ?? '—'],
     ['Medico-legal', record.mlc ? `Yes · ${record.police?.stationDocket} · acknowledgement filed` : 'No'],
     ['Released to', record.handover.releasedTo],
     ['Identification produced', record.handover.identification],

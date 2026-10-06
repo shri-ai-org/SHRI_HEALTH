@@ -25,6 +25,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { can, canPrescribe } from '@/atlas/personas'
 import { FORMULARY, PENICILLIN_HARD_STOP, type Encounter } from '@/data/clinical'
 import { NOW, formatDateTime, formatRupees, formatTime } from '@/data/format'
+import type { IcdCode } from '@/data/icd10'
 import { STAFF, patient } from '@/data/kit'
 import { useOutstanding } from '@/store/ai'
 import { useAudit } from '@/store/audit'
@@ -36,6 +37,7 @@ import { useMayOpenPath } from '../app/landing'
 import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
 import { encounterLabel, maybeEncounter } from '../logic/encounter'
+import { useProblemsFor } from '../logic/record'
 import { DURATIONS, ROUTE_FREQUENCIES, basketFor, hardStopFor, newLine, proposedBasket, type BasketLine } from '../logic/rx'
 import { useAiActive, useForcedState } from '../state/ai'
 import { devOpens } from '../state/store'
@@ -46,6 +48,7 @@ import { Why } from '../ui/Disclosure'
 import { EmptyState } from '../ui/EmptyState'
 import { Field, Select, TextInput } from '../ui/forms'
 import { DualSignatureGate, HardStopGate, type DualSignature } from '../ui/gates'
+import { IcdField } from '../ui/IcdPicker'
 import { Card, Diamond, Hairline, Icon, Pill, PillTag, Toggle } from '../ui/primitives'
 import { PrintPreview } from '../ui/PrintPreview'
 import { LockedBanner, ValidationSummary } from '../ui/states'
@@ -88,6 +91,7 @@ function Prescription({ enc }: { enc: Encounter }) {
   const overrideHardStop = useClinical((s) => s.overrideHardStop)
 
   const p = patient(enc.patientId)
+  const problemList = useProblemsFor(p.id)
   const record = rx(enc.id)
 
   /** The line the hard-stop gate is open for, and the line whose override is being signed. */
@@ -105,6 +109,9 @@ function Prescription({ enc }: { enc: Encounter }) {
 
   /** Recomputed from the rule on every render — never cached from the seed. */
   const basket = basketFor(proposedBasket(p.id), record, p.allergies)
+  // The patient's open diagnoses, offered as each line's indication; the lines already coded, for the audit.
+  const diagnosisChips = problemList.filter((pr) => pr.status === 'Open' && pr.leaf).map((pr) => ({ code: pr.icd10, label: pr.label }))
+  const coded = basket.filter((l) => l.indicationCode)
   const unresolved = basket.filter((l) => l.stop && !l.override)
   const overridden = basket.filter((l) => l.stop && l.override)
   const outstandingStop = unresolved.length > 0
@@ -211,7 +218,7 @@ function Prescription({ enc }: { enc: Encounter }) {
       actor: me.name,
       actorId: me.id,
       subject: p.id,
-      detail: `${basket.length} ${basket.length === 1 ? 'item' : 'items'} · ${encounterLabel(enc)}${overridden.length > 0 ? ` · ${overridden.length} past a hard stop, dual-signed` : ''}`,
+      detail: `${basket.length} ${basket.length === 1 ? 'item' : 'items'} · ${encounterLabel(enc)}${overridden.length > 0 ? ` · ${overridden.length} past a hard stop, dual-signed` : ''}${coded.length > 0 ? ` · indications ICD-10 ${coded.map((l) => `${l.drug}: ${l.indicationCode!.code}`).join('; ')}` : ''}`,
     })
     toast({ tone: 'success', title: 'Prescription signed', detail: `HPR ${me.identifier} printed on it. Now in the pharmacy queue.` })
   }
@@ -429,6 +436,7 @@ function Prescription({ enc }: { enc: Encounter }) {
                       encounterId={enc.id}
                       weightKg={p.weightKg}
                       locked={locked}
+                      diagnoses={diagnosisChips}
                       onEdit={(patch) => editRxLine(enc.id, line.id, patch)}
                       onRemove={() => removeLine(line)}
                     />
@@ -510,6 +518,7 @@ function Prescription({ enc }: { enc: Encounter }) {
               ]
                 .filter(Boolean)
                 .join(' · '),
+              l.indication ? `For ${l.indication}` : '',
               l.instructions ?? '',
             ]
               .filter((s) => s.trim() !== '')
@@ -529,6 +538,7 @@ function RxLineCard({
   encounterId,
   weightKg,
   locked,
+  diagnoses,
   onEdit,
   onRemove,
 }: {
@@ -536,6 +546,8 @@ function RxLineCard({
   encounterId: string
   weightKg?: number
   locked: boolean
+  /** The patient's diagnoses, offered as the line's indication. */
+  diagnoses: IcdCode[]
   onEdit: (patch: RxLineEdit) => void
   onRemove: () => void
 }) {
@@ -570,7 +582,7 @@ function RxLineCard({
               </PillTag>
             )}
           </p>
-          {line.indication && <p className="mt-[2px] text-[13px] text-sh-text-3">for {line.indication}</p>}
+          {line.indication && !line.indicationCode && <p className="mt-[2px] text-[13px] text-sh-text-3">for {line.indication}</p>}
         </div>
         {/* Resolve lives on the page alert above — one way in, not two. */}
         <Pill variant="ghost" size="md" icon={Trash2} disabled={locked} aria-label={`Remove ${line.drug}`} className="disabled:opacity-40" onClick={onRemove}>
@@ -668,6 +680,16 @@ function RxLineCard({
         <span className="text-sh-text">Substitution allowed</span>
         <span className="text-sh-text-3">— drives pharmacy dispensing</span>
       </label>
+
+      <IcdField
+        id={`${base}:indication`}
+        label="Indication (ICD-10, optional)"
+        value={line.indicationCode ? [line.indicationCode] : []}
+        onChange={(v) => onEdit({ indication: v[0] ?? null })}
+        suggestions={diagnoses}
+        disabled={locked}
+        className="mt-[12px]"
+      />
 
       <VoiceField
         id={`${base}:instructions`}

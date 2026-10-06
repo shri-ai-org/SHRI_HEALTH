@@ -36,7 +36,7 @@ export async function createAdmission(req: CreateAdmissionRequest): Promise<Crea
       actorId: req.requestedBy.id,
       subject: req.patientId,
       at: NOW.toISOString(),
-      detail: `${TYPE_LABEL[req.type]} · ${PRIORITY_LABEL[req.priority]}`,
+      detail: `${TYPE_LABEL[req.type]} · ${PRIORITY_LABEL[req.priority]}${req.diagnosis ? ` · ICD-10 ${req.diagnosis.code} ${req.diagnosis.label}` : ''}`,
     })
   }
   return result

@@ -8,6 +8,7 @@
 // lives on the prescription (`useClinical`), so what is signed is what was shown.
 
 import { FORMULARY, PENICILLIN_HARD_STOP, RX_BASKET_SD_P_01, RX_BASKET_SD_P_03, type HardStop, type RxLine } from '@/data/clinical'
+import type { IcdCode } from '@/data/icd10'
 import type { RxOverride, RxRecord } from '@/store/clinical'
 
 /**
@@ -70,6 +71,14 @@ export interface BasketLine extends Omit<RxLine, 'hardStop' | 'completenessGap'>
   stop?: HardStop
   /** The dual-signature override signed for this line. It clears this line and no other. */
   override?: RxOverride
+  /** The indication as an ICD-10 code, where there is one: chosen on this screen, or read from the proposed text. */
+  indicationCode?: IcdCode
+}
+
+/** "Community-acquired pneumonia (J18.9)" → { code: 'J18.9', label: 'Community-acquired pneumonia' }; uncoded text → undefined. */
+export function codedIndication(text?: string): IcdCode | undefined {
+  const m = text?.match(/^(.*?)\s*\(([A-Z]\d{2}(?:\.[0-9A-Z]{1,4})?)\)\s*$/)
+  return m ? { code: m[2], label: m[1].trim() } : undefined
 }
 
 /** "dose, frequency and duration" → "Dose, frequency and duration are not stated yet." */
@@ -132,8 +141,13 @@ export function basketFor(proposed: RxLine[], rec: RxRecord, allergies: string[]
     }
 
     const stop = hardStopFor(base.drug, allergies)
+    // A choice made here wins; null is a cleared one. Otherwise the proposed text, read for its code.
+    const indicationCode = e.indication !== undefined ? (e.indication ?? undefined) : codedIndication(base.indication)
+    const indication = e.indication !== undefined ? (e.indication ? `${e.indication.label} (${e.indication.code})` : undefined) : base.indication
     return {
       ...base,
+      indication,
+      indicationCode,
       dose,
       route,
       frequency,
