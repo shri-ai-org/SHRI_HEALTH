@@ -1,5 +1,5 @@
 /**
- * S-06-12 · Previous reports — `/patient/:id/reports` (`src/screens/m06/record/
+ * S-06-12 · Imaging reports — `/patient/:id/reports` (`src/screens/m06/record/
  * S0612.tsx`): every report on the record — imaging, discharge summaries,
  * operative notes, ECGs. Each is one line until opened: what it was, when, who
  * signed it, and the impression; the body is one tap away. An imaging report
@@ -48,9 +48,11 @@ export function ReportsPage() {
 
 function Reports({ patient: p }: { patient: Patient }) {
   const [filter, setFilter] = useState<Filter>('all')
-  const all = reportsFor(p.id)
-  const imaging = all.filter((r) => r.kind === 'Imaging')
-  const docs = all.filter((r) => r.kind !== 'Imaging')
+  // Imaging first, then the other documents (discharge summaries, ECGs …) — each newest first.
+  const every = reportsFor(p.id)
+  const imaging = every.filter((r) => r.kind === 'Imaging')
+  const docs = every.filter((r) => r.kind !== 'Imaging')
+  const all = [...imaging, ...docs]
   const shown = filter === 'imaging' ? imaging : filter === 'documents' ? docs : all
 
   return (
@@ -58,7 +60,7 @@ function Reports({ patient: p }: { patient: Patient }) {
       titleSize="sm"
       title={
         <span className="inline-flex items-center gap-[10px]">
-          Previous reports
+          Imaging reports
           <CountBubble className="bg-sh-control">{all.length}</CountBubble>
         </span>
       }

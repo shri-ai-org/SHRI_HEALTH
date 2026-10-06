@@ -1,7 +1,8 @@
 /**
  * §7.4 — the record's parts as 42px pill tabs, gap 6, scrolling sideways
- * without a scrollbar: the old build's seven (Overview · Condition · Results ·
- * Reports · Notes · Medicines · Appointments), each with its count, each one
+ * without a scrollbar: the old build's seven (Overview · Condition · Test
+ * results · Imaging reports · Consultation notes · Prescriptions ·
+ * Appointments), each with its count, each one
  * tap from every other (`src/screens/m06/record/shared.tsx` `RecordNav`). A tab
  * goes to its part's own address. Active: `--primary` + accent count bubble;
  * inactive: `--card` + `--control` bubble. The scroller clips, so it carries 4px

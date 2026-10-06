@@ -8,7 +8,7 @@ const UHIDS = [
   'ICH-0044120', 'ICH-0041882', 'ICH-0044051', 'ICH-0044208', 'IPL-0012774', 'ICH-0044191', 'ICH-0043910', 'ICH-0042330',
   'ICH-0044240', 'ICH-0044262', 'ICH-0044275', 'ICH-0044281', 'ITP-0021934', 'ICH-0044290', 'ICH-0044297',
 ]
-const CARDS = 'Report viewer|Vitals|AI insights|Test results|Notes|Trend|Patient report'
+const CARDS = 'Report viewer|Vitals|AI insights|Test results|Consultation notes|Trend|Patient report'
 
 export default ({ page, expect, toastSays, auditRows }) => {
   /** Each card's title and its column/row, read from the panel. */
@@ -45,9 +45,9 @@ export default ({ page, expect, toastSays, auditRows }) => {
       },
     },
     {
-      name: 'Record overview: a note typed on the Notes card is a draft — edited before signing (audited), then signed, after which it cannot be edited',
+      name: 'Record overview: a note typed on the Consultation notes card is a draft — edited before signing (audited), then signed, after which it cannot be edited',
       async run() {
-        const card = `document.querySelector('section[aria-label="Notes on Lakshmi Narayanan"]')`
+        const card = `document.querySelector('section[aria-label="Consultation notes on Lakshmi Narayanan"]')`
         await page.open('/patient/ICH-0044290')
         await page.until(`!!${card}`, 4000, 'the Notes card')
         expect((await page.evaluate(`${card}.textContent`)).includes('No notes yet'), 'no notes yet, said so')
@@ -58,7 +58,7 @@ export default ({ page, expect, toastSays, auditRows }) => {
         await toastSays('Note saved as a draft', 'Lakshmi Narayanan · not signed')
         await page.until(`${card}.textContent.includes('Headache diary reviewed: two attacks this month') && ${card}.textContent.includes('Draft · not signed')`, 3000, 'the draft on the card')
 
-        await page.click('section[aria-label="Notes on Lakshmi Narayanan"] button[aria-label="Edit this draft"]')
+        await page.click('section[aria-label="Consultation notes on Lakshmi Narayanan"] button[aria-label="Edit this draft"]')
         await page.until(`document.querySelector('[role="dialog"]')?.textContent.includes('Edit note') && document.querySelector('#dictation-draft')?.value === 'Headache diary reviewed: two attacks this month'`, 3000, 'the draft reopens with its words')
         await page.evaluate(`(() => { const el = document.querySelector('#dictation-draft'); el.focus(); el.setSelectionRange(el.value.length, el.value.length) })()`)
         await page.type('#dictation-draft', '; continue propranolol 40 mg')
@@ -68,7 +68,7 @@ export default ({ page, expect, toastSays, auditRows }) => {
         expect((await page.evaluate(`${card}.querySelectorAll('li').length`)) === 1, 'edited in place, not a second note')
         expect((await auditRows()).some((r) => r.event === 'NOTE.DRAFT_EDITED' && r.subject === 'SD-P-15'), 'the edit is on the audit trail')
 
-        await page.click('section[aria-label="Notes on Lakshmi Narayanan"] button', 'Sign')
+        await page.click('section[aria-label="Consultation notes on Lakshmi Narayanan"] button', 'Sign')
         await toastSays('Note signed', 'Lakshmi Narayanan · now part of the record')
         await page.until(`!${card}.querySelector('button[aria-label="Edit this draft"]') && ${card}.textContent.includes('Signed')`, 3000, 'signed: no edit any more')
       },

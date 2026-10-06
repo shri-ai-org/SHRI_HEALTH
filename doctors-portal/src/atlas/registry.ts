@@ -286,7 +286,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-12',
     module: 'M-06',
-    name: 'Previous reports',
+    name: 'Imaging reports',
     route: '/patient/:id/reports',
     archetype: 'ARC-10',
     tier: 'T2',
@@ -322,7 +322,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-14',
     module: 'M-06',
-    name: 'Saved notes',
+    name: 'Consultation notes',
     route: '/patient/:id/notes',
     archetype: 'ARC-02',
     tier: 'T2',

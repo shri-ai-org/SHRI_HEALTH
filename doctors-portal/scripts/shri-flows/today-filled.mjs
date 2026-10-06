@@ -23,13 +23,13 @@ const TODAY = {
 }
 
 /** The least each part of the record carries for a patient on today's lists. */
-const AT_LEAST = { Results: 3, Reports: 1, Notes: 2, Medicines: 1, Appointments: 3, Condition: 1 }
+const AT_LEAST = { 'Test results': 3, 'Imaging reports': 1, 'Consultation notes': 2, Prescriptions: 1, Appointments: 3, Condition: 1 }
 /**
  * Rahul Verma recovered and was discharged from follow-up this morning — his
  * note says so — so he takes no medicine now and has no visit booked. The
  * record says that rather than being padded.
  */
-const EXCEPT = { 'ICH-0044297': { Medicines: 0, Appointments: 2 } }
+const EXCEPT = { 'ICH-0044297': { Prescriptions: 0, Appointments: 2 } }
 
 // One flow per patient, each on a fresh page, so thirteen records never share one long-lived tab.
 export default ({ page, expect }) =>

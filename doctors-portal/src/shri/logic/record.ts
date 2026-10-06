@@ -17,14 +17,14 @@ import { appointmentsOf, nextOf, useAppointments } from './schedule'
 
 export type RecordSection = 'record' | 'condition' | 'results' | 'reports' | 'notes' | 'prescriptions' | 'appointments'
 
-/** `label` titles a tile; `short` names the tab, so the seven fit on one line. */
+/** `label` titles a tile; `short` names the tab. Seven tabs; the row scrolls sideways where they do not fit. */
 export const SECTION_META: Record<RecordSection, { label: string; short: string; path: string; screenId: string }> = {
   record: { label: 'Overview', short: 'Overview', path: 'record', screenId: 'S-06-11' },
   condition: { label: 'Current condition', short: 'Condition', path: 'condition', screenId: 'S-06-15' },
-  results: { label: 'Test results', short: 'Results', path: 'results', screenId: 'S-06-13' },
-  reports: { label: 'Previous reports', short: 'Reports', path: 'reports', screenId: 'S-06-12' },
-  notes: { label: 'Saved notes', short: 'Notes', path: 'notes', screenId: 'S-06-14' },
-  prescriptions: { label: 'Prescriptions', short: 'Medicines', path: 'prescriptions', screenId: 'S-06-16' },
+  results: { label: 'Test results', short: 'Test results', path: 'results', screenId: 'S-06-13' },
+  reports: { label: 'Imaging reports', short: 'Imaging reports', path: 'reports', screenId: 'S-06-12' },
+  notes: { label: 'Consultation notes', short: 'Consultation notes', path: 'notes', screenId: 'S-06-14' },
+  prescriptions: { label: 'Prescriptions', short: 'Prescriptions', path: 'prescriptions', screenId: 'S-06-16' },
   appointments: { label: 'Appointments', short: 'Appointments', path: 'appointments', screenId: 'S-06-17' },
 }
 

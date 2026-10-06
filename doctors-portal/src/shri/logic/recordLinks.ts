@@ -22,7 +22,7 @@ export function recordLinksFor(p: Patient): RecordLink[] {
   const base = `/patient/${p.uhid}`
   const links: RecordLink[] = [{ key: 'record', label: 'Patient record', to: base }]
   if (resultsFor(p.id).length > 0) links.push({ key: 'results', label: 'Test results', to: `${base}/results` })
-  if (reportsFor(p.id).length > 0) links.push({ key: 'reports', label: 'Reports', to: `${base}/reports` })
+  if (reportsFor(p.id).length > 0) links.push({ key: 'reports', label: 'Imaging reports', to: `${base}/reports` })
   const study = viewableStudyFor(p.id)
   if (study) links.push({ key: 'imaging', label: 'Imaging', to: `/radiology/study/${study.id}/view` })
   const sc = strokeCaseForPatient(p.id)

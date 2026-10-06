@@ -29,8 +29,8 @@ export function NotesCard({ patient: p, className }: { patient: Patient; classNa
   return (
     <Card
       titleSize="sm"
-      title="Notes"
-      aria-label={`Notes on ${p.name}`}
+      title="Consultation notes"
+      aria-label={`Consultation notes on ${p.name}`}
       right={
         <>
           {drafts > 0 && <CountBubble className="bg-sh-warn-bg text-sh-warn-fg">{drafts}</CountBubble>}
@@ -50,7 +50,7 @@ export function NotesCard({ patient: p, className }: { patient: Patient; classNa
         </ul>
       )}
       <Link to={`/patient/${p.uhid}/notes`} className="mt-auto inline-flex min-h-[44px] items-center self-start pt-[6px] text-[13px] font-medium text-sh-text-2 underline-offset-2 hover:underline">
-        All notes
+        All consultation notes
       </Link>
     </Card>
   )

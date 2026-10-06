@@ -82,7 +82,7 @@ export function PatientReportCard({ patient: p, className }: { patient: Patient;
             </span>
           )}
         </Fact>
-        <Fact label="Medicines" sub={meds[0] && `since ${formatDate(meds[0].since)} · ${meds[0].by}`}>
+        <Fact label="Prescriptions" sub={meds[0] && `since ${formatDate(meds[0].since)} · ${meds[0].by}`}>
           {meds.length === 0 ? 'Nothing current' : meds.slice(0, 3).map((m) => `${m.drug} ${m.dose} ${m.frequency}`).join(' · ')}
           {meds.length > 3 && <span className="text-sh-text-3"> · +{meds.length - 3} more</span>}
         </Fact>

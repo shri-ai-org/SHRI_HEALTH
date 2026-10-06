@@ -1,5 +1,5 @@
 /**
- * S-06-14 · Saved notes — `/patient/:id/notes` (`src/screens/m06/record/
+ * S-06-14 · Consultation notes — `/patient/:id/notes` (`src/screens/m06/record/
  * S0614.tsx`): what was written last time, and what was dictated today, in one
  * place. Three groups, newest first: notes dictated today (drafts until signed
  * — signing here is what takes them off My Day's "to sign" list), today's
@@ -58,7 +58,7 @@ function Notes({ patient: p }: { patient: Patient }) {
 
   if (voice.length === 0 && session.length === 0 && past.length === 0) {
     return (
-      <Card titleSize="sm" title="Saved notes">
+      <Card titleSize="sm" title="Consultation notes">
         <EmptyState
           icon={FileText}
           why={`Nothing has been written on ${p.name}’s record yet. A dictated note, or a consultation note once started, will appear here.`}

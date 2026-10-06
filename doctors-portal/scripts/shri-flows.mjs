@@ -508,7 +508,7 @@ const FLOWS = [
       for (const t of ['R. Lakshmanan', '62/M', 'ICH-0044051 · 4B-12 · LOS 4d · Dr. Rajsrinivas', 'Allergy: Penicillin', 'Payer: PM-JAY', 'ABHA Linked'])
         expect(banner.includes(t), `the banner says "${t}": ${banner}`)
       const tabs = await page.evaluate(`[...document.querySelectorAll('[role="tab"][id^="record-tab-"]')].map((t) => t.textContent)`)
-      expect(tabs.join('|') === 'Overview|Condition2|Results8|Reports3|Notes2|Medicines3|Appointments3', `the seven parts with their counts: ${tabs}`)
+      expect(tabs.join('|') === 'Overview|Condition2|Test results8|Imaging reports3|Consultation notes2|Prescriptions3|Appointments3', `the seven parts with their counts: ${tabs}`)
       expect(await page.evaluate(`document.querySelector('[role="tab"][aria-selected="true"]').textContent === 'Overview'`), 'Overview is the selected part')
       const text = await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)
       for (const t of ['Report viewer', 'NO ACUTE STROKE ON THIS SCAN', 'Vitals', 'AI insights', 'Test results', 'Trend', 'Patient report', 'Community-acquired pneumonia'])
@@ -525,8 +525,8 @@ const FLOWS = [
     name: "Record: a tab goes to its part's own address; AI off keeps the insights card in its place, saying so; an insight's Why opens the four panels",
     async run() {
       await page.open('/patient/ICH-0044051')
-      await page.click('[role="tab"]', 'Results')
-      await page.until(`location.pathname === '/patient/ICH-0044051/results'`, 3000, "the Results part's own address")
+      await page.click('[role="tab"]', 'Test results')
+      await page.until(`location.pathname === '/patient/ICH-0044051/results'`, 3000, "the Test results part's own address")
       await page.open('/patient/ICH-0044051?ai=off')
       const off = await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)
       expect(off.includes('AI insights are off') && !off.includes('Why?'), 'AI off: the card stands, with no readings in it')
@@ -579,13 +579,13 @@ const FLOWS = [
     },
   },
   {
-    name: 'Record · Reports (S-06-12): filtered by kind, the body one tap away, the viewer only where real pixels are',
+    name: 'Record · Imaging reports (S-06-12): filtered by kind, the body one tap away, the viewer only where real pixels are',
     async run() {
       await page.open('/patient/ICH-0044051/reports')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-12"]')`), 'S-06-12 is drawn')
-      expect(await page.evaluate(`document.querySelector('[role="tab"][aria-selected="true"][id="record-tab-reports"]') !== null`), 'the Reports part is selected')
+      expect(await page.evaluate(`document.querySelector('[role="tab"][aria-selected="true"][id="record-tab-reports"]') !== null`), 'the Imaging reports part is selected')
       const titles = () => page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] li .font-semibold')].map((e) => e.textContent)`)
-      expect((await titles()).join('|') === 'NCCT head|12-lead ECG|Chest X-ray AP', `every report, newest first: ${await titles()}`)
+      expect((await titles()).join('|') === 'NCCT head|Chest X-ray AP|12-lead ECG', `imaging first, then the documents, each newest first: ${await titles()}`)
       await page.click('[role="tablist"][aria-label="Which reports"] [role="tab"]', 'Documents')
       expect((await titles()).join('|') === '12-lead ECG', `documents only: ${await titles()}`)
       await page.click('[role="tablist"][aria-label="Which reports"] [role="tab"]', 'All')
@@ -601,7 +601,7 @@ const FLOWS = [
     },
   },
   {
-    name: 'Record · Results (S-06-13): the three counts, grouped by test, filtered, each row to its full result; cultures with their sensitivities and the allergy beside its drug',
+    name: 'Record · Test results (S-06-13): the three counts, grouped by test, filtered, each row to its full result; cultures with their sensitivities and the allergy beside its drug',
     async run() {
       await page.open('/patient/ICH-0044051/results')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-13"]')`), 'S-06-13 is drawn')
@@ -627,7 +627,7 @@ const FLOWS = [
     },
   },
   {
-    name: 'Record · Notes (S-06-14): a draft is signed or discarded, both on record; an earlier note opens to its four sections',
+    name: 'Record · Consultation notes (S-06-14): a draft is signed or discarded, both on record; an earlier note opens to its four sections',
     async run() {
       const unstub = await stubSpeech({ speech: false })
       try {
@@ -674,7 +674,7 @@ const FLOWS = [
     },
   },
   {
-    name: 'Record · Medicines (S-06-16): taking now across every prescription, the history as written; Write prescription only for who may',
+    name: 'Record · Prescriptions (S-06-16): taking now across every prescription, the history as written; Write prescription only for who may',
     async run() {
       await page.open('/patient/ICH-0044051/prescriptions')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-16"]')`), 'S-06-16 is drawn')

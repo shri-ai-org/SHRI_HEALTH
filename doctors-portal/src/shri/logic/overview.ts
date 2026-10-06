@@ -158,7 +158,7 @@ export function readingsFor(p: Patient): Reading[] {
   if (r) {
     out.push({
       key: 'results',
-      label: 'Results',
+      label: 'Test results',
       text: `${r.test} ${r.value}${r.unit ? ` ${r.unit}` : ''} — ${r.aiReason}`,
       band: r.band,
       explain: {
