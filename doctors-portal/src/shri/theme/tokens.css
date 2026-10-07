@@ -44,9 +44,9 @@ html.shri-active body::before {
   --shell-pb: max(22px, var(--sa-b));
   /* The < 768px bottom tab bar and the room it takes above the inset. */
   --tabbar-h: 64px;
-  /* My Day pins to the viewport at ≥ 1280px: the app bar (56) and its margin
-     (18) and the surface padding are not the page. Never shorter than 960px. */
-  --myday-h: max(calc(100dvh - 74px - var(--shell-pt) - var(--shell-pb)), 960px);
+  /* My Day's cards under Today pin to the viewport at ≥ 1280px: the app bar (56)
+     and its margin (18) and the surface padding are not the page. Never shorter than 760px. */
+  --myday-h: max(calc(100dvh - 74px - var(--shell-pt) - var(--shell-pb)), 760px);
   /* A screen's frame fills at least the same room, so its action bar rests at
      the foot of the viewport even when the screen is short — where the toast
      stack and the assistant bubble expect it, clear above it. Below 768px the

@@ -1,16 +1,17 @@
 /**
  * §5 — My Day (`/`). Greeting, the KPI strip and Today (`TodayPanel` — the
- * day's timeline, what comes next, the free slots) run the full width; under
- * them the main column (Patients Today / Needs Action) sits beside the right
- * column (Calendar / To-do):
+ * day's timeline and its events) run the full width; under them Patients
+ * Today, To-do and the Calendar side by side, Needs Action under the first two:
  *
- *   ≥ 1024   right column 372px (362px below 1280 — the narrowest that keeps
- *            calendar days 44px wide); the two columns together one viewport
- *            high (never under 780px), each card scrolling inside
- *   < 1024   the right column moves below the main column
+ *   ≥ 1280   Patients Today (3 parts) · To-do (2) · Calendar (372px); Needs Action under
+ *            Patients Today and To-do; one viewport high (never under 760px),
+ *            each card scrolling inside
+ *   768–1279 Patients Today, To-do and Needs Action stacked, the Calendar
+ *            (362px) beside them
+ *   < 768    one column
  *
  * The order never changes, so on a phone it reads Greeting → KPI → Today →
- * Patients Today → Needs Action → Calendar → To-do. Today follows the
+ * Patients Today → To-do → Needs Action → Calendar. Today follows the
  * calendar's chosen day, so the two always show the same one.
  *
  * The screen states are the old S-06-01's (`src/screens/m06/S0601.tsx`):
@@ -43,7 +44,7 @@ import { TodoNotes } from './TodoNotes'
 import { useMyDay } from './useMyDay'
 
 /** The viewport less the app bar, its margin and the surface padding (`--myday-h` in tokens.css). */
-const LOWER_H = 'lg:h-(--myday-h)'
+const LOWER_H = 'xl:h-(--myday-h)'
 
 export function MyDayPage() {
   const forcedState = useForcedState()
@@ -89,15 +90,14 @@ export function MyDayPage() {
       ) : (
         <>
           <TodayPanel className="mt-[14px]" />
-          <div className={cn('mt-[20px] grid min-h-0 grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_362px] lg:grid-cols-[minmax(0,1fr)_372px]', LOWER_H)}>
-            <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-[16px] max-lg:grid-rows-none">
-              <PatientsToday />
-              <NeedsAction />
+          <div className={cn('mt-[20px] grid min-h-0 grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_362px] xl:grid-cols-[minmax(0,2fr)_372px]', LOWER_H)}>
+            <div className="grid min-h-0 gap-[16px] xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:grid-rows-[minmax(0,1fr)_auto]">
+              <PatientsToday className="min-h-0" />
+              <TodoNotes className="min-h-0" />
+              <NeedsAction className="xl:col-span-2" />
             </div>
             <aside className="flex min-h-0 flex-col gap-[16px]">
               <Calendar />
-              {/* The week's day detail takes the larger share; the to-do list the rest, scrolling inside. */}
-              <TodoNotes className="flex-[2]" />
             </aside>
           </div>
         </>
@@ -144,14 +144,14 @@ function PageSkeleton() {
         ))}
       </div>
       <SkeletonCard rows={5} className="mt-[14px]" />
-      <div className={cn('mt-[20px] grid min-h-0 grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_362px] lg:grid-cols-[minmax(0,1fr)_372px]', LOWER_H)}>
-        <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-[16px]">
+      <div className={cn('mt-[20px] grid min-h-0 grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_362px] xl:grid-cols-[minmax(0,2fr)_372px]', LOWER_H)}>
+        <div className="grid min-h-0 gap-[16px] xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:grid-rows-[minmax(0,1fr)_auto]">
           <SkeletonCard rows={7} />
-          <SkeletonCard rows={4} />
+          <SkeletonCard rows={5} />
+          <SkeletonCard rows={4} className="xl:col-span-2" />
         </div>
         <aside className="flex min-h-0 flex-col gap-[16px]">
-          <SkeletonCard rows={5} />
-          <SkeletonCard rows={3} className="flex-1" />
+          <SkeletonCard rows={8} className="flex-1" />
         </aside>
       </div>
     </div>
