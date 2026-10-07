@@ -338,16 +338,16 @@ export function useScheduleActions() {
       apply(a, { action: 'cancel', reason })
       toast({ tone: 'info', title: 'Appointment cancelled', detail: `${patient(a.patientId).name} · ${whenLabel(a.at)}. The patient and the front office are told.` })
     },
-    /** A patient booked into the doctor's own free time: the patient and the front office are told. */
-    book(input: { patientId: string; at: Date; minutes: number; kind: Appointment['kind']; clinic: string; purpose: string }) {
+    /** A patient scheduled into the doctor's own free time: the patient and the front office are told. */
+    schedule(input: { patientId: string; at: Date; minutes: number; kind: Appointment['kind']; clinic: string; purpose: string }) {
       const p = patient(input.patientId)
       const id = `AP-H-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
       const when = whenLabel(input.at)
       store.book({ id, patientId: input.patientId, at: input.at.toISOString(), kind: input.kind, status: 'Booked', clinic: input.clinic, with: me.name, purpose: input.purpose, minutes: input.minutes })
-      audit({ event: 'APPOINTMENT.BOOKED', ...actor, subject: input.patientId, detail: `${id} · ${when} · ${input.minutes} min · ${input.kind} · ${input.clinic} · ${p.name}` })
-      send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: `Appointment booked — ${slotLabel(input.at)}`, detail: `${p.name}: you are booked with ${me.name} on ${when}, ${input.clinic}.`, to: `/patient/${p.uhid}/appointments` })
-      send({ severity: 'routine', kind: 'appointment', recipient: 'front office', title: `Booked — ${p.name}`, detail: `${when} · ${input.minutes} min · ${input.clinic} · ${me.name}. ${input.purpose}. The patient has been told.`, to: `/patient/${p.uhid}/appointments` })
-      toast({ tone: 'success', title: 'Appointment booked', detail: `${p.name} · ${format(input.at, 'EEE d MMM')}, ${fmtTime12(input.at)}. The patient and the front office are told.` })
+      audit({ event: 'APPOINTMENT.SCHEDULED', ...actor, subject: input.patientId, detail: `${id} · ${when} · ${input.minutes} min · ${input.kind} · ${input.clinic} · ${p.name}` })
+      send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: `Appointment scheduled — ${slotLabel(input.at)}`, detail: `${p.name}: you have an appointment with ${me.name} on ${when}, ${input.clinic}.`, to: `/patient/${p.uhid}/appointments` })
+      send({ severity: 'routine', kind: 'appointment', recipient: 'front office', title: `Scheduled — ${p.name}`, detail: `${when} · ${input.minutes} min · ${input.clinic} · ${me.name}. ${input.purpose}. The patient has been told.`, to: `/patient/${p.uhid}/appointments` })
+      toast({ tone: 'success', title: 'Appointment scheduled', detail: `${p.name} · ${format(input.at, 'EEE d MMM')}, ${fmtTime12(input.at)}. The patient and the front office are told.` })
       return id
     },
     /** Block the time, act on every booking it displaces, and tell the front office once. */

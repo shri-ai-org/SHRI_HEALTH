@@ -14,6 +14,7 @@ import {
   attentionChronological, attentionFor, currentBlock, dayPlanFor, isStrokePersona, telestrokeList, toFinishFor,
   type AttentionItem, type DayBlock, type PatientListRow,
 } from '@/data/myday'
+import { SESSIONS } from '@/data/schedule'
 import { useAdmissions } from '@/store/admissions'
 import { UNATTACHED, useClinical } from '@/store/clinical'
 import { useCurrentStaff, useSession } from '@/store/session'
@@ -43,7 +44,9 @@ function withoutForecasts(blocks: DayBlock[]): DayBlock[] {
  * The day plan's counts, read from the live lists rather than from the seeded
  * session, so a block can never disagree with the list it opens: the morning
  * OPD counts the patients in the clinic (a teleconsult is counted once, in its
- * own block), and both say how many have been seen; the ward round counts who
+ * own block), and both say how many have been seen — and it runs until the
+ * last patient still to be seen has had their slot, so the day's timeline never
+ * offers as free a time the queue is still using; the ward round counts who
  * is still in a bed and who needs attention; the discharge round, who is still
  * on the board.
  */
@@ -56,7 +59,9 @@ function withLiveCounts(blocks: DayBlock[], live: { opd: OpdRow[]; inpatients: I
   return blocks.map((b) => {
     if (b.id === 'opd-am') {
       const fresh = clinic.filter((r) => r.kind?.label === 'New patient').length
-      return { ...b, summary: `${plural(clinic.length, 'patient')} · ${fresh} new · ${clinic.length - fresh} follow-ups · ${seen(clinic)} seen` }
+      const toSee = clinic.filter((r) => r.live !== 'Seen' && r.live !== 'Admission in progress')
+      const last = Math.max(b.until?.getTime() ?? 0, ...toSee.map((r) => r.due.getTime() + CLINIC_SLOT_MIN * 60_000))
+      return { ...b, until: last > 0 ? new Date(last) : b.until, summary: `${plural(clinic.length, 'patient')} · ${fresh} new · ${clinic.length - fresh} follow-ups · ${seen(clinic)} seen` }
     }
     if (b.id === 'tele') return { ...b, summary: `${plural(tele.length, 'patient')} · ${seen(tele)} seen` }
     if (b.id === 'round')
@@ -65,6 +70,9 @@ function withLiveCounts(blocks: DayBlock[], live: { opd: OpdRow[]; inpatients: I
     return b
   })
 }
+
+/** The morning clinic's slot (its session template, `data/schedule.ts`). */
+const CLINIC_SLOT_MIN = SESSIONS.find((s) => s.day === 'Monday')?.slotMin ?? 10
 
 export interface CalendarDay {
   iso: string

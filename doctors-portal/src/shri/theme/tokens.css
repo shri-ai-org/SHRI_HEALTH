@@ -193,16 +193,17 @@ html[data-theme='dark'] .shri-root {
   --text: #ffffff;
   --text-2: #c9c9ce;
   --text-3: #a3a3a9;
-  /* AA on the inner fill #333336 and the lime-tinted Now row (4.8:1 on #333336); was #8c8c92 at 3.6–3.8:1. */
+  /* AA on the inner fill #333336 and the blue-tinted Now row (4.8:1 on #333336); was #8c8c92 at 3.6–3.8:1. */
   --muted: #a0a0a6;
   --chev: #6e6e74;
 
   --rail: #262628;
-  --accent: #d4ff3a;
-  --accent-soft: rgba(212, 255, 58, 0.1);
-  --accent-ink: #0a0a0b;
+  /* A bright royal blue, not the old neon lime: white ink on it is 4.8:1; --ai, read as text, is the lighter blue. */
+  --accent: #3d63ff;
+  --accent-soft: rgba(61, 99, 255, 0.16);
+  --accent-ink: #ffffff;
   --accent-2: #1f4cff;
-  --ai: #d4ff3a;
+  --ai: #8ea6ff;
   --primary: #ffffff;
   --primary-hover: #e4e4e8;
   --on-primary: #0a0a0b;
@@ -211,7 +212,7 @@ html[data-theme='dark'] .shri-root {
   --crit-solid: #ff6b6b; --on-crit-solid: #1a0707;
   --warn-bg: rgba(255, 176, 32, 0.16); --warn-fg: #ffc766; --warn: #ffb020;
   --norm-bg: rgba(52, 211, 153, 0.16); --norm-fg: #6ee7b7; --norm: #34d399;
-  --busy-edge: #d4ff3a; --free-edge: #34d399;
+  --busy-edge: #7b96ff; --free-edge: #34d399;
   --act-brief: #1d3a66; --act-brief-ink: #d6e6ff; --act-brief-edge: #3b68b0;
   --act-opd: #15803d; --act-opd-ink: #ffffff;
   --act-tele: #7c3aed; --act-tele-ink: #ffffff;
@@ -231,28 +232,28 @@ html[data-theme='dark'] .shri-root {
   --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.55);
   --shadow-drawer: -20px 0 50px rgba(0, 0, 0, 0.5);
   --shadow-modal: 0 30px 80px rgba(0, 0, 0, 0.6);
-  --glow-accent: 0 0 0 4px rgba(212, 255, 58, 0.18);
+  --glow-accent: 0 0 0 4px rgba(61, 99, 255, 0.3);
   --scrim: rgba(0, 0, 0, 0.5);
 
-  --focus-ring: rgba(212, 255, 58, 0.5);
+  --focus-ring: rgba(110, 140, 255, 0.7);
 
-  --now-row-bg: rgba(212, 255, 58, 0.08);
+  --now-row-bg: rgba(61, 99, 255, 0.12);
   --attn-crit-row: rgba(255, 77, 77, 0.1);
   --other-month: #9c9ca2;
   --todo-box-border: #48484c;
   --note-box-bg: #1c1c1e;
-  --flags-ring: rgba(212, 255, 58, 0.25);
+  --flags-ring: rgba(61, 99, 255, 0.35);
   --rail-more: #333336;
   --rail-hover: #3a3a3d;
   --pend-ring: #9db2ff;
   --bubble-bg: #ffffff;
   --bubble-icon: #0a0a0b;
-  --bubble-ring: 0 0 0 6px rgba(212, 255, 58, 0.18);
-  --day-selected-ring: #4e6000;
+  --bubble-ring: 0 0 0 6px rgba(61, 99, 255, 0.3);
+  --day-selected-ring: #1d2f80;
 
   --kpi-label: #c9c9ce;
   --kpi-sub: #8c8c92;
-  --kpi-today-bg: #262628;      --kpi-today-badge: #d4ff3a;      --kpi-today-icon: #0a0a0b;   --kpi-today-num: #fff;      --kpi-today-border: rgba(212, 255, 58, 0.35);
+  --kpi-today-bg: #262628;      --kpi-today-badge: #3d63ff;      --kpi-today-icon: #ffffff;   --kpi-today-num: #fff;      --kpi-today-border: rgba(61, 99, 255, 0.5);
   --kpi-waiting-bg: #262628;    --kpi-waiting-badge: #ffb020;    --kpi-waiting-icon: #0a0a0b; --kpi-waiting-num: #fff;    --kpi-waiting-border: rgba(255, 176, 32, 0.35);
   --kpi-inroom-bg: #262628;     --kpi-inroom-badge: #22d3ee;     --kpi-inroom-icon: #0a0a0b;  --kpi-inroom-num: #fff;     --kpi-inroom-border: rgba(34, 211, 238, 0.35);
   --kpi-admissions-bg: #262628; --kpi-admissions-badge: #1f4cff; --kpi-admissions-icon: #fff; --kpi-admissions-num: #fff; --kpi-admissions-border: rgba(31, 76, 255, 0.5);
@@ -415,7 +416,7 @@ html[data-theme='dark'] .shri-root {
     border: 1px solid rgba(255, 255, 255, 0.14);
   }
   html[data-theme='dark'] .shri-root .sh-stripes-today {
-    background-image: repeating-linear-gradient(135deg, #d4ff3a 0 5px, transparent 5px 11px);
+    background-image: repeating-linear-gradient(135deg, #3d63ff 0 5px, transparent 5px 11px);
   }
 
   /* §5.5 — list bottom fade while there is more to scroll. */

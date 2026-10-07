@@ -5,19 +5,22 @@
  *   · activities: the doctor's sessions and activities (today, the day plan),
  *     each of a kind that picks its colour;
  *   · patients booked outside any session, each for the time booked, or its
- *     clinic's slot;
+ *     clinic's slot — but not a clinic visit of today's: that patient is in
+ *     the OPD queue, drawn as the OPD block, which runs as long as the queue
+ *     does (their other appointments today are drawn as ever);
  *   · blocked time, the doctor's own;
  *   · free time: the working day — 8 AM to 5 PM, Monday to Saturday, widened
  *     to take in anything the doctor has earlier or later — less all of the above;
  *   · off hours: the rest.
  *
  * Overlaps are merged for the totals, so no minute counts twice; on the one
- * row a bar ends where the next begins. Free time from now on is offered as
- * half-hour slots to book — never time already gone.
+ * row a bar ends where the next begins. Free time from now on can be tapped
+ * to schedule a patient — never time already gone.
  */
 
 import { format } from 'date-fns'
 
+import { CLINIC_LIST } from '@/data/clinical'
 import { SESSIONS } from '@/data/schedule'
 
 import { NOW, clock12, span12 } from '../lib/clock'
@@ -35,10 +38,10 @@ export type Span = [number, number]
 /** The working day, Monday to Saturday. */
 const WORK: Span = [8 * 60, 17 * 60]
 const DEFAULT_SLOT = 15
-/** Free time shorter than this is not offered to book, nor named "next free". */
+/** Free time shorter than this is not named "next free". */
 const MIN_FREE = 15
-/** The slot length offered to book. */
-export const SLOT_MIN = 30
+/** How long a patient scheduled into free time is booked for, at most — less where the free time ends sooner. */
+export const SCHEDULE_MIN = 30
 
 export type ActivityKind = 'brief' | 'opd' | 'tele' | 'ward' | 'paper' | 'discharge' | 'stroke' | 'patient' | 'procedure' | 'other'
 export type ItemKind = ActivityKind | 'blocked' | 'free' | 'off'
@@ -116,8 +119,6 @@ export interface DayModel {
   offMin: number
   /** The first free stretch of 15 minutes or more still to come. */
   nextFree: number | null
-  /** The half-hours that can be booked, from now on. */
-  slots: Span[]
   /** Hour by hour, for screen readers. */
   cells: HourCell[]
   /** Now, in minutes after midnight, on today; null on any other day. */
@@ -158,15 +159,6 @@ const spanOf = (e: ShriEntry): Span => {
   return [s, e.until ? minutesOf(e.until) : s + 30]
 }
 
-/** The half-hours inside a free stretch, on the half hour; a stretch too short for one offers itself, from the next five minutes. */
-export function slotsIn([a, b]: Span): Span[] {
-  const out: Span[] = []
-  for (let t = Math.ceil(a / SLOT_MIN) * SLOT_MIN; t + SLOT_MIN <= b; t += SLOT_MIN) out.push([t, t + SLOT_MIN])
-  const s = Math.ceil(a / 5) * 5
-  if (out.length === 0 && b - s >= MIN_FREE) out.push([s, b])
-  return out
-}
-
 export function dayModel(day: CalendarDay): DayModel {
   const now = day.isToday ? minutesOf(NOW) : null
   /** Everything before this has gone. */
@@ -178,7 +170,12 @@ export function dayModel(day: CalendarDay): DayModel {
   const blocked = merge(blocks.map((b) => b.span))
   const sessions = day.sessions.filter((e) => !e.blocked).map((e) => ({ e, span: spanOf(e) }))
   const inSessions = merge(sessions.map((s) => s.span))
-  const outside = day.bookings.map((e) => ({ e, span: spanOf(e) })).filter((b) => overlap(inSessions, b.span) === 0)
+  // Today's clinic visits are the OPD queue — the OPD block — not bars of their own, whatever became of the patient.
+  const visits = new Map(day.isToday ? CLINIC_LIST.map((r) => [r.patientId, r.bookedAt.getTime()]) : [])
+  const outside = day.bookings
+    .filter((e) => visits.get(e.patientId ?? '') !== e.at.getTime())
+    .map((e) => ({ e, span: spanOf(e) }))
+    .filter((b) => overlap(inSessions, b.span) === 0)
   const occupied = [...sessions, ...outside]
     .map((o) => ({ e: o.e, span: clip(o.span) }))
     .filter((o): o is { e: ShriEntry; span: Span } => o.span !== null)
@@ -215,7 +212,6 @@ export function dayModel(day: CalendarDay): DayModel {
   items.sort((x, y) => x.start - y.start)
 
   const open = items.filter((i) => i.kind === 'free' && !i.past && i.end - i.start >= MIN_FREE)
-  const slots = open.flatMap((i) => slotsIn([i.start, i.end]))
 
   const cells: HourCell[] = Array.from({ length: GRID_HOURS }, (_, i) => {
     const span: Span = [START + i * 60, START + (i + 1) * 60]
@@ -253,7 +249,7 @@ export function dayModel(day: CalendarDay): DayModel {
     .filter(Boolean)
     .join(', ')
 
-  return { items, busyMin, blockedMin, freeMin, offMin, nextFree, slots, cells, now, summary }
+  return { items, busyMin, blockedMin, freeMin, offMin, nextFree, cells, now, summary }
 }
 
 /** One hour, for the screen-reader list: "2–3 PM · busy · OPD · 2 patients". */

@@ -139,6 +139,9 @@ export function useOpdLive(): OpdRow[] {
   )
 }
 
+/** Who is called next: the first patient waiting, in the list's order — the queue's Call button and the Today panel's "Next patient". */
+export const nextToCall = (rows: OpdRow[]) => rows.find((r) => r.live === 'Waiting')
+
 /** The counts the OPD screens and My Day both say, from the same rows. */
 export function opdCounts(rows: OpdRow[]) {
   return {

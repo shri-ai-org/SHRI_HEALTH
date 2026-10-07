@@ -13,9 +13,10 @@
  *   • Move — the doctor's next free slots (same clinic first), or hand it to
  *     the front office.
  *   • Cancel — a reason is required and kept on the record.
- *   • Book — a patient into the doctor's own free time, opened only by
- *     tapping free time on the Today panel, from now on: the half-hour, the
- *     patient, the visit and why. The patient and the front office are told.
+ *   • Schedule — a patient into the doctor's own free time, opened only by
+ *     tapping free time still to come on the Today panel's timeline, at the
+ *     minute tapped: the patient, the visit and why. The patient and the
+ *     front office are told.
  *
  * Free slots come from the doctor's own session templates, less what is
  * booked and what is blocked (`logic/schedule.ts`) — a lookup, not a guess.
@@ -32,7 +33,7 @@ import { useCurrentStaff } from '@/store/session'
 import { cn } from '../lib/cn'
 import { NOW, range12 } from '../lib/clock'
 import { affectedBy, dayIso, freeSlots, rangeLabel, slotLabel, useAppointments, useScheduleActions, usualClinic, whenLabel, type Decision, type ShriAppointment, type Slot } from '../logic/schedule'
-import { atMinute, dayModel } from '../myday/dayModel'
+import { SCHEDULE_MIN, atMinute, dayModel } from '../myday/dayModel'
 import { useMyDay } from '../myday/useMyDay'
 import { BLOCK_REASONS, useSchedule, type BlockReason } from '../state/schedule'
 import { useShri } from '../state/store'
@@ -54,7 +55,7 @@ export function ScheduleDialogs() {
   if (!dialog) return null
   if (dialog.kind === 'block') return <BlockDialog from={dialog.from ?? useShri.getState().selectedDay} onClose={close} />
   if (dialog.kind === 'unblock') return <UnblockDialog blockId={dialog.blockId} onClose={close} />
-  if (dialog.kind === 'book') return <BookDialog date={dialog.date} from={dialog.from} to={dialog.to} at={dialog.at} onClose={close} />
+  if (dialog.kind === 'schedule') return <NewAppointmentDialog date={dialog.date} at={dialog.at} until={dialog.until} onClose={close} />
   const a = book.find((x) => x.id === dialog.appointmentId)
   if (!a) return null
   return dialog.kind === 'move' ? <MoveDialog appointment={a} onClose={close} /> : <CancelDialog appointment={a} onClose={close} />
@@ -396,7 +397,7 @@ function CancelDialog({ appointment: a, onClose }: { appointment: ShriAppointmen
   )
 }
 
-/* ------------------------------------------------------------ Book */
+/* ------------------------------------------------------------ Schedule */
 
 const VISITS: Appointment['kind'][] = ['Follow-up', 'Review', 'Teleconsult', 'Procedure']
 const dateOfIso = (iso: string) => {
@@ -404,28 +405,28 @@ const dateOfIso = (iso: string) => {
   return new Date(y, m - 1, d)
 }
 
-function BookDialog({ date, from, to, at, onClose }: { date: string; from: number; to: number; at?: number; onClose: () => void }) {
+/** At the minute tapped on the Today panel's timeline — never asked again — for half an hour, or until the free time ends. */
+function NewAppointmentDialog({ date, at, until, onClose }: { date: string; at: number; until: number; onClose: () => void }) {
   const me = useCurrentStaff()
   const book = useAppointments()
   const actions = useScheduleActions()
   const { dayInfo } = useMyDay()
   const day = dayInfo(dateOfIso(date))
-  // The half-hours of this free stretch that are still free — live, so a slot just booked is gone.
-  const slots = dayModel(day).slots.filter(([a, b]) => a >= from && b <= to)
-  const [chosen, setChosen] = useState<number | undefined>(at ?? slots[0]?.[0])
-  const slot = slots.find(([a]) => a === chosen) ?? slots[0]
+  const end = Math.min(at + SCHEDULE_MIN, until)
+  // Still free, live — a time just taken, or gone by, is not scheduled.
+  const free = dayModel(day).items.some((i) => i.kind === 'free' && !i.past && i.start <= at && end <= i.end)
   const [patientId, setPatientId] = useState('')
   const [kind, setKind] = useState<Appointment['kind']>('Follow-up')
   const [purpose, setPurpose] = useState('')
   const people = useMemo(() => [...PATIENTS].filter((p) => p.name).sort((x, y) => x.name.localeCompare(y.name)), [])
-  const ready = slot !== undefined && patientId !== '' && purpose.trim() !== ''
+  const ready = free && patientId !== '' && purpose.trim() !== ''
 
   return (
     <Dialog
       open
       onClose={onClose}
-      title="Book an appointment"
-      subtitle={`${format(day.date, 'EEEE d MMMM')} · free ${range12(from, to)}. The patient and the front office are told.`}
+      title="Schedule an appointment"
+      subtitle="The patient and the front office are told."
       icon={CalendarPlus}
       width={560}
       footer={
@@ -439,10 +440,10 @@ function BookDialog({ date, from, to, at, onClose }: { date: string; from: numbe
             icon={Check}
             disabled={!ready}
             onClick={() => {
-              actions.book({
+              actions.schedule({
                 patientId,
-                at: atMinute(day.date, slot![0]),
-                minutes: slot![1] - slot![0],
+                at: atMinute(day.date, at),
+                minutes: end - at,
                 kind,
                 clinic: kind === 'Teleconsult' ? 'Teleconsult' : usualClinic(book, me.name),
                 purpose: purpose.trim(),
@@ -450,41 +451,25 @@ function BookDialog({ date, from, to, at, onClose }: { date: string; from: numbe
               onClose()
             }}
           >
-            Book appointment
+            Schedule appointment
           </Pill>
         </>
       }
     >
       <div className="flex flex-col gap-[14px]">
-        {slots.length === 0 ? (
-          <p className="rounded-[14px] bg-sh-inner p-[12px] text-[13px] text-sh-text-2">This time is no longer free. Close and choose another free time.</p>
-        ) : (
-          <div>
-            <p id="bk-time-label" className="mb-[6px] text-[13px] font-medium text-sh-text-2">
-              Time
-            </p>
-            <div role="radiogroup" aria-labelledby="bk-time-label" className="grid grid-cols-2 gap-[8px] sm:grid-cols-3">
-              {slots.map(([a, b]) => (
-                <button
-                  key={a}
-                  type="button"
-                  role="radio"
-                  aria-checked={slot?.[0] === a}
-                  onClick={() => setChosen(a)}
-                  className={cn(
-                    'flex min-h-[48px] flex-col items-center justify-center rounded-[14px] px-[8px] text-[13px] font-medium tabular-nums transition-colors duration-150',
-                    slot?.[0] === a ? 'bg-sh-primary text-sh-on-primary' : 'bg-sh-inner text-sh-text hover:bg-sh-hover-strong',
-                  )}
-                >
-                  {range12(a, b)}
-                  <span className={cn('text-[11px] font-normal', slot?.[0] === a ? 'opacity-80' : 'text-sh-text-3')}>{b - a} min</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        <Field label="Patient" required htmlFor="bk-patient">
-          <Select id="bk-patient" value={patientId} onChange={(e) => setPatientId(e.target.value)}>
+        <div className={cn('flex items-center gap-[12px] rounded-[14px] px-[14px] py-[12px]', free ? 'bg-sh-inner' : 'bg-sh-crit-bg')}>
+          <Icon icon={CalendarClock} size={18} className={free ? 'text-sh-text-2' : 'text-sh-crit-fg'} />
+          <p className="min-w-0 flex-1">
+            <span id="sch-when" className="block text-[15px] font-semibold tabular-nums text-sh-text">
+              {format(day.date, 'EEEE d MMMM')} · {range12(at, end)}
+            </span>
+            <span className={cn('block text-[12px]', free ? 'text-sh-text-3' : 'text-sh-crit-fg')}>
+              {free ? `${end - at} min, from where you tapped the timeline` : 'This time is no longer free. Close and tap another free time.'}
+            </span>
+          </p>
+        </div>
+        <Field label="Patient" required htmlFor="sch-patient">
+          <Select id="sch-patient" value={patientId} onChange={(e) => setPatientId(e.target.value)}>
             <option value="">Choose a patient…</option>
             {people.map((p) => (
               <option key={p.id} value={p.id}>
@@ -493,15 +478,15 @@ function BookDialog({ date, from, to, at, onClose }: { date: string; from: numbe
             ))}
           </Select>
         </Field>
-        <Field label="Visit" required htmlFor="bk-kind" hint={kind === 'Teleconsult' ? 'A video or phone call, in Telehealth.' : `In person, ${usualClinic(book, me.name)}.`}>
-          <Select id="bk-kind" value={kind} onChange={(e) => setKind(e.target.value as Appointment['kind'])}>
+        <Field label="Visit" required htmlFor="sch-kind" hint={kind === 'Teleconsult' ? 'A video or phone call, in Telehealth.' : `In person, ${usualClinic(book, me.name)}.`}>
+          <Select id="sch-kind" value={kind} onChange={(e) => setKind(e.target.value as Appointment['kind'])}>
             {VISITS.map((v) => (
               <option key={v}>{v}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Reason" required htmlFor="bk-purpose" hint="The patient sees this on their appointment.">
-          <TextInput id="bk-purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Thyroid review with results" />
+        <Field label="Reason" required htmlFor="sch-purpose" hint="The patient sees this on their appointment.">
+          <TextInput id="sch-purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Thyroid review with results" />
         </Field>
       </div>
     </Dialog>

@@ -108,8 +108,8 @@ export type AuditEvent =
   | 'APPOINTMENT.CANCELLED'
   /** The front office asked to rebook an appointment with the patient. */
   | 'APPOINTMENT.REBOOK_REQUESTED'
-  /** The doctor booked a patient into free time of their own; the patient and the front office are told. */
-  | 'APPOINTMENT.BOOKED'
+  /** The doctor scheduled a patient into free time of their own; the patient and the front office are told. */
+  | 'APPOINTMENT.SCHEDULED'
 
 export interface AuditRow {
   id: string
@@ -222,7 +222,7 @@ const LABELS: Record<AuditEvent, string> = {
   'APPOINTMENT.RESCHEDULED': 'Appointment rescheduled',
   'APPOINTMENT.CANCELLED': 'Appointment cancelled',
   'APPOINTMENT.REBOOK_REQUESTED': 'Rebooking requested',
-  'APPOINTMENT.BOOKED': 'Appointment booked',
+  'APPOINTMENT.SCHEDULED': 'Appointment scheduled',
 }
 
 export function auditLabel(event: AuditEvent): string {

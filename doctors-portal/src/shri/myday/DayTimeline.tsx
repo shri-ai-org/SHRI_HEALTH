@@ -6,12 +6,14 @@
  *   · each activity a bar in its own colour, named on it with its time
  *     ("OPD · 8:00 – 9:00 AM"); a patient booked outside a session, the same;
  *   · free time a dashed green bar, "Free" with its time — from now on, tapping
- *     it books a patient into it; free time already gone is drawn, never offered;
+ *     it schedules a patient at the minute tapped (the hover card's minute);
+ *     free time already gone is drawn, never offered;
  *   · off hours hatched grey; blocked time hatched red with ⊘;
  *   · the Now line, red, labelled with the time.
  *
  * Hovering anywhere on the row says what is at that minute, how long is left
- * of it, and what comes next. A bar says as much as fits (container queries):
+ * of it, and what comes next — inside the OPD on now, the patient the queue
+ * calls next. A bar says as much as fits (container queries):
  * its icon, name and time; a shorter time ("8–9 AM") where the full one does
  * not fit; its icon alone on a half-hour. One narrower than a 44px target is
  * not a button. Below about 1040px the row scrolls sideways, opened
@@ -28,7 +30,7 @@ import { cn } from '../lib/cn'
 import { iconFor } from '../ui/icons'
 import { Icon } from '../ui/primitives'
 
-import { END, GRID_HOURS, START, duration, isActivity, type ActivityKind, type DayModel, type Span, type TimelineItem } from './dayModel'
+import { END, GRID_HOURS, START, duration, isActivity, type ActivityKind, type DayModel, type TimelineItem } from './dayModel'
 
 const SPAN_MIN = GRID_HOURS * 60
 const pct = (min: number) => `${(min / SPAN_MIN) * 100}%`
@@ -46,7 +48,17 @@ export const HATCH_OFF = 'bg-[repeating-linear-gradient(135deg,var(--off-hatch)_
 export const HATCH_BLOCKED = 'bg-[repeating-linear-gradient(135deg,var(--crit-bg)_0_6px,transparent_6px_10px)]'
 export const FREE = 'border-[1.5px] border-dashed border-(--avail-edge) bg-(--avail-fill) text-(--avail-ink)'
 
-export function DayTimeline({ model, onBook }: { model: DayModel; onBook: (free: Span) => void }) {
+export function DayTimeline({
+  model,
+  nextPatient,
+  onSchedule,
+}: {
+  model: DayModel
+  /** The OPD queue's next patient, today — who its Call button calls. */
+  nextPatient?: { name: string; token: string }
+  /** Schedule a patient at a minute of free time; `until` is where that free time ends. */
+  onSchedule: (at: number, until: number) => void
+}) {
   const navigate = useNavigate()
   const wrapRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -71,13 +83,24 @@ export function DayTimeline({ model, onBook }: { model: DayModel; onBook: (free:
     s.scrollLeft = Math.max(0, 26 + (focusMin - START) * (s.scrollWidth - 52) / SPAN_MIN - s.clientWidth / 3)
   }, [focusMin])
 
+  const minuteAt = (clientX: number) => {
+    const r = rowRef.current!.getBoundingClientRect()
+    const x = Math.min(Math.max(clientX - r.left, 0), r.width)
+    return Math.min(END - 5, START + Math.round(((x / r.width) * SPAN_MIN) / 5) * 5)
+  }
+  /** The minute tapped — the same one the hover card names — kept inside the free time and at least 10 minutes before it ends; from the keyboard, its start. */
+  function schedule(item: TimelineItem, clientX?: number) {
+    const first = Math.ceil(item.start / 5) * 5
+    const at = clientX !== undefined && rowRef.current ? minuteAt(clientX) : first
+    onSchedule(Math.min(Math.max(at, first), item.end - Math.min(10, item.end - first)), item.end)
+  }
+
   function onMove(e: PointerEvent<HTMLDivElement>) {
     if (e.pointerType !== 'mouse' || !rowRef.current || !wrapRef.current) return
     const r = rowRef.current.getBoundingClientRect()
     const wrap = wrapRef.current.getBoundingClientRect()
     const x = Math.min(Math.max(e.clientX - r.left, 0), r.width)
-    const min = Math.min(END - 5, START + Math.round(((x / r.width) * SPAN_MIN) / 5) * 5)
-    setHover({ min, x, top: r.bottom - wrap.top + 12, left: Math.min(Math.max(e.clientX - wrap.left - 130, 0), wrap.width - 260) })
+    setHover({ min: minuteAt(e.clientX), x, top: r.bottom - wrap.top + 12, left: Math.min(Math.max(e.clientX - wrap.left - 140, 0), wrap.width - 280) })
   }
 
   const under = (min: number) =>
@@ -124,7 +147,7 @@ export function DayTimeline({ model, onBook }: { model: DayModel; onBook: (free:
             {/* The row. */}
             <div ref={rowRef} onPointerMove={onMove} onPointerLeave={() => setHover(null)} className="relative h-[64px]">
               {model.items.map((item) => (
-                <Bar key={item.id} item={item} px={(item.drawEnd - item.start) * pxPerMin - 4} onOpen={(to) => navigate(canonical(to))} onBook={onBook} />
+                <Bar key={item.id} item={item} px={(item.drawEnd - item.start) * pxPerMin - 4} onOpen={(to) => navigate(canonical(to))} onSchedule={schedule} />
               ))}
               {hover && (
                 <span aria-hidden="true" className="pointer-events-none absolute -bottom-[10px] -top-[10px] z-[3] flex w-[2px] -translate-x-1/2 flex-col items-center justify-between" style={{ left: hover.x }}>
@@ -148,7 +171,15 @@ export function DayTimeline({ model, onBook }: { model: DayModel; onBook: (free:
         </div>
       </div>
 
-      {hover && <HoverCard min={hover.min} item={under(hover.min)} next={nextAfter(hover.min)} style={{ top: hover.top, left: hover.left }} />}
+      {hover && (
+        <HoverCard
+          min={hover.min}
+          item={under(hover.min)}
+          next={nextAfter(hover.min)}
+          nextPatient={nextPatient && model.now !== null && under(hover.min)?.kind === 'opd' && under(hover.min)!.start <= model.now && model.now < under(hover.min)!.end ? nextPatient : undefined}
+          style={{ top: hover.top, left: hover.left }}
+        />
+      )}
     </div>
   )
 }
@@ -164,7 +195,7 @@ function Ticks({ marks }: { marks: number[] }) {
 }
 
 /** One bar: an activity, free time, off hours or blocked time — a button where it does something and is wide enough to tap. */
-function Bar({ item, px, onOpen, onBook }: { item: TimelineItem; px: number; onOpen: (to: string) => void; onBook: (free: Span) => void }) {
+function Bar({ item, px, onOpen, onSchedule }: { item: TimelineItem; px: number; onOpen: (to: string) => void; onSchedule: (item: TimelineItem, clientX?: number) => void }) {
   const place: CSSProperties = { left: `calc(${at(item.start)} + 2px)`, width: `calc(${pct(item.drawEnd - item.start)} - 4px)` }
   const when = range12(item.start, item.end)
   const tappable = px >= 44
@@ -204,9 +235,9 @@ function Bar({ item, px, onOpen, onBook }: { item: TimelineItem; px: number; onO
     return tappable ? (
       <button
         type="button"
-        onClick={() => onBook([item.start, item.end])}
-        aria-label={`Free ${when} — book an appointment`}
-        title={`Free ${when} — tap to book`}
+        onClick={(e) => onSchedule(item, e.detail > 0 ? e.clientX : undefined)}
+        aria-label={`Free ${when} — schedule an appointment`}
+        title={`Free ${when} — tap a time to schedule`}
         className={cn(base, FREE, 'cursor-pointer justify-center transition-[filter] duration-150 hover:brightness-[0.97]')}
         style={place}
       >
@@ -245,8 +276,8 @@ function Bar({ item, px, onOpen, onBook }: { item: TimelineItem; px: number; onO
   )
 }
 
-/** What is at the minute under the pointer, how long is left of it, and what comes next. */
-function HoverCard({ min, item, next, style }: { min: number; item?: TimelineItem; next?: TimelineItem; style: CSSProperties }) {
+/** What is at the minute under the pointer, how long is left of it, and what comes next — in the OPD on now, the queue's next patient. */
+function HoverCard({ min, item, next, nextPatient, style }: { min: number; item?: TimelineItem; next?: TimelineItem; nextPatient?: { name: string; token: string }; style: CSSProperties }) {
   if (!item) return null
   const left = item.end - min
   const what =
@@ -260,7 +291,7 @@ function HoverCard({ min, item, next, style }: { min: number; item?: TimelineIte
           ? { dot: 'var(--crit)', name: item.title, aside: range12(item.start, item.end) }
           : { dot: `var(--act-${item.kind})`, name: item.title, aside: range12(item.start, item.end) }
   return (
-    <div aria-hidden="true" className="sh-frosted pointer-events-none absolute z-30 w-[260px] rounded-[16px] p-[14px] text-[13px] shadow-sh-pop" style={style}>
+    <div aria-hidden="true" className="sh-frosted pointer-events-none absolute z-30 w-[280px] rounded-[16px] p-[14px] text-[13px] shadow-sh-pop" style={style}>
       <p className="text-[15px] font-semibold tabular-nums text-sh-text">{time12(min)}</p>
       <p className="mt-[8px] flex items-center gap-[8px]">
         <span className="size-[10px] shrink-0 rounded-full" style={{ background: what.dot }} />
@@ -268,7 +299,14 @@ function HoverCard({ min, item, next, style }: { min: number; item?: TimelineIte
         <span className="shrink-0 tabular-nums text-sh-text-2">{what.aside}</span>
       </p>
       <p className="mt-[10px] flex items-center gap-[8px] border-t border-sh-line pt-[10px] text-sh-text-2">
-        {next ? (
+        {nextPatient ? (
+          <>
+            <span className="min-w-0 flex-1">
+              Next patient: <span className="font-medium text-sh-text">{nextPatient.name}</span>
+            </span>
+            <span className="shrink-0 tabular-nums">{nextPatient.token}</span>
+          </>
+        ) : next ? (
           <>
             <span className="min-w-0 flex-1 truncate">
               Next: <span className="font-medium text-sh-text">{next.title}</span>

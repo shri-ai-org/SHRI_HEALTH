@@ -25,7 +25,7 @@ import { isFollowUp } from '@/data/myday'
 import { useUI } from '@/store/ui'
 
 import { cn } from '../lib/cn'
-import { opdCounts, useOpdLive, type OpdRow } from '../logic/opd'
+import { nextToCall, opdCounts, useOpdLive, type OpdRow } from '../logic/opd'
 import { consultPath, recordPath } from '../logic/record'
 import { useOpd } from '../state/opd'
 import { Board, type BoardColumn } from '../ui/Board'
@@ -49,7 +49,7 @@ export function OpdQueuePage() {
   const followUpOnly = params.get('type') === 'follow-up'
   const rows = followUpOnly ? all.filter((r) => isFollowUp(r.patientId)) : all
   const counts = opdCounts(rows)
-  const next = rows.find((r) => r.live === 'Waiting')
+  const next = nextToCall(rows)
 
   /** Calling in starts the consultation: In room on every card until the note is signed. */
   function call(r: OpdRow) {
