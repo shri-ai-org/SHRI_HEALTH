@@ -76,7 +76,7 @@ export function NotificationsMenu() {
         </div>
       )}
       <p className="mt-[4px] border-t border-sh-line px-[10px] pb-[4px] pt-[10px] text-[12px]/[1.4] text-sh-text-3">
-        An out-of-app message never carries the reason, the diagnosis or a result — only a pointer back in.
+        Messages sent outside the app never include the reason, diagnosis or results. They only link back to the app.
       </p>
     </Menu>
   )

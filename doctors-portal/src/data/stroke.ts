@@ -85,7 +85,7 @@ export const STROKE_CASES: StrokeCase[] = [
     caseNo: 'STROKE/26-27/0141',
     patientId: 'SD-P-05',
     originFacility: 'IPL',
-    destinationFacility: 'ICH',
+    destinationFacility: 'ISH',
     lkw: at(1, 20),
     activatedAt: at(2, 16),
     activatedBy: 'Dr. Logesh',
@@ -109,8 +109,8 @@ export const STROKE_CASES: StrokeCase[] = [
     id: '0140',
     caseNo: 'STROKE/26-27/0140',
     patientId: 'SD-P-03',
-    originFacility: 'ICH',
-    destinationFacility: 'ICH',
+    originFacility: 'ISH',
+    destinationFacility: 'ISH',
     lkw: at(0, 35),
     activatedAt: at(0, 52),
     activatedBy: 'Dr. Rajsrinivas',
@@ -135,8 +135,8 @@ export const STROKE_CASES: StrokeCase[] = [
     id: '0137',
     caseNo: 'STROKE/26-27/0137',
     patientId: 'SD-P-12',
-    originFacility: 'ICH',
-    destinationFacility: 'ICH',
+    originFacility: 'ISH',
+    destinationFacility: 'ISH',
     lkw: on(18, 22, 5),
     activatedAt: on(18, 22, 31),
     activatedBy: 'Dr. Rajsrinivas',
@@ -163,8 +163,8 @@ export const STROKE_CASES: StrokeCase[] = [
     id: '0138',
     caseNo: 'STROKE/26-27/0138',
     patientId: 'SD-P-13',
-    originFacility: 'ICH',
-    destinationFacility: 'ICH',
+    originFacility: 'ISH',
+    destinationFacility: 'ISH',
     lkw: on(19, 12, 0),
     activatedAt: on(20, 17, 52),
     activatedBy: 'Dr. Rajsrinivas',
@@ -193,7 +193,7 @@ export const STROKE_CASES: StrokeCase[] = [
     caseNo: 'STROKE/26-27/0142',
     patientId: 'SD-P-14',
     originFacility: 'ITP',
-    destinationFacility: 'ICH',
+    destinationFacility: 'ISH',
     lkw: at(1, 50),
     activatedAt: at(2, 24),
     activatedBy: 'Dr. Rajsrinivas',
@@ -591,7 +591,7 @@ export const TRANSFER_RESERVATION: Reservation[] = [
   {
     key: 'cathlab',
     resource: 'Cath lab',
-    detail: 'CATH-1 at ICH · free from 03:40',
+    detail: 'CATH-1 at ISH · free from 03:40',
     status: 'available',
     ownerModule: 'M-11 Operation Theatre',
   },
@@ -613,7 +613,7 @@ export const TRANSFER_RESERVATION: Reservation[] = [
 
 export const TRANSFER_ROUTE = {
   from: `${facility('IPL').name} (IPL)`,
-  to: `${facility('ICH').name} (ICH)`,
+  to: `${facility('ISH').name} (ISH)`,
   distanceKm: 42,
   /** Pollachi to Coimbatore is a 42 km blue-light run on NH-83 — road is the
    *  credible mode, and the ETA is what the registry has seen on this pair. */
@@ -626,7 +626,7 @@ export const TRANSFER_ROUTE = {
 
 export const NETWORK_SITES = [
   {
-    code: 'ICH',
+    code: 'ISH',
     name: 'Indostates Health Hospital, Coimbatore',
     role: 'hub' as const,
     ctStatus: 'free' as const,
@@ -672,7 +672,7 @@ export const INBOUND_AMBULANCES = [
   {
     id: 'AMB-IPL-03',
     from: 'IPL',
-    to: 'ICH',
+    to: 'ISH',
     etaMinutes: 9,
     caseId: '0141',
     /** AI-616. The GPS position remains when the model is off. */
@@ -866,8 +866,8 @@ export interface OutcomeRow {
 }
 
 export const OUTCOMES: OutcomeRow[] = [
-  { caseNo: 'STROKE/26-27/0118', patientInitials: 'S.R.', site: 'ICH', treatedWith: 'Both', dtnMin: 38, ditgMin: 84, mrs90: 1, followUpStatus: 'Done' },
-  { caseNo: 'STROKE/26-27/0121', patientInitials: 'K.M.', site: 'ICH', treatedWith: 'Thrombolysis', dtnMin: 52, ditgMin: null, mrs90: 2, followUpStatus: 'Done' },
+  { caseNo: 'STROKE/26-27/0118', patientInitials: 'S.R.', site: 'ISH', treatedWith: 'Both', dtnMin: 38, ditgMin: 84, mrs90: 1, followUpStatus: 'Done' },
+  { caseNo: 'STROKE/26-27/0121', patientInitials: 'K.M.', site: 'ISH', treatedWith: 'Thrombolysis', dtnMin: 52, ditgMin: null, mrs90: 2, followUpStatus: 'Done' },
   {
     caseNo: 'STROKE/26-27/0126',
     patientInitials: 'B.N.',
@@ -890,7 +890,7 @@ export const OUTCOMES: OutcomeRow[] = [
     followUpStatus: 'Unreachable — 3 attempts',
     outreachReason: 'Number unobtainable. Try the attendant contact recorded at admission.',
   },
-  { caseNo: 'STROKE/26-27/0137', patientInitials: 'P.G.', site: 'ICH', treatedWith: 'Thrombectomy', dtnMin: null, ditgMin: 72, mrs90: null, followUpStatus: 'Window open' },
+  { caseNo: 'STROKE/26-27/0137', patientInitials: 'P.G.', site: 'ISH', treatedWith: 'Thrombectomy', dtnMin: null, ditgMin: 72, mrs90: null, followUpStatus: 'Window open' },
 ]
 
 export const REGISTRY_INDICATORS = [

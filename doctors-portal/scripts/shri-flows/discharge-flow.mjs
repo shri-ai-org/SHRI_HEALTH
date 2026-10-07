@@ -14,7 +14,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick, setInput 
     {
       name: 'Discharge (record): a stable patient goes home — the summary, medicines and instructions as they stand, a follow-up or its reason, then one discharge, on record, sent, and gone from the ward list',
       async run() {
-        await page.open('/patient/ICH-0044275')
+        await page.open('/patient/ISH-0044275')
         await page.click('button', 'Discharge')
         await page.until(`document.querySelector('[role="dialog"]')?.textContent.includes('Discharge Kumar Subramanian')`, 3000, 'the sheet')
         const text = await dialog()
@@ -41,7 +41,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick, setInput 
     {
       name: 'Discharge (record): a follow-up is booked from tomorrow, in a clinic, and goes to the front office; a financial hold stops a discharge home in the old words but not a transfer',
       async run() {
-        await page.open('/patient/ICH-0041882')
+        await page.open('/patient/ISH-0041882')
         await page.click('button', 'Discharge')
         await page.until(`document.querySelector('[role="dialog"]')`, 3000, 'the sheet')
         const text = await dialog()
@@ -59,7 +59,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick, setInput 
     {
       name: 'Discharge (record): a seriously ill patient is not offered a discharge home — it is shown refused with the reason; a transfer needs the receiving team, a reason, an escort, transport and a handover, and goes to the receiving team',
       async run() {
-        await page.open('/patient/ICH-0044051')
+        await page.open('/patient/ISH-0044051')
         await page.click('button', 'Discharge')
         await page.until(`document.querySelector('[role="dialog"]')`, 3000, 'the sheet')
         const text = await dialog()
@@ -78,7 +78,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick, setInput 
         await type('[id="tr-handover-SD-P-03"]', 'CAP day 4 on piperacillin-tazobactam, penicillin allergy documented; O2 4 L, NEWS2 7, AKI stage 2.')
         await page.click('[role="dialog"] [role="checkbox"]', 'The receiving team has accepted the patient')
         await page.evaluate(`${primary('Transfer R. Lakshmanan')}.click()`)
-        await toastSays('R. Lakshmanan transferred to Indostates Tiruppur', 'The receiving team and the front office are told.')
+        await toastSays('R. Lakshmanan transferred to Indostates Tiruppur', 'The receiving team and the front office have been notified.')
         const row = (await auditRows()).find((r) => r.event === 'PATIENT.TRANSFERRED')
         expect(row && row.subject === 'SD-P-03' && row.detail.includes('accepted by Dr. Logesh, pulmonology · ALS ambulance, Doctor escort'), `on record: ${JSON.stringify(row)}`)
         const sent = await sentItems()
@@ -89,7 +89,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick, setInput 
     {
       name: 'Discharge (record): leaving against medical advice needs the risks explained, the form signed and witnessed, and a reason; it is its own audit event',
       async run() {
-        await page.open('/patient/ICH-0043910')
+        await page.open('/patient/ISH-0043910')
         await page.click('button', 'Discharge')
         await page.until(`document.querySelector('[role="dialog"]')`, 3000, 'the sheet')
         expect((await dialog()).includes('Joseph Mathew is critical on the condition record and in intensive care (ICU-1)'), 'serious, and why')
@@ -110,18 +110,18 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick, setInput 
     {
       name: 'Discharge (record): offered only for an admitted patient, and only to those who may discharge; the draft is kept on stepping out to the summary',
       async run() {
-        await page.open('/patient/ICH-0044120')
+        await page.open('/patient/ISH-0044120')
         expect(!(await page.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Discharge')`)), 'an outpatient has no Discharge')
-        await page.open('/patient/ICH-0044051', { persona: 'P-06' })
+        await page.open('/patient/ISH-0044051', { persona: 'P-06' })
         expect(!(await page.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Discharge')`)), 'no Discharge without discharge.write')
-        await page.open('/patient/ICH-0044051')
+        await page.open('/patient/ISH-0044051')
         await page.click('button', 'Discharge')
         await page.until(`document.querySelector('[role="dialog"]')`, 3000, 'the sheet')
         await type('#tr-clinician', 'Dr. Logesh')
         await page.click('[role="dialog"] button', 'Open')
         await page.until(`location.pathname === '/encounter/E-118366/discharge-summary'`, 3000, 'out to the summary')
         await page.click('button[aria-label^="Back"]')
-        await page.until(`location.pathname === '/patient/ICH-0044051'`, 3000, 'back to the record')
+        await page.until(`location.pathname === '/patient/ISH-0044051'`, 3000, 'back to the record')
         await page.click('button', 'Discharge')
         await page.until(`document.querySelector('#tr-clinician')?.value === 'Dr. Logesh'`, 3000, 'the draft is kept')
       },

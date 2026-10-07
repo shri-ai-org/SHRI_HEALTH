@@ -93,7 +93,7 @@ function StudyNotFound({ id }: { id?: string }) {
       actions={
         may('/radiology/worklist') && (
           <Pill variant="primary" size="xl" icon={List} iconSize={17} onClick={() => navigate('/radiology/worklist')}>
-            Imaging worklist
+            Imaging reports
           </Pill>
         )
       }

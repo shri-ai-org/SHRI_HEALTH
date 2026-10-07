@@ -321,7 +321,7 @@ const FLOWS = [
       await page.click('section[aria-label="Attention"] li > button')
       await page.until(`document.querySelector('aside[role="dialog"][aria-label="Joseph Mathew"]')`, 3000, 'the Quick-Panel on Joseph Mathew')
       const text = await panelText()
-      for (const t of ['71/M · ICU-1 · ICH-0043910', 'You last saw Mathew at 07:30', 'Changed since then', 'Serum potassium 6.8 mmol/L', 'Audit — 0 events', 'AI-212'])
+      for (const t of ['71/M · ICU-1 · ISH-0043910', 'You last saw Mathew at 07:30', 'Changed since then', 'Serum potassium 6.8 mmol/L', 'Audit — 0 events', 'AI-212'])
         expect(text.includes(t), `the panel says "${t}"`)
       await page.click('aside[role="dialog"] button', 'Mark seen')
       await toastSays('Marked seen', 'Joseph Mathew · changes cleared')
@@ -364,7 +364,7 @@ const FLOWS = [
       await page.key('Escape')
       const kpi = await page.evaluate(`document.querySelector('[data-kpi="critical"]').textContent`)
       expect(kpi.startsWith('1') && kpi.includes('Serum potassium 6.8 mmol/L · Mathew'), `still one critical, still named: ${kpi}`)
-      expect(await page.evaluate(`!!document.querySelector('nav[aria-label="Main"] a[aria-label="Results, critical results waiting"]')`), 'and the rail still says so')
+      expect(await page.evaluate(`!!document.querySelector('nav[aria-label="Main"] a[aria-label="Test results, critical results waiting"]')`), 'and the rail still says so')
       await page.click('[data-kpi="critical"]')
       await page.until(`document.querySelector('aside[role="dialog"][aria-label="Joseph Mathew"]')`, 3000, 'the KPI still opens it')
     },
@@ -480,7 +480,7 @@ const FLOWS = [
       const unstub = await stubSpeech()
       const note = `document.querySelector('#admit-note-SD-P-01').value`
       try {
-        await page.open('/patient/ICH-0044120?open=admit:SD-P-01')
+        await page.open('/patient/ISH-0044120?open=admit:SD-P-01')
         await page.until(`document.querySelector('#admit-note-SD-P-01')`, 3000, 'the admit note field')
         await page.type('#admit-note-SD-P-01', 'start amlodipine 5 mg OD')
         expect(!(await page.text()).includes('Tidy up with AI'), 'the admit note offers no tidy-up (the old tidy={false})')
@@ -495,17 +495,17 @@ const FLOWS = [
       } finally {
         await unstub()
       }
-      await page.open('/patient/ICH-0044120?open=admit:SD-P-01&ai=off')
+      await page.open('/patient/ISH-0044120?open=admit:SD-P-01&ai=off')
       expect(await page.evaluate(`!document.querySelector('button[aria-label="Dictate into note (optional)"]') && !!document.querySelector('#admit-note-SD-P-01')`), 'AI off: the mic is absent, the box stays')
     },
   },
   {
     name: "Record: the overview on the old data — GP-05's banner, the parts with their counts, the cards; an unknown id says so",
     async run() {
-      await page.open('/patient/ICH-0044051')
+      await page.open('/patient/ISH-0044051')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-11"]')`), 'S-06-11 is drawn')
       const banner = await page.evaluate(`document.querySelector('[aria-label="Patient"]').textContent.replace(/\\u00a0/g, ' ')`)
-      for (const t of ['R. Lakshmanan', '62/M', 'ICH-0044051 · 4B-12 · LOS 4d · Dr. Rajsrinivas', 'Allergy: Penicillin', 'Payer: PM-JAY', 'ABHA Linked'])
+      for (const t of ['R. Lakshmanan', '62/M', 'ISH-0044051 · 4B-12 · LOS 4d · Dr. Rajsrinivas', 'Allergy: Penicillin', 'Payer: PM-JAY', 'ABHA Linked'])
         expect(banner.includes(t), `the banner says "${t}": ${banner}`)
       const tabs = await page.evaluate(`[...document.querySelectorAll('[role="tab"][id^="record-tab-"]')].map((t) => t.textContent)`)
       expect(tabs.join('|') === 'Overview|Condition2|Test results8|Imaging reports3|Consultation notes2|Prescriptions3|Appointments3', `the seven parts with their counts: ${tabs}`)
@@ -524,13 +524,13 @@ const FLOWS = [
   {
     name: "Record: a tab goes to its part's own address; AI off keeps the insights card in its place, saying so; an insight's Why opens the four panels",
     async run() {
-      await page.open('/patient/ICH-0044051')
+      await page.open('/patient/ISH-0044051')
       await page.click('[role="tab"]', 'Test results')
-      await page.until(`location.pathname === '/patient/ICH-0044051/results'`, 3000, "the Test results part's own address")
-      await page.open('/patient/ICH-0044051?ai=off')
+      await page.until(`location.pathname === '/patient/ISH-0044051/results'`, 3000, "the Test results part's own address")
+      await page.open('/patient/ISH-0044051?ai=off')
       const off = await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)
       expect(off.includes('AI insights are off') && !off.includes('Why?'), 'AI off: the card stands, with no readings in it')
-      await page.open('/patient/ICH-0044051')
+      await page.open('/patient/ISH-0044051')
       await page.click('button[aria-label^="Why? Risk"]')
       await page.until(`document.querySelector('[role="dialog"][aria-label="Why this was suggested"]')?.textContent.includes('AI-201')`, 3000, "the risk reading's Why")
     },
@@ -538,7 +538,7 @@ const FLOWS = [
   {
     name: 'Admit: priority required, one admission per patient; the banner, My Day and the audit follow it; the front office completes it',
     async run() {
-      await page.open('/patient/ICH-0044120')
+      await page.open('/patient/ISH-0044120')
       await page.click('button', 'Admit')
       await page.until(`document.querySelector('[role="dialog"][aria-labelledby="admit-title"]')?.textContent.includes('Admit Meera Krishnan')`, 3000, 'the Admit modal, named for the patient')
       const confirm = `[...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === 'Confirm')`
@@ -552,7 +552,7 @@ const FLOWS = [
       const rows = (await auditRows()).filter((r) => r.event === 'ADMISSION.REQUESTED')
       expect(rows.length === 1 && rows[0].subject === 'SD-P-01' && rows[0].detail === 'Ward · Urgent', `one ADMISSION.REQUESTED row: ${JSON.stringify(rows)}`)
       // A second confirm (the modal opened again from a link) makes no second admission and no second row.
-      await page.open('/patient/ICH-0044120?open=admit:SD-P-01', { fresh: false })
+      await page.open('/patient/ISH-0044120?open=admit:SD-P-01', { fresh: false })
       await page.click('[role="dialog"] [role="radio"]', 'Critical')
       await page.click('[role="dialog"] button', 'Confirm')
       await sleep(400)
@@ -564,7 +564,7 @@ const FLOWS = [
       const kpi = await page.evaluate(`document.querySelector('[data-kpi="admissions"]').textContent`)
       expect(kpi.startsWith('1') && kpi.includes('1 in progress'), `the Admissions KPI: ${kpi}`)
       expect(
-        await page.evaluate(`[...document.querySelectorAll('a[href="/patient/ICH-0044120"]')].some((a) => a.textContent.includes('Admission in progress'))`),
+        await page.evaluate(`[...document.querySelectorAll('a[href="/patient/ISH-0044120"]')].some((a) => a.textContent.includes('Admission in progress'))`),
         "Meera's OPD row says her admission is in progress",
       )
       // The front office works on the wall clock: 20 s to a bed, 45 s to admitted. Pretend a minute has passed, and reload.
@@ -573,15 +573,15 @@ const FLOWS = [
       await toastSays('Meera Krishnan admitted')
       expect((await page.text()).includes('Now on your Inpatients list.'), 'the old toast detail')
       await page.click('[role="tab"]', 'Inpatients')
-      await page.until(`[...document.querySelectorAll('a[href="/patient/ICH-0044120"]')].length > 0`, 3000, 'Meera is on the inpatient list now')
-      await page.open('/patient/ICH-0044120', { fresh: false })
+      await page.until(`[...document.querySelectorAll('a[href="/patient/ISH-0044120"]')].length > 0`, 3000, 'Meera is on the inpatient list now')
+      await page.open('/patient/ISH-0044120', { fresh: false })
       await page.until(`/Admitted · /.test(document.querySelector('[aria-label="Patient"]').textContent)`, 3000, 'the banner says admitted, with the bed')
     },
   },
   {
     name: 'Record · Imaging reports (S-06-12): filtered by kind, the body one tap away, the viewer only where real pixels are',
     async run() {
-      await page.open('/patient/ICH-0044051/reports')
+      await page.open('/patient/ISH-0044051/reports')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-12"]')`), 'S-06-12 is drawn')
       expect(await page.evaluate(`document.querySelector('[role="tab"][aria-selected="true"][id="record-tab-reports"]') !== null`), 'the Imaging reports part is selected')
       const titles = () => page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] li .font-semibold')].map((e) => e.textContent)`)
@@ -596,14 +596,14 @@ const FLOWS = [
       await page.click('[role="tabpanel"] button', 'Open images')
       await page.until(`location.pathname.startsWith('/radiology/study/')`, 3000, 'real pixels open the viewer')
       // Priya Raman's day-2 MRI has no open image that fits — it says so.
-      await page.open('/patient/ICH-0044281/reports', { fresh: false })
+      await page.open('/patient/ISH-0044281/reports', { fresh: false })
       expect(await page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] button')].some((b) => b.textContent.trim() === 'Report only')`), 'a study without images says so')
     },
   },
   {
     name: 'Record · Test results (S-06-13): the three counts, grouped by test, filtered, each row to its full result; cultures with their sensitivities and the allergy beside its drug',
     async run() {
-      await page.open('/patient/ICH-0044051/results')
+      await page.open('/patient/ISH-0044051/results')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-13"]')`), 'S-06-13 is drawn')
       const tiles = await page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] > div:first-child > div')].map((t) => t.textContent)`)
       expect(tiles[0].includes('Results on file8') && tiles[1].includes('Outside range7') && tiles[2].includes('To review6'), `the three counts: ${tiles}`)
@@ -617,7 +617,7 @@ const FLOWS = [
       await page.click('ul[aria-label="Test results"] > li button', 'CRP')
       await page.until(`location.pathname.startsWith('/results/')`, 3000, 'a row opens its full result')
       // Cultures carry their sensitivities; an allergy on the record sits beside its drug, never read as a choice.
-      await page.open('/patient/ICH-0043910/results', { fresh: false })
+      await page.open('/patient/ISH-0043910/results', { fresh: false })
       const cultures = await page.evaluate(`[...document.querySelectorAll('ul[aria-label="Microbiology"] > li')].map((l) => l.getAttribute('aria-label'))`)
       expect(cultures.length === 3 && cultures.every((c) => c.endsWith('final')), `three final cultures: ${cultures}`)
       const cotrim = await page.evaluate(`[...document.querySelectorAll('ul[aria-label^="Sensitivities — Urine culture"] > li')].find((l) => l.textContent.startsWith('Co-trimoxazole'))?.textContent ?? ''`)
@@ -631,7 +631,7 @@ const FLOWS = [
     async run() {
       const unstub = await stubSpeech({ speech: false })
       try {
-        await page.open('/patient/ICH-0044051/notes')
+        await page.open('/patient/ISH-0044051/notes')
         expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-14"]')`), 'S-06-14 is drawn')
         for (const words of ['Plan to switch to meropenem', 'Discuss with the family']) {
           await page.click('button[aria-label="Add note"]')
@@ -661,14 +661,14 @@ const FLOWS = [
   {
     name: "Record · Condition (S-06-15): the status first, what to watch, the problems; the AI's read and risk only while AI is on",
     async run() {
-      await page.open('/patient/ICH-0044051/condition')
+      await page.open('/patient/ISH-0044051/condition')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-15"]')`), 'S-06-15 is drawn')
       const text = await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)
       for (const t of ['How they are now', 'Deteriorating', 'What to watch', 'Problem list', 'ICD-10', 'AI read of the record', 'Deterioration risk', 'Latest observations'])
         expect(text.includes(t), `the condition shows "${t}"`)
       await page.click('[role="tabpanel"] button', 'Why?')
       await page.until(`document.querySelector('[role="dialog"][aria-label="Why this was suggested"]')?.textContent.includes('AI-105')`, 3000, "the AI read's Why")
-      await page.open('/patient/ICH-0044051/condition?ai=off')
+      await page.open('/patient/ISH-0044051/condition?ai=off')
       const off = await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)
       expect(!off.includes('AI read of the record') && !off.includes('Deterioration risk') && off.includes('How they are now'), 'AI off: the AI cards are absent, the record is not')
     },
@@ -676,21 +676,21 @@ const FLOWS = [
   {
     name: 'Record · Prescriptions (S-06-16): taking now across every prescription, the history as written; Write prescription only for who may',
     async run() {
-      await page.open('/patient/ICH-0044051/prescriptions')
+      await page.open('/patient/ISH-0044051/prescriptions')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-16"]')`), 'S-06-16 is drawn')
       const text = await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)
       expect(text.includes('Taking now') && text.includes('Prescription history') && text.includes('Piperacillin-tazobactam'), 'both lists, on the old data')
       expect(await page.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Write prescription')`), 'the consultant may write one')
       await page.click('button', 'Write prescription')
       await page.until(`/^\\/encounter\\/[^/]+\\/rx$/.test(location.pathname)`, 3000, "the encounter's prescription")
-      await page.open('/patient/ICH-0044051/prescriptions', { persona: 'P-05' })
+      await page.open('/patient/ISH-0044051/prescriptions', { persona: 'P-05' })
       expect(await page.evaluate(`![...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Write prescription')`), 'absent for a resident, who has no rx.write')
     },
   },
   {
     name: 'Record · Appointments (S-06-17): the next one fills the top with what to bring; the rest is a quiet list',
     async run() {
-      await page.open('/patient/ICH-0044051/appointments')
+      await page.open('/patient/ISH-0044051/appointments')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-17"]')`), 'S-06-17 is drawn')
       const text = await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)
       for (const t of ['Next appointment', 'Repeat chest X-ray', 'Earlier visits'])
@@ -824,24 +824,24 @@ const FLOWS = [
       await page.click('button', 'Confirm the problem list')
       await toastSays('Problem list confirmed')
       expect((await auditRows()).some((r) => r.event === 'PROBLEM_LIST.CONFIRMED' && r.detail.includes('E03.9')), 'PROBLEM_LIST.CONFIRMED is on record, with the codes')
-      await page.open('/patient/ICH-0043910/condition', { fresh: false })
+      await page.open('/patient/ISH-0043910/condition', { fresh: false })
       expect((await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)).includes('Hypothyroidism'), "the added problem is on the patient's Condition tab too")
     },
   },
   {
     name: "Timeline (S-06-06): unsummarised by day, the type kept in the address; the summary only on the record it describes; an unknown id says so",
     async run() {
-      await page.open('/patient/ICH-0044051/timeline')
+      await page.open('/patient/ISH-0044051/timeline')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-06"]')`), 'S-06-06 is drawn')
       expect((await page.text()).includes('unsummarised'), 'the sub-line says what it is')
-      await page.click('[role="tablist"][aria-label="Entry type"] [role="tab"]', 'Results')
+      await page.click('[role="tablist"][aria-label="Entry type"] [role="tab"]', 'Test results')
       await page.until(`location.search === '?kind=result'`, 3000, 'the type is kept in the address')
-      await page.open('/patient/ICH-0044051/timeline?kind=imaging', { fresh: false })
-      expect(await page.evaluate(`document.querySelector('[role="tab"][aria-selected="true"]').textContent.startsWith('Imaging')`), 'a link opens it narrowed')
+      await page.open('/patient/ISH-0044051/timeline?kind=imaging', { fresh: false })
+      expect(await page.evaluate(`document.querySelector('[role="tab"][aria-selected="true"]').textContent.startsWith('Imaging reports')`), 'a link opens it narrowed')
       await page.click('button[aria-label="Show Timeline"], aside button', 'Timeline')
       await page.click('button', 'Summarise this timeline')
       await page.until(`document.body.textContent.includes('The turning point is overnight on 20/21-Sep')`, 3000, "R. Lakshmanan's summary, on his timeline")
-      await page.open('/patient/ICH-0044120/timeline')
+      await page.open('/patient/ISH-0044120/timeline')
       expect(!(await page.text()).includes('Summarise this timeline'), "no one else's summary on another patient's timeline")
       await page.open('/patient/NOPE-2/timeline')
       expect((await page.text()).includes('No patient at this address.'), 'an unknown id says so, never another patient')
@@ -948,7 +948,7 @@ const FLOWS = [
       const paper = await page.evaluate(`document.querySelector('[role="dialog"] article').textContent`)
       expect(paper.includes('1. Levofloxacin 750 mg IV') && paper.includes('at most 4 g in 24 hours') && paper.includes('Printed in English only.'), `the paper: ${paper.slice(0, 300)}`)
       await page.key('Escape')
-      await page.open('/patient/ICH-0044051/prescriptions', { fresh: false })
+      await page.open('/patient/ISH-0044051/prescriptions', { fresh: false })
       expect((await page.text()).includes('Today’s prescription was signed'), 'the record says it was signed')
     },
   },
@@ -1280,7 +1280,7 @@ const FLOWS = [
       expect(await page.evaluate(`[...document.querySelectorAll('ul[aria-label^="Results released"] li')].every((l) => l.textContent.includes('Meera Krishnan'))`), 'one patient, filtered')
       await page.click('[role="tab"]', 'By patient')
       await page.click('button', 'All of Meera’s results')
-      await page.until(`location.pathname === '/patient/ICH-0044120/results'`, 3000, "to the patient's own results")
+      await page.until(`location.pathname === '/patient/ISH-0044120/results'`, 3000, "to the patient's own results")
       await page.open('/results/inbox?ai=off')
       const off = await page.text()
       expect(off.includes('Sorted by most recent first · AI ranking is off') && !off.includes('One result cannot be ranked'), 'AI off: time order, said; no AI claim')
@@ -1473,7 +1473,7 @@ const FLOWS = [
       const off = await page.text()
       expect(off.includes('Sorted by chronological · AI ranking is off') && !off.includes('High risk') && off.includes('NEWS2 7, rising 4h'), 'AI off: time order, no risk, the facts kept')
       await page.click('ul[aria-label^="Inpatients"] li button', 'R. Lakshmanan')
-      await page.until(`location.pathname === '/patient/ICH-0044051'`, 3000, 'a row opens the record')
+      await page.until(`location.pathname === '/patient/ISH-0044051'`, 3000, 'a row opens the record')
     },
   },
   {
@@ -1608,7 +1608,7 @@ const FLOWS = [
       await page.click('button[aria-label="Discharge Kavya Reddy"]')
       await page.until(`document.querySelector('[role="alertdialog"]')?.textContent.includes('Discharge Kavya Reddy?')`, 3000, 'the confirmation')
       expect(
-        (await page.evaluate(`document.querySelector('[role="alertdialog"]').textContent`)).includes('The summary is unsigned: it goes to the sign queue, and the discharge stands.'),
+        (await page.evaluate(`document.querySelector('[role="alertdialog"]').textContent`)).includes('The summary is not signed yet, so it will go to the signing queue. The discharge still goes ahead.'),
         'the confirmation says the summary goes to the sign queue',
       )
       await page.click('[role="alertdialog"] button', 'Discharge')
@@ -1920,7 +1920,7 @@ const FLOWS = [
       await page.type('[role="dialog"] input[aria-label="Patient search"]', 'laksh')
       await page.until(`document.querySelector('[role="dialog"] [role="option"]')?.textContent.includes('R. Lakshmanan')`, 3000, 'a match by name')
       await page.key('Enter')
-      await page.until(`location.pathname === '/patient/ICH-0044051'`, 3000, 'Enter opens the record')
+      await page.until(`location.pathname === '/patient/ISH-0044051'`, 3000, 'Enter opens the record')
       await page.until(`!document.querySelector('[role="dialog"][aria-label="Patient search"]')`, 3000, 'the palette has closed')
       await page.key('/')
       await page.until(`document.querySelector('[role="dialog"] input[aria-label="Patient search"]')`, 3000, '/ opens it again from the record')
@@ -1976,7 +1976,7 @@ const FLOWS = [
     async run() {
       await page.open('/')
       const p04 = await railLabels()
-      for (const l of ['Dashboard', 'Patient search', 'My patients', 'Results', 'Discharge', 'Telehealth', 'More'])
+      for (const l of ['Dashboard', 'Patient search', 'My patients', 'Test results', 'Discharge', 'Telehealth', 'More'])
         expect(p04.includes(l), `P-04 rail has ${l}: ${p04}`)
       expect(!p04.includes('Stroke-AI Console') && !p04.includes('Assistant'), `the Stroke-AI Console and the Assistant are off the rail: ${p04}`)
       await page.open('/', { persona: 'P-05' })
@@ -2042,7 +2042,7 @@ const FLOWS = [
   {
     name: 'Shell: Back names where it goes when opened cold; ⓘ shows the atlas trace',
     async run() {
-      await page.open('/patient/ICH-0044120')
+      await page.open('/patient/ISH-0044120')
       expect(await page.evaluate(`!!document.querySelector('button[aria-label="Back to Dashboard"]')`), 'cold: Back to Dashboard')
       await page.click('button[aria-label="About this screen"]')
       await page.until(`document.querySelector('[role="dialog"][aria-label^="About"]')?.innerText.includes('S-06-11 · M-06')`, 3000, 'the screen id and module')
@@ -2090,8 +2090,8 @@ const FLOWS = [
     async run() {
       await page.open('/clinician?open=search')
       expect((await page.path()) === '/?open=search', `landed on ${await page.path()}`)
-      await page.open('/patient/ICH-0044120/record')
-      expect((await page.path()) === '/patient/ICH-0044120', `landed on ${await page.path()}`)
+      await page.open('/patient/ISH-0044120/record')
+      expect((await page.path()) === '/patient/ISH-0044120', `landed on ${await page.path()}`)
       // The last screens to move (stroke) are drawn now: no address shows the "being moved" frame any more.
       await page.open('/stroke/case/STR-0141/clock')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-18-06"]')`) && !(await page.text()).includes('being moved'), 'the case clock itself, not the frame')

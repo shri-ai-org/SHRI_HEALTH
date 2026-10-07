@@ -27,7 +27,7 @@ export default ({ page, expect, toastSays }) => {
     {
       name: 'Telehealth (S-27-03): the call is joined on purpose, ended with a confirmation, and an unknown id says so',
       async run() {
-        await page.open('/tele/session/ICH-0044240')
+        await page.open('/tele/session/ISH-0044240')
         let text = await page.text()
         expect(text.includes('Arjun Nair') && text.includes('Waiting') && text.includes('Join the call to start the session'), 'not joined on arrival')
         await page.click('aside[aria-label="Session"] button[title="Show Session"]')
@@ -39,7 +39,7 @@ export default ({ page, expect, toastSays }) => {
         const arjunOnMyDay = () => page.evaluate(`[...document.querySelectorAll('[aria-label="Today\\'s OPD patients"] li')].find((li) => li.textContent.includes('Arjun Nair'))?.textContent ?? ''`)
         await page.open('/', { fresh: false })
         expect((await arjunOnMyDay()).includes('In room') && (await page.evaluate(`document.querySelector('[data-kpi="inroom"]').textContent`)).includes('Nair'), 'joined: In room on My Day')
-        await page.open('/tele/session/ICH-0044240', { fresh: false })
+        await page.open('/tele/session/ISH-0044240', { fresh: false })
         await page.click('button', 'Join call')
         await page.until(`document.body.textContent.includes('in session')`, 3000, 'back in the session')
         await page.click('button', 'End the session')
@@ -59,7 +59,7 @@ export default ({ page, expect, toastSays }) => {
     {
       name: 'Telehealth (S-27-04): the category gate — prohibited never, List A only on video; a blocked item stops the signature',
       async run() {
-        await page.open('/tele/session/ICH-0044240/rx')
+        await page.open('/tele/session/ISH-0044240/rx')
         expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-27-04"]')`), 'S-27-04 is drawn')
         let text = await page.text()
         expect(text.includes('On the prohibited list. This cannot be prescribed by telemedicine under any circumstances.'), 'Tenecteplase is blocked on video too')

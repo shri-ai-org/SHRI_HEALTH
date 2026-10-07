@@ -89,7 +89,7 @@ export function DayDetail({ day, headerEnd, onLeave, className }: { day: Calenda
         <div key={o.id} className="mt-[10px] flex items-center gap-[10px] rounded-[14px] bg-sh-pend-bg px-[12px] py-[8px] text-sh-pend-fg">
           <Icon icon={CalendarRange} size={16} />
           <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-semibold">Extra hours · {o.frontOffice ? 'the front office may book' : 'your own patients'}</span>
+            <span className="block text-[13px] font-semibold">Extra hours · {o.frontOffice ? 'open for front office bookings' : 'for your patients only'}</span>
             <span className="block text-[12px] tabular-nums opacity-90">
               {hoursLabel(o)}
               {o.note ? ` · ${o.note}` : ''}

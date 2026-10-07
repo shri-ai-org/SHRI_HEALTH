@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs'
 
 function fill(pattern) {
-  if (pattern.startsWith('/patient/')) return pattern.replace(':id', 'ICH-0044051')
+  if (pattern.startsWith('/patient/')) return pattern.replace(':id', 'ISH-0044051')
   if (pattern.startsWith('/stroke/case/')) return pattern.replace(':id', '0141')
   if (pattern.startsWith('/radiology/study/')) return pattern.replace(':id', 'ST-9914')
   if (pattern === '/results/:id') return '/results/R-88410'

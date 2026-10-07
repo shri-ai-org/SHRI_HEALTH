@@ -13,6 +13,9 @@
  *     tab bar, the rail) is the layer's, not the control's, and is skipped.
  *     A control inside a scroller that fails where it rests is judged again
  *     scrolled to the centre of its scroller, where the reader can put it.
+ *     A bar on the Today panel's timeline (`data-timeline-bar`) is as wide as
+ *     the time it stands for — a 15-minute gap is narrow by design — so it is
+ *     named but not held to 44px; each activity is also a full-size card.
  *   · every control has an accessible name
  *   · every `role=tab` sits in a `role=tablist` and carries `aria-selected`
  *   · a main-nav link to the current page carries `aria-current="page"`, and
@@ -44,7 +47,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const BASE = process.env.BASE ?? 'http://localhost:5180'
-const ROUTES = (process.env.ROUTES ?? '/,/patient/ICH-0044051,/op-queue').split(',').filter(Boolean)
+const ROUTES = (process.env.ROUTES ?? '/,/patient/ISH-0044051,/op-queue').split(',').filter(Boolean)
 const WIDTHS = (process.env.WIDTHS ?? '320,360,375,390,414,768,1023,1024,1279,1280,1440,1920,2560').split(',').map(Number)
 const THEMES = (process.env.THEMES ?? 'light,dark').split(',')
 const SHOTS = process.env.SHOTS
@@ -248,6 +251,7 @@ const AUDIT = (overlay, insets) => `
       el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.getAttribute('title') ||
       el.textContent.trim() || (el.labels && el.labels.length) || el.getAttribute('placeholder');
     if (!named) out.unnamed.push(describe(el));
+    if (el.hasAttribute('data-timeline-bar')) continue;
 
     let r = el.getBoundingClientRect();
     if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth || clipped(el, r)) {

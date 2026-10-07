@@ -58,7 +58,7 @@ export default ({ page, expect, auditRows, toastSays }) => {
     {
       name: 'Assistant drawer: scoped to the patient and screen in view, suggestions for them, the same answers — and a reading ends in a signature, on record',
       async run() {
-        await page.open('/patient/ICH-0043910')
+        await page.open('/patient/ISH-0043910')
         await page.click('button[aria-label="Assistant"]')
         await page.until(`!!document.querySelector('[role="dialog"][aria-label="Assistant · Joseph Mathew"]')`, 3000, 'the drawer, scoped to Joseph Mathew')
         const drawer = () => page.evaluate(`document.querySelector('[role="dialog"][aria-label^="Assistant"]').textContent`)

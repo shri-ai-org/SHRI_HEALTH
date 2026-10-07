@@ -7,19 +7,19 @@
  */
 
 const TODAY = {
-  'ICH-0044120': 'Meera Krishnan',
-  'ICH-0044208': 'Sunita Devi',
-  'ICH-0044240': 'Arjun Nair',
-  'ICH-0044262': 'Selvi Murugan',
-  'ICH-0044290': 'Lakshmi Narayanan',
-  'ICH-0044297': 'Rahul Verma',
-  'ICH-0041882': 'Abdul Rahman Sheikh',
-  'ICH-0044051': 'R. Lakshmanan',
-  'ICH-0044191': 'Kavya Reddy',
-  'ICH-0043910': 'Joseph Mathew',
-  'ICH-0042330': 'Fatima Bi',
-  'ICH-0044275': 'Kumar Subramanian',
-  'ICH-0044281': 'Priya Raman',
+  'ISH-0044120': 'Meera Krishnan',
+  'ISH-0044208': 'Sunita Devi',
+  'ISH-0044240': 'Arjun Nair',
+  'ISH-0044262': 'Selvi Murugan',
+  'ISH-0044290': 'Lakshmi Narayanan',
+  'ISH-0044297': 'Rahul Verma',
+  'ISH-0041882': 'Abdul Rahman Sheikh',
+  'ISH-0044051': 'R. Lakshmanan',
+  'ISH-0044191': 'Kavya Reddy',
+  'ISH-0043910': 'Joseph Mathew',
+  'ISH-0042330': 'Fatima Bi',
+  'ISH-0044275': 'Kumar Subramanian',
+  'ISH-0044281': 'Priya Raman',
 }
 
 /** The least each part of the record carries for a patient on today's lists. */
@@ -29,7 +29,7 @@ const AT_LEAST = { 'Test results': 3, 'Imaging reports': 1, 'Consultation notes'
  * note says so — so he takes no medicine now and has no visit booked. The
  * record says that rather than being padded.
  */
-const EXCEPT = { 'ICH-0044297': { Prescriptions: 0, Appointments: 2 } }
+const EXCEPT = { 'ISH-0044297': { Prescriptions: 0, Appointments: 2 } }
 
 // One flow per patient, each on a fresh page, so thirteen records never share one long-lived tab.
 export default ({ page, expect }) =>

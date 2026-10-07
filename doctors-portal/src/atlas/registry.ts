@@ -111,6 +111,25 @@ export const SCREENS: ScreenSpec[] = [
     statesNotApplicable: { LOCKED: 'not an authoring screen' },
   },
   {
+    id: 'S-06-18',
+    module: 'M-06',
+    name: 'AI morning brief',
+    route: '/brief',
+    archetype: 'ARC-20',
+    tier: 'T2',
+    personas: ['P-04', 'P-05'],
+    ai: ['AI-212', 'AI-201'],
+    zones: SHELL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'What changed overnight, in the order to act on it — the critical results first.',
+    navSection: 'home',
+    permission: 'ip.encounter.read',
+    statesNotApplicable: { LOCKED: 'not an authoring screen' },
+  },
+  {
     id: 'S-06-03',
     module: 'M-06',
     name: 'Consultation note',
@@ -450,7 +469,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-09-04',
     module: 'M-09',
-    name: 'Results',
+    name: 'Test results',
     route: '/results/inbox',
     archetype: 'ARC-01',
     tier: 'T1',
@@ -1202,7 +1221,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-15-01',
     module: 'M-15',
-    name: 'Imaging worklist',
+    name: 'Imaging reports',
     route: '/radiology/worklist',
     archetype: 'ARC-01',
     tier: 'T2',
@@ -1220,7 +1239,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-15-04',
     module: 'M-15',
-    name: 'Imaging',
+    name: 'Imaging report',
     route: '/radiology/study/:id/view',
     archetype: 'ARC-11',
     tier: 'T1',
@@ -1387,7 +1406,7 @@ export function routeForSource(source: string): string | undefined {
   const spec = m ? maybeScreen(m[0]) : undefined
   const route = spec?.route
   if (!route) return undefined
-  if (route.startsWith('/patient/')) return route.replace(':id', 'ICH-0044051')
+  if (route.startsWith('/patient/')) return route.replace(':id', 'ISH-0044051')
   if (route.startsWith('/stroke/case/')) return route.replace(':id', '0141')
   if (route.startsWith('/radiology/study/')) return route.replace(':id', 'ST-9914')
   if (route === '/results/:id') return '/results/R-88410'

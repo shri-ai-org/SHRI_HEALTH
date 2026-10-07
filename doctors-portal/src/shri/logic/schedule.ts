@@ -360,15 +360,15 @@ export function useScheduleActions() {
   return {
     reschedule(a: ShriAppointment, slot: Slot) {
       apply(a, { action: 'move', slot })
-      toast({ tone: 'success', title: 'Appointment moved', detail: `${patient(a.patientId).name} · ${whenLabel(slot.at)}. The patient and the front office are told.` })
+      toast({ tone: 'success', title: 'Appointment moved', detail: `${patient(a.patientId).name} · ${whenLabel(slot.at)}. The patient and the front office have been notified.` })
     },
     rebook(a: ShriAppointment) {
       apply(a, { action: 'rebook' })
-      toast({ tone: 'info', title: 'Sent to the front office to rebook', detail: `${patient(a.patientId).name} is told the front office will call.` })
+      toast({ tone: 'info', title: 'Sent to the front office to rebook', detail: `${patient(a.patientId).name} has been told that the front office will call.` })
     },
     cancel(a: ShriAppointment, reason: string) {
       apply(a, { action: 'cancel', reason })
-      toast({ tone: 'info', title: 'Appointment cancelled', detail: `${patient(a.patientId).name} · ${whenLabel(a.at)}. The patient and the front office are told.` })
+      toast({ tone: 'info', title: 'Appointment cancelled', detail: `${patient(a.patientId).name} · ${whenLabel(a.at)}. The patient and the front office have been notified.` })
     },
     /** A patient scheduled into the doctor's own free time: the patient and the front office are told. */
     schedule(input: { patientId: string; at: Date; minutes: number; kind: Appointment['kind']; clinic: string; purpose: string; location?: string; offHours?: boolean }) {
@@ -379,8 +379,8 @@ export function useScheduleActions() {
       store.book({ id, patientId: input.patientId, at: input.at.toISOString(), kind: input.kind, status: 'Booked', clinic: input.clinic, with: me.name, purpose: input.purpose, minutes: input.minutes, location: input.location })
       audit({ event: 'APPOINTMENT.SCHEDULED', ...actor, subject: input.patientId, detail: `${id} · ${when} · ${input.minutes} min · ${input.kind} · ${input.clinic} · ${p.name}${outside}` })
       send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: `Appointment scheduled — ${slotLabel(input.at)}`, detail: `${p.name}: you have an appointment with ${me.name} on ${when}, ${input.clinic}.`, to: `/patient/${p.uhid}/appointments` })
-      send({ severity: input.offHours ? 'urgent' : 'routine', kind: 'appointment', recipient: 'front office', title: `Scheduled — ${p.name}`, detail: `${when} · ${input.minutes} min · ${input.clinic} · ${me.name}${outside}. ${input.purpose}. The patient has been told.`, to: `/patient/${p.uhid}/appointments` })
-      toast({ tone: 'success', title: 'Appointment scheduled', detail: `${p.name} · ${format(input.at, 'EEE d MMM')}, ${fmtTime12(input.at)}. The patient and the front office are told.` })
+      send({ severity: input.offHours ? 'urgent' : 'routine', kind: 'appointment', recipient: 'front office', title: `Scheduled — ${p.name}`, detail: `${when} · ${input.minutes} min · ${input.clinic} · ${me.name}${outside}. ${input.purpose}. The patient has been notified.`, to: `/patient/${p.uhid}/appointments` })
+      toast({ tone: 'success', title: 'Appointment scheduled', detail: `${p.name} · ${format(input.at, 'EEE d MMM')}, ${fmtTime12(input.at)}. The patient and the front office have been notified.` })
       return id
     },
     /** Extra hours outside the working day: the front office is told it may book patients into them, unless they are for the doctor's own patients only. */
@@ -390,8 +390,8 @@ export function useScheduleActions() {
       const label = hoursLabel(o)
       audit({ event: 'SCHEDULE.HOURS_OPENED', ...actor, subject: me.id, detail: `${label} · ${o.frontOffice ? 'the front office may book' : 'own patients only'}${o.note ? ` · ${o.note}` : ''}` })
       if (o.frontOffice)
-        send({ severity: 'urgent', kind: 'schedule', recipient: 'front office', title: `${me.name} — extra hours ${label}`, detail: `Open for booking patients${o.note ? `. ${o.note}` : ''}.`, to: '/schedule/blocks' })
-      toast({ tone: 'success', title: 'Extra hours opened', detail: `${label}. ${o.frontOffice ? 'The front office is told they can book patients into them.' : 'Only you schedule into them.'}` })
+        send({ severity: 'urgent', kind: 'schedule', recipient: 'front office', title: `${me.name} — extra hours ${label}`, detail: `These hours are now available for booking patients${o.note ? `. Note: ${o.note}` : ''}.`, to: '/schedule/blocks' })
+      toast({ tone: 'success', title: 'Extra hours opened', detail: `${label}. ${o.frontOffice ? 'The front office has been notified that they can book patients.' : 'Only you can schedule appointments in these hours.'}` })
       return o
     },
     closeHours(o: Opening) {
@@ -399,8 +399,8 @@ export function useScheduleActions() {
       const label = hoursLabel(o)
       audit({ event: 'SCHEDULE.HOURS_CLOSED', ...actor, subject: me.id, detail: label })
       if (o.frontOffice)
-        send({ severity: 'routine', kind: 'schedule', recipient: 'front office', title: `${me.name} — extra hours closed, ${label}`, detail: 'No longer open for booking. Anyone already booked into them stays booked.', to: '/schedule/blocks' })
-      toast({ tone: 'info', title: 'Extra hours closed', detail: `${label}.${o.frontOffice ? ' The front office is told.' : ''} Anyone already booked stays booked.` })
+        send({ severity: 'routine', kind: 'schedule', recipient: 'front office', title: `${me.name} — extra hours closed, ${label}`, detail: 'These hours are no longer available for booking. Patients who are already booked keep their appointments.', to: '/schedule/blocks' })
+      toast({ tone: 'info', title: 'Extra hours closed', detail: `${label}.${o.frontOffice ? ' The front office has been notified.' : ''} Existing appointments are unchanged.` })
     },
     /** Block the time, act on every booking it displaces, and tell the front office once. */
     block(input: BlockInput, displaced: { appointment: ShriAppointment; decision: Decision }[]) {
@@ -425,7 +425,7 @@ export function useScheduleActions() {
       toast({
         tone: displaced.length > 0 ? 'caution' : 'success',
         title: 'Time blocked',
-        detail: `${rangeLabel(b)} · ${b.reason}. The front office is told${displaced.length > 0 ? `, and ${displaced.length} patient${displaced.length === 1 ? ' is' : 's are'} told their appointment has changed` : ''}.`,
+        detail: `${rangeLabel(b)} · ${b.reason}. The front office has been notified${displaced.length > 0 ? `, and ${displaced.length} patient${displaced.length === 1 ? ' has' : 's have'} been told that their appointment has changed` : ''}.`,
       })
       return b
     },
@@ -433,7 +433,7 @@ export function useScheduleActions() {
       store.removeBlock(b.id)
       audit({ event: 'SCHEDULE.UNBLOCKED', ...actor, subject: me.id, detail: `${rangeLabel(b)} · ${b.reason}` })
       send({ severity: 'routine', kind: 'schedule', recipient: 'front office', title: `${me.name} — unblocked ${rangeLabel(b)}`, detail: 'The time is bookable again. Appointments already moved or handed to you to rebook stay as they are.', to: '/schedule/blocks' })
-      toast({ tone: 'info', title: 'Block removed', detail: `${rangeLabel(b)} is bookable again. The front office is told.` })
+      toast({ tone: 'info', title: 'Block removed', detail: `${rangeLabel(b)} is available for booking again. The front office has been notified.` })
     },
   }
 }

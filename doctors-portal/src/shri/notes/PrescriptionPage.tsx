@@ -762,7 +762,7 @@ function RxRail({ encounterId, ceilingLines }: { encounterId: string; ceilingLin
                 'Printed A5, bilingual, with your HPR number on it',
                 'Sent to the pharmacy dispensing queue',
                 'Queued to publish to ABDM as a Prescription record',
-                'No PHI goes out in any SMS — only a pointer back in',
+                'No patient health information is sent by SMS. The message only links back to the app.',
               ].map((t) => (
                 <li key={t} className="flex gap-[8px]">
                   <Icon icon={Check} size={13} className="mt-[4px] shrink-0 text-sh-norm-fg" />

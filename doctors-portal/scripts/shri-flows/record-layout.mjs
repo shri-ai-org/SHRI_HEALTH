@@ -5,8 +5,8 @@
  */
 
 const UHIDS = [
-  'ICH-0044120', 'ICH-0041882', 'ICH-0044051', 'ICH-0044208', 'IPL-0012774', 'ICH-0044191', 'ICH-0043910', 'ICH-0042330',
-  'ICH-0044240', 'ICH-0044262', 'ICH-0044275', 'ICH-0044281', 'ITP-0021934', 'ICH-0044290', 'ICH-0044297',
+  'ISH-0044120', 'ISH-0041882', 'ISH-0044051', 'ISH-0044208', 'IPL-0012774', 'ISH-0044191', 'ISH-0043910', 'ISH-0042330',
+  'ISH-0044240', 'ISH-0044262', 'ISH-0044275', 'ISH-0044281', 'ITP-0021934', 'ISH-0044290', 'ISH-0044297',
 ]
 const CARDS = 'Report viewer|Vitals|AI insights|Test results|Consultation notes|Trend|Patient report'
 
@@ -29,7 +29,7 @@ export default ({ page, expect, toastSays, auditRows }) => {
         let reference
         let first = true
         // Every patient with the AI on; with it off, one of each shape (full, no imaging, no results trend, report only).
-        for (const [ai, ids] of [['', UHIDS], ['?ai=off', ['ICH-0044051', 'ICH-0044240', 'ICH-0044290', 'ICH-0043910']]]) {
+        for (const [ai, ids] of [['', UHIDS], ['?ai=off', ['ISH-0044051', 'ISH-0044240', 'ISH-0044290', 'ISH-0043910']]]) {
           for (const id of ids) {
             await page.open(`/patient/${id}${ai}`, { fresh: first })
             first = false
@@ -48,7 +48,7 @@ export default ({ page, expect, toastSays, auditRows }) => {
       name: 'Record overview: a note typed on the Consultation notes card is a draft — edited before signing (audited), then signed, after which it cannot be edited',
       async run() {
         const card = `document.querySelector('section[aria-label="Consultation notes on Lakshmi Narayanan"]')`
-        await page.open('/patient/ICH-0044290')
+        await page.open('/patient/ISH-0044290')
         await page.until(`!!${card}`, 4000, 'the Notes card')
         expect((await page.evaluate(`${card}.textContent`)).includes('No notes yet'), 'no notes yet, said so')
         await page.click('button[aria-label="Type a note on Lakshmi Narayanan"]')

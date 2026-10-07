@@ -79,7 +79,7 @@ export const useSession = create<SessionState>()(
       failedAttempts: 0,
       lockedUntil: null,
       persona: 'P-04',
-      facilityCode: 'ICH',
+      facilityCode: 'ISH',
       language: 'EN',
       theme: 'night',
       density: 'compact',
@@ -162,7 +162,7 @@ export const useSession = create<SessionState>()(
       migrate: (persisted, version) => {
         const s = (persisted ?? {}) as Partial<SessionState>
         if (version < 2) {
-          return { ...s, theme: 'night', facilityCode: 'ICH', notesInput: 'voice' } as SessionState
+          return { ...s, theme: 'night', facilityCode: 'ISH', notesInput: 'voice' } as SessionState
         }
         return s as SessionState
       },

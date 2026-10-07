@@ -19,7 +19,7 @@ export default ({ page, expect, sleep, auditRows, toastSays, pick, setInput, bec
     {
       name: 'ICD-10 at admission: an optional provisional diagnosis — one tap from the open problems — goes on the admission, the audit row and the Cohorts filter',
       async run() {
-        await page.open('/patient/ICH-0044120')
+        await page.open('/patient/ISH-0044120')
         await page.click('button', 'Admit')
         await page.until(`document.querySelector('[role="dialog"][aria-labelledby="admit-title"]')?.textContent.includes('Provisional diagnosis (ICD-10, optional)')`, 3000, 'the coded diagnosis field')
         await page.click('[role="dialog"] button', 'Hypothyroidism · E03.9')
@@ -38,7 +38,7 @@ export default ({ page, expect, sleep, auditRows, toastSays, pick, setInput, bec
     {
       name: 'ICD-10 at discharge: the final diagnosis — principal first, by tap or by search — is on the discharge record and its audit row; optional, it never holds a discharge',
       async run() {
-        await page.open('/patient/ICH-0044275')
+        await page.open('/patient/ISH-0044275')
         await page.click('button', 'Discharge')
         await page.until(`document.querySelector('[role="dialog"]')?.textContent.includes('Final diagnosis')`, 3000, 'the sheet with its final diagnosis')
         await page.click('[role="dialog"] button', 'I61.0')
@@ -162,7 +162,7 @@ export default ({ page, expect, sleep, auditRows, toastSays, pick, setInput, bec
         const csv = await page.evaluate(`window.__csv[0].text()`)
         const lines = csv.trim().split('\n')
         expect(lines[0] === 'study_id,age_band,sex,facility,payer,seen_as,icd10_codes,icd10_categories,icd10_chapters,diagnosis_sources' && lines.length === 4, `header and three rows: ${csv}`)
-        expect(!/Joseph|Lakshmanan|Santhosh|ICH-00|ITP-00|\b(62|69|71)\b/.test(csv), `nothing identifying: ${csv}`)
+        expect(!/Joseph|Lakshmanan|Santhosh|ISH-00|ITP-00|\b(62|69|71)\b/.test(csv), `nothing identifying: ${csv}`)
         expect(lines.slice(1).every((l) => /^P-00\d,60–74,M,/.test(l)), `study IDs and the band: ${csv}`)
         const row = (await auditRows()).find((r) => r.event === 'COHORT.EXPORTED')
         expect(row && row.detail.startsWith('3 patients · de-identified CSV · age 60–74 · male') && !row.subject, `COHORT.EXPORTED: ${JSON.stringify(row)}`)

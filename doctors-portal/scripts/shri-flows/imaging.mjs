@@ -72,7 +72,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick }) => {
     {
       name: 'Record CT (S-06-11): a negative scan is scrollable with nothing marked; a patient with no CT keeps the document report',
       async run() {
-        await page.open('/patient/ICH-0044051')
+        await page.open('/patient/ISH-0044051')
         const v = await viewer()
         expect(v.label === 'Non-contrast CT head, slice 14 of 28' && v.marks === 0 && v.text.includes('NO ACUTE STROKE ON THIS SCAN'), `R. Lakshmanan's negative CT, unmarked: ${v.label}`)
         await page.click('button[aria-label="Next slice"]')
@@ -188,7 +188,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays, pick }) => {
         v = await viewer()
         expect(v.label.includes('slice 13 of 28') && v.marks > 0, `a new case opens on its own finding, not the last slice: ${v.label}`)
         await page.click('button', 'Patient record')
-        await page.until(`location.pathname === '/patient/ICH-0044275'`, 3000, 'the patient record')
+        await page.until(`location.pathname === '/patient/ISH-0044275'`, 3000, 'the patient record')
         await page.open('/stroke/ai-console?case=0141&ai=off', { fresh: false })
         text = await page.text()
         expect(text.includes('Automated reading is off.') && (await viewer()).marks === 0, 'AI off: the scan unmarked, the worklist route said')

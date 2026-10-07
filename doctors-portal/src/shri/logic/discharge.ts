@@ -123,7 +123,7 @@ export function useDischarge() {
       title: kind === 'transfer' ? `${p.name} transferred to ${extra.transfer?.facility}` : kind === 'lama' ? `${p.name} left against medical advice` : `${p.name} discharged`,
       detail:
         kind === 'transfer'
-          ? `Bed released to the bed board. The receiving team and the front office are told.${summaryLine}`
+          ? `The bed has been released to the bed board. The receiving team and the front office have been notified.${summaryLine}`
           : kind === 'lama'
             ? `Recorded with the form's signatory and witness. Bed released to the bed board.${summaryLine}`
             : `Bed released to the bed board.${summaryLine}`,

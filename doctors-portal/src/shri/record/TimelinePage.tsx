@@ -37,10 +37,10 @@ type Kind = TimelineEvent['kind'] | 'all'
 const KINDS: { key: Kind; label: string; icon?: LucideIcon }[] = [
   { key: 'all', label: 'Everything' },
   { key: 'note', label: 'Notes', icon: FileText },
-  { key: 'result', label: 'Results', icon: FlaskConical },
+  { key: 'result', label: 'Test results', icon: FlaskConical },
   { key: 'medication', label: 'Medication', icon: PillIcon },
   { key: 'order', label: 'Orders', icon: ClipboardList },
-  { key: 'imaging', label: 'Imaging', icon: ScanLine },
+  { key: 'imaging', label: 'Imaging reports', icon: ScanLine },
   { key: 'vitals', label: 'Observations', icon: Activity },
 ]
 const KIND_KEYS = KINDS.map((k) => k.key)

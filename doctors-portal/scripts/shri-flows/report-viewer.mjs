@@ -20,7 +20,7 @@ export default ({ page, expect }) => {
     {
       name: 'Report viewer (S-06-11): one switcher across the CT, the X-ray and the ECG; each opens in its own frame, and Open in Imaging lands on the chosen study',
       async run() {
-        await page.open('/patient/ICH-0044051')
+        await page.open('/patient/ISH-0044051')
         await page.until(`!!${card}?.querySelector('[role="tablist"]')`, 4000, 'the switcher')
         const ps = await pills()
         expect(ps.join('|') === 'CT · 21-Sep|ECG · 21-Sep|X-ray · 19-Sep', `every report, newest first: ${ps}`)
@@ -38,7 +38,7 @@ export default ({ page, expect }) => {
     {
       name: 'Report viewer (S-06-11): a study of two images scrolls like a stack — wheel, slider and ‹ › — and Imaging opens on the image that was showing',
       async run() {
-        await page.open('/patient/ICH-0044208')
+        await page.open('/patient/ISH-0044208')
         await page.until(`!!${card}?.querySelector('[role="group"]')`, 4000, 'the viewer')
         let t = await tile()
         expect(t.label.includes('image 1 of 2') && t.label.includes('Sweep 1'), `the growth scan's first sweep: ${t.label}`)

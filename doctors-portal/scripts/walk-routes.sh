@@ -22,7 +22,7 @@ CHROME="${CHROME:-google-chrome}"
 # Sensible params so every screen lands on real sample data.
 route_for() {
   case "$1" in
-    /patient/*)          echo "${1/:id/ICH-0044051}" ;;
+    /patient/*)          echo "${1/:id/ISH-0044051}" ;;
     /stroke/case/*)      echo "${1/:id/0141}" ;;
     /radiology/study/*)  echo "${1/:id/ST-9914}" ;;
     /results/:id)        echo "/results/R-88410" ;;

@@ -60,7 +60,7 @@ export default ({ page, expect, toastSays }) => {
       async run() {
         await page.open('/op-queue')
         await page.click('ul[aria-label="Today\'s outpatient session"] > li > button', 'Rahul Verma')
-        await page.until(`location.pathname === '/patient/ICH-0044297'`, 3000, 'a row opens the record')
+        await page.until(`location.pathname === '/patient/ISH-0044297'`, 3000, 'a row opens the record')
         await page.open('/op-queue', { fresh: false })
         await page.click('button', 'Call MED-041')
         await toastSays('Calling MED-041', 'Selvi Murugan · the note opens with the scribe ready.')

@@ -1,6 +1,6 @@
 // ported from src/shell/Screen.tsx:94-111 (`parentOf`), with the two addresses
 // that moved (My Day at `/`, the record at `/patient/:id`) and one fix: the
-// label names the persona's real landing ("Imaging worklist" for a radiologist)
+// label names the persona's real landing ("Imaging reports" for a radiologist)
 // where the old build always said "My Day".
 
 import { screenForPath } from '@/atlas/registry'
@@ -18,8 +18,8 @@ export function parentOf(pathname: string, landing: string): Parent | null {
   const home: Parent = { to: landing, label: landing === '/' ? 'Dashboard' : (screenForPath(landing)?.name ?? 'Dashboard') }
   const patient = /^\/patient\/([^/]+)(?:\/([^/]+))?\/?$/.exec(pathname)
   if (patient) return patient[2] === undefined ? home : { to: `/patient/${patient[1]}`, label: 'Patient record' }
-  if (pathname.startsWith('/radiology/study/')) return { to: '/radiology/worklist', label: 'Imaging worklist' }
-  if (/^\/results\/(?!inbox)/.test(pathname)) return { to: '/results/inbox', label: 'Results' }
+  if (pathname.startsWith('/radiology/study/')) return { to: '/radiology/worklist', label: 'Imaging reports' }
+  if (/^\/results\/(?!inbox)/.test(pathname)) return { to: '/results/inbox', label: 'Test results' }
   if (pathname.startsWith('/ip/encounter/')) return { to: '/ip/patients', label: 'Inpatients' }
   if (pathname.startsWith('/encounter/')) return { to: '/op-queue', label: 'OPD' }
   if (pathname.startsWith('/stroke/case/')) return { to: '/stroke/ai-console', label: 'Stroke-AI Console' }

@@ -42,6 +42,23 @@
     color: inherit;
   }
 
+  /* The pointing hand over everything that does something when clicked — buttons, links, tabs,
+     toggles, options, checkbox rows, selects — as every site and platform shows it; the text
+     cursor in a box you type into; "not allowed" over a control that is switched off. In the base
+     layer, so a utility on one element (cursor-grab, cursor-default) still wins. */
+  :is(button, a[href], summary, select, label:has(> input), [role='button'], [role='tab'], [role='switch'], [role='checkbox'],
+    [role='radio'], [role='option'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='link'], [role='gridcell'],
+    input:is([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'], [type='reset'])) {
+    cursor: pointer;
+  }
+  :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'], [type='reset']), textarea, [contenteditable='true']) {
+    cursor: text;
+  }
+  :is(button, select, input, textarea):disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
   /* All transitions become instant for anyone who asks for less motion;
      framer-motion honours the same setting through <MotionConfig>. */
   @media (prefers-reduced-motion: reduce) {

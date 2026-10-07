@@ -32,7 +32,7 @@ export default ({ page, expect, toastSays }) => {
         await page.open('/stroke/wall', { persona: 'P-35' })
         expect(await drawn('S-18-01'), 'S-18-01 is drawn')
         let text = await page.text()
-        for (const t of ['Stroke network', 'Active cases', 'STROKE/26-27/0141', 'STROKE/26-27/0142', 'No intervals recorded for STROKE/26-27/0142.', 'LVO LEFT M1 · HIGH', 'Network', 'Resources', 'CATH-1', 'Dr. Rajsrinivas (phone)', 'AMB-IPL-03 · IPL → ICH', 'On site at IPL', '3 activations · DTN median 41 min · 1 transfer · 1 mimic'])
+        for (const t of ['Stroke network', 'Active cases', 'STROKE/26-27/0141', 'STROKE/26-27/0142', 'No intervals recorded for STROKE/26-27/0142.', 'LVO LEFT M1 · HIGH', 'Network', 'Resources', 'CATH-1', 'Dr. Rajsrinivas (phone)', 'AMB-IPL-03 · IPL → ISH', 'On site at IPL', '3 activations · DTN median 41 min · 1 transfer · 1 mimic'])
           expect(has(text, t), `the wall says "${t}"`)
         expect(await page.evaluate(`document.querySelectorAll('section[aria-label="Active cases"] svg[role="img"]').length === 4`), 'four rings, on the index case only')
         expect(has(text, 'Administer tenecteplase and stamp the needle') && has(text, '· Dr. Rajsrinivas'), 'the next action and its owner')
@@ -59,7 +59,7 @@ export default ({ page, expect, toastSays }) => {
         await page.click('section[aria-label="Active cases"] button', 'STROKE/26-27/0141')
         await page.until(`!!document.querySelector('[role="dialog"][data-screen-id="S-18-02"]')`, 3000, 'S-18-02 expands')
         let text = await page.evaluate(`document.querySelector('[data-screen-id="S-18-02"]').innerText`)
-        for (const t of ['Vikram Malhotra', 'IPL → ICH', 'TPA cashless', 'NIHSS 14', 'break-glass: Dr. Rajsrinivas', 'Live intervals', 'LVO · M1', 'ICH no', 'G3 confirm required', '4 of 5 answered', '1 no answer', 'In progress', 'BP treated to target < 185/110', 'Load ambulance for transfer', 'Blocked · 19m', 'Open the case clock'])
+        for (const t of ['Vikram Malhotra', 'IPL → ISH', 'TPA cashless', 'NIHSS 14', 'break-glass: Dr. Rajsrinivas', 'Live intervals', 'LVO · M1', 'ICH no', 'G3 confirm required', '4 of 5 answered', '1 no answer', 'In progress', 'BP treated to target < 185/110', 'Load ambulance for transfer', 'Blocked · 19m', 'Open the case clock'])
           expect(has(text, t), `the case view says "${t}"`)
         noForecast(text, 'the case view')
         expect(await page.evaluate(`document.querySelector('[data-screen-id="S-18-02"]').contains(document.activeElement)`), 'focus moved into the case view')
@@ -89,7 +89,7 @@ export default ({ page, expect, toastSays }) => {
         await page.click('[role="tab"]', 'Ready')
         await page.until(`location.search === '?scope=ready'`, 3000, 'the slice is in the URL')
         text = await page.text()
-        expect(has(text, 'ICH') && has(text, 'IPL') && has(text, 'No readiness flags tonight') && !has(text, 'Udumalpet'), `the ready slice: ICH and IPL — ${text.slice(0, 400)}`)
+        expect(has(text, 'ISH') && has(text, 'IPL') && has(text, 'No readiness flags tonight') && !has(text, 'Udumalpet'), `the ready slice: ISH and IPL — ${text.slice(0, 400)}`)
       },
     },
     {

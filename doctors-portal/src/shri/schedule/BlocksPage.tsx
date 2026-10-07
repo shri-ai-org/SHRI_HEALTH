@@ -93,7 +93,7 @@ export function BlocksPage() {
 
         <Card titleSize="sm" title="Your extra hours">
           {extraHours.length === 0 ? (
-            <EmptyState compact icon={CalendarRange} why="No extra hours are open. Open some here, or tap off hours on the Dashboard's timeline." />
+            <EmptyState compact icon={CalendarRange} why="You have not opened any extra hours. Open them here, or tap the grey off-hours on the Dashboard timeline." />
           ) : (
             <ul aria-label="Your extra hours" className="flex flex-col gap-[8px]">
               {extraHours.map((o) => (
@@ -102,7 +102,7 @@ export function BlocksPage() {
                   <span className="min-w-0 flex-1">
                     <span className="block text-[14px] font-medium tabular-nums">{hoursLabel(o)}</span>
                     <span className="block text-[12px] text-sh-text-3">
-                      {o.frontOffice ? 'The front office may book patients' : 'Your own patients only'}
+                      {o.frontOffice ? 'Open for front office bookings' : 'For your patients only'}
                       {o.note ? ` · ${o.note}` : ''} · opened by {o.by}
                     </span>
                   </span>

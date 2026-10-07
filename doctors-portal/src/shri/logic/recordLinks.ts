@@ -24,7 +24,7 @@ export function recordLinksFor(p: Patient): RecordLink[] {
   if (resultsFor(p.id).length > 0) links.push({ key: 'results', label: 'Test results', to: `${base}/results` })
   if (reportsFor(p.id).length > 0) links.push({ key: 'reports', label: 'Imaging reports', to: `${base}/reports` })
   const study = viewableStudyFor(p.id)
-  if (study) links.push({ key: 'imaging', label: 'Imaging', to: `/radiology/study/${study.id}/view` })
+  if (study) links.push({ key: 'imaging', label: 'Latest scan', to: `/radiology/study/${study.id}/view` })
   const sc = strokeCaseForPatient(p.id)
   if (sc && NCCT_STUDIES[sc.id]) links.push({ key: 'stroke', label: 'Stroke-AI console', to: `/stroke/ai-console?case=${sc.id}` })
   return links

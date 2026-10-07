@@ -1,5 +1,5 @@
 /**
- * S-15-01 · Imaging worklist — `/radiology/worklist` (`src/screens/m15/
+ * S-15-01 · Imaging reports (the imaging worklist) — `/radiology/worklist` (`src/screens/m15/
  * S1501.tsx`): "Every study on the record, the AI-flagged ones first — pick a
  * patient, then open the scan."
  *

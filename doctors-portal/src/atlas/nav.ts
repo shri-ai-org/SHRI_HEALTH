@@ -62,8 +62,8 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     section: 'results',
-    label: 'Results',
-    short: 'Results',
+    label: 'Test results',
+    short: 'Test results',
     icon: 'FlaskConical',
     to: '/results/inbox',
     permission: 'result.read',
@@ -87,8 +87,8 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     section: 'imaging',
-    label: 'Imaging',
-    short: 'Imaging',
+    label: 'Imaging reports',
+    short: 'Imaging reports',
     icon: 'Scan',
     to: '/radiology/worklist',
     permission: 'imaging.read',

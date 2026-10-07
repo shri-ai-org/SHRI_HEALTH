@@ -52,7 +52,7 @@ function ResultNotFound({ id }: { id?: string }) {
       sub="No result at this address."
       actions={
         <Pill variant="primary" size="xl" icon={FlaskConical} iconSize={17} onClick={() => navigate('/results/inbox')}>
-          Results
+          Test results
         </Pill>
       }
     >

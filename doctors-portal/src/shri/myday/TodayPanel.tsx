@@ -31,8 +31,9 @@ import { useShri } from '../state/store'
 import { iconFor } from '../ui/icons'
 import { Card, Chip, Diamond, Icon, Pill, RoundButton } from '../ui/primitives'
 
-import { DayTimeline, FREE, HATCH_BLOCKED, HATCH_OFF, actStyle } from './DayTimeline'
+import { DayTimeline } from './DayTimeline'
 import { KIND_LABEL, dayModel, duration, hourLine, isActivity, type ActivityKind, type TimelineItem } from './dayModel'
+import { FREE, HATCH_BLOCKED, HATCH_OFF, actStyle } from './timelineStyle'
 import { useMyDay } from './useMyDay'
 
 const EMPHASIS_TONE: Record<NonNullable<DayBlock['emphasis']>[number]['tone'], Tone> = { critical: 'crit', warning: 'warn', pending: 'pend' }
@@ -117,6 +118,7 @@ export function TodayPanel({ className }: { className?: string }) {
           nextPatient={nextPatient}
           onSchedule={(at, until) => openDialog({ kind: 'schedule', date: day.iso, at, until })}
           onOffHours={(at, [from, to]) => openDialog({ kind: 'offHours', date: day.iso, at, from, to })}
+          onBlocked={(blockId) => openDialog({ kind: 'unblock', blockId })}
         />
       </div>
 
@@ -182,13 +184,13 @@ export function TodayPanel({ className }: { className?: string }) {
           </span>
           {day.isToday ? (
             <Pill variant="outline" size="xl" icon={CalendarSearch} onClick={() => setWhole(!whole)} className="ml-auto">
-              {whole ? 'Show what is next' : 'View full day'}
+              {whole ? 'Show upcoming only' : 'View full day'}
             </Pill>
           ) : null}
         </div>
         {shown.length === 0 ? (
           <p className="mt-[12px] rounded-[14px] bg-sh-inner px-[14px] py-[12px] text-[14px] text-sh-text-2">
-            {events.length === 0 ? 'Nothing booked on this day.' : 'Nothing more today.'}
+            {events.length === 0 ? 'Nothing is scheduled on this day.' : 'Nothing else is scheduled for today.'}
           </p>
         ) : (
           <ol className="mt-[12px] grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-[12px]" aria-label={whole ? 'The day’s events' : 'Upcoming events'}>

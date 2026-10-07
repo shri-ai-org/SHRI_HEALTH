@@ -164,7 +164,7 @@ export function TeleRxPage() {
                 })}
               </ul>
               <p className="border-t border-sh-line px-[18px] py-[12px] text-[12px] text-sh-text-3">
-                Signing prints bilingually with your HPR number and publishes a Prescription record to ABDM. No PHI goes out in any SMS — only a pointer back in.
+                Signing prints bilingually with your HPR number and publishes a Prescription record to ABDM. No patient health information is sent by SMS. The message only links back to the app.
               </p>
             </>
           )}

@@ -1,5 +1,5 @@
 /**
- * S-09-04 · Results — `/results/inbox` (`src/screens/m09/S0904.tsx`):
+ * S-09-04 · Test results — `/results/inbox` (`src/screens/m09/S0904.tsx`):
  * "Results ranked by how much they should worry you." Deck beat #13:
  * "Results come ranked, and the critical one escalates."
  *
@@ -147,7 +147,7 @@ export function ResultsInboxPage() {
     <>
       <ScreenFrame
         screenId="S-09-04"
-        heading="Results"
+        heading="Test results"
         sub={`${allToReview.length} to review · ${RESULTS.length} results across ${byPatient.length} patients${criticalUnacked.length > 0 ? ` · ${criticalUnacked.length} critical, unacknowledged` : ''}`}
         empty={
           <Card className="items-center px-[24px] py-[40px] text-center">

@@ -42,7 +42,7 @@ import { useCurrentStaff } from '@/store/session'
 import { cn } from '../lib/cn'
 import { NOW, range12, time12 } from '../lib/clock'
 import { affectedBy, dayIso, freeSlots, hoursLabel, openingSpan, rangeLabel, slotLabel, useAppointments, useScheduleActions, usualClinic, whenLabel, type Decision, type ShriAppointment, type Slot } from '../logic/schedule'
-import { SCHEDULE_MIN, atMinute, dayModel, duration, isActivity } from '../myday/dayModel'
+import { SCHEDULE_MIN, atMinute, dayModel, duration, durationSpoken, isActivity } from '../myday/dayModel'
 import { useMyDay } from '../myday/useMyDay'
 import { BLOCK_REASONS, useSchedule, type BlockReason } from '../state/schedule'
 import { useShri } from '../state/store'
@@ -152,7 +152,7 @@ function BlockDialog({ from: initial, onClose }: { from: string; onClose: () => 
       open
       onClose={onClose}
       title="Block time"
-      subtitle="Your own leave or a block of hours. The front office is told, with the reason; patients are told only that their appointment has changed."
+      subtitle="Block time for leave or other commitments. The front office will be notified of the reason. Patients will only be told that their appointment has changed."
       icon={Ban}
       width={600}
       footer={
@@ -268,8 +268,8 @@ function BlockDialog({ from: initial, onClose }: { from: string; onClose: () => 
             )}
           </section>
         )}
-        <Why label="Who may block, and what the patients are told">
-          <p>Blocking time does not cancel the patients already booked into it. They are listed before you confirm, not after, and each one goes where you choose — they are told the appointment has moved, not why.</p>
+        <Why label="Who can block time, and what patients are told">
+          <p>Blocking time does not cancel existing appointments. Before you confirm, you will see every patient booked in that time and choose what happens to each one. Patients are told that their appointment has moved, but not why.</p>
           <p>A block inside 14 days needs an administrator&rsquo;s override, because patients are already booked. Beyond 14 days it is yours to set.</p>
         </Why>
       </div>
@@ -287,7 +287,7 @@ function UnblockDialog({ blockId, onClose }: { blockId: string; onClose: () => v
     <ConfirmDialog
       open
       title={`Unblock ${rangeLabel(b)}?`}
-      consequence="The time becomes bookable again and the front office is told. Appointments already moved, or handed to the front office to rebook, stay as they are."
+      consequence="This time will be available for booking again, and the front office will be notified. Appointments that were already moved, or sent to the front office for rebooking, will not change."
       confirmLabel="Unblock"
       onConfirm={() => {
         actions.unblock(b)
@@ -343,7 +343,7 @@ function MoveDialog({ appointment: a, onClose }: { appointment: ShriAppointment;
         {slots.length === 0 && <p className="text-[13px] text-sh-text-2">No free slot in your sessions in the next six weeks.</p>}
         <Choice checked={choice === 'rebook'} onSelect={() => setChoice('rebook')} icon={PhoneForwarded} title="Ask the front office to rebook" sub="They call the patient to agree a time" />
       </div>
-      <p className="mt-[12px] text-[12px] text-sh-text-3">The patient and the front office are told the new time. Free slots are your own sessions, less what is booked and what you have blocked.</p>
+      <p className="mt-[12px] text-[12px] text-sh-text-3">The patient and the front office will be notified of the new time. Free slots come from your own sessions and extra hours, excluding times that are already booked or blocked.</p>
     </Dialog>
   )
 }
@@ -394,7 +394,7 @@ function CancelDialog({ appointment: a, onClose }: { appointment: ShriAppointmen
       }
     >
       <div className="flex flex-col gap-[12px]">
-        <Field label="Reason" required htmlFor="cx-reason" hint="Kept on the record and sent to the front office. The patient is told it is cancelled.">
+        <Field label="Reason" required htmlFor="cx-reason" hint="This reason is saved on the record and sent to the front office. The patient will only be told that the appointment is cancelled.">
           <Select id="cx-reason" value={reason} onChange={(e) => setReason(e.target.value)}>
             <option value="">Choose a reason…</option>
             {CANCEL_REASONS.map((r) => (
@@ -432,6 +432,8 @@ const minutesOfHhmm = (v: string) => {
   return h * 60 + m
 }
 const nowMinute = () => NOW.getHours() * 60 + NOW.getMinutes()
+/** "A", "A and B", "A, B and C". */
+const listed = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
 
 /**
  * At the minute tapped on the Today panel's timeline. In free time it is never asked again, and a visit
@@ -468,7 +470,7 @@ function NewAppointmentDialog({ date, at, until, offHours = false, onClose }: { 
       open
       onClose={onClose}
       title="Schedule an appointment"
-      subtitle="The patient and the front office are told."
+      subtitle="The patient and the front office will be notified."
       icon={CalendarPlus}
       width={560}
       footer={
@@ -504,7 +506,7 @@ function NewAppointmentDialog({ date, at, until, offHours = false, onClose }: { 
         {offHours && (
           <p className="flex items-start gap-[10px] rounded-[14px] bg-sh-warn-bg px-[14px] py-[10px] text-[13px] text-sh-warn-fg">
             <Icon icon={Clock} size={16} className="mt-[1px] shrink-0" />
-            Outside your working hours — only this appointment. The front office is told.
+            This time is outside your working hours. Only this appointment will be added, and the front office will be notified.
           </p>
         )}
         <div className={cn('flex items-center gap-[12px] rounded-[14px] px-[14px] py-[12px]', gone || blockedBy || !valid ? 'bg-sh-crit-bg' : 'bg-sh-inner')}>
@@ -516,24 +518,24 @@ function NewAppointmentDialog({ date, at, until, offHours = false, onClose }: { 
             </span>
             <span className={cn('block text-[12px]', gone || blockedBy || !valid ? 'text-sh-crit-fg' : 'text-sh-text-3')}>
               {!valid
-                ? 'Choose a start that ends before midnight.'
+                ? 'The appointment must end before midnight. Please choose an earlier start time.'
                 : gone
-                  ? 'That time has gone. Choose a time still to come.'
+                  ? 'This time has already passed. Please choose a later time.'
                   : blockedBy
-                    ? `It falls in your blocked time (${blockedBy.title.replace(/^Blocked · /, '')}). Unblock it first, or choose another time.`
-                    : `${duration(end - start)}${offHours ? '' : ', from where you tapped the timeline'}`}
+                    ? `This time is blocked (${blockedBy.title.replace(/^Blocked · /, '')}). Please unblock it first or choose another time.`
+                    : `${durationSpoken(end - start)}${offHours ? '' : ', starting at the time you selected on the timeline'}`}
             </span>
           </p>
         </div>
         {offHours && (
-          <Field label="Starts at" required htmlFor="sch-start" hint="Off hours have no edge — an operation can start before the timeline's 7 AM.">
+          <Field label="Starts at" required htmlFor="sch-start" hint="You can choose any start time, including before 7 AM for an early operation.">
             <TextInput id="sch-start" type="time" step={300} value={hhmm(start)} onChange={(e) => setStart(e.target.value ? minutesOfHhmm(e.target.value) : NaN)} />
           </Field>
         )}
         {clashes.length > 0 && valid && (
           <p className="flex items-start gap-[10px] rounded-[14px] bg-sh-warn-bg px-[14px] py-[10px] text-[13px] text-sh-warn-fg" role="status">
             <Icon icon={TriangleAlert} size={16} className="mt-[1px] shrink-0" />
-            <span>Overlaps {clashes.map((c) => `${c.title} ${time12(c.start)}`).join(', ')}.</span>
+            <span>This overlaps with {listed(clashes.map((c) => `${c.title} at ${time12(c.start)}`))}. You can still schedule it.</span>
           </p>
         )}
         <Field label="Patient" required htmlFor="sch-patient">
@@ -550,7 +552,7 @@ function NewAppointmentDialog({ date, at, until, offHours = false, onClose }: { 
           label="Visit"
           required
           htmlFor="sch-kind"
-          hint={procedure ? 'The place is booked with you, for its length.' : kind === 'Teleconsult' ? 'A video or phone call, in Telehealth.' : `In person, ${usualClinic(book, me.name)}.`}
+          hint={procedure ? 'The selected room will be reserved for you for the full length.' : kind === 'Teleconsult' ? 'This will be a video or phone call in Telehealth.' : `This will be an in-person visit at ${usualClinic(book, me.name)}.`}
         >
           <Select id="sch-kind" value={kind} onChange={(e) => setKind(e.target.value as Appointment['kind'])}>
             {VISITS.map((v) => (
@@ -588,9 +590,9 @@ function NewAppointmentDialog({ date, at, until, offHours = false, onClose }: { 
           tidy={false}
           value={purpose}
           onChange={setPurpose}
-          placeholder={procedure ? 'Type or press the mic and say it — e.g. Laparoscopic cholecystectomy' : 'Type or press the mic and say it — e.g. Thyroid review with results'}
+          placeholder={procedure ? 'Type or dictate the reason, e.g. Laparoscopic cholecystectomy' : 'Type or dictate the reason, e.g. Thyroid review with results'}
           typedPlaceholder={procedure ? 'e.g. Laparoscopic cholecystectomy' : 'e.g. Thyroid review with results'}
-          hint="The patient sees this on their appointment."
+          hint="The patient will see this reason with their appointment."
         />
       </div>
     </Dialog>
@@ -640,13 +642,13 @@ function OffHoursDialog({ date, at, from, to, onClose }: { date: string; at: num
         <ActionChoice
           icon={CalendarRange}
           title="Open extra hours"
-          sub={`${range12(openFrom, to)} — the front office can book patients into them, and is told`}
+          sub={`Make ${range12(openFrom, to)} available so the front office can book patients. They will be notified.`}
           onClick={() => open({ kind: 'openHours', date, from: openFrom, to })}
         />
         <ActionChoice
           icon={Syringe}
-          title="Schedule a patient or a procedure here"
-          sub={`From ${time12(at)} — just this one, for you: an early operation, a late review`}
+          title="Schedule a patient or procedure"
+          sub={`Add a single appointment starting at ${time12(at)}, such as an early operation or a late review.`}
           onClick={() => open({ kind: 'schedule', date, at, until: to, offHours: true })}
         />
       </div>
@@ -675,7 +677,7 @@ function OpenHoursDialog({ date: initial, from, to, onClose }: { date?: string; 
       open
       onClose={onClose}
       title="Open extra hours"
-      subtitle="Time outside your working day — for the front office to book patients into, or for your own."
+      subtitle="Make time outside your usual working hours available for appointments."
       icon={CalendarRange}
       width={540}
       footer={
@@ -713,12 +715,12 @@ function OpenHoursDialog({ date: initial, from, to, onClose }: { date?: string; 
         {inOrder && (
           <p id="oh-when" className={cn('rounded-[14px] px-[14px] py-[10px] text-[14px] font-semibold tabular-nums', gone || already ? 'bg-sh-crit-bg text-sh-crit-fg' : 'bg-sh-inner text-sh-text')}>
             {hoursLabel({ date, start, end })}
-            {gone && <span className="block text-[12px] font-normal">These hours have gone.</span>}
-            {already && <span className="block text-[12px] font-normal">You already opened {hoursLabel(already)}.</span>}
+            {gone && <span className="block text-[12px] font-normal">These hours have already passed.</span>}
+            {already && <span className="block text-[12px] font-normal">You have already opened extra hours at {hoursLabel(already)}.</span>}
           </p>
         )}
         <CheckboxRow checked={frontOffice} onChange={setFrontOffice}>
-          The front office can book patients into these hours — they are told
+          Allow the front office to book patients into these hours (they will be notified)
         </CheckboxRow>
         <Field label="Note for the front office" htmlFor="oh-note">
           <TextArea id="oh-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Follow-ups only, no new patients" className="min-h-[72px]" />
@@ -738,8 +740,8 @@ function CloseHoursDialog({ openingId, onClose }: { openingId: string; onClose: 
       title={`Close extra hours ${hoursLabel(o)}?`}
       consequence={
         o.frontOffice
-          ? 'The front office is told they are no longer open for booking. Anyone already booked into them stays booked.'
-          : 'Anyone already scheduled into them stays scheduled.'
+          ? 'The front office will be notified that these hours are no longer available. Patients who are already booked will keep their appointments.'
+          : 'Patients who are already booked will keep their appointments.'
       }
       confirmLabel="Close extra hours"
       onConfirm={() => {

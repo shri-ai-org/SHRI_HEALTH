@@ -87,7 +87,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays }) => {
         expect(rows.some((r) => r.event === 'SCHEDULE.BLOCKED' && r.detail.includes('Conference')) && rows.some((r) => r.event === 'APPOINTMENT.RESCHEDULED' && r.subject === 'SD-P-04'), 'the block and the move are on record')
 
         // Her record says the same: the move under Changed, and the new time as next.
-        await page.open('/patient/ICH-0044208/appointments', { fresh: false })
+        await page.open('/patient/ISH-0044208/appointments', { fresh: false })
         const record = await page.text()
         expect(record.includes('Moved by Dr. Rajsrinivas to Tue 29 Sep, 14:00') && record.includes('Changed'), 'the record keeps the move')
         expect(!(await page.evaluate(`document.querySelector('h1').parentElement.textContent`)).includes('22-Sep'), 'and nothing on the blocked day is next any more')
@@ -106,7 +106,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays }) => {
     {
       name: 'Appointments: a cancellation needs a reason and is kept with it; a move from the day offers the doctor’s free slots; each tells the patient and the front office',
       async run() {
-        await page.open('/patient/ICH-0044262/appointments')
+        await page.open('/patient/ISH-0044262/appointments')
         await page.click('button[aria-label="Cancel: Sodium recheck result and anticoagulation plan"]')
         await page.until(`!!document.querySelector('[role="alertdialog"]')?.textContent.includes('Cancel the appointment?')`, 3000, 'the cancel dialog')
         expect(await page.evaluate(`[...document.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent.includes('Cancel the appointment')).disabled`), 'a reason is required')

@@ -94,7 +94,7 @@ function Palette() {
             aria-autocomplete="list"
             aria-label="Patient search"
             aria-describedby={`${listId}-hint`}
-            placeholder="R. Lakshmanan · ICH-0044051"
+            placeholder="R. Lakshmanan · ISH-0044051"
             autoComplete="off"
             spellCheck={false}
             className="h-[52px] w-full rounded-full bg-sh-control pl-[48px] pr-[18px] text-[14px] text-sh-text placeholder:text-sh-muted"

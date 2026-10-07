@@ -34,6 +34,11 @@ export default ({ page, expect, send, sleep, auditRows, sentItems, toastSays }) 
         expect(await page.evaluate(`!!${panel}.querySelector('button[aria-label^="OPD, 8:00 – 9:20 AM"]')`), 'the morning OPD runs until its queue is seen')
         expect(!(await page.evaluate(`!!${panel}.querySelector('[title^="Meera Krishnan"]')`)), 'a clinic patient is not drawn twice')
 
+        // Every bar does something, however short — a 15-minute gap, a 15-minute booking — but time gone.
+        const inert = await page.evaluate(`[...${panel}.querySelector('[aria-label^="OPD, "]').parentElement.children].filter((c) => c.tagName === 'SPAN' && c.title).map((c) => c.title)`)
+        expect(inert.length === 1 && inert[0] === 'Off hours · 7:00 – 7:30 AM', `only the off hours gone are inert: ${inert.join(' | ')}`)
+        expect(await page.evaluate(`!!${panel}.querySelector('button[aria-label="Free 11:15 – 11:30 AM — schedule an appointment"]') && !!${panel}.querySelector('button[aria-label^="Kavya Reddy, 11:00 – 11:15 AM"]')`), 'the 15-minute gap and the 15-minute booking are buttons')
+
         // Free time to come can be tapped; free time already gone cannot.
         const free = await page.evaluate(`[...${panel}.querySelectorAll('button[aria-label^="Free "]')].map((b) => b.getAttribute('aria-label'))`)
         expect(free.includes('Free 12:30 – 2:00 PM — schedule an appointment'), `free time to come is offered: ${free.join(' | ')}`)
@@ -43,7 +48,7 @@ export default ({ page, expect, send, sleep, auditRows, sentItems, toastSays }) 
         const cards = () => page.evaluate(`[...document.querySelectorAll('ol[aria-label="The day’s events"] > li, ol[aria-label="Upcoming events"] > li')].map((li) => li.textContent)`)
         const all = await cards()
         expect(all.length >= 7 && all[0].includes('AI morning brief'), `the whole day, from the morning brief: ${all.join(' | ')}`)
-        await page.click('[aria-labelledby="sh-today-title"] button', 'Show what is next')
+        await page.click('[aria-labelledby="sh-today-title"] button', 'Show upcoming only')
         await page.until(`document.querySelectorAll('ol[aria-label="Upcoming events"] > li').length === 5`, 3000, 'the next five')
         expect((await cards())[0].includes('OPD') && (await cards())[0].includes('NOW'), 'the OPD on now, first')
 

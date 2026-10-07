@@ -289,8 +289,8 @@ export function DischargeBoardPage() {
         title={`Discharge ${confirming ? patient(confirming.row.patientId).name : ''}?`}
         consequence={
           confirming?.summarySigned
-            ? 'The bed is released to the bed board and the front office is told.'
-            : 'The bed is released to the bed board and the front office is told. The summary is unsigned: it goes to the sign queue, and the discharge stands.'
+            ? 'The bed will be released to the bed board, and the front office will be notified.'
+            : 'The bed will be released to the bed board, and the front office will be notified. The summary is not signed yet, so it will go to the signing queue. The discharge still goes ahead.'
         }
         confirmLabel="Discharge"
         onConfirm={() => {

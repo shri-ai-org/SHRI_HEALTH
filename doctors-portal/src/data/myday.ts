@@ -104,7 +104,8 @@ function clinicalDay(persona: PersonaId, state: DayState): DayBlock[] {
         { text: `${critical.length} critical`, tone: 'critical' },
       ],
       icon: 'Sunrise',
-      to: '/results/inbox',
+      // The brief itself (S-06-18): what changed overnight, the critical results first.
+      to: '/brief',
       ai: 'AI-212',
       band: 'HIGH',
     },

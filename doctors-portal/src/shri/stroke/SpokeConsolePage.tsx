@@ -65,7 +65,7 @@ const SIX = [
 
 /** The spoke this console serves — Pollachi, a general physician and no neurologist. */
 const SITE = facility('IPL')
-const HUB = facility('ICH')
+const HUB = facility('ISH')
 
 export function SpokeConsolePage() {
   const navigate = useNavigate()

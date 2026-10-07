@@ -16,10 +16,13 @@
  *
  * Hovering anywhere on the row says what is at that minute, how long is left
  * of it, and what comes next — inside the OPD on now, the patient the queue
- * calls next. A bar says as much as fits (container queries):
- * its icon, name and time; a shorter time ("8–9 AM") where the full one does
- * not fit; its icon alone on a half-hour. One narrower than a 44px target is
- * not a button. Below about 1040px the row scrolls sideways, opened
+ * calls next. A bar says as much as fits (container queries): its icon, name
+ * and time; a shorter time ("8–9 AM") where the full one does not fit; its
+ * icon alone on a half-hour. EVERY bar does something, however narrow — an
+ * activity opens its screen, free time schedules, off hours offer extra hours,
+ * blocked time offers to unblock — except free time and off hours already gone.
+ * A bar is as wide as its time, so the layout audit does not hold it to 44px
+ * (`data-timeline-bar`); each activity is also a full-size card under the row. Below about 1040px the row scrolls sideways, opened
  * at Now. The model is `dayModel.ts`.
  */
 
@@ -34,6 +37,7 @@ import { iconFor } from '../ui/icons'
 import { Icon } from '../ui/primitives'
 
 import { duration, isActivity, type ActivityKind, type DayModel, type Span, type TimelineItem } from './dayModel'
+import { FREE, HATCH_BLOCKED, HATCH_OFF, actStyle } from './timelineStyle'
 
 /** The hours drawn: where they start, and how many minutes they span. */
 type Scale = { r0: number; len: number }
@@ -42,21 +46,13 @@ const at = (s: Scale, min: number) => pct(s, min - s.r0)
 /** The row's width for twelve hours before it scrolls, less its side padding — more hours, wider. */
 const MIN_W_12H = 1040 - 52
 
-/** An activity's colour and ink, with a lit top edge — an edge, not a wash, so the ink keeps its contrast. */
-export const actStyle = (k: ActivityKind): CSSProperties => ({
-  background: `var(--act-${k})`,
-  color: `var(--act-${k}-ink)`,
-  boxShadow: k === 'brief' ? 'inset 0 0 0 1.5px var(--act-brief-edge)' : 'inset 0 1px 0 rgb(255 255 255 / 0.28)',
-})
-export const HATCH_OFF = 'bg-[repeating-linear-gradient(135deg,var(--off-hatch)_0_2px,var(--off-fill)_2px_8px)]'
-export const HATCH_BLOCKED = 'bg-[repeating-linear-gradient(135deg,var(--crit-bg)_0_6px,transparent_6px_10px)]'
-export const FREE = 'border-[1.5px] border-dashed border-(--avail-edge) bg-(--avail-fill) text-(--avail-ink)'
 
 export function DayTimeline({
   model,
   nextPatient,
   onSchedule,
   onOffHours,
+  onBlocked,
 }: {
   model: DayModel
   /** The OPD queue's next patient, today — who its Call button calls. */
@@ -65,6 +61,8 @@ export function DayTimeline({
   onSchedule: (at: number, until: number) => void
   /** Off hours tapped at a minute: open extra hours there, or schedule there anyway. */
   onOffHours: (at: number, off: Span) => void
+  /** Blocked time tapped: offer to unblock it. */
+  onBlocked: (blockId: string) => void
 }) {
   const navigate = useNavigate()
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -103,8 +101,11 @@ export function DayTimeline({
     const at = clientX !== undefined && rowRef.current ? minuteAt(clientX) : first
     return Math.min(Math.max(at, first), item.end - Math.min(10, item.end - first))
   }
-  const tap = (item: TimelineItem, clientX?: number) =>
-    item.kind === 'off' ? onOffHours(tapped(item, clientX), [item.start, item.end]) : onSchedule(tapped(item, clientX), item.end)
+  const tap = (item: TimelineItem, clientX?: number) => {
+    if (item.kind === 'blocked') return item.entry?.block && onBlocked(item.entry.block.id)
+    if (item.kind === 'off') return onOffHours(tapped(item, clientX), [item.start, item.end])
+    onSchedule(tapped(item, clientX), item.end)
+  }
 
   function onMove(e: PointerEvent<HTMLDivElement>) {
     if (e.pointerType !== 'mouse' || !rowRef.current || !wrapRef.current) return
@@ -209,7 +210,8 @@ function Ticks({ marks, scale }: { marks: number[]; scale: Scale }) {
 function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Scale; px: number; onOpen: (to: string) => void; onTap: (item: TimelineItem, clientX?: number) => void }) {
   const place: CSSProperties = { left: `calc(${at(scale, item.start)} + 2px)`, width: `calc(${pct(scale, item.drawEnd - item.start)} - 4px)` }
   const when = range12(item.start, item.end)
-  const tappable = px >= 44
+  /** Anything drawn is tapped — a sliver too thin to see is not drawn as a control. */
+  const tappable = px >= 2
   const base = '@container absolute inset-y-0 flex min-w-0 items-center overflow-hidden rounded-[12px] px-[6px] text-left'
   /** The time, full where it fits, short where it does not — for free time, how long. */
   const time = (
@@ -224,6 +226,7 @@ function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Sc
     return (
       <button
         type="button"
+        data-timeline-bar=""
         onClick={(e) => onTap(item, e.detail > 0 ? e.clientX : undefined)}
         aria-label={`Off hours ${when} — open extra hours or schedule here`}
         title={`Off hours ${when} — tap to open extra hours or schedule here`}
@@ -234,8 +237,16 @@ function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Sc
   }
 
   if (item.kind === 'blocked') {
+    const Tag = tappable && item.entry?.block ? 'button' : 'span'
     return (
-      <span title={`${item.title} · ${when}`} className={cn(base, HATCH_BLOCKED, 'border-[1.5px] border-dashed border-sh-crit text-sh-crit-fg')} style={place}>
+      <Tag
+        {...(Tag === 'button'
+          ? { type: 'button' as const, 'data-timeline-bar': '', onClick: () => onTap(item), 'aria-label': `${item.title} ${when} — unblock` }
+          : {})}
+        title={`${item.title} · ${when}${Tag === 'button' ? ' — tap to unblock' : ''}`}
+        className={cn(base, HATCH_BLOCKED, 'border-[1.5px] border-dashed border-sh-crit text-sh-crit-fg', Tag === 'button' && 'cursor-pointer')}
+        style={place}
+      >
         <span className="flex w-full min-w-0 items-center justify-center gap-[6px] @min-[70px]:justify-start">
           <Icon icon={Ban} size={15} className="hidden shrink-0 @min-[16px]:block" />
           <span className="hidden min-w-0 flex-col @min-[70px]:flex">
@@ -243,7 +254,7 @@ function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Sc
             <span className="truncate text-[11px]/[14px]">{item.title.replace(/^Blocked · /, '')}</span>
           </span>
         </span>
-      </span>
+      </Tag>
     )
   }
 
@@ -258,6 +269,7 @@ function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Sc
     return tappable ? (
       <button
         type="button"
+        data-timeline-bar=""
         onClick={(e) => onTap(item, e.detail > 0 ? e.clientX : undefined)}
         aria-label={`${item.title} ${when} — schedule an appointment`}
         title={`${item.title} ${when} — tap a time to schedule`}
@@ -289,7 +301,7 @@ function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Sc
   const own = actStyle(k)
   const style = { ...place, ...own, boxShadow: `${own.boxShadow}, 0 6px 14px -10px rgb(0 0 0 / 0.55)` }
   return tappable && e.to ? (
-    <button type="button" onClick={() => onOpen(e.to!)} aria-label={`${item.title}, ${when}${e.detail ? `, ${e.detail}` : ''}`} title={`${item.title} · ${when}`} className={cn(cls, 'transition-[filter] duration-150 hover:brightness-105')} style={style}>
+    <button type="button" data-timeline-bar="" onClick={() => onOpen(e.to!)} aria-label={`${item.title}, ${when}${e.detail ? `, ${e.detail}` : ''}`} title={`${item.title} · ${when}`} className={cn(cls, 'transition-[filter] duration-150 hover:brightness-105')} style={style}>
       {inner}
     </button>
   ) : (
@@ -309,7 +321,7 @@ function HoverCard({ min, item, next, nextPatient, style }: { min: number; item?
         ? { dot: 'var(--line-strong)', name: 'Free', aside: 'gone' }
         : { dot: 'var(--avail-edge)', name: item.extra ? 'Available · extra hours' : 'Available', aside: `${left} min free` }
       : item.kind === 'off'
-        ? { dot: 'var(--off-hatch)', name: 'Off hours', aside: item.past ? '' : 'tap to open or schedule' }
+        ? { dot: 'var(--off-hatch)', name: 'Off hours', aside: item.past ? '' : 'Tap for options' }
         : item.kind === 'blocked'
           ? { dot: 'var(--crit)', name: item.title, aside: range12(item.start, item.end) }
           : { dot: `var(--act-${item.kind})`, name: item.title, aside: range12(item.start, item.end) }

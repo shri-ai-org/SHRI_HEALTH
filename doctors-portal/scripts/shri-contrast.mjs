@@ -31,7 +31,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const BASE = process.env.BASE ?? 'http://localhost:5180'
-const ROUTES = (process.env.ROUTES ?? '/,/patient/ICH-0044051').split(',').filter(Boolean)
+const ROUTES = (process.env.ROUTES ?? '/,/patient/ISH-0044051').split(',').filter(Boolean)
 const THEMES = (process.env.THEMES ?? 'light,dark').split(',')
 const WIDTH = Number(process.env.WIDTH ?? 1440)
 const PORT = Number(process.env.CDP_PORT ?? 9388)
