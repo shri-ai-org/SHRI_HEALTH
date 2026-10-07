@@ -52,3 +52,6 @@ pnpm-debug.log*
 Thumbs.db
 *.suo
 *.sw?
+
+# Teleconsult transcripts the speech service stores (backend/telehealth) — patient data, never committed.
+backend/data/

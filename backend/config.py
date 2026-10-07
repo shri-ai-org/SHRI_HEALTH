@@ -16,10 +16,15 @@ Settings, from the environment — nothing else configures the service.
 """
 
 import os
+import sys
 from dataclasses import dataclass, field
 
 
 def _has_cuda() -> bool:
+    # A Mac has no CUDA, and loading ctranslate2 just to ask brings its own OpenMP, which crashes the
+    # Indic engine's torch on Intel Macs (a segfault while the models load).
+    if sys.platform == 'darwin':
+        return False
     try:
         import ctranslate2
 

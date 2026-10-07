@@ -1,0 +1,263 @@
+// What Telehealth remembers: each teleconsult's session, its live transcript, the
+// official Meet transcript once reconciled, and what was recorded — kept on this
+// device (localStorage; the recording itself in IndexedDB, recordingStore.ts) and
+// sent to the transcript store on the server (teleApi.ts) whenever it can be
+// reached. A line the server has not yet confirmed stays marked until it has, so a
+// dropped connection costs nothing.
+//
+// Per patient it also keeps the Meet link, the recording consent and the note
+// draft, so leaving the session for the prescription and coming back finds them.
+//
+// A reload does not end the call — Meet carries on in its own tab — so the open
+// session is kept; only its recording stops, since the microphone does not outlive
+// the page. Any other session left open is closed at its last heard line.
+//
+// Each Start recording makes its own recording (a part), so stopping and starting
+// again in one call never overwrites what was recorded before.
+
+import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
+
+import { DEMO_SESSION, DEMO_SID } from './demoVisits'
+import { teleApi, teleApiBase } from './teleApi'
+import type { OfficialRecord, Speaker, TeleSegment, TeleSessionMeta } from './teleTypes'
+
+export interface RecordingInfo {
+  /** Where its pieces are kept in IndexedDB. */
+  key: string
+  mime: string
+  /** When the recorder started — the captions' zero. */
+  startedAt: number
+  bytes: number
+  /** The call's picture is in it, not only its sound. */
+  video: boolean
+  removed?: boolean
+}
+
+export interface TeleSessionRecord extends TeleSessionMeta {
+  segments: TeleSegment[]
+  /** Lines the server has not confirmed yet. */
+  unsynced: string[]
+  metaDirty: boolean
+  /** Bumped by every change to the session or its official transcript, so a sync never clears a change it did not send. */
+  rev: number
+  official?: OfficialRecord
+  officialDirty?: boolean
+  recordings?: RecordingInfo[]
+  /** The demo day's finished visit: shown, never sent to the server. */
+  demo?: boolean
+}
+
+export type ChannelState = 'off' | 'connecting' | 'live' | 'browser' | 'error'
+export type SyncState = 'none' | 'syncing' | 'server' | 'device'
+
+export interface LiveCapture {
+  sid: string
+  startedAt: number
+  recording: 'recording' | 'finalising' | 'off'
+  channels: Record<Speaker, ChannelState>
+  partials: Record<Speaker, string>
+  levels: Record<Speaker, number>
+  notices: string[]
+}
+
+interface TeleState {
+  sessions: Record<string, TeleSessionRecord>
+  /** Each patient's most recent session. */
+  latest: Record<string, string>
+  consent: Record<string, 'given' | 'declined'>
+  meetUri: Record<string, string>
+  notes: Record<string, string>
+  /** When the meeting link was copied or sent to the patient. */
+  invited: Record<string, number>
+  /** When the doctor marked the visit done — after the call, once the notes are finished. */
+  done: Record<string, number>
+  /** The session whose call is open in this page — never kept across a reload. */
+  activeSid?: string
+  live?: LiveCapture
+  sync: SyncState
+
+  setConsent: (patientId: string, c: 'given' | 'declined') => void
+  setMeetUri: (patientId: string, uri: string) => void
+  setNote: (patientId: string, note: string) => void
+  markInvited: (patientId: string) => void
+  markDone: (patientId: string) => void
+  reopen: (patientId: string) => void
+  begin: (meta: Omit<TeleSessionMeta, 'id' | 'startedAt'>) => string
+  patchSession: (sid: string, patch: Partial<TeleSessionRecord>) => void
+  addSegment: (sid: string, seg: TeleSegment) => void
+  setOfficial: (sid: string, o: OfficialRecord) => void
+  /** What is recorded on this device — not the server's business, so it is never sent. */
+  setRecording: (sid: string, r: RecordingInfo) => void
+  end: (sid: string) => void
+  setLive: (fn: (l: LiveCapture | undefined) => LiveCapture | undefined) => void
+  markSynced: (sid: string, ids: string[], rev: number) => void
+  setSync: (s: SyncState) => void
+}
+
+export const useTele = create<TeleState>()(
+  persist(
+    (set, get) => ({
+      sessions: { [DEMO_SID]: DEMO_SESSION },
+      latest: { [DEMO_SESSION.patientId]: DEMO_SID },
+      invited: {},
+      done: { [DEMO_SESSION.patientId]: DEMO_SESSION.endedAt },
+      consent: {},
+      meetUri: {},
+      notes: {},
+      sync: 'none',
+
+      setConsent: (patientId, c) => {
+        set((s) => ({ consent: { ...s.consent, [patientId]: c } }))
+        const sid = get().activeSid
+        if (sid && get().sessions[sid]?.patientId === patientId) get().patchSession(sid, { consent: c })
+      },
+      setMeetUri: (patientId, uri) => {
+        set((s) => ({ meetUri: { ...s.meetUri, [patientId]: uri } }))
+      },
+      setNote: (patientId, note) => set((s) => ({ notes: { ...s.notes, [patientId]: note } })),
+      markInvited: (patientId) => set((s) => (s.invited[patientId] ? s : { invited: { ...s.invited, [patientId]: Date.now() } })),
+      markDone: (patientId) => set((s) => ({ done: { ...s.done, [patientId]: Date.now() } })),
+      reopen: (patientId) =>
+        set((s) => {
+          const done = { ...s.done }
+          delete done[patientId]
+          return { done }
+        }),
+
+      begin: (meta) => {
+        const startedAt = Date.now()
+        const id = `TC-${meta.patientId}-${startedAt.toString(36)}`.replace(/[^A-Za-z0-9._:-]/g, '-')
+        const rec: TeleSessionRecord = { ...meta, id, startedAt, segments: [], unsynced: [], metaDirty: true, rev: 0 }
+        set((s) => ({ sessions: { ...s.sessions, [id]: rec }, latest: { ...s.latest, [meta.patientId]: id }, activeSid: id }))
+        scheduleSync()
+        return id
+      },
+      patchSession: (sid, patch) => {
+        set((s) => (s.sessions[sid] ? { sessions: { ...s.sessions, [sid]: { ...s.sessions[sid], ...patch, metaDirty: true, rev: s.sessions[sid].rev + 1 } } } : s))
+        scheduleSync()
+      },
+      addSegment: (sid, seg) => {
+        set((s) => {
+          const r = s.sessions[sid]
+          if (!r) return s
+          return { sessions: { ...s.sessions, [sid]: { ...r, segments: [...r.segments, seg], unsynced: [...r.unsynced, seg.id] } } }
+        })
+        scheduleSync()
+      },
+      setOfficial: (sid, o) => {
+        set((s) => (s.sessions[sid] ? { sessions: { ...s.sessions, [sid]: { ...s.sessions[sid], official: o, officialDirty: true, rev: s.sessions[sid].rev + 1 } } } : s))
+        scheduleSync()
+      },
+      setRecording: (sid, info) =>
+        set((s) => {
+          const r = s.sessions[sid]
+          if (!r) return s
+          const list = r.recordings ?? []
+          const recordings = list.some((x) => x.key === info.key) ? list.map((x) => (x.key === info.key ? info : x)) : [...list, info]
+          return { sessions: { ...s.sessions, [sid]: { ...r, recordings } } }
+        }),
+      end: (sid) => {
+        set((s) => ({
+          sessions: s.sessions[sid] ? { ...s.sessions, [sid]: { ...s.sessions[sid], endedAt: Date.now(), metaDirty: true, rev: s.sessions[sid].rev + 1 } } : s.sessions,
+          activeSid: s.activeSid === sid ? undefined : s.activeSid,
+        }))
+        scheduleSync()
+      },
+      setLive: (fn) => set((s) => ({ live: fn(s.live) })),
+      markSynced: (sid, ids, rev) =>
+        set((s) => {
+          const r = s.sessions[sid]
+          if (!r) return s
+          const done = new Set(ids)
+          return {
+            sessions: {
+              ...s.sessions,
+              [sid]: { ...r, unsynced: r.unsynced.filter((i) => !done.has(i)), ...(r.rev === rev ? { metaDirty: false, officialDirty: false } : {}) },
+            },
+          }
+        }),
+      setSync: (sync) => set({ sync }),
+    }),
+    {
+      name: 'shri.tele',
+      version: 2,
+      // Version 2 brought the demo day's finished visit, and the invited and done marks.
+      migrate: (persisted, from) => {
+        const st = (persisted ?? {}) as Partial<TeleState>
+        if (from < 2) {
+          const pid = DEMO_SESSION.patientId
+          st.sessions = { [DEMO_SID]: DEMO_SESSION, ...st.sessions }
+          st.latest = { [pid]: DEMO_SID, ...st.latest }
+          st.done = { [pid]: DEMO_SESSION.endedAt, ...st.done }
+          st.invited = st.invited ?? {}
+        }
+        return st as TeleState
+      },
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({ sessions: s.sessions, latest: s.latest, consent: s.consent, meetUri: s.meetUri, notes: s.notes, invited: s.invited, done: s.done, activeSid: s.activeSid }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return
+        const sessions = { ...state.sessions }
+        for (const [id, r] of Object.entries(sessions))
+          if (!r.endedAt && id !== state.activeSid) sessions[id] = { ...r, endedAt: r.segments.at(-1)?.endMs ?? r.startedAt, metaDirty: true, rev: (r.rev ?? 0) + 1 }
+        useTele.setState({ sessions })
+        scheduleSync()
+      },
+    },
+  ),
+)
+
+/** The patient's answer to “may we record?”, or undefined while it has not been asked. */
+export const consentOf = (s: TeleState, patientId: string): 'given' | 'declined' | undefined => s.consent[patientId]
+
+/* ------------------------------------------------------------ to the server */
+
+let timer = 0
+let running = false
+
+/** Sends what the server has not confirmed, shortly; again every 15 s for as long as it cannot be reached. */
+export function scheduleSync(delay = 1200) {
+  window.clearTimeout(timer)
+  timer = window.setTimeout(() => void syncAll(), delay)
+}
+
+async function syncAll() {
+  if (running) return scheduleSync(800)
+  const st = useTele.getState()
+  const dirty = Object.values(st.sessions).filter((r) => !r.demo && (r.metaDirty || r.unsynced.length || r.officialDirty))
+  if (!teleApiBase()) {
+    st.setSync(Object.values(st.sessions).some((r) => !r.demo) ? 'device' : 'none')
+    return
+  }
+  if (!dirty.length) {
+    if (st.sync === 'syncing' || st.sync === 'device') st.setSync('server')
+    return
+  }
+  running = true
+  st.setSync('syncing')
+  try {
+    for (const r of dirty) {
+      const { segments, unsynced, official, officialDirty, rev } = useTele.getState().sessions[r.id]
+      // The session goes first, every time anything does: the server keeps lines only for a session it has.
+      await teleApi.putSession(r)
+      const pending = new Set(unsynced)
+      const batch = segments.filter((s) => pending.has(s.id)).slice(0, 500)
+      if (batch.length) await teleApi.addSegments(r.id, batch)
+      if (official && officialDirty) await teleApi.putOfficial(r.id, official)
+      useTele.getState().markSynced(
+        r.id,
+        batch.map((b) => b.id),
+        rev,
+      )
+    }
+    const left = Object.values(useTele.getState().sessions).some((r) => !r.demo && (r.metaDirty || r.unsynced.length || r.officialDirty))
+    useTele.getState().setSync(left ? 'syncing' : 'server')
+    if (left) scheduleSync(300)
+  } catch {
+    useTele.getState().setSync('device')
+    scheduleSync(15_000)
+  } finally {
+    running = false
+  }
+}
