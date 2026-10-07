@@ -15,8 +15,8 @@
  *   • Cancel — a reason is required and kept on the record.
  *   • Schedule — a patient into the doctor's own free time, opened only by
  *     tapping free time still to come on the Today panel's timeline, at the
- *     minute tapped: the patient, the visit and why. The patient and the
- *     front office are told.
+ *     minute tapped: the patient, the visit and why — typed or dictated. The
+ *     patient and the front office are told.
  *
  * Free slots come from the doctor's own session templates, less what is
  * booked and what is blocked (`logic/schedule.ts`) — a lookup, not a guess.
@@ -43,6 +43,7 @@ import { Why } from '../ui/Disclosure'
 import { CheckboxRow, Field, Select, TextArea, TextInput } from '../ui/forms'
 import { Icon, Pill } from '../ui/primitives'
 import { Segmented } from '../ui/Segmented'
+import { VoiceField } from '../ui/VoiceField'
 
 const CANCEL_REASONS = ['Clinician unavailable', 'No longer needed', 'Patient asked to cancel', 'Booked in error', 'Other'] as const
 /** Today on the demo clock — the same "now" every screen uses, never the machine's. */
@@ -485,9 +486,18 @@ function NewAppointmentDialog({ date, at, until, onClose }: { date: string; at: 
             ))}
           </Select>
         </Field>
-        <Field label="Reason" required htmlFor="sch-purpose" hint="The patient sees this on their appointment.">
-          <TextInput id="sch-purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Thyroid review with results" />
-        </Field>
+        <VoiceField
+          id="sch-purpose"
+          label="Reason"
+          required
+          rows={2}
+          tidy={false}
+          value={purpose}
+          onChange={setPurpose}
+          placeholder="Type or press the mic and say it — e.g. Thyroid review with results"
+          typedPlaceholder="e.g. Thyroid review with results"
+          hint="The patient sees this on their appointment."
+        />
       </div>
     </Dialog>
   )

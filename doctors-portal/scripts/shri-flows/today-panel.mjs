@@ -70,7 +70,7 @@ export default ({ page, expect, send, sleep, auditRows, sentItems, toastSays }) 
       },
     },
     {
-      name: 'Today: tapping free time at 1:40 PM schedules the patient at 1:40 PM, without asking for a time; on the timeline and the calendar at once; the patient and the front office told; audited',
+      name: 'Today: tapping free time at 1:40 PM schedules the patient at 1:40 PM, without asking for a time, the reason typed or dictated; on the timeline and the calendar at once; the patient and the front office told; audited',
       async run() {
         await page.open('/')
         await page.until(`!!${panel}?.querySelector('button[aria-label="Free 12:30 – 2:00 PM — schedule an appointment"]')`, 3000, 'the free afternoon')
@@ -82,6 +82,7 @@ export default ({ page, expect, send, sleep, auditRows, sentItems, toastSays }) 
         expect((await page.evaluate(`document.querySelector('#sch-when').textContent`)) === 'Monday 21 September · 1:40 – 2:00 PM', `the minute tapped, to where the free time ends: ${await page.evaluate(`document.querySelector('#sch-when').textContent`)}`)
         expect(!(await page.evaluate(`!!document.querySelector('[role="dialog"] [role="radio"]')`)), 'no time to choose again')
         expect(await page.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.includes('Schedule appointment')).disabled`), 'nothing is scheduled without a patient and a reason')
+        expect(await page.evaluate(`!!document.querySelector('[role="dialog"] button[aria-label="Dictate into reason"]')`), 'the reason can be dictated')
 
         await selectIn('#sch-patient', 'SD-P-03')
         await page.type('#sch-purpose', 'Blood pressure review')
