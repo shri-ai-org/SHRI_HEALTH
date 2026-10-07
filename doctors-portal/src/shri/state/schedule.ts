@@ -42,6 +42,8 @@ export interface BookedHere extends Omit<Appointment, 'at'> {
   at: string
   /** The appointment it replaces, when it is a move. */
   movedFrom?: string
+  /** How long it was booked for, where the doctor chose the slot; otherwise the clinic's slot length. */
+  minutes?: number
 }
 
 interface ScheduleState {

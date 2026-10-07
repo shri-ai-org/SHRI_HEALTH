@@ -115,6 +115,8 @@ export type ScheduleDialog =
   | { kind: 'unblock'; blockId: string }
   | { kind: 'move'; appointmentId: string }
   | { kind: 'cancel'; appointmentId: string }
+  /** Book a patient into free time: the day, the free stretch (minutes after midnight), and the slot chosen, if one was. */
+  | { kind: 'book'; date: string; from: number; to: number; at?: number }
 
 const KEY = 'shri.ui'
 /**

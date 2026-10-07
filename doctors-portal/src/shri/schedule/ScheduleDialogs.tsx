@@ -13,20 +13,27 @@
  *   • Move — the doctor's next free slots (same clinic first), or hand it to
  *     the front office.
  *   • Cancel — a reason is required and kept on the record.
+ *   • Book — a patient into the doctor's own free time, opened only by
+ *     tapping free time on the Today panel, from now on: the half-hour, the
+ *     patient, the visit and why. The patient and the front office are told.
  *
  * Free slots come from the doctor's own session templates, less what is
  * booked and what is blocked (`logic/schedule.ts`) — a lookup, not a guess.
  */
 
-import { Ban, CalendarClock, CalendarX2, Check, PhoneForwarded, X } from 'lucide-react'
+import { format } from 'date-fns'
+import { Ban, CalendarClock, CalendarPlus, CalendarX2, Check, PhoneForwarded, X } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
-import { patient } from '@/data/kit'
+import { PATIENTS, patient } from '@/data/kit'
+import type { Appointment } from '@/data/record'
 import { useCurrentStaff } from '@/store/session'
 
 import { cn } from '../lib/cn'
-import { NOW } from '../lib/clock'
-import { affectedBy, dayIso, freeSlots, rangeLabel, slotLabel, useAppointments, useScheduleActions, whenLabel, type Decision, type ShriAppointment, type Slot } from '../logic/schedule'
+import { NOW, range12 } from '../lib/clock'
+import { affectedBy, dayIso, freeSlots, rangeLabel, slotLabel, useAppointments, useScheduleActions, usualClinic, whenLabel, type Decision, type ShriAppointment, type Slot } from '../logic/schedule'
+import { atMinute, dayModel } from '../myday/dayModel'
+import { useMyDay } from '../myday/useMyDay'
 import { BLOCK_REASONS, useSchedule, type BlockReason } from '../state/schedule'
 import { useShri } from '../state/store'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -47,6 +54,7 @@ export function ScheduleDialogs() {
   if (!dialog) return null
   if (dialog.kind === 'block') return <BlockDialog from={dialog.from ?? useShri.getState().selectedDay} onClose={close} />
   if (dialog.kind === 'unblock') return <UnblockDialog blockId={dialog.blockId} onClose={close} />
+  if (dialog.kind === 'book') return <BookDialog date={dialog.date} from={dialog.from} to={dialog.to} at={dialog.at} onClose={close} />
   const a = book.find((x) => x.id === dialog.appointmentId)
   if (!a) return null
   return dialog.kind === 'move' ? <MoveDialog appointment={a} onClose={close} /> : <CancelDialog appointment={a} onClose={close} />
@@ -383,6 +391,118 @@ function CancelDialog({ appointment: a, onClose }: { appointment: ShriAppointmen
             <TextInput id="cx-other" value={other} onChange={(e) => setOther(e.target.value)} />
           </Field>
         )}
+      </div>
+    </Dialog>
+  )
+}
+
+/* ------------------------------------------------------------ Book */
+
+const VISITS: Appointment['kind'][] = ['Follow-up', 'Review', 'Teleconsult', 'Procedure']
+const dateOfIso = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function BookDialog({ date, from, to, at, onClose }: { date: string; from: number; to: number; at?: number; onClose: () => void }) {
+  const me = useCurrentStaff()
+  const book = useAppointments()
+  const actions = useScheduleActions()
+  const { dayInfo } = useMyDay()
+  const day = dayInfo(dateOfIso(date))
+  // The half-hours of this free stretch that are still free — live, so a slot just booked is gone.
+  const slots = dayModel(day).slots.filter(([a, b]) => a >= from && b <= to)
+  const [chosen, setChosen] = useState<number | undefined>(at ?? slots[0]?.[0])
+  const slot = slots.find(([a]) => a === chosen) ?? slots[0]
+  const [patientId, setPatientId] = useState('')
+  const [kind, setKind] = useState<Appointment['kind']>('Follow-up')
+  const [purpose, setPurpose] = useState('')
+  const people = useMemo(() => [...PATIENTS].filter((p) => p.name).sort((x, y) => x.name.localeCompare(y.name)), [])
+  const ready = slot !== undefined && patientId !== '' && purpose.trim() !== ''
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Book an appointment"
+      subtitle={`${format(day.date, 'EEEE d MMMM')} · free ${range12(from, to)}. The patient and the front office are told.`}
+      icon={CalendarPlus}
+      width={560}
+      footer={
+        <>
+          <Pill variant="control" size="lg" icon={X} onClick={onClose}>
+            Cancel
+          </Pill>
+          <Pill
+            variant="primary"
+            size="lg"
+            icon={Check}
+            disabled={!ready}
+            onClick={() => {
+              actions.book({
+                patientId,
+                at: atMinute(day.date, slot![0]),
+                minutes: slot![1] - slot![0],
+                kind,
+                clinic: kind === 'Teleconsult' ? 'Teleconsult' : usualClinic(book, me.name),
+                purpose: purpose.trim(),
+              })
+              onClose()
+            }}
+          >
+            Book appointment
+          </Pill>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-[14px]">
+        {slots.length === 0 ? (
+          <p className="rounded-[14px] bg-sh-inner p-[12px] text-[13px] text-sh-text-2">This time is no longer free. Close and choose another free time.</p>
+        ) : (
+          <div>
+            <p id="bk-time-label" className="mb-[6px] text-[13px] font-medium text-sh-text-2">
+              Time
+            </p>
+            <div role="radiogroup" aria-labelledby="bk-time-label" className="grid grid-cols-2 gap-[8px] sm:grid-cols-3">
+              {slots.map(([a, b]) => (
+                <button
+                  key={a}
+                  type="button"
+                  role="radio"
+                  aria-checked={slot?.[0] === a}
+                  onClick={() => setChosen(a)}
+                  className={cn(
+                    'flex min-h-[48px] flex-col items-center justify-center rounded-[14px] px-[8px] text-[13px] font-medium tabular-nums transition-colors duration-150',
+                    slot?.[0] === a ? 'bg-sh-primary text-sh-on-primary' : 'bg-sh-inner text-sh-text hover:bg-sh-hover-strong',
+                  )}
+                >
+                  {range12(a, b)}
+                  <span className={cn('text-[11px] font-normal', slot?.[0] === a ? 'opacity-80' : 'text-sh-text-3')}>{b - a} min</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <Field label="Patient" required htmlFor="bk-patient">
+          <Select id="bk-patient" value={patientId} onChange={(e) => setPatientId(e.target.value)}>
+            <option value="">Choose a patient…</option>
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} · {p.age}/{p.sex} · {p.uhid}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Visit" required htmlFor="bk-kind" hint={kind === 'Teleconsult' ? 'A video or phone call, in Telehealth.' : `In person, ${usualClinic(book, me.name)}.`}>
+          <Select id="bk-kind" value={kind} onChange={(e) => setKind(e.target.value as Appointment['kind'])}>
+            {VISITS.map((v) => (
+              <option key={v}>{v}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Reason" required htmlFor="bk-purpose" hint="The patient sees this on their appointment.">
+          <TextInput id="bk-purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Thyroid review with results" />
+        </Field>
       </div>
     </Dialog>
   )

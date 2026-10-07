@@ -84,8 +84,23 @@ html.shri-active body::before {
   --crit-solid: #c42f2f; --on-crit-solid: #ffffff;
   --warn-bg: #fff0e0; --warn-fg: #8a4b0c; --warn: #ff9a3d;
   --norm-bg: #e3f7ea; --norm-fg: #16693a; --norm: #3dbe72;
-  /* The day grid's cell edges (myday/HourGrid): the accent and --norm are under 3:1 on white, so light gets deeper edges. */
-  --busy-edge: #5b5ce0; --free-edge: #16693a; --free-fill: #c9eed8;
+  /* Chart edges (record/TrendCard, patients/CohortsPage): the accent and --norm are under 3:1 on white, so light gets deeper edges. */
+  --busy-edge: #5b5ce0; --free-edge: #16693a;
+  /* The day timeline (myday/DayTimeline): a colour for each kind of activity, its ink 4.5:1 or more on it;
+     free time a dashed green, off hours hatched grey, the Now line red. */
+  --act-brief: #d6e6ff; --act-brief-ink: #1e3a8a; --act-brief-edge: #93b8f5;
+  --act-opd: #15803d; --act-opd-ink: #ffffff;
+  --act-tele: #7c3aed; --act-tele-ink: #ffffff;
+  --act-ward: #f59e0b; --act-ward-ink: #3b1d00;
+  --act-paper: #475569; --act-paper-ink: #ffffff;
+  --act-discharge: #0f766e; --act-discharge-ink: #ffffff;
+  --act-stroke: #be185d; --act-stroke-ink: #ffffff;
+  --act-patient: #2563eb; --act-patient-ink: #ffffff;
+  --act-procedure: #0369a1; --act-procedure-ink: #ffffff;
+  --act-other: #57534e; --act-other-ink: #ffffff;
+  --avail-fill: #ecfaf1; --avail-edge: #22a55a; --avail-ink: #146c3a;
+  --off-fill: #f4f4f6; --off-hatch: #dcdce2;
+  --now-line: #e5342f; --now-ink: #c42f2f;
   --pend-bg: #e9e9fe; --pend-fg: #3f40b8; --pend: #9b9cf7;
   --neu-bg: #f2f2f4;  --neu-fg: #33333b;  --neu: #b4b4bd;
 
@@ -196,7 +211,20 @@ html[data-theme='dark'] .shri-root {
   --crit-solid: #ff6b6b; --on-crit-solid: #1a0707;
   --warn-bg: rgba(255, 176, 32, 0.16); --warn-fg: #ffc766; --warn: #ffb020;
   --norm-bg: rgba(52, 211, 153, 0.16); --norm-fg: #6ee7b7; --norm: #34d399;
-  --busy-edge: #d4ff3a; --free-edge: #34d399; --free-fill: rgba(52, 211, 153, 0.3);
+  --busy-edge: #d4ff3a; --free-edge: #34d399;
+  --act-brief: #1d3a66; --act-brief-ink: #d6e6ff; --act-brief-edge: #3b68b0;
+  --act-opd: #15803d; --act-opd-ink: #ffffff;
+  --act-tele: #7c3aed; --act-tele-ink: #ffffff;
+  --act-ward: #f59e0b; --act-ward-ink: #2a1500;
+  --act-paper: #52607a; --act-paper-ink: #ffffff;
+  --act-discharge: #0f766e; --act-discharge-ink: #ffffff;
+  --act-stroke: #be185d; --act-stroke-ink: #ffffff;
+  --act-patient: #2563eb; --act-patient-ink: #ffffff;
+  --act-procedure: #0369a1; --act-procedure-ink: #ffffff;
+  --act-other: #57534e; --act-other-ink: #ffffff;
+  --avail-fill: rgba(34, 197, 94, 0.12); --avail-edge: #22c55e; --avail-ink: #86efac;
+  --off-fill: #2a2a2d; --off-hatch: #404045;
+  --now-line: #ff5a52; --now-ink: #ff8a8a;
   --pend-bg: rgba(31, 76, 255, 0.24);  --pend-fg: #9db2ff; --pend: #1f4cff;
   --neu-bg: #333336;                   --neu-fg: #c9c9ce;  --neu: #6e6e74;
 

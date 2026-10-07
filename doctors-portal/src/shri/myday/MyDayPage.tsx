@@ -1,16 +1,17 @@
 /**
- * §5 — My Day (`/`). Greeting and the KPI strip run the full
- * width; under them the main column (Today · Patients Today / Needs Action)
- * sits beside the right column (Calendar / To-do):
+ * §5 — My Day (`/`). Greeting, the KPI strip and Today (`TodayPanel` — the
+ * day's timeline, what comes next, the free slots) run the full width; under
+ * them the main column (Patients Today / Needs Action) sits beside the right
+ * column (Calendar / To-do):
  *
- *   ≥ 1280   right column 372px, Today beside Patients Today, pinned to the
- *            viewport height (never under 960px)
- *   1024–1279 right column 362px — the narrowest that keeps calendar days
- *            44px wide — and Today / Patients Today stack
+ *   ≥ 1024   right column 372px (362px below 1280 — the narrowest that keeps
+ *            calendar days 44px wide); the two columns together one viewport
+ *            high (never under 780px), each card scrolling inside
  *   < 1024   the right column moves below the main column
  *
  * The order never changes, so on a phone it reads Greeting → KPI → Today →
- * Patients Today → Needs Action → Calendar → To-do.
+ * Patients Today → Needs Action → Calendar → To-do. Today follows the
+ * calendar's chosen day, so the two always show the same one.
  *
  * The screen states are the old S-06-01's (`src/screens/m06/S0601.tsx`):
  * LOADING, EMPTY with its copy, OFFLINE and STALE above the KPIs, AI-OFF's one
@@ -37,12 +38,12 @@ import { KpiStrip } from './KpiStrip'
 import { Calendar } from './Calendar'
 import { NeedsAction } from './NeedsAction'
 import { PatientsToday } from './PatientsToday'
-import { TodayTimeline } from './TodayTimeline'
+import { TodayPanel } from './TodayPanel'
 import { TodoNotes } from './TodoNotes'
 import { useMyDay } from './useMyDay'
 
 /** The viewport less the app bar, its margin and the surface padding (`--myday-h` in tokens.css). */
-const PAGE_H = 'lg:h-(--myday-h)'
+const LOWER_H = 'lg:h-(--myday-h)'
 
 export function MyDayPage() {
   const forcedState = useForcedState()
@@ -62,7 +63,7 @@ export function MyDayPage() {
   if (forcedState === 'LOADING') return <PageSkeleton />
 
   return (
-    <div data-screen-id="S-06-01" className={cn('flex flex-col', PAGE_H)}>
+    <div data-screen-id="S-06-01" className="flex flex-col">
       <div className="flex items-start justify-between gap-[12px]">
         <Greeting />
         {/* A demo control, DEV-only and desktop-only, as in the old build. */}
@@ -86,18 +87,20 @@ export function MyDayPage() {
           </p>
         </Card>
       ) : (
-        <div className="mt-[14px] grid min-h-0 flex-1 grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_362px] lg:grid-cols-[minmax(0,1fr)_372px]">
-          <div className="grid min-h-0 grid-cols-[minmax(0,5fr)_minmax(0,6fr)] grid-rows-[minmax(0,1fr)_auto] gap-[16px] max-lg:grid-cols-1 max-lg:grid-rows-none">
-            <TodayTimeline />
-            <PatientsToday />
-            <NeedsAction className="col-span-2 max-lg:col-span-1" />
+        <>
+          <TodayPanel className="mt-[14px]" />
+          <div className={cn('mt-[20px] grid min-h-0 grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_362px] lg:grid-cols-[minmax(0,1fr)_372px]', LOWER_H)}>
+            <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-[16px] max-lg:grid-rows-none">
+              <PatientsToday />
+              <NeedsAction />
+            </div>
+            <aside className="flex min-h-0 flex-col gap-[16px]">
+              <Calendar />
+              {/* The week's day detail takes the larger share; the to-do list the rest, scrolling inside. */}
+              <TodoNotes className="flex-[2]" />
+            </aside>
           </div>
-          <aside className="flex min-h-0 flex-col gap-[16px]">
-            <Calendar />
-            {/* The week's day detail takes the larger share; the to-do list the rest, scrolling inside. */}
-            <TodoNotes className="flex-[2]" />
-          </aside>
-        </div>
+        </>
       )}
     </div>
   )
@@ -132,7 +135,7 @@ function SimulateCritical() {
 /** §11 LOADING — blocks where the cards will be. */
 function PageSkeleton() {
   return (
-    <div className={cn('flex flex-col', PAGE_H)} aria-busy="true" aria-label="Loading Dashboard">
+    <div className="flex flex-col" aria-busy="true" aria-label="Loading Dashboard">
       <Skeleton className="h-[36px] w-[360px] max-w-full" />
       <Skeleton className="mt-[8px] h-[18px] w-[420px] max-w-full" />
       <div className="mb-[2px] mt-[14px] grid h-[74px] grid-cols-6 gap-[12px] max-lg:h-auto max-lg:grid-cols-3 max-sm:flex max-sm:overflow-hidden">
@@ -140,11 +143,11 @@ function PageSkeleton() {
           <Skeleton key={i} className="h-[74px] rounded-sh-kpi max-sm:w-[min(52vw,212px)] max-sm:shrink-0" />
         ))}
       </div>
-      <div className="mt-[14px] grid min-h-0 flex-1 grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_362px] lg:grid-cols-[minmax(0,1fr)_372px]">
-        <div className="grid min-h-0 grid-cols-[minmax(0,5fr)_minmax(0,6fr)] grid-rows-[minmax(0,1fr)_auto] gap-[16px] max-lg:grid-cols-1">
+      <SkeletonCard rows={5} className="mt-[14px]" />
+      <div className={cn('mt-[20px] grid min-h-0 grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_362px] lg:grid-cols-[minmax(0,1fr)_372px]', LOWER_H)}>
+        <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-[16px]">
           <SkeletonCard rows={7} />
-          <SkeletonCard rows={7} />
-          <SkeletonCard rows={4} className="col-span-2 max-lg:col-span-1" />
+          <SkeletonCard rows={4} />
         </div>
         <aside className="flex min-h-0 flex-col gap-[16px]">
           <SkeletonCard rows={5} />

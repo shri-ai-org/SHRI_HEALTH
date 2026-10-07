@@ -3,8 +3,8 @@
  * view's popover (`DayPeek`), so it is one implementation in two places. From
  * the live calendar (`logic/schedule.ts`): the doctor's blocked time, their
  * sessions (a session inside blocked time says so), the patients booked with
- * them, and an hour-by-hour grid of busy and free time (`HourGrid`). A booking of the doctor's own that is
- * still to come can be moved or cancelled here; any date from today on can
+ * them — the day's timeline is the Today panel's, which follows the chosen
+ * day. A booking of the doctor's own that is still to come can be moved or cancelled here; any date from today on can
  * have time blocked. No AI brief: the calendar shows what is booked, not a
  * summary of it.
  */
@@ -17,14 +17,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useCurrentStaff } from '@/store/session'
 
 import { canonical } from '../app/paths'
-import { NOW, fmtMonth, fmtTime } from '../lib/clock'
+import { NOW, fmtMonth, fmtSpan12, fmtTime12 } from '../lib/clock'
 import { cn } from '../lib/cn'
 import { canChange, rangeLabel, type ShriEntry } from '../logic/schedule'
 import { useShri } from '../state/store'
 import { iconFor } from '../ui/icons'
 import { Icon, Pill, PillTag, RoundButton } from '../ui/primitives'
 
-import { HourGrid } from './HourGrid'
 import type { CalendarDay } from './useMyDay'
 
 /** "Today" / "Earlier" / "Coming up" — the old day panel's three. */
@@ -100,7 +99,6 @@ export function DayDetail({ day, headerEnd, onLeave, className }: { day: Calenda
         <p className="mt-[12px] rounded-[14px] bg-sh-inner px-[14px] py-[14px] text-[14px] text-sh-text-2">A clear day — nothing is booked.</p>
       ) : (
         <>
-          <HourGrid day={day} />
 
           {day.sessions.length > 0 && (
             <div className="mt-[14px]">
@@ -117,8 +115,7 @@ export function DayDetail({ day, headerEnd, onLeave, className }: { day: Calenda
                     <span className="min-w-0">
                       <span className={cn('block truncate text-[13px]/[16px] font-medium', e.blocked && 'line-through')}>{e.title}</span>
                       <span className="block text-[11px]/[14px] tabular-nums text-sh-muted">
-                        {fmtTime(e.at)}
-                        {e.until ? `–${fmtTime(e.until)}` : ''}
+                        {e.until ? fmtSpan12(e.at, e.until) : fmtTime12(e.at)}
                         {e.blocked ? ' · blocked' : ''}
                       </span>
                     </span>
@@ -152,7 +149,7 @@ export function DayDetail({ day, headerEnd, onLeave, className }: { day: Calenda
                           </PillTag>
                         ) : (
                           <PillTag variant="primary" size="xs" className="font-semibold tabular-nums">
-                            {fmtTime(e.at)}
+                            {fmtTime12(e.at)}
                           </PillTag>
                         )}
                       </Link>

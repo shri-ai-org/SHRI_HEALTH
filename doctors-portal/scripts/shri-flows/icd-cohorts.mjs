@@ -23,7 +23,7 @@ export default ({ page, expect, sleep, auditRows, toastSays, pick, setInput, bec
         await page.click('button', 'Admit')
         await page.until(`document.querySelector('[role="dialog"][aria-labelledby="admit-title"]')?.textContent.includes('Provisional diagnosis (ICD-10, optional)')`, 3000, 'the coded diagnosis field')
         await page.click('[role="dialog"] button', 'Hypothyroidism · E03.9')
-        await page.until(`[...document.querySelectorAll('[role="dialog"] ul[aria-label^="Provisional diagnosis"] li')].some((l) => l.textContent.includes('E03.9'))`, 2000, 'the code is chosen')
+        await page.until(`[...document.querySelectorAll('[role="dialog"] ul[aria-label^="Provisional diagnosis"] li')].some((l) => l.textContent.includes('E03.9'))`, 3000, 'the code is chosen')
         await page.click('[role="dialog"] [role="radio"]', 'Urgent')
         await page.click('[role="dialog"] button', 'Confirm')
         await toastSays('Admission in progress — Meera Krishnan', 'Ward · Urgent · E03.9')

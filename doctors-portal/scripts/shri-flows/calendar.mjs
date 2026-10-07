@@ -44,7 +44,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays }) => {
       },
     },
     {
-      name: 'Calendar: the day grid shows busy and free hour by hour — its totals fill 07–19, and a session hour reads busy',
+      name: 'Calendar: the day, hour by hour — busy, free, off hours and blocked fill 7 AM to 7 PM, a session hour reads busy, the working day starts at 8, in 12-hour time; the chosen day is the Today panel’s',
       async run() {
         await page.open('/')
         const grid = (day) => page.evaluate(`document.querySelector('[role="img"][aria-label^="${day}:"]')?.getAttribute('aria-label') ?? ''`)
@@ -55,13 +55,13 @@ export default ({ page, expect, auditRows, sentItems, toastSays }) => {
         }
         await page.until(`!!document.querySelector('[role="img"][aria-label^="Monday 21 September:"]')`, 3000, 'today’s grid')
         const today = await grid('Monday 21 September')
-        expect(minutes(today, 'busy') + minutes(today, 'free') + minutes(today, 'blocked') === 720, `busy, free and blocked make 12 hours: ${today}`)
-        expect((await hours('Monday 21 September')).length === 12, 'twelve hours, 07–19, for screen readers')
+        expect(minutes(today, 'busy') + minutes(today, 'free') + minutes(today, 'off hours') + minutes(today, 'blocked') === 720, `busy, free, off hours and blocked make 12 hours: ${today}`)
+        expect((await hours('Monday 21 September')).length === 12, 'twelve hours, 7 AM to 7 PM, for screen readers')
         await page.click('button[role="gridcell"][aria-label^="Tuesday 22 September 2026"]')
         await page.until(`!!document.querySelector('[role="img"][aria-label^="Tuesday 22 September:"]')`, 3000, 'Tuesday’s grid')
         const tue = await hours('Tuesday 22 September')
-        expect(tue.some((h) => h.startsWith('14:00–15:00 · busy')), `the endocrine session hour is busy: ${tue.join(' | ')}`)
-        expect(tue.some((h) => h.startsWith('07:00–08:00 · free')), 'the early morning is free')
+        expect(tue.some((h) => h.startsWith('2–3 PM · busy')), `the endocrine session hour is busy: ${tue.join(' | ')}`)
+        expect(tue.some((h) => h.startsWith('7–8 AM · off hours')) && tue.some((h) => h.startsWith('8–9 AM · free')), `before 8 is off hours, from 8 free: ${tue.join(' | ')}`)
       },
     },
     {
@@ -128,7 +128,7 @@ export default ({ page, expect, auditRows, sentItems, toastSays }) => {
         await toastSays('Appointment moved', 'Sunita Devi')
         // The first free slot was earlier the same afternoon: the day now shows her at 14:00, not 14:30.
         const booked = await page.evaluate(`document.querySelector('ul[aria-label^="Booked with you on Tuesday 22 September"]')?.textContent ?? ''`)
-        expect(booked.includes('14:00') && !booked.includes('14:30'), `the day shows the new time: ${booked}`)
+        expect(booked.includes('2:00 PM') && !booked.includes('2:30 PM'), `the day shows the new time, 12-hour: ${booked}`)
       },
     },
   ]
