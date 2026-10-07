@@ -18,7 +18,7 @@ import { NOW } from '../lib/clock'
 import { cn } from '../lib/cn'
 import { Icon } from '../ui/primitives'
 
-import { GRID_HOURS, GRID_START, clock, duration, durationSpoken, hourGrid, type HourCell } from './hourGrid'
+import { GRID_HOURS, GRID_START, clock, duration, durationSpoken, hourGrid, type HourCell } from './hourGridModel'
 import type { CalendarDay } from './useMyDay'
 
 const GAP = 3
