@@ -246,7 +246,6 @@ export function NavRail() {
             )
           })}
         </ul>
-        {open && <p className="mt-[14px] px-[6px] text-[11px]/[1.4] text-sh-muted">A module you cannot enter is absent here, not greyed out.</p>}
       </motion.nav>
       {/* Which build this is, at the bottom left as in care-entry: when it was made (India time), and its commit on hover. */}
       <p
