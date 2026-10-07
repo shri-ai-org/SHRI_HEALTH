@@ -9,7 +9,8 @@
  * and day detail, the record's Appointments part and its "next" line, the
  * Patient report card, Blocks and leave — so a move or a cancellation shows
  * everywhere at once. Free slots are a lookup, never a prediction: the
- * doctor's own session templates, less what is booked and what is blocked.
+ * doctor's own session templates and the extra hours they have opened for the
+ * front office, less what is booked and what is blocked.
  *
  * What a patient is told never carries the reason for a block (the old
  * S-05-05 rule: "they are told the appointment has moved, not why"); the
@@ -30,9 +31,9 @@ import { useAudit } from '@/store/audit'
 import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
 
-import { fmtTime12 } from '../lib/clock'
+import { fmtTime12, range12 } from '../lib/clock'
 import { useNotifications } from '../state/notifications'
-import { useSchedule, type AppointmentChange, type Block, type BlockReason } from '../state/schedule'
+import { useSchedule, type AppointmentChange, type Block, type BlockReason, type Opening } from '../state/schedule'
 
 /* ------------------------------------------------------------ the book */
 
@@ -126,6 +127,18 @@ export function rangeLabel(b: Pick<Block, 'from' | 'to' | 'allDay' | 'start' | '
   return `${days}, ${b.allDay ? 'all day' : `${b.start}–${b.end}`}`
 }
 
+/* ------------------------------------------------------------ extra hours */
+
+const minutesOfHhmm = (hhmm: string) => {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+export const openingsOn = (openings: Opening[], day: Date) => openings.filter((o) => o.date === dayIso(day))
+/** An opening as minutes after midnight. */
+export const openingSpan = (o: Pick<Opening, 'start' | 'end'>): [number, number] => [minutesOfHhmm(o.start), minutesOfHhmm(o.end)]
+/** "Mon 21 Sep, 5:00 – 7:00 PM". */
+export const hoursLabel = (o: Pick<Opening, 'date' | 'start' | 'end'>) => `${format(new Date(`${o.date}T00:00`), DAY)}, ${range12(...openingSpan(o))}`
+
 /** The doctor's own active bookings still to come that a block would displace. */
 export const affectedBy = (book: ShriAppointment[], block: Omit<Block, 'id' | 'by' | 'at'>, staffName: string) =>
   book.filter((a) => canChange(a, staffName) && blockCovers({ ...block, id: '', by: '', at: '' }, a.at))
@@ -143,7 +156,12 @@ export interface Slot {
   at: Date
   clinic: string
   slotMin: number
+  /** In extra hours the doctor opened for the front office. */
+  extra?: boolean
 }
+
+/** A slot in extra hours, as the front office books them. */
+const EXTRA_SLOT_MIN = 15
 
 /** Whether a session is the same kind of clinic as an appointment's — so a move keeps the patient in the right room. */
 export function clinicMatches(appointmentClinic: string, sessionClinic: string): boolean {
@@ -156,16 +174,18 @@ export function clinicMatches(appointmentClinic: string, sessionClinic: string):
 
 /**
  * The doctor's next free slots: their own sessions from the templates, on the
- * days each runs, one slot per template step — less anything past, anything
- * already booked with them, anything blocked (including a block still being
- * set up), and anything already chosen for another patient in the same
- * decision. Same kind of clinic first, then the rest, each in time order.
+ * days each runs, one slot per template step, and the extra hours they opened
+ * for the front office — less anything past, anything already booked with
+ * them, anything blocked (including a block still being set up), and anything
+ * already chosen for another patient in the same decision. Same kind of clinic
+ * (and extra hours, which the doctor opened for their own patients) first,
+ * then the rest, each in time order.
  */
 export function freeSlots(
   book: ShriAppointment[],
   blocks: Block[],
   staffName: string,
-  { hint, limit = 5, days = 42, taken = [] }: { hint?: string; limit?: number; days?: number; taken?: Date[] } = {},
+  { hint, limit = 5, days = 42, taken = [], openings = [] }: { hint?: string; limit?: number; days?: number; taken?: Date[]; openings?: Opening[] } = {},
 ): Slot[] {
   const mine = book.filter((a) => a.with === staffName && isActive(a))
   const all: Slot[] = []
@@ -183,8 +203,20 @@ export function freeSlots(
         all.push({ at: t, clinic: s.clinic, slotMin: s.slotMin })
       }
     }
+    for (const o of openingsOn(openings, day)) {
+      if (!o.frontOffice) continue
+      const [a, b] = openingSpan(o)
+      for (let m = a; m + EXTRA_SLOT_MIN <= b; m += EXTRA_SLOT_MIN) {
+        const t = atTime(day, `${Math.floor(m / 60)}:${m % 60}`)
+        const tEnd = new Date(t.getTime() + EXTRA_SLOT_MIN * 60_000)
+        if (t <= NOW || blocks.some((x) => blockCovers(x, t, tEnd))) continue
+        if (mine.some((x) => x.at >= t && x.at < tEnd) || taken.some((x) => x.getTime() === t.getTime()) || all.some((x) => x.at.getTime() === t.getTime())) continue
+        all.push({ at: t, clinic: 'Extra hours', slotMin: EXTRA_SLOT_MIN, extra: true })
+      }
+    }
   }
-  const same = hint ? all.filter((s) => clinicMatches(hint, s.clinic)) : []
+  all.sort((x, y) => x.at.getTime() - y.at.getTime())
+  const same = hint ? all.filter((s) => s.extra || clinicMatches(hint, s.clinic)) : []
   const rest = all.filter((s) => !same.includes(s))
   return [...same, ...rest].slice(0, limit)
 }
@@ -339,16 +371,36 @@ export function useScheduleActions() {
       toast({ tone: 'info', title: 'Appointment cancelled', detail: `${patient(a.patientId).name} · ${whenLabel(a.at)}. The patient and the front office are told.` })
     },
     /** A patient scheduled into the doctor's own free time: the patient and the front office are told. */
-    schedule(input: { patientId: string; at: Date; minutes: number; kind: Appointment['kind']; clinic: string; purpose: string }) {
+    schedule(input: { patientId: string; at: Date; minutes: number; kind: Appointment['kind']; clinic: string; purpose: string; location?: string; offHours?: boolean }) {
       const p = patient(input.patientId)
       const id = `AP-H-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
       const when = whenLabel(input.at)
-      store.book({ id, patientId: input.patientId, at: input.at.toISOString(), kind: input.kind, status: 'Booked', clinic: input.clinic, with: me.name, purpose: input.purpose, minutes: input.minutes })
-      audit({ event: 'APPOINTMENT.SCHEDULED', ...actor, subject: input.patientId, detail: `${id} · ${when} · ${input.minutes} min · ${input.kind} · ${input.clinic} · ${p.name}` })
+      const outside = input.offHours ? ' · outside working hours' : ''
+      store.book({ id, patientId: input.patientId, at: input.at.toISOString(), kind: input.kind, status: 'Booked', clinic: input.clinic, with: me.name, purpose: input.purpose, minutes: input.minutes, location: input.location })
+      audit({ event: 'APPOINTMENT.SCHEDULED', ...actor, subject: input.patientId, detail: `${id} · ${when} · ${input.minutes} min · ${input.kind} · ${input.clinic} · ${p.name}${outside}` })
       send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: `Appointment scheduled — ${slotLabel(input.at)}`, detail: `${p.name}: you have an appointment with ${me.name} on ${when}, ${input.clinic}.`, to: `/patient/${p.uhid}/appointments` })
-      send({ severity: 'routine', kind: 'appointment', recipient: 'front office', title: `Scheduled — ${p.name}`, detail: `${when} · ${input.minutes} min · ${input.clinic} · ${me.name}. ${input.purpose}. The patient has been told.`, to: `/patient/${p.uhid}/appointments` })
+      send({ severity: input.offHours ? 'urgent' : 'routine', kind: 'appointment', recipient: 'front office', title: `Scheduled — ${p.name}`, detail: `${when} · ${input.minutes} min · ${input.clinic} · ${me.name}${outside}. ${input.purpose}. The patient has been told.`, to: `/patient/${p.uhid}/appointments` })
       toast({ tone: 'success', title: 'Appointment scheduled', detail: `${p.name} · ${format(input.at, 'EEE d MMM')}, ${fmtTime12(input.at)}. The patient and the front office are told.` })
       return id
+    },
+    /** Extra hours outside the working day: the front office is told it may book patients into them, unless they are for the doctor's own patients only. */
+    openHours(input: { date: string; start: string; end: string; frontOffice: boolean; note?: string }) {
+      const o: Opening = { ...input, id: `OPN-${Date.now().toString(36)}`, by: me.name, at: new Date().toISOString() }
+      store.addOpening(o)
+      const label = hoursLabel(o)
+      audit({ event: 'SCHEDULE.HOURS_OPENED', ...actor, subject: me.id, detail: `${label} · ${o.frontOffice ? 'the front office may book' : 'own patients only'}${o.note ? ` · ${o.note}` : ''}` })
+      if (o.frontOffice)
+        send({ severity: 'urgent', kind: 'schedule', recipient: 'front office', title: `${me.name} — extra hours ${label}`, detail: `Open for booking patients${o.note ? `. ${o.note}` : ''}.`, to: '/schedule/blocks' })
+      toast({ tone: 'success', title: 'Extra hours opened', detail: `${label}. ${o.frontOffice ? 'The front office is told they can book patients into them.' : 'Only you schedule into them.'}` })
+      return o
+    },
+    closeHours(o: Opening) {
+      store.removeOpening(o.id)
+      const label = hoursLabel(o)
+      audit({ event: 'SCHEDULE.HOURS_CLOSED', ...actor, subject: me.id, detail: label })
+      if (o.frontOffice)
+        send({ severity: 'routine', kind: 'schedule', recipient: 'front office', title: `${me.name} — extra hours closed, ${label}`, detail: 'No longer open for booking. Anyone already booked into them stays booked.', to: '/schedule/blocks' })
+      toast({ tone: 'info', title: 'Extra hours closed', detail: `${label}.${o.frontOffice ? ' The front office is told.' : ''} Anyone already booked stays booked.` })
     },
     /** Block the time, act on every booking it displaces, and tell the front office once. */
     block(input: BlockInput, displaced: { appointment: ShriAppointment; decision: Decision }[]) {

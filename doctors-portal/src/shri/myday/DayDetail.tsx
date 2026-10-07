@@ -3,14 +3,15 @@
  * view's popover (`DayPeek`), so it is one implementation in two places. From
  * the live calendar (`logic/schedule.ts`): the doctor's blocked time, their
  * sessions (a session inside blocked time says so), the patients booked with
- * them — the day's timeline is the Today panel's, which follows the chosen
- * day. A booking of the doctor's own that is still to come can be moved or cancelled here; any date from today on can
+ * them, and extra hours they opened outside the working day (closed here) —
+ * the day's timeline is the Today panel's, which follows the chosen day. A
+ * booking of the doctor's own that is still to come can be moved or cancelled here; any date from today on can
  * have time blocked. No AI brief: the calendar shows what is booked, not a
  * summary of it.
  */
 
 import { format } from 'date-fns'
-import { Ban, CalendarClock, CalendarX2, PhoneForwarded, Undo2 } from 'lucide-react'
+import { Ban, CalendarClock, CalendarRange, CalendarX2, PhoneForwarded, Undo2, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -19,7 +20,7 @@ import { useCurrentStaff } from '@/store/session'
 import { canonical } from '../app/paths'
 import { NOW, fmtMonth, fmtSpan12, fmtTime12 } from '../lib/clock'
 import { cn } from '../lib/cn'
-import { canChange, rangeLabel, type ShriEntry } from '../logic/schedule'
+import { canChange, hoursLabel, rangeLabel, type ShriEntry } from '../logic/schedule'
 import { useShri } from '../state/store'
 import { iconFor } from '../ui/icons'
 import { Icon, Pill, PillTag, RoundButton } from '../ui/primitives'
@@ -73,11 +74,32 @@ export function DayDetail({ day, headerEnd, onLeave, className }: { day: Calenda
         </PillTag>
         <span className="text-[12px] font-medium text-sh-text-2">{day.levelWord}</span>
         {!past && (
-          <Pill variant="control" size="md" icon={Ban} className="ml-auto" onClick={() => open({ kind: 'block', from: day.iso })}>
-            Block time
-          </Pill>
+          <span className="ml-auto flex flex-wrap gap-[6px]">
+            <Pill variant="control" size="md" icon={CalendarRange} onClick={() => open({ kind: 'openHours', date: day.iso })}>
+              Extra hours
+            </Pill>
+            <Pill variant="control" size="md" icon={Ban} onClick={() => open({ kind: 'block', from: day.iso })}>
+              Block time
+            </Pill>
+          </span>
         )}
       </div>
+
+      {day.openings.map((o) => (
+        <div key={o.id} className="mt-[10px] flex items-center gap-[10px] rounded-[14px] bg-sh-pend-bg px-[12px] py-[8px] text-sh-pend-fg">
+          <Icon icon={CalendarRange} size={16} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-semibold">Extra hours · {o.frontOffice ? 'the front office may book' : 'your own patients'}</span>
+            <span className="block text-[12px] tabular-nums opacity-90">
+              {hoursLabel(o)}
+              {o.note ? ` · ${o.note}` : ''}
+            </span>
+          </span>
+          <Pill variant="card" size="md" icon={X} onClick={() => open({ kind: 'closeHours', openingId: o.id })} aria-label={`Close extra hours ${hoursLabel(o)}`}>
+            Close
+          </Pill>
+        </div>
+      ))}
 
       {day.blocks.map((e) => (
         <div key={e.id} className="mt-[10px] flex items-center gap-[10px] rounded-[14px] bg-sh-crit-bg px-[12px] py-[8px] text-sh-crit-fg">

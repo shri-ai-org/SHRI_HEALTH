@@ -8,7 +8,9 @@
  * now and the time; the cards show the whole day, or only what is on and
  * next; the OPD's next patient is the queue's own (`nextToCall`), the one its
  * Call button calls. Tapping free time still to come schedules a patient at
- * the minute tapped (`NewAppointmentDialog`) — never time already gone.
+ * the minute tapped (`NewAppointmentDialog`); tapping off hours still to come
+ * asks whether to open extra hours there for the front office, or schedule
+ * there anyway — an early operation. Never time already gone.
  * Every count is the live calendar's (`dayModel.ts`).
  */
 
@@ -110,7 +112,12 @@ export function TodayPanel({ className }: { className?: string }) {
       </header>
 
       <div className="mt-[8px]">
-        <DayTimeline model={model} nextPatient={nextPatient} onSchedule={(at, until) => openDialog({ kind: 'schedule', date: day.iso, at, until })} />
+        <DayTimeline
+          model={model}
+          nextPatient={nextPatient}
+          onSchedule={(at, until) => openDialog({ kind: 'schedule', date: day.iso, at, until })}
+          onOffHours={(at, [from, to]) => openDialog({ kind: 'offHours', date: day.iso, at, from, to })}
+        />
       </div>
 
       {/* The key — and, for a screen reader, the day in one sentence. */}
@@ -126,6 +133,12 @@ export function TodayPanel({ className }: { className?: string }) {
             <span className="inline-flex items-center gap-[7px]">
               <span className={cn('h-[13px] w-[18px] rounded-[4px]', FREE)} />
               Available
+            </span>
+          )}
+          {model.items.some((i) => i.extra) && (
+            <span className="inline-flex items-center gap-[7px]">
+              <span className={cn('h-[13px] w-[18px] rounded-[4px]', FREE)} />
+              Extra hours
             </span>
           )}
           {has('blocked') && (

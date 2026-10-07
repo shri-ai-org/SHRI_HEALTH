@@ -8,17 +8,18 @@
  * (`ScheduleDialogs` → Block time). The old screen drew a fixed week and a
  * fixed list of "booked" patients; this one is the doctor's live calendar —
  * the same blocks, sessions and bookings My Day's calendar shows — with the
- * blocks they have set and a way to lift each one. The front office is told
- * of every block and every unblock.
+ * blocks they have set and a way to lift each one, and the extra hours they
+ * have opened outside the working day, each closed here. The front office is
+ * told of every block, every unblock, and every extra hour they may book.
  */
 
 import { format } from 'date-fns'
-import { Ban, ChevronLeft, ChevronRight, Phone, Stethoscope, Syringe, Undo2, type LucideIcon } from 'lucide-react'
+import { Ban, CalendarRange, ChevronLeft, ChevronRight, Phone, Stethoscope, Syringe, Undo2, X, type LucideIcon } from 'lucide-react'
 
 import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
-import { NOW } from '../lib/clock'
-import { dayIso, rangeLabel } from '../logic/schedule'
+import { NOW, range12, span12 } from '../lib/clock'
+import { dayIso, hoursLabel, openingSpan, rangeLabel } from '../logic/schedule'
 import { useCalendarWeek } from '../myday/useCalendarWeek'
 import { useSchedule } from '../state/schedule'
 import { useShri } from '../state/store'
@@ -33,9 +34,11 @@ export function BlocksPage() {
   const goWeek = useShri((s) => s.goWeek)
   const goToday = useShri((s) => s.goToday)
   const blocks = useSchedule((s) => s.blocks)
+  const openings = useSchedule((s) => s.openings)
   const week = useCalendarWeek()
   const today = dayIso(NOW)
   const upcoming = [...blocks].filter((b) => b.to >= today).sort((a, b) => a.from.localeCompare(b.from))
+  const extraHours = [...openings].filter((o) => o.date >= today).sort((a, b) => `${a.date}${a.start}`.localeCompare(`${b.date}${b.start}`))
   const todaysDay = week.find((d) => d.isToday)
   const sessionsToday = todaysDay?.sessions.length ?? 0
   const blockedToday = upcoming.filter((b) => b.from <= today && today <= b.to).length
@@ -47,9 +50,14 @@ export function BlocksPage() {
       heading="Blocks and leave"
       sub={[`${sessionsToday} sessions today`, blockedToday > 0 && `${blockedToday} blocked today`, blockedThisWeek > 0 && `${blockedThisWeek} blocked this week`].filter(Boolean).join(' · ')}
       actions={
-        <Pill variant="primary" size="xl" icon={Ban} onClick={() => open({ kind: 'block' })}>
-          Block time
-        </Pill>
+        <span className="flex flex-wrap gap-[8px]">
+          <Pill variant="card" size="xl" icon={CalendarRange} onClick={() => open({ kind: 'openHours' })}>
+            Open extra hours
+          </Pill>
+          <Pill variant="primary" size="xl" icon={Ban} onClick={() => open({ kind: 'block' })}>
+            Block time
+          </Pill>
+        </span>
       }
       rail={
         <Card titleSize="sm" title={<span className="inline-flex items-center gap-[8px]"><Diamond />AI-608 · cover suggestions</span>}>
@@ -83,6 +91,30 @@ export function BlocksPage() {
           )}
         </Card>
 
+        <Card titleSize="sm" title="Your extra hours">
+          {extraHours.length === 0 ? (
+            <EmptyState compact icon={CalendarRange} why="No extra hours are open. Open some here, or tap off hours on the Dashboard's timeline." />
+          ) : (
+            <ul aria-label="Your extra hours" className="flex flex-col gap-[8px]">
+              {extraHours.map((o) => (
+                <li key={o.id} className="flex flex-wrap items-center gap-[12px] rounded-[14px] bg-sh-inner px-[14px] py-[10px]">
+                  <Icon icon={CalendarRange} size={16} className="text-sh-pend-fg" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[14px] font-medium tabular-nums">{hoursLabel(o)}</span>
+                    <span className="block text-[12px] text-sh-text-3">
+                      {o.frontOffice ? 'The front office may book patients' : 'Your own patients only'}
+                      {o.note ? ` · ${o.note}` : ''} · opened by {o.by}
+                    </span>
+                  </span>
+                  <Pill variant="control" size="lg" icon={X} onClick={() => open({ kind: 'closeHours', openingId: o.id })} aria-label={`Close extra hours ${hoursLabel(o)}`}>
+                    Close
+                  </Pill>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
         <Card
           titleSize="sm"
           title={`Week of ${format(week[0].date, 'd MMM')}`}
@@ -108,6 +140,11 @@ export function BlocksPage() {
                 {d.blocks.map((e) => (
                   <PillTag key={e.id} tone="crit" size="xs" icon={Ban} className="justify-start">
                     {e.block!.allDay ? 'All day' : `${e.block!.start}–${e.block!.end}`} · {e.block!.reason}
+                  </PillTag>
+                ))}
+                {d.openings.map((o) => (
+                  <PillTag key={o.id} tone="pend" size="xs" icon={CalendarRange} className="justify-start" title={`Extra hours ${range12(...openingSpan(o))}`}>
+                    Extra {span12(...openingSpan(o))}
                   </PillTag>
                 ))}
                 {d.sessions.length === 0 && d.blocks.length === 0 && <p className="text-[12px] text-sh-text-3">—</p>}

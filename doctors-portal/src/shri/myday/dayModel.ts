@@ -1,6 +1,8 @@
 /**
- * One day, 7 AM to 7 PM, as the Today panel draws it (`DayTimeline`) — from
- * the same live calendar as every other view of the day (`CalendarDay`):
+ * One day, 7 AM to 7 PM — wider where something is booked earlier or later,
+ * an operation at 6 AM, extra hours to 9 PM — as the Today panel draws it
+ * (`DayTimeline`), from the same live calendar as every other view of the day
+ * (`CalendarDay`):
  *
  *   · activities: the doctor's sessions and activities (today, the day plan),
  *     each of a kind that picks its colour;
@@ -9,13 +11,15 @@
  *     the OPD queue, drawn as the OPD block, which runs as long as the queue
  *     does (their other appointments today are drawn as ever);
  *   · blocked time, the doctor's own;
- *   · free time: the working day — 8 AM to 5 PM, Monday to Saturday, widened
- *     to take in anything the doctor has earlier or later — less all of the above;
- *   · off hours: the rest.
+ *   · free time: the working day — 8 AM to 5 PM, Monday to Saturday — and any
+ *     extra hours the doctor opened on the day, less all of the above;
+ *   · off hours: the rest. Something the doctor booked into off hours (an
+ *     early operation) is busy there; the rest of the off hours stay off.
  *
  * Overlaps are merged for the totals, so no minute counts twice; on the one
- * row a bar ends where the next begins. Free time from now on can be tapped
- * to schedule a patient — never time already gone.
+ * row a bar ends where the next begins. Free time and off hours from now on
+ * can be tapped — free time to schedule a patient, off hours to open extra
+ * hours or schedule there anyway — never time already gone.
  */
 
 import { format } from 'date-fns'
@@ -24,7 +28,7 @@ import { CLINIC_LIST } from '@/data/clinical'
 import { SESSIONS } from '@/data/schedule'
 
 import { NOW, clock12, span12 } from '../lib/clock'
-import { clinicMatches, type ShriEntry } from '../logic/schedule'
+import { clinicMatches, openingSpan, type ShriEntry } from '../logic/schedule'
 
 import type { CalendarDay } from './useMyDay'
 
@@ -96,12 +100,16 @@ export interface TimelineItem {
   drawEnd: number
   title: string
   entry?: ShriEntry
-  /** Free time already gone: drawn, never offered. */
+  /** Free time or off hours already gone: drawn, never offered. */
   past?: boolean
+  /** Free time in extra hours the doctor opened. */
+  extra?: boolean
 }
 
 export interface HourCell {
   start: number
+  /** The hour's end — a half hour where the range ends on one. */
+  end: number
   busyMin: number
   blockedMin: number
   offMin: number
@@ -111,7 +119,9 @@ export interface HourCell {
 }
 
 export interface DayModel {
-  /** Every bar, in time order, covering 7 AM to 7 PM end to end. */
+  /** The hours drawn: 7 AM to 7 PM, wider where something falls outside them, on the half hour. */
+  range: Span
+  /** Every bar, in time order, covering the range end to end. */
   items: TimelineItem[]
   busyMin: number
   blockedMin: number
@@ -128,11 +138,6 @@ export interface DayModel {
 }
 
 const minutesOf = (d: Date) => d.getHours() * 60 + d.getMinutes()
-const clip = ([a, b]: Span): Span | null => {
-  const s = Math.max(a, START)
-  const e = Math.min(b, END)
-  return e > s ? [s, e] : null
-}
 
 function merge(spans: Span[]): Span[] {
   const out: Span[] = []
@@ -161,13 +166,7 @@ const spanOf = (e: ShriEntry): Span => {
 
 export function dayModel(day: CalendarDay): DayModel {
   const now = day.isToday ? minutesOf(NOW) : null
-  /** Everything before this has gone. */
-  const gone = now ?? (day.date < NOW ? END : START)
 
-  const blocks = day.blocks
-    .map((e) => ({ e, span: clip(e.block!.allDay ? [START, END] : spanOf(e)) }))
-    .filter((b): b is { e: ShriEntry; span: Span } => b.span !== null)
-  const blocked = merge(blocks.map((b) => b.span))
   const sessions = day.sessions.filter((e) => !e.blocked).map((e) => ({ e, span: spanOf(e) }))
   const inSessions = merge(sessions.map((s) => s.span))
   // Today's clinic visits are the OPD queue — the OPD block — not bars of their own, whatever became of the patient.
@@ -176,20 +175,41 @@ export function dayModel(day: CalendarDay): DayModel {
     .filter((e) => visits.get(e.patientId ?? '') !== e.at.getTime())
     .map((e) => ({ e, span: spanOf(e) }))
     .filter((b) => overlap(inSessions, b.span) === 0)
+  const openings = day.openings.map(openingSpan)
+  const partBlocks = day.blocks.filter((e) => !e.block!.allDay).map(spanOf)
+
+  // The hours drawn: 7 to 7, out to the half hour of anything earlier or later still to come — an
+  // operation at 6 AM tomorrow widens the day; one at 3 AM that is over does not stretch today.
+  const over = now ?? (day.date < NOW ? Infinity : -Infinity)
+  const edges = [...sessions.map((o) => o.span), ...outside.map((o) => o.span), ...openings, ...partBlocks].filter(([, b]) => b > over)
+  const range: Span = [
+    Math.max(0, Math.min(START, ...edges.map(([a]) => Math.floor(a / 30) * 30))),
+    Math.min(24 * 60, Math.max(END, ...edges.map(([, b]) => Math.ceil(b / 30) * 30))),
+  ]
+  const clip = ([a, b]: Span): Span | null => {
+    const s = Math.max(a, range[0])
+    const e = Math.min(b, range[1])
+    return e > s ? [s, e] : null
+  }
+  /** Everything before this has gone. */
+  const gone = now ?? (day.date < NOW ? range[1] : range[0])
+
+  const blocks = day.blocks
+    .map((e) => ({ e, span: clip(e.block!.allDay ? range : spanOf(e)) }))
+    .filter((b): b is { e: ShriEntry; span: Span } => b.span !== null)
+  const blocked = merge(blocks.map((b) => b.span))
   const occupied = [...sessions, ...outside]
     .map((o) => ({ e: o.e, span: clip(o.span) }))
     .filter((o): o is { e: ShriEntry; span: Span } => o.span !== null)
   const doing = merge(occupied.map((o) => o.span))
   const busy = minus(doing, blocked)
 
-  // The working day, widened for anything earlier or later; a Sunday is only what is booked on it.
-  const first = doing[0]?.[0]
-  const last = doing[doing.length - 1]?.[1]
-  const work: Span | null =
-    day.date.getDay() === 0 ? (first !== undefined ? [first, last!] : null) : [Math.min(WORK[0], first ?? WORK[0]), Math.max(WORK[1], last ?? WORK[1])]
+  // Working time: the working day (not on a Sunday) and the day's extra hours.
+  const base: Span[] = day.date.getDay() === 0 ? [] : [WORK]
+  const extra = minus(merge(openings), base)
   const taken = merge([...doing, ...blocked])
-  const free = work ? minus([work], taken) : []
-  const off = minus(minus([[START, END]], work ? [work] : []), taken)
+  const free = [...minus(base, taken).map((f) => ({ f, extra: false })), ...minus(extra, taken).map((f) => ({ f, extra: true }))]
+  const off = minus(minus([range], merge([...base, ...extra])), taken)
 
   // The bars. Blocked time lies under everything; activities sit on one row, each ending where the next begins.
   const acts = occupied
@@ -202,19 +222,21 @@ export function dayModel(day: CalendarDay): DayModel {
   const items: TimelineItem[] = [
     ...blocks.map(({ e, span }) => ({ id: e.id, kind: 'blocked' as const, start: span[0], end: span[1], drawEnd: span[1], title: `Blocked · ${e.block!.reason}`, entry: e })),
     ...acts,
-    ...off.map(([a, b]) => ({ id: `off-${a}`, kind: 'off' as const, start: a, end: b, drawEnd: b, title: 'Off hours' })),
   ]
-  // Free time, split at now: what has gone is drawn but never offered.
-  for (const [a, b] of free) {
-    if (a < gone) items.push({ id: `gone-${a}`, kind: 'free', start: a, end: Math.min(b, gone), drawEnd: Math.min(b, gone), title: 'Free', past: true })
-    if (b > gone) items.push({ id: `free-${Math.max(a, gone)}`, kind: 'free', start: Math.max(a, gone), end: b, drawEnd: b, title: 'Free' })
+  // Free time and off hours, split at now: what has gone is drawn but never offered.
+  const split = (kind: 'free' | 'off', [a, b]: Span, title: string, isExtra = false) => {
+    if (a < gone) items.push({ id: `${kind}-gone-${a}`, kind, start: a, end: Math.min(b, gone), drawEnd: Math.min(b, gone), title, past: true, extra: isExtra })
+    if (b > gone) items.push({ id: `${kind}-${Math.max(a, gone)}`, kind, start: Math.max(a, gone), end: b, drawEnd: b, title, extra: isExtra })
   }
+  for (const { f, extra: x } of free) split('free', f, x ? 'Extra hours' : 'Free', x)
+  for (const o of off) split('off', o, 'Off hours')
   items.sort((x, y) => x.start - y.start)
 
   const open = items.filter((i) => i.kind === 'free' && !i.past && i.end - i.start >= MIN_FREE)
 
-  const cells: HourCell[] = Array.from({ length: GRID_HOURS }, (_, i) => {
-    const span: Span = [START + i * 60, START + (i + 1) * 60]
+  const hours = (range[1] - range[0]) / 60
+  const cells: HourCell[] = Array.from({ length: Math.ceil(hours) }, (_, i) => {
+    const span: Span = [range[0] + i * 60, Math.min(range[1], range[0] + (i + 1) * 60)]
     const busyMin = overlap(busy, span)
     const blockedMin = overlap(blocked, span)
     const offMin = overlap(off, span)
@@ -224,10 +246,11 @@ export function dayModel(day: CalendarDay): DayModel {
     ]
     return {
       start: span[0],
+      end: span[1],
       busyMin,
       blockedMin,
       offMin,
-      freeMin: 60 - busyMin - blockedMin - offMin,
+      freeMin: span[1] - span[0] - busyMin - blockedMin - offMin,
       bookings: day.bookings.filter((b) => minutesOf(b.at) >= span[0] && minutesOf(b.at) < span[1]).length,
       titles: [...new Set(titles)],
     }
@@ -236,7 +259,7 @@ export function dayModel(day: CalendarDay): DayModel {
   const busyMin = total(busy)
   const blockedMin = total(blocked)
   const offMin = total(off)
-  const freeMin = GRID_HOURS * 60 - busyMin - blockedMin - offMin
+  const freeMin = range[1] - range[0] - busyMin - blockedMin - offMin
   const nextFree = open[0]?.start ?? null
   const booked = day.bookings.length
   const summary = [
@@ -249,19 +272,20 @@ export function dayModel(day: CalendarDay): DayModel {
     .filter(Boolean)
     .join(', ')
 
-  return { items, busyMin, blockedMin, freeMin, offMin, nextFree, cells, now, summary }
+  return { range, items, busyMin, blockedMin, freeMin, offMin, nextFree, cells, now, summary }
 }
 
 /** One hour, for the screen-reader list: "2–3 PM · busy · OPD · 2 patients". */
 export function hourLine(c: HourCell) {
+  const whole = c.end - c.start
   const parts = [
-    c.busyMin === 60 ? 'busy' : c.busyMin && `${c.busyMin} min busy`,
-    c.blockedMin === 60 ? 'blocked' : c.blockedMin && `${c.blockedMin} min blocked`,
-    c.offMin === 60 ? 'off hours' : c.offMin && `${c.offMin} min off hours`,
-    c.freeMin === 60 ? 'free' : c.freeMin && `${c.freeMin} min free`,
+    c.busyMin === whole ? 'busy' : c.busyMin && `${c.busyMin} min busy`,
+    c.blockedMin === whole ? 'blocked' : c.blockedMin && `${c.blockedMin} min blocked`,
+    c.offMin === whole ? 'off hours' : c.offMin && `${c.offMin} min off hours`,
+    c.freeMin === whole ? 'free' : c.freeMin && `${c.freeMin} min free`,
   ].filter(Boolean)
   const who = c.bookings ? ` · ${c.bookings} patient${c.bookings === 1 ? '' : 's'}` : ''
-  return `${span12(c.start, c.start + 60)} · ${parts.join(', ')}${c.titles.length ? ` · ${c.titles.join(', ')}` : ''}${who}`
+  return `${span12(c.start, c.end)} · ${parts.join(', ')}${c.titles.length ? ` · ${c.titles.join(', ')}` : ''}${who}`
 }
 
 /** 370 → "6h 10m", 60 → "1h", 45 → "45m". */

@@ -1,14 +1,17 @@
 /**
- * The day as one row of bars across the hours, 7 AM to 7 PM — the Today
- * panel's chart (`TodayPanel`), after the scheduling tools' day view:
+ * The day as one row of bars across the hours, 7 AM to 7 PM — wider where
+ * something falls outside them (`DayModel.range`) — the Today panel's chart
+ * (`TodayPanel`), after the scheduling tools' day view:
  *
  *   · the hours along the top, every half hour, 12-hour with AM and PM;
  *   · each activity a bar in its own colour, named on it with its time
  *     ("OPD · 8:00 – 9:00 AM"); a patient booked outside a session, the same;
  *   · free time a dashed green bar, "Free" with its time — from now on, tapping
  *     it schedules a patient at the minute tapped (the hover card's minute);
- *     free time already gone is drawn, never offered;
- *   · off hours hatched grey; blocked time hatched red with ⊘;
+ *     free time already gone is drawn, never offered; extra hours the doctor
+ *     opened read "Extra hours";
+ *   · off hours hatched grey — from now on, tapping them asks whether to open
+ *     extra hours there or to schedule there anyway; blocked time hatched red with ⊘;
  *   · the Now line, red, labelled with the time.
  *
  * Hovering anywhere on the row says what is at that minute, how long is left
@@ -30,13 +33,14 @@ import { cn } from '../lib/cn'
 import { iconFor } from '../ui/icons'
 import { Icon } from '../ui/primitives'
 
-import { END, GRID_HOURS, START, duration, isActivity, type ActivityKind, type DayModel, type TimelineItem } from './dayModel'
+import { duration, isActivity, type ActivityKind, type DayModel, type Span, type TimelineItem } from './dayModel'
 
-const SPAN_MIN = GRID_HOURS * 60
-const pct = (min: number) => `${(min / SPAN_MIN) * 100}%`
-const at = (min: number) => pct(min - START)
-/** The row's width before it scrolls, less its side padding. */
-const MIN_W = 1040 - 52
+/** The hours drawn: where they start, and how many minutes they span. */
+type Scale = { r0: number; len: number }
+const pct = (s: Scale, min: number) => `${(min / s.len) * 100}%`
+const at = (s: Scale, min: number) => pct(s, min - s.r0)
+/** The row's width for twelve hours before it scrolls, less its side padding — more hours, wider. */
+const MIN_W_12H = 1040 - 52
 
 /** An activity's colour and ink, with a lit top edge — an edge, not a wash, so the ink keeps its contrast. */
 export const actStyle = (k: ActivityKind): CSSProperties => ({
@@ -52,20 +56,25 @@ export function DayTimeline({
   model,
   nextPatient,
   onSchedule,
+  onOffHours,
 }: {
   model: DayModel
   /** The OPD queue's next patient, today — who its Call button calls. */
   nextPatient?: { name: string; token: string }
   /** Schedule a patient at a minute of free time; `until` is where that free time ends. */
   onSchedule: (at: number, until: number) => void
+  /** Off hours tapped at a minute: open extra hours there, or schedule there anyway. */
+  onOffHours: (at: number, off: Span) => void
 }) {
   const navigate = useNavigate()
   const wrapRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
-  const [w, setW] = useState(MIN_W)
+  const scale: Scale = { r0: model.range[0], len: model.range[1] - model.range[0] }
+  const minW = (MIN_W_12H * scale.len) / 720
+  const [w, setW] = useState(minW)
   const [hover, setHover] = useState<{ min: number; x: number; top: number; left: number } | null>(null)
-  const pxPerMin = w / SPAN_MIN
+  const pxPerMin = w / scale.len
 
   useEffect(() => {
     const el = rowRef.current
@@ -80,20 +89,22 @@ export function DayTimeline({
   useEffect(() => {
     const s = scrollRef.current
     if (!s || s.scrollWidth <= s.clientWidth) return
-    s.scrollLeft = Math.max(0, 26 + (focusMin - START) * (s.scrollWidth - 52) / SPAN_MIN - s.clientWidth / 3)
-  }, [focusMin])
+    s.scrollLeft = Math.max(0, 26 + ((focusMin - scale.r0) * (s.scrollWidth - 52)) / scale.len - s.clientWidth / 3)
+  }, [focusMin, scale.r0, scale.len])
 
   const minuteAt = (clientX: number) => {
     const r = rowRef.current!.getBoundingClientRect()
     const x = Math.min(Math.max(clientX - r.left, 0), r.width)
-    return Math.min(END - 5, START + Math.round(((x / r.width) * SPAN_MIN) / 5) * 5)
+    return Math.min(model.range[1] - 5, scale.r0 + Math.round(((x / r.width) * scale.len) / 5) * 5)
   }
-  /** The minute tapped — the same one the hover card names — kept inside the free time and at least 10 minutes before it ends; from the keyboard, its start. */
-  function schedule(item: TimelineItem, clientX?: number) {
+  /** The minute tapped — the same one the hover card names — kept inside the bar and at least 10 minutes before it ends; from the keyboard, its start. */
+  const tapped = (item: TimelineItem, clientX?: number) => {
     const first = Math.ceil(item.start / 5) * 5
     const at = clientX !== undefined && rowRef.current ? minuteAt(clientX) : first
-    onSchedule(Math.min(Math.max(at, first), item.end - Math.min(10, item.end - first)), item.end)
+    return Math.min(Math.max(at, first), item.end - Math.min(10, item.end - first))
   }
+  const tap = (item: TimelineItem, clientX?: number) =>
+    item.kind === 'off' ? onOffHours(tapped(item, clientX), [item.start, item.end]) : onSchedule(tapped(item, clientX), item.end)
 
   function onMove(e: PointerEvent<HTMLDivElement>) {
     if (e.pointerType !== 'mouse' || !rowRef.current || !wrapRef.current) return
@@ -109,20 +120,20 @@ export function DayTimeline({
     model.items.find((i) => i.start <= min && min < i.end)
   const nextAfter = (min: number) => model.items.find((i) => isActivity(i.kind) && i.start > min)
 
-  const marks = Array.from({ length: GRID_HOURS * 2 + 1 }, (_, i) => START + i * 30)
-  const nowSide = model.now !== null && model.now > END - 90 ? 'left' : 'right'
+  const marks = Array.from({ length: scale.len / 30 + 1 }, (_, i) => scale.r0 + i * 30)
+  const nowSide = model.now !== null && model.now > model.range[1] - 90 ? 'left' : 'right'
 
   return (
     <div ref={wrapRef} className="relative">
       <div ref={scrollRef} className="sh-scrollbar -mx-[6px] overflow-x-auto px-[6px] pb-[4px]">
-        <div className="relative min-w-[1040px] px-[26px]">
+        <div className="relative px-[26px]" style={{ minWidth: minW + 52 }}>
           <div className="relative">
             {/* Now, named above the hours. */}
             <div className="relative h-[36px]" aria-hidden="true">
               {model.now !== null && (
                 <span
                   className={cn('absolute bottom-[4px] flex flex-col text-[13px]/[15px] font-semibold tabular-nums text-(--now-ink)', nowSide === 'right' ? 'pl-[10px]' : '-translate-x-full items-end pr-[10px]')}
-                  style={{ left: at(model.now) }}
+                  style={{ left: at(scale, model.now) }}
                 >
                   <span>Now</span>
                   <span>{time12(model.now)}</span>
@@ -135,19 +146,19 @@ export function DayTimeline({
               {marks.map((m) => {
                 const t = time12(m)
                 return (
-                  <span key={m} className={cn('absolute top-0 flex -translate-x-1/2 flex-col items-center whitespace-nowrap', m % 60 === 0 ? 'font-semibold text-sh-text' : 'text-sh-text-3')} style={{ left: at(m) }}>
+                  <span key={m} className={cn('absolute top-0 flex -translate-x-1/2 flex-col items-center whitespace-nowrap', m % 60 === 0 ? 'font-semibold text-sh-text' : 'text-sh-text-3')} style={{ left: at(scale, m) }}>
                     <span>{t.slice(0, -3)}</span>
                     <span className="text-[11px]/[13px]">{t.slice(-2)}</span>
                   </span>
                 )
               })}
             </div>
-            <Ticks marks={marks} />
+            <Ticks marks={marks} scale={scale} />
 
             {/* The row. */}
             <div ref={rowRef} onPointerMove={onMove} onPointerLeave={() => setHover(null)} className="relative h-[64px]">
               {model.items.map((item) => (
-                <Bar key={item.id} item={item} px={(item.drawEnd - item.start) * pxPerMin - 4} onOpen={(to) => navigate(canonical(to))} onSchedule={schedule} />
+                <Bar key={item.id} item={item} scale={scale} px={(item.drawEnd - item.start) * pxPerMin - 4} onOpen={(to) => navigate(canonical(to))} onTap={tap} />
               ))}
               {hover && (
                 <span aria-hidden="true" className="pointer-events-none absolute -bottom-[10px] -top-[10px] z-[3] flex w-[2px] -translate-x-1/2 flex-col items-center justify-between" style={{ left: hover.x }}>
@@ -157,11 +168,11 @@ export function DayTimeline({
                 </span>
               )}
             </div>
-            <Ticks marks={marks} />
+            <Ticks marks={marks} scale={scale} />
 
             {/* The Now line, from its label through the row. */}
             {model.now !== null && (
-              <span aria-hidden="true" className="pointer-events-none absolute bottom-0 top-[30px] z-[2] flex -translate-x-1/2 flex-col items-center" style={{ left: at(model.now) }}>
+              <span aria-hidden="true" className="pointer-events-none absolute bottom-0 top-[30px] z-[2] flex -translate-x-1/2 flex-col items-center" style={{ left: at(scale, model.now) }}>
                 <span className="size-[12px] shrink-0 rounded-full bg-(--now-line) shadow-[0_0_0_3px_var(--card)]" />
                 <span className="w-0 flex-1 border-l-2 border-dashed border-(--now-line)" />
                 <span className="size-[7px] shrink-0 rounded-full bg-(--now-line)" />
@@ -184,19 +195,19 @@ export function DayTimeline({
   )
 }
 
-function Ticks({ marks }: { marks: number[] }) {
+function Ticks({ marks, scale }: { marks: number[]; scale: Scale }) {
   return (
     <div className="relative h-[8px]" aria-hidden="true">
       {marks.map((m) => (
-        <span key={m} className="absolute inset-y-0 w-px bg-sh-line-strong" style={{ left: at(m) }} />
+        <span key={m} className="absolute inset-y-0 w-px bg-sh-line-strong" style={{ left: at(scale, m) }} />
       ))}
     </div>
   )
 }
 
 /** One bar: an activity, free time, off hours or blocked time — a button where it does something and is wide enough to tap. */
-function Bar({ item, px, onOpen, onSchedule }: { item: TimelineItem; px: number; onOpen: (to: string) => void; onSchedule: (item: TimelineItem, clientX?: number) => void }) {
-  const place: CSSProperties = { left: `calc(${at(item.start)} + 2px)`, width: `calc(${pct(item.drawEnd - item.start)} - 4px)` }
+function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Scale; px: number; onOpen: (to: string) => void; onTap: (item: TimelineItem, clientX?: number) => void }) {
+  const place: CSSProperties = { left: `calc(${at(scale, item.start)} + 2px)`, width: `calc(${pct(scale, item.drawEnd - item.start)} - 4px)` }
   const when = range12(item.start, item.end)
   const tappable = px >= 44
   const base = '@container absolute inset-y-0 flex min-w-0 items-center overflow-hidden rounded-[12px] px-[6px] text-left'
@@ -208,7 +219,19 @@ function Bar({ item, px, onOpen, onSchedule }: { item: TimelineItem; px: number;
     </>
   )
 
-  if (item.kind === 'off') return <span aria-hidden="true" title={`Off hours · ${when}`} className={cn(base, HATCH_OFF)} style={place} />
+  if (item.kind === 'off') {
+    if (item.past || !tappable) return <span aria-hidden="true" title={`Off hours · ${when}`} className={cn(base, HATCH_OFF)} style={place} />
+    return (
+      <button
+        type="button"
+        onClick={(e) => onTap(item, e.detail > 0 ? e.clientX : undefined)}
+        aria-label={`Off hours ${when} — open extra hours or schedule here`}
+        title={`Off hours ${when} — tap to open extra hours or schedule here`}
+        className={cn(base, HATCH_OFF, 'cursor-pointer transition-[box-shadow] duration-150 hover:shadow-[inset_0_0_0_1.5px_var(--line-strong)]')}
+        style={place}
+      />
+    )
+  }
 
   if (item.kind === 'blocked') {
     return (
@@ -228,23 +251,23 @@ function Bar({ item, px, onOpen, onSchedule }: { item: TimelineItem; px: number;
     if (item.past) return <span aria-hidden="true" title={`Free · ${when} · gone`} className={cn(base, 'border-[1.5px] border-dashed border-sh-line-strong')} style={place} />
     const words = (
       <span className="hidden min-w-0 max-w-full flex-col items-center @min-[30px]:flex">
-        <span className="max-w-full truncate text-[13px]/[16px] font-semibold">Free</span>
+        <span className="max-w-full truncate text-[13px]/[16px] font-semibold">{item.title}</span>
         {time}
       </span>
     )
     return tappable ? (
       <button
         type="button"
-        onClick={(e) => onSchedule(item, e.detail > 0 ? e.clientX : undefined)}
-        aria-label={`Free ${when} — schedule an appointment`}
-        title={`Free ${when} — tap a time to schedule`}
+        onClick={(e) => onTap(item, e.detail > 0 ? e.clientX : undefined)}
+        aria-label={`${item.title} ${when} — schedule an appointment`}
+        title={`${item.title} ${when} — tap a time to schedule`}
         className={cn(base, FREE, 'cursor-pointer justify-center transition-[filter] duration-150 hover:brightness-[0.97]')}
         style={place}
       >
         {words}
       </button>
     ) : (
-      <span title={`Free ${when}`} className={cn(base, FREE, 'justify-center')} style={place}>
+      <span title={`${item.title} ${when}`} className={cn(base, FREE, 'justify-center')} style={place}>
         {words}
       </span>
     )
@@ -284,9 +307,9 @@ function HoverCard({ min, item, next, nextPatient, style }: { min: number; item?
     item.kind === 'free'
       ? item.past
         ? { dot: 'var(--line-strong)', name: 'Free', aside: 'gone' }
-        : { dot: 'var(--avail-edge)', name: 'Available', aside: `${left} min free` }
+        : { dot: 'var(--avail-edge)', name: item.extra ? 'Available · extra hours' : 'Available', aside: `${left} min free` }
       : item.kind === 'off'
-        ? { dot: 'var(--off-hatch)', name: 'Off hours', aside: '' }
+        ? { dot: 'var(--off-hatch)', name: 'Off hours', aside: item.past ? '' : 'tap to open or schedule' }
         : item.kind === 'blocked'
           ? { dot: 'var(--crit)', name: item.title, aside: range12(item.start, item.end) }
           : { dot: `var(--act-${item.kind})`, name: item.title, aside: range12(item.start, item.end) }

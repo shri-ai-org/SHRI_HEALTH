@@ -1,5 +1,5 @@
 /**
- * The calendar's three dialogs, one open at a time (`useShri.scheduleDialog`),
+ * The calendar's dialogs, one open at a time (`useShri.scheduleDialog`),
  * drawn by the shell so the calendar, the day detail, the record's
  * Appointments part and Blocks and leave all open the same ones:
  *
@@ -15,25 +15,34 @@
  *   • Cancel — a reason is required and kept on the record.
  *   • Schedule — a patient into the doctor's own free time, opened only by
  *     tapping free time still to come on the Today panel's timeline, at the
- *     minute tapped: the patient, the visit and why — typed or dictated. The
- *     patient and the front office are told.
+ *     minute tapped: the patient, the visit and why — typed or dictated; a
+ *     procedure or an operation with its place and length. Tapped in off
+ *     hours, its start can be changed (an operation at 6 AM, before the
+ *     timeline's 7). What it overlaps is said first; blocked time and time
+ *     gone are never scheduled. The patient and the front office are told.
+ *   • Off hours — tapped outside the working day: open extra hours there, or
+ *     schedule there anyway.
+ *   • Open extra hours / Close extra hours — time outside the working day the
+ *     front office may book patients into (and is told), or the doctor's own;
+ *     closing them leaves anyone already booked where they are.
  *
  * Free slots come from the doctor's own session templates, less what is
  * booked and what is blocked (`logic/schedule.ts`) — a lookup, not a guess.
  */
 
 import { format } from 'date-fns'
-import { Ban, CalendarClock, CalendarPlus, CalendarX2, Check, PhoneForwarded, X } from 'lucide-react'
+import { Ban, CalendarClock, CalendarPlus, CalendarRange, CalendarX2, Check, ChevronRight, Clock, PhoneForwarded, Syringe, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { PATIENTS, patient } from '@/data/kit'
+import { PROCEDURE_PLACES } from '@/data/places'
 import type { Appointment } from '@/data/record'
 import { useCurrentStaff } from '@/store/session'
 
 import { cn } from '../lib/cn'
-import { NOW, range12 } from '../lib/clock'
-import { affectedBy, dayIso, freeSlots, rangeLabel, slotLabel, useAppointments, useScheduleActions, usualClinic, whenLabel, type Decision, type ShriAppointment, type Slot } from '../logic/schedule'
-import { SCHEDULE_MIN, atMinute, dayModel } from '../myday/dayModel'
+import { NOW, range12, time12 } from '../lib/clock'
+import { affectedBy, dayIso, freeSlots, hoursLabel, openingSpan, rangeLabel, slotLabel, useAppointments, useScheduleActions, usualClinic, whenLabel, type Decision, type ShriAppointment, type Slot } from '../logic/schedule'
+import { SCHEDULE_MIN, atMinute, dayModel, duration, isActivity } from '../myday/dayModel'
 import { useMyDay } from '../myday/useMyDay'
 import { BLOCK_REASONS, useSchedule, type BlockReason } from '../state/schedule'
 import { useShri } from '../state/store'
@@ -56,7 +65,10 @@ export function ScheduleDialogs() {
   if (!dialog) return null
   if (dialog.kind === 'block') return <BlockDialog from={dialog.from ?? useShri.getState().selectedDay} onClose={close} />
   if (dialog.kind === 'unblock') return <UnblockDialog blockId={dialog.blockId} onClose={close} />
-  if (dialog.kind === 'schedule') return <NewAppointmentDialog date={dialog.date} at={dialog.at} until={dialog.until} onClose={close} />
+  if (dialog.kind === 'schedule') return <NewAppointmentDialog date={dialog.date} at={dialog.at} until={dialog.until} offHours={dialog.offHours} onClose={close} />
+  if (dialog.kind === 'offHours') return <OffHoursDialog date={dialog.date} at={dialog.at} from={dialog.from} to={dialog.to} onClose={close} />
+  if (dialog.kind === 'openHours') return <OpenHoursDialog date={dialog.date} from={dialog.from} to={dialog.to} onClose={close} />
+  if (dialog.kind === 'closeHours') return <CloseHoursDialog openingId={dialog.openingId} onClose={close} />
   const a = book.find((x) => x.id === dialog.appointmentId)
   if (!a) return null
   return dialog.kind === 'move' ? <MoveDialog appointment={a} onClose={close} /> : <CancelDialog appointment={a} onClose={close} />
@@ -98,6 +110,7 @@ function BlockDialog({ from: initial, onClose }: { from: string; onClose: () => 
   const me = useCurrentStaff()
   const book = useAppointments()
   const blocks = useSchedule((s) => s.blocks)
+  const openings = useSchedule((s) => s.openings)
   const actions = useScheduleActions()
   const start0 = initial < TODAY_ISO ? TODAY_ISO : initial
   const [from, setFrom] = useState(start0)
@@ -119,7 +132,7 @@ function BlockDialog({ from: initial, onClose }: { from: string; onClose: () => 
   const taken: Date[] = []
   const slots: Record<string, Slot | undefined> = {}
   for (const a of affected) {
-    const s = freeSlots(book, pending, me.name, { hint: a.clinic, limit: 1, taken })[0]
+    const s = freeSlots(book, pending, me.name, { hint: a.clinic, limit: 1, taken, openings })[0]
     slots[a.id] = s
     if (s) taken.push(s.at)
   }
@@ -291,8 +304,9 @@ function MoveDialog({ appointment: a, onClose }: { appointment: ShriAppointment;
   const me = useCurrentStaff()
   const book = useAppointments()
   const blocks = useSchedule((s) => s.blocks)
+  const openings = useSchedule((s) => s.openings)
   const actions = useScheduleActions()
-  const slots = useMemo(() => freeSlots(book, blocks, me.name, { hint: a.clinic, limit: 6 }), [book, blocks, me.name, a.clinic])
+  const slots = useMemo(() => freeSlots(book, blocks, me.name, { hint: a.clinic, limit: 6, openings }), [book, blocks, openings, me.name, a.clinic])
   const [choice, setChoice] = useState<number | 'rebook'>(slots.length > 0 ? 0 : 'rebook')
   return (
     <Dialog
@@ -400,27 +414,54 @@ function CancelDialog({ appointment: a, onClose }: { appointment: ShriAppointmen
 
 /* ------------------------------------------------------------ Schedule */
 
-const VISITS: Appointment['kind'][] = ['Follow-up', 'Review', 'Teleconsult', 'Procedure']
+const VISITS: { kind: Appointment['kind']; label: string }[] = [
+  { kind: 'Follow-up', label: 'Follow-up' },
+  { kind: 'Review', label: 'Review' },
+  { kind: 'Teleconsult', label: 'Teleconsult' },
+  { kind: 'Procedure', label: 'Procedure / surgery' },
+]
+/** How long a procedure or an operation is booked for. */
+const LENGTHS = [30, 60, 90, 120, 180, 240]
 const dateOfIso = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(y, m - 1, d)
 }
+const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+const minutesOfHhmm = (v: string) => {
+  const [h, m] = v.split(':').map(Number)
+  return h * 60 + m
+}
+const nowMinute = () => NOW.getHours() * 60 + NOW.getMinutes()
 
-/** At the minute tapped on the Today panel's timeline — never asked again — for half an hour, or until the free time ends. */
-function NewAppointmentDialog({ date, at, until, onClose }: { date: string; at: number; until: number; onClose: () => void }) {
+/**
+ * At the minute tapped on the Today panel's timeline. In free time it is never asked again, and a visit
+ * is half an hour or until the free time ends; in off hours the start can be changed. A procedure or an
+ * operation takes its place and its length.
+ */
+function NewAppointmentDialog({ date, at, until, offHours = false, onClose }: { date: string; at: number; until: number; offHours?: boolean; onClose: () => void }) {
   const me = useCurrentStaff()
   const book = useAppointments()
   const actions = useScheduleActions()
   const { dayInfo } = useMyDay()
   const day = dayInfo(dateOfIso(date))
-  const end = Math.min(at + SCHEDULE_MIN, until)
-  // Still free, live — a time just taken, or gone by, is not scheduled.
-  const free = dayModel(day).items.some((i) => i.kind === 'free' && !i.past && i.start <= at && end <= i.end)
+  const model = dayModel(day)
+  const [start, setStart] = useState(at)
   const [patientId, setPatientId] = useState('')
   const [kind, setKind] = useState<Appointment['kind']>('Follow-up')
+  const [place, setPlace] = useState<string>(PROCEDURE_PLACES[0])
+  const [length, setLength] = useState(60)
   const [purpose, setPurpose] = useState('')
   const people = useMemo(() => [...PATIENTS].filter((p) => p.name).sort((x, y) => x.name.localeCompare(y.name)), [])
-  const ready = free && patientId !== '' && purpose.trim() !== ''
+
+  const procedure = kind === 'Procedure'
+  const end = procedure ? start + length : offHours ? start + SCHEDULE_MIN : Math.min(start + SCHEDULE_MIN, until)
+  const valid = Number.isFinite(start) && end > start && end <= 24 * 60
+  // Never time gone, never the doctor's own blocked time; what it overlaps is said, and theirs to decide.
+  const gone = (!day.isToday && day.date < NOW) || (model.now !== null && start < model.now)
+  const blockedBy = model.items.find((i) => i.kind === 'blocked' && i.start < end && start < i.end)
+  const clashes = model.items.filter((i) => isActivity(i.kind) && i.start < end && start < i.end)
+  const ready = valid && !gone && !blockedBy && patientId !== '' && purpose.trim() !== ''
+  const clinic = kind === 'Teleconsult' ? 'Teleconsult' : procedure ? place : usualClinic(book, me.name)
 
   return (
     <Dialog
@@ -443,11 +484,13 @@ function NewAppointmentDialog({ date, at, until, onClose }: { date: string; at: 
             onClick={() => {
               actions.schedule({
                 patientId,
-                at: atMinute(day.date, at),
-                minutes: end - at,
+                at: atMinute(day.date, start),
+                minutes: end - start,
                 kind,
-                clinic: kind === 'Teleconsult' ? 'Teleconsult' : usualClinic(book, me.name),
+                clinic,
+                location: procedure ? place : undefined,
                 purpose: purpose.trim(),
+                offHours,
               })
               onClose()
             }}
@@ -458,17 +501,41 @@ function NewAppointmentDialog({ date, at, until, onClose }: { date: string; at: 
       }
     >
       <div className="flex flex-col gap-[14px]">
-        <div className={cn('flex items-center gap-[12px] rounded-[14px] px-[14px] py-[12px]', free ? 'bg-sh-inner' : 'bg-sh-crit-bg')}>
-          <Icon icon={CalendarClock} size={18} className={free ? 'text-sh-text-2' : 'text-sh-crit-fg'} />
+        {offHours && (
+          <p className="flex items-start gap-[10px] rounded-[14px] bg-sh-warn-bg px-[14px] py-[10px] text-[13px] text-sh-warn-fg">
+            <Icon icon={Clock} size={16} className="mt-[1px] shrink-0" />
+            Outside your working hours — only this appointment. The front office is told.
+          </p>
+        )}
+        <div className={cn('flex items-center gap-[12px] rounded-[14px] px-[14px] py-[12px]', gone || blockedBy || !valid ? 'bg-sh-crit-bg' : 'bg-sh-inner')}>
+          <Icon icon={CalendarClock} size={18} className={gone || blockedBy || !valid ? 'text-sh-crit-fg' : 'text-sh-text-2'} />
           <p className="min-w-0 flex-1">
             <span id="sch-when" className="block text-[15px] font-semibold tabular-nums text-sh-text">
-              {format(day.date, 'EEEE d MMMM')} · {range12(at, end)}
+              {format(day.date, 'EEEE d MMMM')}
+              {valid ? ` · ${range12(start, end)}` : ''}
             </span>
-            <span className={cn('block text-[12px]', free ? 'text-sh-text-3' : 'text-sh-crit-fg')}>
-              {free ? `${end - at} min, from where you tapped the timeline` : 'This time is no longer free. Close and tap another free time.'}
+            <span className={cn('block text-[12px]', gone || blockedBy || !valid ? 'text-sh-crit-fg' : 'text-sh-text-3')}>
+              {!valid
+                ? 'Choose a start that ends before midnight.'
+                : gone
+                  ? 'That time has gone. Choose a time still to come.'
+                  : blockedBy
+                    ? `It falls in your blocked time (${blockedBy.title.replace(/^Blocked · /, '')}). Unblock it first, or choose another time.`
+                    : `${duration(end - start)}${offHours ? '' : ', from where you tapped the timeline'}`}
             </span>
           </p>
         </div>
+        {offHours && (
+          <Field label="Starts at" required htmlFor="sch-start" hint="Off hours have no edge — an operation can start before the timeline's 7 AM.">
+            <TextInput id="sch-start" type="time" step={300} value={hhmm(start)} onChange={(e) => setStart(e.target.value ? minutesOfHhmm(e.target.value) : NaN)} />
+          </Field>
+        )}
+        {clashes.length > 0 && valid && (
+          <p className="flex items-start gap-[10px] rounded-[14px] bg-sh-warn-bg px-[14px] py-[10px] text-[13px] text-sh-warn-fg" role="status">
+            <Icon icon={TriangleAlert} size={16} className="mt-[1px] shrink-0" />
+            <span>Overlaps {clashes.map((c) => `${c.title} ${time12(c.start)}`).join(', ')}.</span>
+          </p>
+        )}
         <Field label="Patient" required htmlFor="sch-patient">
           <Select id="sch-patient" value={patientId} onChange={(e) => setPatientId(e.target.value)}>
             <option value="">Choose a patient…</option>
@@ -479,13 +546,40 @@ function NewAppointmentDialog({ date, at, until, onClose }: { date: string; at: 
             ))}
           </Select>
         </Field>
-        <Field label="Visit" required htmlFor="sch-kind" hint={kind === 'Teleconsult' ? 'A video or phone call, in Telehealth.' : `In person, ${usualClinic(book, me.name)}.`}>
+        <Field
+          label="Visit"
+          required
+          htmlFor="sch-kind"
+          hint={procedure ? 'The place is booked with you, for its length.' : kind === 'Teleconsult' ? 'A video or phone call, in Telehealth.' : `In person, ${usualClinic(book, me.name)}.`}
+        >
           <Select id="sch-kind" value={kind} onChange={(e) => setKind(e.target.value as Appointment['kind'])}>
             {VISITS.map((v) => (
-              <option key={v}>{v}</option>
+              <option key={v.kind} value={v.kind}>
+                {v.label}
+              </option>
             ))}
           </Select>
         </Field>
+        {procedure && (
+          <div className="grid grid-cols-2 gap-[12px]">
+            <Field label="Place" required htmlFor="sch-place">
+              <Select id="sch-place" value={place} onChange={(e) => setPlace(e.target.value)}>
+                {PROCEDURE_PLACES.map((p) => (
+                  <option key={p}>{p}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Length" required htmlFor="sch-length">
+              <Select id="sch-length" value={length} onChange={(e) => setLength(Number(e.target.value))}>
+                {LENGTHS.map((m) => (
+                  <option key={m} value={m}>
+                    {duration(m)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+        )}
         <VoiceField
           id="sch-purpose"
           label="Reason"
@@ -494,11 +588,165 @@ function NewAppointmentDialog({ date, at, until, onClose }: { date: string; at: 
           tidy={false}
           value={purpose}
           onChange={setPurpose}
-          placeholder="Type or press the mic and say it — e.g. Thyroid review with results"
-          typedPlaceholder="e.g. Thyroid review with results"
+          placeholder={procedure ? 'Type or press the mic and say it — e.g. Laparoscopic cholecystectomy' : 'Type or press the mic and say it — e.g. Thyroid review with results'}
+          typedPlaceholder={procedure ? 'e.g. Laparoscopic cholecystectomy' : 'e.g. Thyroid review with results'}
           hint="The patient sees this on their appointment."
         />
       </div>
     </Dialog>
+  )
+}
+
+/* ------------------------------------------------------------ Off hours */
+
+function ActionChoice({ icon, title, sub, onClick }: { icon: LucideIcon; title: string; sub: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-[64px] w-full items-center gap-[12px] rounded-[14px] bg-sh-inner px-[14px] py-[10px] text-left transition-colors duration-150 hover:bg-sh-hover-strong"
+    >
+      <span className="flex size-[40px] shrink-0 items-center justify-center rounded-[12px] bg-sh-card text-sh-text">
+        <Icon icon={icon} size={18} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold text-sh-text">{title}</span>
+        <span className="block text-[13px] text-sh-text-2">{sub}</span>
+      </span>
+      <Icon icon={ChevronRight} size={16} className="shrink-0 text-sh-chev" />
+    </button>
+  )
+}
+
+/** Off hours tapped: open extra hours there — from now, if they have begun — or schedule there anyway. */
+function OffHoursDialog({ date, at, from, to, onClose }: { date: string; at: number; from: number; to: number; onClose: () => void }) {
+  const open = useShri((s) => s.openScheduleDialog)
+  const openFrom = date === TODAY_ISO ? Math.max(from, Math.ceil(nowMinute() / 5) * 5) : from
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Outside your working hours"
+      subtitle={`${format(dateOfIso(date), 'EEEE d MMMM')} · ${time12(at)}`}
+      icon={Clock}
+      width={540}
+      footer={
+        <Pill variant="control" size="lg" icon={X} onClick={onClose}>
+          Cancel
+        </Pill>
+      }
+    >
+      <div className="flex flex-col gap-[10px]">
+        <ActionChoice
+          icon={CalendarRange}
+          title="Open extra hours"
+          sub={`${range12(openFrom, to)} — the front office can book patients into them, and is told`}
+          onClick={() => open({ kind: 'openHours', date, from: openFrom, to })}
+        />
+        <ActionChoice
+          icon={Syringe}
+          title="Schedule a patient or a procedure here"
+          sub={`From ${time12(at)} — just this one, for you: an early operation, a late review`}
+          onClick={() => open({ kind: 'schedule', date, at, until: to, offHours: true })}
+        />
+      </div>
+    </Dialog>
+  )
+}
+
+/* ------------------------------------------------------------ Extra hours */
+
+function OpenHoursDialog({ date: initial, from, to, onClose }: { date?: string; from?: number; to?: number; onClose: () => void }) {
+  const actions = useScheduleActions()
+  const openings = useSchedule((s) => s.openings)
+  const [date, setDate] = useState(initial && initial >= TODAY_ISO ? initial : TODAY_ISO)
+  const [start, setStart] = useState(hhmm(from ?? 17 * 60))
+  const [end, setEnd] = useState(hhmm(to ?? 19 * 60))
+  const [frontOffice, setFrontOffice] = useState(true)
+  const [note, setNote] = useState('')
+  const [a, b] = [minutesOfHhmm(start), minutesOfHhmm(end)]
+  const inOrder = Number.isFinite(a) && Number.isFinite(b) && b > a
+  const gone = date < TODAY_ISO || (date === TODAY_ISO && b <= nowMinute())
+  const already = openings.find((o) => o.date === date && openingSpan(o)[0] < b && a < openingSpan(o)[1])
+  const ready = date !== '' && inOrder && !gone && !already
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Open extra hours"
+      subtitle="Time outside your working day — for the front office to book patients into, or for your own."
+      icon={CalendarRange}
+      width={540}
+      footer={
+        <>
+          <Pill variant="control" size="lg" icon={X} onClick={onClose}>
+            Cancel
+          </Pill>
+          <Pill
+            variant="primary"
+            size="lg"
+            icon={Check}
+            disabled={!ready}
+            onClick={() => {
+              actions.openHours({ date, start, end, frontOffice, note: note.trim() || undefined })
+              onClose()
+            }}
+          >
+            Open extra hours
+          </Pill>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-[14px]">
+        <Field label="Date" required htmlFor="oh-date">
+          <TextInput id="oh-date" type="date" min={TODAY_ISO} value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <div className="grid grid-cols-2 gap-[12px]">
+          <Field label="From" required htmlFor="oh-start">
+            <TextInput id="oh-start" type="time" step={300} value={start} onChange={(e) => setStart(e.target.value)} />
+          </Field>
+          <Field label="Until" required htmlFor="oh-end" error={!inOrder && start && end ? 'Until is before From.' : undefined}>
+            <TextInput id="oh-end" type="time" step={300} value={end} onChange={(e) => setEnd(e.target.value)} />
+          </Field>
+        </div>
+        {inOrder && (
+          <p id="oh-when" className={cn('rounded-[14px] px-[14px] py-[10px] text-[14px] font-semibold tabular-nums', gone || already ? 'bg-sh-crit-bg text-sh-crit-fg' : 'bg-sh-inner text-sh-text')}>
+            {hoursLabel({ date, start, end })}
+            {gone && <span className="block text-[12px] font-normal">These hours have gone.</span>}
+            {already && <span className="block text-[12px] font-normal">You already opened {hoursLabel(already)}.</span>}
+          </p>
+        )}
+        <CheckboxRow checked={frontOffice} onChange={setFrontOffice}>
+          The front office can book patients into these hours — they are told
+        </CheckboxRow>
+        <Field label="Note for the front office" htmlFor="oh-note">
+          <TextArea id="oh-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Follow-ups only, no new patients" className="min-h-[72px]" />
+        </Field>
+      </div>
+    </Dialog>
+  )
+}
+
+function CloseHoursDialog({ openingId, onClose }: { openingId: string; onClose: () => void }) {
+  const o = useSchedule((s) => s.openings.find((x) => x.id === openingId))
+  const actions = useScheduleActions()
+  if (!o) return null
+  return (
+    <ConfirmDialog
+      open
+      title={`Close extra hours ${hoursLabel(o)}?`}
+      consequence={
+        o.frontOffice
+          ? 'The front office is told they are no longer open for booking. Anyone already booked into them stays booked.'
+          : 'Anyone already scheduled into them stays scheduled.'
+      }
+      confirmLabel="Close extra hours"
+      onConfirm={() => {
+        actions.closeHours(o)
+        onClose()
+      }}
+      onCancel={onClose}
+    />
   )
 }

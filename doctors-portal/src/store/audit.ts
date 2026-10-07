@@ -102,6 +102,9 @@ export type AuditEvent =
   /** The doctor blocked time in their own calendar; the front office is told. */
   | 'SCHEDULE.BLOCKED'
   | 'SCHEDULE.UNBLOCKED'
+  /** The doctor opened extra hours outside their working day; the front office is told where they may book. */
+  | 'SCHEDULE.HOURS_OPENED'
+  | 'SCHEDULE.HOURS_CLOSED'
   /** A booked appointment moved to another slot; the patient and the front office are told. */
   | 'APPOINTMENT.RESCHEDULED'
   /** A booked appointment cancelled, with its reason. */
@@ -219,6 +222,8 @@ const LABELS: Record<AuditEvent, string> = {
   'PROBLEM_LIST.CONFIRMED': 'Problem list confirmed',
   'SCHEDULE.BLOCKED': 'Time blocked',
   'SCHEDULE.UNBLOCKED': 'Block removed',
+  'SCHEDULE.HOURS_OPENED': 'Extra hours opened',
+  'SCHEDULE.HOURS_CLOSED': 'Extra hours closed',
   'APPOINTMENT.RESCHEDULED': 'Appointment rescheduled',
   'APPOINTMENT.CANCELLED': 'Appointment cancelled',
   'APPOINTMENT.REBOOK_REQUESTED': 'Rebooking requested',

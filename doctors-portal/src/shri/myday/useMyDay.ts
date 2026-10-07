@@ -21,10 +21,10 @@ import { useCurrentStaff, useSession } from '@/store/session'
 
 import { NOW } from '../lib/clock'
 import { useInpatientsLive, type InpatientRow } from '../logic/inpatients'
-import { entriesFor, loadOf, useAppointments, type ShriEntry } from '../logic/schedule'
+import { entriesFor, loadOf, openingsOn, useAppointments, type ShriEntry } from '../logic/schedule'
 import { useOpdLive, type OpdRow } from '../logic/opd'
 import { useAiActive, useForcedState } from '../state/ai'
-import { useSchedule } from '../state/schedule'
+import { useSchedule, type Opening } from '../state/schedule'
 import { useShri } from '../state/store'
 
 /**
@@ -84,6 +84,8 @@ export interface CalendarDay {
   bookings: ShriEntry[]
   /** The doctor's blocked time on this date. */
   blocks: ShriEntry[]
+  /** Extra hours the doctor opened on this date. */
+  openings: Opening[]
   level: DayLoad
   levelWord: string
   critical: boolean
@@ -136,6 +138,7 @@ export function useMyDay() {
   // The live book and blocks, so a move, a cancellation or a block shows on the calendar at once.
   const book = useAppointments()
   const blockList = useSchedule((s) => s.blocks)
+  const openingList = useSchedule((s) => s.openings)
   const criticalCount = unacknowledgedCritical(acknowledgements).length
   const entriesForDay = useCallback(
     (day: Date) => entriesFor(day, { staffName: me.name, stroke, today: blocks, book, blocks: blockList, criticalCount }),
@@ -155,12 +158,13 @@ export function useMyDay() {
         sessions: entries.filter((e) => e.kind === 'session'),
         bookings: entries.filter((e) => e.kind === 'appointment'),
         blocks: entries.filter((e) => e.kind === 'block'),
+        openings: openingsOn(openingList, date),
         level,
         levelWord: LOAD_WORD[level],
         critical: entries.some((e) => e.critical),
       }
     },
-    [entriesForDay],
+    [entriesForDay, openingList],
   )
 
   /** The week holding a date, Monday first. */

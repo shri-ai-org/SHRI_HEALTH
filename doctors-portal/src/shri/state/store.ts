@@ -115,8 +115,13 @@ export type ScheduleDialog =
   | { kind: 'unblock'; blockId: string }
   | { kind: 'move'; appointmentId: string }
   | { kind: 'cancel'; appointmentId: string }
-  /** Schedule a patient into free time: the day, the minute tapped and where that free time ends (minutes after midnight). */
-  | { kind: 'schedule'; date: string; at: number; until: number }
+  /** Schedule a patient: the day, the minute tapped and where that free time ends (minutes after midnight); `offHours` where it was tapped outside the working day. */
+  | { kind: 'schedule'; date: string; at: number; until: number; offHours?: boolean }
+  /** Off hours tapped: open extra hours there, or schedule there anyway. */
+  | { kind: 'offHours'; date: string; at: number; from: number; to: number }
+  /** Open extra hours — on a date, from–to (minutes after midnight), where they are known. */
+  | { kind: 'openHours'; date?: string; from?: number; to?: number }
+  | { kind: 'closeHours'; openingId: string }
 
 const KEY = 'shri.ui'
 /**

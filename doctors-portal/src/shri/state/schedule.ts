@@ -1,6 +1,7 @@
 /**
  * The doctor's own changes to their calendar, layered over the seeded
- * appointment book (which stays as it is): time they have blocked, and what
+ * appointment book (which stays as it is): time they have blocked, extra hours
+ * they have opened outside their working day, and what
  * they have done to a booked appointment — moved it to another slot, asked the
  * front office to rebook it with the patient, or cancelled it with a reason.
  * A move books a new appointment and marks the old one as moved, so the
@@ -32,6 +33,22 @@ export interface Block {
   at: string
 }
 
+/** Extra hours, opened outside the working day on one date — for the front office to book into, or for the doctor's own patients only. */
+export interface Opening {
+  id: string
+  /** `yyyy-MM-dd`. */
+  date: string
+  /** HH:mm. */
+  start: string
+  end: string
+  /** The front office may book patients into it, and is told. */
+  frontOffice: boolean
+  /** For the front office. */
+  note?: string
+  by: string
+  at: string
+}
+
 export type AppointmentChange =
   | { kind: 'cancelled'; reason: string; by: string; at: string }
   | { kind: 'moved'; to: string; by: string; at: string }
@@ -48,10 +65,13 @@ export interface BookedHere extends Omit<Appointment, 'at'> {
 
 interface ScheduleState {
   blocks: Block[]
+  openings: Opening[]
   changes: Record<string, AppointmentChange>
   booked: BookedHere[]
   addBlock: (b: Block) => void
   removeBlock: (id: string) => void
+  addOpening: (o: Opening) => void
+  removeOpening: (id: string) => void
   setChange: (appointmentId: string, change: AppointmentChange) => void
   book: (a: BookedHere) => void
 }
@@ -60,10 +80,14 @@ export const useSchedule = create<ScheduleState>()(
   persist(
     (set, get) => ({
       blocks: [],
+      // Added after version 1: a store saved before it merges over this default, so no migration is needed.
+      openings: [],
       changes: {},
       booked: [],
       addBlock: (b) => set({ blocks: [...get().blocks, b] }),
       removeBlock: (id) => set({ blocks: get().blocks.filter((b) => b.id !== id) }),
+      addOpening: (o) => set({ openings: [...get().openings, o] }),
+      removeOpening: (id) => set({ openings: get().openings.filter((o) => o.id !== id) }),
       setChange: (appointmentId, change) => set({ changes: { ...get().changes, [appointmentId]: change } }),
       book: (a) => set({ booked: [...get().booked, a] }),
     }),
