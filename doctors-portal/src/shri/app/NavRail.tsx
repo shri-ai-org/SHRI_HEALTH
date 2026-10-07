@@ -5,7 +5,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Aperture, BedDouble, Brain, Ellipsis, FlaskConical, ListChecks, LogOut, Search, Sparkles, Stethoscope, Sun, UsersRound, Video,
+  Aperture, BedDouble, Brain, Ellipsis, FlaskConical, House, ListChecks, LogOut, Search, Sparkles, Stethoscope, UsersRound, Video,
   type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -41,7 +41,7 @@ interface RailItem {
 
 /** The icon each of the old rail's sections wears here — the destinations are the old build's, the look is this one's. */
 const SECTION_ICON: Record<Section, LucideIcon> = {
-  home: Sun,
+  home: House,
   queue: Stethoscope,
   inpatients: BedDouble,
   results: FlaskConical,
@@ -85,12 +85,20 @@ const MORE_ITEM: RailItem = { key: 'more', label: 'More', short: 'More', icon: E
  * enter is absent, never greyed; "More" holds the secondary ones and is drawn
  * only when there are any. Patient search sits second, as in the old rail.
  */
+/**
+ * Kept off the rail: the Stroke-AI Console and the Assistant. Their screens stay —
+ * the assistant is the bubble at the bottom right, the stroke screens open from
+ * the patient's record and are the stroke team's own landing.
+ */
+const OFF_RAIL = new Set<Section>(['stroke', 'assistant'])
+
 function useRail() {
   const persona = useSession((s) => s.persona)
   return useMemo(() => {
     const groups = navGroupsFor(persona)
-    const primary = mergePatientLists(groups.primary.map((n) => railItem(n, persona)))
-    const more = mergePatientLists(groups.secondary.map((n) => railItem(n, persona)))
+    const onRail = (n: NavItem) => !OFF_RAIL.has(n.section)
+    const primary = mergePatientLists(groups.primary.filter(onRail).map((n) => railItem(n, persona)))
+    const more = mergePatientLists(groups.secondary.filter(onRail).map((n) => railItem(n, persona)))
     const items = [...primary.slice(0, 1), SEARCH, ...primary.slice(1), ...(more.length > 0 ? [MORE_ITEM] : [])]
     return { primary, more, items }
   }, [persona])

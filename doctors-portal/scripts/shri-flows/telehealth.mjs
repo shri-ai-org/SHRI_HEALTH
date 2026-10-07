@@ -29,7 +29,7 @@ export default ({ page, expect, toastSays }) => {
       async run() {
         await page.open('/tele/session/ICH-0044240')
         let text = await page.text()
-        expect(text.includes('Arjun Nair') && text.includes('Ready to join') && text.includes('Join the call to start the session'), 'not joined on arrival')
+        expect(text.includes('Arjun Nair') && text.includes('Waiting') && text.includes('Join the call to start the session'), 'not joined on arrival')
         await page.click('aside[aria-label="Session"] button[title="Show Session"]')
         text = await page.text()
         expect(text.includes('taken') && text.includes('declined') && text.includes('The patient declined recording'), 'the consent card, in the rail')

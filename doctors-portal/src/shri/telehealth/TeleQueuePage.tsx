@@ -51,7 +51,7 @@ export function TeleQueuePage() {
           </PillTag>
         ) : r.videoReady ? (
           <PillTag tone="norm" size="sm" icon={Video}>
-            ready
+            waiting
           </PillTag>
         ) : (
           <PillTag tone="warn" size="sm" icon={Phone}>

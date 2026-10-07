@@ -1976,8 +1976,9 @@ const FLOWS = [
     async run() {
       await page.open('/')
       const p04 = await railLabels()
-      for (const l of ['Dashboard', 'Patient search', 'My patients', 'Results', 'Discharge', 'Stroke-AI Console', 'Telehealth', 'Assistant', 'More'])
+      for (const l of ['Dashboard', 'Patient search', 'My patients', 'Results', 'Discharge', 'Telehealth', 'More'])
         expect(p04.includes(l), `P-04 rail has ${l}: ${p04}`)
+      expect(!p04.includes('Stroke-AI Console') && !p04.includes('Assistant'), `the Stroke-AI Console and the Assistant are off the rail: ${p04}`)
       await page.open('/', { persona: 'P-05' })
       const p05 = await railLabels()
       expect(!p05.includes('Stroke-AI Console') && !p05.includes('Telehealth'), `P-05 has no stroke or telehealth: ${p05}`)
@@ -1990,13 +1991,15 @@ const FLOWS = [
     },
   },
   {
-    name: 'Shell: the assistant item opens the persona\'s own assistant',
+    name: 'Shell: the assistants are off the rail but still open at their own addresses — the clinician\'s and the stroke team\'s',
     async run() {
       await page.open('/')
-      expect(await page.evaluate(`!!document.querySelector('nav[aria-label="Main"] a[href="/assistant/clinician"]')`), 'P-04 → the clinician assistant')
+      expect(!(await page.evaluate(`!!document.querySelector('nav[aria-label="Main"] a[href^="/assistant"]')`)), 'no assistant on the rail')
+      await page.open('/assistant/clinician', { fresh: false })
+      expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-28-02"]')`), 'P-04 → the clinician assistant still opens')
       await page.open('/stroke/wall', { persona: 'P-35' })
-      await page.open('/stroke/ai-console', { fresh: false })
-      expect(await page.evaluate(`!!document.querySelector('nav[aria-label="Main"] a[href="/assistant/stroke"]')`), 'P-35 → the stroke assistant')
+      await page.open('/assistant/stroke', { fresh: false })
+      expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-28-09"]')`), 'P-35 → the stroke assistant still opens')
     },
   },
   {

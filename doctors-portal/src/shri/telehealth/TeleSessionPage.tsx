@@ -68,7 +68,7 @@ export function TeleSessionPage() {
           </PillTag>
         ) : (
           <PillTag tone="neu" size="sm" icon={Video}>
-            Ready to join
+            Waiting
           </PillTag>
         )
       }
