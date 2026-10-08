@@ -1,218 +1,211 @@
 /**
- * S-27-03 · Teleconsult session — `/tele/session/:id` (`src/screens/m27/
- * Telehealth.tsx` S2703): the call, the one note the session ends with, and
- * what a teleconsult cannot do. Keyed by a teleconsult encounter from the
- * queue, or a patient (SD id or UHID) from the record's Connect; an unknown id
- * says so. The call is joined on purpose, never on arrival; ending it is
- * confirmed, because it closes the call for the patient too.
+ * S-27-03 · Video visit — `/tele/session/:id`. Keyed by a teleconsult from the
+ * Video visits list, or a patient (SD id or UHID) from their record; an unknown
+ * id says so.
+ *
+ * One page, three moments, in plain words:
+ *   before the call  three steps — meeting link, permission to record, start (VisitSetup)
+ *   in the call      who and how long, the recording, the conversation as it is said (InCall, Conversation)
+ *   after the call   downloads, and the check against Google Meet's own notes (AfterVisit)
+ * Beside them, always: who the patient is, why they are here, and the doctor's notes.
+ *
+ * The video is Google Meet's, in its own tab. The recording and the conversation
+ * are this page's (capture.ts), kept on the server (teleStore.ts).
  */
 
-import { Check, FileText, Image, Mic, MicOff, Phone, PhoneOff, Pill as PillIcon, User, Video, VideoOff, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { FileText, Pill as PillIcon, UserRound } from 'lucide-react'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { NOW, formatTime } from '@/data/format'
+import { formatTime } from '@/data/format'
+import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
 
 import { ScreenFrame } from '../app/ScreenFrame'
+import { P } from '../app/paths'
 import { consultPath, noteActionLabel } from '../logic/record'
 import { teleParty } from '../logic/tele'
-import { useAiActive } from '../state/ai'
 import { useOpd } from '../state/opd'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
-import { Why } from '../ui/Disclosure'
-import { KeyValue } from '../ui/KeyValue'
-import { Card, Icon, Pill, PillTag } from '../ui/primitives'
+import { cn } from '../lib/cn'
+import { Card, Pill } from '../ui/primitives'
 import { VoiceField } from '../ui/VoiceField'
 
+import { AfterVisit } from './AfterVisit'
+import { stopCapture } from './capture'
+import { Conversation } from './Conversation'
+import { InCall } from './InCall'
+import { meetCode, openMeet } from './meet'
 import { NoParty } from './NoParty'
+import type { RecordHeader } from './reconcile'
+import { visitFor } from './demoVisits'
+import { consentOf, useTele } from './teleStore'
+import { STATUS_CLASS, STATUS_WORD, useVisitStatus } from './visitStatus'
+import { VisitSetup } from './VisitSetup'
 
-const CANNOT = ['Palpate, percuss or auscultate', 'Take a blood pressure or a temperature you can trust', 'Assess a rash for texture, only for appearance', 'Prescribe from the prohibited category list']
-
-const clock = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+const SEX = { M: 'Male', F: 'Female', O: 'Other' } as const
 
 export function TeleSessionPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const aiActive = useAiActive()
   const toast = useUI((s) => s.toast)
-  const [elapsed, setElapsed] = useState(0)
-  const [notes, setNotes] = useState('')
-  const [muted, setMuted] = useState(false)
-  const [cameraOff, setCameraOff] = useState(false)
+  const me = useCurrentStaff()
   const [ending, setEnding] = useState(false)
-  const [joined, setJoined] = useState(false)
-  // Joining puts the patient in the room on every OPD card; ending the session makes them Seen.
+  const [newCall, setNewCall] = useState(false)
+  // Starting the call puts the patient in the room on every OPD card; ending it makes them Seen.
   const startOpd = useOpd((s) => s.start)
   const finishOpd = useOpd((s) => s.finish)
 
-  useEffect(() => {
-    if (!joined) return
-    const t = window.setInterval(() => setElapsed((e) => e + 1), 1000)
-    return () => window.clearInterval(t)
-  }, [joined])
-
   const party = teleParty(id)
+  const pid = party?.patient.id ?? ''
+  const tele = useTele.getState
+  const activeSid = useTele((s) => (s.activeSid && s.sessions[s.activeSid]?.patientId === pid ? s.activeSid : undefined))
+  const shown = useTele((s) => {
+    const sid = activeSid ?? s.latest[pid]
+    return sid ? s.sessions[sid] : undefined
+  })
+  const capturing = useTele((s) => Boolean(activeSid && s.live?.sid === activeSid))
+  const notes = useTele((s) => s.notes[pid] ?? '')
+  const consent = useTele((s) => consentOf(s, pid))
+  const statusOf = useVisitStatus()
+
   if (!party) return <NoParty screenId="S-27-03" id={id} />
   const { patient: p, encounter: enc } = party
+  const first = p.name.split(' ')[0] || p.name
+  const booking = visitFor(p.id)
+  const status = statusOf(p.id)
   const notePath = consultPath(p)
+  const mode = activeSid ? 'call' : shown && !newCall ? 'after' : 'setup'
+
+  const header: RecordHeader | undefined = shown && {
+    patient: p.name,
+    uhid: p.uhid,
+    doctor: me?.name,
+    startedAt: shown.startedAt,
+    endedAt: shown.endedAt,
+    meetUri: shown.meetUri,
+    consent: shown.consent === 'given' ? 'given by the patient' : 'not given',
+  }
+
+  async function start(uri: string) {
+    // The Meet tab opens straight from the click, before anything else, so the browser lets it.
+    openMeet(uri)
+    const other = tele().activeSid
+    if (other) {
+      await stopCapture()
+      tele().end(other)
+    }
+    tele().begin({ patientId: p.id, encounterId: enc?.id, meetUri: uri, meetCode: meetCode(uri), consent: consent ?? 'declined' })
+    setNewCall(false)
+    startOpd(p.id)
+  }
 
   return (
     <ScreenFrame
       screenId="S-27-03"
       patient={p}
+      heading="Video visit"
+      sub={booking ? `Booked for ${formatTime(booking.scheduledAt)} · ${booking.reason}` : undefined}
       chips={
-        joined ? (
-          <PillTag tone="norm" size="sm" icon={Video}>
-            in session · <span className="tabular-nums">{clock(elapsed)}</span>
-          </PillTag>
-        ) : (
-          <PillTag tone="neu" size="sm" icon={Video}>
-            Waiting
-          </PillTag>
-        )
+        <span className={cn('inline-flex h-[28px] items-center rounded-full px-[12px] text-[13px] font-semibold', STATUS_CLASS[status])} data-visit-status={status}>
+          {STATUS_WORD[status]}
+        </span>
       }
-      actionBar={
-        <>
-          {joined ? (
-            <Pill variant="crit" size="bar" icon={PhoneOff} onClick={() => setEnding(true)}>
-              End the session
-            </Pill>
-          ) : (
-            <span className="text-[13px] text-sh-text-3">Join the call to start the session</span>
+    >
+      <div className="grid items-start gap-[16px] lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="flex min-w-0 flex-col gap-[16px]">
+          {mode === 'setup' && <VisitSetup patientId={p.id} firstName={first} doctorName={me?.name} onStart={(uri) => void start(uri)} />}
+          {mode === 'call' && activeSid && shown && (
+            <>
+              <InCall sid={activeSid} patientId={p.id} firstName={first} meetUri={shown.meetUri} startedAt={shown.startedAt} onEnd={() => setEnding(true)} />
+              {consent === 'given' && header && <Conversation sid={activeSid} firstName={first} header={header} />}
+            </>
           )}
-          {enc && (
-            <div className="ml-auto flex flex-wrap gap-[8px]">
+          {mode === 'after' && shown && header && (
+            <>
+              <AfterVisit
+                sid={shown.id}
+                header={header}
+                note={notes}
+                firstName={first}
+                done={status === 'done'}
+                onDone={() => {
+                  tele().markDone(p.id)
+                  finishOpd(p.id)
+                  toast({ tone: 'success', title: 'Visit done', detail: `${p.name}’s video visit is finished.` })
+                }}
+                onReopen={() => tele().reopen(p.id)}
+                onNewCall={() => setNewCall(true)}
+              />
+              {shown.segments.length > 0 && <Conversation sid={shown.id} firstName={first} header={header} />}
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-[16px]">
+          <Card titleSize="sm" title={`About ${first}`}>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-[16px] gap-y-[8px] text-[14px]">
+              <dt className="text-sh-text-3">Age</dt>
+              <dd>
+                {p.age} · {SEX[p.sex]}
+              </dd>
+              {booking && (
+                <>
+                  <dt className="text-sh-text-3">Visit for</dt>
+                  <dd>{booking.reason}</dd>
+                  <dt className="text-sh-text-3">Time</dt>
+                  <dd>{formatTime(booking.scheduledAt)}</dd>
+                </>
+              )}
+              <dt className="text-sh-text-3">Allergies</dt>
+              <dd className={p.allergies.length ? 'font-medium text-sh-crit-fg' : undefined}>{p.allergies.length ? p.allergies.join(', ') : 'None known'}</dd>
+            </dl>
+            <div className="mt-[14px] flex flex-wrap gap-[8px]">
+              <Pill variant="control" size="xl" icon={UserRound} onClick={() => navigate(P.record(p.uhid))}>
+                Patient record
+              </Pill>
               {notePath && (
-                <Pill variant="control" size="bar" icon={FileText} onClick={() => navigate(notePath)}>
+                <Pill variant="control" size="xl" icon={FileText} onClick={() => navigate(notePath)}>
                   {noteActionLabel(p)}
                 </Pill>
               )}
-              <Pill variant="primary" size="bar" icon={PillIcon} onClick={() => navigate(`/tele/session/${enc.id}/rx`)}>
-                Prescribe
-              </Pill>
-            </div>
-          )}
-        </>
-      }
-      rail={
-        <div className="flex flex-col gap-[12px]">
-          <Card titleSize="sm" title="Consent">
-            <dl className="flex flex-col divide-y divide-sh-line">
-              <KeyValue label="Teleconsult">
-                <PillTag tone="norm" size="sm" icon={Check}>
-                  taken
-                </PillTag>
-              </KeyValue>
-              <KeyValue label="Recording">
-                <PillTag tone="neu" size="sm" icon={X}>
-                  declined
-                </PillTag>
-              </KeyValue>
-              <KeyValue label="Language">English</KeyValue>
-            </dl>
-            <p className="mt-[8px] text-[12px] text-sh-text-3">The patient declined recording, so the transcript is not retained after the session. The note is.</p>
-          </Card>
-          <Why label="What a teleconsult cannot do">
-            <ul className="flex flex-col gap-[8px]">
-              {CANNOT.map((t) => (
-                <li key={t} className="flex gap-[8px]">
-                  <Icon icon={X} size={13} className="mt-[3px] text-sh-warn-fg" />
-                  {t}
-                </li>
-              ))}
-            </ul>
-            <p className="text-sh-text-3">
-              The last one is enforced by the prescription screen. The first three are yours to remember, and the note should say what you could not assess.
-              {aiActive && ' AI-101, the same ambient scribe as a face-to-face consultation, lands on the same note surface — off for this session because recording was declined.'}
-            </p>
-          </Why>
-        </div>
-      }
-      railTitle="Session"
-    >
-      <div className="grid gap-[16px] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <Card className="overflow-hidden p-0">
-          {/* Video is read on black in both themes, like a scan. */}
-          <div className="relative aspect-video w-full bg-(--video-bg)">
-            {joined ? (
-              <>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <span className="mx-auto flex size-[64px] items-center justify-center rounded-full bg-(--video-avatar) text-(--video-icon)">
-                      <Icon icon={User} size={30} />
-                    </span>
-                    <p className="mt-[8px] text-[13px] text-(--video-name)">{p.name}</p>
-                  </div>
-                </div>
-                <div className="absolute bottom-[12px] right-[12px] flex size-[96px] items-center justify-center rounded-[16px] bg-(--video-tile)">
-                  <Icon icon={cameraOff ? VideoOff : User} size={18} className="text-(--video-icon)" />
-                </div>
-              </>
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-[12px]">
-                <p className="text-[13px] text-(--on-image-ink)">{p.name}</p>
-                <Pill
-                  variant="accent"
-                  size="xl"
-                  icon={Video}
-                  onClick={() => {
-                    setJoined(true)
-                    startOpd(p.id)
-                  }}
-                >
-                  Join call
+              {enc && (
+                <Pill variant="primary" size="xl" icon={PillIcon} onClick={() => navigate(`/tele/session/${enc.id}/rx`)}>
+                  Write prescription
                 </Pill>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-[8px] px-[16px] py-[12px]">
-            <Pill variant={muted ? 'primary' : 'control'} size="lg" icon={muted ? MicOff : Mic} aria-pressed={muted} onClick={() => setMuted((m) => !m)}>
-              {muted ? 'Unmute' : 'Mute'}
-            </Pill>
-            <Pill variant={cameraOff ? 'primary' : 'control'} size="lg" icon={cameraOff ? VideoOff : Video} aria-pressed={cameraOff} onClick={() => setCameraOff((v) => !v)}>
-              {cameraOff ? 'Camera off' : 'Camera'}
-            </Pill>
-            <Pill
-              variant="control"
-              size="lg"
-              icon={Image}
-              onClick={() => toast({ tone: 'info', title: 'No photographs uploaded', detail: `${p.name} has not sent any photographs for this teleconsult. Ask them to use the patient app.` })}
-            >
-              Patient photographs
-            </Pill>
-            <span className="ml-auto text-[12px] tabular-nums text-sh-text-3">
-              <Icon icon={Phone} size={12} className="mr-[4px] inline" />
-              {formatTime(NOW)}
-            </span>
-          </div>
-        </Card>
+              )}
+            </div>
+          </Card>
 
-        {/* One note surface — the note the session ends with. */}
-        <Card titleSize="sm" title="Your note">
-          <VoiceField
-            id="tele-note"
-            label="Teleconsult note"
-            rows={10}
-            value={notes}
-            onChange={setNotes}
-            placeholder="What you observed over video, and what you could not assess…"
-            hint="What you could not examine matters as much as what you could. Record both. Dictation uses your microphone only; the teleconsult itself is not recorded."
-          />
-        </Card>
+          <Card titleSize="sm" title="Your notes">
+            <VoiceField
+              id="tele-note"
+              layout="note"
+              label="Your notes"
+              rows={9}
+              value={notes}
+              onChange={(v) => tele().setNote(p.id, v)}
+              placeholder="What you saw, what you advised…"
+              hint="Over video you cannot touch, listen to the chest, or take a blood pressure. Write down what you could not check, too."
+            />
+          </Card>
+        </div>
       </div>
 
       <ConfirmDialog
         open={ending}
-        title="End the teleconsult?"
-        consequence="The video call closes for the patient too. Your note stays a draft, and the prescription you have started is kept."
-        confirmLabel="End the session"
+        title={`End the call with ${first}?`}
+        consequence={`${capturing ? 'The recording stops and is saved. ' : ''}Also click Leave in Google Meet — this page cannot close the video for ${first}. Your notes are kept, and you mark the visit done when they are finished.`}
+        confirmLabel="End call"
         tone="destructive"
         onConfirm={() => {
           setEnding(false)
-          finishOpd(p.id)
-          toast({ tone: 'info', title: 'Teleconsult ended', detail: `${Math.floor(elapsed / 60)} min ${String(elapsed % 60).padStart(2, '0')} s with ${p.name}.` })
-          navigate('/tele/queue')
+          const sid = activeSid
+          void (async () => {
+            await stopCapture()
+            if (sid) tele().end(sid)
+            toast({ tone: 'success', title: 'Call ended', detail: `Finish your notes, then mark the visit done.` })
+          })()
         }}
         onCancel={() => setEnding(false)}
       />

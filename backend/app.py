@@ -3,6 +3,7 @@ Shri Health speech service — Tamil and English spoken, English written.
 
   GET  /health          the engine, model, device and denoiser in use
   WS   /ws/transcribe   one dictation session (see asr/pipeline.py)
+  *    /tele/…          teleconsult transcripts, kept on the server (see telehealth/api.py)
 
 Protocol, client → server:
   text   {"type": "start"}            opens a session (optional: the first audio opens one too)
@@ -16,10 +17,13 @@ Server → client:
   {"type": "error", "message": "..."}
   {"type": "done"}
 
-No database and nothing on disk: audio lives in memory for the session and is
-dropped when the socket closes.
+No database and nothing on disk for dictation: audio lives in memory for the
+session and is dropped when the socket closes. Only a teleconsult the patient
+agreed to record keeps its transcript text, in telehealth/ — never its audio.
 
 Run:  uvicorn app:app --host 127.0.0.1 --port 8765   (from backend/, inside .venv)
+      The teleconsult store (/tele) is closed unless ASR_ORIGINS and ASR_TOKEN are both set; on a
+      development machine, start with TELE_DEV=1 to open it to localhost pages.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ from asr.engines import load_engine
 from asr.pipeline import Session
 from audio.denoise import status as denoise_status
 from config import SETTINGS
+from telehealth.api import tele
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s')
 log = logging.getLogger('asr.app')
@@ -56,6 +61,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title='Shri Health speech service', lifespan=lifespan)
+app.mount('/tele', tele)
 
 
 @app.get('/health')
