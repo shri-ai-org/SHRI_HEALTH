@@ -5,6 +5,7 @@
 // VITE_TELE_API, or a `shri.teleApi` entry in this device's localStorage, names one.
 // Every call times out, and a store that cannot be reached is the caller's to handle:
 // the transcript is then kept on this device and sent when the store is back.
+// With no speech service (as now), nothing names a store, and it stays on this device.
 
 import { asrUrl } from '../logic/asrStream'
 

@@ -10,13 +10,12 @@
 // lost. A service that cannot be reached is reported once through `onUnreachable`,
 // and the owner falls back to the browser's recogniser.
 //
-// Configured by VITE_ASR_URL (e.g. ws://localhost:8765/ws/transcribe, or the
-// deployed wss://…/dev/clinician-asr/ws/transcribe) and, where the service wants
-// one, VITE_ASR_TOKEN. A `shri.asrUrl` entry in this device's localStorage points
-// a build at another service without rebuilding (the flows use it for their mock),
-// and `off` keeps it on the browser's recogniser.
-// A dev server with neither talks to the service on this machine's port 8765
-// (`python app.py` in backend/), and falls back as above when it isn't running.
+// Configured by VITE_ASR_URL (e.g. ws://localhost:8765/ws/transcribe) and, where
+// the service wants one, VITE_ASR_TOKEN. A `shri.asrUrl` entry in this device's
+// localStorage points a build at a service without rebuilding (the flows use it for
+// their mock), and `off` keeps it on the browser's recogniser.
+// With neither, every build — dev included — uses the browser's recogniser. No
+// speech service runs for now; the one planned (Parrotlet-a 2.0) plugs in here.
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
@@ -38,12 +37,7 @@ export function asrUrl(): string | undefined {
   } catch {
     /* storage blocked — the build's own setting stands */
   }
-  if (import.meta.env.VITE_ASR_URL) return import.meta.env.VITE_ASR_URL
-  if (import.meta.env.DEV) {
-    const host = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname) ? '127.0.0.1' : window.location.hostname
-    return `ws://${host}:8765/ws/transcribe`
-  }
-  return undefined
+  return import.meta.env.VITE_ASR_URL || undefined
 }
 
 /** What the dictation box names as the engine — not a model name, which the brief keeps off the screen. */

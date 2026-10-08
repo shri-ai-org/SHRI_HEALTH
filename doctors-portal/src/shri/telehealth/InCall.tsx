@@ -8,7 +8,7 @@
  * says why.
  */
 
-import { AlertTriangle, CheckCircle2, Circle, Loader, Mic, PhoneOff, Square, Volume2, XCircle, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Circle, Info, Loader, Mic, PhoneOff, Square, Volume2, XCircle, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { useUI } from '@/store/ui'
@@ -50,14 +50,14 @@ const SPEECH: Record<SpeechState, (first: string) => { icon: LucideIcon; cls: st
   ready: (f) => ({ icon: CheckCircle2, cls: 'text-sh-norm-fg', text: `The live transcript is ready. Shri will write down what you and ${f} say, in Tamil and English.` }),
   busy: () => ({ icon: AlertTriangle, cls: 'text-sh-warn-fg', text: 'The speech service is busy with other doctors. You can start; the words follow as soon as it is free.' }),
   browser: (f) => ({
-    icon: AlertTriangle,
-    cls: 'text-sh-warn-fg',
-    text: `The Shri speech service is not running, so only your own words, in English, can be written down, not ${f}’s. Ask IT to start the Shri speech service.`,
+    icon: Info,
+    cls: 'text-sh-text-3',
+    text: `The browser writes down your words, in English only. ${f}’s words are not written down, but the recording keeps both voices.`,
   }),
   none: () => ({
     icon: XCircle,
     cls: 'text-sh-crit-fg',
-    text: `Nothing can be written down: the Shri speech service is not running${isBrave() ? ', and Brave blocks the browser’s own speech-to-text' : ''}. The video can still be recorded. Ask IT to start the speech service${isBrave() ? ', or open this page in Google Chrome' : ''}.`,
+    text: `${isBrave() ? 'Brave blocks speech-to-text' : 'This browser cannot turn speech into text'}, so nothing will be written down. The video can still be recorded. Open this page in Google Chrome or Microsoft Edge to have your words written down.`,
   }),
 }
 

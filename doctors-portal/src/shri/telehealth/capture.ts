@@ -13,8 +13,10 @@
 //     reopened, with the audio of the gap held and sent. A session is rolled over
 //     before the service's 15-minute cap, so a long consult loses no words. Lines
 //     go to the transcript store (teleStore.ts → the server's database).
-//   · Without the speech service, the doctor's side falls back to the browser's own
-//     recogniser (English only). The patient's side cannot, and the page says so.
+//   · Without a speech service — as now, until Parrotlet-a 2.0 — the browser's own
+//     recogniser writes down the doctor's side (English only). It cannot hear the
+//     patient's side, and the page says so. A service that drops mid-call hands over
+//     to it the same way.
 //
 // One capture at a time, owned by this module rather than by a screen: leaving the
 // session for the prescription and coming back keeps it recording.
@@ -308,7 +310,7 @@ class BrowserChannel {
       const why: Record<string, string> = {
         'not-allowed': 'Speech-to-text was blocked by the browser.',
         'service-not-allowed': 'Speech-to-text was blocked by the browser.',
-        network: 'This browser cannot reach its speech-to-text service (Brave blocks it). Use Google Chrome, or start the Shri speech service.',
+        network: 'This browser cannot reach its speech-to-text service (Brave blocks it). Use Google Chrome or Microsoft Edge.',
         'audio-capture': 'Speech-to-text could not use the microphone.',
         'language-not-supported': 'This browser’s speech-to-text does not support Indian English.',
       }
@@ -500,27 +502,26 @@ export async function startCapture(sid: string, { textOnly = false, cropTo }: { 
   }
   cap.recorder = recorder
 
-  // The transcript: one channel per voice; without the service, the browser's recogniser for the doctor.
+  // The transcript: one channel per voice; without a service, the browser's recogniser for the doctor.
   let fellBack = false
-  const fallBack = () => {
+  const fallBack = (unreachable: boolean) => {
     if (fellBack) return
     fellBack = true
     for (const ch of cap.channels) void ch.stop()
     cap.channels = [new BrowserChannel(sid)]
-    if (tabSource) channelState('patient', 'error')
-    notice(
-      tabSource
-        ? 'The Shri speech service is not reachable. Your words are written down by the browser (English only); the patient’s are not. Both voices are still recorded.'
-        : 'The Shri speech service is not reachable. Your words are written down by the browser (English only).',
-    )
+    if (tabSource) channelState('patient', unreachable ? 'error' : 'off')
+    const browser = tabSource
+      ? 'The browser writes down your words, in English only. The patient’s words are not written down, but both voices are recorded.'
+      : 'The browser writes down your words, in English only.'
+    notice(unreachable ? `The speech service cannot be reached. ${browser}` : browser)
   }
   if (asrUrl()) {
-    cap.channels.push(new StreamChannel('doctor', sid, ctx, micSource, fallBack))
+    cap.channels.push(new StreamChannel('doctor', sid, ctx, micSource, () => fallBack(true)))
     if (tabSource) {
       channelState('patient', 'connecting')
-      cap.channels.push(new StreamChannel('patient', sid, ctx, tabSource, fallBack))
+      cap.channels.push(new StreamChannel('patient', sid, ctx, tabSource, () => fallBack(true)))
     }
-  } else fallBack()
+  } else fallBack(false)
 
   // Ending the tab share from Chrome's own bar: the patient's side stops, the doctor's carries on.
   video?.addEventListener('ended', () => {

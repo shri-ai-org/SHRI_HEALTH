@@ -39,9 +39,19 @@ export function headerText(h: RecordHeader) {
     .join('\n')
 }
 
+/** Who wrote the transcript down: the speech service hears both sides; the browser only the doctor. */
+function writtenBy(segs: TeleSegment[]) {
+  const service = segs.some((s) => s.source === 'shri-asr')
+  const browser = segs.some((s) => s.source === 'browser')
+  if (service && browser) return ' (written down by the Shri Health speech service until it stopped, then by the browser: the doctor’s words only)'
+  if (service) return ' (Shri Health speech service: Tamil and English heard, English written)'
+  if (browser) return ' (written down by the browser: the doctor’s words only, in English)'
+  return ''
+}
+
 export function liveTranscriptText(h: RecordHeader, segs: TeleSegment[]) {
   const body = segs.map((s) => `[${clockOf(s.startMs)}] ${SPEAKER_LABEL[s.speaker]}: ${s.text}`).join('\n')
-  return `${headerText(h)}\n\nLIVE TRANSCRIPT (Shri Health speech service — Tamil and English heard, English written)\n\n${body || '(nothing was transcribed)'}\n`
+  return `${headerText(h)}\n\nLIVE TRANSCRIPT${writtenBy(segs)}\n\n${body || '(nothing was transcribed)'}\n`
 }
 
 /** Captions for the recording: times from when the recording started, so the file plays with them. */

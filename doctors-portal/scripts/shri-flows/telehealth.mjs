@@ -112,6 +112,7 @@ export default ({ page, expect, toastSays, send, sleep }) => {
           expect(text.includes('Arjun agreed to recording in the patient portal'), 'the consent is the patient portal’s')
           expect(!text.includes('Meeting link') && !text.includes('Permission to record') && !text.includes('Yes, agreed'), 'no link to paste, no consent to ask')
           expect(text.includes('About Arjun') && text.includes('Your notes'), 'the patient and the notes beside them')
+          expect(!text.includes('Start consultation'), 'no Start consultation: the call is the consultation')
           expect((await visitStatus()) === 'waiting', 'Waiting')
 
           await page.click('button', 'Start video call')
@@ -121,6 +122,9 @@ export default ({ page, expect, toastSays, send, sleep }) => {
           await page.until(`!!document.querySelector('[data-joined]') && document.body.textContent.includes('Arjun has joined')`, 3000, 'it says when Arjun joins')
           expect((await visitStatus()) === 'incall', 'In call')
           expect(!(await btnDisabled('Start recording')), 'Start recording, one button')
+          await page.until(`document.querySelector('[data-speech]')?.dataset.speech === 'browser'`, 3000, 'with no speech service, the browser listens')
+          const listens = await page.evaluate(`document.querySelector('[data-speech]').textContent`)
+          expect(listens.includes('The browser writes down your words, in English only') && !listens.includes('speech service'), `said plainly, with nothing to ask IT for: ${listens}`)
 
           const arjunOnMyDay = () => page.evaluate(`[...document.querySelectorAll('[aria-label="Today\\'s OPD patients"] li')].find((li) => li.textContent.includes('Arjun Nair'))?.textContent ?? ''`)
           await page.open('/', { fresh: false })
@@ -286,13 +290,13 @@ export default ({ page, expect, toastSays, send, sleep }) => {
         const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
         try {
           await page.open('/tele/session/ISH-0044240')
-          // A speech service that is not running.
-          await page.evaluate(`localStorage.setItem('shri.asrUrl', 'ws://127.0.0.1:1/ws/transcribe'); localStorage.setItem('shri.teleApi', 'off'); true`)
+          // No speech service (as now), and a browser that cannot listen.
+          await page.evaluate(`localStorage.setItem('shri.asrUrl', 'off'); localStorage.setItem('shri.teleApi', 'off'); true`)
           await page.open('/tele/session/ISH-0044240', { fresh: false })
           await page.click('button', 'Start video call')
           await page.until(`document.querySelector('[data-speech]')?.dataset.speech === 'none'`, 8000, 'the check finds nothing that can listen')
           const said = await page.evaluate(`document.querySelector('[data-speech]').textContent`)
-          expect(said.includes('Nothing can be written down') && said.includes('Shri speech service is not running'), `said plainly: ${said}`)
+          expect(said.includes('This browser cannot turn speech into text, so nothing will be written down') && said.includes('Google Chrome'), `said plainly: ${said}`)
           expect(!(await btnDisabled('Start recording')), 'the video can still be recorded')
         } finally {
           await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: quiet.identifier })

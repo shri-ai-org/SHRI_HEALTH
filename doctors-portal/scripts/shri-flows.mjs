@@ -229,7 +229,7 @@ async function stubSpeech({ speech = true } = {}) {
         }
         window.SpeechRecognition = FakeRecognition
         window.webkitSpeechRecognition = FakeRecognition
-        // These takes are the browser recogniser's, not the speech service a dev server dials by default.
+        // These takes are the browser recogniser's, even where a device names a speech service.
         try { if (!localStorage.getItem('shri.asrUrl')) localStorage.setItem('shri.asrUrl', 'off') } catch {}
         if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream
         window.__say = (text, confidence) => {
