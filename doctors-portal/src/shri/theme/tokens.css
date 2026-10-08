@@ -95,7 +95,7 @@ html.shri-active body::before {
   --act-paper: #475569; --act-paper-ink: #ffffff;
   --act-discharge: #0f766e; --act-discharge-ink: #ffffff;
   --act-stroke: #be185d; --act-stroke-ink: #ffffff;
-  --act-patient: #2563eb; --act-patient-ink: #ffffff;
+  --act-patient: var(--act-opd); --act-patient-ink: var(--act-opd-ink); /* a booked patient is an OPD visit: the OPD's green */
   --act-procedure: #0369a1; --act-procedure-ink: #ffffff;
   --act-other: #57534e; --act-other-ink: #ffffff;
   --avail-fill: #ecfaf1; --avail-edge: #22a55a; --avail-ink: #146c3a;
@@ -220,7 +220,7 @@ html[data-theme='dark'] .shri-root {
   --act-paper: #52607a; --act-paper-ink: #ffffff;
   --act-discharge: #0f766e; --act-discharge-ink: #ffffff;
   --act-stroke: #be185d; --act-stroke-ink: #ffffff;
-  --act-patient: #2563eb; --act-patient-ink: #ffffff;
+  --act-patient: var(--act-opd); --act-patient-ink: var(--act-opd-ink); /* a booked patient is an OPD visit: the OPD's green */
   --act-procedure: #0369a1; --act-procedure-ink: #ffffff;
   --act-other: #57534e; --act-other-ink: #ffffff;
   --avail-fill: rgba(34, 197, 94, 0.12); --avail-edge: #22c55e; --avail-ink: #86efac;

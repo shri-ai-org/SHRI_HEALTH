@@ -11,10 +11,12 @@
  *     the OPD queue, drawn as the OPD block, which runs as long as the queue
  *     does (their other appointments today are drawn as ever);
  *   · blocked time, the doctor's own;
- *   · free time: the working day — 8 AM to 5 PM, Monday to Saturday — and any
- *     extra hours the doctor opened on the day, less all of the above;
- *   · off hours: the rest. Something the doctor booked into off hours (an
- *     early operation) is busy there; the rest of the off hours stay off.
+ *   · free time: the working day — 8 AM to 5 PM, Monday to Saturday, less
+ *     lunch, 12:30 to 2 PM — and any extra hours the doctor opened on the day,
+ *     less all of the above;
+ *   · off hours: the rest, lunch among them — bookable only once the doctor
+ *     opens them. Something the doctor booked into off hours (an early
+ *     operation) is busy there; the rest of the off hours stay off.
  *
  * Overlaps are merged for the totals, so no minute counts twice; on the one
  * row a bar ends where the next begins. Free time and off hours from now on
@@ -39,8 +41,10 @@ export const END = START + GRID_HOURS * 60
 
 export type Span = [number, number]
 
-/** The working day, Monday to Saturday. */
-const WORK: Span = [8 * 60, 17 * 60]
+/** Lunch: off hours like any other, which the doctor may open for the front office. */
+const LUNCH: Span = [12 * 60 + 30, 14 * 60]
+/** The working day, Monday to Saturday: 8 AM to 5 PM, less lunch. */
+const WORK: Span[] = [[8 * 60, LUNCH[0]], [LUNCH[1], 17 * 60]]
 const DEFAULT_SLOT = 15
 /** Free time shorter than this is not named "next free". */
 const MIN_FREE = 15
@@ -205,7 +209,7 @@ export function dayModel(day: CalendarDay): DayModel {
   const busy = minus(doing, blocked)
 
   // Working time: the working day (not on a Sunday) and the day's extra hours.
-  const base: Span[] = day.date.getDay() === 0 ? [] : [WORK]
+  const base: Span[] = day.date.getDay() === 0 ? [] : WORK
   const extra = minus(merge(openings), base)
   const taken = merge([...doing, ...blocked])
   const free = [...minus(base, taken).map((f) => ({ f, extra: false })), ...minus(extra, taken).map((f) => ({ f, extra: true }))]
@@ -228,7 +232,7 @@ export function dayModel(day: CalendarDay): DayModel {
     if (a < gone) items.push({ id: `${kind}-gone-${a}`, kind, start: a, end: Math.min(b, gone), drawEnd: Math.min(b, gone), title, past: true, extra: isExtra })
     if (b > gone) items.push({ id: `${kind}-${Math.max(a, gone)}`, kind, start: Math.max(a, gone), end: b, drawEnd: b, title, extra: isExtra })
   }
-  for (const { f, extra: x } of free) split('free', f, x ? 'Extra hours' : 'Free', x)
+  for (const { f, extra: x } of free) split('free', f, x ? 'Extra hours' : 'Available', x)
   for (const o of off) split('off', o, 'Off hours')
   items.sort((x, y) => x.start - y.start)
 

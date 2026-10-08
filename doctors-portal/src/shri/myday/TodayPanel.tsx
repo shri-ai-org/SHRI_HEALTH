@@ -15,7 +15,7 @@
  */
 
 import { format } from 'date-fns'
-import { CalendarSearch, ChevronLeft, ChevronRight } from 'lucide-react'
+import { CalendarSearch, ChevronLeft, ChevronRight, ClockPlus, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -71,7 +71,8 @@ export function TodayPanel({ className }: { className?: string }) {
   const ahead = day.isToday ? events.filter((e) => e.end > model.now!) : events
   const shown = whole ? events : ahead.slice(0, UPCOMING)
   const current = day.isToday ? events.find((e) => e.start <= model.now! && model.now! < e.end) : undefined
-  const kinds = [...new Set(events.map((e) => e.kind as ActivityKind))]
+  // A booked patient is an OPD visit, in the OPD's green: the key names it once, as OPD.
+  const kinds = [...new Set(events.map((e) => (e.kind === 'patient' ? 'opd' : e.kind) as ActivityKind))]
   const has = (k: string) => model.items.some((i) => i.kind === k && !i.past)
 
   // The OPD's next patient, as the queue calls them.
@@ -131,15 +132,19 @@ export function TodayPanel({ className }: { className?: string }) {
               {KIND_LABEL[k]}
             </span>
           ))}
-          {has('free') && (
+          {model.items.some((i) => i.kind === 'free' && !i.past && !i.extra) && (
             <span className="inline-flex items-center gap-[7px]">
-              <span className={cn('h-[13px] w-[18px] rounded-[4px]', FREE)} />
+              <span className={cn('inline-flex h-[16px] w-[22px] items-center justify-center rounded-[4px]', FREE)}>
+                <Icon icon={Plus} size={11} strokeWidth={2.5} />
+              </span>
               Available
             </span>
           )}
           {model.items.some((i) => i.extra) && (
             <span className="inline-flex items-center gap-[7px]">
-              <span className={cn('h-[13px] w-[18px] rounded-[4px]', FREE)} />
+              <span className={cn('inline-flex h-[16px] w-[22px] items-center justify-center rounded-[4px]', FREE)}>
+                <Icon icon={ClockPlus} size={11} strokeWidth={2.5} />
+              </span>
               Extra hours
             </span>
           )}
