@@ -1,12 +1,15 @@
 /**
- * During the call: one bar that says who the call is with and for how long,
- * with Open video (back to the Meet tab) and End call; under it, the recording —
- * off until the patient has agreed and the doctor presses Start recording, with
- * the three clicks Chrome's share window needs written out beside the button.
+ * During the call, all in the visit page: a bar that says who the call is with,
+ * for how long and whether they have joined, with Start recording and End call;
+ * under it the video itself (the visit's Jitsi room); under that, while it
+ * records, who is being heard. Recording is one button — the patient agreed in
+ * the patient portal — and the browser asks once to share this tab. Where the
+ * patient declined, or has not answered, the button is not offered and the page
+ * says why.
  */
 
-import { AlertTriangle, CheckCircle2, Circle, Loader, Mic, PhoneOff, Square, Type, Video, Volume2, XCircle, type LucideIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { AlertTriangle, CheckCircle2, Circle, Loader, Mic, PhoneOff, Square, Volume2, XCircle, type LucideIcon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useUI } from '@/store/ui'
 
@@ -14,11 +17,11 @@ import { cn } from '../lib/cn'
 import { Card, Icon, Pill } from '../ui/primitives'
 
 import { captureSupported, startCapture, stopCapture } from './capture'
-import { openMeet } from './meet'
+import { JitsiRoom } from './JitsiRoom'
 import { isBrave, useSpeechCheck, type SpeechState } from './speechCheck'
 import { consentOf, useTele, type ChannelState } from './teleStore'
 import type { Speaker } from './teleTypes'
-import { ConsentButtons } from './VisitSetup'
+import { ConsentLine } from './VisitSetup'
 
 const clock = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)}:` : '') + `${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 
@@ -44,12 +47,12 @@ function Heard({ speaker, label, icon }: { speaker: Speaker; label: string; icon
 
 const SPEECH: Record<SpeechState, (first: string) => { icon: LucideIcon; cls: string; text: string }> = {
   checking: () => ({ icon: Loader, cls: 'text-sh-text-3', text: 'Checking the live transcript…' }),
-  ready: (f) => ({ icon: CheckCircle2, cls: 'text-sh-norm-fg', text: `Live transcript ready — Shri will write down what you and ${f} say, in Tamil and English.` }),
+  ready: (f) => ({ icon: CheckCircle2, cls: 'text-sh-norm-fg', text: `The live transcript is ready. Shri will write down what you and ${f} say, in Tamil and English.` }),
   busy: () => ({ icon: AlertTriangle, cls: 'text-sh-warn-fg', text: 'The speech service is busy with other doctors. You can start; the words follow as soon as it is free.' }),
   browser: (f) => ({
     icon: AlertTriangle,
     cls: 'text-sh-warn-fg',
-    text: `The Shri speech service is not running, so only your own words — in English — can be written down, not ${f}’s. Ask IT to start the Shri speech service.`,
+    text: `The Shri speech service is not running, so only your own words, in English, can be written down, not ${f}’s. Ask IT to start the Shri speech service.`,
   }),
   none: () => ({
     icon: XCircle,
@@ -58,26 +61,48 @@ const SPEECH: Record<SpeechState, (first: string) => { icon: LucideIcon; cls: st
   }),
 }
 
-export function InCall({ sid, patientId, firstName, meetUri, startedAt, onEnd }: { sid: string; patientId: string; firstName: string; meetUri?: string; startedAt: number; onEnd: () => void }) {
+export function InCall({
+  sid,
+  patientId,
+  firstName,
+  room,
+  doctorName,
+  startedAt,
+  onEnd,
+  onLeftRoom,
+}: {
+  sid: string
+  patientId: string
+  firstName: string
+  room: string
+  doctorName: string
+  startedAt: number
+  /** End call, from the bar: asks first. */
+  onEnd: () => void
+  /** The doctor left from inside the video itself. */
+  onLeftRoom: () => void
+}) {
   const toast = useUI((s) => s.toast)
   const consent = useTele((s) => consentOf(s, patientId))
   const live = useTele((s) => (s.live?.sid === sid ? s.live : undefined))
-  const [starting, setStarting] = useState<'video' | 'text' | null>(null)
+  const [starting, setStarting] = useState(false)
+  const [others, setOthers] = useState(0)
   const [now, setNow] = useState(() => Date.now())
+  const videoBox = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(t)
   }, [])
 
-  async function start(mode: 'video' | 'text') {
-    setStarting(mode)
+  async function record() {
+    setStarting(true)
     try {
-      await startCapture(sid, { textOnly: mode === 'text' })
+      await startCapture(sid, { cropTo: videoBox.current ?? undefined })
     } catch (e) {
-      toast({ tone: 'caution', title: mode === 'text' ? 'The live transcript did not start' : 'Recording did not start', detail: (e as Error).message })
+      toast({ tone: 'caution', title: 'Recording did not start', detail: (e as Error).message })
     } finally {
-      setStarting(null)
+      setStarting(false)
     }
   }
 
@@ -85,43 +110,56 @@ export function InCall({ sid, patientId, firstName, meetUri, startedAt, onEnd }:
   const recSec = live ? Math.max(0, Math.floor((now - live.startedAt) / 1000)) : 0
   const speech = useSpeechCheck(!live && consent === 'given')
   const sp = SPEECH[speech](firstName)
+  const canRecord = consent === 'given' && captureSupported()
 
   return (
-    <Card className="p-0">
-      <div className="flex flex-wrap items-center gap-[12px] px-[20px] py-[16px]">
+    <Card className="gap-0 p-0">
+      <div className="flex flex-wrap items-center gap-[12px] px-[20px] py-[14px]">
         <span className="relative flex size-[12px]" aria-hidden="true">
           <span className="absolute inline-flex size-full rounded-full bg-sh-norm opacity-60 motion-safe:animate-ping" />
           <span className="relative inline-flex size-[12px] rounded-full bg-sh-norm" />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[18px] font-semibold">In call with {firstName}</p>
-          <p className="text-[13px] tabular-nums text-sh-text-3" data-call-clock>
-            {clock(callSec)} · video is in the Google Meet tab
+          <p className="text-[13px] tabular-nums text-sh-text-3" data-call-clock data-joined={others > 0 || undefined}>
+            {clock(callSec)} · {others > 0 ? `${firstName} has joined` : `Waiting for ${firstName} to join from the patient portal`}
           </p>
         </div>
-        {meetUri && (
-          <Pill variant="control" size="lg" icon={Video} onClick={() => openMeet(meetUri)}>
-            Open video
-          </Pill>
+        {live ? (
+          <span className="flex items-center gap-[10px]">
+            <span className="flex items-center gap-[8px] text-[15px] font-semibold text-sh-crit-fg">
+              <Icon icon={Circle} size={11} className={cn('fill-current', live.recording === 'recording' && 'motion-safe:animate-pulse')} />
+              {live.recording === 'finalising' ? 'Saving…' : 'Recording'}
+              <span className="font-normal tabular-nums text-sh-text-2">{clock(recSec)}</span>
+            </span>
+            <Pill variant="control" size="xl" icon={Square} disabled={live.recording === 'finalising'} onClick={() => void stopCapture()}>
+              Stop recording
+            </Pill>
+          </span>
+        ) : (
+          canRecord && (
+            <Pill variant="primary" size="xl" icon={starting ? Loader : Circle} disabled={starting} onClick={() => void record()}>
+              {starting ? 'Starting…' : 'Start recording'}
+            </Pill>
+          )
         )}
-        <Pill variant="crit" size="lg" icon={PhoneOff} onClick={onEnd}>
+        <Pill variant="crit" size="xl" icon={PhoneOff} onClick={onEnd}>
           End call
         </Pill>
       </div>
 
-      <div className="border-t border-sh-line px-[20px] py-[16px]">
+      <JitsiRoom
+        room={room}
+        displayName={doctorName}
+        onOthers={setOthers}
+        onLeft={onLeftRoom}
+        boxRef={videoBox}
+        className="mx-[12px] h-[min(62vh,620px)] min-h-[300px]"
+      />
+
+      <div className="px-[20px] py-[14px]">
         {live ? (
-          <div className="flex flex-col gap-[12px]">
-            <div className="flex flex-wrap items-center gap-[12px]">
-              <span className="flex items-center gap-[8px] text-[15px] font-semibold text-sh-crit-fg">
-                <Icon icon={Circle} size={11} className={cn('fill-current', live.recording === 'recording' && 'motion-safe:animate-pulse')} />
-                {live.recording === 'finalising' ? 'Saving the recording…' : live.recording === 'recording' ? 'Recording video and text' : 'Live transcript on'}
-                <span className="tabular-nums font-normal text-sh-text-2">{clock(recSec)}</span>
-              </span>
-              <Pill variant="control" size="md" icon={Square} className="ml-auto" disabled={live.recording === 'finalising'} onClick={() => void stopCapture()}>
-                {live.recording === 'off' ? 'Stop live transcript' : 'Stop recording'}
-              </Pill>
-            </div>
+          <div className="flex flex-col gap-[10px]">
             <div className="flex flex-wrap gap-[8px]">
               <Heard speaker="doctor" label="You" icon={Mic} />
               <Heard speaker="patient" label={firstName} icon={Volume2} />
@@ -133,42 +171,17 @@ export function InCall({ sid, patientId, firstName, meetUri, startedAt, onEnd }:
               </p>
             ))}
           </div>
-        ) : consent === undefined ? (
-          <div className="flex flex-col gap-[10px]">
-            <p className="text-[15px] font-medium">Recording is off. Ask {firstName} first: “Can we record this call?”</p>
-            <ConsentButtons patientId={patientId} size="md" />
-          </div>
-        ) : consent === 'declined' ? (
-          <p className="text-[14px] text-sh-text-2">
-            Not recording — {firstName} said no.{' '}
-            <button type="button" className="text-sh-text-3 underline" onClick={() => useTele.getState().setConsent(patientId, 'given')}>
-              They changed their mind
-            </button>
-          </p>
+        ) : consent !== 'given' ? (
+          <ConsentLine consent={consent} firstName={firstName} />
         ) : !captureSupported() ? (
           <p className="text-[14px] text-sh-warn-fg">This browser cannot record. Open this page in Google Chrome or Microsoft Edge.</p>
         ) : (
-          <div className="flex flex-wrap items-start gap-[20px]">
-            <div className="flex flex-col gap-[8px]">
-              <Pill variant="primary" size="xl" icon={starting === 'video' ? Loader : Circle} disabled={starting !== null} onClick={() => void start('video')}>
-                {starting === 'video' ? 'Starting…' : 'Start recording'}
-              </Pill>
-              <Pill variant="control" size="lg" icon={starting === 'text' ? Loader : Type} disabled={starting !== null || speech === 'none'} onClick={() => void start('text')}>
-                {starting === 'text' ? 'Starting…' : 'Live transcript only'}
-              </Pill>
-              <span className="max-w-[240px] text-[12px] text-sh-text-3">
-                Start recording keeps the video and the words. Live transcript only keeps just the words, as text. {firstName} agreed to both.
-              </span>
-            </div>
-            <ol className="flex min-w-[240px] flex-1 flex-col gap-[6px] text-[14px] text-sh-text-2" aria-label="What to click after Start recording">
-              {['A window opens. Click the Google Meet tab.', 'Turn on “Also share tab audio” so that Shri can hear the patient.', 'Click Share.'].map((t, i) => (
-                <li key={t} className="flex items-center gap-[10px]">
-                  <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-sh-inner text-[12px] font-semibold">{i + 1}</span>
-                  {t}
-                </li>
-              ))}
-            </ol>
-            <p className={cn('flex w-full items-start gap-[8px] rounded-[12px] bg-sh-inner px-[12px] py-[10px] text-[13px]', sp.cls)} data-speech={speech}>
+          <div className="flex flex-col gap-[8px]">
+            <p className="text-[14px] text-sh-text-2">
+              {firstName} agreed to recording in the patient portal. When you press Start recording, Chrome asks once to share this tab with its sound: click Allow. The video and
+              both voices are recorded, and the conversation is written down as it is said.
+            </p>
+            <p className={cn('flex items-start gap-[8px] rounded-[12px] bg-sh-inner px-[12px] py-[10px] text-[13px]', sp.cls)} data-speech={speech}>
               <Icon icon={sp.icon} size={15} className={cn('mt-[1px] shrink-0', speech === 'checking' && 'motion-safe:animate-spin')} />
               {sp.text}
             </p>

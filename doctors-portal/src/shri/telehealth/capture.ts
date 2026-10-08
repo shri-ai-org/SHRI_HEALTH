@@ -1,12 +1,15 @@
-// The teleconsult's own record of itself, while Google Meet carries the call:
+// The teleconsult's own record of itself, while the visit page's Jitsi room
+// carries the call:
 //
-//   · The recording. The doctor shares the Meet tab, with its audio, once. What is
-//     recorded is that tab's picture, the patient's voice from it and the doctor's
-//     microphone, mixed. It goes to IndexedDB every few seconds (recordingStore.ts)
-//     and downloads as one .webm.
+//   · The recording. The doctor allows this tab to be shared, with its sound, once
+//     (Chrome asks; nothing is picked). What is recorded is the video room — the
+//     tab's picture cropped to it where the browser can — the patient's voice,
+//     which plays in this tab, and the doctor's microphone, mixed. It goes to
+//     IndexedDB every few seconds (recordingStore.ts) and downloads as one .webm.
 //   · The live transcript. Two channels to Shri Health's speech service (backend/),
-//     each its own socket: the doctor's microphone, and the tab's audio, which is the
-//     patient. So every line knows who said it. A socket the service closes is
+//     each its own socket: the doctor's microphone, and this tab's audio, which is
+//     the patient (the doctor's own voice is never played back here). So every line
+//     knows who said it. A socket the service closes is
 //     reopened, with the audio of the gap held and sent. A session is rolled over
 //     before the service's 15-minute cap, so a long consult loses no words. Lines
 //     go to the transcript store (teleStore.ts → the server's database).
@@ -371,13 +374,14 @@ export const tabShareSupported = () => Boolean(navigator.mediaDevices?.getDispla
 export const isCapturing = () => current !== null
 
 /**
- * Starts transcribing `sid` — and, unless `textOnly`, recording it. Asks for the microphone, then for the Meet
- * tab (with its audio: the patient's voice). Declining the tab still transcribes the doctor's side, and says
- * so. Throws only when the microphone itself cannot be opened.
+ * Starts transcribing `sid` — and, unless `textOnly`, recording it. Asks for the microphone, then to share this
+ * tab (with its sound: the patient's voice, from the video room). `cropTo` is the video room's box: the
+ * recording keeps just that, where the browser can crop (Chrome's Region Capture). Declining the share still
+ * transcribes the doctor's side, and says so. Throws only when the microphone itself cannot be opened.
  *
  * Text only keeps no audio or video at all, just the words — the live transcript, which downloads as text.
  */
-export async function startCapture(sid: string, { textOnly = false }: { textOnly?: boolean } = {}): Promise<void> {
+export async function startCapture(sid: string, { textOnly = false, cropTo }: { textOnly?: boolean; cropTo?: Element } = {}): Promise<void> {
   if (current) return
   const tele = useTele.getState()
   tele.setLive(() => ({
@@ -416,17 +420,27 @@ export async function startCapture(sid: string, { textOnly = false }: { textOnly
           autoGainControl: false,
           suppressLocalAudioPlayback: false,
         } as MediaTrackConstraints,
-        // Chrome's options: offer tabs first, never this page itself, and keep the tab audible.
-        preferCurrentTab: false,
-        selfBrowserSurface: 'exclude',
-        surfaceSwitching: 'include',
-        systemAudio: 'include',
+        // Chrome's options: this tab, the one the call is in, with its sound — one Allow, nothing to pick.
+        preferCurrentTab: true,
+        selfBrowserSurface: 'include',
+        surfaceSwitching: 'exclude',
+        systemAudio: 'exclude',
       } as DisplayMediaStreamOptions)
     } catch {
-      notice('The Google Meet tab was not chosen, so only your voice is heard. To hear the patient too: Stop, start again, and choose the Google Meet tab.')
+      notice('This tab was not shared, so only your voice is being heard. To record the video and the patient too, stop recording, start again, and click Allow.')
     }
-  } else notice('This browser can only hear your voice. Use Google Chrome to hear the patient too.')
-  if (display && !display.getAudioTracks().length) notice('The patient cannot be heard: “Also share tab audio” was off. Stop recording, start again, and turn it on.')
+  } else notice('This browser can only hear your voice. Use Google Chrome to record the video and the patient too.')
+  if (display && !display.getAudioTracks().length) notice('The patient cannot be heard because the tab was shared without its sound. Stop recording, start again, and leave “Also share tab audio” on.')
+  // Keep just the video room, not the notes beside it, where the browser can crop a shared tab.
+  const shot = display?.getVideoTracks()[0] as (MediaStreamTrack & { cropTo?: (t: unknown) => Promise<void> }) | undefined
+  const Crop = (window as unknown as { CropTarget?: { fromElement: (e: Element) => Promise<unknown> } }).CropTarget
+  if (shot?.cropTo && Crop && cropTo) {
+    try {
+      await shot.cropTo(await Crop.fromElement(cropTo))
+    } catch {
+      /* the whole tab is recorded instead */
+    }
+  }
 
   const ctx = new AudioContext()
   void ctx.resume().catch(() => undefined)
@@ -512,7 +526,7 @@ export async function startCapture(sid: string, { textOnly = false }: { textOnly
   video?.addEventListener('ended', () => {
     if (current?.sid !== sid) return
     channelState('patient', 'off')
-    notice('Sharing the Google Meet tab was stopped, so the patient is no longer recorded. Stop recording and start again to fix it.')
+    notice('Sharing this tab was stopped, so the video and the patient are no longer recorded. Stop recording and start again to fix it.')
   })
 
   current = cap

@@ -1,9 +1,13 @@
 /**
  * Telehealth (M-27): Video visits (S-27-02), the video visit itself (S-27-03)
  * and the tele-prescription with its hard-coded category gate (S-27-04).
- * The recording and live transcript run against the speech service's scripted
- * stand-in (backend/tools/mock_service.py) and a throwaway transcript store
- * (backend/telehealth), with a tone for the microphone and a canvas for the Meet tab.
+ * The call is a Jitsi room inside the visit page — here a stand-in for Jitsi's
+ * IFrame API, so no network and no camera are needed. The recording and live
+ * transcript run against the speech service's scripted stand-in
+ * (backend/tools/mock_service.py) and a throwaway transcript store
+ * (backend/telehealth), with a tone for the microphone and a canvas for the
+ * shared tab. Recording consent is the patient's, from the patient portal:
+ * Arjun agreed, Lakshmi declined, Sunita has not answered.
  * Loaded by scripts/shri-flows.mjs.
  */
 
@@ -17,11 +21,12 @@ const BACKEND = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 
 const ASR_PORT = 8796
 const STORE_PORT = 8795
 
-/** A microphone that hums and a Meet tab that is a ticking canvas with a hum of its own: real streams, so the recorder and the worklet have something to take. */
+/** A microphone that hums and a shared tab that is a ticking canvas with a hum of its own: real streams, so the recorder and the worklet have something to take. The share's options are kept, to check what was asked for. */
 const MEDIA_STUB = `(() => {
   const tone = (hz) => { const ctx = new AudioContext(); const o = ctx.createOscillator(); o.frequency.value = hz; const d = ctx.createMediaStreamDestination(); o.connect(d); o.start(); return d.stream }
   navigator.mediaDevices.getUserMedia = async () => tone(220)
-  navigator.mediaDevices.getDisplayMedia = async () => {
+  navigator.mediaDevices.getDisplayMedia = async (opts) => {
+    window.__shareOptions = opts
     const c = document.createElement('canvas'); c.width = 320; c.height = 180
     const g = c.getContext('2d'); let n = 0
     setInterval(() => { g.fillStyle = n++ % 2 ? '#dde' : '#edd'; g.fillRect(0, 0, 320, 180) }, 100)
@@ -32,16 +37,28 @@ const MEDIA_STUB = `(() => {
   window.open = () => null
 })()`
 
-const MEET_DOC = `Teleconsult - Transcript
-Attendees
-Dr Rao, Arjun Nair
-Transcript
-00:00:00
-
-Dr Rao: Blood pressure is slightly high, increase the dose.
-Arjun Nair: Okay doctor, from tomorrow.
-Meeting ended after 00:00:20
-`
+/** Jitsi's IFrame API, stood in: a box where the video would be, the patient joining a moment later, and the events the page listens for. */
+const JITSI_STUB = `(() => {
+  window.JitsiMeetExternalAPI = class {
+    constructor(domain, o) {
+      this.l = {}
+      const d = document.createElement('div')
+      d.setAttribute('data-jitsi-stub', o.roomName)
+      d.style.cssText = 'width:100%;height:100%;background:#123'
+      o.parentNode.appendChild(d)
+      this.d = d
+      window.__jitsi = this
+      window.__jitsiDomain = domain
+      window.__jitsiDisposed = false
+      setTimeout(() => this.emit('participantJoined', { id: 'patient-1', displayName: 'Patient' }), 300)
+    }
+    addListener(e, f) { (this.l[e] = this.l[e] || []).push(f) }
+    emit(e, x) { (this.l[e] || []).forEach((f) => f(x || {})) }
+    executeCommand() {}
+    getIFrame() { return this.d }
+    dispose() { this.d.remove(); window.__jitsiDisposed = true }
+  }
+})()`
 
 export default ({ page, expect, toastSays, send, sleep }) => {
   const LIST = `ul[aria-label="Today\\'s video visits"] > li[data-status]`
@@ -50,7 +67,6 @@ export default ({ page, expect, toastSays, send, sleep }) => {
   const statusOfCard = (name) => page.evaluate(`[...document.querySelectorAll('${LIST}')].find((li) => li.textContent.includes(${JSON.stringify(name)}))?.dataset.status`)
   const countOf = (word) => page.evaluate(`document.querySelector('[data-count="${word}"] span').textContent`)
   const visitStatus = () => page.evaluate(`document.querySelector('[data-visit-status]')?.dataset.visitStatus`)
-  const stepDone = (n) => page.evaluate(`!!document.querySelector('[data-step="${n}"][data-done]')`)
   const signDisabled = () => page.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('Sign the tele-prescription')).disabled`)
   const btnDisabled = (label) => page.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes(${JSON.stringify(label)})).disabled`)
 
@@ -84,76 +100,99 @@ export default ({ page, expect, toastSays, send, sleep }) => {
 
         await page.open('/tele/queue', { fresh: false })
         await page.click('button[aria-label="Connect with Arjun Nair"]')
-        await page.until(`/^\\/tele\\/session\\/[^/]+$/.test(location.pathname) && document.body.textContent.includes('Get ready for the call')`, 3000, 'Connect opens the visit')
+        await page.until(`/^\\/tele\\/session\\/[^/]+$/.test(location.pathname) && document.body.textContent.includes('Video visit with Arjun')`, 3000, 'Connect opens the visit')
       },
     },
     {
-      name: 'Telehealth (S-27-03): a visit moves Waiting → Invited → In call → Call ended → Done, and can be reopened; Video visits and My Day follow',
+      name: 'Telehealth (S-27-03): the call opens inside the visit page, in its own private room — no link to make or paste; a visit moves Waiting → In call → Call ended → Done, and can be reopened; Video visits and My Day follow',
       async run() {
-        await page.open('/tele/session/ISH-0044240')
-        let text = await page.text()
-        expect(text.includes('Get ready for the call') && text.includes('Meeting link') && text.includes('Permission to record') && text.includes('Start the call'), 'three steps')
-        expect(text.includes('About Arjun') && text.includes('Your notes'), 'the patient and the notes beside them')
-        expect((await visitStatus()) === 'waiting', 'Waiting')
-        expect(await btnDisabled('Start video call'), 'no call without a link')
+        const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        try {
+          await page.open('/tele/session/ISH-0044240')
+          let text = await page.text()
+          expect(text.includes('Video visit with Arjun') && text.includes('The call opens here, inside Shri Health'), 'one card, one button')
+          expect(text.includes('Arjun agreed to recording in the patient portal'), 'the consent is the patient portal’s')
+          expect(!text.includes('Meeting link') && !text.includes('Permission to record') && !text.includes('Yes, agreed'), 'no link to paste, no consent to ask')
+          expect(text.includes('About Arjun') && text.includes('Your notes'), 'the patient and the notes beside them')
+          expect((await visitStatus()) === 'waiting', 'Waiting')
 
-        await page.click('button', 'I already have a link')
-        await page.type('input[aria-label="Meeting link"]', 'not a link')
-        await page.until(`document.body.textContent.includes('That is not a Google Meet link.')`, 3000, 'a wrong link is said plainly')
-        await page.evaluate(`(() => { const i = document.querySelector('input[aria-label="Meeting link"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ''); i.dispatchEvent(new Event('input', { bubbles: true })); return true })()`)
-        await page.type('input[aria-label="Meeting link"]', 'https://meet.google.com/abc-mnop-xyz')
-        await page.click('button', 'Use this link')
-        await page.until(`document.querySelector('[data-meet-link]')?.textContent === 'meet.google.com/abc-mnop-xyz'`, 3000, 'the link is kept')
-        expect((await stepDone(1)) && !(await stepDone(2)), 'step 1 ticked')
-        await page.evaluate(`window.open = () => null; true`)
-        await page.click('button', 'Send on WhatsApp')
-        await page.until(`document.querySelector('[data-visit-status]').dataset.visitStatus === 'invited'`, 3000, 'Invited once the link is sent')
+          await page.click('button', 'Start video call')
+          await page.until(`document.body.textContent.includes('In call with Arjun') && !!document.querySelector('[data-video-room] [data-jitsi-stub]')`, 3000, 'the call opens in the page')
+          const room = await page.evaluate(`document.querySelector('[data-video-room]').dataset.videoRoom`)
+          expect(/^ShriHealth-[A-Za-z0-9]+-[A-Za-z0-9]{12}$/.test(room), `a private room no one can guess: ${room}`)
+          await page.until(`!!document.querySelector('[data-joined]') && document.body.textContent.includes('Arjun has joined')`, 3000, 'it says when Arjun joins')
+          expect((await visitStatus()) === 'incall', 'In call')
+          expect(!(await btnDisabled('Start recording')), 'Start recording, one button')
 
-        await page.click('[role="group"][aria-label="Permission to record"] button', 'No')
-        expect(await stepDone(2), 'step 2 ticked')
-        await page.click('button', 'Start video call')
-        await page.until(`document.body.textContent.includes('In call with Arjun') && document.body.textContent.includes('Not recording — Arjun said no.')`, 3000, 'in call, not recording')
-        expect((await visitStatus()) === 'incall', 'In call')
+          const arjunOnMyDay = () => page.evaluate(`[...document.querySelectorAll('[aria-label="Today\\'s OPD patients"] li')].find((li) => li.textContent.includes('Arjun Nair'))?.textContent ?? ''`)
+          await page.open('/', { fresh: false })
+          expect((await arjunOnMyDay()).includes('In room'), 'in call: In room on My Day')
+          await page.open('/tele/queue', { fresh: false })
+          expect((await countOf('In call')) === '1' && (await statusOfCard('Arjun')) === 'incall', 'and In call on Video visits')
+          await page.click('button[aria-label="Back to call Arjun Nair"]')
+          await page.until(`document.body.textContent.includes('In call with Arjun') && !!document.querySelector('[data-video-room="${room}"]')`, 3000, 'back in the same room')
 
-        const arjunOnMyDay = () => page.evaluate(`[...document.querySelectorAll('[aria-label="Today\\'s OPD patients"] li')].find((li) => li.textContent.includes('Arjun Nair'))?.textContent ?? ''`)
-        await page.open('/', { fresh: false })
-        expect((await arjunOnMyDay()).includes('In room'), 'in call: In room on My Day')
-        await page.open('/tele/queue', { fresh: false })
-        expect((await countOf('In call')) === '1' && (await statusOfCard('Arjun')) === 'incall', 'and In call on Video visits')
-        await page.click('button[aria-label="Back to call Arjun Nair"]')
-        await page.until(`document.body.textContent.includes('In call with Arjun')`, 3000, 'back in the call')
+          await page.click('button', 'End call')
+          await page.until(`!!document.querySelector('[role="alertdialog"]')?.textContent.includes('You leave the video room')`, 3000, 'ending is confirmed')
+          await page.click('[role="alertdialog"] button', 'End call')
+          await toastSays('Call ended', 'Finish your notes, then mark the visit done.')
+          await page.until(`document.body.textContent.includes('Call with Arjun ended')`, 3000, 'the call ended')
+          expect(await page.evaluate(`window.__jitsiDisposed === true`), 'the video room is left')
+          expect((await visitStatus()) === 'ended' && !(await btnDisabled('Mark visit as done')), 'Call ended, waiting to be marked done')
+          expect(await btnDisabled('Video recording'), 'nothing was recorded, so no video to download')
 
-        await page.click('button', 'End call')
-        await page.until(`!!document.querySelector('[role="alertdialog"]')?.textContent.includes('Also click Leave in Google Meet')`, 3000, 'ending is confirmed')
-        await page.click('[role="alertdialog"] button', 'End call')
-        await toastSays('Call ended', 'Finish your notes, then mark the visit done.')
-        await page.until(`document.body.textContent.includes('Call with Arjun ended') && document.body.textContent.includes('not recorded — the patient said no')`, 3000, 'the call ended')
-        expect((await visitStatus()) === 'ended' && !(await btnDisabled('Mark visit as done')), 'Call ended, waiting to be marked done')
-        expect(await btnDisabled('Video recording'), 'no video to download')
+          await page.open('/tele/queue', { fresh: false })
+          expect((await statusOfCard('Arjun')) === 'ended' && (await countOf('Call ended')) === '1', 'Call ended on Video visits')
+          expect(await page.evaluate(`!!document.querySelector('button[aria-label="Finish visit Arjun Nair"]')`), 'with Finish visit')
+          await page.open('/', { fresh: false })
+          expect((await arjunOnMyDay()).includes('In room'), 'still In room on My Day until it is done')
 
-        await page.open('/tele/queue', { fresh: false })
-        expect((await statusOfCard('Arjun')) === 'ended' && (await countOf('Call ended')) === '1', 'Call ended on Video visits')
-        expect(await page.evaluate(`!!document.querySelector('button[aria-label="Finish visit Arjun Nair"]')`), 'with Finish visit')
-        await page.open('/', { fresh: false })
-        expect((await arjunOnMyDay()).includes('In room'), 'still In room on My Day until it is done')
+          await page.open('/tele/session/ISH-0044240', { fresh: false })
+          await page.click('button', 'Mark visit as done')
+          await toastSays('Visit done', 'video visit is finished.')
+          await page.until(`document.body.textContent.includes('Visit with Arjun done')`, 3000, 'done')
+          expect((await visitStatus()) === 'done', 'Done')
+          await page.open('/tele/queue', { fresh: false })
+          expect((await statusOfCard('Arjun')) === 'done' && (await countOf('Done')) === '2', 'Done on Video visits, two done')
+          await page.open('/', { fresh: false })
+          expect((await arjunOnMyDay()).includes('Seen'), 'Seen on My Day')
 
-        await page.open('/tele/session/ISH-0044240', { fresh: false })
-        await page.click('button', 'Mark visit as done')
-        await toastSays('Visit done', 'video visit is finished.')
-        await page.until(`document.body.textContent.includes('Visit with Arjun done')`, 3000, 'done')
-        expect((await visitStatus()) === 'done', 'Done')
-        await page.open('/tele/queue', { fresh: false })
-        expect((await statusOfCard('Arjun')) === 'done' && (await countOf('Done')) === '2', 'Done on Video visits, two done')
-        await page.open('/', { fresh: false })
-        expect((await arjunOnMyDay()).includes('Seen'), 'Seen on My Day')
+          await page.open('/tele/session/ISH-0044240', { fresh: false })
+          await page.click('button', 'Reopen')
+          await page.until(`document.querySelector('[data-visit-status]').dataset.visitStatus === 'ended' && document.body.textContent.includes('Mark visit as done')`, 3000, 'reopened: Call ended again')
 
-        await page.open('/tele/session/ISH-0044240', { fresh: false })
-        await page.click('button', 'Reopen')
-        await page.until(`document.querySelector('[data-visit-status]').dataset.visitStatus === 'ended' && document.body.textContent.includes('Mark visit as done')`, 3000, 'reopened: Call ended again')
+          await page.open('/tele/session/NOPE', { fresh: false })
+          text = await page.text()
+          expect(text.includes('There is no patient or teleconsult with the id “NOPE” here.'), 'an unknown id says so')
+        } finally {
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
+        }
+      },
+    },
+    {
+      name: 'Telehealth (S-27-03): recording is the patient’s to allow, in the patient portal — declined or not yet answered, there is no Start recording and the page says why; leaving from inside the video ends the call',
+      async run() {
+        const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        try {
+          await page.open('/tele/session/ISH-0044290')
+          expect((await page.text()).includes('Lakshmi declined recording in the patient portal, so this call cannot be recorded.'), 'Lakshmi declined, and the page says so')
+          await page.click('button', 'Start video call')
+          await page.until(`document.body.textContent.includes('In call with Lakshmi')`, 3000, 'in the call')
+          expect(!(await page.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Start recording'))`)), 'no Start recording')
+          expect(await page.evaluate(`document.querySelector('[data-consent]')?.dataset.consent === 'declined'`), 'the reason, under the video')
+          // Leaving from inside the video, with Jitsi's own button, ends the call here too.
+          await page.evaluate(`window.__jitsi.emit('readyToClose'); true`)
+          await toastSays('Call ended', 'You left the video.')
+          await page.until(`document.body.textContent.includes('Call with Lakshmi ended') && document.body.textContent.includes('did not agree in the patient portal')`, 3000, 'ended, not recorded')
 
-        await page.open('/tele/session/NOPE', { fresh: false })
-        text = await page.text()
-        expect(text.includes('There is no patient or teleconsult with the id “NOPE” here.'), 'an unknown id says so')
+          await page.open('/tele/session/ISH-0044208', { fresh: false })
+          expect((await page.text()).includes('Sunita has not answered the recording question in the patient portal yet.'), 'Sunita has not answered')
+          await page.click('button', 'Start video call')
+          await page.until(`document.body.textContent.includes('In call with Sunita')`, 3000, 'in the call')
+          expect(!(await page.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Start recording'))`)), 'no Start recording until she agrees')
+        } finally {
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
+        }
       },
     },
     {
@@ -179,28 +218,25 @@ export default ({ page, expect, toastSays, send, sleep }) => {
     },
 
     {
-      name: 'Telehealth (S-27-03): with permission, the Meet tab and the microphone are recorded and written down as a conversation, saved to the server, downloadable, and checked against Google Meet’s notes',
+      name: 'Telehealth (S-27-03): Start recording shares this tab once — the video room and both voices are recorded and written down as a conversation, saved to the server, and downloadable as text and as the full visit record',
       async run() {
         const db = join(mkdtempSync(join(tmpdir(), 'tele-store-')), 'tele.sqlite3')
         const py = join(BACKEND, '.venv', 'bin', 'python')
         const asr = spawn(py, ['-m', 'tools.mock_service', '--port', String(ASR_PORT)], { cwd: BACKEND, stdio: 'ignore' })
         const store = spawn(py, ['-m', 'uvicorn', 'telehealth.api:tele', '--port', String(STORE_PORT)], { cwd: BACKEND, stdio: 'ignore', env: { ...process.env, TELE_DB: db, TELE_DEV: '1' } })
-        const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: MEDIA_STUB })
+        const media = await send('Page.addScriptToEvaluateOnNewDocument', { source: MEDIA_STUB })
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
         await sleep(2000)
         try {
           await page.open('/tele/session/ISH-0044240')
           await page.evaluate(`localStorage.setItem('shri.asrUrl', 'ws://127.0.0.1:${ASR_PORT}/ws/transcribe'); localStorage.setItem('shri.teleApi', 'http://127.0.0.1:${STORE_PORT}'); true`)
           await page.open('/tele/session/ISH-0044240', { fresh: false })
 
-          await page.click('button', 'I already have a link')
-          await page.type('input[aria-label="Meeting link"]', 'meet.google.com/abc-mnop-xyz')
-          await page.click('button', 'Use this link')
           await page.click('button', 'Start video call')
-          await page.until(`document.body.textContent.includes('Recording is off. Ask Arjun first')`, 3000, 'no recording before permission is asked')
-          await page.click('[role="group"][aria-label="Permission to record"] button', 'Yes, agreed')
-          await page.until(`document.body.textContent.includes('Also share tab audio')`, 3000, 'the three clicks are written out')
-
+          await page.until(`document.body.textContent.includes('Chrome asks once to share this tab with its sound')`, 3000, 'one Allow, said plainly')
           await page.click('button', 'Start recording')
+          const asked = await page.evaluate(`window.__shareOptions`)
+          expect(asked && asked.preferCurrentTab === true && asked.selfBrowserSurface === 'include', `this tab, nothing to pick: ${JSON.stringify(asked)}`)
           await page.until(`!!document.querySelector('[data-channel="doctor"][data-state="live"]') && !!document.querySelector('[data-channel="patient"][data-state="live"]')`, 8000, 'both voices heard')
           await page.until(`!!document.querySelector('ol[aria-label="Live transcript"] li[data-faint]')`, 8000, 'words appear while they are spoken')
           await sleep(3500)
@@ -209,12 +245,18 @@ export default ({ page, expect, toastSays, send, sleep }) => {
           const sides = await page.evaluate(`[...document.querySelectorAll('ol[aria-label="Live transcript"] li[data-speaker]')].map((li) => li.dataset.speaker + ':' + li.textContent)`)
           expect(sides.some((l) => l.startsWith('doctor:You') && l.includes('increase the dose.')) && sides.some((l) => l.startsWith('patient:Arjun')), `you on the right, Arjun on the left: ${sides}`)
 
+          // Download as text, mid-call: the file is the whole conversation, who said what.
+          await page.evaluate(`window.__saved = []; const o = URL.createObjectURL; URL.createObjectURL = (b) => { window.__saved.push(b); return o.call(URL, b) }; true`)
+          await page.click('button', 'Download as text')
+          const file = await page.evaluate(`window.__saved[0].text()`)
+          expect(file.includes('Teleconsult — Arjun Nair') && file.includes('Doctor: Blood pressure is slightly high, increase the dose.') && file.includes('Video room: https://'), `the text file: ${file}`)
+
           const stored = await page.evaluate(`new Promise((ok) => { const r = indexedDB.open('shri-tele'); r.onsuccess = () => { const q = r.result.transaction('chunks').objectStore('chunks').getAll(); q.onsuccess = () => ok({ n: q.result.length, bytes: q.result.reduce((a, c) => a + c.blob.size, 0), type: q.result[0]?.blob.type }) } })`)
           expect(stored.n > 0 && stored.bytes > 2000 && stored.type.startsWith('video/'), `the video is on the computer: ${JSON.stringify(stored)}`)
           await page.until(`document.querySelector('[data-saved="server"]')?.textContent.includes('Saved')`, 8000, 'the conversation reaches the server')
           const sid = await page.evaluate(`JSON.parse(localStorage.getItem('shri.tele')).state.latest['SD-P-10']`)
           const server = await (await fetch(`http://127.0.0.1:${STORE_PORT}/sessions/${sid}`)).json()
-          expect(server.segments.length === 2 && server.session.meetCode === 'abc-mnop-xyz' && server.session.consent === 'given', `the server has it: ${JSON.stringify(server.session)}`)
+          expect(server.segments.length === 2 && /^ShriHealth-/.test(server.session.meetCode) && server.session.consent === 'given', `the server has it: ${JSON.stringify(server.session)}`)
 
           // Recording again in the same call is a second video, never written over the first.
           await page.click('button', 'Start recording')
@@ -229,90 +271,39 @@ export default ({ page, expect, toastSays, send, sleep }) => {
           expect(!(await btnDisabled('Video recording 1 of 2')) && !(await btnDisabled('Video recording 2 of 2')) && !(await btnDisabled('Full visit record')), 'two videos and the record download')
           const parts = await page.evaluate(`new Promise((ok) => { const r = indexedDB.open('shri-tele'); r.onsuccess = () => { const q = r.result.transaction('chunks').objectStore('chunks').getAll(); q.onsuccess = () => ok([...new Set(q.result.map((c) => c.sid))].length) } })`)
           expect(parts === 2, `both videos are kept: ${parts}`)
+          expect(!(await page.text()).includes('Google Meet'), 'nothing about Google Meet')
 
-          await page.evaluate(`(() => { const dt = new DataTransfer(); dt.items.add(new File([${JSON.stringify(MEET_DOC)}], 'meet.txt', { type: 'text/plain' })); const i = document.querySelector('input[aria-label="Google Meet notes file"]'); i.files = dt.files; i.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
-          await toastSays('Compared with Google Meet', '2 lines from Google Meet, 4 from Shri.')
-          const rows = await page.evaluate(`[...document.querySelectorAll('ol[aria-label="Compared conversation"] > li')].map((li) => li.dataset.status + ' ' + li.textContent)`)
-          expect(rows.some((r) => r.startsWith('matched') && r.includes('Dr Rao') && r.includes('Both heard')) && rows.some((r) => r.startsWith('official-only') && r.includes('Only Google Meet')), `compared: ${rows}`)
-          let after
-          for (let i = 0; i < 20; i += 1) {
-            after = await (await fetch(`http://127.0.0.1:${STORE_PORT}/sessions/${sid}`)).json()
-            if (after.official && after.session.endedAt) break
-            await sleep(500)
-          }
-          expect(after.official?.source === 'upload' && after.official.reconciled.length === rows.length && after.session.endedAt, `the check is on the server too: ${JSON.stringify(after.session)}`)
+          await page.evaluate(`window.__saved = []; true`)
+          await page.click('button', 'Full visit record')
+          const record = await page.evaluate(`window.__saved[0].text()`)
+          expect(record.includes('Recording and transcript consent: given by the patient, in the patient portal') && record.includes('LIVE TRANSCRIPT') && !record.includes('Google Meet'), `the full record: ${record.slice(0, 400)}`)
         } finally {
-          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: media.identifier })
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
           asr.kill('SIGTERM')
           store.kill('SIGTERM')
         }
       },
     },
     {
-      name: 'Telehealth (S-27-03): Live transcript only — the words without the video, downloadable as text during the call',
-      async run() {
-        const db = join(mkdtempSync(join(tmpdir(), 'tele-store-')), 'tele.sqlite3')
-        const py = join(BACKEND, '.venv', 'bin', 'python')
-        const asr = spawn(py, ['-m', 'tools.mock_service', '--port', String(ASR_PORT)], { cwd: BACKEND, stdio: 'ignore' })
-        const store = spawn(py, ['-m', 'uvicorn', 'telehealth.api:tele', '--port', String(STORE_PORT)], { cwd: BACKEND, stdio: 'ignore', env: { ...process.env, TELE_DB: db, TELE_DEV: '1' } })
-        const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: MEDIA_STUB })
-        await sleep(2000)
-        try {
-          await page.open('/tele/session/ISH-0044240')
-          await page.evaluate(`localStorage.setItem('shri.asrUrl', 'ws://127.0.0.1:${ASR_PORT}/ws/transcribe'); localStorage.setItem('shri.teleApi', 'http://127.0.0.1:${STORE_PORT}'); true`)
-          await page.open('/tele/session/ISH-0044240', { fresh: false })
-          await page.click('button', 'I already have a link')
-          await page.type('input[aria-label="Meeting link"]', 'meet.google.com/abc-mnop-xyz')
-          await page.click('button', 'Use this link')
-          await page.click('[role="group"][aria-label="Permission to record"] button', 'Yes, agreed')
-          await page.click('button', 'Start video call')
-          await page.click('button', 'Live transcript only')
-          await page.until(`document.body.textContent.includes('Live transcript on') && !!document.querySelector('[data-channel="patient"][data-state="live"]')`, 8000, 'the transcript runs, both voices heard')
-          await sleep(3500)
-          await page.click('button', 'Stop live transcript')
-          await page.until(`document.querySelectorAll('ol[aria-label="Live transcript"] li[data-speaker]:not([data-faint])').length === 2`, 10000, 'the words land')
-          const chunks = await page.evaluate(`new Promise((ok) => { const r = indexedDB.open('shri-tele'); r.onupgradeneeded = () => r.result.createObjectStore('chunks', { keyPath: ['sid', 'seq'] }); r.onsuccess = () => { const q = r.result.transaction('chunks').objectStore('chunks').count(); q.onsuccess = () => ok(q.result) } })`)
-          expect(chunks === 0, `no video kept: ${chunks} pieces`)
-
-          // Download as text, mid-call: the file is the whole conversation, who said what.
-          await page.evaluate(`window.__saved = []; const o = URL.createObjectURL; URL.createObjectURL = (b) => { window.__saved.push(b); return o.call(URL, b) }; true`)
-          await page.click('button', 'Download as text')
-          const file = await page.evaluate(`window.__saved[0].text()`)
-          expect(file.includes('Teleconsult — Arjun Nair') && file.includes('Doctor: Blood pressure is slightly high, increase the dose.') && file.includes('Patient: Blood pressure is slightly high'), `the text file: ${file}`)
-
-          await page.click('button', 'End call')
-          await page.click('[role="alertdialog"] button', 'End call')
-          await page.until(`document.body.textContent.includes('Call with Arjun ended') && document.body.textContent.includes('This call was not recorded') && document.body.textContent.includes('On a free Google account')`, 5000, 'finished: no video, the words, and the free-account note')
-        } finally {
-          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
-          asr.kill('SIGTERM')
-          store.kill('SIGTERM')
-        }
-      },
-    },
-    {
-      name: 'Telehealth (S-27-03): when nothing can turn speech into text, the page says so before the doctor starts — never a silent, empty transcript',
+      name: 'Telehealth (S-27-03): when nothing can turn speech into text, the page says so before the doctor starts — never a silent, empty transcript; the video can still be recorded',
       async run() {
         const NO_RECOGNISER = `(() => { delete window.SpeechRecognition; delete window.webkitSpeechRecognition; window.SpeechRecognition = undefined; window.webkitSpeechRecognition = undefined })()`
-        const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: NO_RECOGNISER })
+        const quiet = await send('Page.addScriptToEvaluateOnNewDocument', { source: NO_RECOGNISER })
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
         try {
           await page.open('/tele/session/ISH-0044240')
           // A speech service that is not running.
           await page.evaluate(`localStorage.setItem('shri.asrUrl', 'ws://127.0.0.1:1/ws/transcribe'); localStorage.setItem('shri.teleApi', 'off'); true`)
           await page.open('/tele/session/ISH-0044240', { fresh: false })
-          await page.click('button', 'I already have a link')
-          await page.type('input[aria-label="Meeting link"]', 'meet.google.com/abc-mnop-xyz')
-          await page.click('button', 'Use this link')
-          await page.click('[role="group"][aria-label="Permission to record"] button', 'Yes, agreed')
-          await page.evaluate(`window.open = () => null; true`)
           await page.click('button', 'Start video call')
           await page.until(`document.querySelector('[data-speech]')?.dataset.speech === 'none'`, 8000, 'the check finds nothing that can listen')
           const said = await page.evaluate(`document.querySelector('[data-speech]').textContent`)
           expect(said.includes('Nothing can be written down') && said.includes('Shri speech service is not running'), `said plainly: ${said}`)
-          expect(await btnDisabled('Live transcript only'), 'a transcript that cannot work is not offered')
           expect(!(await btnDisabled('Start recording')), 'the video can still be recorded')
         } finally {
-          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: quiet.identifier })
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
         }
       },
     },

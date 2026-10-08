@@ -19,6 +19,20 @@ export const EXTRA_VISITS: TeleRow[] = [
   { id: 'TV-1530', patientId: 'SD-P-04', scheduledAt: minutesAhead(410), reason: 'Pregnancy check-in, 32 weeks', videoReady: false, rankReason: '' },
 ]
 
+/**
+ * Each patient's answer to “May we record this visit?”, given in the patient
+ * portal before the call — never asked by the doctor. Demo answers until the
+ * portal is connected: four agreed, Lakshmi declined, Sunita has not answered.
+ */
+const PORTAL_CONSENT: Record<string, 'given' | 'declined'> = {
+  'SD-P-01': 'given',
+  'SD-P-09': 'given',
+  'SD-P-10': 'given',
+  'SD-P-11': 'given',
+  'SD-P-15': 'declined',
+}
+export const portalConsent = (patientId: string): 'given' | 'declined' | undefined => PORTAL_CONSENT[patientId]
+
 /** Every video visit of the day, in appointment order. */
 export const VISITS: TeleRow[] = [...TELECONSULT_QUEUE, ...EXTRA_VISITS].sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
 

@@ -20,18 +20,17 @@ import { initials } from '../lib/initials'
 import { Avatar, Card, Icon, Pill } from '../ui/primitives'
 
 import { VISITS } from './demoVisits'
-import { clockOf } from './reconcile'
+import { clockOf } from './visitRecord'
 import { useTele } from './teleStore'
 import { STATUS_CLASS, STATUS_WORD, useVisitStatus, type VisitStatus } from './visitStatus'
 
 const SEX = { M: 'Male', F: 'Female', O: 'Other' } as const
 
 type Filter = 'all' | 'waiting' | 'incall' | 'ended' | 'done'
-const IN_FILTER: Record<Exclude<Filter, 'all'>, VisitStatus[]> = { waiting: ['waiting', 'invited'], incall: ['incall'], ended: ['ended'], done: ['done'] }
+const IN_FILTER: Record<Exclude<Filter, 'all'>, VisitStatus[]> = { waiting: ['waiting'], incall: ['incall'], ended: ['ended'], done: ['done'] }
 
 const ACTION: Record<VisitStatus, { label: string; variant: 'primary' | 'control' }> = {
   waiting: { label: 'Connect', variant: 'primary' },
-  invited: { label: 'Connect', variant: 'primary' },
   incall: { label: 'Back to call', variant: 'primary' },
   ended: { label: 'Finish visit', variant: 'primary' },
   done: { label: 'Open', variant: 'control' },
@@ -89,7 +88,7 @@ export function TeleQueuePage() {
       }
     >
       <div className="grid grid-cols-2 gap-[12px] lg:grid-cols-4" role="group" aria-label="Show">
-        <Count n={count('waiting')} word="Waiting" hint="Booked or invited" cls={STATUS_CLASS.waiting} active={filter === 'waiting'} onClick={() => toggle('waiting')} />
+        <Count n={count('waiting')} word="Waiting" hint="Booked, not started" cls={STATUS_CLASS.waiting} active={filter === 'waiting'} onClick={() => toggle('waiting')} />
         <Count n={count('incall')} word="In call" hint="On a video call now" cls={STATUS_CLASS.incall} active={filter === 'incall'} onClick={() => toggle('incall')} />
         <Count n={count('ended')} word="Call ended" hint="Notes to finish" cls={STATUS_CLASS.ended} active={filter === 'ended'} onClick={() => toggle('ended')} />
         <Count n={count('done')} word="Done" hint="Finished today" cls={STATUS_CLASS.done} active={filter === 'done'} onClick={() => toggle('done')} />
@@ -132,7 +131,7 @@ export function TeleQueuePage() {
                     icon={st === 'done' ? ArrowRight : Video}
                     className="min-w-[136px]"
                     onClick={() => open(r)}
-                    aria-label={`${st === 'waiting' || st === 'invited' ? 'Connect with' : act.label} ${p.name}`}
+                    aria-label={`${st === 'waiting' ? 'Connect with' : act.label} ${p.name}`}
                   >
                     {act.label}
                   </Pill>

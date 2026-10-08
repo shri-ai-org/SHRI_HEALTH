@@ -5,12 +5,14 @@
 // reached. A line the server has not yet confirmed stays marked until it has, so a
 // dropped connection costs nothing.
 //
-// Per patient it also keeps the Meet link, the recording consent and the note
-// draft, so leaving the session for the prescription and coming back finds them.
+// Per patient it also keeps the note draft, so leaving the session for the
+// prescription and coming back finds it. The recording consent is the patient's,
+// from the patient portal (demoVisits.portalConsent) — not kept or set here.
 //
-// A reload does not end the call — Meet carries on in its own tab — so the open
-// session is kept; only its recording stops, since the microphone does not outlive
-// the page. Any other session left open is closed at its last heard line.
+// The video is a Jitsi room inside the visit page, so a reload leaves the room;
+// the open session is kept so the doctor can rejoin it, but its recording stops,
+// since the microphone does not outlive the page. Any other session left open
+// is closed at its last heard line.
 //
 // Each Start recording makes its own recording (a part), so stopping and starting
 // again in one call never overwrites what was recorded before.
@@ -18,7 +20,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-import { DEMO_SESSION, DEMO_SID } from './demoVisits'
+import { DEMO_SESSION, DEMO_SID, portalConsent } from './demoVisits'
 import { teleApi, teleApiBase } from './teleApi'
 import type { OfficialRecord, Speaker, TeleSegment, TeleSessionMeta } from './teleTypes'
 
@@ -65,11 +67,7 @@ interface TeleState {
   sessions: Record<string, TeleSessionRecord>
   /** Each patient's most recent session. */
   latest: Record<string, string>
-  consent: Record<string, 'given' | 'declined'>
-  meetUri: Record<string, string>
   notes: Record<string, string>
-  /** When the meeting link was copied or sent to the patient. */
-  invited: Record<string, number>
   /** When the doctor marked the visit done — after the call, once the notes are finished. */
   done: Record<string, number>
   /** The session whose call is open in this page — never kept across a reload. */
@@ -77,10 +75,7 @@ interface TeleState {
   live?: LiveCapture
   sync: SyncState
 
-  setConsent: (patientId: string, c: 'given' | 'declined') => void
-  setMeetUri: (patientId: string, uri: string) => void
   setNote: (patientId: string, note: string) => void
-  markInvited: (patientId: string) => void
   markDone: (patientId: string) => void
   reopen: (patientId: string) => void
   begin: (meta: Omit<TeleSessionMeta, 'id' | 'startedAt'>) => string
@@ -97,26 +92,14 @@ interface TeleState {
 
 export const useTele = create<TeleState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       sessions: { [DEMO_SID]: DEMO_SESSION },
       latest: { [DEMO_SESSION.patientId]: DEMO_SID },
-      invited: {},
       done: { [DEMO_SESSION.patientId]: DEMO_SESSION.endedAt },
-      consent: {},
-      meetUri: {},
       notes: {},
       sync: 'none',
 
-      setConsent: (patientId, c) => {
-        set((s) => ({ consent: { ...s.consent, [patientId]: c } }))
-        const sid = get().activeSid
-        if (sid && get().sessions[sid]?.patientId === patientId) get().patchSession(sid, { consent: c })
-      },
-      setMeetUri: (patientId, uri) => {
-        set((s) => ({ meetUri: { ...s.meetUri, [patientId]: uri } }))
-      },
       setNote: (patientId, note) => set((s) => ({ notes: { ...s.notes, [patientId]: note } })),
-      markInvited: (patientId) => set((s) => (s.invited[patientId] ? s : { invited: { ...s.invited, [patientId]: Date.now() } })),
       markDone: (patientId) => set((s) => ({ done: { ...s.done, [patientId]: Date.now() } })),
       reopen: (patientId) =>
         set((s) => {
@@ -181,21 +164,26 @@ export const useTele = create<TeleState>()(
     }),
     {
       name: 'shri.tele',
-      version: 2,
-      // Version 2 brought the demo day's finished visit, and the invited and done marks.
+      version: 3,
+      // Version 2 brought the demo day's finished visit and the done marks. Version 3 dropped what the Google
+      // Meet visit kept per patient — its link, the invited mark and a consent the doctor set — for the Jitsi room.
       migrate: (persisted, from) => {
-        const st = (persisted ?? {}) as Partial<TeleState>
+        const st = (persisted ?? {}) as Partial<TeleState> & { consent?: unknown; meetUri?: unknown; invited?: unknown }
         if (from < 2) {
           const pid = DEMO_SESSION.patientId
           st.sessions = { [DEMO_SID]: DEMO_SESSION, ...st.sessions }
           st.latest = { [pid]: DEMO_SID, ...st.latest }
           st.done = { [pid]: DEMO_SESSION.endedAt, ...st.done }
-          st.invited = st.invited ?? {}
+        }
+        if (from < 3) {
+          delete st.consent
+          delete st.meetUri
+          delete st.invited
         }
         return st as TeleState
       },
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ sessions: s.sessions, latest: s.latest, consent: s.consent, meetUri: s.meetUri, notes: s.notes, invited: s.invited, done: s.done, activeSid: s.activeSid }),
+      partialize: (s) => ({ sessions: s.sessions, latest: s.latest, notes: s.notes, done: s.done, activeSid: s.activeSid }),
       onRehydrateStorage: () => (state) => {
         if (!state) return
         const sessions = { ...state.sessions }
@@ -208,8 +196,8 @@ export const useTele = create<TeleState>()(
   ),
 )
 
-/** The patient's answer to “may we record?”, or undefined while it has not been asked. */
-export const consentOf = (s: TeleState, patientId: string): 'given' | 'declined' | undefined => s.consent[patientId]
+/** The patient's answer to “may we record?”, from the patient portal; undefined while they have not answered. */
+export const consentOf = (_s: TeleState, patientId: string): 'given' | 'declined' | undefined => portalConsent(patientId)
 
 /* ------------------------------------------------------------ to the server */
 

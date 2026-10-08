@@ -4,13 +4,15 @@
  * id says so.
  *
  * One page, three moments, in plain words:
- *   before the call  three steps — meeting link, permission to record, start (VisitSetup)
- *   in the call      who and how long, the recording, the conversation as it is said (InCall, Conversation)
- *   after the call   downloads, and the check against Google Meet's own notes (AfterVisit)
+ *   before the call  one button; the patient's recording consent, from the patient portal (VisitSetup)
+ *   in the call      the video itself, who and how long, Start recording, the conversation as it is said
+ *                    (InCall, JitsiRoom, Conversation)
+ *   after the call   the downloads, the notes, and Mark visit as done (AfterVisit)
  * Beside them, always: who the patient is, why they are here, and the doctor's notes.
  *
- * The video is Google Meet's, in its own tab. The recording and the conversation
- * are this page's (capture.ts), kept on the server (teleStore.ts).
+ * The video is a Jitsi room inside this page — the visit's own, private — so the
+ * doctor never leaves Shri Health. The recording and the conversation are this
+ * page's (capture.ts), kept on the server (teleStore.ts).
  */
 
 import { FileText, Pill as PillIcon, UserRound } from 'lucide-react'
@@ -35,9 +37,9 @@ import { AfterVisit } from './AfterVisit'
 import { stopCapture } from './capture'
 import { Conversation } from './Conversation'
 import { InCall } from './InCall'
-import { meetCode, openMeet } from './meet'
+import { newRoomName, roomUrl } from './jitsi'
 import { NoParty } from './NoParty'
-import type { RecordHeader } from './reconcile'
+import type { RecordHeader } from './visitRecord'
 import { visitFor } from './demoVisits'
 import { consentOf, useTele } from './teleStore'
 import { STATUS_CLASS, STATUS_WORD, useVisitStatus } from './visitStatus'
@@ -84,20 +86,28 @@ export function TeleSessionPage() {
     startedAt: shown.startedAt,
     endedAt: shown.endedAt,
     meetUri: shown.meetUri,
-    consent: shown.consent === 'given' ? 'given by the patient' : 'not given',
+    consent: shown.consent === 'given' ? 'given by the patient, in the patient portal' : 'not given',
   }
 
-  async function start(uri: string) {
-    // The Meet tab opens straight from the click, before anything else, so the browser lets it.
-    openMeet(uri)
+  async function start() {
     const other = tele().activeSid
     if (other) {
       await stopCapture()
       tele().end(other)
     }
-    tele().begin({ patientId: p.id, encounterId: enc?.id, meetUri: uri, meetCode: meetCode(uri), consent: consent ?? 'declined' })
+    // The visit's own room, which no one can guess; the patient portal is what tells the patient to join it.
+    const room = newRoomName(booking?.id ?? p.id)
+    tele().begin({ patientId: p.id, encounterId: enc?.id, meetUri: roomUrl(room), meetCode: room, consent: consent ?? 'declined' })
     setNewCall(false)
     startOpd(p.id)
+  }
+
+  async function endCall(asked: boolean) {
+    setEnding(false)
+    const sid = activeSid
+    await stopCapture()
+    if (sid) tele().end(sid)
+    toast({ tone: 'success', title: 'Call ended', detail: asked ? 'Finish your notes, then mark the visit done.' : `You left the video. Finish your notes, then mark the visit done.` })
   }
 
   return (
@@ -114,10 +124,19 @@ export function TeleSessionPage() {
     >
       <div className="grid items-start gap-[16px] lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-[16px]">
-          {mode === 'setup' && <VisitSetup patientId={p.id} firstName={first} doctorName={me?.name} onStart={(uri) => void start(uri)} />}
+          {mode === 'setup' && <VisitSetup firstName={first} consent={consent} onStart={() => void start()} />}
           {mode === 'call' && activeSid && shown && (
             <>
-              <InCall sid={activeSid} patientId={p.id} firstName={first} meetUri={shown.meetUri} startedAt={shown.startedAt} onEnd={() => setEnding(true)} />
+              <InCall
+                sid={activeSid}
+                patientId={p.id}
+                firstName={first}
+                room={shown.meetCode ?? newRoomName(shown.id)}
+                doctorName={me?.name ?? 'Doctor'}
+                startedAt={shown.startedAt}
+                onEnd={() => setEnding(true)}
+                onLeftRoom={() => void endCall(false)}
+              />
               {consent === 'given' && header && <Conversation sid={activeSid} firstName={first} header={header} />}
             </>
           )}
@@ -195,18 +214,10 @@ export function TeleSessionPage() {
       <ConfirmDialog
         open={ending}
         title={`End the call with ${first}?`}
-        consequence={`${capturing ? 'The recording stops and is saved. ' : ''}Also click Leave in Google Meet — this page cannot close the video for ${first}. Your notes are kept, and you mark the visit done when they are finished.`}
+        consequence={`${capturing ? 'The recording stops and is saved. ' : ''}You leave the video room. Your notes are kept, and you mark the visit done when they are finished.`}
         confirmLabel="End call"
         tone="destructive"
-        onConfirm={() => {
-          setEnding(false)
-          const sid = activeSid
-          void (async () => {
-            await stopCapture()
-            if (sid) tele().end(sid)
-            toast({ tone: 'success', title: 'Call ended', detail: `Finish your notes, then mark the visit done.` })
-          })()
-        }}
+        onConfirm={() => void endCall(true)}
         onCancel={() => setEnding(false)}
       />
     </ScreenFrame>

@@ -11,7 +11,7 @@ import { useEffect, useRef } from 'react'
 import { cn } from '../lib/cn'
 import { Card, Icon, Pill } from '../ui/primitives'
 
-import { clockOf, fileStem, liveTranscriptText, saveFile, type RecordHeader } from './reconcile'
+import { clockOf, fileStem, liveTranscriptText, saveFile, type RecordHeader } from './visitRecord'
 import { useTele } from './teleStore'
 import type { Speaker } from './teleTypes'
 
