@@ -9,13 +9,15 @@
  *                    (InCall, JitsiRoom, Conversation)
  *   after the call   the downloads, the notes, and Mark visit as done (AfterVisit)
  * Beside them, always: who the patient is, why they are here, and the doctor's notes.
+ * The call is the consultation, so there is no Start consultation here; the notes
+ * are written beside the call.
  *
  * The video is a Jitsi room inside this page — the visit's own, private — so the
  * doctor never leaves Shri Health. The recording and the conversation are this
  * page's (capture.ts), kept on the server (teleStore.ts).
  */
 
-import { FileText, Pill as PillIcon, UserRound } from 'lucide-react'
+import { Pill as PillIcon, UserRound } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -25,7 +27,6 @@ import { useUI } from '@/store/ui'
 
 import { ScreenFrame } from '../app/ScreenFrame'
 import { P } from '../app/paths'
-import { consultPath, noteActionLabel } from '../logic/record'
 import { teleParty } from '../logic/tele'
 import { useOpd } from '../state/opd'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -40,7 +41,7 @@ import { InCall } from './InCall'
 import { newRoomName, roomUrl } from './jitsi'
 import { NoParty } from './NoParty'
 import type { RecordHeader } from './visitRecord'
-import { visitFor } from './demoVisits'
+import { visitFor } from './visits'
 import { consentOf, useTele } from './teleStore'
 import { STATUS_CLASS, STATUS_WORD, useVisitStatus } from './visitStatus'
 import { VisitSetup } from './VisitSetup'
@@ -76,7 +77,6 @@ export function TeleSessionPage() {
   const first = p.name.split(' ')[0] || p.name
   const booking = visitFor(p.id)
   const status = statusOf(p.id)
-  const notePath = consultPath(p)
   const mode = activeSid ? 'call' : shown && !newCall ? 'after' : 'setup'
 
   const header: RecordHeader | undefined = shown && {
@@ -183,11 +183,6 @@ export function TeleSessionPage() {
               <Pill variant="control" size="xl" icon={UserRound} onClick={() => navigate(P.record(p.uhid))}>
                 Patient record
               </Pill>
-              {notePath && (
-                <Pill variant="control" size="xl" icon={FileText} onClick={() => navigate(notePath)}>
-                  {noteActionLabel(p)}
-                </Pill>
-              )}
               {enc && (
                 <Pill variant="primary" size="xl" icon={PillIcon} onClick={() => navigate(`/tele/session/${enc.id}/rx`)}>
                   Write prescription

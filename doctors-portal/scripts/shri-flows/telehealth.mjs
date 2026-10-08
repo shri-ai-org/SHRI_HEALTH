@@ -6,8 +6,9 @@
  * transcript run against the speech service's scripted stand-in
  * (backend/tools/mock_service.py) and a throwaway transcript store
  * (backend/telehealth), with a tone for the microphone and a canvas for the
- * shared tab. Recording consent is the patient's, from the patient portal:
- * Arjun agreed, Lakshmi declined, Sunita has not answered.
+ * shared tab. The video visits are the shared teleconsults — Fatima Bi and Arjun
+ * Nair — and recording consent is the patient's, from the patient portal: Arjun
+ * agreed, Fatima has not answered.
  * Loaded by scripts/shri-flows.mjs.
  */
 
@@ -72,33 +73,30 @@ export default ({ page, expect, toastSays, send, sleep }) => {
 
   return [
     {
-      name: 'Telehealth (S-27-02): Video visits — six patients by time, the counts that filter, each status with its button, and the visit already done this morning',
+      name: 'Telehealth (S-27-02): Video visits are the shared teleconsults — the same two patients, times and reasons as the Dashboard and the OPD queue — with the counts that filter and each status with its button',
       async run() {
         await page.open('/tele/queue')
         expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-27-02"]')`), 'S-27-02 is drawn')
-        expect((await page.text()).includes('6 patients today'), 'six video visits')
+        expect((await page.text()).includes('2 patients today'), 'two video visits')
         const rows = await cards()
-        expect(rows.length === 6, `six cards: ${rows.length}`)
-        const times = rows.map((r) => r.slice(0, 5))
-        expect(JSON.stringify(times) === JSON.stringify([...times].sort()) && rows[0].includes('Meera Krishnan'), `by time, Meera first: ${times}`)
-        expect(JSON.stringify(await statuses()) === JSON.stringify(['done', 'waiting', 'waiting', 'waiting', 'waiting', 'waiting']), `Meera done, five waiting: ${await statuses()}`)
-        expect((await countOf('Waiting')) === '5' && (await countOf('In call')) === '0' && (await countOf('Call ended')) === '0' && (await countOf('Done')) === '1', 'the counts')
-        expect(rows[0].includes('Open') && rows.slice(1).every((r) => r.includes('Connect')), 'Open for the done visit, Connect for the rest')
-        expect(rows.filter((r) => r.includes('Phone call only')).length === 2, 'two whose video did not work')
+        expect(rows.length === 2 && rows[0].startsWith('10:05') && rows[0].includes('Fatima Bi') && rows[1].startsWith('11:30') && rows[1].includes('Arjun Nair'), `Fatima at 10:05, Arjun at 11:30: ${rows}`)
+        for (const clinic of ['Meera Krishnan', 'Selvi Murugan', 'Lakshmi Narayanan', 'Sunita Devi'])
+          expect(!rows.some((r) => r.includes(clinic)), `${clinic} is a clinic patient today, not a video visit`)
+        expect(JSON.stringify(await statuses()) === JSON.stringify(['waiting', 'waiting']), `both waiting: ${await statuses()}`)
+        expect((await countOf('Waiting')) === '2' && (await countOf('In call')) === '0' && (await countOf('Call ended')) === '0' && (await countOf('Done')) === '0', 'the counts')
+        expect(rows.every((r) => r.includes('Connect')), 'Connect for both')
+        expect(rows[0].includes('Phone call only') && !rows[1].includes('Phone call only'), 'Fatima’s video did not work in her test')
 
-        await page.click('[data-count="Done"]')
-        expect((await cards()).length === 1 && (await cards())[0].includes('Meera'), 'Done shows only Meera')
-        await page.click('[data-count="Waiting"]')
-        expect((await cards()).length === 5, 'Waiting shows five')
-        await page.click('button', 'All patients')
-        expect((await cards()).length === 6, 'and back to all')
-        expect(await page.evaluate(`document.querySelector('ul[aria-label="Finished video visits"]')?.textContent.includes('Meera Krishnan')`), 'Meera under Finished visits')
-
-        await page.click('button[aria-label="Open Meera Krishnan"]')
-        await page.until(`document.body.textContent.includes('Visit with Meera done') && document.querySelectorAll('ol[aria-label="Live transcript"] li[data-speaker]').length === 8`, 3000, 'her finished visit, with its conversation')
-        expect((await visitStatus()) === 'done', 'marked Done')
+        // The same two, as the Dashboard's Patients Today lists its teleconsults.
+        await page.open('/', { fresh: false })
+        const listed = await page.evaluate(`document.querySelector('[aria-label="Today\\'s OPD patients"]')?.textContent ?? ''`)
+        const block = await page.evaluate(`document.querySelector('button[aria-label^="Teleconsult, "]')?.getAttribute('aria-label') ?? ''`)
+        expect(listed.includes('Fatima Bi') && listed.includes('Arjun Nair') && block.includes('2 patients'), `the Dashboard agrees — Patients Today lists both, the Teleconsult block counts 2: ${block}`)
 
         await page.open('/tele/queue', { fresh: false })
+        await page.click('[data-count="Waiting"]')
+        expect((await cards()).length === 2, 'Waiting shows both')
+        await page.click('button', 'All patients')
         await page.click('button[aria-label="Connect with Arjun Nair"]')
         await page.until(`/^\\/tele\\/session\\/[^/]+$/.test(location.pathname) && document.body.textContent.includes('Video visit with Arjun')`, 3000, 'Connect opens the visit')
       },
@@ -153,7 +151,8 @@ export default ({ page, expect, toastSays, send, sleep }) => {
           await page.until(`document.body.textContent.includes('Visit with Arjun done')`, 3000, 'done')
           expect((await visitStatus()) === 'done', 'Done')
           await page.open('/tele/queue', { fresh: false })
-          expect((await statusOfCard('Arjun')) === 'done' && (await countOf('Done')) === '2', 'Done on Video visits, two done')
+          expect((await statusOfCard('Arjun')) === 'done' && (await countOf('Done')) === '1', 'Done on Video visits')
+          expect(await page.evaluate(`document.querySelector('ul[aria-label="Finished video visits"]')?.textContent.includes('Arjun Nair')`), 'and under Finished visits')
           await page.open('/', { fresh: false })
           expect((await arjunOnMyDay()).includes('Seen'), 'Seen on My Day')
 
@@ -170,26 +169,20 @@ export default ({ page, expect, toastSays, send, sleep }) => {
       },
     },
     {
-      name: 'Telehealth (S-27-03): recording is the patient’s to allow, in the patient portal — declined or not yet answered, there is no Start recording and the page says why; leaving from inside the video ends the call',
+      name: 'Telehealth (S-27-03): recording is the patient’s to allow, in the patient portal — not yet answered, there is no Start recording and the page says why; leaving from inside the video ends the call',
       async run() {
         const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
         try {
-          await page.open('/tele/session/ISH-0044290')
-          expect((await page.text()).includes('Lakshmi declined recording in the patient portal, so this call cannot be recorded.'), 'Lakshmi declined, and the page says so')
+          await page.open('/tele/session/ISH-0042330')
+          expect((await page.text()).includes('Fatima has not answered the recording question in the patient portal yet.'), 'Fatima has not answered, and the page says so')
           await page.click('button', 'Start video call')
-          await page.until(`document.body.textContent.includes('In call with Lakshmi')`, 3000, 'in the call')
-          expect(!(await page.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Start recording'))`)), 'no Start recording')
-          expect(await page.evaluate(`document.querySelector('[data-consent]')?.dataset.consent === 'declined'`), 'the reason, under the video')
+          await page.until(`document.body.textContent.includes('In call with Fatima')`, 3000, 'in the call')
+          expect(!(await page.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Start recording'))`)), 'no Start recording until she agrees')
+          expect(await page.evaluate(`document.querySelector('[data-consent]')?.dataset.consent === 'none'`), 'the reason, under the video')
           // Leaving from inside the video, with Jitsi's own button, ends the call here too.
           await page.evaluate(`window.__jitsi.emit('readyToClose'); true`)
           await toastSays('Call ended', 'You left the video.')
-          await page.until(`document.body.textContent.includes('Call with Lakshmi ended') && document.body.textContent.includes('did not agree in the patient portal')`, 3000, 'ended, not recorded')
-
-          await page.open('/tele/session/ISH-0044208', { fresh: false })
-          expect((await page.text()).includes('Sunita has not answered the recording question in the patient portal yet.'), 'Sunita has not answered')
-          await page.click('button', 'Start video call')
-          await page.until(`document.body.textContent.includes('In call with Sunita')`, 3000, 'in the call')
-          expect(!(await page.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Start recording'))`)), 'no Start recording until she agrees')
+          await page.until(`document.body.textContent.includes('Call with Fatima ended') && document.body.textContent.includes('did not agree in the patient portal')`, 3000, 'ended, not recorded')
         } finally {
           await send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
         }

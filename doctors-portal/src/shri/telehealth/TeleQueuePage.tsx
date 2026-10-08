@@ -19,7 +19,7 @@ import { cn } from '../lib/cn'
 import { initials } from '../lib/initials'
 import { Avatar, Card, Icon, Pill } from '../ui/primitives'
 
-import { VISITS } from './demoVisits'
+import { VISITS } from './visits'
 import { clockOf } from './visitRecord'
 import { useTele } from './teleStore'
 import { STATUS_CLASS, STATUS_WORD, useVisitStatus, type VisitStatus } from './visitStatus'

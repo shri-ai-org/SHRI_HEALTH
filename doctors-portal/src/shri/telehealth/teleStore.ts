@@ -1,13 +1,12 @@
-// What Telehealth remembers: each teleconsult's session, its live transcript, the
-// official Meet transcript once reconciled, and what was recorded — kept on this
-// device (localStorage; the recording itself in IndexedDB, recordingStore.ts) and
-// sent to the transcript store on the server (teleApi.ts) whenever it can be
-// reached. A line the server has not yet confirmed stays marked until it has, so a
-// dropped connection costs nothing.
+// What Telehealth remembers: each teleconsult's session, its live transcript and
+// what was recorded — kept on this device (localStorage; the recording itself in
+// IndexedDB, recordingStore.ts) and sent to the transcript store on the server
+// (teleApi.ts) whenever it can be reached. A line the server has not yet confirmed
+// stays marked until it has, so a dropped connection costs nothing.
 //
 // Per patient it also keeps the note draft, so leaving the session for the
 // prescription and coming back finds it. The recording consent is the patient's,
-// from the patient portal (demoVisits.portalConsent) — not kept or set here.
+// from the patient portal (visits.portalConsent) — not kept or set here.
 //
 // The video is a Jitsi room inside the visit page, so a reload leaves the room;
 // the open session is kept so the doctor can rejoin it, but its recording stops,
@@ -20,7 +19,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-import { DEMO_SESSION, DEMO_SID, portalConsent } from './demoVisits'
+import { portalConsent } from './visits'
 import { teleApi, teleApiBase } from './teleApi'
 import type { OfficialRecord, Speaker, TeleSegment, TeleSessionMeta } from './teleTypes'
 
@@ -46,8 +45,6 @@ export interface TeleSessionRecord extends TeleSessionMeta {
   official?: OfficialRecord
   officialDirty?: boolean
   recordings?: RecordingInfo[]
-  /** The demo day's finished visit: shown, never sent to the server. */
-  demo?: boolean
 }
 
 export type ChannelState = 'off' | 'connecting' | 'live' | 'browser' | 'error'
@@ -93,9 +90,9 @@ interface TeleState {
 export const useTele = create<TeleState>()(
   persist(
     (set) => ({
-      sessions: { [DEMO_SID]: DEMO_SESSION },
-      latest: { [DEMO_SESSION.patientId]: DEMO_SID },
-      done: { [DEMO_SESSION.patientId]: DEMO_SESSION.endedAt },
+      sessions: {},
+      latest: {},
+      done: {},
       notes: {},
       sync: 'none',
 
@@ -164,21 +161,24 @@ export const useTele = create<TeleState>()(
     }),
     {
       name: 'shri.tele',
-      version: 3,
-      // Version 2 brought the demo day's finished visit and the done marks. Version 3 dropped what the Google
-      // Meet visit kept per patient — its link, the invited mark and a consent the doctor set — for the Jitsi room.
+      version: 4,
+      // Version 3 dropped what the Google Meet visit kept per patient — its link, the invited mark and a consent
+      // the doctor set — for the Jitsi room. Version 4 dropped the scripted visit "finished this morning" with a
+      // clinic patient, so Telehealth holds only what really happened, for the shared teleconsults.
       migrate: (persisted, from) => {
         const st = (persisted ?? {}) as Partial<TeleState> & { consent?: unknown; meetUri?: unknown; invited?: unknown }
-        if (from < 2) {
-          const pid = DEMO_SESSION.patientId
-          st.sessions = { [DEMO_SID]: DEMO_SESSION, ...st.sessions }
-          st.latest = { [pid]: DEMO_SID, ...st.latest }
-          st.done = { [pid]: DEMO_SESSION.endedAt, ...st.done }
-        }
         if (from < 3) {
           delete st.consent
           delete st.meetUri
           delete st.invited
+        }
+        if (from < 4) {
+          const DEMO = 'TC-demo-SD-P-01'
+          if (st.sessions) delete st.sessions[DEMO]
+          if (st.latest?.['SD-P-01'] === DEMO) {
+            delete st.latest['SD-P-01']
+            if (st.done) delete st.done['SD-P-01']
+          }
         }
         return st as TeleState
       },
@@ -213,9 +213,9 @@ export function scheduleSync(delay = 1200) {
 async function syncAll() {
   if (running) return scheduleSync(800)
   const st = useTele.getState()
-  const dirty = Object.values(st.sessions).filter((r) => !r.demo && (r.metaDirty || r.unsynced.length || r.officialDirty))
+  const dirty = Object.values(st.sessions).filter((r) => r.metaDirty || r.unsynced.length || r.officialDirty)
   if (!teleApiBase()) {
-    st.setSync(Object.values(st.sessions).some((r) => !r.demo) ? 'device' : 'none')
+    st.setSync(Object.keys(st.sessions).length ? 'device' : 'none')
     return
   }
   if (!dirty.length) {
@@ -239,7 +239,7 @@ async function syncAll() {
         rev,
       )
     }
-    const left = Object.values(useTele.getState().sessions).some((r) => !r.demo && (r.metaDirty || r.unsynced.length || r.officialDirty))
+    const left = Object.values(useTele.getState().sessions).some((r) => r.metaDirty || r.unsynced.length || r.officialDirty)
     useTele.getState().setSync(left ? 'syncing' : 'server')
     if (left) scheduleSync(300)
   } catch {
