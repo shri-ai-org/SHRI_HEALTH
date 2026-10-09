@@ -8,7 +8,10 @@
  * (backend/telehealth), with a tone for the microphone and a canvas for the
  * shared tab. The video visits are the shared teleconsults — Fatima Bi and Arjun
  * Nair — and recording consent is the patient's, from the patient portal: Arjun
- * agreed, Fatima has not answered.
+ * agreed, Fatima has not answered. The patient portal's stand-in (/demo/patient)
+ * puts a patient in the visit's room to wait; another window of the browser is
+ * played by writing the shared waiting list and telling this window, as the
+ * browser does.
  * Loaded by scripts/shri-flows.mjs.
  */
 
@@ -50,8 +53,10 @@ const JITSI_STUB = `(() => {
       this.d = d
       window.__jitsi = this
       window.__jitsiDomain = domain
+      window.__jitsiOptions = o
       window.__jitsiDisposed = false
-      setTimeout(() => this.emit('participantJoined', { id: 'patient-1', displayName: 'Patient' }), 300)
+      // Someone joins a moment later — unless this side is to wait alone.
+      if (!window.__jitsiAlone) setTimeout(() => this.emit('participantJoined', { id: 'patient-1', displayName: 'Patient' }), 300)
     }
     addListener(e, f) { (this.l[e] = this.l[e] || []).push(f) }
     emit(e, x) { (this.l[e] || []).forEach((f) => f(x || {})) }
@@ -61,7 +66,17 @@ const JITSI_STUB = `(() => {
   }
 })()`
 
-export default ({ page, expect, toastSays, send, sleep }) => {
+/** A camera: a painted canvas, so the doctor's own corner picture has a picture. */
+const CAMERA_STUB = `(() => {
+  navigator.mediaDevices.getUserMedia = async () => {
+    const c = document.createElement('canvas'); c.width = 160; c.height = 120
+    const g = c.getContext('2d')
+    setInterval(() => { g.fillStyle = '#468'; g.fillRect(0, 0, 160, 120) }, 100)
+    return c.captureStream(10)
+  }
+})()`
+
+export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech }) => {
   const LIST = `ul[aria-label="Today\\'s video visits"] > li[data-status]`
   const cards = () => page.evaluate(`[...document.querySelectorAll('${LIST}')].map((li) => li.textContent)`)
   const statuses = () => page.evaluate(`[...document.querySelectorAll('${LIST}')].map((li) => li.dataset.status)`)
@@ -173,6 +188,127 @@ export default ({ page, expect, toastSays, send, sleep }) => {
       },
     },
     {
+      name: 'Telehealth (S-27-03): the video is the patient, large, with the doctor small in a corner — Jitsi’s own tiles and self-view off — beside the patient’s record: history, test results, vitals, scans, trend and earlier notes',
+      async run() {
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        const camera = await send('Page.addScriptToEvaluateOnNewDocument', { source: CAMERA_STUB })
+        try {
+          await page.open('/tele/session/ISH-0044240')
+          const rec = await page.evaluate(`document.querySelector('[data-visit-record]')?.textContent ?? ''`)
+          for (const w of ['About Arjun', 'Patient report', 'Test results', 'Vitals', 'Report viewer', 'Trend', 'Consultation notes', 'Write prescription'])
+            expect(rec.includes(w), `the record beside the visit has ${w}`)
+          await page.click('button', 'Start video call')
+          await page.until(`!!document.querySelector('[data-visit-call] [data-video-room] [data-jitsi-stub]')`, 3000, 'the video, in the column beside the record')
+          const o = await page.evaluate(`window.__jitsiOptions.configOverwrite`)
+          expect(o.disableSelfView === true && o.filmstrip?.disabled === true && o.disableTileView === true && !o.toolbarButtons.includes('tileview'), `only the patient on Jitsi’s stage: ${JSON.stringify(o).slice(0, 240)}`)
+          await page.until(`document.querySelector('[data-video-room] [data-self-view]')?.dataset.selfView === 'on'`, 3000, 'the doctor’s own picture, small in the corner of the video')
+          await page.evaluate(`window.__jitsi.emit('videoMuteStatusChanged', { muted: true }); true`)
+          await page.until(`document.querySelector('[data-self-view]').dataset.selfView === 'off'`, 2000, 'camera off in the call: the corner picture hides')
+          await page.evaluate(`window.__jitsi.emit('videoMuteStatusChanged', { muted: false }); true`)
+          await page.until(`document.querySelector('[data-self-view]').dataset.selfView === 'on'`, 2000, 'and comes back with the camera')
+          await page.click('button', 'End call')
+          await page.click('[role="alertdialog"] button', 'End call')
+          await page.until(`document.body.textContent.includes('Call with Arjun ended')`, 3000, 'ended')
+        } finally {
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: camera.identifier })
+        }
+      },
+    },
+    {
+      name: 'Telehealth: a patient waiting in their video call — the patient portal’s stand-in puts them in the visit’s room; the doctor is told on every screen (the bar, the bell, the sidebar, Video visits); Join now opens the call in the same room, and the notice clears',
+      async run() {
+        const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        const waitingFor = `JSON.parse(localStorage.getItem('shri.waiting') ?? '{"state":{"waiting":{}}}').state.waiting`
+        try {
+          await page.open('/demo/patient')
+          expect((await page.text()).includes('Who is joining?'), 'the patient picks themselves')
+          await page.evaluate(`window.__jitsiAlone = true; true`)
+          await page.click('button[aria-label="I am Arjun Nair"]')
+          await page.click('button', 'Join the video call')
+          await page.until(`!!document.querySelector('[data-alone]')?.textContent.includes('Waiting for Dr. Rajsrinivas')`, 3000, 'the patient waits in the call')
+          const room = await page.evaluate(`document.querySelector('[data-video-room]').dataset.videoRoom`)
+          expect(/^ShriHealth-E118430-[A-Za-z0-9]{12}$/.test(room), `the visit’s own room: ${room}`)
+          expect((await page.evaluate(waitingFor))['E-118430']?.patientId === 'SD-P-10', 'the doctor is told Arjun is waiting')
+          await page.click('button', 'Leave the call')
+          expect(Object.keys(await page.evaluate(waitingFor)).length === 0, 'leaving ends the wait')
+
+          // The doctor's window, told by the browser that the patient's window wrote the waiting list.
+          await page.open('/', { fresh: false })
+          await page.evaluate(`localStorage.setItem('shri.waiting', JSON.stringify({ state: { waiting: { 'E-118430': { visitId: 'E-118430', patientId: 'SD-P-10', since: Date.now() } } }, version: 1 })); window.dispatchEvent(new StorageEvent('storage', { key: 'shri.waiting' })); true`)
+          await page.until(`!!document.querySelector('[data-waiting="E-118430"]')`, 3000, 'the bar, on the Dashboard')
+          const bar = await page.evaluate(`document.querySelector('[data-waiting="E-118430"]').textContent`)
+          expect(bar.includes('Arjun Nair is waiting in the video call.') && bar.includes('Join now'), `said plainly, with Join now: ${bar}`)
+          const bell = await page.evaluate(`document.querySelector('button[aria-label^="Notifications"]')?.getAttribute('aria-label') ?? ''`)
+          expect(bell.includes('4 unread'), `the bell counts it: ${bell}`)
+          expect(await page.evaluate(`!!document.querySelector('[data-lobby-dot]')`), 'a dot on Video visits in the sidebar')
+
+          await page.open('/tele/queue', { fresh: false })
+          expect((await statusOfCard('Arjun')) === 'lobby' && (await countOf('Waiting')) === '2', 'In the waiting room on Video visits, still counted as waiting')
+          expect(await page.evaluate(`!!document.querySelector('button[aria-label="Join now: Arjun Nair is waiting in the video call"]')`), 'with Join now')
+          await page.click('[data-waiting="E-118430"] button', 'Join now')
+          await page.until(`location.pathname === '/tele/session/E-118430' && document.body.textContent.includes('In call with Arjun')`, 3000, 'Join now: the call, already started')
+          expect((await page.evaluate(`document.querySelector('[data-video-room]').dataset.videoRoom`)) === room, 'in the room the patient waits in')
+          await page.until(`!document.querySelector('[data-waiting]')`, 2000, 'no longer waiting: the bar is gone')
+          expect(Object.keys(await page.evaluate(waitingFor)).length === 0, 'and off the waiting list')
+          await page.click('button', 'End call')
+          await page.click('[role="alertdialog"] button', 'End call')
+          await page.until(`document.body.textContent.includes('Call with Arjun ended')`, 3000, 'ended')
+        } finally {
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
+        }
+      },
+    },
+    {
+      name: 'Telehealth (S-27-03): the notes take typing while the mic listens and never write over it; they stay a draft until Save to record signs them into the record’s consultation notes, and the visit waits for them',
+      async run() {
+        const unstub = await stubSpeech()
+        const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        const value = () => page.evaluate(`document.querySelector('#tele-note').value`)
+        try {
+          await page.open('/tele/session/ISH-0044240')
+          await page.click('button', 'Start video call')
+          await page.until(`document.body.textContent.includes('In call with Arjun')`, 3000, 'in the call')
+          expect(await btnDisabled('Save to record'), 'nothing to save yet')
+          await page.evaluate(`document.querySelector('#tele-note').parentElement.querySelector('button[aria-label="Dictate"]').click(); true`)
+          await page.until(`(window.__srStarts ?? 0) > 0`, 3000, 'the mic listens')
+          expect(!(await page.evaluate(`document.querySelector('#tele-note').readOnly`)), 'the box takes typing while it listens')
+          await page.type('#tele-note', 'Typed while listening.')
+          await page.evaluate(`window.__say('Fewer new lesions this week', 0.9); true`)
+          await page.until(`document.querySelector('#tele-note').value.includes('Fewer new lesions this week')`, 3000, 'the spoken words join')
+          expect((await value()).startsWith('Typed while listening.'), `what was typed stays, the words after it: ${await value()}`)
+          await page.evaluate(`document.querySelector('#tele-note').parentElement.querySelector('button[aria-label="Stop recording"]').click(); true`)
+          await sleep(300)
+          await page.type('#tele-note', ' Advised to continue.')
+          const draft = await value()
+          expect(draft.includes('Typed while listening.') && draft.includes('Fewer new lesions this week') && draft.includes('Advised to continue.'), `typed, spoken and typed again: ${draft}`)
+          expect((await page.evaluate(`document.querySelector('[data-note-state]').dataset.noteState`)) === 'draft', 'a draft')
+
+          await page.click('button', 'End call')
+          await page.click('[role="alertdialog"] button', 'End call')
+          await page.until(`document.body.textContent.includes('Call with Arjun ended')`, 3000, 'ended')
+          expect((await btnDisabled('Mark visit as done')) && (await page.text()).includes('Your notes are still a draft. Save them to the record, then mark the visit done.'), 'the visit waits for the notes')
+
+          await page.click('button', 'Save to record')
+          await toastSays('Note saved to the record', 'Arjun Nair · signed, under Consultation notes')
+          expect((await value()) === '' && (await page.evaluate(`document.querySelector('[data-note-state]').dataset.noteState`)) === 'saved', 'the box is clear, and says the note is saved')
+          const notes = await page.evaluate(`document.querySelector('[aria-label="Consultation notes on Arjun Nair"]')?.textContent ?? ''`)
+          expect(notes.includes('Fewer new lesions this week') && notes.includes('Advised to continue.'), `in the record’s consultation notes: ${notes.slice(0, 300)}`)
+          const rows = await auditRows()
+          expect(rows.some((r) => r.event === 'NOTE.DRAFT_SAVED' && r.subject === 'SD-P-10' && r.detail.includes('Video visit note saved, typed and dictated')), 'saved, on record')
+          expect(rows.some((r) => r.event === 'NOTE.SIGNED' && r.subject === 'SD-P-10' && r.detail.includes('Video visit note signed')), 'signed, on record')
+          expect(!(await btnDisabled('Mark visit as done')), 'and the visit can be marked done')
+          await page.evaluate(`window.__saved = []; const o = URL.createObjectURL; URL.createObjectURL = (b) => { window.__saved.push(b); return o.call(URL, b) }; true`)
+          await page.click('button', 'Full visit record')
+          const record = await page.evaluate(`window.__saved[0].text()`)
+          expect(record.includes("DOCTOR'S NOTE") && record.includes('Fewer new lesions this week'), `the visit record carries the saved note: ${record.slice(0, 300)}`)
+        } finally {
+          await unstub()
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
+        }
+      },
+    },
+    {
       name: 'Telehealth (S-27-03): recording is the patient’s to allow, in the patient portal — not yet answered, there is no Start recording and the page says why; leaving from inside the video ends the call',
       async run() {
         const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
@@ -270,10 +406,25 @@ export default ({ page, expect, toastSays, send, sleep }) => {
           expect(parts === 2, `both videos are kept: ${parts}`)
           expect(!(await page.text()).includes('Google Meet'), 'nothing about Google Meet')
 
+          // A line written down wrong is corrected by typing; the words first heard stay with it.
+          await page.click('button[aria-label^="Correct this line: Blood pressure is slightly high"]')
+          await page.until(`!!document.querySelector('[data-editing] textarea')`, 2000, 'the line opens for correcting')
+          await page.evaluate(`(() => { const t = document.querySelector('[data-editing] textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, 'Blood pressure is slightly high, increase the amlodipine dose.'); t.dispatchEvent(new Event('input', { bubbles: true })) })()`)
+          await page.click('[data-editing] button', 'Save correction')
+          await page.until(`!!document.querySelector('ol[aria-label="Live transcript"] li[data-corrected]')`, 2000, 'corrected')
+          const fixed = await page.evaluate(`document.querySelector('li[data-corrected]').textContent`)
+          expect(fixed.includes('Corrected') && fixed.includes('increase the amlodipine dose.'), `the line says so: ${fixed}`)
+
           await page.evaluate(`window.__saved = []; true`)
           await page.click('button', 'Full visit record')
           const record = await page.evaluate(`window.__saved[0].text()`)
           expect(record.includes('Recording and transcript consent: given by the patient, in the patient portal') && record.includes('LIVE TRANSCRIPT') && !record.includes('Google Meet'), `the full record: ${record.slice(0, 400)}`)
+          expect(record.includes('increase the amlodipine dose. (corrected by') && record.includes('first heard as “Blood pressure is slightly high, increase the dose.”'), `the record keeps the correction and what was heard: ${record.slice(0, 900)}`)
+
+          // Once the visit is done, the lines are locked.
+          await page.click('button', 'Mark visit as done')
+          await page.until(`document.body.textContent.includes('Visit with Arjun done')`, 3000, 'done')
+          expect(!(await page.evaluate(`!!document.querySelector('button[aria-label^="Correct this line"]')`)) && (await page.text()).includes('can no longer be corrected'), 'no more corrections')
         } finally {
           await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: media.identifier })
           await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })

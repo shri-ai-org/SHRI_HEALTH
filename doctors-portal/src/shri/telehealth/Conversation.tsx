@@ -3,10 +3,13 @@
  * right, each with a name and the time; words still being heard show faintly as
  * the newest bubble. It follows the conversation unless the doctor scrolls up to
  * read, and says plainly where it is saved.
+ *
+ * Until the visit is marked done, the doctor can correct any line by typing — the
+ * pencil beside it. A corrected line says so, and keeps the words first heard.
  */
 
-import { Check, CloudOff, Download, Loader, MessagesSquare } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { Check, CloudOff, Download, Loader, MessagesSquare, PenLine } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '../lib/cn'
 import { Card, Icon, Pill } from '../ui/primitives'
@@ -31,12 +34,39 @@ function Saved({ pending }: { pending: number }) {
   )
 }
 
-function Bubble({ mine, who, at, text, faint }: { mine: boolean; who: string; at?: number; text: string; faint?: boolean }) {
+function Bubble({
+  mine,
+  who,
+  at,
+  text,
+  faint,
+  heard,
+  onEdit,
+}: {
+  mine: boolean
+  who: string
+  at?: number
+  text: string
+  faint?: boolean
+  /** The words first heard, where the doctor corrected the line. */
+  heard?: string
+  onEdit?: () => void
+}) {
   return (
-    <li className={cn('flex max-w-[82%] flex-col gap-[3px]', mine ? 'items-end self-end' : 'items-start self-start')} data-speaker={mine ? 'doctor' : 'patient'} data-faint={faint || undefined}>
-      <span className="px-[4px] text-[12px] text-sh-text-3">
+    <li className={cn('flex max-w-[82%] flex-col gap-[3px]', mine ? 'items-end self-end' : 'items-start self-start')} data-speaker={mine ? 'doctor' : 'patient'} data-faint={faint || undefined} data-corrected={heard !== undefined || undefined}>
+      <span className="flex items-center gap-[6px] px-[4px] text-[12px] text-sh-text-3">
         {who}
         {at ? ` · ${clockOf(at).slice(0, 5)}` : ''}
+        {heard !== undefined && (
+          <span className="font-medium text-sh-text-2" title={`First heard as: ${heard}`}>
+            · Corrected
+          </span>
+        )}
+        {onEdit && (
+          <button type="button" onClick={onEdit} aria-label={`Correct this line: ${text}`} title="Correct this line" className="-my-[6px] flex size-[28px] items-center justify-center rounded-full text-sh-text-3 hover:bg-sh-inner hover:text-sh-text">
+            <Icon icon={PenLine} size={13} />
+          </button>
+        )}
       </span>
       <span
         className={cn(
@@ -51,8 +81,54 @@ function Bubble({ mine, who, at, text, faint }: { mine: boolean; who: string; at
   )
 }
 
-export function Conversation({ sid, firstName, header, className }: { sid: string; firstName: string; header: RecordHeader; className?: string }) {
+/** One line, being corrected: the words in a box, Save or Cancel (Ctrl+Enter, Escape). */
+function EditLine({ mine, who, text, onSave, onCancel }: { mine: boolean; who: string; text: string; onSave: (t: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState(text)
+  const changed = value.trim() !== '' && value.trim() !== text
+  return (
+    <li className={cn('flex w-[82%] flex-col gap-[6px]', mine ? 'self-end' : 'self-start')} data-editing="">
+      <span className="px-[4px] text-[12px] text-sh-text-3">Correcting what {who === 'You' ? 'you' : who} said</span>
+      <textarea
+        autoFocus
+        rows={3}
+        value={value}
+        aria-label={`Correct what ${who === 'You' ? 'you' : who} said`}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onCancel()
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && changed) onSave(value.trim())
+        }}
+        className="w-full resize-y rounded-[14px] border border-sh-line-strong bg-sh-card px-[12px] py-[9px] text-[15px] leading-[1.45] text-sh-text focus:border-sh-accent focus:outline-none"
+      />
+      <span className="flex justify-end gap-[8px]">
+        <Pill variant="control" size="md" onClick={onCancel}>
+          Cancel
+        </Pill>
+        <Pill variant="primary" size="md" disabled={!changed} onClick={() => onSave(value.trim())}>
+          Save correction
+        </Pill>
+      </span>
+    </li>
+  )
+}
+
+export function Conversation({
+  sid,
+  firstName,
+  header,
+  editableBy,
+  className,
+}: {
+  sid: string
+  firstName: string
+  header: RecordHeader
+  /** Who may correct lines — the doctor, until the visit is marked done. Absent: the lines are locked. */
+  editableBy?: string
+  className?: string
+}) {
   const rec = useTele((s) => s.sessions[sid])
+  const correct = useTele((s) => s.correctSegment)
+  const [editing, setEditing] = useState<string | null>(null)
   const live = useTele((s) => (s.live?.sid === sid ? s.live : undefined))
   const list = useRef<HTMLOListElement>(null)
   const stick = useRef(true)
@@ -106,13 +182,32 @@ export function Conversation({ sid, firstName, header, className }: { sid: strin
             {live ? `Listening. What you and ${firstName} say appears here after each pause.` : `When you start recording, what you and ${firstName} say appears here.`}
           </li>
         )}
-        {segs.map((s) => (
-          <Bubble key={s.id} mine={s.speaker === 'doctor'} who={name(s.speaker)} at={s.startMs} text={s.text} />
-        ))}
+        {segs.map((s) =>
+          editing === s.id && editableBy ? (
+            <EditLine
+              key={s.id}
+              mine={s.speaker === 'doctor'}
+              who={name(s.speaker)}
+              text={s.text}
+              onCancel={() => setEditing(null)}
+              onSave={(t) => {
+                correct(sid, s.id, t, editableBy)
+                setEditing(null)
+              }}
+            />
+          ) : (
+            <Bubble key={s.id} mine={s.speaker === 'doctor'} who={name(s.speaker)} at={s.startMs} text={s.text} heard={s.heard} onEdit={editableBy ? () => setEditing(s.id) : undefined} />
+          ),
+        )}
         {partials.map(([speaker, t]) => (
           <Bubble key={`p-${speaker}`} mine={speaker === 'doctor'} who={name(speaker)} text={`${t}…`} faint />
         ))}
       </ol>
+      {segs.length > 0 && (
+        <p className="mt-[10px] text-[13px] text-sh-text-3">
+          {editableBy ? 'To correct a line, press the pencil beside it. Lines can be corrected until the visit is marked done.' : 'The visit is marked done, so the lines can no longer be corrected.'}
+        </p>
+      )}
     </Card>
   )
 }

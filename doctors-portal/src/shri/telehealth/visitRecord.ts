@@ -49,8 +49,12 @@ function writtenBy(segs: TeleSegment[]) {
   return ''
 }
 
+/** One line of the transcript as a file has it — a corrected line says so, with the words first heard. */
+const lineText = (s: TeleSegment) =>
+  `[${clockOf(s.startMs)}] ${SPEAKER_LABEL[s.speaker]}: ${s.text}${s.heard !== undefined ? ` (corrected by ${s.correctedBy ?? 'the doctor'}; first heard as “${s.heard}”)` : ''}`
+
 export function liveTranscriptText(h: RecordHeader, segs: TeleSegment[]) {
-  const body = segs.map((s) => `[${clockOf(s.startMs)}] ${SPEAKER_LABEL[s.speaker]}: ${s.text}`).join('\n')
+  const body = segs.map(lineText).join('\n')
   return `${headerText(h)}\n\nLIVE TRANSCRIPT${writtenBy(segs)}\n\n${body || '(nothing was transcribed)'}\n`
 }
 
@@ -64,7 +68,7 @@ export function fullRecordText(h: RecordHeader, note: string, segs: TeleSegment[
   return [
     headerText(h),
     `\nDOCTOR'S NOTE\n\n${note.trim() || '(no note written)'}`,
-    `\nLIVE TRANSCRIPT\n\n${segs.map((s) => `[${clockOf(s.startMs)}] ${SPEAKER_LABEL[s.speaker]}: ${s.text}`).join('\n') || '(nothing was transcribed)'}`,
+    `\nLIVE TRANSCRIPT\n\n${segs.map(lineText).join('\n') || '(nothing was transcribed)'}`,
   ]
     .filter(Boolean)
     .join('\n')

@@ -1,8 +1,8 @@
 /**
  * S-27-02 · Video visits — `/tele/queue`: the day's video visits as cards in
- * appointment order, each with where it stands (Waiting, Invited, In call, Call
- * ended, Done — visitStatus.ts) and the one button that moves it on: Connect,
- * Back to call, Finish visit, or Open. Above them the four counts, each also a
+ * appointment order, each with where it stands (Waiting, In the waiting room, In
+ * call, Call ended, Done — visitStatus.ts) and the one button that moves it on:
+ * Connect, Join now, Back to call, Finish visit, or Open. Above them the four counts, each also a
  * filter; below, the visits already finished, with what they kept.
  */
 
@@ -27,10 +27,12 @@ import { STATUS_CLASS, STATUS_WORD, useVisitStatus, type VisitStatus } from './v
 const SEX = { M: 'Male', F: 'Female', O: 'Other' } as const
 
 type Filter = 'all' | 'waiting' | 'incall' | 'ended' | 'done'
-const IN_FILTER: Record<Exclude<Filter, 'all'>, VisitStatus[]> = { waiting: ['waiting'], incall: ['incall'], ended: ['ended'], done: ['done'] }
+// A patient in the waiting room has not been seen yet: counted with Waiting, shown as waiting for you.
+const IN_FILTER: Record<Exclude<Filter, 'all'>, VisitStatus[]> = { waiting: ['waiting', 'lobby'], incall: ['incall'], ended: ['ended'], done: ['done'] }
 
 const ACTION: Record<VisitStatus, { label: string; variant: 'primary' | 'control' }> = {
   waiting: { label: 'Connect', variant: 'primary' },
+  lobby: { label: 'Join now', variant: 'primary' },
   incall: { label: 'Back to call', variant: 'primary' },
   ended: { label: 'Finish visit', variant: 'primary' },
   done: { label: 'Open', variant: 'control' },
@@ -66,7 +68,8 @@ export function TeleQueuePage() {
   const rows = VISITS.map((r) => ({ r, st: statusOf(r.patientId) }))
   const count = (f: Exclude<Filter, 'all'>) => rows.filter((x) => IN_FILTER[f].includes(x.st)).length
   const shown = filter === 'all' ? rows : rows.filter((x) => IN_FILTER[filter].includes(x.st))
-  const open = (r: TeleRow) => navigate(`/tele/session/${maybeEncounter(r.id) ? r.id : r.patientId}`)
+  // Join now: the visit opens with the call already started, as from the waiting bar.
+  const open = (r: TeleRow, join = false) => navigate(`/tele/session/${maybeEncounter(r.id) ? r.id : r.patientId}`, join ? { state: { join: true } } : undefined)
   const toggle = (f: Filter) => setFilter((cur) => (cur === f ? 'all' : f))
 
   const past = Object.values(sessions)
@@ -130,8 +133,8 @@ export function TeleQueuePage() {
                     size="lg"
                     icon={st === 'done' ? ArrowRight : Video}
                     className="min-w-[136px]"
-                    onClick={() => open(r)}
-                    aria-label={`${st === 'waiting' ? 'Connect with' : act.label} ${p.name}`}
+                    onClick={() => open(r, st === 'lobby')}
+                    aria-label={st === 'waiting' ? `Connect with ${p.name}` : st === 'lobby' ? `Join now: ${p.name} is waiting in the video call` : `${act.label} ${p.name}`}
                   >
                     {act.label}
                   </Pill>

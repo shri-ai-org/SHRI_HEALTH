@@ -23,6 +23,11 @@
  *   note  — the My Day note. Its mic stays with AI off (the old panel's), it is
  *           absent where the browser cannot listen at all, and it offers no
  *           tidy-up; a new take continues the text.
+ *
+ * `typeAlong` (the video visit's notes): the box stays typeable while the mic
+ * listens. The words still being heard show faintly under it, and each phrase
+ * joins the end of the text once it is settled — so the doctor's own typing is
+ * never written over.
  */
 
 import { Loader, Mic, MicOff, PenLine, Square } from 'lucide-react'
@@ -76,6 +81,7 @@ export function VoiceField({
   id,
   label,
   layout = 'field',
+  typeAlong = false,
   required,
   value,
   onChange,
@@ -99,6 +105,8 @@ export function VoiceField({
   /** The field's name — its visible label, or (layout `note`) the box's accessible name. */
   label: string
   layout?: 'field' | 'note'
+  /** Typeable while listening; settled phrases join the end of the text, the rest shows under the box. */
+  typeAlong?: boolean
   required?: boolean
   value: string
   /** Every change; `source` is `'dictation'` while words are being written in from the microphone. */
@@ -145,11 +153,28 @@ export function VoiceField({
   const [beforeTidy, setBeforeTidy] = useState<{ was: string; changes: string[] } | null>(null)
   const join = note ? joinSpeech : asSentence
 
+  /** typeAlong: how much of this take's settled words is already in the box. */
+  const fed = useRef('')
+
   /** The take closes exactly once: the final words land, and `onDictated` hears about it. */
   function land(run: DictationRun) {
     const was = base.current
     base.current = null
     if (was === null) return
+    if (typeAlong) {
+      // What the doctor typed stays; only the words not yet in the box join its end.
+      const spoken = run.text.trim()
+      const rest = spoken.startsWith(fed.current) ? spoken.slice(fed.current.length).trim() : fed.current ? '' : spoken
+      fed.current = ''
+      const text = rest ? join(valueRef.current, rest) : valueRef.current
+      if (rest) onChange(text, 'dictation')
+      if (spoken) {
+        const meta: DictatedMeta = { text, model: run.model, band: run.band, confidence: run.confidence, scored: run.scored, words: spoken.split(/\s+/).length }
+        setDictatedMeta(meta)
+        onDictated?.(meta)
+      }
+      return
+    }
     const spoken = run.text.trim()
     if (spoken !== '') {
       const text = join(was, spoken)
@@ -186,8 +211,18 @@ export function VoiceField({
   /** The words go INTO the box as they are spoken, after what was already there — typed in, from the service. */
   const liveSpoken = recording || processing ? joinSpeech(d.settled, d.interim) : ''
   const typed = useTypewriter(liveSpoken, streaming)
+  // typeAlong: each settled phrase joins the end of whatever the box holds now.
   useEffect(() => {
-    if (!(recording || processing) || base.current === null || typed === '') return
+    if (!typeAlong || !(recording || processing) || base.current === null) return
+    const now = d.settled.trim()
+    if (now.length <= fed.current.length || !now.startsWith(fed.current)) return
+    const add = now.slice(fed.current.length).trim()
+    fed.current = now
+    if (add) onChange(join(valueRef.current, add), 'dictation')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeAlong, recording, processing, d.settled])
+  useEffect(() => {
+    if (typeAlong || !(recording || processing) || base.current === null || typed === '') return
     const next = join(base.current, typed)
     if (next !== valueRef.current) onChange(next, 'dictation')
     // `onChange` and `join` are stable in meaning; the words are what drive this.
@@ -196,6 +231,7 @@ export function VoiceField({
 
   function start() {
     base.current = value
+    fed.current = ''
     setBeforeTidy(null)
     d.start()
   }
@@ -239,7 +275,7 @@ export function VoiceField({
       rows={rows}
       value={value}
       disabled={disabled}
-      readOnly={recording || processing}
+      readOnly={!typeAlong && (recording || processing)}
       aria-busy={recording || processing}
       aria-label={note ? label : undefined}
       data-autofocus={autoFocus ? 'true' : undefined}
@@ -330,6 +366,13 @@ export function VoiceField({
             </div>
           ))}
       </div>
+
+      {/* typeAlong: the words still being heard, under the box until they settle into it. */}
+      {typeAlong && recording && d.interim.trim() !== '' && (
+        <p className="mt-[6px] text-[13px] italic text-sh-text-3" data-hearing="">
+          Hearing: “{d.interim.trim()}”
+        </p>
+      )}
 
       {/* While it listens: the permission prompt, or (in a form) the levels and the clock. */}
       {requesting && <RequestingLine className="mt-[8px]" />}

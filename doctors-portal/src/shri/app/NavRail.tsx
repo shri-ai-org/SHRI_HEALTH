@@ -19,6 +19,7 @@ import { useSession } from '@/store/session'
 
 import { cn } from '../lib/cn'
 import { T220, sheetUp } from '../lib/motion'
+import { useWaiting } from '../telehealth/waitingRoom'
 import { unacknowledgedCritical } from '../myday/useMyDay'
 import { useShri } from '../state/store'
 import { useMediaQuery, useOutsideClick } from '../ui/hooks'
@@ -130,6 +131,8 @@ export function NavRail() {
   const openSearch = useShri((s) => s.openSearch)
   // Critical results nobody has acknowledged yet — the count the Critical KPI shows.
   const critical = useClinical((s) => unacknowledgedCritical(s.acknowledgements).length > 0)
+  // A patient in a video call, waiting for the doctor.
+  const lobby = useWaiting((s) => Object.keys(s.waiting).length > 0)
   const active = useActiveKey()
   const current = useCurrent()
   const { items, more } = useRail()
@@ -164,6 +167,9 @@ export function NavRail() {
                   {it.key === 'results' && critical && (
                     <span className="absolute -right-[3px] -top-[2px] size-[7px] rounded-full bg-sh-crit ring-2 ring-sh-rail" aria-hidden="true" />
                   )}
+                  {it.key === 'telehealth' && lobby && (
+                    <span className="absolute -right-[3px] -top-[2px] size-[7px] rounded-full bg-sh-norm ring-2 ring-sh-rail" aria-hidden="true" data-lobby-dot="" />
+                  )}
                 </span>
                 <AnimatePresence initial={false}>
                   {open && (
@@ -187,7 +193,7 @@ export function NavRail() {
                     className={cls}
                     aria-current={current(isActive, it.to)}
                     title={label}
-                    aria-label={it.key === 'results' && critical ? `${it.label}, critical results waiting` : it.label}
+                    aria-label={it.key === 'results' && critical ? `${it.label}, critical results waiting` : it.key === 'telehealth' && lobby ? `${it.label}, a patient is waiting in a video call` : it.label}
                   >
                     {inner}
                   </Link>
@@ -382,14 +388,16 @@ function TabButton({
   expanded?: boolean
   onActivate: () => void
 }) {
+  const lobby = useWaiting((s) => tab.key === 'telehealth' && Object.keys(s.waiting).length > 0)
   const cls = cn(
     'flex min-w-[44px] flex-1 flex-col items-center justify-center gap-[3px] rounded-[12px] text-[10px] font-medium',
     on ? 'text-sh-text' : 'text-sh-text-3',
   )
   const inner = (
     <>
-      <span className={cn('inline-flex h-[26px] w-[40px] items-center justify-center rounded-full', on && 'bg-sh-accent text-sh-accent-ink')}>
+      <span className={cn('relative inline-flex h-[26px] w-[40px] items-center justify-center rounded-full', on && 'bg-sh-accent text-sh-accent-ink')}>
         <Icon icon={tab.icon} size={18} />
+        {lobby && <span className="absolute right-[6px] top-[1px] size-[7px] rounded-full bg-sh-norm ring-2 ring-sh-card" aria-hidden="true" />}
       </span>
       <span className="max-w-full truncate px-[2px]">{tab.label}</span>
     </>

@@ -20,6 +20,8 @@ import { useAdmissionService } from '@/api/admissions'
 import { selectScrim, useShri } from '../state/store'
 import { Scrim } from '../ui/Scrim'
 
+import { WaitingBar } from '../telehealth/WaitingBar'
+
 import { AppBar } from './AppBar'
 import { AssistantBubble } from './AssistantBubble'
 import { AssistantDrawer } from './AssistantDrawer'
@@ -39,6 +41,8 @@ export function AppShell() {
     <div className="min-h-dvh w-full overflow-x-clip bg-sh-surface pb-(--shell-pb) pl-[max(26px,var(--sa-l))] pr-[max(26px,var(--sa-r))] pt-(--shell-pt) max-sm:pb-[calc(var(--tabbar-h)_+_16px_+_var(--sa-b))] max-sm:pl-[max(16px,var(--sa-l))] max-sm:pr-[max(16px,var(--sa-r))]">
       <div className="mx-auto w-full max-w-[1920px]">
         <AppBar />
+        {/* A patient waiting in a video call: told on every screen until the doctor joins. */}
+        <WaitingBar className="mt-[14px]" />
 
         <div
           className="mt-[18px] grid gap-[20px] max-sm:block"

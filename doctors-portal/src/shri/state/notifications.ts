@@ -13,7 +13,7 @@ import { persist } from 'zustand/middleware'
 export type Severity = 'critical' | 'urgent' | 'routine'
 
 /** Which glyph an item wears — the old bell's three, plus what this build sends. */
-export type NoticeKind = 'result' | 'stroke' | 'cosign' | 'schedule' | 'appointment' | 'discharge' | 'instructions' | 'order'
+export type NoticeKind = 'result' | 'stroke' | 'cosign' | 'schedule' | 'appointment' | 'discharge' | 'instructions' | 'order' | 'video'
 
 export interface Notice {
   id: string

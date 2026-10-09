@@ -38,7 +38,7 @@ export const roomUrl = (room: string) => `https://${jitsiDomain()}/${room}`
 
 /** The part of JitsiMeetExternalAPI this page uses. */
 export interface JitsiApi {
-  addListener(event: string, fn: (e: { id?: string; displayName?: string }) => void): void
+  addListener(event: string, fn: (e: { id?: string; displayName?: string; muted?: boolean }) => void): void
   executeCommand(command: string, ...args: unknown[]): void
   getIFrame(): HTMLIFrameElement
   dispose(): void

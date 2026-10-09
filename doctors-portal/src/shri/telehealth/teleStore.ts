@@ -5,7 +5,9 @@
 // stays marked until it has, so a dropped connection costs nothing.
 //
 // Per patient it also keeps the note draft, so leaving the session for the
-// prescription and coming back finds it. The recording consent is the patient's,
+// prescription and coming back finds it, and which notes the doctor saved to the
+// record from the visit. A transcript line can be corrected until the visit is
+// marked done; the words first heard stay with it. The recording consent is the patient's,
 // from the patient portal (visits.portalConsent) — not kept or set here.
 //
 // The video is a Jitsi room inside the visit page, so a reload leaves the room;
@@ -65,6 +67,8 @@ interface TeleState {
   /** Each patient's most recent session. */
   latest: Record<string, string>
   notes: Record<string, string>
+  /** The consultation notes saved to the record from each patient's video visits (record ids). */
+  saved: Record<string, string[]>
   /** When the doctor marked the visit done — after the call, once the notes are finished. */
   done: Record<string, number>
   /** The session whose call is open in this page — never kept across a reload. */
@@ -73,6 +77,9 @@ interface TeleState {
   sync: SyncState
 
   setNote: (patientId: string, note: string) => void
+  addSaved: (patientId: string, noteId: string) => void
+  /** The doctor's correction of a transcript line; the first words heard are kept. */
+  correctSegment: (sid: string, segId: string, text: string, by: string) => void
   markDone: (patientId: string) => void
   reopen: (patientId: string) => void
   begin: (meta: Omit<TeleSessionMeta, 'id' | 'startedAt'>) => string
@@ -94,9 +101,19 @@ export const useTele = create<TeleState>()(
       latest: {},
       done: {},
       notes: {},
+      saved: {},
       sync: 'none',
 
       setNote: (patientId, note) => set((s) => ({ notes: { ...s.notes, [patientId]: note } })),
+      addSaved: (patientId, noteId) => set((s) => ({ saved: { ...s.saved, [patientId]: [...(s.saved[patientId] ?? []), noteId] } })),
+      correctSegment: (sid, segId, text, by) =>
+        set((s) => {
+          const r = s.sessions[sid]
+          if (!r) return s
+          // The server keeps the line as first sent; a correction lives with this device's record and the files made from it.
+          const segments = r.segments.map((g) => (g.id === segId ? { ...g, text, heard: g.heard ?? g.text, correctedAt: Date.now(), correctedBy: by } : g))
+          return { sessions: { ...s.sessions, [sid]: { ...r, segments } } }
+        }),
       markDone: (patientId) => set((s) => ({ done: { ...s.done, [patientId]: Date.now() } })),
       reopen: (patientId) =>
         set((s) => {
@@ -183,7 +200,7 @@ export const useTele = create<TeleState>()(
         return st as TeleState
       },
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ sessions: s.sessions, latest: s.latest, notes: s.notes, done: s.done, activeSid: s.activeSid }),
+      partialize: (s) => ({ sessions: s.sessions, latest: s.latest, notes: s.notes, saved: s.saved, done: s.done, activeSid: s.activeSid }),
       onRehydrateStorage: () => (state) => {
         if (!state) return
         const sessions = { ...state.sessions }

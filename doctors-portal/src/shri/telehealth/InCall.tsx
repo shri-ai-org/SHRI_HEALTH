@@ -1,15 +1,19 @@
 /**
- * During the call, all in the visit page: a bar that says who the call is with,
- * for how long and whether they have joined, with Start recording and End call;
- * under it the video itself (the visit's Jitsi room); under that, while it
- * records, who is being heard. Recording is one button — the patient agreed in
- * the patient portal — and the browser asks once to share this tab. Where the
- * patient declined, or has not answered, the button is not offered and the page
- * says why.
+ * During the call, in two parts of the visit page:
+ *
+ *   CallBar    across the top: who the call is with, for how long and whether
+ *              they have joined, with Start recording and End call;
+ *   CallVideo  the video card, left of the record: the visit's Jitsi room with
+ *              the patient filling it and the doctor small in a corner, and
+ *              under it, while it records, who is being heard.
+ *
+ * Recording is one button — the patient agreed in the patient portal — and the
+ * browser asks once to share this tab. Where the patient declined, or has not
+ * answered, the button is not offered and the page says why.
  */
 
 import { AlertTriangle, CheckCircle2, Circle, Info, Loader, Mic, PhoneOff, Square, Volume2, XCircle, type LucideIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState, type RefObject } from 'react'
 
 import { useUI } from '@/store/ui'
 
@@ -61,34 +65,32 @@ const SPEECH: Record<SpeechState, (first: string) => { icon: LucideIcon; cls: st
   }),
 }
 
-export function InCall({
+/** Across the top of the visit page, for as long as the call is open. */
+export function CallBar({
   sid,
   patientId,
   firstName,
-  room,
-  doctorName,
   startedAt,
+  others,
+  videoBox,
   onEnd,
-  onLeftRoom,
 }: {
   sid: string
   patientId: string
   firstName: string
-  room: string
-  doctorName: string
   startedAt: number
-  /** End call, from the bar: asks first. */
+  /** How many other people are in the room. */
+  others: number
+  /** The video's box — what a recording is cropped to. */
+  videoBox: RefObject<HTMLDivElement | null>
+  /** End call: asks first. */
   onEnd: () => void
-  /** The doctor left from inside the video itself. */
-  onLeftRoom: () => void
 }) {
   const toast = useUI((s) => s.toast)
   const consent = useTele((s) => consentOf(s, patientId))
   const live = useTele((s) => (s.live?.sid === sid ? s.live : undefined))
   const [starting, setStarting] = useState(false)
-  const [others, setOthers] = useState(0)
   const [now, setNow] = useState(() => Date.now())
-  const videoBox = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 1000)
@@ -108,56 +110,76 @@ export function InCall({
 
   const callSec = Math.max(0, Math.floor((now - startedAt) / 1000))
   const recSec = live ? Math.max(0, Math.floor((now - live.startedAt) / 1000)) : 0
-  const speech = useSpeechCheck(!live && consent === 'given')
-  const sp = SPEECH[speech](firstName)
   const canRecord = consent === 'given' && captureSupported()
 
   return (
-    <Card className="gap-0 p-0">
-      <div className="flex flex-wrap items-center gap-[12px] px-[20px] py-[14px]">
-        <span className="relative flex size-[12px]" aria-hidden="true">
-          <span className="absolute inline-flex size-full rounded-full bg-sh-norm opacity-60 motion-safe:animate-ping" />
-          <span className="relative inline-flex size-[12px] rounded-full bg-sh-norm" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[18px] font-semibold">In call with {firstName}</p>
-          <p className="text-[13px] tabular-nums text-sh-text-3" data-call-clock data-joined={others > 0 || undefined}>
-            {clock(callSec)} · {others > 0 ? `${firstName} has joined` : `Waiting for ${firstName} to join from the patient portal`}
-          </p>
-        </div>
-        {live ? (
-          <span className="flex items-center gap-[10px]">
-            <span className="flex items-center gap-[8px] text-[15px] font-semibold text-sh-crit-fg">
-              <Icon icon={Circle} size={11} className={cn('fill-current', live.recording === 'recording' && 'motion-safe:animate-pulse')} />
-              {live.recording === 'finalising' ? 'Saving…' : 'Recording'}
-              <span className="font-normal tabular-nums text-sh-text-2">{clock(recSec)}</span>
-            </span>
-            <Pill variant="control" size="xl" icon={Square} disabled={live.recording === 'finalising'} onClick={() => void stopCapture()}>
-              Stop recording
-            </Pill>
-          </span>
-        ) : (
-          canRecord && (
-            <Pill variant="primary" size="xl" icon={starting ? Loader : Circle} disabled={starting} onClick={() => void record()}>
-              {starting ? 'Starting…' : 'Start recording'}
-            </Pill>
-          )
-        )}
-        <Pill variant="crit" size="xl" icon={PhoneOff} onClick={onEnd}>
-          End call
-        </Pill>
+    <Card className="flex-row flex-wrap items-center gap-[12px] px-[20px] py-[14px]">
+      <span className="relative flex size-[12px]" aria-hidden="true">
+        <span className="absolute inline-flex size-full rounded-full bg-sh-norm opacity-60 motion-safe:animate-ping" />
+        <span className="relative inline-flex size-[12px] rounded-full bg-sh-norm" />
+      </span>
+      <div className="min-w-[220px] flex-1">
+        <p className="text-[18px] font-semibold">In call with {firstName}</p>
+        <p className="text-[13px] tabular-nums text-sh-text-3" data-call-clock data-joined={others > 0 || undefined}>
+          {clock(callSec)} · {others > 0 ? `${firstName} has joined` : `Waiting for ${firstName} to join from the patient portal`}
+        </p>
       </div>
+      {live ? (
+        <span className="flex items-center gap-[10px]">
+          <span className="flex items-center gap-[8px] text-[15px] font-semibold text-sh-crit-fg">
+            <Icon icon={Circle} size={11} className={cn('fill-current', live.recording === 'recording' && 'motion-safe:animate-pulse')} />
+            {live.recording === 'finalising' ? 'Saving…' : 'Recording'}
+            <span className="font-normal tabular-nums text-sh-text-2">{clock(recSec)}</span>
+          </span>
+          <Pill variant="control" size="xl" icon={Square} disabled={live.recording === 'finalising'} onClick={() => void stopCapture()}>
+            Stop recording
+          </Pill>
+        </span>
+      ) : (
+        canRecord && (
+          <Pill variant="primary" size="xl" icon={starting ? Loader : Circle} disabled={starting} onClick={() => void record()}>
+            {starting ? 'Starting…' : 'Start recording'}
+          </Pill>
+        )
+      )}
+      <Pill variant="crit" size="xl" icon={PhoneOff} onClick={onEnd}>
+        End call
+      </Pill>
+    </Card>
+  )
+}
 
-      <JitsiRoom
-        room={room}
-        displayName={doctorName}
-        onOthers={setOthers}
-        onLeft={onLeftRoom}
-        boxRef={videoBox}
-        className="mx-[12px] h-[min(62vh,620px)] min-h-[300px]"
-      />
+/** The video card: the patient large, the doctor small in a corner; under it, who is heard, or why recording is not offered. */
+export function CallVideo({
+  sid,
+  patientId,
+  firstName,
+  room,
+  doctorName,
+  videoBox,
+  onOthers,
+  onLeftRoom,
+}: {
+  sid: string
+  patientId: string
+  firstName: string
+  room: string
+  doctorName: string
+  videoBox: RefObject<HTMLDivElement | null>
+  onOthers: (n: number) => void
+  /** The doctor left from inside the video itself. */
+  onLeftRoom: () => void
+}) {
+  const consent = useTele((s) => consentOf(s, patientId))
+  const live = useTele((s) => (s.live?.sid === sid ? s.live : undefined))
+  const speech = useSpeechCheck(!live && consent === 'given')
+  const sp = SPEECH[speech](firstName)
 
-      <div className="px-[20px] py-[14px]">
+  return (
+    <Card className="gap-0 p-[12px]">
+      <JitsiRoom room={room} displayName={doctorName} waitingFor={`Waiting for ${firstName} to join`} onOthers={onOthers} onLeft={onLeftRoom} boxRef={videoBox} className="aspect-video w-full" />
+
+      <div className="px-[8px] pb-[4px] pt-[14px]">
         {live ? (
           <div className="flex flex-col gap-[10px]">
             <div className="flex flex-wrap gap-[8px]">

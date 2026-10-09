@@ -57,6 +57,7 @@ export function AfterVisit({
   note,
   firstName,
   done,
+  unsaved,
   onDone,
   onReopen,
   onNewCall,
@@ -66,6 +67,8 @@ export function AfterVisit({
   note: string
   firstName: string
   done: boolean
+  /** The notes hold a draft not yet saved to the record: the visit waits for it. */
+  unsaved: boolean
   onDone: () => void
   onReopen: () => void
   onNewCall: () => void
@@ -129,8 +132,10 @@ export function AfterVisit({
           </p>
         ) : (
           <div className="mt-[16px] flex flex-wrap items-center gap-[12px] rounded-[14px] border border-sh-line bg-sh-inner px-[14px] py-[12px]">
-            <span className="min-w-[200px] flex-1 text-[14px] text-sh-text-2">Finished your notes? Mark the visit done so it leaves the waiting list.</span>
-            <Pill variant="primary" size="lg" icon={CheckCircle2} onClick={onDone}>
+            <span className="min-w-[200px] flex-1 text-[14px] text-sh-text-2" data-done-hint>
+              {unsaved ? 'Your notes are still a draft. Save them to the record, then mark the visit done.' : 'Finished your notes? Mark the visit done so it leaves the waiting list.'}
+            </span>
+            <Pill variant="primary" size="lg" icon={CheckCircle2} disabled={unsaved} onClick={onDone}>
               Mark visit as done
             </Pill>
           </div>

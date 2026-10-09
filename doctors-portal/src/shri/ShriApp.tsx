@@ -20,6 +20,7 @@ import { ROUTED_SCREENS, isBare, screen, type ScreenSpec } from '@/atlas/registr
 import { useSession } from '@/store/session'
 
 import { AppShell } from './app/AppShell'
+import { PatientDemoPage } from './telehealth/PatientDemoPage'
 import { landingFor, mayOpen } from './app/landing'
 import { NightPrompt } from './app/NightPrompt'
 import { canonical } from './app/paths'
@@ -130,6 +131,8 @@ export default function ShriApp() {
               {/* Outside the shell, so the hop paints nothing on the way. */}
               <Route path="/clinician" element={<Moved />} />
               <Route path="/patient/:id/record" element={<Moved />} />
+              {/* The patient portal's stand-in, for demonstrations: outside the doctor's shell. */}
+              <Route path="/demo/patient" element={<PatientDemoPage />} />
               <Route element={<AppShell />}>
                 <Route index element={<Home />} />
                 <Route path="/patient/:id" element={<Screen spec={RECORD} element={<RecordPage />} />} />

@@ -11,6 +11,10 @@ export interface TeleSegment {
   startMs: number
   endMs: number
   source: 'shri-asr' | 'browser'
+  /** Where the doctor corrected the line: the words as first heard, and who corrected them when. */
+  heard?: string
+  correctedAt?: number
+  correctedBy?: string
 }
 
 /** One entry of the official Google Meet transcript. `startMs` is epoch ms where known. */

@@ -1,4 +1,4 @@
-import { Brain, CalendarX, ChevronRight, ClipboardX, DoorOpen, FileText, FlaskConical, Send, Signature, CalendarClock, type LucideIcon } from 'lucide-react'
+import { Brain, CalendarX, ChevronRight, ClipboardX, DoorOpen, FileText, FlaskConical, Send, Signature, CalendarClock, Video, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import type { Tone } from '../../mocks/types'
@@ -19,6 +19,7 @@ const KIND_ICON: Record<NoticeKind, LucideIcon> = {
   discharge: DoorOpen,
   instructions: FileText,
   order: ClipboardX,
+  video: Video,
 }
 
 const SEVERITY_TONE: Record<Severity, Tone> = { critical: 'crit', urgent: 'warn', routine: 'pend' }
