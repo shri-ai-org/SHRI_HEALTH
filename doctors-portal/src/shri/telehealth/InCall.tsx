@@ -121,7 +121,7 @@ export function CallBar({
       <div className="min-w-[220px] flex-1">
         <p className="text-[18px] font-semibold">In call with {firstName}</p>
         <p className="text-[13px] tabular-nums text-sh-text-3" data-call-clock data-joined={others > 0 || undefined}>
-          {clock(callSec)} · {others > 0 ? `${firstName} has joined` : `Waiting for ${firstName} to join from the patient portal`}
+          {clock(callSec)} · {others > 0 ? `${firstName} is connected` : `Waiting for ${firstName} to connect from the patient portal`}
         </p>
       </div>
       {live ? (
@@ -177,7 +177,7 @@ export function CallVideo({
 
   return (
     <Card className="gap-0 p-[12px]">
-      <JitsiRoom room={room} displayName={doctorName} waitingFor={`Waiting for ${firstName} to join`} onOthers={onOthers} onLeft={onLeftRoom} boxRef={videoBox} className="aspect-video w-full" />
+      <JitsiRoom room={room} displayName={doctorName} waitingFor={`Waiting for ${firstName} to connect`} onOthers={onOthers} onLeft={onLeftRoom} boxRef={videoBox} className="aspect-video w-full" />
 
       <div className="px-[8px] pb-[4px] pt-[14px]">
         {live ? (

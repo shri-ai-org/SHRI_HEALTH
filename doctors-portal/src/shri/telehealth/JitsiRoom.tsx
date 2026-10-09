@@ -31,7 +31,7 @@ export function JitsiRoom({
 }: {
   room: string
   displayName: string
-  /** Said on the video while nobody else is in the room: "Waiting for Arjun to join". */
+  /** Said on the video while nobody else is in the room: "Waiting for Arjun to connect". */
   waitingFor?: string
   /** How many other people are in the room, as it changes. */
   onOthers?: (n: number) => void

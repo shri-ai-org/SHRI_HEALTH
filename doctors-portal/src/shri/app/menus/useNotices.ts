@@ -27,7 +27,7 @@ export function useNotices() {
     kind: 'video',
     direction: 'in',
     title: `${patient(w.patientId).name} is waiting in the video call`,
-    detail: `${visitById(w.visitId)?.reason ?? 'Video visit'} · open the visit to join`,
+    detail: `${visitById(w.visitId)?.reason ?? 'Video visit'} · open the visit to connect`,
     to: `/tele/session/${w.visitId}`,
   }))
   return { inbox: [...lobby, ...INBOX].filter((n) => openable(persona, n.to)), sent }

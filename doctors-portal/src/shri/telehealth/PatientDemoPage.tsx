@@ -70,7 +70,7 @@ export function PatientDemoPage() {
 
         {!visit || !p ? (
           <Card>
-            <h2 className="text-[18px] font-semibold">Who is joining?</h2>
+            <h2 className="text-[18px] font-semibold">Who is connecting?</h2>
             <p className="mt-[4px] text-[14px] text-sh-text-2">Pick the patient whose video visit this is. Open this page in a second window, beside the doctor’s, to see the doctor told at once.</p>
             <ul className="mt-[16px] flex flex-col gap-[10px]" aria-label="Today’s video visits">
               {VISITS.map((v) => {
@@ -105,10 +105,10 @@ export function PatientDemoPage() {
               Booked for {formatTime(visit.scheduledAt)}. The visit is for {visit.reason.charAt(0).toLowerCase()}
               {visit.reason.slice(1)}.
             </p>
-            <p className="mt-[6px] text-[14px] text-sh-text-2">When you join, you wait in the call, and {doctor} is told you are there. Your browser asks once for the camera and microphone.</p>
+            <p className="mt-[6px] text-[14px] text-sh-text-2">When you connect, you wait in the call, and {doctor} is told you are there. Your browser asks once for the camera and microphone.</p>
             <div className="mt-[18px]">
               <Pill variant="accent" size="xl" icon={Video} disabled={!room} onClick={() => setInCall(true)}>
-                Join the video call
+                Connect
               </Pill>
             </div>
           </Card>

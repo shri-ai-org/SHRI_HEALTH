@@ -17,8 +17,8 @@
  * until the doctor saves them to the record as a signed consultation note.
  *
  * The video is the visit's own Jitsi room, made with the booking, so the patient
- * can be waiting in it first: then the doctor is told on every screen, and Join
- * now (WaitingBar) arrives here with the call already started. The call is the
+ * can be waiting in it first: then the doctor is told on every screen, and Connect
+ * (WaitingBar) arrives here with the call already started. The call is the
  * consultation, so there is no Start consultation here.
  *
  * The recording and the conversation are this page's (capture.ts), kept on the
@@ -111,7 +111,7 @@ export function TeleSessionPage() {
     startOpd(p.id)
   }
 
-  // Join now, from the waiting bar: the call starts as the page opens.
+  // Connect, from the waiting alert: the call starts as the page opens.
   const joinAsked = (location.state as { join?: boolean } | null)?.join === true
   const joined = useRef(false)
   useEffect(() => {

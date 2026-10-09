@@ -206,7 +206,7 @@ export function SpokeConsolePage() {
               <div className="grid gap-[16px] md:grid-cols-2">
                 {may(to.session) && (
                   <Pill variant="primary" size="xl" icon={Video} className="h-[64px] text-[16px]" onClick={() => navigate(to.session)}>
-                    Join the video call
+                    Connect to the video call
                   </Pill>
                 )}
                 {may(to.clock) && (

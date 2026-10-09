@@ -1,6 +1,6 @@
 /**
  * Before the call: one card and one button. The call opens here, inside Shri
- * Health, in the visit's own private room; the patient is told to join from the
+ * Health, in the visit's own private room; the patient is told to connect from the
  * patient portal. Whether the call may be recorded is the patient's answer in
  * that portal — shown here, never asked by the doctor.
  */
@@ -35,7 +35,7 @@ export function VisitSetup({ firstName, consent, onStart }: { firstName: string;
     <Card className="p-[24px]">
       <h2 className="text-[20px] font-semibold">Video visit with {firstName}</h2>
       <p className="mt-[6px] max-w-[640px] text-[14px] text-sh-text-2">
-        The call opens here, inside Shri Health, in a private room for this visit. {firstName} is told to join from the patient portal when you start.
+        The call opens here, inside Shri Health, in a private room for this visit. {firstName} is told to connect from the patient portal.
       </p>
 
       <div className="mt-[18px] rounded-[14px] bg-sh-inner px-[16px] py-[12px]">
@@ -45,7 +45,7 @@ export function VisitSetup({ firstName, consent, onStart }: { firstName: string;
 
       <div className="mt-[20px] flex flex-wrap items-center gap-[14px]">
         <Pill variant="accent" size="xl" icon={Video} onClick={onStart}>
-          Start video call
+          Connect
         </Pill>
         <span className="text-[13px] text-sh-text-3">Your browser asks once for the camera and microphone.</span>
       </div>

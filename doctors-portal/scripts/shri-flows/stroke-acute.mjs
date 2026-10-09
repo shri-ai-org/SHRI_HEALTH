@@ -86,7 +86,7 @@ export default ({ page, expect, toastSays, auditRows, pick, setInput }) => {
         await toastSays('Code stroke activated', 'Dr. Rajsrinivas is on call.')
         text = await page.text()
         expect(text.includes('STROKE/26-27/0141 · clock running · 0 of 6 answered') && text.includes('none of them blocks'), 'activated while offline, six questions')
-        expect(!(await has('Join the video call')), 'the session is not offered to a persona who cannot open it')
+        expect(!(await has('Connect to the video call')), 'the session is not offered to a persona who cannot open it')
         expect((await page.evaluate(`[...document.querySelectorAll('#six-anticoag option')].filter((o) => o.value === 'Unknown').length`)) === 1, 'Unknown is offered once')
         await pick('#six-anticoag', 'Unknown')
         await page.click('button', 'Unknown')

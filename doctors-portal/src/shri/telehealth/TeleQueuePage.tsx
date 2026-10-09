@@ -2,11 +2,11 @@
  * S-27-02 · Video visits — `/tele/queue`: the day's video visits as cards in
  * appointment order, each with where it stands (Waiting, In the waiting room, In
  * call, Call ended, Done — visitStatus.ts) and the one button that moves it on:
- * Connect, Join now, Back to call, Finish visit, or Open. Above them the four counts, each also a
+ * Connect (also for a patient in the waiting room), Back to call, Finish visit, or Open. Above them the four counts, each also a
  * filter; below, the visits already finished, with what they kept.
  */
 
-import { ArrowRight, Clock, Film, MessagesSquare, Phone, Video } from 'lucide-react'
+import { ArrowRight, BellRing, Clock, Film, MessagesSquare, Phone, Video } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -23,6 +23,7 @@ import { VISITS } from './visits'
 import { clockOf } from './visitRecord'
 import { useTele } from './teleStore'
 import { STATUS_CLASS, STATUS_WORD, useVisitStatus, type VisitStatus } from './visitStatus'
+import { alertsAsked, askForAlerts } from './waitingAlerts'
 
 const SEX = { M: 'Male', F: 'Female', O: 'Other' } as const
 
@@ -32,7 +33,7 @@ const IN_FILTER: Record<Exclude<Filter, 'all'>, VisitStatus[]> = { waiting: ['wa
 
 const ACTION: Record<VisitStatus, { label: string; variant: 'primary' | 'control' }> = {
   waiting: { label: 'Connect', variant: 'primary' },
-  lobby: { label: 'Join now', variant: 'primary' },
+  lobby: { label: 'Connect', variant: 'primary' },
   incall: { label: 'Back to call', variant: 'primary' },
   ended: { label: 'Finish visit', variant: 'primary' },
   done: { label: 'Open', variant: 'control' },
@@ -59,6 +60,21 @@ function Count({ n, word, hint, cls, active, onClick }: { n: number; word: strin
   )
 }
 
+/** Asked once per computer: a notice when a patient is waiting, even with Shri Health behind other windows. */
+function AlertsPrompt() {
+  const [asked, setAsked] = useState(alertsAsked)
+  if (asked) return null
+  return (
+    <div className="flex flex-wrap items-center gap-[12px] rounded-[18px] bg-sh-card px-[16px] py-[12px]" data-alerts-prompt="">
+      <Icon icon={BellRing} size={18} className="text-sh-text-2" />
+      <p className="min-w-[220px] flex-1 text-[14px] text-sh-text-2">Turn on alerts on this computer, so you are told when a patient is waiting in a video call, even when Shri Health is behind other windows.</p>
+      <Pill variant="control" size="lg" icon={BellRing} onClick={() => void askForAlerts().then(() => setAsked(true))}>
+        Turn on alerts
+      </Pill>
+    </div>
+  )
+}
+
 export function TeleQueuePage() {
   const navigate = useNavigate()
   const sessions = useTele((s) => s.sessions)
@@ -68,7 +84,7 @@ export function TeleQueuePage() {
   const rows = VISITS.map((r) => ({ r, st: statusOf(r.patientId) }))
   const count = (f: Exclude<Filter, 'all'>) => rows.filter((x) => IN_FILTER[f].includes(x.st)).length
   const shown = filter === 'all' ? rows : rows.filter((x) => IN_FILTER[filter].includes(x.st))
-  // Join now: the visit opens with the call already started, as from the waiting bar.
+  // Connect, for a patient in the waiting room: the visit opens with the call already started, as from the waiting alert.
   const open = (r: TeleRow, join = false) => navigate(`/tele/session/${maybeEncounter(r.id) ? r.id : r.patientId}`, join ? { state: { join: true } } : undefined)
   const toggle = (f: Filter) => setFilter((cur) => (cur === f ? 'all' : f))
 
@@ -90,6 +106,7 @@ export function TeleQueuePage() {
         </Card>
       }
     >
+      <AlertsPrompt />
       <div className="grid grid-cols-2 gap-[12px] lg:grid-cols-4" role="group" aria-label="Show">
         <Count n={count('waiting')} word="Waiting" hint="Booked, not started" cls={STATUS_CLASS.waiting} active={filter === 'waiting'} onClick={() => toggle('waiting')} />
         <Count n={count('incall')} word="In call" hint="On a video call now" cls={STATUS_CLASS.incall} active={filter === 'incall'} onClick={() => toggle('incall')} />
@@ -134,7 +151,7 @@ export function TeleQueuePage() {
                     icon={st === 'done' ? ArrowRight : Video}
                     className="min-w-[136px]"
                     onClick={() => open(r, st === 'lobby')}
-                    aria-label={st === 'waiting' ? `Connect with ${p.name}` : st === 'lobby' ? `Join now: ${p.name} is waiting in the video call` : `${act.label} ${p.name}`}
+                    aria-label={st === 'waiting' ? `Connect with ${p.name}` : st === 'lobby' ? `Connect: ${p.name} is waiting in the video call` : `${act.label} ${p.name}`}
                   >
                     {act.label}
                   </Pill>

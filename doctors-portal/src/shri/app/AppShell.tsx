@@ -13,13 +13,16 @@
  */
 
 import { AnimatePresence } from 'framer-motion'
-import { Outlet, useLocation } from 'react-router-dom'
+import { useCallback } from 'react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAdmissionService } from '@/api/admissions'
 
 import { selectScrim, useShri } from '../state/store'
 import { Scrim } from '../ui/Scrim'
 
+import { useRoomWatch } from '../telehealth/roomWatch'
+import { useWaitingAlerts } from '../telehealth/waitingAlerts'
 import { WaitingBar } from '../telehealth/WaitingBar'
 
 import { AppBar } from './AppBar'
@@ -36,13 +39,15 @@ export function AppShell() {
   const scrimOn = useShri(selectScrim)
   const closeTop = useShri((s) => s.closeTop)
   const { pathname } = useLocation()
+  const navigate = useNavigate()
+  // A patient waiting in a video call: asked of the hospital's Jitsi, announced with a chime and a notice on this computer.
+  useRoomWatch()
+  useWaitingAlerts(useCallback((visitId: string) => navigate(`/tele/session/${visitId}`, { state: { join: true } }), [navigate]))
 
   return (
     <div className="min-h-dvh w-full overflow-x-clip bg-sh-surface pb-(--shell-pb) pl-[max(26px,var(--sa-l))] pr-[max(26px,var(--sa-r))] pt-(--shell-pt) max-sm:pb-[calc(var(--tabbar-h)_+_16px_+_var(--sa-b))] max-sm:pl-[max(16px,var(--sa-l))] max-sm:pr-[max(16px,var(--sa-r))]">
       <div className="mx-auto w-full max-w-[1920px]">
         <AppBar />
-        {/* A patient waiting in a video call: told on every screen until the doctor joins. */}
-        <WaitingBar className="mt-[14px]" />
 
         <div
           className="mt-[18px] grid gap-[20px] max-sm:block"
@@ -64,6 +69,8 @@ export function AppShell() {
         {scrimOn && <Scrim key="scrim" onClick={closeTop} className="z-40" />}
       </AnimatePresence>
 
+      {/* A patient waiting in a video call: a floating alert over every screen until the doctor joins. */}
+      <WaitingBar />
       <OverlayHost />
       <AssistantDrawer />
       <AssistantBubble />
