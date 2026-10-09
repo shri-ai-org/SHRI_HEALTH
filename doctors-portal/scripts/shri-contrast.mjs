@@ -118,6 +118,7 @@ async function seed(theme) {
   if (seedScript) await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: seedScript })
   const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', {
     source: `try {
+      if (!localStorage.getItem('shri.jitsiDomain')) localStorage.setItem('shri.jitsiDomain', 'meet.jit.si'); // tests stay off the real Jitsi
       const ui = JSON.parse(localStorage.getItem('shri.ui') || '{}');
       ui.state = { ...(ui.state || {}), theme: '${theme}' };
       localStorage.setItem('shri.ui', JSON.stringify({ ...ui, version: ui.version ?? 1 }));

@@ -3,14 +3,16 @@
 // account, no link to make or paste — every visit gets its own private room,
 // named here, and the call opens in the visit page itself.
 //
-// Which Jitsi server: VITE_JITSI_DOMAIN, or `shri.jitsiDomain` in this device's
-// localStorage, else the public meet.jit.si. The public server is only for a
-// look: it makes the first person in a room sign in (Google or GitHub, in a
-// separate window) and holds everyone in a lobby until they do, so it cannot give
-// an in-page call. The hospital runs its own Jitsi (open source, Docker) and sets
-// VITE_JITSI_DOMAIN to it: no sign-in, no lobby, and every call on its server.
+// Which Jitsi server: `shri.jitsiDomain` in this device's localStorage, else
+// VITE_JITSI_DOMAIN, else the hospital's own, meet.shri-ai.org (open source Jitsi
+// in Docker on the shri-ai.org server, set up from its ~/setup scripts): no
+// sign-in, no lobby, every call on the hospital's server, and it can say who is in
+// a visit's room (roomWatch.ts). The public meet.jit.si can still be named for a
+// look — the automated tests do, so they never touch the real server — but it
+// makes the first person in a room sign in, in a separate window.
 
-const DEFAULT_DOMAIN = 'meet.jit.si'
+const DEFAULT_DOMAIN = 'meet.shri-ai.org'
+const PUBLIC_DOMAIN = 'meet.jit.si'
 
 export function jitsiDomain(): string {
   try {
@@ -22,7 +24,7 @@ export function jitsiDomain(): string {
   return import.meta.env.VITE_JITSI_DOMAIN || DEFAULT_DOMAIN
 }
 
-export const isPublicJitsi = () => jitsiDomain() === DEFAULT_DOMAIN
+export const isPublicJitsi = () => jitsiDomain() === PUBLIC_DOMAIN
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 

@@ -124,6 +124,8 @@ async function freshTab() {
   tab = { ...conn, context: browserContextId }
   await tab.call('Page.enable')
   await tab.call('Runtime.enable')
+  // Tests stay off the hospital's Jitsi (meet.shri-ai.org): the public one, which nothing polls — unless a flow names another.
+  await tab.call('Page.addScriptToEvaluateOnNewDocument', { source: `try { if (!localStorage.getItem('shri.jitsiDomain')) localStorage.setItem('shri.jitsiDomain', 'meet.jit.si') } catch {}` })
 }
 
 const send = (method, params = {}) => tab.call(method, params)
