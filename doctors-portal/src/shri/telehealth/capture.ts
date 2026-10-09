@@ -23,8 +23,11 @@
 
 import { mediaErrorNotice } from '../logic/speech'
 import { asrUrl } from '../logic/asrStream'
+import { useVoiceArbiter } from '../logic/dictation'
 
+import { callLink } from './callLink'
 import { putChunk } from './recordingStore'
+import { speechLoop, type SpeechLoop } from './speechLoop'
 import { useTele, type ChannelState } from './teleStore'
 import type { Speaker, TeleSegment } from './teleTypes'
 
@@ -241,108 +244,97 @@ class StreamChannel {
   }
 }
 
-/* ------------------------------------------------------------ the browser's recogniser, doctor only */
+/* ------------------------------------------------------------ the browser's recogniser, the doctor's side */
 
-interface SRResult {
-  isFinal: boolean
-  0: { transcript: string }
-}
-interface SR {
-  lang: string
-  continuous: boolean
-  interimResults: boolean
-  start: () => void
-  stop: () => void
-  onresult: ((e: { resultIndex: number; results: ArrayLike<SRResult> }) => void) | null
-  onerror: ((e: { error: string }) => void) | null
-  onend: (() => void) | null
-}
-
+/**
+ * The doctor's words, by this browser's speech-to-text (speechLoop.ts): listening
+ * for the whole recording, through every quiet spell. One microphone serves one
+ * recogniser, so while a notes box takes dictation (the voice arbiter) this steps
+ * aside — the doctor's words go into the notes — and comes back when it is done.
+ */
 class BrowserChannel {
-  private rec: SR | null = null
-  private active = true
-  private utterStart: number | null = null
-  private restarts = 0
+  private loop: SpeechLoop | null = null
+  private paused = false
+  private readonly unsub: () => void
   private readonly sid: string
 
   constructor(sid: string) {
     this.sid = sid
-    const w = window as unknown as {
-      SpeechRecognition?: new () => SR
-      webkitSpeechRecognition?: new () => SR
-    }
-    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition
-    if (!Ctor) {
+    this.loop = speechLoop({
+      lang: 'en-IN',
+      onFinal: (text, startMs, endMs) =>
+        useTele.getState().addSegment(this.sid, { id: lineId('doctor'), speaker: 'doctor', text, startMs, endMs, source: 'browser' }),
+      onInterim: (text) => partial('doctor', text),
+      onFail: (why) => {
+        channelState('doctor', 'error')
+        notice(`${why} Your words are not being written down. The video is still recording if you started it.`)
+      },
+    })
+    if (!this.loop) {
       channelState('doctor', 'error')
       notice('This browser cannot write down speech. The video is still recording. Use Google Chrome to see the conversation.')
-      return
-    }
-    const rec = new Ctor()
-    rec.lang = 'en-IN'
-    rec.continuous = true
-    rec.interimResults = true
-    rec.onresult = (e) => {
-      let interim = ''
-      for (let i = e.resultIndex; i < e.results.length; i += 1) {
-        const r = e.results[i]
-        if (r.isFinal) {
-          const t = r[0].transcript.trim()
-          if (t)
-            useTele.getState().addSegment(this.sid, {
-              id: lineId('doctor'),
-              speaker: 'doctor',
-              text: t,
-              startMs: this.utterStart ?? Date.now() - 3000,
-              endMs: Date.now(),
-              source: 'browser',
-            })
-          this.utterStart = null
-        } else {
-          this.utterStart ??= Date.now()
-          interim += r[0].transcript
-        }
+    } else channelState('doctor', 'browser')
+    const step = (busy: boolean) => {
+      if (!this.loop || busy === this.paused) return
+      this.paused = busy
+      if (busy) {
+        this.loop.pause()
+        partial('doctor', '')
+        channelState('doctor', 'paused')
+      } else {
+        this.loop.resume()
+        channelState('doctor', 'browser')
       }
-      partial('doctor', interim)
-      this.restarts = 0
     }
-    // A recogniser that cannot work says so once and stops — never a silent loop of restarts.
-    rec.onerror = (e) => {
-      const why: Record<string, string> = {
-        'not-allowed': 'Speech-to-text was blocked by the browser.',
-        'service-not-allowed': 'Speech-to-text was blocked by the browser.',
-        network: 'This browser cannot reach its speech-to-text service (Brave blocks it). Use Google Chrome or Microsoft Edge.',
-        'audio-capture': 'Speech-to-text could not use the microphone.',
-        'language-not-supported': 'This browser’s speech-to-text does not support Indian English.',
-      }
-      if (!why[e.error]) return
-      this.active = false
-      channelState('doctor', 'error')
-      notice(`${why[e.error]} Nothing is being written down. The video is still recording if you started it.`)
-    }
-    // The browser ends a recognition after a silence; for a call it simply starts again.
-    rec.onend = () => {
-      if (!this.active) return
-      this.restarts += 1
-      if (this.restarts > 30) {
-        channelState('doctor', 'error')
-        return notice('Speech-to-text keeps stopping. The video is still recording.')
-      }
-      window.setTimeout(() => this.active && rec.start(), 300)
-    }
-    this.rec = rec
-    channelState('doctor', 'browser')
-    rec.start()
+    step(useVoiceArbiter.getState().activeId !== null)
+    this.unsub = useVoiceArbiter.subscribe((s) => step(s.activeId !== null))
   }
 
   stop() {
-    this.active = false
-    try {
-      this.rec?.stop()
-    } catch {
-      /* not running */
-    }
+    this.unsub()
+    this.loop?.stop()
     partial('doctor', '')
     channelState('doctor', 'off')
+    return Promise.resolve()
+  }
+}
+
+/**
+ * The patient's words, written down by the patient's own browser on their side of
+ * the call (the patient portal; for now its stand-in) and sent here line by line
+ * over the call's data line (callLink.ts). Asked for while this records, and
+ * again every few seconds in case the patient's page came in late.
+ */
+class PatientLineChannel {
+  private readonly off: () => void
+  private readonly timer: number
+  private readonly seen = new Set<string>()
+  private readonly sid: string
+  private readonly room: string
+
+  constructor(sid: string, room: string) {
+    this.sid = sid
+    this.room = room
+    channelState('patient', 'connecting')
+    const ask = () => callLink.send(room, { k: 'transcribe', on: true })
+    ask()
+    this.timer = window.setInterval(ask, 5000)
+    this.off = callLink.on((m, r) => {
+      if (r !== this.room || m.k !== 'line' || this.seen.has(m.id)) return
+      this.seen.add(m.id)
+      // Their clock is not ours: the line ends now, and lasted as long as they said.
+      const endMs = Date.now()
+      const startMs = endMs - Math.max(0, Math.min(60_000, m.endMs - m.startMs))
+      useTele.getState().addSegment(this.sid, { id: `p-${m.id}`, speaker: 'patient', text: m.text, startMs, endMs, source: 'browser' })
+      channelState('patient', 'browser')
+    })
+  }
+
+  stop() {
+    window.clearInterval(this.timer)
+    this.off()
+    callLink.send(this.room, { k: 'transcribe', on: false })
+    channelState('patient', 'off')
     return Promise.resolve()
   }
 }
@@ -508,11 +500,12 @@ export async function startCapture(sid: string, { textOnly = false, cropTo }: { 
     if (fellBack) return
     fellBack = true
     for (const ch of cap.channels) void ch.stop()
-    cap.channels = [new BrowserChannel(sid)]
-    if (tabSource) channelState('patient', unreachable ? 'error' : 'off')
-    const browser = tabSource
-      ? 'The browser writes down your words, in English only. The patient’s words are not written down, but both voices are recorded.'
-      : 'The browser writes down your words, in English only.'
+    // Each side's own browser writes down its own voice: the doctor's here, the patient's on their device.
+    const room = useTele.getState().sessions[sid]?.meetCode
+    cap.channels = room ? [new BrowserChannel(sid), new PatientLineChannel(sid, room)] : [new BrowserChannel(sid)]
+    const browser = room
+      ? 'Your words are written down by this browser, in English. The patient’s words are written down on their own device and come here line by line.'
+      : 'Your words are written down by this browser, in English.'
     notice(unreachable ? `The speech service cannot be reached. ${browser}` : browser)
   }
   if (asrUrl()) {
@@ -526,7 +519,7 @@ export async function startCapture(sid: string, { textOnly = false, cropTo }: { 
   // Ending the tab share from Chrome's own bar: the patient's side stops, the doctor's carries on.
   video?.addEventListener('ended', () => {
     if (current?.sid !== sid) return
-    channelState('patient', 'off')
+    if (asrUrl()) channelState('patient', 'off')
     notice('Sharing this tab was stopped, so the video and the patient are no longer recorded. Stop recording and start again to fix it.')
   })
 

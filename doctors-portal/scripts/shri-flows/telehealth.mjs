@@ -55,12 +55,16 @@ const JITSI_STUB = `(() => {
       window.__jitsiDomain = domain
       window.__jitsiOptions = o
       window.__jitsiDisposed = false
-      // Someone joins a moment later — unless this side is to wait alone.
+      // In the call at once (its data line opens); someone joins a moment later — unless this side is to wait alone.
+      setTimeout(() => this.emit('videoConferenceJoined', { roomName: o.roomName }), 50)
       if (!window.__jitsiAlone) setTimeout(() => this.emit('participantJoined', { id: 'patient-1', displayName: 'Patient' }), 300)
     }
     addListener(e, f) { (this.l[e] = this.l[e] || []).push(f) }
     emit(e, x) { (this.l[e] || []).forEach((f) => f(x || {})) }
-    executeCommand() {}
+    // What this page asks of Jitsi is kept: the messages it sends over the call, the camera and microphone it turns off.
+    executeCommand(...a) { (window.__cmds = window.__cmds || []).push(a) }
+    isAudioMuted() { return Promise.resolve(false) }
+    isVideoMuted() { return Promise.resolve(false) }
     getIFrame() { return this.d }
     dispose() { this.d.remove(); window.__jitsiDisposed = true }
   }
@@ -114,6 +118,10 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
   const visitStatus = () => page.evaluate(`document.querySelector('[data-visit-status]')?.dataset.visitStatus`)
   const signDisabled = () => page.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('Sign the tele-prescription')).disabled`)
   const btnDisabled = (label) => page.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes(${JSON.stringify(label)})).disabled`)
+  /** What this page sent over the call's data line. */
+  const sentOverCall = () => page.evaluate(`(window.__cmds || []).filter((c) => c[0] === 'sendEndpointTextMessage').map((c) => JSON.parse(c[2]))`)
+  /** A message from the other side of the call. */
+  const fromCall = (m) => page.evaluate(`window.__jitsi.emit('endpointTextMessageReceived', { data: { senderInfo: { id: 'other' }, eventData: { text: ${JSON.stringify(JSON.stringify({ t: 'shri', ...m }))} } } }); true`)
 
   return [
     {
@@ -168,7 +176,7 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
           expect(!(await btnDisabled('Start recording')), 'Start recording, one button')
           await page.until(`document.querySelector('[data-speech]')?.dataset.speech === 'browser'`, 3000, 'with no speech service, the browser listens')
           const listens = await page.evaluate(`document.querySelector('[data-speech]').textContent`)
-          expect(listens.includes('The browser writes down your words, in English only') && !listens.includes('speech service'), `said plainly, with nothing to ask IT for: ${listens}`)
+          expect(listens.includes('Your words are written down by this browser, in English.') && listens.includes('come here line by line') && !listens.includes('speech service'), `said plainly, with nothing to ask IT for: ${listens}`)
 
           const arjunOnMyDay = () => page.evaluate(`[...document.querySelectorAll('[aria-label="Today\\'s OPD patients"] li')].find((li) => li.textContent.includes('Arjun Nair'))?.textContent ?? ''`)
           await page.open('/', { fresh: false })
@@ -401,6 +409,151 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
       },
     },
     {
+      name: 'Telehealth (S-27-03): with the browser writing down the call, dictating notes pauses the transcript and it comes back after; quiet spells never stop it',
+      async run() {
+        const unstub = await stubSpeech()
+        const media = await send('Page.addScriptToEvaluateOnNewDocument', { source: MEDIA_STUB })
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        const doctorState = () => page.evaluate(`document.querySelector('[data-channel="doctor"]')?.dataset.state`)
+        try {
+          await page.open('/tele/session/ISH-0044240')
+          await page.evaluate(`localStorage.setItem('shri.teleApi', 'off'); true`)
+          await page.open('/tele/session/ISH-0044240', { fresh: false })
+          await page.click('button', 'Connect')
+          await page.until(`document.body.textContent.includes('In call with Arjun')`, 3000, 'in the call')
+          await page.click('button', 'Start recording')
+          await page.until(`document.querySelector('[data-channel="doctor"]')?.dataset.state === 'browser'`, 5000, 'the browser writes down the doctor')
+          await page.evaluate(`window.__callSr = window.__sr; true`)
+
+          // Forty quiet spells, each longer than a failed start: it starts again every time.
+          await page.evaluate(`(() => { const real = Date.now; window.__skew = 0; Date.now = () => real() + window.__skew; return true })()`)
+          for (let i = 0; i < 40; i += 1) {
+            await page.evaluate(`window.__skew += 2000; window.__callSr.onend(); true`)
+            await sleep(320)
+          }
+          expect((await doctorState()) === 'browser', `still listening after forty quiet spells: ${await doctorState()}`)
+          expect(!(await page.text()).includes('keeps failing'), 'never gives up on quiet')
+
+          // The notes take the microphone: the transcript steps aside, then comes back.
+          await page.evaluate(`document.querySelector('#tele-note').parentElement.querySelector('button[aria-label="Dictate"]').click(); true`)
+          await page.until(`document.querySelector('[data-channel="doctor"]')?.dataset.state === 'paused'`, 3000, 'paused while the notes listen')
+          expect((await page.text()).includes('paused while you dictate notes'), 'and says so')
+          await page.evaluate(`window.__say('Lesions fewer this week', 0.9); true`)
+          await page.evaluate(`document.querySelector('#tele-note').parentElement.querySelector('button[aria-label="Stop recording"]').click(); true`)
+          await page.until(`document.querySelector('[data-channel="doctor"]')?.dataset.state === 'browser'`, 3000, 'back to the conversation after the notes')
+          expect((await page.evaluate(`document.querySelector('#tele-note').value`)).includes('Lesions fewer this week'), 'the dictated words went to the notes')
+          await page.click('button', 'Stop recording')
+          await page.click('button', 'End call')
+          await page.click('[role="alertdialog"] button', 'End call')
+          await page.until(`document.body.textContent.includes('Call with Arjun ended')`, 5000, 'ended')
+        } finally {
+          await unstub()
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: media.identifier })
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
+        }
+      },
+    },
+    {
+      name: 'Telehealth (S-27-03): while the doctor records, the patient’s words come over the call from the patient’s own device, line by line, beside the doctor’s',
+      async run() {
+        const unstub = await stubSpeech()
+        const media = await send('Page.addScriptToEvaluateOnNewDocument', { source: MEDIA_STUB })
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        try {
+          await page.open('/tele/session/ISH-0044240')
+          await page.evaluate(`localStorage.setItem('shri.teleApi', 'off'); true`)
+          await page.open('/tele/session/ISH-0044240', { fresh: false })
+          await page.click('button', 'Connect')
+          await page.until(`document.body.textContent.includes('In call with Arjun')`, 3000, 'in the call')
+          await page.click('button', 'Start recording')
+          await page.until(`(window.__cmds || []).some((c) => c[0] === 'sendEndpointTextMessage' && c[2].includes('"transcribe"') && c[2].includes('"on":true'))`, 5000, 'the patient’s device is asked to write down the patient')
+          await fromCall({ k: 'line', id: 'pl-1', text: 'My skin is much better now', startMs: 1000, endMs: 4000 })
+          await fromCall({ k: 'line', id: 'pl-1', text: 'My skin is much better now', startMs: 1000, endMs: 4000 })
+          await page.until(`[...document.querySelectorAll('ol[aria-label="Live transcript"] li[data-speaker="patient"]')].some((li) => li.textContent.includes('My skin is much better now'))`, 3000, 'the patient’s line, on the left')
+          expect((await page.evaluate(`[...document.querySelectorAll('ol[aria-label="Live transcript"] li[data-speaker="patient"]')].length`)) === 1, 'a line sent twice is kept once')
+          expect((await page.evaluate(`document.querySelector('[data-channel="patient"]')?.dataset.state`)) === 'browser', 'Arjun shown as heard')
+          await page.click('button', 'Stop recording')
+          await page.until(`(window.__cmds || []).some((c) => c[0] === 'sendEndpointTextMessage' && c[2].includes('"transcribe"') && c[2].includes('"on":false'))`, 5000, 'and told to stop when recording stops')
+          await page.click('button', 'End call')
+          await page.click('[role="alertdialog"] button', 'End call')
+          await page.until(`document.body.textContent.includes('Call with Arjun ended')`, 5000, 'ended')
+        } finally {
+          await unstub()
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: media.identifier })
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
+        }
+      },
+    },
+    {
+      name: 'Telehealth: the patient portal’s stand-in writes down the patient while the doctor records and says so; after the call it turns the camera and microphone off, waits, shows the prescription and says it arrived',
+      async run() {
+        const unstub = await stubSpeech()
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        try {
+          await page.open('/demo/patient')
+          await page.evaluate(`window.__jitsiAlone = true; true`)
+          await page.click('button[aria-label="I am Arjun Nair"]')
+          await page.click('button', 'Connect')
+          await page.until(`!!document.querySelector('[data-alone]')`, 3000, 'waiting')
+          await page.evaluate(`window.__jitsi.emit('participantJoined', { id: 'doctor-1' }); true`)
+          await page.until(`document.body.textContent.includes('You are in your video visit')`, 2000, 'the doctor is in')
+          await fromCall({ k: 'transcribe', on: true })
+          await page.until(`document.querySelector('[data-writing]')?.dataset.writing === 'on'`, 2000, 'the patient is told their words are written down')
+          await page.evaluate(`window.__say('My skin is much better now', 0.9); true`)
+          await page.until(`(window.__cmds || []).some((c) => c[0] === 'sendEndpointTextMessage' && c[2].includes('My skin is much better now') && c[2].includes('"line"'))`, 3000, 'the line goes to the doctor')
+          await fromCall({ k: 'transcribe', on: false })
+          await page.until(`!document.querySelector('[data-writing]')`, 2000, 'stops when the doctor stops recording')
+
+          // The doctor leaves: the call has ended, the camera and microphone go off, the page waits.
+          await page.evaluate(`window.__jitsi.emit('participantLeft', { id: 'doctor-1' }); true`)
+          await page.until(`!!document.querySelector('[data-after-call]')`, 2000, 'the call has ended')
+          expect((await page.text()).includes('Keep this page open. If your doctor writes you a prescription, it comes here.'), 'said plainly')
+          await page.until(`(window.__cmds || []).some((c) => c[0] === 'toggleAudio') && (window.__cmds || []).some((c) => c[0] === 'toggleVideo')`, 2000, 'camera and microphone off')
+          // The doctor's portal comes in to bring the prescription: still after the call.
+          await page.evaluate(`window.__jitsi.emit('participantJoined', { id: 'courier' }); true`)
+          await fromCall({ k: 'rx', rx: { id: 'RX-t1', doctor: 'Dr. Rajsrinivas', patient: 'Arjun Nair', signedAt: Date.now(), mode: 'video', items: ['Paracetamol 1g IV'] } })
+          await page.until(`!!document.querySelector('[data-rx="RX-t1"]')`, 2000, 'the prescription is shown')
+          expect((await page.evaluate(`document.querySelector('[data-rx]').textContent`)).includes('Paracetamol 1g IV') && (await page.evaluate(`!!document.querySelector('[data-after-call]')`)), 'with its medicines, still after the call')
+          expect((await sentOverCall()).some((m) => m.k === 'rx-ack' && m.id === 'RX-t1'), 'and the doctor is told it arrived')
+        } finally {
+          await unstub()
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
+        }
+      },
+    },
+    {
+      name: 'Telehealth (S-27-04): a tele-prescription signed after the call goes to the patient’s portal page through the visit’s room — the portal joins quietly, sends it, and the doctor is told it arrived',
+      async run() {
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        try {
+          await page.open('/tele/session/ISH-0044240')
+          await page.click('button', 'Connect')
+          await page.until(`document.body.textContent.includes('In call with Arjun')`, 3000, 'in the call')
+          await page.click('button', 'End call')
+          await page.click('[role="alertdialog"] button', 'End call')
+          await page.until(`document.body.textContent.includes('Call with Arjun ended')`, 3000, 'ended')
+          await page.click('button', 'Write prescription')
+          await page.until(`!!document.querySelector('[data-screen-id="S-27-04"]')`, 3000, 'the tele-prescription')
+          await page.click('button[aria-label="Add Paracetamol 1g IV"]')
+          await page.evaluate(`window.__cmds = []; true`)
+          await page.click('button', 'Sign the tele-prescription')
+          await toastSays('Tele-prescription signed', 'It is being sent to Arjun’s patient portal.')
+          await page.until(`!!document.querySelector('[data-rx-courier]')`, 3000, 'the portal joins the visit’s room, out of sight')
+          expect(await page.evaluate(`window.__jitsiOptions.configOverwrite.disableInitialGUM === true && window.__jitsiOptions.configOverwrite.startWithVideoMuted === true`), 'with no camera and no microphone')
+          await page.until(`(window.__cmds || []).some((c) => c[0] === 'sendEndpointTextMessage' && c[2].includes('"rx"'))`, 5000, 'the prescription goes out')
+          const rx = (await sentOverCall()).find((m) => m.k === 'rx').rx
+          expect(rx.items.join() === 'Paracetamol 1g IV' && rx.patient === 'Arjun Nair', `the prescription as signed: ${JSON.stringify(rx)}`)
+          await fromCall({ k: 'rx-ack', id: rx.id })
+          await toastSays('Prescription delivered', 'Arjun has it in the patient portal.')
+          await page.until(`!document.querySelector('[data-rx-courier]')`, 3000, 'and leaves the room')
+          const sentItems = await page.evaluate(`JSON.parse(localStorage.getItem('shri.notifications')).state.sent`)
+          expect(sentItems.some((n) => n.recipient === 'patient' && n.title === 'Tele-prescription sent' && n.detail.includes('Paracetamol 1g IV')), 'kept with what was sent on the doctor’s behalf')
+        } finally {
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
+        }
+      },
+    },
+    {
       name: 'Telehealth (S-27-03): recording is the patient’s to allow, in the patient portal — not yet answered, there is no Start recording and the page says why; leaving from inside the video ends the call',
       async run() {
         const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
@@ -423,6 +576,8 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
     {
       name: 'Telehealth (S-27-04): the category gate — prohibited never, List A only on video; a blocked item stops the signature',
       async run() {
+        // Signing sends the prescription toward the patient's portal through the visit's room: a stand-in Jitsi, so nothing leaves.
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
         await page.open('/tele/session/ISH-0044240/rx')
         expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-27-04"]')`), 'S-27-04 is drawn')
         let text = await page.text()
@@ -439,6 +594,7 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
         await page.click('button', 'Sign the tele-prescription')
         await toastSays('Tele-prescription signed', 'Printed bilingually with your HPR number, and published to ABDM.')
         await page.until(`location.pathname === '/tele/queue'`, 3000, 'back to the queue')
+        await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
       },
     },
 

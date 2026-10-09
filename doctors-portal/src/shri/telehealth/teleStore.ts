@@ -49,7 +49,7 @@ export interface TeleSessionRecord extends TeleSessionMeta {
   recordings?: RecordingInfo[]
 }
 
-export type ChannelState = 'off' | 'connecting' | 'live' | 'browser' | 'error'
+export type ChannelState = 'off' | 'connecting' | 'live' | 'browser' | 'paused' | 'error'
 export type SyncState = 'none' | 'syncing' | 'server' | 'device'
 
 export interface LiveCapture {

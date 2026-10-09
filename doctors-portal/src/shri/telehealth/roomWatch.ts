@@ -41,7 +41,12 @@ export function useRoomWatch() {
         for (const v of VISITS) {
           const room = roomOfVisit(v.id)
           const tele = useTele.getState()
-          if (!room || tele.done[v.patientId]) continue
+          // A visit whose call has ended: the patient may stay in the room for their prescription — not waiting for a call.
+          const last = tele.latest[v.patientId] ? tele.sessions[tele.latest[v.patientId]] : undefined
+          if (!room || tele.done[v.patientId] || last?.endedAt) {
+            useWaiting.getState().leave(v.id)
+            continue
+          }
           const n = await roomSize(room)
           if (!alive || n === null) continue
           const mine = tele.activeSid ? useTele.getState().sessions[tele.activeSid]?.meetCode : undefined

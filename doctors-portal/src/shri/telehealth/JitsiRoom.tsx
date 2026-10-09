@@ -10,6 +10,11 @@
  * It says when the other person comes in or leaves, and when the call is closed
  * from inside the video. A video service that cannot be reached says so, in words.
  * The doctor's visit page and the patient's demo page both use it.
+ *
+ * Once joined it opens the call's data line (callLink.ts). `quiet` joins with no
+ * camera, no microphone and no picture of its own — to hand the patient their
+ * prescription after the call (RxCourier). `muted` turns this side's camera and
+ * microphone off, and keeps them off (the patient page, after the call).
  */
 
 import { VideoOff } from 'lucide-react'
@@ -18,19 +23,29 @@ import { useEffect, useRef, useState, type Ref } from 'react'
 import { cn } from '../lib/cn'
 import { Icon } from '../ui/primitives'
 
+import { callLink, wire } from './callLink'
 import { jitsiDomain, loadJitsi, type JitsiApi } from './jitsi'
 
 export function JitsiRoom({
   room,
   displayName,
   waitingFor,
+  quiet = false,
+  muted = false,
   onOthers,
+  onJoined,
   onLeft,
   boxRef,
   className,
 }: {
   room: string
   displayName: string
+  /** In the room with no camera, no microphone and no picture of its own. */
+  quiet?: boolean
+  /** This side's camera and microphone off. */
+  muted?: boolean
+  /** This side is in the call: its data line is open. */
+  onJoined?: () => void
   /** Said on the video while nobody else is in the room: "Waiting for Arjun to connect". */
   waitingFor?: string
   /** How many other people are in the room, as it changes. */
@@ -45,16 +60,18 @@ export function JitsiRoom({
   const [failed, setFailed] = useState<string | null>(null)
   const [others, setOthers] = useState(0)
   const [cameraOff, setCameraOff] = useState(false)
+  const apiRef = useRef<JitsiApi | null>(null)
   // The latest callbacks, without rejoining the room when they change.
-  const cb = useRef({ onOthers, onLeft })
+  const cb = useRef({ onOthers, onLeft, onJoined })
   useEffect(() => {
-    cb.current = { onOthers, onLeft }
+    cb.current = { onOthers, onLeft, onJoined }
   })
 
   useEffect(() => {
     let api: JitsiApi | null = null
     let disposed = false
     const ids = new Set<string>()
+    const send = (m: Parameters<typeof wire>[0]) => api?.executeCommand('sendEndpointTextMessage', '', wire(m))
     const count = () => {
       setOthers(ids.size)
       cb.current.onOthers?.(ids.size)
@@ -75,8 +92,10 @@ export function JitsiRoom({
             enableWelcomePage: false,
             enableClosePage: false,
             disableInviteFunctions: true,
-            startWithAudioMuted: false,
-            startWithVideoMuted: false,
+            startWithAudioMuted: quiet,
+            startWithVideoMuted: quiet,
+            // Quiet: never asks for the camera or microphone, and plays no sounds.
+            ...(quiet ? { disableInitialGUM: true, startSilent: true } : {}),
             // Only the other person on Jitsi's stage: no filmstrip, no self-view tile, no tile view.
             filmstrip: { disabled: true },
             disableSelfView: true,
@@ -96,13 +115,35 @@ export function JitsiRoom({
         })
         api.addListener('videoMuteStatusChanged', (e) => setCameraOff(Boolean(e.muted)))
         api.addListener('readyToClose', () => cb.current.onLeft?.())
+        api.addListener('videoConferenceJoined', () => {
+          callLink.open(room, send)
+          cb.current.onJoined?.()
+        })
+        api.addListener('endpointTextMessageReceived', (e) => {
+          const d = e.data ?? e
+          callLink.receive(room, d.eventData?.text, d.senderInfo?.id)
+        })
+        apiRef.current = api
       })
       .catch((e: Error) => !disposed && setFailed(e.message))
     return () => {
       disposed = true
+      callLink.close(room, send)
+      apiRef.current = null
       api?.dispose()
     }
+    // `quiet` is how the room is joined, fixed for its life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room, displayName])
+
+  // Muted: the camera and the microphone off, checked as they are, then turned.
+  useEffect(() => {
+    if (!muted) return
+    const api = apiRef.current
+    if (!api) return
+    void api.isAudioMuted?.().then((m) => !m && api.executeCommand('toggleAudio'))
+    void api.isVideoMuted?.().then((m) => !m && api.executeCommand('toggleVideo'))
+  }, [muted])
 
   return (
     <div ref={boxRef} className={cn('relative overflow-hidden rounded-[18px] bg-black', className)} data-video-room={room}>
@@ -112,7 +153,7 @@ export function JitsiRoom({
           {waitingFor}
         </p>
       )}
-      {!failed && <SelfView hidden={cameraOff} />}
+      {!failed && !quiet && <SelfView hidden={cameraOff || muted} />}
       {failed && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-[10px] p-[24px] text-center text-white">
           <Icon icon={VideoOff} size={28} />

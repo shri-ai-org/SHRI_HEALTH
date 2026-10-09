@@ -5,6 +5,9 @@
  * and never AI-decided (`logic/tele.ts`). Switching video ↔ telephone changes
  * what is prescribable; a blocked item says why once, on the formulary, and
  * the prescription cannot be signed while it is in the basket.
+ *
+ * Signed, it goes to the patient's portal page through the visit's video room
+ * (RxCourier), after the call as during it.
  */
 
 import { Ban, OctagonAlert, Plus, Signature, Trash2 } from 'lucide-react'
@@ -12,6 +15,7 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { formatDateTime } from '@/data/format'
+import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
 
 import { ScreenFrame } from '../app/ScreenFrame'
@@ -23,11 +27,14 @@ import { Card, Icon, Pill, PillTag } from '../ui/primitives'
 import { Segmented } from '../ui/Segmented'
 
 import { NoParty } from './NoParty'
+import { useCourier } from './rxCourier'
+import { roomOfVisit, visitFor } from './visits'
 
 export function TeleRxPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const toast = useUI((s) => s.toast)
+  const me = useCurrentStaff()
   const aiActive = useAiActive()
   /** Video vs telephone changes what is prescribable. Hard-coded, not a setting. */
   const [mode, setMode] = useState<TeleMode>('video')
@@ -38,6 +45,19 @@ export function TeleRxPage() {
   const { patient: p, encounter: enc } = party
 
   const blocked = basket.filter((d) => blockedReason(d, mode) !== null)
+
+  /** Signed: published, and sent to the patient's portal page through the visit's video room. */
+  function sign() {
+    const visit = visitFor(p.id)
+    const room = visit && roomOfVisit(visit.id)
+    if (visit && room) useCourier.getState().send({ room, patientName: p.name, patientId: p.id, visitId: visit.id, rx: { doctor: me?.name ?? 'Your doctor', patient: p.name, mode, items: [...basket] } })
+    toast({
+      tone: 'success',
+      title: 'Tele-prescription signed',
+      detail: `Printed bilingually with your HPR number, and published to ABDM.${visit && room ? ` It is being sent to ${p.name.split(' ')[0]}’s patient portal.` : ''}`,
+    })
+    navigate('/tele/queue')
+  }
 
   return (
     <ScreenFrame
@@ -83,10 +103,7 @@ export function TeleRxPage() {
             icon={Signature}
             className="ml-auto"
             disabled={basket.length === 0 || blocked.length > 0}
-            onClick={() => {
-              toast({ tone: 'success', title: 'Tele-prescription signed', detail: 'Printed bilingually with your HPR number, and published to ABDM.' })
-              navigate('/tele/queue')
-            }}
+            onClick={sign}
           >
             Sign the tele-prescription
           </Pill>

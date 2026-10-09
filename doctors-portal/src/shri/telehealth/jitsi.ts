@@ -39,9 +39,22 @@ export function newRoomName(visitId: string): string {
 export const roomUrl = (room: string) => `https://${jitsiDomain()}/${room}`
 
 /** The part of JitsiMeetExternalAPI this page uses. */
+/** What Jitsi's events carry, as far as this page reads them. */
+export interface JitsiEvent {
+  id?: string
+  displayName?: string
+  muted?: boolean
+  /** endpointTextMessageReceived: the sender and the text, in `data` or at the top. */
+  data?: { senderInfo?: { id?: string }; eventData?: { text?: string } }
+  senderInfo?: { id?: string }
+  eventData?: { text?: string }
+}
+
 export interface JitsiApi {
-  addListener(event: string, fn: (e: { id?: string; displayName?: string; muted?: boolean }) => void): void
+  addListener(event: string, fn: (e: JitsiEvent) => void): void
   executeCommand(command: string, ...args: unknown[]): void
+  isAudioMuted?(): Promise<boolean>
+  isVideoMuted?(): Promise<boolean>
   getIFrame(): HTMLIFrameElement
   dispose(): void
 }

@@ -29,7 +29,14 @@ import { ConsentLine } from './VisitSetup'
 
 const clock = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)}:` : '') + `${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 
-const HEARD: Record<ChannelState, string> = { off: 'not heard', connecting: 'connecting…', live: 'being heard', browser: 'being heard (English only)', error: 'stopped' }
+const HEARD: Record<ChannelState, string> = {
+  off: 'not heard',
+  connecting: 'waiting for their device…',
+  live: 'being heard',
+  browser: 'being heard (English only)',
+  paused: 'paused while you dictate notes',
+  error: 'stopped',
+}
 
 function Heard({ speaker, label, icon }: { speaker: Speaker; label: string; icon: typeof Mic }) {
   const state = useTele((s) => s.live?.channels[speaker] ?? 'off')
@@ -56,7 +63,7 @@ const SPEECH: Record<SpeechState, (first: string) => { icon: LucideIcon; cls: st
   browser: (f) => ({
     icon: Info,
     cls: 'text-sh-text-3',
-    text: `The browser writes down your words, in English only. ${f}’s words are not written down, but the recording keeps both voices.`,
+    text: `Your words are written down by this browser, in English. ${f}’s words are written down on ${f}’s own device and come here line by line. The recording keeps both voices.`,
   }),
   none: () => ({
     icon: XCircle,

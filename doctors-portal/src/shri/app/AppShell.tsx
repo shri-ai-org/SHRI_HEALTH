@@ -22,6 +22,7 @@ import { selectScrim, useShri } from '../state/store'
 import { Scrim } from '../ui/Scrim'
 
 import { useRoomWatch } from '../telehealth/roomWatch'
+import { RxCourier } from '../telehealth/RxCourier'
 import { useWaitingAlerts } from '../telehealth/waitingAlerts'
 import { WaitingBar } from '../telehealth/WaitingBar'
 
@@ -71,6 +72,8 @@ export function AppShell() {
 
       {/* A patient waiting in a video call: a floating alert over every screen until the doctor joins. */}
       <WaitingBar />
+      {/* A signed tele-prescription on its way to the patient's portal page, through the visit's video room. */}
+      <RxCourier />
       <OverlayHost />
       <AssistantDrawer />
       <AssistantBubble />
