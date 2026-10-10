@@ -33,6 +33,7 @@ export function JitsiRoom({
   quiet = false,
   muted = false,
   onOthers,
+  onPerson,
   onJoined,
   onLeft,
   boxRef,
@@ -50,6 +51,8 @@ export function JitsiRoom({
   waitingFor?: string
   /** How many other people are in the room, as it changes. */
   onOthers?: (n: number) => void
+  /** Someone came in, or left — by their id in the call. */
+  onPerson?: (id: string, inRoom: boolean) => void
   /** This side left from inside the video. */
   onLeft?: () => void
   /** The video's box — what a recording is cropped to. */
@@ -62,9 +65,9 @@ export function JitsiRoom({
   const [cameraOff, setCameraOff] = useState(false)
   const apiRef = useRef<JitsiApi | null>(null)
   // The latest callbacks, without rejoining the room when they change.
-  const cb = useRef({ onOthers, onLeft, onJoined })
+  const cb = useRef({ onOthers, onPerson, onLeft, onJoined })
   useEffect(() => {
-    cb.current = { onOthers, onLeft, onJoined }
+    cb.current = { onOthers, onPerson, onLeft, onJoined }
   })
 
   useEffect(() => {
@@ -107,10 +110,12 @@ export function JitsiRoom({
         })
         api.addListener('participantJoined', (e) => {
           if (e.id) ids.add(e.id)
+          if (e.id) cb.current.onPerson?.(e.id, true)
           count()
         })
         api.addListener('participantLeft', (e) => {
           if (e.id) ids.delete(e.id)
+          if (e.id) cb.current.onPerson?.(e.id, false)
           count()
         })
         api.addListener('videoMuteStatusChanged', (e) => setCameraOff(Boolean(e.muted)))

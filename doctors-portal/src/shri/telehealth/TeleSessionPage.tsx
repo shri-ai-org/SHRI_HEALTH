@@ -53,6 +53,7 @@ import { newRoomName, roomUrl } from './jitsi'
 import { NoParty } from './NoParty'
 import type { RecordHeader } from './visitRecord'
 import { VisitRecord } from './VisitRecord'
+import { demoCode } from './demoCode'
 import { roomOfVisit, visitFor } from './visits'
 import { consentOf, useTele } from './teleStore'
 import { STATUS_CLASS, STATUS_WORD, useVisitStatus } from './visitStatus'
@@ -104,7 +105,7 @@ export function TeleSessionPage() {
       tele().end(other)
     }
     // The visit's own room, made with the booking; the patient portal takes the patient into the same one.
-    const room = (booking && roomOfVisit(booking.id)) ?? newRoomName(booking?.id ?? p.id)
+    const room = booking ? roomOfVisit(booking.id, demoCode()) : newRoomName(p.id)
     tele().begin({ patientId: p.id, encounterId: enc?.id, meetUri: roomUrl(room), meetCode: room, consent: consentOf(tele(), p.id) ?? 'declined' })
     if (booking) leaveWaiting(booking.id)
     setNewCall(false)

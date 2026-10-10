@@ -10,6 +10,7 @@ import { CircleCheck, CircleHelp, CircleX, Video, type LucideIcon } from 'lucide
 import { cn } from '../lib/cn'
 import { Card, Icon, Pill } from '../ui/primitives'
 
+import { DemoCodeNote } from './DemoCodeNote'
 import { isPublicJitsi } from './jitsi'
 
 type Consent = 'given' | 'declined' | undefined
@@ -42,6 +43,8 @@ export function VisitSetup({ firstName, consent, onStart }: { firstName: string;
         <p className="mb-[6px] text-[12px] font-semibold uppercase tracking-[0.06em] text-sh-text-3">Recording</p>
         <ConsentLine consent={consent} firstName={firstName} />
       </div>
+
+      <DemoCodeNote className="mt-[14px] bg-sh-inner" />
 
       <div className="mt-[20px] flex flex-wrap items-center gap-[14px]">
         <Pill variant="accent" size="xl" icon={Video} onClick={onStart}>

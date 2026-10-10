@@ -13,7 +13,7 @@
  */
 
 import { AnimatePresence } from 'framer-motion'
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAdmissionService } from '@/api/admissions'
@@ -21,6 +21,7 @@ import { useAdmissionService } from '@/api/admissions'
 import { selectScrim, useShri } from '../state/store'
 import { Scrim } from '../ui/Scrim'
 
+import { freshStart } from '../telehealth/freshStart'
 import { useRoomWatch } from '../telehealth/roomWatch'
 import { RxCourier } from '../telehealth/RxCourier'
 import { useWaitingAlerts } from '../telehealth/waitingAlerts'
@@ -39,6 +40,8 @@ export function AppShell() {
   const railOpen = useShri((s) => s.railOpen)
   const scrimOn = useShri(selectScrim)
   const closeTop = useShri((s) => s.closeTop)
+  // The video visits start fresh on every load of the doctor's portal: all Waiting, a new demonstration code.
+  useState(freshStart)
   const { pathname } = useLocation()
   const navigate = useNavigate()
   // A patient waiting in a video call: asked of the hospital's Jitsi, announced with a chime and a notice on this computer.

@@ -23,6 +23,7 @@ import { VISITS } from './visits'
 import { clockOf } from './visitRecord'
 import { useTele } from './teleStore'
 import { STATUS_CLASS, STATUS_WORD, useVisitStatus, type VisitStatus } from './visitStatus'
+import { DemoCodeNote } from './DemoCodeNote'
 import { alertsAsked, askForAlerts } from './waitingAlerts'
 
 const SEX = { M: 'Male', F: 'Female', O: 'Other' } as const
@@ -106,6 +107,7 @@ export function TeleQueuePage() {
         </Card>
       }
     >
+      <DemoCodeNote />
       <AlertsPrompt />
       <div className="grid grid-cols-2 gap-[12px] lg:grid-cols-4" role="group" aria-label="Show">
         <Count n={count('waiting')} word="Waiting" hint="Booked, not started" cls={STATUS_CLASS.waiting} active={filter === 'waiting'} onClick={() => toggle('waiting')} />

@@ -22,14 +22,10 @@ export const visitFor = (patientId: string) => VISITS.find((v) => v.patientId ==
 export const visitById = (visitId: string) => VISITS.find((v) => v.id === visitId)
 
 /**
- * Each booked visit's own video room, made with the booking — so the patient can
- * be in it, waiting, before the doctor starts. The backend will issue these, each
- * private to its visit; until then they are fixed here, the same for the doctor's
- * page and the patient's.
+ * Each booked visit's video room, there before the doctor starts — so the patient
+ * can be in it, waiting. For now it is the visit and the demonstration's code
+ * (demoCode.ts): the doctor's page passes its own code, the patient demo page the
+ * code typed in, so every person and every reload has rooms of its own. The
+ * backend will issue each visit a private room instead.
  */
-const ROOM_KEY: Record<string, string> = {
-  'E-118430': 'q7KfTz2LmW9x',
-  'E-118452': 'Hn4vRb8YpC3s',
-}
-export const roomOfVisit = (visitId: string): string | undefined =>
-  ROOM_KEY[visitId] ? `ShriHealth-${visitId.replace(/[^A-Za-z0-9]/g, '')}-${ROOM_KEY[visitId]}` : undefined
+export const roomOfVisit = (visitId: string, code: string): string => `ShriHealth-${visitId.replace(/[^A-Za-z0-9]/g, '')}-${code}`

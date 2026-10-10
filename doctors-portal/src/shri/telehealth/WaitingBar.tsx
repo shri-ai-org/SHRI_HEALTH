@@ -5,7 +5,7 @@
  * alert away (the bell and the dot on Video visits still say so). It stays until
  * the doctor joins or the patient leaves. The same patients the bell and Video
  * visits show as waiting (waitingRoom.ts); the chime and the notice on this
- * computer when Shri Health is in the background are waitingAlerts.ts.
+ * computer are waitingAlerts.ts.
  */
 
 import { BellRing, Video, X } from 'lucide-react'
@@ -94,7 +94,7 @@ export function WaitingBar() {
                     className="inline-flex items-center gap-[6px] text-[13px] text-sh-text-2 underline underline-offset-2 hover:text-sh-text"
                   >
                     <Icon icon={BellRing} size={14} />
-                    Alert me when Shri Health is in the background
+                    Turn on alerts on this computer
                   </button>
                 )}
               </div>

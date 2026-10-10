@@ -11,10 +11,16 @@ import { useEffect } from 'react'
 
 import { isPublicJitsi, jitsiDomain } from './jitsi'
 import { useTele } from './teleStore'
+import { demoCode } from './demoCode'
 import { roomOfVisit, VISITS } from './visits'
 import { useWaiting } from './waitingRoom'
 
 const EVERY_MS = 5000
+
+/** Visits whose call has ended while the patient stayed (for their prescription): quiet until the room is seen empty. */
+const held = new Set<string>()
+/** The end of each visit's last call, as last seen — a new one sets the hold again. */
+const endSeen = new Map<string, number>()
 
 /** How many people are in a room on the hospital's Jitsi; null where it cannot say, so nothing changes. */
 async function roomSize(room: string): Promise<number | null> {
@@ -39,16 +45,22 @@ export function useRoomWatch() {
       busy = true
       try {
         for (const v of VISITS) {
-          const room = roomOfVisit(v.id)
+          const room = roomOfVisit(v.id, demoCode())
           const tele = useTele.getState()
-          // A visit whose call has ended: the patient may stay in the room for their prescription — not waiting for a call.
+          // A call that has just ended: the patient may stay for their prescription — not waiting for a call.
           const last = tele.latest[v.patientId] ? tele.sessions[tele.latest[v.patientId]] : undefined
-          if (!room || tele.done[v.patientId] || last?.endedAt) {
-            useWaiting.getState().leave(v.id)
-            continue
+          if (last?.endedAt && endSeen.get(v.id) !== last.endedAt) {
+            endSeen.set(v.id, last.endedAt)
+            held.add(v.id)
           }
           const n = await roomSize(room)
           if (!alive || n === null) continue
+          // Once the room has emptied, whoever comes in next is waiting again — announced every time.
+          if (n === 0) held.delete(v.id)
+          if (held.has(v.id)) {
+            useWaiting.getState().leave(v.id)
+            continue
+          }
           const mine = tele.activeSid ? useTele.getState().sessions[tele.activeSid]?.meetCode : undefined
           if (n > 0 && room !== mine) useWaiting.getState().arrive(v.id, v.patientId)
           else useWaiting.getState().leave(v.id)

@@ -17,6 +17,8 @@ interface OpdState {
   finishedAt: Record<string, string>
   start: (patientId: string) => void
   finish: (patientId: string) => void
+  /** Forgets these patients' marks — the video visits, which start fresh on every load. */
+  forget: (patientIds: string[]) => void
 }
 
 export const useOpd = create<OpdState>()(
@@ -32,6 +34,15 @@ export const useOpd = create<OpdState>()(
       finish: (patientId) => {
         if (get().finishedAt[patientId]) return
         set({ finishedAt: { ...get().finishedAt, [patientId]: new Date().toISOString() } })
+      },
+      forget: (ids) => {
+        const startedAt = { ...get().startedAt }
+        const finishedAt = { ...get().finishedAt }
+        for (const id of ids) {
+          delete startedAt[id]
+          delete finishedAt[id]
+        }
+        set({ startedAt, finishedAt })
       },
     }),
     { name: 'shri.opd', version: 1 },

@@ -28,6 +28,7 @@ import { Segmented } from '../ui/Segmented'
 
 import { NoParty } from './NoParty'
 import { useCourier } from './rxCourier'
+import { demoCode } from './demoCode'
 import { roomOfVisit, visitFor } from './visits'
 
 export function TeleRxPage() {
@@ -49,7 +50,7 @@ export function TeleRxPage() {
   /** Signed: published, and sent to the patient's portal page through the visit's video room. */
   function sign() {
     const visit = visitFor(p.id)
-    const room = visit && roomOfVisit(visit.id)
+    const room = visit && roomOfVisit(visit.id, demoCode())
     if (visit && room) useCourier.getState().send({ room, patientName: p.name, patientId: p.id, visitId: visit.id, rx: { doctor: me?.name ?? 'Your doctor', patient: p.name, mode, items: [...basket] } })
     toast({
       tone: 'success',

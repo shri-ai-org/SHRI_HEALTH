@@ -1,15 +1,18 @@
 /**
  * `/demo/patient` — a stand-in for the patient portal, for demonstrations, until
- * the real portal exists. The patient picks their video visit and connects:
+ * the real portal exists. The patient picks their video visit, types the
+ * demonstration code the doctor's screen shows (demoCode.ts — new on every load
+ * of the doctor's portal, so each demonstration has rooms of its own), and connects:
  *
- *   waiting     in the visit's own room (visits.roomOfVisit, the same one the
- *               doctor's page opens); the doctor is told on every screen
+ *   waiting     in the visit's room for that code (visits.roomOfVisit, the same
+ *               one the doctor's page opens); the doctor is told on every screen
  *               (waitingRoom.ts in this browser, the room count on any device);
  *   in the call the doctor large, the patient small in a corner (JitsiRoom); while
  *               the doctor records, this browser writes down what the patient
  *               says and sends it to the doctor line by line (callLink.ts), and
  *               the page says so;
- *   after       the doctor has left: the camera and microphone off, the page
+ *   after       the doctor — whoever the patient first met in the call — has left
+ *               (someone else coming or going does not end it): the camera and microphone off, the page
  *               stays in the room so the signed prescription can reach it
  *               (RxCourier), shows it, and tells the doctor it arrived.
  *
@@ -26,6 +29,7 @@ import { cn } from '../lib/cn'
 import { Avatar, Card, Icon, Pill } from '../ui/primitives'
 
 import { callLink, type SentRx } from './callLink'
+import { lastDemoCode } from './demoCode'
 import { JitsiRoom } from './JitsiRoom'
 import { speechLoop, speechSupported, type SpeechLoop } from './speechLoop'
 import { roomOfVisit, visitById, VISITS } from './visits'
@@ -44,9 +48,11 @@ type Phase = 'waiting' | 'connected' | 'ended'
 export function PatientDemoPage() {
   const [visitId, setVisitId] = useState<string | null>(null)
   const [inCall, setInCall] = useState(false)
+  /** The doctor's screen shows it; a doctor's page in this browser has already left it here. */
+  const [code, setCode] = useState(lastDemoCode)
   const visit = visitId ? visitById(visitId) : undefined
   const p = visit ? patient(visit.patientId) : undefined
-  const room = visitId ? roomOfVisit(visitId) : undefined
+  const room = visitId && /^\d{4}$/.test(code) ? roomOfVisit(visitId, code) : undefined
   const doctor = p?.consultant ?? 'your doctor'
 
   return (
@@ -100,6 +106,20 @@ export function PatientDemoPage() {
               {visit.reason.slice(1)}.
             </p>
             <p className="mt-[6px] text-[14px] text-sh-text-2">When you connect, you wait in the call, and {doctor} is told you are there. Your browser asks once for the camera and microphone.</p>
+            <label className="mt-[16px] flex flex-col gap-[6px] text-[14px] font-medium" htmlFor="demo-code">
+              Demo code from the doctor’s screen
+              <input
+                id="demo-code"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="4 digits"
+                className="h-[48px] w-[160px] rounded-[14px] border border-sh-line-strong bg-sh-card px-[14px] text-[20px] tracking-[0.3em] tabular-nums text-sh-text focus:border-sh-accent focus:outline-none"
+              />
+              <span className="text-[13px] font-normal text-sh-text-3">Video visits and the visit page show it. It changes each time the doctor’s portal is reloaded.</span>
+            </label>
             <div className="mt-[18px]">
               <Pill variant="accent" size="xl" icon={Video} disabled={!room} onClick={() => setInCall(true)}>
                 Connect
@@ -122,6 +142,8 @@ function InVisit({ visitId, patientId, name, doctor, room, onLeave }: { visitId:
   const [rx, setRx] = useState<SentRx | null>(null)
   const loop = useRef<SpeechLoop | null>(null)
   const phaseRef = useRef<Phase>('waiting')
+  /** Whoever the patient first met in the call — the doctor. Only their leaving ends it. */
+  const doctorId = useRef<string | null>(null)
   useEffect(() => {
     phaseRef.current = phase
   })
@@ -179,14 +201,15 @@ function InVisit({ visitId, patientId, name, doctor, room, onLeave }: { visitId:
     }
   }, [room])
 
-  const onOthers = (count: number) => {
-    // After the call, someone joining is the doctor's portal bringing the prescription — not a new call.
+  const onPerson = (id: string, inRoom: boolean) => {
+    // After the call, someone coming in is the doctor's portal bringing the prescription — not a new call.
     if (phaseRef.current === 'ended') return
-    if (count > 0) {
+    if (inRoom && phaseRef.current === 'waiting') {
+      doctorId.current = id
       leave(visitId)
       phaseRef.current = 'connected'
       setPhase('connected')
-    } else if (phaseRef.current === 'connected') {
+    } else if (!inRoom && id === doctorId.current) {
       stopWriting()
       phaseRef.current = 'ended'
       setPhase('ended')
@@ -202,7 +225,7 @@ function InVisit({ visitId, patientId, name, doctor, room, onLeave }: { visitId:
           displayName={name}
           waitingFor={`Waiting for ${doctor}. They have been told you are here.`}
           muted={ended}
-          onOthers={onOthers}
+          onPerson={onPerson}
           onLeft={onLeave}
           className={ended ? 'pointer-events-none fixed -left-[10000px] top-0 h-[240px] w-[320px] opacity-0' : 'aspect-video w-full'}
         />
