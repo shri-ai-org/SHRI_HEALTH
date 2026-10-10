@@ -253,13 +253,11 @@ export function NavRail() {
           })}
         </ul>
       </motion.nav>
-      {/* Which build this is, at the bottom left as in care-entry: when it was made (India time), and its commit on hover. */}
+      {/* Which version this is, at the bottom left: V_ day month - that day's number (India time); its commit on hover. */}
       <p
         className="fixed bottom-[10px] left-[64px] z-10 -translate-x-1/2 text-center text-[10px]/[13px] font-medium tabular-nums text-sh-text-3 max-sm:hidden"
-        title={`Build ${__BUILD_STAMP__} · commit ${__BUILD_COMMIT__}`}
+        title={`Version ${__BUILD_STAMP__} · commit ${__BUILD_COMMIT__}`}
       >
-        Version
-        <br />
         <span className="whitespace-nowrap">{__BUILD_STAMP__}</span>
       </p>
     </>
@@ -348,8 +346,8 @@ export function NavTabBar() {
                 </button>
               )
             })}
-            <p className="px-[12px] pt-[6px] text-[11px] tabular-nums text-sh-text-3" title={`Build ${__BUILD_STAMP__} · commit ${__BUILD_COMMIT__}`}>
-              Version {__BUILD_STAMP__}
+            <p className="px-[12px] pt-[6px] text-[11px] tabular-nums text-sh-text-3" title={`Version ${__BUILD_STAMP__} · commit ${__BUILD_COMMIT__}`}>
+              {__BUILD_STAMP__}
             </p>
           </motion.div>
         )}

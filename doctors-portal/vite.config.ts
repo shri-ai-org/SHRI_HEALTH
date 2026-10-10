@@ -6,14 +6,22 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 // ─── Build stamp ─────────────────────────────────────────────────────────────
-// Shown at the foot of the sidebar so anyone can tell which build they are
-// looking at: "OCT 3 - 12:05 @26" (India time, when this build was made),
-// with the commit it was built from in its tooltip.
+// Shown at the foot of the sidebar so anyone can tell which version they are
+// looking at: "V_10 10-01" — V_, the day and month (India time), then which
+// version of that day it is: the count of the day's commits up to the one built,
+// so rebuilding the same commit keeps its number. The commit is in its tooltip.
 function buildStamp(at: Date): string {
-  const part = (options: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', ...options }).format(at)
-  const time = part({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-  return `${part({ month: 'short' }).toUpperCase()} ${part({ day: 'numeric' })} - ${time} @${part({ year: '2-digit' })}`
+  const part = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', ...options }).format(at)
+  const dd = part({ day: '2-digit' })
+  const mm = part({ month: '2-digit' })
+  const yyyy = part({ year: 'numeric' })
+  let count = 0
+  try {
+    count = Number(execSync(`git rev-list --count --since="${yyyy}-${mm}-${dd}T00:00:00+05:30" HEAD`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()) || 0
+  } catch {
+    /* not a git checkout */
+  }
+  return `V_${dd} ${mm}-${String(Math.max(1, count)).padStart(2, '0')}`
 }
 
 function buildCommit(): string {
