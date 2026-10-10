@@ -21,6 +21,7 @@ import { useAdmissionService } from '@/api/admissions'
 import { selectScrim, useShri } from '../state/store'
 import { Scrim } from '../ui/Scrim'
 
+import { CodeBeacon } from '../telehealth/CodeBeacon'
 import { freshStart } from '../telehealth/freshStart'
 import { useRoomWatch } from '../telehealth/roomWatch'
 import { RxCourier } from '../telehealth/RxCourier'
@@ -77,6 +78,8 @@ export function AppShell() {
       <WaitingBar />
       {/* A signed tele-prescription on its way to the patient's portal page, through the visit's video room. */}
       <RxCourier />
+      {/* This load's demonstration code, said where patient demo pages on any device can hear it. */}
+      <CodeBeacon />
       <OverlayHost />
       <AssistantDrawer />
       <AssistantBubble />

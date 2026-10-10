@@ -2,7 +2,9 @@
  * `/demo/patient` — a stand-in for the patient portal, for demonstrations, until
  * the real portal exists. The patient picks their video visit, types the
  * demonstration code the doctor's screen shows (demoCode.ts — new on every load
- * of the doctor's portal, so each demonstration has rooms of its own), and connects:
+ * of the doctor's portal, so each demonstration has rooms of its own; the page
+ * hears it from the doctors' portals open right now, CodeBeacon, and fills it in),
+ * and connects:
  *
  *   waiting     in the visit's room for that code (visits.roomOfVisit, the same
  *               one the doctor's page opens); the doctor is told on every screen
@@ -29,7 +31,8 @@ import { cn } from '../lib/cn'
 import { Avatar, Card, Icon, Pill } from '../ui/primitives'
 
 import { callLink, type SentRx } from './callLink'
-import { lastDemoCode } from './demoCode'
+import { DIRECTORY_ROOM, lastDemoCode } from './demoCode'
+import { isPublicJitsi } from './jitsi'
 import { JitsiRoom } from './JitsiRoom'
 import { speechLoop, speechSupported, type SpeechLoop } from './speechLoop'
 import { roomOfVisit, visitById, VISITS } from './visits'
@@ -45,11 +48,48 @@ const initials = (name: string) =>
 
 type Phase = 'waiting' | 'connected' | 'ended'
 
+interface HeardCode {
+  code: string
+  doctor: string
+  /** When the doctor's portal made it. */
+  at: number
+  /** When it was last heard; a portal closed or reloaded stops being heard. */
+  heard: number
+}
+
+/** The codes doctors' portals are saying right now, newest first — heard in the demo directory room. */
+function useDoctorCodes(listen: boolean): HeardCode[] {
+  const [codes, setCodes] = useState<HeardCode[]>([])
+  useEffect(() => {
+    if (!listen) return
+    const seen = new Map<string, HeardCode>()
+    const show = () => setCodes([...seen.values()].filter((c) => Date.now() - c.heard < 12_000).sort((a, b) => b.at - a.at))
+    const off = callLink.on((m, room) => {
+      // Four digits, made no later than now: a code claiming the future cannot jump to the top.
+      if (room !== DIRECTORY_ROOM || m.k !== 'code' || !/^\d{4}$/.test(m.code) || !(m.at <= Date.now() + 60_000)) return
+      seen.set(m.code, { code: m.code, doctor: m.doctor, at: m.at, heard: Date.now() })
+      show()
+    })
+    const t = window.setInterval(show, 2000)
+    return () => {
+      off()
+      window.clearInterval(t)
+    }
+  }, [listen])
+  return listen ? codes : []
+}
+
 export function PatientDemoPage() {
   const [visitId, setVisitId] = useState<string | null>(null)
   const [inCall, setInCall] = useState(false)
   /** The doctor's screen shows it; a doctor's page in this browser has already left it here. */
-  const [code, setCode] = useState(lastDemoCode)
+  const [typed, setCode] = useState(lastDemoCode)
+  /** The patient typed or picked a code themselves: leave it as it is. */
+  const [chose, setChose] = useState(false)
+  const listening = !inCall && !isPublicJitsi()
+  const heard = useDoctorCodes(listening)
+  // The newest code from a doctor's screen, until the patient chooses otherwise.
+  const code = chose ? typed : (heard[0]?.code ?? typed)
   const visit = visitId ? visitById(visitId) : undefined
   const p = visit ? patient(visit.patientId) : undefined
   const room = visitId && /^\d{4}$/.test(code) ? roomOfVisit(visitId, code) : undefined
@@ -114,14 +154,54 @@ export function PatientDemoPage() {
                 autoComplete="off"
                 maxLength={4}
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                onChange={(e) => {
+                  setChose(true)
+                  setCode(e.target.value.replace(/\D/g, '').slice(0, 4))
+                }}
                 placeholder="4 digits"
                 className="h-[48px] w-[160px] rounded-[14px] border border-sh-line-strong bg-sh-card px-[14px] text-[20px] tracking-[0.3em] tabular-nums text-sh-text focus:border-sh-accent focus:outline-none"
               />
               <span className="text-[13px] font-normal text-sh-text-3">Video visits and the visit page show it. It changes each time the doctor’s portal is reloaded.</span>
             </label>
+            {listening && heard.length === 0 && (
+              <p className="mt-[12px] text-[13px] text-sh-text-3" data-heard-codes="">
+                Looking for the code on the doctor’s screen. It appears here by itself within about half a minute; you can also type it.
+              </p>
+            )}
+            {heard.length > 0 && (
+              <div className="mt-[12px]" data-heard-codes={heard.map((h) => h.code).join(',')}>
+                <p className="text-[13px] text-sh-text-2">Codes on doctors’ screens right now. The newest is filled in; tap another to use it.</p>
+                <div className="mt-[8px] flex flex-wrap gap-[8px]">
+                  {heard.map((h) => (
+                    <button
+                      key={h.code}
+                      type="button"
+                      onClick={() => {
+                        setChose(true)
+                        setCode(h.code)
+                      }}
+                      aria-pressed={code === h.code}
+                      className={cn(
+                        'rounded-[14px] border px-[12px] py-[8px] text-left text-[13px]',
+                        code === h.code ? 'border-sh-accent bg-sh-accent-soft text-sh-text' : 'border-sh-line text-sh-text-2 hover:bg-sh-hover',
+                      )}
+                    >
+                      <span className="block text-[17px] font-semibold tracking-[0.2em] tabular-nums text-sh-text">{h.code}</span>
+                      {h.doctor} · made at {formatTime(new Date(h.at))}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-[18px]">
-              <Pill variant="accent" size="xl" icon={Video} disabled={!room} onClick={() => setInCall(true)}>
+              <Pill variant="accent" size="xl" icon={Video} disabled={!room}
+                onClick={() => {
+                  // The code is fixed as connected: the room stays the same for the whole call.
+                  setCode(code)
+                  setChose(true)
+                  setInCall(true)
+                }}
+              >
                 Connect
               </Pill>
             </div>
@@ -130,6 +210,12 @@ export function PatientDemoPage() {
           <InVisit visitId={visit.id} patientId={visit.patientId} name={p.name} doctor={doctor} room={room} onLeave={() => setInCall(false)} />
         )}
       </main>
+      {/* Listening, out of sight, for the codes doctors' portals are saying. */}
+      {listening && (
+        <div aria-hidden="true" className="pointer-events-none fixed -left-[10000px] top-0 h-[240px] w-[320px] opacity-0">
+          <JitsiRoom room={DIRECTORY_ROOM} displayName="Patient demo page" quiet className="size-full" />
+        </div>
+      )}
     </div>
   )
 }

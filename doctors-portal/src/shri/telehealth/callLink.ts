@@ -7,6 +7,8 @@
 //   line        patient → doctor   one line the patient said, as their browser heard it
 //   rx          doctor → patient   the signed tele-prescription, after the call
 //   rx-ack      patient → doctor   it arrived
+//   code        doctor's portal → patient demo pages, in the demo directory room:
+//               this portal's current demonstration code (CodeBeacon)
 //
 // The patient portal will speak the same messages; until then its stand-in does
 // (PatientDemoPage).
@@ -25,6 +27,7 @@ export type CallMsg =
   | { k: 'line'; id: string; text: string; startMs: number; endMs: number }
   | { k: 'rx'; rx: SentRx }
   | { k: 'rx-ack'; id: string }
+  | { k: 'code'; code: string; at: number; doctor: string }
 
 type Send = (m: CallMsg) => void
 type Listener = (m: CallMsg, room: string, from?: string) => void

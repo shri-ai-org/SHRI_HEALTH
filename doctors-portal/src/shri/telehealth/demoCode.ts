@@ -7,6 +7,17 @@
 
 const KEY = 'shri.demoCode'
 let code: string | null = null
+let madeAt = 0
+
+/**
+ * Where doctors' portals say their current code, on the hospital's Jitsi, and
+ * patient demo pages listen (CodeBeacon, PatientDemoPage) — so a patient on
+ * another device sees the code without typing it from the doctor's screen.
+ */
+export const DIRECTORY_ROOM = 'ShriHealth-demo-directory'
+
+/** When this load's code was made. */
+export const demoCodeMadeAt = () => (demoCode(), madeAt)
 
 /** This doctor's page's code — made once per load, and left where a patient window in this browser can find it. */
 export function demoCode(): string {
@@ -14,6 +25,7 @@ export function demoCode(): string {
   const b = new Uint16Array(1)
   crypto.getRandomValues(b)
   code = String(1000 + (b[0] % 9000))
+  madeAt = Date.now()
   try {
     localStorage.setItem(KEY, code)
   } catch {

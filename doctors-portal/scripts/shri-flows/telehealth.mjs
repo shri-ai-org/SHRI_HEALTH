@@ -606,6 +606,40 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
       },
     },
     {
+      name: 'Telehealth: the doctor’s portal says its demo code where patient demo pages hear it — the patient page shows the codes on doctors’ screens, fills in the newest, and connects with the one chosen',
+      async run() {
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        try {
+          // The doctor's portal, on the hospital's own Jitsi: it says its code in the directory room.
+          await page.open('/')
+          await page.evaluate(`localStorage.setItem('shri.jitsiDomain', 'meet.example.org'); true`)
+          await page.open('/', { fresh: false })
+          const mine = await page.evaluate(`localStorage.getItem('shri.demoCode')`)
+          await page.until(`(window.__cmds || []).some((c) => c[0] === 'sendEndpointTextMessage' && c[2].includes('"code"') && c[2].includes('"${mine}"'))`, 5000, 'the portal says its code')
+          expect(await page.evaluate(`window.__jitsiOptions.roomName === 'ShriHealth-demo-directory' && window.__jitsiOptions.configOverwrite.disableInitialGUM === true`), 'quietly, in the demo directory room')
+
+          // A patient demo page on another device: it hears the codes and fills in the newest.
+          await page.open('/demo/patient')
+          await page.evaluate(`localStorage.setItem('shri.jitsiDomain', 'meet.example.org'); true`)
+          await page.open('/demo/patient', { fresh: false })
+          await page.click('button[aria-label="I am Arjun Nair"]')
+          await page.until(`window.__jitsiOptions?.roomName === 'ShriHealth-demo-directory'`, 3000, 'listening in the directory room')
+          await fromCall({ k: 'code', code: '4821', at: Date.now() - 60000, doctor: 'Dr. Rajsrinivas' })
+          await page.until(`document.querySelector('#demo-code')?.value === '4821'`, 2000, 'the code from the doctor’s screen, filled in')
+          await fromCall({ k: 'code', code: '7777', at: Date.now(), doctor: 'Dr. Rajsrinivas' })
+          await page.until(`document.querySelector('#demo-code')?.value === '7777' && document.querySelector('[data-heard-codes]')?.dataset.heardCodes === '7777,4821'`, 2000, 'the newest first, both shown')
+          await page.click('button', '4821')
+          expect((await page.evaluate(`document.querySelector('#demo-code').value`)) === '4821', 'the patient picks the other one')
+          await page.evaluate(`window.__jitsiAlone = true; true`)
+          await page.click('button', 'Connect')
+          await page.until(`document.querySelector('[data-video-room]:not([data-video-room="ShriHealth-demo-directory"])')?.dataset.videoRoom === 'ShriHealth-E118430-4821'`, 3000, 'connected in that code’s room')
+        } finally {
+          await page.evaluate(`localStorage.removeItem('shri.jitsiDomain'); true`)
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
+        }
+      },
+    },
+    {
       name: 'Telehealth (S-27-03): recording is the patient’s to allow, in the patient portal — not yet answered, there is no Start recording and the page says why; leaving from inside the video ends the call',
       async run() {
         const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
