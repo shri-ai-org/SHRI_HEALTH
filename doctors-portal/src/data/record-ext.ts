@@ -214,7 +214,8 @@ export const APPOINTMENTS_RECORD_EXT: Appointment[] = [
   { id: 'AP-0400', patientId: 'SD-P-04', at: on(7, 20, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'Antenatal clinic', with: 'Dr. Rajsrinivas', purpose: 'Antenatal booking visit' },
   { id: 'AP-0405', patientId: 'SD-P-04', at: on(9, 19, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'Antenatal clinic', with: 'Dr. Rajsrinivas', purpose: '32-week visit, glucose tolerance test and growth scan' },
   { id: 'AP-0600', patientId: 'SD-P-06', at: on(9, 19, 11, 0), kind: 'Review', status: 'Completed', clinic: 'Paediatric day care', with: 'Dr. Rajsrinivas', purpose: 'Admitted with fever' },
-  { id: 'AP-0602', patientId: 'SD-P-06', at: on(9, 21, 11, 0), kind: 'Review', status: 'Today', clinic: 'Ward 4B', with: 'Dr. Rajsrinivas', purpose: 'Discharge from day care', location: '4B-19' },
+  // Her discharge is on the evening discharge round — not a visit of its own in the day.
+  { id: 'AP-0602', patientId: 'SD-P-06', at: on(9, 21, 16, 30), kind: 'Review', status: 'Today', clinic: 'Ward 4B', with: 'Dr. Rajsrinivas', purpose: 'Discharge on the evening discharge round', location: '4B-19' },
   { id: 'AP-0700', patientId: 'SD-P-07', at: on(9, 15, 3, 10), kind: 'Transfer', status: 'Completed', clinic: 'ICU-1', with: 'Critical Care', purpose: 'From Emergency to ICU' },
   { id: 'AP-0702', patientId: 'SD-P-07', at: on(9, 24, 10, 0), kind: 'Review', status: 'Booked', clinic: 'ICU-1', with: 'Nephrologist', purpose: 'Kidney recovery review' },
   { id: 'AP-1200', patientId: 'SD-P-12', at: on(9, 18, 22, 50), kind: 'Transfer', status: 'Completed', clinic: 'Stroke unit', with: 'Emergency team', purpose: 'From Emergency to the stroke unit' },

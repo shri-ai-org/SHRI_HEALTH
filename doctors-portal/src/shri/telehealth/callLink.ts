@@ -5,6 +5,7 @@
 //
 //   transcribe  doctor → patient   start or stop writing down the patient's words
 //   line        patient → doctor   one line the patient said, as their browser heard it
+//   partial     patient → doctor   the words being heard now, before they settle into a line
 //   rx          doctor → patient   the signed tele-prescription, after the call
 //   rx-ack      patient → doctor   it arrived
 //   code        doctor's portal → patient demo pages, in the demo directory room:
@@ -25,6 +26,7 @@ export interface SentRx {
 export type CallMsg =
   | { k: 'transcribe'; on: boolean }
   | { k: 'line'; id: string; text: string; startMs: number; endMs: number }
+  | { k: 'partial'; text: string }
   | { k: 'rx'; rx: SentRx }
   | { k: 'rx-ack'; id: string }
   | { k: 'code'; code: string; at: number; doctor: string }

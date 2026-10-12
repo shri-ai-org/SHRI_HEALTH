@@ -14,6 +14,8 @@
  */
 
 import { minutesAgo } from './format'
+import { OPD_VITALS, OPD_VITALS_HISTORY } from './opd-ext'
+import { TELE_VITALS, TELE_VITALS_HISTORY } from './tele-ext'
 
 export interface VitalRow {
   label: string
@@ -128,6 +130,10 @@ export const VITALS_EXT: Record<string, VitalRow[]> = {
       at: minutesAgo(72),
     },
   ],
+  // Kamala, Vignesh and Ananya — today's other video visits (`tele-ext.ts`)
+  ...TELE_VITALS,
+  // Today's other OPD patients (`opd-ext.ts`)
+  ...OPD_VITALS,
 }
 
 const BP = { label: 'BP', unit: 'mmHg systolic', low: 90, high: 140 }
@@ -429,6 +435,8 @@ export const VITALS_HISTORY: Record<string, VitalSeries[]> = {
       ],
     },
   ],
+  ...TELE_VITALS_HISTORY,
+  ...OPD_VITALS_HISTORY,
 }
 
 export function vitalsHistoryFor(patientId: string): VitalSeries[] {

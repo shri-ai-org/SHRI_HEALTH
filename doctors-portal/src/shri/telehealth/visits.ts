@@ -10,7 +10,10 @@
 import { TELECONSULT_QUEUE, type TeleRow } from '@/data/clinical'
 
 const PORTAL_CONSENT: Record<string, 'given' | 'declined'> = {
-  // Arjun Nair agreed. Fatima Bi, on a phone call only, has not answered yet.
+  // Agreed: Fatima Bi, Kamala Devi, Vignesh Ramalingam, Arjun Nair. Ananya Iyer has not answered yet.
+  'SD-P-09': 'given',
+  'SD-P-36': 'given',
+  'SD-P-37': 'given',
   'SD-P-10': 'given',
 }
 export const portalConsent = (patientId: string): 'given' | 'declined' | undefined => PORTAL_CONSENT[patientId]

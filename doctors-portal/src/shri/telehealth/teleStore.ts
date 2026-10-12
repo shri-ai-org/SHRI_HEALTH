@@ -26,6 +26,8 @@ export interface RecordingInfo {
   mime: string
   /** When the recorder started — the captions' zero. */
   startedAt: number
+  /** When it stopped — what a WebM file is told its length is, so it plays and seeks. */
+  endedAt?: number
   bytes: number
   /** The call's picture is in it, not only its sound. */
   video: boolean

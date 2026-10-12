@@ -23,6 +23,7 @@ import { Scrim } from '../ui/Scrim'
 
 import { CodeBeacon } from '../telehealth/CodeBeacon'
 import { freshStart } from '../telehealth/freshStart'
+import { useLeader } from '../telehealth/leader'
 import { useRoomWatch } from '../telehealth/roomWatch'
 import { RxCourier } from '../telehealth/RxCourier'
 import { useWaitingAlerts } from '../telehealth/waitingAlerts'
@@ -46,8 +47,13 @@ export function AppShell() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   // A patient waiting in a video call: asked of the hospital's Jitsi, announced with a chime and a notice on this computer.
-  useRoomWatch()
-  useWaitingAlerts(useCallback((visitId: string) => navigate(`/tele/session/${visitId}`, { state: { join: true } }), [navigate]))
+  // One tab per browser asks the Jitsi server and says the demo code; every tab shows the alert.
+  const leader = useLeader()
+  useRoomWatch(leader)
+  useWaitingAlerts(
+    useCallback((visitId: string) => navigate(`/tele/session/${visitId}`, { state: { join: true } }), [navigate]),
+    leader,
+  )
 
   return (
     <div className="min-h-dvh w-full overflow-x-clip bg-sh-surface pb-(--shell-pb) pl-[max(26px,var(--sa-l))] pr-[max(26px,var(--sa-r))] pt-(--shell-pt) max-sm:pb-[calc(var(--tabbar-h)_+_16px_+_var(--sa-b))] max-sm:pl-[max(16px,var(--sa-l))] max-sm:pr-[max(16px,var(--sa-r))]">
@@ -79,7 +85,7 @@ export function AppShell() {
       {/* A signed tele-prescription on its way to the patient's portal page, through the visit's video room. */}
       <RxCourier />
       {/* This load's demonstration code, said where patient demo pages on any device can hear it. */}
-      <CodeBeacon />
+      {leader && <CodeBeacon />}
       <OverlayHost />
       <AssistantDrawer />
       <AssistantBubble />

@@ -91,7 +91,14 @@ const BY_ICON: Record<string, ActivityKind> = {
 }
 
 export function kindOf(e: ShriEntry): ActivityKind {
-  if (e.kind === 'appointment') return e.appointment?.kind === 'Teleconsult' ? 'tele' : e.appointment?.kind === 'Procedure' ? 'procedure' : 'patient'
+  if (e.kind === 'appointment') {
+    const a = e.appointment
+    if (a?.kind === 'Teleconsult') return 'tele'
+    if (a?.kind === 'Procedure') return 'procedure'
+    // A review on the ward is ward work, whoever it is for — never drawn as a clinic visit.
+    if (a && /^(Ward|ICU|Stroke unit)/.test(a.clinic)) return 'ward'
+    return 'patient'
+  }
   return BY_ICON[e.icon] ?? 'other'
 }
 

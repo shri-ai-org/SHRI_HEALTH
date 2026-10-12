@@ -16,12 +16,14 @@
  *   after       the doctor — whoever the patient first met in the call — has left
  *               (someone else coming or going does not end it): the camera and microphone off, the page
  *               stays in the room so the signed prescription can reach it
- *               (RxCourier), shows it, and tells the doctor it arrived.
+ *               (RxCourier), shows it, and tells the doctor it arrived. The doctor
+ *               coming back in is a new call: camera and microphone on again.
+ *               Close the visit goes back to the list of visits.
  *
  * Outside the doctor's shell: no sidebar, no doctor's tools.
  */
 
-import { ArrowLeft, Mic, PhoneOff, Pill as PillIcon, Video } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Loader, Mic, PhoneOff, Pill as PillIcon, Video } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { formatTime } from '@/data/format'
@@ -47,6 +49,17 @@ const initials = (name: string) =>
     .toUpperCase()
 
 type Phase = 'waiting' | 'connected' | 'ended'
+
+/** 4:05, or 1:02:05 — how long the call has run. */
+const clock = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const mm = String(Math.floor(s / 60) % 60).padStart(s >= 3600 ? 2 : 1, '0')
+  return `${s >= 3600 ? `${Math.floor(s / 3600)}:` : ''}${mm}:${String(s % 60).padStart(2, '0')}`
+}
+const lasted = (ms: number) => {
+  const min = Math.round(ms / 60_000)
+  return min < 1 ? 'less than a minute' : `${min} minute${min === 1 ? '' : 's'}`
+}
 
 interface HeardCode {
   code: string
@@ -82,6 +95,8 @@ function useDoctorCodes(listen: boolean): HeardCode[] {
 export function PatientDemoPage() {
   const [visitId, setVisitId] = useState<string | null>(null)
   const [inCall, setInCall] = useState(false)
+  /** The visit just closed, said above the list. */
+  const [closed, setClosed] = useState<string | null>(null)
   /** The doctor's screen shows it; a doctor's page in this browser has already left it here. */
   const [typed, setCode] = useState(lastDemoCode)
   /** The patient typed or picked a code themselves: leave it as it is. */
@@ -111,6 +126,12 @@ export function PatientDemoPage() {
         {!visit || !p ? (
           <Card>
             <h2 className="text-[18px] font-semibold">Who is connecting?</h2>
+            {closed && (
+              <p className="mt-[10px] flex items-center gap-[8px] rounded-[14px] bg-sh-norm-bg px-[14px] py-[10px] text-[14px] text-sh-norm-fg" data-closed-visit="">
+                <Icon icon={CheckCircle2} size={16} />
+                {closed}
+              </p>
+            )}
             <p className="mt-[4px] text-[14px] text-sh-text-2">Pick the patient whose video visit this is. Open this page on another computer or phone, or in a second window, to see the doctor told at once.</p>
             <ul className="mt-[16px] flex flex-col gap-[10px]" aria-label="Today’s video visits">
               {VISITS.map((v) => {
@@ -124,7 +145,10 @@ export function PatientDemoPage() {
                         {formatTime(v.scheduledAt)} with {who.consultant ?? 'your doctor'} · {v.reason}
                       </p>
                     </div>
-                    <Pill variant="primary" size="lg" onClick={() => setVisitId(v.id)} aria-label={`I am ${who.name}`}>
+                    <Pill variant="primary" size="lg" onClick={() => {
+                        setClosed(null)
+                        setVisitId(v.id)
+                      }} aria-label={`I am ${who.name}`}>
                       This is me
                     </Pill>
                   </li>
@@ -207,7 +231,19 @@ export function PatientDemoPage() {
             </div>
           </Card>
         ) : (
-          <InVisit visitId={visit.id} patientId={visit.patientId} name={p.name} doctor={doctor} room={room} onLeave={() => setInCall(false)} />
+          <InVisit
+            visitId={visit.id}
+            patientId={visit.patientId}
+            name={p.name}
+            doctor={doctor}
+            room={room}
+            onLeave={() => setInCall(false)}
+            onClose={() => {
+              setInCall(false)
+              setVisitId(null)
+              setClosed(`Your video visit with ${doctor} is closed.`)
+            }}
+          />
         )}
       </main>
       {/* Listening, out of sight, for the codes doctors' portals are saying. */}
@@ -220,12 +256,31 @@ export function PatientDemoPage() {
   )
 }
 
-function InVisit({ visitId, patientId, name, doctor, room, onLeave }: { visitId: string; patientId: string; name: string; doctor: string; room: string; onLeave: () => void }) {
+function InVisit({
+  visitId,
+  patientId,
+  name,
+  doctor,
+  room,
+  onLeave,
+  onClose,
+}: {
+  visitId: string
+  patientId: string
+  name: string
+  doctor: string
+  room: string
+  onLeave: () => void
+  onClose: () => void
+}) {
   const arrive = useWaiting((s) => s.arrive)
   const leave = useWaiting((s) => s.leave)
   const [phase, setPhase] = useState<Phase>('waiting')
   const [writing, setWriting] = useState<'off' | 'on' | 'unavailable'>('off')
   const [rx, setRx] = useState<SentRx | null>(null)
+  /** When the call with the doctor began, and ended. */
+  const [span, setSpan] = useState<{ from: number; to?: number } | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const loop = useRef<SpeechLoop | null>(null)
   const phaseRef = useRef<Phase>('waiting')
   /** Whoever the patient first met in the call — the doctor. Only their leaving ends it. */
@@ -233,6 +288,13 @@ function InVisit({ visitId, patientId, name, doctor, room, onLeave }: { visitId:
   useEffect(() => {
     phaseRef.current = phase
   })
+
+  // The call's clock, while it runs.
+  useEffect(() => {
+    if (phase !== 'connected') return
+    const t = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(t)
+  }, [phase])
 
   // Waiting for the doctor until they come in; leaving, or closing the window, ends the wait.
   useEffect(() => {
@@ -265,9 +327,16 @@ function InVisit({ visitId, patientId, name, doctor, room, onLeave }: { visitId:
         }
         if (loop.current) return
         if (!speechSupported()) return setWriting('unavailable')
+        let lastPartial = 0
         loop.current = speechLoop({
           lang: 'en-IN',
           onFinal: (text, startMs, endMs) => callLink.send(room, { k: 'line', id: `${Date.now().toString(36)}${(n++).toString(36)}`, text, startMs, endMs }),
+          // The words being heard, at most every 300 ms, so the doctor reads them as they are said.
+          onInterim: (text) => {
+            if (text && Date.now() - lastPartial < 300) return
+            lastPartial = Date.now()
+            callLink.send(room, { k: 'partial', text })
+          },
           onFail: () => {
             loop.current = null
             setWriting('unavailable')
@@ -287,44 +356,62 @@ function InVisit({ visitId, patientId, name, doctor, room, onLeave }: { visitId:
     }
   }, [room])
 
-  const onPerson = (id: string, inRoom: boolean) => {
-    // After the call, someone coming in is the doctor's portal bringing the prescription — not a new call.
-    if (phaseRef.current === 'ended') return
-    if (inRoom && phaseRef.current === 'waiting') {
+  const onPerson = (id: string, inRoom: boolean, who = '') => {
+    // The doctor's portal bringing the prescription after the call is not the doctor.
+    if (inRoom && who.includes('sending your prescription')) return
+    if (inRoom && phaseRef.current !== 'connected') {
+      // The doctor came in — at first, or calling back after the call.
       doctorId.current = id
       leave(visitId)
       phaseRef.current = 'connected'
       setPhase('connected')
-    } else if (!inRoom && id === doctorId.current) {
+      setSpan({ from: Date.now() })
+      setNow(Date.now())
+    } else if (!inRoom && id === doctorId.current && phaseRef.current === 'connected') {
       stopWriting()
       phaseRef.current = 'ended'
       setPhase('ended')
+      setSpan((x) => (x ? { ...x, to: Date.now() } : x))
     }
   }
 
   const ended = phase === 'ended'
   return (
     <div className="flex flex-col gap-[16px]">
-      <Card className={cn('gap-[12px] p-[12px]', ended && 'p-0')}>
+      {/* After the call the room stays, out of sight, so the prescription can still arrive. */}
+      <div className={ended ? 'contents' : 'flex flex-col gap-[12px] rounded-sh-card bg-sh-card p-[12px] text-sh-text'} data-call-card={phase}>
+        {!ended && (
+          <div className="flex flex-wrap items-center gap-[12px] px-[8px] pt-[4px]">
+            <span className="relative flex size-[10px] shrink-0" aria-hidden="true">
+              <span className={cn('absolute inset-0 rounded-full', phase === 'connected' ? 'bg-sh-norm' : 'bg-sh-warn')} />
+              {phase === 'waiting' && <span className="absolute inset-0 rounded-full bg-sh-warn opacity-60 motion-safe:animate-ping" />}
+            </span>
+            <p className="min-w-0 flex-1 text-[15px] font-semibold" data-call-status="">
+              {phase === 'connected' ? `In your video visit with ${doctor}` : `Your video visit with ${doctor}`}
+              {phase === 'connected' && span && (
+                <span className="ml-[10px] font-normal tabular-nums text-sh-text-3" data-call-clock="">
+                  {clock(now - span.from)}
+                </span>
+              )}
+            </p>
+            <Pill variant="crit" size="lg" icon={PhoneOff} onClick={onLeave}>
+              Leave the call
+            </Pill>
+          </div>
+        )}
         <JitsiRoom
           room={room}
           displayName={name}
           waitingFor={`Waiting for ${doctor}. They have been told you are here.`}
           muted={ended}
           onPerson={onPerson}
-          onLeft={onLeave}
-          className={ended ? 'pointer-events-none fixed -left-[10000px] top-0 h-[240px] w-[320px] opacity-0' : 'aspect-video w-full'}
+          onLeft={() => (phaseRef.current === 'ended' ? onClose() : onLeave())}
+          className={
+            ended
+              ? 'pointer-events-none fixed -left-[10000px] top-0 h-[240px] w-[320px] opacity-0'
+              : 'aspect-video w-full max-sm:aspect-auto max-sm:h-[min(68dvh,620px)]'
+          }
         />
-        {!ended && (
-          <div className="flex flex-wrap items-center gap-[12px] px-[8px] pb-[4px]">
-            <p className="min-w-[200px] flex-1 text-[14px] text-sh-text-2">
-              {phase === 'connected' ? `You are in your video visit with ${doctor}.` : `You are waiting for ${doctor}.`}
-            </p>
-            <Pill variant="crit" size="xl" icon={PhoneOff} onClick={onLeave}>
-              Leave the call
-            </Pill>
-          </div>
-        )}
         {!ended && writing !== 'off' && (
           <p
             className={cn('mx-[8px] mb-[4px] flex items-start gap-[8px] rounded-[12px] px-[12px] py-[10px] text-[14px]', writing === 'on' ? 'bg-sh-accent-soft text-sh-text' : 'bg-sh-warn-bg text-sh-warn-fg')}
@@ -336,19 +423,30 @@ function InVisit({ visitId, patientId, name, doctor, room, onLeave }: { visitId:
               : `This browser cannot write down what you say. ${doctor} still hears you, and the visit is still recorded.`}
           </p>
         )}
-      </Card>
+      </div>
 
       {ended && (
         <Card className="p-[24px]" data-after-call="">
-          <h2 className="text-[20px] font-semibold">Your call with {doctor} has ended.</h2>
-          <p className="mt-[6px] text-[14px] text-sh-text-2">
-            {rx ? 'Your prescription is below.' : 'Keep this page open. If your doctor writes you a prescription, it comes here.'} Your camera and microphone are off.
-          </p>
-          <div className="mt-[14px]">
-            <Pill variant="control" size="lg" icon={PhoneOff} onClick={onLeave}>
+          <div className="flex flex-wrap items-center gap-[14px]">
+            <span className="flex size-[48px] shrink-0 items-center justify-center rounded-full bg-sh-norm-bg text-sh-norm-fg" aria-hidden="true">
+              <Icon icon={CheckCircle2} size={24} />
+            </span>
+            <div className="min-w-[200px] flex-1">
+              <h2 className="text-[20px] font-semibold">Visit finished</h2>
+              <p className="mt-[2px] text-[14px] text-sh-text-2" data-call-length="">
+                Your call with {doctor} lasted {lasted(span?.to && span.from ? span.to - span.from : 0)}. Your camera and microphone are off.
+              </p>
+            </div>
+            <Pill variant="control" size="lg" onClick={onClose}>
               Close the visit
             </Pill>
           </div>
+          {!rx && (
+            <p className="mt-[16px] flex items-start gap-[10px] rounded-[14px] bg-sh-inner px-[14px] py-[12px] text-[14px] text-sh-text-2" data-rx-waiting="">
+              <Icon icon={Loader} size={16} className="mt-[2px] shrink-0 motion-safe:animate-spin" />
+              Waiting for your prescription. If {doctor} writes you one, it appears here; keep this page open. If {doctor} calls you back, the call starts here by itself.
+            </p>
+          )}
         </Card>
       )}
 

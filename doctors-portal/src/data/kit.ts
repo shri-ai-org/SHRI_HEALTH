@@ -12,6 +12,9 @@
 
 import type { PersonaId, ReferencedPersonaId } from '@/atlas/personas'
 
+import { OPD_PATIENTS } from './opd-ext'
+import { TELE_PATIENTS } from './tele-ext'
+
 // ─────────────────────────────────────────────────── §8.1 Facilities & wards
 
 export interface Facility {
@@ -387,6 +390,10 @@ export const PATIENTS: Patient[] = [
     consultant: 'Dr. Rajsrinivas',
     weightKg: 72,
   },
+  // ── Today's other video visits (`tele-ext.ts`).
+  ...TELE_PATIENTS,
+  // ── Today's other OPD patients, the walk-ins and the later bookings (`opd-ext.ts`).
+  ...OPD_PATIENTS,
 ]
 
 const patientsById = new Map(PATIENTS.map((p) => [p.id, p]))

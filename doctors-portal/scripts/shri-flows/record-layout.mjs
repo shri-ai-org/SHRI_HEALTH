@@ -7,6 +7,9 @@
 const UHIDS = [
   'ISH-0044120', 'ISH-0041882', 'ISH-0044051', 'ISH-0044208', 'IPL-0012774', 'ISH-0044191', 'ISH-0043910', 'ISH-0042330',
   'ISH-0044240', 'ISH-0044262', 'ISH-0044275', 'ISH-0044281', 'ITP-0021934', 'ISH-0044290', 'ISH-0044297',
+  // Today's other video visits (`tele-ext.ts`), and the walk-ins and later OPD bookings (`opd-ext.ts`).
+  'ISH-0044303', 'ISH-0044304', 'ISH-0044305',
+  'ISH-0044306', 'ISH-0044307', 'ISH-0044308', 'ISH-0044309', 'ISH-0044310', 'ISH-0044311', 'ISH-0044312',
 ]
 const CARDS = 'Report viewer|Vitals|AI insights|Test results|Consultation notes|Trend|Patient report'
 
@@ -24,15 +27,14 @@ export default ({ page, expect, toastSays, auditRows }) => {
 
   return [
     {
-      name: 'Record layout (S-06-11): the same seven cards in the same places for all fifteen patients, and with the AI off — none collapsed',
+      name: 'Record layout (S-06-11): the same seven cards in the same places for all twenty-five patients, and with the AI off — none collapsed',
       async run() {
         let reference
-        let first = true
         // Every patient with the AI on; with it off, one of each shape (full, no imaging, no results trend, report only).
         for (const [ai, ids] of [['', UHIDS], ['?ai=off', ['ISH-0044051', 'ISH-0044240', 'ISH-0044290', 'ISH-0043910']]]) {
           for (const id of ids) {
-            await page.open(`/patient/${id}${ai}`, { fresh: first })
-            first = false
+            // A fresh page for each record, so twenty-nine loads never share one long-lived tab.
+            await page.open(`/patient/${id}${ai}`)
             await page.until(`document.querySelectorAll('#record-panel section.rounded-sh-card').length >= 7`, 4000, `${id}${ai}: the overview`)
             const cards = await layout()
             expect(titles(cards) === CARDS, `${id}${ai}: ${titles(cards)}`)

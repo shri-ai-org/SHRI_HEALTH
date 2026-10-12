@@ -320,7 +320,15 @@ class PatientLineChannel {
     ask()
     this.timer = window.setInterval(ask, 5000)
     this.off = callLink.on((m, r) => {
-      if (r !== this.room || m.k !== 'line' || this.seen.has(m.id)) return
+      if (r !== this.room) return
+      // The patient's words as they are said, faint until they settle.
+      if (m.k === 'partial') {
+        partial('patient', m.text)
+        if (m.text) channelState('patient', 'browser')
+        return
+      }
+      if (m.k !== 'line' || this.seen.has(m.id)) return
+      partial('patient', '')
       this.seen.add(m.id)
       // Their clock is not ours: the line ends now, and lasted as long as they said.
       const endMs = Date.now()
@@ -333,6 +341,7 @@ class PatientLineChannel {
   stop() {
     window.clearInterval(this.timer)
     this.off()
+    partial('patient', '')
     callLink.send(this.room, { k: 'transcribe', on: false })
     channelState('patient', 'off')
     return Promise.resolve()
@@ -343,6 +352,8 @@ class PatientLineChannel {
 
 interface Capture {
   sid: string
+  /** This recording's part, in the store (its length is written when it stops). */
+  key: string
   mic: MediaStream
   display: MediaStream | null
   ctx: AudioContext
@@ -353,8 +364,11 @@ interface Capture {
 
 let current: Capture | null = null
 
+/** MP4 first — H.264 and AAC where the browser records them (Chrome, Edge), which any player opens and seeks; WebM only where it cannot. */
 function pickMime(video: boolean) {
-  const options = video ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'] : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+  const options = video
+    ? ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,opus', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+    : ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
   return options.find((t) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) ?? ''
 }
 
@@ -407,7 +421,8 @@ export async function startCapture(sid: string, { textOnly = false, cropTo }: { 
   if (tabShareSupported()) {
     try {
       display = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: 'browser', frameRate: 15 },
+        // A sharp picture: 30 frames a second, as large as the tab allows.
+        video: { displaySurface: 'browser', frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
@@ -453,6 +468,7 @@ export async function startCapture(sid: string, { textOnly = false, cropTo }: { 
   const key = `${sid}~${useTele.getState().sessions[sid]?.recordings?.length ?? 0}`
   const cap: Capture = {
     sid,
+    key,
     mic,
     display,
     ctx,
@@ -464,8 +480,8 @@ export async function startCapture(sid: string, { textOnly = false, cropTo }: { 
     try {
       recorder = new MediaRecorder(new MediaStream([...(video ? [video] : []), ...mix.stream.getAudioTracks()]), {
         ...(mime ? { mimeType: mime } : {}),
-        audioBitsPerSecond: 96_000,
-        ...(video ? { videoBitsPerSecond: 1_000_000 } : {}),
+        audioBitsPerSecond: 128_000,
+        ...(video ? { videoBitsPerSecond: 3_500_000 } : {}),
       })
       let chunk = 0
       recorder.ondataavailable = (e) => {
@@ -545,6 +561,8 @@ export async function stopCapture(): Promise<void> {
   cap.display?.getTracks().forEach((t) => t.stop())
   await Promise.all([recorded, ...cap.channels.map((c) => c.stop())])
   await cap.writes
+  const part = useTele.getState().sessions[cap.sid]?.recordings?.find((r) => r.key === cap.key)
+  if (part) useTele.getState().setRecording(cap.sid, { ...part, endedAt: Date.now() })
   void cap.ctx.close().catch(() => undefined)
   tele.setLive(() => undefined)
 }

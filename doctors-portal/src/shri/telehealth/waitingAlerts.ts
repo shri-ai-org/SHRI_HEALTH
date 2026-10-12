@@ -63,8 +63,12 @@ function chime() {
 
 const keyOf = (w: Waiting) => `${w.visitId}@${w.since}`
 
-/** Each new arrival in a video call: the chime, and a notice on this computer (replacing an earlier one for the same visit). */
-export function useWaitingAlerts(onJoin: (visitId: string) => void) {
+/**
+ * Each new arrival in a video call: the chime, from the tab in front, and a
+ * notice on this computer from the one tab that leads (leader.ts), replacing an
+ * earlier one for the same visit — every tab shows the floating alert itself.
+ */
+export function useWaitingAlerts(onJoin: (visitId: string) => void, leader: boolean) {
   useEffect(() => {
     // Who was already waiting when the page opened is shown, not announced again.
     let seen = new Set(waitingList(useWaiting.getState().waiting).map(keyOf))
@@ -72,8 +76,8 @@ export function useWaitingAlerts(onJoin: (visitId: string) => void) {
       const now = waitingList(s.waiting)
       for (const w of now) {
         if (seen.has(keyOf(w))) continue
-        chime()
-        if (alertsSupported() && Notification.permission === 'granted') {
+        if (document.visibilityState === 'visible') chime()
+        if (leader && alertsSupported() && Notification.permission === 'granted') {
           const p = patient(w.patientId)
           const reason = visitById(w.visitId)?.reason
           const n = new Notification(`${p.name} is waiting in the video call`, {
@@ -90,5 +94,5 @@ export function useWaitingAlerts(onJoin: (visitId: string) => void) {
       }
       seen = new Set(now.map(keyOf))
     })
-  }, [onJoin])
+  }, [onJoin, leader])
 }

@@ -19,6 +19,7 @@
 
 import { IMAGE_SERIES, type ImageSeries } from './imaging.generated'
 import { IMAGING_STUDIES_EXT } from './imaging-ext'
+import { OPD_IMAGING } from './opd-ext'
 import type { NcctStudy } from './ncct.generated'
 import { NCCT_STUDIES } from './ncct.generated'
 import { maybeStrokeCase } from './stroke'
@@ -212,7 +213,7 @@ const IMAGING_STUDIES_BASE: ImagingStudy[] = [
 ]
 
 /** Every study, the first set and the later ones (`imaging-ext.ts`). */
-export const IMAGING_STUDIES: ImagingStudy[] = [...IMAGING_STUDIES_BASE, ...IMAGING_STUDIES_EXT]
+export const IMAGING_STUDIES: ImagingStudy[] = [...IMAGING_STUDIES_BASE, ...IMAGING_STUDIES_EXT, ...OPD_IMAGING]
 
 const studiesById = new Map(IMAGING_STUDIES.map((s) => [s.id, s]))
 

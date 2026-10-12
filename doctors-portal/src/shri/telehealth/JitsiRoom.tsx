@@ -14,7 +14,8 @@
  * Once joined it opens the call's data line (callLink.ts). `quiet` joins with no
  * camera, no microphone and no picture of its own — to hand the patient their
  * prescription after the call (RxCourier). `muted` turns this side's camera and
- * microphone off, and keeps them off (the patient page, after the call).
+ * microphone off, and keeps them off (the patient page, after the call); turned
+ * back from muted, they come on again (the doctor called back).
  */
 
 import { VideoOff } from 'lucide-react'
@@ -51,8 +52,8 @@ export function JitsiRoom({
   waitingFor?: string
   /** How many other people are in the room, as it changes. */
   onOthers?: (n: number) => void
-  /** Someone came in, or left — by their id in the call. */
-  onPerson?: (id: string, inRoom: boolean) => void
+  /** Someone came in, or left — by their id in the call, and the name they came in with. */
+  onPerson?: (id: string, inRoom: boolean, name?: string) => void
   /** This side left from inside the video. */
   onLeft?: () => void
   /** The video's box — what a recording is cropped to. */
@@ -110,7 +111,7 @@ export function JitsiRoom({
         })
         api.addListener('participantJoined', (e) => {
           if (e.id) ids.add(e.id)
-          if (e.id) cb.current.onPerson?.(e.id, true)
+          if (e.id) cb.current.onPerson?.(e.id, true, e.displayName)
           count()
         })
         api.addListener('participantLeft', (e) => {
@@ -142,19 +143,21 @@ export function JitsiRoom({
   }, [room, displayName])
 
   // Muted: the camera and the microphone off, checked as they are, then turned.
+  // Unmuted again after that: both back on.
+  const wasMuted = useRef(false)
   useEffect(() => {
-    if (!muted) return
     const api = apiRef.current
-    if (!api) return
-    void api.isAudioMuted?.().then((m) => !m && api.executeCommand('toggleAudio'))
-    void api.isVideoMuted?.().then((m) => !m && api.executeCommand('toggleVideo'))
+    if (!api || (!muted && !wasMuted.current)) return
+    wasMuted.current = muted
+    void api.isAudioMuted?.().then((m) => m !== muted && api.executeCommand('toggleAudio'))
+    void api.isVideoMuted?.().then((m) => m !== muted && api.executeCommand('toggleVideo'))
   }, [muted])
 
   return (
     <div ref={boxRef} className={cn('relative overflow-hidden rounded-[18px] bg-black', className)} data-video-room={room}>
       <div ref={host} className="absolute inset-0" />
       {!failed && waitingFor && others === 0 && (
-        <p className="pointer-events-none absolute left-[12px] top-[12px] rounded-full bg-black/60 px-[12px] py-[6px] text-[13px] font-medium text-white" data-alone="">
+        <p className="pointer-events-none absolute left-[12px] top-[12px] max-w-[calc(100%_-_24px)] rounded-[18px] bg-black/60 px-[12px] py-[6px] text-[13px] font-medium text-white" data-alone="">
           {waitingFor}
         </p>
       )}

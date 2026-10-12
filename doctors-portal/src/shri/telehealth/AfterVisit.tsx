@@ -7,6 +7,8 @@
 import { CheckCircle2, ChevronDown, PhoneOff, Download, FileText, Film, Loader, MessagesSquare, Trash2, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 
+import fixWebmDuration from 'fix-webm-duration'
+
 import { useUI } from '@/store/ui'
 
 import { cn } from '../lib/cn'
@@ -93,8 +95,10 @@ export function AfterVisit({
   async function downloadVideo(v: RecordingInfo, i: number) {
     setBusy(v.key)
     try {
-      const blob = await recordingBlob(v.key, v.mime)
+      let blob = await recordingBlob(v.key, v.mime)
       if (!blob) throw new Error('Nothing was recorded on this computer.')
+      // A browser's WebM has no length in it, so players buffer and cannot seek: write it in. MP4 needs nothing.
+      if (!v.mime.includes('mp4') && v.endedAt) blob = await fixWebmDuration(blob, v.endedAt - v.startedAt, { logger: false })
       saveFile(`${stem}${partName(i)}.${ext(v.mime)}`, blob)
     } catch (e) {
       toast({ tone: 'caution', title: 'Could not download the recording', detail: (e as Error).message })
@@ -149,7 +153,7 @@ export function AfterVisit({
                 key={v.key}
                 icon={Film}
                 title={videos.length > 1 ? `Video recording ${i + 1} of ${videos.length}` : 'Video recording'}
-                detail={`${v.video ? 'Picture and sound' : 'Sound only'} · ${mb(v.bytes)}`}
+                detail={`${v.video ? 'Picture and sound' : 'Sound only'} · ${ext(v.mime).toUpperCase()} · ${mb(v.bytes)}`}
                 busy={busy === v.key}
                 onClick={() => void downloadVideo(v, i)}
               />

@@ -10,7 +10,7 @@ export default ({ page, expect, sleep, auditRows, toastSays, pick, setInput, bec
   const names = () => page.evaluate(`[...document.querySelectorAll('[role="tabpanel"] ul[aria-label="Patients in this cohort"] li, [role="tabpanel"] table tbody tr')].map((r) => r.textContent)`)
   const cohortNames = async () => {
     const rows = await names()
-    return ['Meera Krishnan', 'Abdul Rahman Sheikh', 'R. Lakshmanan', 'Sunita Devi', 'Vikram Malhotra', 'Kavya Reddy', 'Joseph Mathew', 'Fatima Bi', 'Arjun Nair', 'Selvi Murugan', 'Kumar Subramanian', 'Priya Raman', 'Santhosh Babu', 'Lakshmi Narayanan', 'Rahul Verma']
+    return ['Meera Krishnan', 'Abdul Rahman Sheikh', 'R. Lakshmanan', 'Sunita Devi', 'Vikram Malhotra', 'Kavya Reddy', 'Joseph Mathew', 'Fatima Bi', 'Arjun Nair', 'Selvi Murugan', 'Kumar Subramanian', 'Priya Raman', 'Santhosh Babu', 'Lakshmi Narayanan', 'Rahul Verma', 'Kamala Devi', 'Vignesh Ramalingam', 'Ananya Iyer', 'Thangavel Palanisamy', 'Saraswathi Chinnasamy', 'Nithya Sekar', 'Arumugam Velusamy', 'Karthik Shanmugam', 'Jayanthi Ravichandran', 'Prabhu Natarajan']
       .filter((n) => rows.some((r) => r.includes(n)))
       .sort()
   }
@@ -126,7 +126,7 @@ export default ({ page, expect, sleep, auditRows, toastSays, pick, setInput, bec
         await page.open('/patients/cohorts')
         expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-05-10"]')`), 'S-05-10 is drawn')
         expect(await page.evaluate(`document.querySelector('[role="tab"][aria-selected="true"]').textContent.startsWith('Cohorts')`), 'the third tab of My patients')
-        expect((await cohortNames()).length === 15, `every patient to begin with: ${(await cohortNames()).length}`)
+        expect((await cohortNames()).length === 25, `every patient to begin with: ${(await cohortNames()).length}`)
 
         // A category, picked by search: every I63 code.
         await page.type('#cohort-dx', 'I63')
@@ -136,16 +136,16 @@ export default ({ page, expect, sleep, auditRows, toastSays, pick, setInput, bec
         expect((await cohortNames()).join('|') === 'Priya Raman|Vikram Malhotra', `I63: ${await cohortNames()}`)
 
         await page.open('/patients/cohorts?dx=E11', { fresh: false })
-        expect((await cohortNames()).join('|') === 'Abdul Rahman Sheikh|R. Lakshmanan', `E11: ${await cohortNames()}`)
+        expect((await cohortNames()).join('|') === 'Abdul Rahman Sheikh|R. Lakshmanan|Saraswathi Chinnasamy|Vignesh Ramalingam', `E11: ${await cohortNames()}`)
 
         // Demographics only: men aged 60–74.
         await page.open('/patients/cohorts', { fresh: false })
         await page.click('[role="group"][aria-label="Age bands"] button', '60–74')
         await page.click('[role="group"][aria-label="Sex"] button', 'Male')
         await page.until(`location.search.includes('age=60-74') && location.search.includes('sex=M')`, 2000, 'both in the address')
-        expect((await cohortNames()).join('|') === 'Joseph Mathew|R. Lakshmanan|Santhosh Babu', `men 60–74: ${await cohortNames()}`)
+        expect((await cohortNames()).join('|') === 'Arumugam Velusamy|Joseph Mathew|R. Lakshmanan|Santhosh Babu', `men 60–74: ${await cohortNames()}`)
         await page.reload()
-        expect((await cohortNames()).join('|') === 'Joseph Mathew|R. Lakshmanan|Santhosh Babu', 'a reload keeps the cohort')
+        expect((await cohortNames()).join('|') === 'Arumugam Velusamy|Joseph Mathew|R. Lakshmanan|Santhosh Babu', 'a reload keeps the cohort')
 
         // Saved by name, reopened from the list.
         await page.type('#cohort-name', 'Men 60 to 74')
@@ -158,14 +158,14 @@ export default ({ page, expect, sleep, auditRows, toastSays, pick, setInput, bec
         // Export: a file with no names, UHIDs or exact ages, and one audit row naming the filters, not the patients.
         await page.evaluate(`(() => { window.__csv = []; const make = URL.createObjectURL; URL.createObjectURL = (b) => { window.__csv.push(b); return make(b) }; return true })()`)
         await page.click('button', 'Export de-identified CSV')
-        await toastSays('Cohort exported — 3 patients')
+        await toastSays('Cohort exported — 4 patients')
         const csv = await page.evaluate(`window.__csv[0].text()`)
         const lines = csv.trim().split('\n')
-        expect(lines[0] === 'study_id,age_band,sex,facility,payer,seen_as,icd10_codes,icd10_categories,icd10_chapters,diagnosis_sources' && lines.length === 4, `header and three rows: ${csv}`)
-        expect(!/Joseph|Lakshmanan|Santhosh|ISH-00|ITP-00|\b(62|69|71)\b/.test(csv), `nothing identifying: ${csv}`)
+        expect(lines[0] === 'study_id,age_band,sex,facility,payer,seen_as,icd10_codes,icd10_categories,icd10_chapters,diagnosis_sources' && lines.length === 5, `header and four rows: ${csv}`)
+        expect(!/Arumugam|Velusamy|Joseph|Lakshmanan|Santhosh|ISH-00|ITP-00|\b(61|62|69|71)\b/.test(csv), `nothing identifying: ${csv}`)
         expect(lines.slice(1).every((l) => /^P-00\d,60–74,M,/.test(l)), `study IDs and the band: ${csv}`)
         const row = (await auditRows()).find((r) => r.event === 'COHORT.EXPORTED')
-        expect(row && row.detail.startsWith('3 patients · de-identified CSV · age 60–74 · male') && !row.subject, `COHORT.EXPORTED: ${JSON.stringify(row)}`)
+        expect(row && row.detail.startsWith('4 patients · de-identified CSV · age 60–74 · male') && !row.subject, `COHORT.EXPORTED: ${JSON.stringify(row)}`)
 
         // The stroke neurologist reads cohorts but may not export; a resident has neither, so the tab is absent.
         await becomePersona('P-35')

@@ -150,8 +150,13 @@ export function OpdQueuePage() {
         )
       },
     },
-    { key: 'booked', label: 'Booked', role: 'context', cell: (r) => (r.clinic ? <span className="tabular-nums">booked {formatTime(r.clinic.bookedAt)}</span> : null) },
-    { key: 'visit', label: 'Visit', role: 'context', cell: (r) => r.kind?.label },
+    {
+      key: 'booked',
+      label: 'Booked',
+      role: 'context',
+      cell: (r) => (r.clinic ? <span className="tabular-nums">{r.clinic.walkIn ? `walked in ${formatTime(r.clinic.bookedAt)}` : `booked ${formatTime(r.clinic.bookedAt)}`}</span> : null),
+    },
+    { key: 'visit', label: 'Visit', role: 'context', cell: (r) => (r.clinic?.walkIn ? `${r.kind?.label}, walk-in` : r.kind?.label) },
     { key: 'state', label: 'Status', role: 'status', cell: statusChip },
   ]
 

@@ -9,16 +9,16 @@ import { KeyRound } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Icon } from '../ui/primitives'
 
-import { demoCode } from './demoCode'
+import { useDemoCode } from './demoCode'
 
 export function DemoCodeNote({ className }: { className?: string }) {
-  const code = demoCode()
+  const code = useDemoCode((s) => s.code) ?? ''
   return (
     <div className={cn('flex flex-wrap items-center gap-[12px] rounded-[18px] bg-sh-card px-[16px] py-[12px]', className)} data-demo-code={code}>
       <Icon icon={KeyRound} size={18} className="text-sh-text-2" />
       <p className="min-w-[220px] flex-1 text-[14px] text-sh-text-2">
-        Patient demo code: <b className="text-[18px] tracking-[0.2em] text-sh-text tabular-nums">{code}</b>. Type it on the patient demo page to connect as the patient. It
-        changes when this page is reloaded.
+        Patient demo code: <b className="text-[18px] tracking-[0.2em] text-sh-text tabular-nums">{code}</b>. The patient demo page shows it, or the patient types it, to
+        connect. Every tab of this browser has the same code; it changes when any of them is reloaded.
       </p>
     </div>
   )

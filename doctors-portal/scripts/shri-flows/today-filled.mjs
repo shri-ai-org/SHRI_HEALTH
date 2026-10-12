@@ -1,9 +1,9 @@
 /**
- * Every patient on today's lists — the six in OPD and the seven inpatients —
- * has a record with nothing empty and nothing thin: vitals with their history,
- * a trend, an image or a document on the report viewer, results, and enough
- * notes, appointments and timeline to read as a course of care. Loaded by
- * scripts/shri-flows.mjs.
+ * Every patient on today's lists — OPD with its walk-ins, the five video
+ * visits and the inpatients, twenty-three in all — has a record with nothing empty and nothing
+ * thin: vitals with their history, a trend, an image or a document on the
+ * report viewer, results, and enough notes, appointments and timeline to read
+ * as a course of care. Loaded by scripts/shri-flows.mjs.
  */
 
 const TODAY = {
@@ -20,6 +20,16 @@ const TODAY = {
   'ISH-0042330': 'Fatima Bi',
   'ISH-0044275': 'Kumar Subramanian',
   'ISH-0044281': 'Priya Raman',
+  'ISH-0044303': 'Kamala Devi',
+  'ISH-0044304': 'Vignesh Ramalingam',
+  'ISH-0044305': 'Ananya Iyer',
+  'ISH-0044306': 'Thangavel Palanisamy',
+  'ISH-0044307': 'Saraswathi Chinnasamy',
+  'ISH-0044308': 'Nithya Sekar',
+  'ISH-0044309': 'Arumugam Velusamy',
+  'ISH-0044310': 'Karthik Shanmugam',
+  'ISH-0044311': 'Jayanthi Ravichandran',
+  'ISH-0044312': 'Prabhu Natarajan',
 }
 
 /** The least each part of the record carries for a patient on today's lists. */
@@ -31,7 +41,7 @@ const AT_LEAST = { 'Test results': 3, 'Imaging reports': 1, 'Consultation notes'
  */
 const EXCEPT = { 'ISH-0044297': { Prescriptions: 0, Appointments: 2 } }
 
-// One flow per patient, each on a fresh page, so thirteen records never share one long-lived tab.
+// One flow per patient, each on a fresh page, so twenty-three records never share one long-lived tab.
 export default ({ page, expect }) =>
   Object.entries(TODAY).map(([uhid, name]) => ({
     name: `Today's patients are filled — ${name}: vitals with history, a trend, an image or document, results, notes, appointments and a timeline`,

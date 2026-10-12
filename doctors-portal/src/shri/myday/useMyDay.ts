@@ -43,8 +43,9 @@ function withoutForecasts(blocks: DayBlock[]): DayBlock[] {
 /**
  * The day plan's counts, read from the live lists rather than from the seeded
  * session, so a block can never disagree with the list it opens: the morning
- * OPD counts the patients in the clinic (a teleconsult is counted once, in its
- * own block), and both say how many have been seen — and it runs until the
+ * OPD counts the clinic's patients booked (or walked in) before noon and the
+ * afternoon OPD those after (a teleconsult is counted once, in its own block),
+ * and each says how many have been seen — and the morning runs until the
  * last patient still to be seen has had their slot, so the day's timeline never
  * offers as free a time the queue is still using; the ward round counts who
  * is still in a bed and who needs attention; the discharge round, who is still
@@ -52,17 +53,23 @@ function withoutForecasts(blocks: DayBlock[]): DayBlock[] {
  */
 function withLiveCounts(blocks: DayBlock[], live: { opd: OpdRow[]; inpatients: InpatientRow[]; discharged: (patientId: string) => boolean }): DayBlock[] {
   const clinic = live.opd.filter((r) => r.place.label === 'OPD')
+  const morning = clinic.filter((r) => r.due.getHours() < 12)
+  const afternoon = clinic.filter((r) => r.due.getHours() >= 12)
   const tele = live.opd.filter((r) => r.place.label === 'Teleconsult')
   const seen = (rows: OpdRow[]) => rows.filter((r) => r.live === 'Seen').length
   const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`
   const attention = live.inpatients.filter((r) => r.pinned).length
   return blocks.map((b) => {
-    if (b.id === 'opd-am') {
-      const fresh = clinic.filter((r) => r.kind?.label === 'New patient').length
-      const toSee = clinic.filter((r) => r.live !== 'Seen' && r.live !== 'Admission in progress')
-      const last = Math.max(b.until?.getTime() ?? 0, ...toSee.map((r) => r.due.getTime() + CLINIC_SLOT_MIN * 60_000))
-      return { ...b, until: last > 0 ? new Date(last) : b.until, summary: `${plural(clinic.length, 'patient')} · ${fresh} new · ${clinic.length - fresh} follow-ups · ${seen(clinic)} seen` }
+    const session = (rows: OpdRow[]) => {
+      const fresh = rows.filter((r) => r.kind?.label === 'New patient').length
+      return `${plural(rows.length, 'patient')} · ${fresh} new · ${rows.length - fresh} follow-ups · ${seen(rows)} seen`
     }
+    if (b.id === 'opd-am') {
+      const toSee = morning.filter((r) => r.live !== 'Seen' && r.live !== 'Admission in progress')
+      const last = Math.max(b.until?.getTime() ?? 0, ...toSee.map((r) => r.due.getTime() + CLINIC_SLOT_MIN * 60_000))
+      return { ...b, until: last > 0 ? new Date(last) : b.until, summary: session(morning) }
+    }
+    if (b.id === 'opd-pm') return { ...b, summary: afternoon.length ? session(afternoon) : 'afternoon session' }
     if (b.id === 'tele') return { ...b, summary: `${plural(tele.length, 'patient')} · ${seen(tele)} seen` }
     if (b.id === 'round')
       return { ...b, summary: `${plural(live.inpatients.length, 'patient')} · ${attention} need attention`, emphasis: attention > 0 ? [{ text: `${attention} need attention`, tone: 'warning' as const }] : undefined }

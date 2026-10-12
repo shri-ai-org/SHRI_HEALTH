@@ -15,8 +15,10 @@ import type { ConfidenceBand } from '@/atlas/confidence'
 import type { Gate } from '@/atlas/gates'
 
 import { minutesAgo, minutesAhead } from './format'
+import { OPD_CLINIC_EXT, OPD_ENCOUNTERS, OPD_PROBLEMS, OPD_RESULTS, OPD_RESULT_TRENDS } from './opd-ext'
 import { ENCOUNTERS_EXT, PROBLEMS_EXT } from './record-ext'
 import { RESULTS_EXT, RESULT_TRENDS_EXT } from './results-ext'
+import { TELE_ENCOUNTERS, TELE_PROBLEMS, TELE_QUEUE_EXT, TELE_RESULTS, TELE_RESULT_TRENDS } from './tele-ext'
 import { VITALS_EXT, type VitalRow } from './vitals-history'
 
 // ───────────────────────────────────────────────────────────────── Encounters
@@ -161,7 +163,7 @@ const ENCOUNTERS_BASE: Encounter[] = [
 ]
 
 /** The first set, and the later entries (`record-ext.ts`). */
-export const ENCOUNTERS: Encounter[] = [...ENCOUNTERS_BASE, ...ENCOUNTERS_EXT]
+export const ENCOUNTERS: Encounter[] = [...ENCOUNTERS_BASE, ...ENCOUNTERS_EXT, ...TELE_ENCOUNTERS, ...OPD_ENCOUNTERS]
 
 const encountersById = new Map(ENCOUNTERS.map((e) => [e.id, e]))
 
@@ -527,7 +529,7 @@ const PROBLEMS_BASE: Problem[] = [
 ]
 
 /** The first set, and the later entries (`record-ext.ts`). */
-export const PROBLEMS: Problem[] = [...PROBLEMS_BASE, ...PROBLEMS_EXT]
+export const PROBLEMS: Problem[] = [...PROBLEMS_BASE, ...PROBLEMS_EXT, ...TELE_PROBLEMS, ...OPD_PROBLEMS]
 
 export function problemsFor(patientId: string): Problem[] {
   return PROBLEMS.filter((p) => p.patientId === patientId)
@@ -1627,7 +1629,7 @@ const RESULTS_BASE: ResultRow[] = [
 ]
 
 /** Every result, the first set and the later ones (`results-ext.ts`). */
-export const RESULTS: ResultRow[] = [...RESULTS_BASE, ...RESULTS_EXT]
+export const RESULTS: ResultRow[] = [...RESULTS_BASE, ...RESULTS_EXT, ...TELE_RESULTS, ...OPD_RESULTS]
 
 /** The trend series behind S-09-05, for the result detail chart — the first set, and the later ones merged in below. */
 const RESULT_TRENDS_BASE: Record<string, { at: Date; value: number }[]> = {
@@ -1712,7 +1714,7 @@ const RESULT_TRENDS_BASE: Record<string, { at: Date; value: number }[]> = {
   ],
 }
 
-export const RESULT_TRENDS: Record<string, { at: Date; value: number }[]> = { ...RESULT_TRENDS_EXT, ...RESULT_TRENDS_BASE }
+export const RESULT_TRENDS: Record<string, { at: Date; value: number }[]> = { ...RESULT_TRENDS_EXT, ...TELE_RESULT_TRENDS, ...OPD_RESULT_TRENDS, ...RESULT_TRENDS_BASE }
 
 /**
  * A result's series as chart points, each flagged against the reference
@@ -2005,8 +2007,8 @@ export const INPATIENTS: WorklistRow[] = [
 /**
  * The OP clinic's booked rows. Three of these patients are also in a bed
  * (`INPATIENTS`: Abdul Rahman, Joseph, and Kavya until she is discharged),
- * and `opdRows` leaves them out. With the two teleconsults (Fatima by phone,
- * Arjun by video) today's OPD is seven.
+ * and `opdRows` leaves them out. With the five teleconsults, all by video
+ * (Fatima, Kamala, Vignesh, Ananya and Arjun), today's OPD is ten.
  */
 /**
  * Today's teleconsult queue (S-27-02). My Day lists these patients in OPD
@@ -2035,9 +2037,11 @@ export const TELECONSULT_QUEUE: TeleRow[] = [
     patientId: 'SD-P-09',
     scheduledAt: minutesAhead(85),
     reason: 'Dialysis access site concern',
-    videoReady: false,
-    rankReason: 'No video on the patient side — needs a telephone fallback arranged',
+    videoReady: true,
+    rankReason: 'Video tested from home, with photographs of the fistula arm uploaded',
   },
+  // ── Kamala Devi, Vignesh Ramalingam and Ananya Iyer (`tele-ext.ts`).
+  ...TELE_QUEUE_EXT,
 ]
 
 export interface ClinicRow {
@@ -2046,6 +2050,8 @@ export interface ClinicRow {
   bookedAt: Date
   arrivedAt?: Date
   status: 'Seen' | 'In room' | 'Waiting' | 'Not arrived'
+  /** Came without a booking, registered at the front office on arrival: `bookedAt` is when they were registered. */
+  walkIn?: boolean
   /** AI-607 wait-time prediction. */
   predictedWaitMin?: number
   band?: ConfidenceBand
@@ -2100,6 +2106,8 @@ export const CLINIC_LIST: ClinicRow[] = [
     predictedWaitMin: 24,
     band: 'HIGH',
   },
+  // ── The two walk-ins and the later bookings, morning and afternoon (`opd-ext.ts`).
+  ...OPD_CLINIC_EXT,
 ]
 
 /** S-06-09 — 2 co-signs pending. */

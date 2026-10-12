@@ -17,6 +17,8 @@ import type { ConfidenceBand } from '@/atlas/confidence'
 import { imagingFor } from './imaging'
 import { APPOINTMENTS_RECORD_EXT, DOCUMENTS_EXT, PAST_NOTES_EXT, PRESCRIPTIONS_EXT } from './record-ext'
 import { NOW, minutesAgo } from './format'
+import { OPD_APPOINTMENTS, OPD_CONDITIONS, OPD_DOCUMENTS, OPD_PAST_NOTES, OPD_PRESCRIPTIONS } from './opd-ext'
+import { TELE_APPOINTMENTS, TELE_CONDITIONS, TELE_DOCUMENTS, TELE_PAST_NOTES, TELE_PRESCRIPTIONS } from './tele-ext'
 
 function on(month: number, day: number, h = 10, m = 0, year = 2026): Date {
   return new Date(year, month - 1, day, h, m)
@@ -286,6 +288,10 @@ export const CONDITIONS: ConditionSummary[] = [
       model: 'AI-105 v1.6.0',
     },
   },
+  // Kamala Devi, Vignesh Ramalingam and Ananya Iyer (`tele-ext.ts`).
+  ...TELE_CONDITIONS,
+  // Today's other OPD patients (`opd-ext.ts`).
+  ...OPD_CONDITIONS,
 ]
 
 export function conditionFor(patientId: string): ConditionSummary | undefined {
@@ -321,7 +327,7 @@ const APPOINTMENTS_BASE: Appointment[] = [
   // SD-P-03
   { id: 'AP-0301', patientId: 'SD-P-03', at: on(6, 12, 11, 0), kind: 'Follow-up', status: 'Completed', clinic: 'Diabetes clinic', with: 'Dr. Rajsrinivas', purpose: 'Diabetes review' },
   { id: 'AP-0302', patientId: 'SD-P-03', at: on(9, 21, 11, 0), kind: 'Investigation', status: 'Today', clinic: 'Radiology', with: 'Portable X-ray', purpose: 'Repeat chest X-ray', location: 'At the bedside, 4B-12' },
-  { id: 'AP-0303', patientId: 'SD-P-03', at: on(9, 21, 14, 0), kind: 'Review', status: 'Today', clinic: 'Ward 4B', with: 'Dr. Rajsrinivas', purpose: 'Review after antibiotic escalation' },
+  { id: 'AP-0303', patientId: 'SD-P-03', at: on(9, 21, 10, 40), kind: 'Review', status: 'Today', clinic: 'Ward 4B', with: 'Dr. Rajsrinivas', purpose: 'Review after antibiotic escalation, on the ward round' },
   // SD-P-04
   { id: 'AP-0401', patientId: 'SD-P-04', at: on(8, 24, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'Antenatal clinic', with: 'Dr. Rajsrinivas', purpose: '28-week antenatal visit' },
   { id: 'AP-0402', patientId: 'SD-P-04', at: on(9, 23, 11, 0), kind: 'Review', status: 'Booked', clinic: 'Dietitian', with: 'Clinical dietitian', purpose: 'Diet plan for gestational diabetes', prepare: ['Bring a 3-day food diary'] },
@@ -363,7 +369,7 @@ const APPOINTMENTS_BASE: Appointment[] = [
 ]
 
 /** The first set, and the later entries (`record-ext.ts`). */
-export const APPOINTMENTS: Appointment[] = [...APPOINTMENTS_BASE, ...APPOINTMENTS_RECORD_EXT]
+export const APPOINTMENTS: Appointment[] = [...APPOINTMENTS_BASE, ...APPOINTMENTS_RECORD_EXT, ...TELE_APPOINTMENTS, ...OPD_APPOINTMENTS]
 
 /** Oldest first — the order a history reads in. */
 export function appointmentsFor(patientId: string): Appointment[] {
@@ -641,7 +647,7 @@ const PAST_NOTES_BASE: PastNote[] = [
 ]
 
 /** The first set, and the later entries (`record-ext.ts`). */
-export const PAST_NOTES: PastNote[] = [...PAST_NOTES_BASE, ...PAST_NOTES_EXT]
+export const PAST_NOTES: PastNote[] = [...PAST_NOTES_BASE, ...PAST_NOTES_EXT, ...TELE_PAST_NOTES, ...OPD_PAST_NOTES]
 
 /** Newest first. */
 export function pastNotesFor(patientId: string): PastNote[] {
@@ -861,7 +867,7 @@ const PRESCRIPTION_HISTORY_BASE: PrescriptionRecord[] = [
 ]
 
 /** The first set, and the later entries (`record-ext.ts`). */
-export const PRESCRIPTION_HISTORY: PrescriptionRecord[] = [...PRESCRIPTION_HISTORY_BASE, ...PRESCRIPTIONS_EXT]
+export const PRESCRIPTION_HISTORY: PrescriptionRecord[] = [...PRESCRIPTION_HISTORY_BASE, ...PRESCRIPTIONS_EXT, ...TELE_PRESCRIPTIONS, ...OPD_PRESCRIPTIONS]
 
 /** Newest first. */
 export function prescriptionsFor(patientId: string): PrescriptionRecord[] {
@@ -919,7 +925,7 @@ const DOCUMENTS_BASE: RecordReport[] = [
   { id: 'DOC-1601', patientId: 'SD-P-16', at: on(9, 15, 9, 0), kind: 'Medico-legal', title: 'Medico-legal injury report', by: 'Emergency team', summary: 'Simple injuries — right forearm abrasion; minor head injury with normal CT. Copy issued to police.' },
 ]
 
-const DOCUMENTS: RecordReport[] = [...DOCUMENTS_BASE, ...DOCUMENTS_EXT]
+const DOCUMENTS: RecordReport[] = [...DOCUMENTS_BASE, ...DOCUMENTS_EXT, ...TELE_DOCUMENTS, ...OPD_DOCUMENTS]
 
 /** Every report on the record, imaging included, newest first. */
 export function reportsFor(patientId: string): RecordReport[] {

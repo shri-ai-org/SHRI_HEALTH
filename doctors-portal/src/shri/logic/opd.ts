@@ -13,7 +13,9 @@
  * The status moves with the doctor: called in, a consultation opened or a
  * teleconsult joined → In room; the note signed or the teleconsult ended →
  * Seen. Order: being admitted, waiting, in the room, teleconsults, not yet
- * arrived, seen — then booked (or scheduled) time.
+ * arrived, seen — then booked (or scheduled) time. Walk-ins wait behind the
+ * patients booked for the session, in the order they registered: a booking
+ * keeps its place.
  */
 
 import { useMemo } from 'react'
@@ -21,6 +23,7 @@ import { useMemo } from 'react'
 import { inpatientRows, opdRows, type Admissions } from '@/data/admissions'
 import { TELECONSULT_QUEUE, encounterForPatient, type ClinicRow, type TeleRow } from '@/data/clinical'
 import { formatTime } from '@/data/format'
+import { patient } from '@/data/kit'
 import { isFollowUp, type PatientListRow, type RowMark } from '@/data/myday'
 import { useAdmissions } from '@/store/admissions'
 import { useClinical } from '@/store/clinical'
@@ -98,6 +101,8 @@ export function opdLive(admissions: Admissions, live: OpdLive): OpdRow[] {
       tele,
       live: liveStatus,
       due: tele ? tele.scheduledAt : r.bookedAt,
+      // Came without a booking: said under the name, beside the UHID.
+      ...(r.walkIn ? { detail: `Walk-in · ${patient(r.patientId).uhid}` } : {}),
     })
   }
   // Teleconsults for someone not on the clinic list and not in a bed.
@@ -116,7 +121,8 @@ export function opdLive(admissions: Admissions, live: OpdLive): OpdRow[] {
       due: t.scheduledAt,
     })
   }
-  return rows.sort((a, b) => RANK[a.live] - RANK[b.live] || a.due.getTime() - b.due.getTime())
+  const walkIn = (r: OpdRow) => (r.clinic?.walkIn ? 1 : 0)
+  return rows.sort((a, b) => RANK[a.live] - RANK[b.live] || walkIn(a) - walkIn(b) || a.due.getTime() - b.due.getTime())
 }
 
 /** The live OPD for the signed-in session — the one every card reads. */

@@ -6,9 +6,9 @@
  * transcript run against the speech service's scripted stand-in
  * (backend/tools/mock_service.py) and a throwaway transcript store
  * (backend/telehealth), with a tone for the microphone and a canvas for the
- * shared tab. The video visits are the shared teleconsults — Fatima Bi and Arjun
- * Nair — and recording consent is the patient's, from the patient portal: Arjun
- * agreed, Fatima has not answered. The patient portal's stand-in (/demo/patient)
+ * shared tab. The video visits are the shared teleconsults — Fatima Bi, Kamala
+ * Devi, Vignesh Ramalingam, Ananya Iyer and Arjun Nair — and recording consent is
+ * the patient's, from the patient portal: Ananya has not answered, the rest agreed. The patient portal's stand-in (/demo/patient)
  * puts a patient in the visit's room to wait; another window of the browser is
  * played by writing the shared waiting list and telling this window, as the
  * browser does.
@@ -62,9 +62,13 @@ const JITSI_STUB = `(() => {
     addListener(e, f) { (this.l[e] = this.l[e] || []).push(f) }
     emit(e, x) { (this.l[e] || []).forEach((f) => f(x || {})) }
     // What this page asks of Jitsi is kept: the messages it sends over the call, the camera and microphone it turns off.
-    executeCommand(...a) { (window.__cmds = window.__cmds || []).push(a) }
-    isAudioMuted() { return Promise.resolve(false) }
-    isVideoMuted() { return Promise.resolve(false) }
+    executeCommand(...a) {
+      (window.__cmds = window.__cmds || []).push(a)
+      if (a[0] === 'toggleAudio') this.audioOff = !this.audioOff
+      if (a[0] === 'toggleVideo') this.videoOff = !this.videoOff
+    }
+    isAudioMuted() { return Promise.resolve(!!this.audioOff) }
+    isVideoMuted() { return Promise.resolve(!!this.videoOff) }
     getIFrame() { return this.d }
     dispose() { this.d.remove(); window.__jitsiDisposed = true }
   }
@@ -130,29 +134,30 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
 
   return [
     {
-      name: 'Telehealth (S-27-02): Video visits are the shared teleconsults — the same two patients, times and reasons as the Dashboard and the OPD queue — with the counts that filter and each status with its button',
+      name: 'Telehealth (S-27-02): Video visits are the shared teleconsults — the same five patients, times and reasons as the Dashboard and the OPD queue — with the counts that filter and each status with its button',
       async run() {
         await page.open('/tele/queue')
         expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-27-02"]')`), 'S-27-02 is drawn')
-        expect((await page.text()).includes('2 patients today'), 'two video visits')
+        expect((await page.text()).includes('5 patients today'), 'five video visits')
         const rows = await cards()
-        expect(rows.length === 2 && rows[0].startsWith('10:05') && rows[0].includes('Fatima Bi') && rows[1].startsWith('11:30') && rows[1].includes('Arjun Nair'), `Fatima at 10:05, Arjun at 11:30: ${rows}`)
+        const order = [['10:05', 'Fatima Bi'], ['10:15', 'Kamala Devi'], ['10:25', 'Vignesh Ramalingam'], ['10:30', 'Ananya Iyer'], ['11:30', 'Arjun Nair']]
+        expect(rows.length === 5 && order.every(([t, n], i) => rows[i].startsWith(t) && rows[i].includes(n)), `in time order, Fatima at 10:05 to Arjun at 11:30: ${rows}`)
         for (const clinic of ['Meera Krishnan', 'Selvi Murugan', 'Lakshmi Narayanan', 'Sunita Devi'])
           expect(!rows.some((r) => r.includes(clinic)), `${clinic} is a clinic patient today, not a video visit`)
-        expect(JSON.stringify(await statuses()) === JSON.stringify(['waiting', 'waiting']), `both waiting: ${await statuses()}`)
-        expect((await countOf('Waiting')) === '2' && (await countOf('In call')) === '0' && (await countOf('Call ended')) === '0' && (await countOf('Done')) === '0', 'the counts')
-        expect(rows.every((r) => r.includes('Connect')), 'Connect for both')
-        expect(rows[0].includes('Phone call only') && !rows[1].includes('Phone call only'), 'Fatima’s video did not work in her test')
+        expect((await statuses()).every((x) => x === 'waiting'), `all waiting: ${await statuses()}`)
+        expect((await countOf('Waiting')) === '5' && (await countOf('In call')) === '0' && (await countOf('Call ended')) === '0' && (await countOf('Done')) === '0', 'the counts')
+        expect(rows.every((r) => r.includes('Connect')), 'Connect for each')
+        expect(!rows.some((r) => r.includes('Phone call only')), 'every one of them on video, Fatima too')
 
-        // The same two, as the Dashboard's Patients Today lists its teleconsults.
+        // The same five, as the Dashboard's Patients Today lists its teleconsults.
         await page.open('/', { fresh: false })
         const listed = await page.evaluate(`document.querySelector('[aria-label="Today\\'s OPD patients"]')?.textContent ?? ''`)
         const block = await page.evaluate(`document.querySelector('button[aria-label^="Teleconsult, "]')?.getAttribute('aria-label') ?? ''`)
-        expect(listed.includes('Fatima Bi') && listed.includes('Arjun Nair') && block.includes('2 patients'), `the Dashboard agrees — Patients Today lists both, the Teleconsult block counts 2: ${block}`)
+        expect(order.every(([, n]) => listed.includes(n)) && block.includes('5 patients'), `the Dashboard agrees — Patients Today lists all five, the Teleconsult block counts 5: ${block}`)
 
         await page.open('/tele/queue', { fresh: false })
         await page.click('[data-count="Waiting"]')
-        expect((await cards()).length === 2, 'Waiting shows both')
+        expect((await cards()).length === 5, 'Waiting shows all five')
         await page.click('button', 'All patients')
         await page.click('button[aria-label="Connect with Arjun Nair"]')
         await page.until(`/^\\/tele\\/session\\/[^/]+$/.test(location.pathname) && document.body.textContent.includes('Video visit with Arjun')`, 3000, 'Connect opens the visit')
@@ -295,7 +300,7 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
           // A reload starts the waiting list afresh; the patient's window says so again.
           await page.evaluate(`localStorage.setItem('shri.waiting', JSON.stringify({ state: { waiting: { 'E-118430': { visitId: 'E-118430', patientId: 'SD-P-10', since: Date.now() } } }, version: 1 })); window.dispatchEvent(new StorageEvent('storage', { key: 'shri.waiting' })); true`)
           await page.until(`!!document.querySelector('[data-waiting="E-118430"]')`, 3000, 'the alert, on Video visits')
-          expect((await statusOfCard('Arjun')) === 'lobby' && (await countOf('Waiting')) === '2', 'In the waiting room on Video visits, still counted as waiting')
+          expect((await statusOfCard('Arjun')) === 'lobby' && (await countOf('Waiting')) === '5', 'In the waiting room on Video visits, still counted as waiting')
           expect(await page.evaluate(`!!document.querySelector('button[aria-label="Connect: Arjun Nair is waiting in the video call"]')`), 'with Connect')
           await page.click('[data-waiting="E-118430"] button', 'Connect')
           await page.until(`location.pathname === '/tele/session/E-118430' && document.body.textContent.includes('In call with Arjun')`, 3000, 'Connect: the call, already started')
@@ -505,7 +510,7 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
       },
     },
     {
-      name: 'Telehealth: the patient portal’s stand-in writes down the patient while the doctor records and says so; after the call it turns the camera and microphone off, waits, shows the prescription and says it arrived',
+      name: 'Telehealth: the patient portal’s stand-in writes down the patient while the doctor records and says so; after the call it turns the camera and microphone off, says the visit is finished and how long it lasted, waits, shows the prescription and says it arrived; the doctor calling back is a call again; Close the visit goes back to the list',
       async run() {
         const unstub = await stubSpeech()
         const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
@@ -517,11 +522,12 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
           await page.click('button', 'Connect')
           await page.until(`!!document.querySelector('[data-alone]')`, 3000, 'waiting')
           await page.evaluate(`window.__jitsi.emit('participantJoined', { id: 'doctor-1' }); true`)
-          await page.until(`document.body.textContent.includes('You are in your video visit')`, 2000, 'the doctor is in')
+          await page.until(`document.body.textContent.includes('In your video visit with')`, 2000, 'the doctor is in')
+          expect(/^\d+:\d\d$/.test(await page.evaluate(`document.querySelector('[data-call-clock]')?.textContent ?? ''`)), 'the call’s clock, beside the doctor’s name')
           // Someone else coming and going does not end the patient's call.
           await page.evaluate(`window.__jitsi.emit('participantJoined', { id: 'stranger' }); window.__jitsi.emit('participantLeft', { id: 'stranger' }); true`)
           await sleep(300)
-          expect(!(await page.evaluate(`!!document.querySelector('[data-after-call]')`)) && (await page.text()).includes('You are in your video visit'), 'still in the call')
+          expect(!(await page.evaluate(`!!document.querySelector('[data-after-call]')`)) && (await page.text()).includes('In your video visit with'), 'still in the call')
           await fromCall({ k: 'transcribe', on: true })
           await page.until(`document.querySelector('[data-writing]')?.dataset.writing === 'on'`, 2000, 'the patient is told their words are written down')
           await page.evaluate(`window.__say('My skin is much better now', 0.9); true`)
@@ -532,14 +538,56 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
           // The doctor leaves: the call has ended, the camera and microphone go off, the page waits.
           await page.evaluate(`window.__jitsi.emit('participantLeft', { id: 'doctor-1' }); true`)
           await page.until(`!!document.querySelector('[data-after-call]')`, 2000, 'the call has ended')
-          expect((await page.text()).includes('Keep this page open. If your doctor writes you a prescription, it comes here.'), 'said plainly')
-          await page.until(`(window.__cmds || []).some((c) => c[0] === 'toggleAudio') && (window.__cmds || []).some((c) => c[0] === 'toggleVideo')`, 2000, 'camera and microphone off')
+          const after = await page.evaluate(`document.querySelector('[data-after-call]').textContent`)
+          expect(after.includes('Visit finished') && /lasted less than a minute\. Your camera and microphone are off\./.test(after), `finished, and how long it lasted: ${after}`)
+          expect(await page.evaluate(`!!document.querySelector('[data-rx-waiting]') && !document.querySelector('[data-call-card="ended"]')?.getBoundingClientRect().height`), 'waiting for the prescription; no empty video card left behind')
+          await page.until(`window.__jitsi.audioOff && window.__jitsi.videoOff`, 2000, 'camera and microphone off')
           // The doctor's portal comes in to bring the prescription: still after the call.
-          await page.evaluate(`window.__jitsi.emit('participantJoined', { id: 'courier' }); true`)
+          await page.evaluate(`window.__jitsi.emit('participantJoined', { id: 'courier', displayName: 'Dr. Rajsrinivas (sending your prescription)' }); true`)
           await fromCall({ k: 'rx', rx: { id: 'RX-t1', doctor: 'Dr. Rajsrinivas', patient: 'Arjun Nair', signedAt: Date.now(), mode: 'video', items: ['Paracetamol 1g IV'] } })
           await page.until(`!!document.querySelector('[data-rx="RX-t1"]')`, 2000, 'the prescription is shown')
           expect((await page.evaluate(`document.querySelector('[data-rx]').textContent`)).includes('Paracetamol 1g IV') && (await page.evaluate(`!!document.querySelector('[data-after-call]')`)), 'with its medicines, still after the call')
           expect((await sentOverCall()).some((m) => m.k === 'rx-ack' && m.id === 'RX-t1'), 'and the doctor is told it arrived')
+          expect(!(await page.evaluate(`!!document.querySelector('[data-rx-waiting]')`)), 'no longer waiting for it')
+
+          // The doctor calls back: the call again, camera and microphone on.
+          await page.evaluate(`window.__jitsi.emit('participantLeft', { id: 'courier' }); window.__jitsi.emit('participantJoined', { id: 'doctor-2', displayName: 'Dr. Rajsrinivas' }); true`)
+          await page.until(`!document.querySelector('[data-after-call]') && document.body.textContent.includes('In your video visit with')`, 2000, 'back in the call')
+          await page.until(`!window.__jitsi.audioOff && !window.__jitsi.videoOff`, 2000, 'camera and microphone on again')
+          await page.evaluate(`window.__jitsi.emit('participantLeft', { id: 'doctor-2' }); true`)
+          await page.until(`!!document.querySelector('[data-after-call]')`, 2000, 'the second call ends too')
+          await page.click('button', 'Close the visit')
+          await page.until(`!!document.querySelector('[data-closed-visit]')`, 2000, 'back to the list of visits')
+          expect((await page.evaluate(`document.querySelector('[data-closed-visit]').textContent`)).includes('is closed.') && (await page.evaluate(`window.__jitsiDisposed`)), 'it says the visit is closed, and the room is left')
+        } finally {
+          await unstub()
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
+        }
+      },
+    },
+    {
+      name: 'Telehealth: speech that is still being heard when the browser’s recogniser stops is kept as a line, never lost; the recogniser starts again at once; the words being heard go to the doctor as they are said',
+      async run() {
+        const unstub = await stubSpeech()
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        try {
+          await page.open('/demo/patient')
+          await page.evaluate(`window.__jitsiAlone = true; true`)
+          await page.click('button[aria-label="I am Arjun Nair"]')
+          await page.type('#demo-code', '4821')
+          await page.click('button', 'Connect')
+          await page.until(`!!document.querySelector('[data-alone]')`, 3000, 'waiting')
+          await page.evaluate(`window.__jitsi.emit('participantJoined', { id: 'doctor-1', displayName: 'Dr. Rajsrinivas' }); true`)
+          await fromCall({ k: 'transcribe', on: true })
+          await page.until(`document.querySelector('[data-writing]')?.dataset.writing === 'on'`, 2000, 'writing down')
+          const starts = await page.evaluate(`window.__srStarts`)
+          // Words heard, not yet settled…
+          await page.evaluate(`(() => { const r = [{ transcript: 'The swelling went down on Tuesday', confidence: 0.6 }]; r.isFinal = false; window.__sr.onresult({ resultIndex: 0, results: [r] }) })(); true`)
+          await page.until(`(window.__cmds || []).some((c) => c[0] === 'sendEndpointTextMessage' && c[2].includes('"partial"') && c[2].includes('swelling went down'))`, 2000, 'the words being heard go to the doctor')
+          // …and Chrome ends the recognition: they are a line all the same.
+          await page.evaluate(`window.__sr.onend(); true`)
+          await page.until(`(window.__cmds || []).some((c) => c[0] === 'sendEndpointTextMessage' && c[2].includes('"line"') && c[2].includes('The swelling went down on Tuesday'))`, 2000, 'kept as a line')
+          expect((await page.evaluate(`window.__srStarts`)) === starts + 1, 'and listening again at once')
         } finally {
           await unstub()
           await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: jitsi.identifier })
@@ -640,20 +688,55 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
       },
     },
     {
+      name: 'Telehealth: one demo code per browser — a tab loaded later gives every tab its code; only one tab says the code and asks the Jitsi server, and the next takes over when it closes; every tab shows the alert',
+      async run() {
+        // Another tab of this browser, already open: it holds the lock that picks the one tab doing the work.
+        const other = await send('Page.addScriptToEvaluateOnNewDocument', {
+          source: `navigator.locks.request('shri-portal-leader', () => new Promise((done) => { window.__otherTabCloses = done })); true`,
+        })
+        const sizes = await send('Page.addScriptToEvaluateOnNewDocument', { source: ROOM_SIZE_STUB })
+        const jitsi = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
+        try {
+          await page.open('/')
+          await page.evaluate(`localStorage.setItem('shri.jitsiDomain', 'meet.example.org'); true`)
+          await page.open('/tele/queue', { fresh: false })
+          const mine = await page.evaluate(`document.querySelector('[data-demo-code]')?.dataset.demoCode`)
+          expect(/^\d{4}$/.test(mine ?? ''), `this tab’s code: ${mine}`)
+          await sleep(6000)
+          expect((await page.evaluate(`window.__asked.length`)) === 0 && !(await page.evaluate(`(window.__cmds || []).some((c) => c[0] === 'sendEndpointTextMessage')`)), 'while the other tab does the work, this one neither asks the server nor says the code')
+
+          // The other tab is reloaded: its new code is this tab's too.
+          await page.evaluate(`new BroadcastChannel('shri-demo').postMessage({ code: '6060', madeAt: Date.now() }); true`)
+          await page.until(`document.querySelector('[data-demo-code]')?.dataset.demoCode === '6060'`, 2000, 'the code made in the other tab, shown here')
+
+          // A patient waiting is shown in every tab: the waiting list is shared.
+          await page.evaluate(`window.__roomSize['shrihealth-e118430-6060'] = 1; true`)
+          // The other tab closes: this one takes over, asks about the rooms of the shared code, and says it.
+          await page.evaluate(`window.__otherTabCloses(); true`)
+          await page.until(`window.__asked.includes('shrihealth-e118430-6060')`, 8000, 'this tab now asks the Jitsi server')
+          await page.until(`(window.__cmds || []).some((c) => c[0] === 'sendEndpointTextMessage' && c[2].includes('"6060"'))`, 8000, 'and says the shared code')
+          await page.until(`!!document.querySelector('[data-waiting="E-118430"]')`, 8000, 'Arjun in his room: the alert')
+        } finally {
+          await page.evaluate(`localStorage.removeItem('shri.jitsiDomain'); true`)
+          for (const s of [other, sizes, jitsi]) await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: s.identifier })
+        }
+      },
+    },
+    {
       name: 'Telehealth (S-27-03): recording is the patient’s to allow, in the patient portal — not yet answered, there is no Start recording and the page says why; leaving from inside the video ends the call',
       async run() {
         const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: JITSI_STUB })
         try {
-          await page.open('/tele/session/ISH-0042330')
-          expect((await page.text()).includes('Fatima has not answered the recording question in the patient portal yet.'), 'Fatima has not answered, and the page says so')
+          await page.open('/tele/session/ISH-0044305')
+          expect((await page.text()).includes('Ananya has not answered the recording question in the patient portal yet.'), 'Ananya has not answered, and the page says so')
           await page.click('button', 'Connect')
-          await page.until(`document.body.textContent.includes('In call with Fatima')`, 3000, 'in the call')
+          await page.until(`document.body.textContent.includes('In call with Ananya')`, 3000, 'in the call')
           expect(!(await page.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Start recording'))`)), 'no Start recording until she agrees')
           expect(await page.evaluate(`document.querySelector('[data-consent]')?.dataset.consent === 'none'`), 'the reason, under the video')
           // Leaving from inside the video, with Jitsi's own button, ends the call here too.
           await page.evaluate(`window.__jitsi.emit('readyToClose'); true`)
           await toastSays('Call ended', 'You left the video.')
-          await page.until(`document.body.textContent.includes('Call with Fatima ended') && document.body.textContent.includes('did not agree in the patient portal')`, 3000, 'ended, not recorded')
+          await page.until(`document.body.textContent.includes('Call with Ananya ended') && document.body.textContent.includes('did not agree in the patient portal')`, 3000, 'ended, not recorded')
         } finally {
           await send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
         }
@@ -704,6 +787,7 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
           await page.click('button', 'Start recording')
           const asked = await page.evaluate(`window.__shareOptions`)
           expect(asked && asked.preferCurrentTab === true && asked.selfBrowserSurface === 'include', `this tab, nothing to pick: ${JSON.stringify(asked)}`)
+          expect(asked.video.frameRate?.ideal === 30 && asked.video.width?.ideal === 1920, `a sharp picture, 30 frames a second: ${JSON.stringify(asked.video)}`)
           await page.until(`!!document.querySelector('[data-channel="doctor"][data-state="live"]') && !!document.querySelector('[data-channel="patient"][data-state="live"]')`, 8000, 'both voices heard')
           await page.until(`!!document.querySelector('ol[aria-label="Live transcript"] li[data-faint]')`, 8000, 'words appear while they are spoken')
           await sleep(3500)
@@ -720,6 +804,9 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
 
           const stored = await page.evaluate(`new Promise((ok) => { const r = indexedDB.open('shri-tele'); r.onsuccess = () => { const q = r.result.transaction('chunks').objectStore('chunks').getAll(); q.onsuccess = () => ok({ n: q.result.length, bytes: q.result.reduce((a, c) => a + c.blob.size, 0), type: q.result[0]?.blob.type }) } })`)
           expect(stored.n > 0 && stored.bytes > 2000 && stored.type.startsWith('video/'), `the video is on the computer: ${JSON.stringify(stored)}`)
+          // MP4 wherever this browser records it — every player opens it and seeks in it.
+          const mp4 = await page.evaluate(`MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2') || MediaRecorder.isTypeSupported('video/mp4')`)
+          expect(!mp4 || stored.type.startsWith('video/mp4'), `recorded as MP4 where it can be: ${stored.type}`)
           await page.until(`document.querySelector('[data-saved="server"]')?.textContent.includes('Saved')`, 8000, 'the conversation reaches the server')
           const sid = (await (await fetch(`http://127.0.0.1:${STORE_PORT}/sessions?patientId=SD-P-10`, { headers: { Origin: 'http://localhost:5181' } })).json()).sessions[0].id
           const server = await (await fetch(`http://127.0.0.1:${STORE_PORT}/sessions/${sid}`)).json()
@@ -736,6 +823,13 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
           await page.click('[role="alertdialog"] button', 'End call')
           await page.until(`document.body.textContent.includes('Call with Arjun ended') && document.body.textContent.includes('4 lines of conversation saved')`, 5000, 'the finished visit')
           expect(!(await btnDisabled('Video recording 1 of 2')) && !(await btnDisabled('Video recording 2 of 2')) && !(await btnDisabled('Full visit record')), 'two videos and the record download')
+          const tile = await page.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('Video recording 1 of 2')).textContent`)
+          expect(tile.includes(mp4 ? 'MP4' : 'WEBM'), `the format, on the tile: ${tile}`)
+          await page.evaluate(`window.__saved = []; true`)
+          await page.click('button', 'Video recording 1 of 2')
+          await page.until(`window.__saved.length === 1`, 5000, 'the video downloads')
+          const got = await page.evaluate(`({ type: window.__saved[0].type, size: window.__saved[0].size })`)
+          expect(got.size > 2000 && got.type.startsWith(mp4 ? 'video/mp4' : 'video/webm'), `the downloaded video: ${JSON.stringify(got)}`)
           const parts = await page.evaluate(`new Promise((ok) => { const r = indexedDB.open('shri-tele'); r.onsuccess = () => { const q = r.result.transaction('chunks').objectStore('chunks').getAll(); q.onsuccess = () => ok([...new Set(q.result.map((c) => c.sid))].length) } })`)
           expect(parts === 2, `both videos are kept: ${parts}`)
           expect(!(await page.text()).includes('Google Meet'), 'nothing about Google Meet')

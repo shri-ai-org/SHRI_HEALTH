@@ -35,9 +35,10 @@ async function roomSize(room: string): Promise<number | null> {
   }
 }
 
-export function useRoomWatch() {
+/** Asked by one tab per browser (leader.ts); the others share the waiting list it keeps. */
+export function useRoomWatch(leader: boolean) {
   useEffect(() => {
-    if (isPublicJitsi()) return
+    if (!leader || isPublicJitsi()) return
     let alive = true
     let busy = false
     const tick = async () => {
@@ -75,5 +76,5 @@ export function useRoomWatch() {
       alive = false
       window.clearInterval(t)
     }
-  }, [])
+  }, [leader])
 }

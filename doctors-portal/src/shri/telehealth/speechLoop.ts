@@ -1,8 +1,11 @@
 // The browser's own speech-to-text, kept listening for a whole call: the doctor's
 // side on the visit page (capture.ts) and the patient's on their portal page
-// (PatientDemoPage). Chrome ends a recognition after every quiet spell; it is
-// simply started again — however long the quiet — and given up on only when it
-// keeps failing the moment it starts (blocked, no microphone, no service). It can
+// (PatientDemoPage). Chrome ends a recognition after every quiet spell and about
+// once a minute; it is started again at once — however long the quiet — and given
+// up on only when it keeps failing the moment it starts (blocked, no microphone,
+// no service). Words heard but not yet settled when it ends are kept as a line,
+// never dropped. Where Chrome can recognise on this device (processLocally) it
+// does, which is faster than its cloud service. It can
 // be paused and resumed: one microphone serves one recogniser at a time, so the
 // call's transcript steps aside while the doctor dictates notes.
 
@@ -55,6 +58,13 @@ export function speechLoop(o: {
   rec.lang = o.lang
   rec.continuous = true
   rec.interimResults = true
+  // On this device where Chrome offers it: no network round trip. Takes effect from the next start.
+  const S = Ctor as unknown as { available?: (q: { langs: string[]; processLocally: boolean }) => Promise<string> }
+  S.available?.({ langs: [o.lang], processLocally: true })
+    .then((a) => {
+      if (a === 'available') (rec as unknown as { processLocally?: boolean }).processLocally = true
+    })
+    .catch(() => undefined)
 
   let active = true
   let paused = false
@@ -62,6 +72,14 @@ export function speechLoop(o: {
   let heard = false
   let quick = 0
   let utterStart: number | null = null
+  /** Words heard and not yet settled — kept as a line if the recognition ends first. */
+  let pending = ''
+  const flush = () => {
+    const t = pending.trim()
+    pending = ''
+    if (t) o.onFinal(t, utterStart ?? Date.now() - 3000, Date.now())
+    utterStart = null
+  }
 
   const go = () => {
     if (!active || paused) return
@@ -89,6 +107,7 @@ export function speechLoop(o: {
         interim += r[0].transcript
       }
     }
+    pending = interim
     o.onInterim?.(interim)
   }
   rec.onerror = (e) => {
@@ -99,6 +118,7 @@ export function speechLoop(o: {
     o.onFail(why)
   }
   rec.onend = () => {
+    flush()
     o.onInterim?.('')
     if (!active || paused) return
     quick = !heard && Date.now() - startedAt < QUICK_MS ? quick + 1 : 0
@@ -106,13 +126,16 @@ export function speechLoop(o: {
       active = false
       return o.onFail('Speech-to-text keeps failing to start in this browser.')
     }
-    window.setTimeout(go, 250 + quick * 250)
+    // At once after a normal end — every moment between two recognitions is words lost.
+    if (quick === 0) go()
+    else window.setTimeout(go, quick * 250)
   }
 
   go()
   return {
     stop() {
       active = false
+      flush()
       try {
         rec.abort()
       } catch {
@@ -122,6 +145,7 @@ export function speechLoop(o: {
     pause() {
       if (!active || paused) return
       paused = true
+      flush()
       try {
         rec.abort()
       } catch {
