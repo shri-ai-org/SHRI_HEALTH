@@ -1,7 +1,7 @@
 # API standards
 
 Status: **PROPOSED** · Version 0.1 · 2026-10-22 · Author: Vimal (drafted with Claude Code)
-**Needs sign-off from:** Vimal (whole document); Thulasi (§9 errors, §10 idempotency, §12 404 vs 403, §16 webhooks, §17 rate limits, §18 headers); Anand (§5 IDs, §6.3 money, §15 files); Minalini (§3 casing, §8 pagination shape)
+**Needs sign-off from:** Vimal (whole document); Thulasi (§9 errors, §10 idempotency, §12 404 vs 403, §16 webhooks, §17 rate limits, §18 headers); Anand (§5 IDs, §6.3 money, §15 files); Minalini (§3 casing, §8 pagination shape). **Thulasi signed off her sections on issue #3 and Minalini hers on issue #5 (2026-10-22), with the additions applied below.**
 
 Every endpoint in `contracts/openapi/` follows these rules. Where a rule comes from a source document it is cited. Everything else is **PROPOSED** with a one-line reason. There is one way to do each thing; exceptions need an ADR.
 
@@ -32,7 +32,7 @@ Values used in more than one rule are defined once here.
 | Rule | Detail | Source |
 |---|---|---|
 | Base path | `/api/v1` | CAT conventions |
-| Infrastructure paths outside the version | `/health`, `/ready`, `/hooks/{partner}` | **PROPOSED**: partner callback URLs and load-balancer checks must not change when the API version changes. **Pending Thulasi** (CAT lists `/hooks/*` without saying where) |
+| Infrastructure paths outside the version | `/health` and `/hooks/{partner}`, both public through Nginx and documented in the contract under a separate server entry. `/ready` is **internal only** (load balancer and Compose) and **not in the contract** | Partner callback URLs and health checks must not change when the API version changes. **Agreed (Thulasi, T24)** |
 | Version in the path only | Major version only (`v1`, `v2`). No version headers, no media-type versioning. | **PROPOSED**: simplest for the generated client and Nginx routing (ADR-0010) |
 | Non-breaking changes | Added endpoints, added optional request fields, added response fields: allowed within `v1` | ADR-0010; definition of "breaking" in CONTRACT_GOVERNANCE §4 |
 | Breaking changes | Avoided. If unavoidable: add a new endpoint or field alongside the old, deprecate the old. A new major version only for system-wide redesign. | ADR-0010 |
@@ -49,7 +49,7 @@ Values used in more than one rule are defined once here.
 | Actions | `POST /<collection>/{id}/<verb>` in kebab-case | `POST /appointments/{appointmentId}/check-in` (VG Step 1) |
 | Search with PHI | `POST /<collection>/search` | `POST /patients/search` (VD-G2) |
 | Path parameters | camelCase, named after the resource: `{patientId}`, never bare `{id}` in the contract | **PROPOSED**: avoids ambiguity in nested paths and generated code |
-| JSON properties and query parameters | camelCase | `birthDate`, `nextCursor`. **PROPOSED, pending Minalini**: matches TypeScript and FHIR JSON; Pydantic aliases it on the Python side |
+| JSON properties and query parameters | camelCase | `birthDate`, `nextCursor`. **Agreed (Minalini, M1)**: matches TypeScript and FHIR JSON; Pydantic aliases it on the Python side |
 | Timestamps | End in `At` | `createdAt`, `signedAt` |
 | Dates | End in `Date` | `birthDate`, `serviceDate` |
 | References | `<thing>Id` for an ID; `<thing>` for an embedded summary object | `providerId`, `provider: { id, displayName }` |
@@ -183,14 +183,14 @@ Code system URIs (FHIR canonical):
 
 ## 8. Pagination, filtering and sorting
 
-### 8.1 Cursor pagination (VG Step 1; ADR-0004)
+### 8.1 Cursor pagination (VG Step 1; ADR-0004; shape agreed by Minalini, M2)
 
 | Rule | Detail |
 |---|---|
 | Parameters | `limit` (default 25, max 100) and `cursor` (opaque). For `POST …/search`, both go in the body. |
 | Response | `{ "items": [...], "nextCursor": "…" }`. No `nextCursor` = last page. |
-| Total counts | Not returned by default. **PROPOSED**: counting is expensive, especially through HAPI. Where a screen needs a count, the endpoint documents a `count` field explicitly. |
-| Cursor content | Opaque, URL-safe, at most 512 characters. **Must never contain readable PHI** (for example a family name used as a sort key). **PROPOSED, pending Thulasi:** the middleware encrypts and authenticates cursors (AEAD), binding them to tenant, user and endpoint. |
+| Total counts | Not returned by default: counting is expensive, especially through HAPI. Screens use "load more". Dashboard and status-board counts come from the dashboard API, not from list totals (M2). Where a screen needs a count, the endpoint documents a `count` field explicitly. |
+| Cursor content | Opaque, URL-safe, at most 512 characters. **Must never contain readable PHI** (for example a family name used as a sort key). **Agreed (Thulasi, T22):** the middleware encrypts cursors with AES-GCM, using a key from OpenBao with a key ID for rotation; tenant, user and endpoint are the associated data, and the expiry is inside the encrypted payload. |
 | Cursor lifetime | 24 hours. An expired or tampered cursor → `400 invalid-cursor`. |
 | HAPI-backed lists | The FHIR client turns HAPI's paging links into our cursor; HAPI URLs never reach clients. **Pending Anand.** |
 | Consistency | Keyset pagination for our lists (stable under inserts); HAPI paging as HAPI provides. |
@@ -242,7 +242,7 @@ Code system URIs (FHIR canonical):
 | `errors` | Present for `validation-failed` and `business-rule-violation`. Each item has `in` (`body`, `query`, `path`, `header`), `pointer` (RFC 6901, for body) or `name` (for others), and a field `code` (§9.2). Never echoes the submitted value. |
 | Extensions | Only those listed per code in §9.3 (for example `mergedIntoId`, `candidateIds`, `currentEtag`) |
 
-`core/errors.py` (Thulasi) must produce this shape, including replacing FastAPI's default 422 body. **Pending Thulasi.**
+`core/errors.py` (Thulasi) produces this shape, including replacing FastAPI's default 422 body (**agreed, T19**). Until `COMPANY_DOMAIN` (§0) is decided, `type` uses a placeholder value from settings.
 
 ### 9.2 Field error codes
 
@@ -303,11 +303,12 @@ Operation failures (§13) reuse the same Problem object inside the operation, wi
 | Scope | Tenant + user + method + path (with IDs) + key | **PROPOSED** |
 | Fingerprint | SHA-256 of the canonical request body | **PROPOSED** |
 | Retention | 24 hours, then purged | **PROPOSED**: covers client retries; partner-level retries are handled by the integration engine's own message IDs |
-| Same key, same body | Return the stored status and body; add header `Idempotent-Replayed: true` | **PROPOSED, pending Thulasi** (header name) |
+| Same key, same body | Return the stored status and body; add header `Idempotent-Replayed: true` | Agreed (T21) |
+| Not stored | `5xx` and `429` responses are **not** stored, so a retry runs the request again | Agreed (Thulasi, T21) |
 | Same key, different body | `422 idempotency-key-reused` | draft-07 §2.7 |
 | Same key, still running | `409 idempotency-request-in-progress` | draft-07 §2.7 |
 | Missing when required | `400 idempotency-key-missing` | draft-07 §2.7 |
-| Storage | Stored responses can contain PHI: kept in our PostgreSQL under row-level security, encrypted at rest, purged at expiry | **PROPOSED, pending Thulasi** (middleware vs per-module) |
+| Storage | Implemented once in middleware. Stored responses can contain PHI: kept in our PostgreSQL under row-level security, bodies encrypted with `encrypt_field`, purged at expiry | Agreed (Thulasi, T21) |
 | Not a replacement | Partner messages also carry the integration engine's own idempotency keys (`integration_message`); the two layers are independent | TA §7.1 |
 
 ## 11. Optimistic concurrency (ADR-0008)
@@ -326,18 +327,18 @@ Operation failures (§13) reuse the same Problem object inside the operation, wi
 
 ## 12. 404 vs 403: no discovery across clinics
 
-The order of checks is fixed. **Pending Thulasi** for confirmation:
+The order of checks is fixed (**agreed by Thulasi, T11**: 401 → CSRF → 403 permission → 404 → 403 break-glass; the CSRF step is in SECURITY_MODEL §3):
 
 1. **Not logged in** → `401`.
 2. **Role lacks the endpoint's `x-permission`** → `403 permission-denied`. This is checked **before** any lookup, so it is the same whether or not the record exists.
 3. **Record in another clinic (tenant)** → `404 not-found`, exactly as for a record that does not exist. Row-level security returns zero rows, so the endpoint cannot tell the difference (TA §6.1).
-4. **Record in this clinic but outside the user's facility scope** → `404 not-found`. **PROPOSED, pending Thulasi**: same reasoning as clinics.
+4. **Record in this clinic but outside the user's facility scope** → `404 not-found`, same reasoning as clinics (agreed, T15). Lists called without `facilityId` are filtered to the user's facilities (SECURITY_MODEL §5.1).
 5. **Restricted chart without a break-glass grant** → `403 break-glass-required`. The user's own clinic already knows the patient exists (they appear on schedules), and the user needs to be told how to proceed (FRS FR-PAT-01).
 6. **Allowed** → normal response.
 
 Additional rules:
 
-- Search results omit records the user cannot see. Restricted patients appear in patient search with summary fields only and `restricted: true`, so staff can request break-glass (**PROPOSED, pending Thulasi**).
+- Search results omit records the user cannot see. Restricted patients appear in patient search with summary fields only and `restricted: true`, so staff can request break-glass (agreed, T16).
 - Error timing must not reveal existence: the 404 path does the same work as a real lookup (Thulasi; tested in CI).
 - Business identifiers are never "probed" through errors: a `possible-duplicate` returns IDs only, and only to users with `patients:create`.
 
@@ -355,10 +356,10 @@ Additional rules:
 | Polling | `GET /operations/{operationId}` with `Retry-After` while unfinished |
 | Push | Event `operation.completed` to the requesting user over Server-Sent Events (EVENTS.md) |
 | Cancel | `POST /operations/{operationId}/cancel` where the kind supports it (AI kinds) |
-| Visibility | The creating user, and users with read permission on the result type in the same clinic. **Pending Thulasi** |
+| Visibility | **Only the user who created the operation**, in the MVP. Other users reach the result through the resource itself (agreed, Thulasi T26). Polling `/operations` does not reset the idle timer (SECURITY_MODEL §2.1) |
 | Content | IDs and status only, never PHI |
 | Retention | 7 days |
-| Owner | `/operations` is shared platform code. **PROPOSED x-owner Thulasi** (`backend/app/core/`), pending Thulasi |
+| Owner | `/operations` is shared platform code: x-owner Thulasi (`backend/app/core/`), agreed (T26) |
 
 ## 14. Search involving PHI (VD-G2, ADR-0005)
 
@@ -381,7 +382,8 @@ Response: `200` with the list envelope of `PatientSummary` items.
 
 | Rule | Detail |
 |---|---|
-| Minimum criteria | **PROPOSED**: patient search needs either an exact identifier (MRN, driver's license number, member ID) or at least two criteria (for example family name of 2 or more characters + date of birth, or phone + date of birth). Stops browsing the whole patient list. |
+| Minimum criteria | Patient search needs either an **exact identifier** (MRN, driver's license number, member ID, or the **full phone number**) or at least two criteria (for example family name of 2 or more characters + date of birth). Stops browsing the whole patient list. |
+| Phone search | The phone number is patient data, so it is only ever sent in the body. **Exact match on the full number only**, compared as normalized digits (E.164). **No partial-number search in the MVP**: partial matching makes it easy to fish through records (Vimal's answer to M7, 2026-10-22). |
 | Result cap | At most 50 results per page for patient search |
 | Logging | Criteria values are never logged. Audit records which criteria **fields** were used and which patient IDs were returned (SECURITY_MODEL §6). |
 | Caching | `Cache-Control: no-store` |
@@ -404,7 +406,7 @@ Files never pass through module endpoints. Module endpoints only reference a `fi
 | Rule | Detail |
 |---|---|
 | `purpose` values | `insurance-card`, `encounter-audio`, `after-visit-summary`, `document`, `fax`, `ccda`, `export`, `onboarding-import` |
-| Allowed types and sizes | Declared per purpose (for example `insurance-card`: JPEG, PNG, HEIC, at most 10 MB) — **pending Anand** |
+| Allowed types and sizes | Declared per purpose. `insurance-card`: **JPEG and PNG for P0**, at most 10 MB (agreed, Minalini M13 and Vimal). HEIC (iPhone photo format) only if Anand's file service converts it for display — **pending Anand** |
 | Long audio | Multipart upload with several part URLs — **pending Anand** |
 | Secrecy | Upload and download URLs are bearer secrets: never logged, never stored by clients, never put in events |
 | File names | Not stored from the client by default (a name can contain PHI) — **PROPOSED** |
@@ -415,7 +417,8 @@ Files never pass through module endpoints. Module endpoints only reference a `fi
 
 | Rule | Detail |
 |---|---|
-| Location | Outside `/api/v1` (§2), e.g. `/hooks/clearinghouse`, `/hooks/erx`, `/hooks/fax`, `/hooks/sms` (CAT) |
+| Location | Outside `/api/v1` (§2), public through Nginx, e.g. `/hooks/clearinghouse`, `/hooks/erx`, `/hooks/fax`, `/hooks/sms` (CAT; agreed T24) |
+| Audit | Callbacks carry PHI: audited as `phi-write` with the **partner as actor** (agreed, T37; SECURITY_MODEL §6) |
 | Authentication | Partner's signature scheme verified by middleware; no session or CSRF. `x-permission: partner-signed` |
 | Replay protection | Reject timestamps outside a 5-minute window where the partner's scheme carries a timestamp; deduplicate on the partner's event or message ID |
 | Processing | Store the raw payload (encrypted) first, reply `2xx`, then process asynchronously (TA §7.1) |
@@ -430,18 +433,18 @@ None in the MVP. If added later, follow the Standard Webhooks specification and 
 
 | Rule | Detail |
 |---|---|
-| Who sets them | Thulasi's middleware (D3) |
+| Who sets them | Thulasi: coarse limits in Nginx, per-user limits in the app (D3; agreed T23) |
 | Response on limit | `429 rate-limited` with `Retry-After` (RFC 9110) |
-| Advertising limits | `RateLimit-Policy` and `RateLimit` headers as in IETF draft-ietf-httpapi-ratelimit-headers-11 (an active draft, not an RFC; checked 2026-10-22), e.g. `RateLimit: "default";r=50;t=30`. **PROPOSED, pending Thulasi**: adopt now, since only our SPA reads them; revisit when the RFC is published |
-| Login and search | Stricter limits on `/auth/*` and every `POST …/search` (enumeration risk) — **pending Thulasi** |
+| Advertising limits | `RateLimit-Policy` and `RateLimit` headers as in IETF draft-ietf-httpapi-ratelimit-headers-11 (an active draft, not an RFC; checked 2026-10-22), e.g. `RateLimit: "default";r=50;t=30`. **Agreed (T23)**: adopt now, since only our SPA reads them; revisit when the RFC is published |
+| Login and search | Stricter limits on `/auth/*` and every `POST …/search` (enumeration risk); agreed (T23) |
 
 ## 18. Standard headers
 
 | Header | Direction | Rule |
 |---|---|---|
-| `X-Request-ID` | Both | Client may send a UUID; server always returns one; repeated in Problem `requestId`. **PROPOSED name, pending Thulasi** |
-| `traceparent` | Both | W3C Trace Context for OpenTelemetry (TA §8) |
-| `X-CSRF-Token` | Request | Required on POST, PUT, PATCH (SECURITY_MODEL §2). **Pending Thulasi** |
+| `X-Request-ID` | Both | A client-sent value is accepted **only if it is a valid UUID**; otherwise the server generates one (stops log injection). The server always returns it; repeated in Problem `requestId`. Agreed (T20) |
+| `traceparent` | Both | W3C Trace Context for OpenTelemetry (TA §8); propagated (T20) |
+| `X-CSRF-Token` | Request | Required on every unsafe method, including `/auth/refresh` and `/auth/logout`; `Origin` also required (SECURITY_MODEL §2.2; agreed T8) |
 | `Idempotency-Key` | Request | §10 |
 | `If-Match` / `ETag` | Both | §11 |
 | `Location` | Response | On `201` and `202` |
@@ -488,19 +491,14 @@ Examples in the contract are what the mock server returns, so they must be safe:
 
 ## 22. Open items in this document
 
+Settled on 2026-10-22: JSON casing and list shape (Minalini, #5); hooks and health paths, cursor encryption, idempotency in middleware, facility scope, rate-limit headers, `X-Request-ID` (Thulasi, #3).
+
 | Item | Pending | PROPOSED answer |
 |---|---|---|
 | `COMPANY_DOMAIN` value (§0) | Vimal | Open: placeholder `<COMPANY_DOMAIN>` |
 | Problem `type` URI form | Vimal | `tag:<COMPANY_DOMAIN>,2026:problem/<code>` (accepted form; domain open) |
-| JSON casing | Minalini | camelCase |
-| Hooks and health paths outside `/api/v1` | Thulasi | Yes |
-| Cursor encryption by middleware | Thulasi | Yes, AEAD-bound to tenant, user and endpoint |
-| `Idempotent-Replayed` header name; idempotency in middleware | Thulasi | Yes, in middleware |
-| Facility scope → 404 | Thulasi | Yes |
-| Rate-limit headers from the draft | Thulasi | Adopt draft-11 |
-| `X-Request-ID` name | Thulasi | `X-Request-ID` |
 | Money shape | Anand | `{ value: "125.00", currency: "USD" }` |
 | HAPI client-assigned UUIDs; ETag translation | Anand | Yes |
 | Facility IANA time zone | Anand | Yes |
-| File service flow, purposes, limits, multipart | Anand | As §15 |
+| File service flow, purposes, limits, multipart; HEIC conversion | Anand | As §15 |
 | HCPCS system URI | Anand | Confirm |
