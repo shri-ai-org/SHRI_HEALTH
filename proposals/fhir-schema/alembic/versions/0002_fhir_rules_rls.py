@@ -1,0 +1,57 @@
+"""FHIR versioning and history, clinical safety triggers, reference data, row-level security.
+
+Frozen SQL in sql_0002/:
+  10_rules.sql            hand-written rule functions (signed notes, Rx, orders, results, AI,
+                          scheduling, audit hash chain)
+  20_fhir_versioning.sql  per-resource snapshot functions and version / history / touch triggers
+  30_guards.sql           attaches the rule functions to tables
+  95_seed.sql             code systems, permission catalogue, system roles
+  90_rls_grants.sql       forced RLS policies and shri_app privileges (applied last, so the
+                          seed above runs before tenant policies exist)
+
+Revision ID: 0002
+Revises: 0001
+Create Date: 2026-10-22
+"""
+from __future__ import annotations
+
+import pathlib
+import re
+
+from alembic import op
+
+revision = "0002"
+down_revision = "0001"
+branch_labels = None
+depends_on = None
+
+SQL_DIR = pathlib.Path(__file__).with_name("sql_0002")
+FILES = ["10_rules.sql", "20_fhir_versioning.sql", "30_guards.sql", "95_seed.sql",
+         "90_rls_grants.sql"]
+
+
+def upgrade() -> None:
+    for name in FILES:
+        op.execute((SQL_DIR / name).read_text())
+
+
+def downgrade() -> None:
+    rls = (SQL_DIR / "90_rls_grants.sql").read_text()
+    for table in sorted(set(re.findall(r"ALTER TABLE (\w+) ENABLE ROW LEVEL SECURITY", rls))):
+        op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
+        op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
+    for policy, table in sorted(set(re.findall(r"CREATE POLICY (\w+) ON (\w+)", rls))):
+        op.execute(f"DROP POLICY IF EXISTS {policy} ON {table}")
+    op.execute("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM shri_app")
+    # Reference data (code systems, permissions, system roles) is kept: clinical rows reference
+    # it, and the seed is idempotent on re-upgrade.
+    # Dropping the functions drops every trigger that uses them.
+    op.execute("""
+        DO $$ DECLARE f record; BEGIN
+          FOR f IN SELECT p.oid::regprocedure AS sig FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'public' AND p.proname LIKE 'shri\\_%'
+                     AND p.proname <> 'shri_npi_valid' LOOP
+            EXECUTE 'DROP FUNCTION IF EXISTS ' || f.sig || ' CASCADE';
+          END LOOP;
+        END $$""")

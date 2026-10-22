@@ -1,0 +1,28 @@
+"""Shri Health OpenEMR Edition - SQLAlchemy 2 models.
+
+``shri.models.fhir``  - clinical data as FHIR R4 / US Core resources (one table per resource,
+                        child tables for repeating elements).
+``shri.models.admin`` - non-clinical features as normalized tables.
+
+Importing this package registers every table on ``Base.metadata`` and applies the generated
+constraints (``constraints.py``), so Alembic and the API see the same schema.
+"""
+from shri.db.base import Base
+
+from . import enums, systems  # noqa: F401
+from .admin import ai, comms, core, medication, orders, platform, practice, rcm  # noqa: F401
+from .fhir import (clinical, datatypes, directory, documents, medication as fhir_medication,  # noqa: F401
+                   orders as fhir_orders, records, workflow)
+from .constraints import apply_all as _apply_constraints
+
+MAPPERS: dict[str, type] = {m.class_.__tablename__: m.class_ for m in Base.registry.mappers}
+_apply_constraints(Base.metadata, MAPPERS)
+
+# FHIR resource tables (have fhir_type) and their child tables.
+FHIR_RESOURCES: dict[str, type] = {
+    cls.fhir_type: cls for cls in MAPPERS.values() if getattr(cls, "fhir_type", None)}
+FHIR_CHILD_TABLES: set[str] = {
+    name for name, cls in MAPPERS.items() if hasattr(cls, "fhir_parent")}
+
+# Tables without tenant_id (platform-wide reference data).
+GLOBAL_TABLES = {name for name, t in Base.metadata.tables.items() if "tenant_id" not in t.c}
