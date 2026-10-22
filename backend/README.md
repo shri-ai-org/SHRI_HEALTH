@@ -28,8 +28,10 @@ async def get_patient(
 
 - `tenant_db` is scoped to the caller's clinic (row-level security). Call `await db.commit()`
   to save; anything not committed is rolled back when the request ends.
-- Raise `NotFound`, `Conflict`, `Forbidden`, `ValidationFailed` from `app/core/errors.py`.
-  Never build error responses by hand.
+- Raise `NotFound`, `Conflict`, `Forbidden`, `ValidationFailed` from `app/core/errors.py`,
+  with `code=` for a specific code from API_STANDARDS §9.3, e.g.
+  `Conflict(code="booking-conflict")`. Responses use the Problem Details shape (§9.1) with
+  `code` and `requestId`. Never build error responses by hand, and never put PHI in `detail`.
 
 ## Stand-in login (development and test only)
 
@@ -37,23 +39,34 @@ Until Keycloak login is built, pick a synthetic test user with the `X-Dev-User` 
 
 | `X-Dev-User` | Role | Clinic |
 |---|---|---|
-| `doctor` | doctor | A |
-| `nurse` | nurse_ma | A |
-| `front-desk` | front_desk | A |
-| `biller` | biller | A |
-| `practice-admin` | practice_admin | A |
-| `platform-admin` | platform_admin (everything) | A |
-| `no-access` | none — use for permission-denied tests | A |
-| `doctor-b` | doctor | B — use for cross-clinic tests |
+| `fd` | FD front desk | A |
+| `ma` | MA medical assistant | A |
+| `rn` | RN nurse | A |
+| `md` | MD physician | A |
+| `app` | APP advanced practice provider | A |
+| `bil` | BIL biller | A |
+| `adm` | ADM practice administrator | A |
+| `co` | CO compliance / privacy officer | A |
+| `sup` | SUP Shri platform support (no PHI) | A |
+| `none` | no roles: use for permission-denied tests | A |
+| `md-b` | MD | B: use for cross-clinic tests |
 
-The role-to-permission map in `app/core/permissions.py` is provisional until the contract's
-`x-permission` names exist. The stand-in refuses to start in staging or production.
+Permission names and the role matrix in `app/core/permissions.py` come from
+`contracts/docs/SECURITY_MODEL.md` §4 (agreed in issue #3). `require()` refuses names that are
+not in the catalogue, so a typo fails at startup. Use `require("authenticated")` for endpoints
+any signed-in user may call. The stand-in refuses to start in staging or production.
 
 ```python
 def test_get_patient_denied(client):
-    r = client.get("/api/v1/patients/...", headers={"X-Dev-User": "no-access"})
+    r = client.get("/api/v1/patients/...", headers={"X-Dev-User": "none"})
     assert r.status_code == 403
 ```
+
+## Request IDs
+
+Every response carries `X-Request-ID` (also `requestId` in error bodies). A client may send its
+own as a UUID; anything else is replaced. `current_request_id()` and `current_traceparent()`
+in `app/core/request_id.py` give them to log records and outbound calls.
 
 ## Run the tests
 
@@ -77,10 +90,10 @@ infra/nginx/make-dev-cert.sh                      # once
 docker compose -f infra/compose/docker-compose.yml up --build
 ```
 
-Then open `https://localhost:8443/api/v1/health` and `https://localhost:8443/api/v1/docs`.
+Then open `https://localhost:8443/health` and `https://localhost:8443/api/v1/docs`.
 Keycloak is at `https://localhost:8443/kc/`. Synthetic data only.
 
 ## Settings
 
 Environment variables (or an OpenBao KV secret when `OPENBAO_ADDR` and `OPENBAO_TOKEN` are set):
-`ENVIRONMENT`, `AUTH_MODE`, `DATABASE_URL`, `RLS_TENANT_SETTING`. See `app/core/config.py`.
+`ENVIRONMENT`, `AUTH_MODE`, `DATABASE_URL`, `RLS_TENANT_SETTING`, `PROBLEM_TYPE_BASE`. See `app/core/config.py`.

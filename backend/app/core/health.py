@@ -1,4 +1,8 @@
-"""GET /health (the process is up) and GET /ready (it can serve requests)."""
+"""GET /health (the process is up) and GET /ready (it can serve requests).
+
+Both sit at the root, outside /api/v1, so load-balancer checks never change with the API
+version (API_STANDARDS §2). Nginx exposes /health publicly; /ready is for internal checks.
+"""
 
 import asyncio
 import logging
@@ -15,6 +19,7 @@ log = logging.getLogger(__name__)
 router = APIRouter(tags=["platform"])
 
 READY_TIMEOUT_SECONDS = 2.0
+RETRY_AFTER_SECONDS = "5"
 
 
 @router.get("/health")
@@ -25,17 +30,19 @@ async def health() -> dict[str, str]:
 @router.get("/ready", response_model=None)
 async def ready(request: Request) -> dict[str, Any] | JSONResponse:
     db: Database | None = request.app.state.db
-    checks: dict[str, str] = {}
     if db is None:
-        checks["database"] = "not_configured"
-    else:
-        try:
-            await asyncio.wait_for(db.ping(), READY_TIMEOUT_SECONDS)
-            checks["database"] = "ok"
-        except Exception:
-            # Log the cause, but never return connection details to the caller.
-            log.warning("Readiness check: database unavailable", exc_info=True)
-            checks["database"] = "unavailable"
-    if all(value == "ok" for value in checks.values()):
-        return {"status": "ready", "checks": checks}
-    return problem(503, "Not ready", instance=request.url.path, checks=checks)
+        log.warning("Readiness check: database not configured")
+        return _not_ready(request)
+    try:
+        await asyncio.wait_for(db.ping(), READY_TIMEOUT_SECONDS)
+    except Exception:
+        # Log the cause, but never return connection details to the caller.
+        log.warning("Readiness check: database unavailable", exc_info=True)
+        return _not_ready(request)
+    return {"status": "ready"}
+
+
+def _not_ready(request: Request) -> JSONResponse:
+    return problem(
+        request, "service-unavailable", "Not ready", headers={"Retry-After": RETRY_AFTER_SECONDS}
+    )

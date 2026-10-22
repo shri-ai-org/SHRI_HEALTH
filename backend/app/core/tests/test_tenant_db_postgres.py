@@ -97,9 +97,9 @@ def test_each_clinic_sees_only_its_own_rows(
     make_app: Callable[..., FastAPI], api_database_url: str
 ) -> None:
     with TestClient(_app(make_app, api_database_url)) as client:
-        a = client.get("/probe", headers={DEV_USER_HEADER: "doctor"})
-        b = client.get("/probe", headers={DEV_USER_HEADER: "doctor-b"})
-        a_again = client.get("/probe", headers={DEV_USER_HEADER: "doctor"})
+        a = client.get("/probe", headers={DEV_USER_HEADER: "md"})
+        b = client.get("/probe", headers={DEV_USER_HEADER: "md-b"})
+        a_again = client.get("/probe", headers={DEV_USER_HEADER: "md"})
 
     assert a.json() == ["a-1", "a-2"]
     assert b.json() == ["b-1"]
@@ -110,7 +110,7 @@ def test_clinic_is_set_again_after_commit(
     make_app: Callable[..., FastAPI], api_database_url: str
 ) -> None:
     with TestClient(_app(make_app, api_database_url)) as client:
-        response = client.post("/probe/b-2", headers={DEV_USER_HEADER: "doctor-b"})
+        response = client.post("/probe/b-2", headers={DEV_USER_HEADER: "md-b"})
 
     assert response.status_code == 200
     assert response.json() == ["b-1", "b-2"]
@@ -120,7 +120,7 @@ def test_session_without_clinic_sees_nothing(
     make_app: Callable[..., FastAPI], api_database_url: str
 ) -> None:
     with TestClient(_app(make_app, api_database_url)) as client:
-        client.get("/probe", headers={DEV_USER_HEADER: "doctor"})  # leaves a pooled connection
+        client.get("/probe", headers={DEV_USER_HEADER: "md"})  # leaves a pooled connection
         response = client.get("/probe-no-tenant")
 
     assert response.json() == []
@@ -128,7 +128,7 @@ def test_session_without_clinic_sees_nothing(
 
 def test_ready_with_database(make_app: Callable[..., FastAPI], api_database_url: str) -> None:
     with TestClient(make_app(database_url=api_database_url)) as client:
-        response = client.get("/api/v1/ready")
+        response = client.get("/ready")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ready", "checks": {"database": "ok"}}
+    assert response.json() == {"status": "ready"}

@@ -1,50 +1,202 @@
-"""Role-to-permission map. STAND-IN until the contract's x-permission values exist.
+"""Permission catalogue and role-to-permission matrix.
 
-Permissions are "<resource>:<action>" (for example "patients:write"). Entries here may use
-a trailing wildcard ("patients:*") or "*" for everything. When Vimal's contract lists the
-real permission names, this map is replaced with exact names; require() does not change.
+Source: contracts/docs/SECURITY_MODEL.md §4.2 (catalogue) and §4.3 (draft matrix), agreed in
+issue #3 (T12–T14) with the additions from T13/T34. The matrix is a DRAFT: clinical rows
+still need the clinical advisors' review. When the contract's x-permission values are
+final, CATALOGUE is checked against them in CI.
+
+Matrix rows the draft does not cover are filled in here and marked "gap" below; they need
+Vimal's and the advisors' confirmation.
 """
 
 import re
 from collections.abc import Iterable
 
-PERMISSION_FORMAT = re.compile(r"^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$")
+PERMISSION_FORMAT = re.compile(r"^[a-z][a-z-]*:[a-z][a-z-]*$")
+
+# Special x-permission values (SECURITY_MODEL §1). Only "authenticated" goes through require();
+# "public" endpoints have no dependency and "partner-signed" is checked by the hook verifier.
+AUTHENTICATED = "authenticated"
+SPECIAL_VALUES = frozenset({"public", AUTHENTICATED, "partner-signed"})
+
+
+def _expand(*groups: str) -> frozenset[str]:
+    """"notes:read|create" -> {"notes:read", "notes:create"}."""
+    result: set[str] = set()
+    for group in groups:
+        resource, actions = group.split(":", 1)
+        result.update(f"{resource}:{action}" for action in actions.split("|"))
+    return frozenset(result)
+
+
+CATALOGUE: frozenset[str] = _expand(
+    # Platform (Thulasi)
+    "users:read|create|update", "roles:read", "user-roles:update", "audit-events:read",
+    "chart-access-reports:read", "patients:break-glass", "integration-messages:read|replay",
+    # Patients (Vimal)
+    "patients:search|read|create|update|restrict", "coverages:read|create|update",
+    "consents:read|create", "timeline:read", "duplicates:read|merge", "patient-merges:undo",
+    # Scheduling, eligibility (Vimal)
+    "slots:read", "appointments:read|create|update|cancel|check-in|status", "status-board:read",
+    "eligibility-checks:read|create",
+    # Encounters and notes (Vimal)
+    "encounters:read|create|update|close|entered-in-error", "vitals:read|create|entered-in-error",
+    "diagnoses:create|remove|entered-in-error", "codes:read",
+    "notes:read|create|update|sign|cosign|entered-in-error", "note-addenda:create",
+    "favorites:read|update", "after-visit-summaries:create", "cosign-rules:read|create|update",
+    # History (Vimal)
+    "problems:read|create|update|entered-in-error", "allergies:read|create|update|entered-in-error",
+    "family-history:read|create|entered-in-error", "social-history:read|create|entered-in-error",
+    "surgical-history:read|create|entered-in-error",
+    # AI (Vimal)
+    "encounter-audio:create", "transcriptions:read|create", "note-drafts:create",
+    "chart-summaries:read|create", "ai-suggestions:decision", "ai-settings:read|update",
+    # Medications (Thulasi)
+    "medications:read|create|discontinue", "medication-reconciliations:create",
+    "prescriptions:read|create|update|safety-check|sign-and-send|cancel|change|entered-in-error",
+    "alerts:override", "refill-requests:read|respond", "pharmacies:read",
+    "medication-history:fetch",
+    # Orders and results (Thulasi)
+    "lab-compendium:read",
+    "orders:read|create|medical-necessity-check|sign-and-send|cancel|entered-in-error",
+    "results:read|acknowledge", "unmatched-results:read|match|reject", "in-office-results:create",
+    # Files, setup, billing, documents (Anand)
+    "files:create|read", "practice-setup:read|create|update", "onboarding:import",
+    "superbills:read|update", "claims:read|create|scrub|submit|status-check|correct|void",
+    "payments:create|card-session", "remittances:read|post", "billing-reports:read",
+    "documents:read|create|update", "faxes:create", "fax-inbox:read|file", "ccda:import|export",
+    "inbox:read|update|complete", "messages:create", "exports:read|create",
+    # Communications and dashboard (Minalini)
+    "message-templates:read|create|update", "communication-preferences:read|update",
+    "communications:read", "operations-dashboard:read",
+)
+
+# Reusable groups from the matrix rows.
+_PATIENT_LOOKUP = _expand("patients:search|read")
+_SCHEDULE_READ = _expand("slots:read", "appointments:read", "status-board:read")
+_CHART_READ = _expand(
+    "timeline:read", "encounters:read", "notes:read", "vitals:read", "problems:read",
+    "allergies:read", "family-history:read", "social-history:read", "surgical-history:read",
+)
+_CLINICAL_ENTERED_IN_ERROR = _expand(
+    "vitals:entered-in-error", "diagnoses:entered-in-error", "notes:entered-in-error",
+    "problems:entered-in-error", "allergies:entered-in-error", "family-history:entered-in-error",
+    "social-history:entered-in-error", "surgical-history:entered-in-error",
+)
+_MED_READ = _expand("medications:read", "prescriptions:read", "refill-requests:read",
+                    "pharmacies:read")
+# gap: the draft matrix has no rows for these; they follow the prescription-draft row.
+_RX_DRAFT = _expand("prescriptions:create|update|safety-check|entered-in-error",
+                    "medication-reconciliations:create", "medications:create",
+                    "medication-history:fetch")
+_RX_PRESCRIBE = _expand("prescriptions:sign-and-send|cancel|change", "alerts:override",
+                        "refill-requests:respond", "medications:discontinue")
+# gap: orders:read, results:read, lab-compendium:read, medical-necessity-check and draft
+# entered-in-error are not in the draft matrix; they follow the order-create row.
+_ORDER_DRAFT = _expand("orders:read|create|medical-necessity-check|entered-in-error",
+                       "results:read", "lab-compendium:read", "in-office-results:create")
+_ORDER_SIGN = _expand("orders:sign-and-send|cancel", "results:acknowledge")
+_UNMATCHED = _expand("unmatched-results:read|match|reject")
+_DOCUMENTS = _expand("documents:read|create|update", "fax-inbox:read|file", "faxes:create")
+_INBOX = _expand("inbox:read|update|complete", "messages:create")
+_COMMS = _expand("communication-preferences:read|update", "communications:read")
+_FILES = _expand("files:create|read")  # gap: not in the draft matrix
+_CLINICIAN_WRITE = _expand(
+    "encounters:create|update|close", "diagnoses:create|remove", "notes:create|update|sign",
+    "note-addenda:create", "after-visit-summaries:create", "problems:create|update",
+    "family-history:create", "social-history:create", "surgical-history:create",
+)
+_AI_CLINICAL = _expand("encounter-audio:create", "transcriptions:read|create",
+                       "note-drafts:create", "chart-summaries:read|create",
+                       "ai-suggestions:decision")
+_ROOMING = _expand("vitals:create", "allergies:create|update", "appointments:status")
+
+_MD = frozenset().union(
+    _PATIENT_LOOKUP, _SCHEDULE_READ, _CHART_READ, _CLINICIAN_WRITE, _ROOMING, _AI_CLINICAL,
+    _CLINICAL_ENTERED_IN_ERROR, _MED_READ, _RX_DRAFT, _RX_PRESCRIBE, _ORDER_DRAFT, _ORDER_SIGN,
+    _UNMATCHED, _DOCUMENTS, _INBOX, _COMMS, _FILES,
+    _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
+            "encounters:entered-in-error", "codes:read", "favorites:read|update",
+            "superbills:read", "ccda:import|export", "patients:break-glass",
+            "operations-dashboard:read", "notes:cosign"),
+)
 
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
-    "platform_admin": frozenset({"*"}),
-    "practice_admin": frozenset({
-        "practice_setup:*", "users:*", "roles:*", "audit:read", "reports:*", "exports:*",
-        "onboarding:*", "message_templates:*", "dashboards:read", "integration:*",
-    }),
-    "doctor": frozenset({
-        "patients:*", "scheduling:read", "eligibility:read", "encounters:*", "notes:*",
-        "history:*", "medications:*", "prescriptions:*", "orders:*", "results:*",
-        "documents:*", "files:*", "inbox:*", "ai:*", "dashboards:read",
-    }),
-    "nurse_ma": frozenset({
-        "patients:*", "scheduling:*", "eligibility:read", "encounters:read", "encounters:write",
-        "notes:read", "history:*", "medications:read", "orders:read", "results:read",
-        "documents:*", "files:*", "inbox:*", "dashboards:read",
-    }),
-    "front_desk": frozenset({
-        "patients:*", "scheduling:*", "eligibility:*", "documents:*", "files:*", "inbox:*",
-        "communications:*", "dashboards:read",
-    }),
-    "biller": frozenset({
-        "patients:read", "eligibility:*", "billing:*", "documents:read", "files:read",
-        "inbox:*", "reports:read",
-    }),
+    # Front desk
+    "FD": frozenset().union(
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _DOCUMENTS, _INBOX, _COMMS, _FILES,
+        _expand("patients:create|update", "coverages:read|create|update",
+                "eligibility-checks:read|create", "consents:read|create", "duplicates:read",
+                "appointments:create|update|cancel|check-in|status", "codes:read",
+                "payments:create|card-session", "ccda:import|export",
+                "operations-dashboard:read"),
+    ),
+    # Medical assistant (rooming)
+    "MA": frozenset().union(
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _CHART_READ, _ROOMING, _MED_READ, _ORDER_DRAFT,
+        _DOCUMENTS, _INBOX, _COMMS, _FILES,
+        _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
+                "codes:read", "medication-reconciliations:create", "medications:create",
+                "medication-history:fetch", "patients:break-glass"),
+    ),
+    # Nurse
+    "RN": frozenset().union(
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _CHART_READ, _ROOMING, _CLINICAL_ENTERED_IN_ERROR,
+        _MED_READ, _RX_DRAFT, _ORDER_DRAFT, _UNMATCHED, _DOCUMENTS, _INBOX, _COMMS, _FILES,
+        _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
+                "notes:create|update", "codes:read", "favorites:read|update",
+                "ccda:import|export", "patients:break-glass", "operations-dashboard:read"),
+    ),
+    # Physician
+    "MD": _MD,
+    # Advanced practice provider: as MD, without co-signing or unmatched results
+    "APP": _MD - _expand("notes:cosign") - _UNMATCHED,
+    # Biller: edits coverage, not demographics (T14)
+    "BIL": frozenset().union(
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _INBOX,
+        _expand("coverages:read|create|update", "eligibility-checks:read|create",
+                "consents:read", "encounters:read", "notes:read", "codes:read",
+                "superbills:read|update",
+                "claims:read|create|scrub|submit|status-check|correct|void",
+                "payments:create|card-session", "remittances:read|post", "billing-reports:read",
+                "documents:read", "files:read", "integration-messages:read",
+                "operations-dashboard:read"),
+    ),
+    # Practice administrator: no clinical access by default
+    "ADM": frozenset().union(
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _INBOX, _COMMS,
+        _expand("patients:create|update|restrict", "coverages:read|create|update",
+                "eligibility-checks:read|create", "consents:read|create",
+                "duplicates:read|merge", "patient-merges:undo",
+                "appointments:create|update|cancel|check-in", "encounters:entered-in-error",
+                "codes:read", "ai-settings:read|update", "cosign-rules:read|create|update",
+                "practice-setup:read|create|update", "onboarding:import",
+                "message-templates:read|create|update", "users:read|create|update",
+                "roles:read", "user-roles:update", "superbills:read", "claims:read",
+                "remittances:read", "billing-reports:read", "exports:read|create",
+                "integration-messages:read|replay", "operations-dashboard:read"),
+    ),
+    # Compliance / privacy officer
+    "CO": frozenset().union(
+        _PATIENT_LOOKUP, _CHART_READ,
+        _expand("patients:restrict", "consents:read", "duplicates:read", "ai-settings:read",
+                "cosign-rules:read", "practice-setup:read", "message-templates:read",
+                "users:read", "roles:read", "exports:read|create", "audit-events:read",
+                "chart-access-reports:read", "patients:break-glass",
+                "communication-preferences:read", "communications:read"),
+    ),
+    # Shri platform support: no PHI by default
+    "SUP": _expand("users:read", "roles:read", "integration-messages:read|replay"),
 }
 
+ROLES = frozenset(ROLE_PERMISSIONS)
 
-def is_valid_permission(permission: str) -> bool:
-    return bool(PERMISSION_FORMAT.match(permission))
+
+def is_known_permission(permission: str) -> bool:
+    return permission in CATALOGUE or permission == AUTHENTICATED
 
 
 def roles_allow(roles: Iterable[str], permission: str) -> bool:
-    resource = permission.split(":", 1)[0]
-    for role in roles:
-        granted = ROLE_PERMISSIONS.get(role, frozenset())
-        if "*" in granted or permission in granted or f"{resource}:*" in granted:
-            return True
-    return False
+    if permission == AUTHENTICATED:
+        return True
+    return any(permission in ROLE_PERMISSIONS.get(role, frozenset()) for role in roles)

@@ -40,12 +40,15 @@ class CurrentUser:
         return permissions.roles_allow(self.roles, permission)
 
 
-# Synthetic users for local development and tests only. Two clinics, so every endpoint
-# can be tested for cross-clinic isolation ("doctor-b" must never see clinic A's data).
+# Synthetic users for local development and tests only (T5): one per role in clinic A, a
+# user with no roles for permission-denied tests, and "md-b" in clinic B for cross-clinic
+# tests (it must never see clinic A's data).
 CLINIC_A = UUID("0a000000-0000-4000-8000-00000000000a")
 CLINIC_B = UUID("0b000000-0000-4000-8000-00000000000b")
 FACILITY_A = UUID("fa000000-0000-4000-8000-00000000000a")
 FACILITY_B = UUID("fb000000-0000-4000-8000-00000000000b")
+
+_DEV_ROLE_ORDER = ("FD", "MA", "RN", "MD", "APP", "BIL", "ADM", "CO", "SUP")
 
 
 def _dev_user(n: int, clinic: UUID, facility: UUID, roles: set[str], name: str) -> CurrentUser:
@@ -59,15 +62,11 @@ def _dev_user(n: int, clinic: UUID, facility: UUID, roles: set[str], name: str) 
 
 
 DEV_USERS: dict[str, CurrentUser] = {
-    "doctor": _dev_user(1, CLINIC_A, FACILITY_A, {"doctor"}, "Dev Doctor"),
-    "nurse": _dev_user(2, CLINIC_A, FACILITY_A, {"nurse_ma"}, "Dev Nurse"),
-    "front-desk": _dev_user(3, CLINIC_A, FACILITY_A, {"front_desk"}, "Dev Front Desk"),
-    "biller": _dev_user(4, CLINIC_A, FACILITY_A, {"biller"}, "Dev Biller"),
-    "practice-admin": _dev_user(5, CLINIC_A, FACILITY_A, {"practice_admin"}, "Dev Practice Admin"),
-    "platform-admin": _dev_user(6, CLINIC_A, FACILITY_A, {"platform_admin"}, "Dev Platform Admin"),
-    "no-access": _dev_user(7, CLINIC_A, FACILITY_A, set(), "Dev No Access"),
-    "doctor-b": _dev_user(8, CLINIC_B, FACILITY_B, {"doctor"}, "Dev Doctor (Clinic B)"),
+    role.lower(): _dev_user(n, CLINIC_A, FACILITY_A, {role}, f"Dev {role}")
+    for n, role in enumerate(_DEV_ROLE_ORDER, start=1)
 }
+DEV_USERS["none"] = _dev_user(90, CLINIC_A, FACILITY_A, set(), "Dev No Roles")
+DEV_USERS["md-b"] = _dev_user(91, CLINIC_B, FACILITY_B, {"MD"}, "Dev MD (Clinic B)")
 
 
 def _settings(request: Request) -> Settings:
@@ -90,12 +89,19 @@ async def current_user(request: Request) -> CurrentUser:
 
 
 def require(permission: str) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
-    if not permissions.is_valid_permission(permission):
-        raise ValueError(f"Permission must look like 'resource:action', got {permission!r}")
+    """`require("patients:read")`, or `require("authenticated")` for any signed-in user.
+
+    Unknown permission names fail at import time, so a typo never ships as an open endpoint.
+    """
+    if not permissions.is_known_permission(permission):
+        raise ValueError(
+            f"Unknown permission {permission!r}: use a name from the catalogue in "
+            "app/core/permissions.py (SECURITY_MODEL §4.2), or 'authenticated'"
+        )
 
     async def check(user: CurrentUser = Depends(current_user)) -> CurrentUser:
         if not user.can(permission):
-            raise Forbidden(f"Missing permission {permission}")
+            raise Forbidden(f"Requires {permission}")
         return user
 
     check.__name__ = f"require_{permission.replace(':', '_').replace('-', '_')}"

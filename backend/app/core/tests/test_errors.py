@@ -3,13 +3,30 @@ from collections.abc import Callable
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.errors import AppError, Conflict, Forbidden, NotFound, ValidationFailed
+from app.core.errors import (
+    CATALOGUE,
+    AppError,
+    Conflict,
+    Forbidden,
+    NotFound,
+    ValidationFailed,
+    field_error,
+)
+
+TYPE_BASE = "tag:shri-health.invalid,2026:problem/"
+
+
+class Name(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    family: str = Field(max_length=5)
 
 
 class Body(BaseModel):
-    date_of_birth: int
+    model_config = ConfigDict(extra="forbid")
+    birth_year: int = Field(ge=1900)
+    name: Name
 
 
 def _client(make_app: Callable[..., FastAPI]) -> TestClient:
@@ -18,10 +35,15 @@ def _client(make_app: Callable[..., FastAPI]) -> TestClient:
     @router.get("/raise/{kind}")
     async def raise_error(kind: str) -> None:
         errors: dict[str, AppError] = {
-            "not-found": NotFound("Patient not found"),
-            "conflict": Conflict("Version changed", current_version=3),
+            "not-found": NotFound(),
+            "booking": Conflict(code="booking-conflict"),
+            "merged": Conflict(code="patient-merged", mergedIntoId="m-1"),
             "forbidden": Forbidden(),
-            "validation": ValidationFailed("Dose out of range"),
+            "rule": ValidationFailed(
+                "Birth year is in the future.",
+                code="business-rule-violation",
+                errors=[field_error("body", "/birthYear", "out-of-range")],
+            ),
         }
         raise errors[kind]
 
@@ -33,61 +55,135 @@ def _client(make_app: Callable[..., FastAPI]) -> TestClient:
     async def echo(body: Body) -> Body:
         return body
 
+    @router.get("/items/{item_id}")
+    async def item(item_id: int, limit: int = 25) -> None:
+        return None
+
     app = make_app()
     app.include_router(router)
     return TestClient(app, raise_server_exceptions=False)
 
 
 @pytest.mark.parametrize(
-    ("kind", "status", "title"),
+    ("kind", "status", "code"),
     [
-        ("not-found", 404, "Not Found"),
-        ("conflict", 409, "Conflict"),
-        ("forbidden", 403, "Forbidden"),
-        ("validation", 422, "Unprocessable Content"),
+        ("not-found", 404, "not-found"),
+        ("booking", 409, "booking-conflict"),
+        ("forbidden", 403, "permission-denied"),
+        ("rule", 422, "business-rule-violation"),
     ],
 )
-def test_app_errors_become_problem_json(
-    make_app: Callable[..., FastAPI], kind: str, status: int, title: str
+def test_app_errors_use_the_problem_shape(
+    make_app: Callable[..., FastAPI], kind: str, status: int, code: str
 ) -> None:
     response = _client(make_app).get(f"/raise/{kind}")
 
     assert response.status_code == status
     assert response.headers["content-type"] == "application/problem+json"
     body = response.json()
+    assert body["type"] == TYPE_BASE + code
+    assert body["title"] == CATALOGUE[code].title
     assert body["status"] == status
-    assert body["title"] == title
-    assert body["type"] == "about:blank"
+    assert body["code"] == code
     assert body["instance"] == f"/raise/{kind}"
+    assert body["requestId"] == response.headers["X-Request-ID"]
 
 
-def test_extra_fields_are_included(make_app: Callable[..., FastAPI]) -> None:
-    body = _client(make_app).get("/raise/conflict").json()
-    assert body["detail"] == "Version changed"
-    assert body["current_version"] == 3
+def test_extensions_are_included(make_app: Callable[..., FastAPI]) -> None:
+    body = _client(make_app).get("/raise/merged").json()
+    assert body["mergedIntoId"] == "m-1"
 
 
-def test_validation_errors_never_echo_submitted_values(make_app: Callable[..., FastAPI]) -> None:
-    response = _client(make_app).post("/echo", json={"date_of_birth": "1970-01-31 SECRET"})
+def test_business_rule_errors_list_fields(make_app: Callable[..., FastAPI]) -> None:
+    body = _client(make_app).get("/raise/rule").json()
+    assert body["errors"] == [{"in": "body", "pointer": "/birthYear", "code": "out-of-range"}]
+
+
+def test_validation_errors_replace_fastapi_default(make_app: Callable[..., FastAPI]) -> None:
+    response = _client(make_app).post(
+        "/echo",
+        json={"birth_year": 1850, "name": {"family": "SECRETNAME"}, "ssn": "999-00-1234"},
+    )
 
     assert response.status_code == 422
-    assert response.headers["content-type"] == "application/problem+json"
-    assert "SECRET" not in response.text
-    assert response.json()["errors"][0]["loc"] == ["body", "date_of_birth"]
+    body = response.json()
+    assert body["code"] == "validation-failed"
+    assert body["detail"] == "3 fields are invalid."
+    assert sorted(body["errors"], key=lambda e: e["pointer"]) == [
+        {"in": "body", "pointer": "/birth_year", "code": "out-of-range"},
+        {"in": "body", "pointer": "/name/family", "code": "too-long"},
+        {"in": "body", "pointer": "/ssn", "code": "unknown-field"},
+    ]
+    assert "SECRETNAME" not in response.text
+    assert "999-00-1234" not in response.text
+    assert "detail" not in body["errors"][0]
+
+
+def test_missing_and_wrongly_typed_fields(make_app: Callable[..., FastAPI]) -> None:
+    body = _client(make_app).post("/echo", json={"birth_year": "abc"}).json()
+    assert sorted(body["errors"], key=lambda e: e["pointer"]) == [
+        {"in": "body", "pointer": "/birth_year", "code": "invalid-type"},
+        {"in": "body", "pointer": "/name", "code": "required"},
+    ]
+
+
+def test_query_and_path_errors_name_the_parameter(make_app: Callable[..., FastAPI]) -> None:
+    body = _client(make_app).get("/items/x?limit=y").json()
+    assert sorted(body["errors"], key=lambda e: e["in"]) == [
+        {"in": "path", "name": "item_id", "code": "invalid-type"},
+        {"in": "query", "name": "limit", "code": "invalid-type"},
+    ]
+
+
+def test_invalid_json_is_malformed_request(make_app: Callable[..., FastAPI]) -> None:
+    response = _client(make_app).post(
+        "/echo", content=b'{"birth_year": 19', headers={"content-type": "application/json"}
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "malformed-request"
 
 
 def test_unhandled_errors_hide_details(make_app: Callable[..., FastAPI]) -> None:
     response = _client(make_app).get("/crash")
 
     assert response.status_code == 500
-    assert response.json() == {
-        "type": "about:blank", "title": "Internal Server Error", "status": 500, "instance": "/crash"
-    }
+    body = response.json()
+    assert body["code"] == "internal-error"
     assert "secret" not in response.text
+    assert body["requestId"] == response.headers["X-Request-ID"]
 
 
-def test_unknown_route_is_problem_json(client: TestClient) -> None:
-    response = client.get("/api/v1/nothing-here")
+@pytest.mark.parametrize(
+    ("method", "path", "status", "code"),
+    [("GET", "/api/v1/nothing-here", 404, "not-found"), ("DELETE", "/echo", 405,
+                                                         "method-not-allowed")],
+)
+def test_framework_errors_are_problems(
+    make_app: Callable[..., FastAPI], method: str, path: str, status: int, code: str
+) -> None:
+    response = _client(make_app).request(method, path)
 
-    assert response.status_code == 404
+    assert response.status_code == status
     assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["code"] == code
+
+
+def test_problem_type_base_comes_from_settings(make_app: Callable[..., FastAPI]) -> None:
+    app = make_app(problem_type_base="tag:example.com,2026:problem/")
+    body = TestClient(app).get("/api/v1/nothing-here").json()
+    assert body["type"] == "tag:example.com,2026:problem/not-found"
+
+
+def test_code_must_match_the_error_class() -> None:
+    with pytest.raises(ValueError, match="needs a 409 code"):
+        Conflict(code="not-found")
+    with pytest.raises(ValueError, match="Unknown problem code"):
+        NotFound(code="no-such-code")
+
+
+def test_field_error_codes_are_checked() -> None:
+    assert field_error("query", "limit", "out-of-range") == {
+        "in": "query", "name": "limit", "code": "out-of-range"
+    }
+    with pytest.raises(ValueError):
+        field_error("body", "/x", "bad-code")

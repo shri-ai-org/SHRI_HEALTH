@@ -10,6 +10,7 @@ from app.core import health
 from app.core.config import Settings, get_settings
 from app.core.db import Database
 from app.core.errors import install_error_handlers
+from app.core.request_id import RequestIdMiddleware
 from app.core.routing import API_PREFIX, include_module_routers
 
 log = logging.getLogger(__name__)
@@ -35,8 +36,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = settings
     application.state.db = Database(settings) if settings.database_url else None
 
+    application.add_middleware(RequestIdMiddleware)
     install_error_handlers(application)
-    application.include_router(health.router, prefix=API_PREFIX)
+    application.include_router(health.router)  # root: /health, /ready
     modules = include_module_routers(application)
 
     if settings.auth_mode == "dev_header":
