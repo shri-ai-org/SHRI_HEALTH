@@ -327,7 +327,7 @@ stateDiagram-v2
 | requisition, labels | `GET /orders/{orderId}/requisition`, `GET /orders/{orderId}/labels` (T33) | `orders:read` | — | Generated on demand through the file service; returns a download link; audited as `export` |
 | `signed` → `transmitted` → `acknowledged` → `specimen-collected` → `partial-result` → `final-result` | none (integration engine) | System | — | Status events stored (`service_request_status_event`); `order.status-changed`; on `final-result`, FHIR `completed` |
 | `draft`/`active` → `revoked` (`cancelled`) | `POST /orders/{orderId}/cancel` `{ reason }` | MD, APP (`orders:cancel`) | **Only before `specimen-collected`**; after that → `409 invalid-state-transition` (T34) | Cancel message to the lab if transmitted |
-| `draft` → `entered-in-error` | `POST /orders/{orderId}/entered-in-error` `{ reason }` | Author (`orders:entered-in-error`, T13) | Drafts only, mirroring prescriptions. **Pending Thulasi**: T13 adds the permission; confirm the draft-only scope | Kept for audit |
+| `draft` → `entered-in-error` | `POST /orders/{orderId}/entered-in-error` `{ reason }` | Author (`orders:entered-in-error`, T13) | **Drafts only**, mirroring prescriptions (confirmed by Thulasi, issue #3); a signed order uses cancel, before `specimen-collected`; otherwise `409 invalid-state-transition` | Kept for audit |
 
 ### 5.6 Result (HAPI; FHIR DiagnosticReport.status) — owner Thulasi, agreed (issue #3, T34–T35)
 
@@ -410,6 +410,5 @@ stateDiagram-v2
 | Merge representation in HAPI | Anand | Patient.link `replaced-by` / `replaces` |
 | Medication list mapping (`intent`, `reported[x]`) | Anand | Agreed by Thulasi (T36); Anand to confirm |
 | `enqueue()` signature change (§3.1) | All four | Core change: Thulasi's PR reviewed by all four |
-| Draft-only scope of `POST /orders/{orderId}/entered-in-error` | Thulasi | Drafts only (§5.5) |
 | Claim close rule; co-signature hold | Anand, RCM analyst | As in §5.7 |
 | Close-encounter guards (diagnosis required?) | Vimal, clinical advisors | At least one signed note; diagnosis required for billable types |
