@@ -1,0 +1,6 @@
+type: http
+scheme: bearer
+description: >-
+  AI gateway only. A per-task delegated token minted by the API when the user starts the AI task: at most
+  5 minutes, bound to user, clinic, patient and task, read permissions only, every use audited as `ai`
+  (SECURITY_MODEL §2.4).

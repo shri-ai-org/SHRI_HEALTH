@@ -1,0 +1,20 @@
+description: >-
+  429. Rate limit reached; wait for `Retry-After` seconds. Code: `rate-limited`.
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  Retry-After:
+    $ref: '../headers/RetryAfter.yaml'
+  RateLimit:
+    $ref: '../headers/RateLimit.yaml'
+  RateLimit-Policy:
+    $ref: '../headers/RateLimitPolicy.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      rate-limited:
+        $ref: '../examples/ProblemRateLimited.yaml'

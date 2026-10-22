@@ -1,0 +1,22 @@
+title: Money
+description: >-
+  An amount of money. `value` is a decimal string with exactly two fraction digits, so JavaScript never
+  rounds it as a float. Field names follow FHIR `Money` (API_STANDARDS §6.3; pending Anand).
+type: object
+additionalProperties: false
+required: [value, currency]
+properties:
+  value:
+    description: Decimal amount as a string, e.g. "125.00". Negative only where an endpoint documents it.
+    type: string
+    pattern: '^-?\d{1,9}\.\d{2}$'
+    maxLength: 13
+    x-phi: financial
+  currency:
+    description: ISO 4217 currency code. Only USD in the MVP.
+    type: string
+    enum: [USD]
+    x-phi: none
+examples:
+  - value: '25.00'
+    currency: USD

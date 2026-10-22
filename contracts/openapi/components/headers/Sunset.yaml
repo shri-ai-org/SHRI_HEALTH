@@ -1,0 +1,4 @@
+description: When this endpoint will stop responding (RFC 8594), as an HTTP date. Never earlier than `Deprecation` (API_STANDARDS §2).
+schema:
+  type: string
+  maxLength: 64

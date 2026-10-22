@@ -1,0 +1,32 @@
+title: HumanName
+description: A person's name, mirroring FHIR `HumanName` (API_STANDARDS §6.2). Always an identifier under HIPAA.
+type: object
+additionalProperties: false
+required: [family]
+properties:
+  given:
+    description: Given names, in order.
+    type: array
+    maxItems: 5
+    items:
+      type: string
+      maxLength: 100
+    x-phi: identifier
+  family:
+    description: Family name.
+    type: string
+    maxLength: 100
+    x-phi: identifier
+  prefix:
+    description: Prefix such as "Dr."
+    type: string
+    maxLength: 20
+    x-phi: identifier
+  suffix:
+    description: Suffix such as "Jr."
+    type: string
+    maxLength: 20
+    x-phi: identifier
+examples:
+  - given: [Ramona980]
+    family: Kuhlman72

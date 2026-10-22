@@ -1,0 +1,347 @@
+# Shri Health API lint ruleset (CONTRACT_GOVERNANCE §5).
+# Base: spectral:oas (recommended) + OWASP API security ruleset, plus our own rules (prefix "shri-").
+# Severity "error" fails CI; "warn" is shown in review. Every shri- rule has a failing fixture in
+# contracts/tests/lint-fixtures/<rule>.yaml, checked by `npm run lint:fixtures`.
+
+extends:
+  - [spectral:oas, recommended]
+  - '@stoplight/spectral-owasp-ruleset'
+
+functionsDir: ./rules
+functions:
+  - publicAllowlist
+  - auditShape
+  - phiProperties
+  - propertyNames
+  - noPhiInUrl
+  - usSpelling
+  - problemResponses
+  - standardErrors
+  - listEnvelope
+  - searchPost
+  - idempotency
+  - ifMatch
+  - asyncOperation
+  - requestClosed
+  - stringLimits
+  - money
+  - dates
+  - syntheticExamples
+  - noSecrets
+  - securityRequirement
+  - cacheControl
+  - descriptions
+  - infraServer
+
+aliases:
+  Operation:
+    - "$.paths[*][get,put,post,patch,delete,head,options,trace]"
+
+rules:
+  # ---- Overrides of base rules -------------------------------------------------------------
+  # A unique operationId is our rule too (shri-operation-id); make the base check an error.
+  operation-operationId-unique: error
+  # Stage 3 has shared components but no paths yet, so every component is "unused" until Stage 4.
+  # Re-enable (warn) in Stage 4 once modules reference the components.
+  oas3-unused-component: off
+  # Contact details for the API are not decided; the repository license is an open decision
+  # (DECISIONS.md "Still open"), so no license object yet.
+  info-contact: off
+
+  # OWASP API4 wants a format, pattern, enum or const on every string. Free text (names, notes, descriptions)
+  # has no meaningful pattern; shri-string-limits requires maxLength (or enum/const/format) on every string instead.
+  owasp:api4:2023-string-restricted: off
+  # OWASP API8 wants Access-Control-Allow-Origin on every response. The API is same-origin (SPA, API and Keycloak
+  # at /kc/ share one origin; SECURITY_MODEL §2.1, Thulasi T7), so no CORS headers are sent.
+  owasp:api8:2023-define-cors-origin: off
+  # OWASP API2 wants an OpenAPI security scheme on every write. Partner callbacks (/hooks/*) are verified by a
+  # partner-specific signature in middleware, not by a security scheme (API_STANDARDS §16.1). shri-security
+  # enforces the session cookie and CSRF header on every other write.
+  owasp:api2:2023-write-restricted: off
+  # OWASP's rule uses the JSONPath "$..parameters[?(@.in.match(...))]", which also visits schema
+  # properties named "in" (our Problem FieldError.in, API_STANDARDS §9.1) and crashes Spectral.
+  # Same check and message, limited to real parameter lists.
+  owasp:api2:2023-no-credentials-in-url:
+    message: "Security credentials detected in path parameter: {{value}}."
+    description: URL parameters must not contain credentials such as API keys, passwords or secrets (OWASP API2:2023; same check as the OWASP ruleset, narrower JSONPath).
+    severity: error
+    formats: [oas3]
+    given:
+      - "$.paths[*].parameters[?(@.in == 'query' || @.in == 'path')]"
+      - "$.paths[*][get,put,post,patch,delete,head,options,trace].parameters[?(@.in == 'query' || @.in == 'path')]"
+      - "$.components.parameters[?(@.in == 'query' || @.in == 'path')]"
+    then:
+      field: name
+      function: pattern
+      functionOptions:
+        notMatch: "/^.*(client_?secret|token|access_?token|refresh_?token|id_?token|password|secret|api-?key).*$/i"
+
+  # ---- Shri Health rules (CONTRACT_GOVERNANCE §5) ------------------------------------------
+  shri-x-owner:
+    description: Every operation has x-owner with an allowed value (API_STANDARDS §21).
+    message: "{{error}}"
+    severity: error
+    given: "#Operation"
+    then:
+      - field: x-owner
+        function: truthy
+      - field: x-owner
+        function: enumeration
+        functionOptions:
+          values: [vimal, thulasi, anand, minalini]
+
+  shri-x-permission:
+    description: Every operation has x-permission — public, authenticated, partner-signed, or resource:action (SECURITY_MODEL §1, §4.1).
+    message: "{{error}}"
+    severity: error
+    given: "#Operation"
+    then:
+      - field: x-permission
+        function: truthy
+      - field: x-permission
+        function: pattern
+        functionOptions:
+          match: "^(public|authenticated|partner-signed|[a-z][a-z-]*:[a-z][a-z-]*)$"
+
+  shri-public-allowlist:
+    description: x-permission "public" only on /auth/login, /auth/callback and /health (SECURITY_MODEL §1).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: publicAllowlist
+
+  shri-x-audit:
+    description: Every operation has x-audit with action and category; patient-scoped paths name the patient source (SECURITY_MODEL §6).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: auditShape
+
+  shri-x-phi:
+    description: Every schema property has x-phi with an allowed value (SECURITY_MODEL §7).
+    message: "{{error}}"
+    severity: error
+    resolved: false
+    given: "$"
+    then:
+      function: phiProperties
+
+  shri-no-phi-in-query:
+    description: No query or path parameter from the PHI denylist; use POST …/search (API_STANDARDS §14.3, ADR-0005).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: noPhiInUrl
+
+  shri-no-delete:
+    description: No DELETE operations (TW §7, VD-G1, D14).
+    message: "{{error}}"
+    severity: error
+    given: "$.paths[*]"
+    then:
+      field: delete
+      function: falsy
+
+  shri-paths-kebab:
+    description: Path segments are lowercase kebab-case; parameters are {camelCaseId} (API_STANDARDS §3).
+    message: "Path \"{{property}}\" must use lowercase kebab-case segments and {camelCaseId} parameters."
+    severity: error
+    given: "$.paths"
+    then:
+      field: "@key"
+      function: pattern
+      functionOptions:
+        match: "^(/([a-z0-9]+(-[a-z0-9]+)*|\\{[a-z][a-zA-Z0-9]*Id\\}|\\{partner\\}))+$"
+
+  shri-properties-camel:
+    description: Property and query parameter names are camelCase (API_STANDARDS §3).
+    message: "{{error}}"
+    severity: error
+    resolved: false
+    given: "$"
+    then:
+      function: propertyNames
+
+  shri-us-spelling:
+    description: U.S. spelling in every identifier and description (VD-G9, D18).
+    message: "{{error}}"
+    severity: error
+    resolved: false
+    given: "$"
+    then:
+      function: usSpelling
+
+  shri-operation-id:
+    description: operationId present and camelCase (verb + noun); uniqueness is checked by operation-operationId-unique (API_STANDARDS §3).
+    message: "{{error}}"
+    severity: error
+    given: "#Operation"
+    then:
+      - field: operationId
+        function: truthy
+      - field: operationId
+        function: pattern
+        functionOptions:
+          match: "^[a-z][a-zA-Z0-9]*$"
+
+  shri-tags:
+    description: Exactly one tag per operation, from the module list (API_STANDARDS §3).
+    message: "Each operation needs exactly one tag, from the module list."
+    severity: error
+    given: "#Operation"
+    then:
+      - field: tags
+        function: length
+        functionOptions:
+          min: 1
+          max: 1
+      - field: "tags[0]"
+        function: enumeration
+        functionOptions:
+          values: [platform, partner-callbacks, files, practice-setup, onboarding, patients, scheduling, eligibility,
+                   encounters, history, ai, medications, orders, billing, documents, ccda, inbox, exports,
+                   communications, dashboards]
+
+  shri-problem-responses:
+    description: Every 4xx/5xx response is application/problem+json with the shared Problem schema (API_STANDARDS §9, ADR-0003).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: problemResponses
+
+  shri-standard-errors:
+    description: Every operation documents 401, 403, 429, 500 (public needs no 401/403; partner-signed no 403); path IDs add 404.
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: standardErrors
+
+  shri-list-envelope:
+    description: GET lists return { items, nextCursor } and accept limit and cursor (API_STANDARDS §8, ADR-0004).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: listEnvelope
+
+  shri-search-post:
+    description: Paths ending in /search are POST only, with limit and cursor in the body (API_STANDARDS §14, ADR-0005).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: searchPost
+
+  shri-idempotency:
+    description: x-idempotency required → required Idempotency-Key and 400, 409, 422 documented (API_STANDARDS §10, ADR-0007).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: idempotency
+
+  shri-if-match:
+    description: PATCH and PUT require If-Match and document 412 and 428 (API_STANDARDS §11, ADR-0008).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: ifMatch
+
+  shri-async:
+    description: x-async operations return 202 with Location and the Operation schema (API_STANDARDS §13).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: asyncOperation
+
+  shri-request-closed:
+    description: Request body schemas set additionalProperties false (API_STANDARDS §7.2).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: requestClosed
+
+  shri-string-limits:
+    description: Every string has maxLength, enum, const, or format date / date-time / uuid / email (CONTRACT_GOVERNANCE §5).
+    message: "{{error}}"
+    severity: error
+    resolved: false
+    given: "$"
+    then:
+      function: stringLimits
+
+  shri-money:
+    description: Properties named *Amount, copay, deductible or balance use the shared Money schema (API_STANDARDS §6.3).
+    message: "{{error}}"
+    severity: error
+    resolved: false
+    given: "$"
+    then:
+      function: money
+
+  shri-dates:
+    description: Properties ending in At are date-time; ending in Date are date or PartialDate (API_STANDARDS §6.1).
+    message: "{{error}}"
+    severity: error
+    resolved: false
+    given: "$"
+    then:
+      function: dates
+
+  shri-examples-synthetic:
+    description: Examples are synthetic — 555-01xx phones, example.com email, Synthea-style names, TEST identifiers, no SSNs (API_STANDARDS §20).
+    message: "{{error}}"
+    severity: error
+    resolved: false
+    given: "$"
+    then:
+      function: syntheticExamples
+
+  shri-no-secrets:
+    description: No examples or defaults that look like keys or tokens (CONTRACT_GOVERNANCE §5).
+    message: "{{error}}"
+    severity: error
+    resolved: false
+    given: "$"
+    then:
+      function: noSecrets
+
+  shri-security:
+    description: Non-public operations require the session cookie; unsafe methods also require csrfHeader; public and partner-signed set security [] (SECURITY_MODEL §2.3).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: securityRequirement
+
+  shri-infra-server:
+    description: /health and /hooks/* override servers with "/"; other paths use /api/v1; /ready is not in the contract (API_STANDARDS §2).
+    message: "{{error}}"
+    severity: error
+    given: "$"
+    then:
+      function: infraServer
+
+  shri-cache-control:
+    description: Success responses document Cache-Control no-store (API_STANDARDS §7.2).
+    message: "{{error}}"
+    severity: warn
+    given: "$"
+    then:
+      function: cacheControl
+
+  shri-description:
+    description: Every operation and component schema has a description (CONTRACT_GOVERNANCE §5).
+    message: "{{error}}"
+    severity: warn
+    given: "$"
+    then:
+      function: descriptions

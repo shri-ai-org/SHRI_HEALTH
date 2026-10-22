@@ -1,0 +1,20 @@
+description: >-
+  412. `If-Match` does not match the current version; the `ETag` header carries the current version so the client can re-read. Code: `precondition-failed`.
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  RateLimit:
+    $ref: '../headers/RateLimit.yaml'
+  RateLimit-Policy:
+    $ref: '../headers/RateLimitPolicy.yaml'
+  ETag:
+    $ref: '../headers/ETag.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      precondition-failed:
+        $ref: '../examples/ProblemPreconditionFailed.yaml'

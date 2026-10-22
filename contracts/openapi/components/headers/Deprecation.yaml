@@ -1,0 +1,5 @@
+description: When this endpoint was or will be deprecated (RFC 9745), as a structured date, e.g. `@1798761600` (API_STANDARDS §2, ADR-0010).
+schema:
+  type: string
+  pattern: '^@-?\d{1,15}$'
+  maxLength: 17

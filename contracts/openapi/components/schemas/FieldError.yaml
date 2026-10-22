@@ -1,0 +1,27 @@
+title: FieldError
+description: >-
+  One invalid field in a `validation-failed` or `business-rule-violation` problem (API_STANDARDS §9.1).
+  Never echoes the submitted value.
+type: object
+additionalProperties: false
+required: [in, code]
+properties:
+  in:
+    description: Where the field is.
+    type: string
+    enum: [body, query, path, header]
+    x-phi: none
+  pointer:
+    description: RFC 6901 JSON Pointer to the field, for `in = body`.
+    type: string
+    pattern: '^(/[^/]*)*$'
+    maxLength: 500
+    x-phi: none
+  name:
+    description: Parameter or header name, for `in` other than `body`.
+    type: string
+    maxLength: 100
+    x-phi: none
+  code:
+    $ref: './FieldErrorCode.yaml'
+    x-phi: none

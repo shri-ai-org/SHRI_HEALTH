@@ -1,0 +1,15 @@
+title: FieldErrorCode
+description: Why one field failed validation (API_STANDARDS §9.2).
+type: string
+enum:
+  - required
+  - unknown-field
+  - invalid-format
+  - invalid-type
+  - too-short
+  - too-long
+  - out-of-range
+  - not-allowed-value
+  - invalid-reference
+  - conflicting-fields
+  - not-editable

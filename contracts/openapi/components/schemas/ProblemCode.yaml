@@ -1,0 +1,45 @@
+title: ProblemCode
+description: >-
+  Stable machine key for an error (API_STANDARDS §9.3, ADR-0003). Clients switch on this value, never on
+  `title` or `detail`. Codes are never renamed or reused; new codes may be added, so clients must handle
+  unknown values. The last four are used only inside a failed operation (API_STANDARDS §13).
+type: string
+enum:
+  - malformed-request
+  - invalid-cursor
+  - idempotency-key-missing
+  - unauthenticated
+  - session-expired
+  - permission-denied
+  - csrf-check-failed
+  - break-glass-required
+  - not-found
+  - method-not-allowed
+  - not-acceptable
+  - invalid-state-transition
+  - record-locked
+  - booking-conflict
+  - possible-duplicate
+  - patient-merged
+  - idempotency-request-in-progress
+  - feature-disabled
+  - consent-required
+  - gone
+  - precondition-failed
+  - payload-too-large
+  - unsupported-media-type
+  - validation-failed
+  - business-rule-violation
+  - idempotency-key-reused
+  - file-not-ready
+  - precondition-required
+  - rate-limited
+  - internal-error
+  - upstream-error
+  - clinical-store-unavailable
+  - service-unavailable
+  - upstream-timeout
+  - ai-unavailable
+  - ai-output-rejected
+  - partner-rejected
+  - partner-timeout

@@ -1,0 +1,20 @@
+description: >-
+  403. The role lacks the endpoint's permission (checked before any lookup), the CSRF or Origin check failed, or the chart is restricted. Codes: `permission-denied`, `csrf-check-failed`, `break-glass-required`.
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  RateLimit:
+    $ref: '../headers/RateLimit.yaml'
+  RateLimit-Policy:
+    $ref: '../headers/RateLimitPolicy.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      permission-denied:
+        $ref: '../examples/ProblemPermissionDenied.yaml'
+      break-glass-required:
+        $ref: '../examples/ProblemBreakGlassRequired.yaml'

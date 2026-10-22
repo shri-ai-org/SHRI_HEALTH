@@ -1,0 +1,10 @@
+title: Cursor
+description: >-
+  Opaque pagination cursor: "continue the list from here". URL-safe, at most 512 characters, valid for
+  24 hours, encrypted and authenticated by the middleware, and never contains readable PHI
+  (API_STANDARDS §8.1, ADR-0004). An expired or tampered cursor gives `400 invalid-cursor`.
+type: string
+pattern: '^[A-Za-z0-9_-]+$'
+maxLength: 512
+examples:
+  - c1Zm9vYmFy

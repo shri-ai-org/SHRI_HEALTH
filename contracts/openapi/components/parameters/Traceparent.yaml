@@ -1,0 +1,8 @@
+name: traceparent
+in: header
+description: Optional W3C Trace Context, propagated (API_STANDARDS §18).
+required: false
+schema:
+  type: string
+  pattern: '^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$'
+  maxLength: 55

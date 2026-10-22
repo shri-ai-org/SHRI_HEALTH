@@ -1,0 +1,20 @@
+title: Quantity
+description: A measured amount with a UCUM unit code (system `http://unitsofmeasure.org`), e.g. a vital sign (API_STANDARDS §6.4).
+type: object
+additionalProperties: false
+required: [value, unit]
+properties:
+  value:
+    description: The measured value.
+    type: number
+    minimum: -1000000
+    maximum: 1000000
+    x-phi: clinical
+  unit:
+    description: UCUM unit code, e.g. `mm[Hg]`, `[degF]`, `kg`.
+    type: string
+    maxLength: 32
+    x-phi: none
+examples:
+  - value: 98.6
+    unit: '[degF]'

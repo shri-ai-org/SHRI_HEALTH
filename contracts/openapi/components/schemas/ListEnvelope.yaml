@@ -1,0 +1,19 @@
+title: ListEnvelope
+description: >-
+  The shape of every list response (API_STANDARDS §8.1, ADR-0004). OpenAPI 3.1 has no generics, so each
+  list schema copies this shape with its own item type, e.g. `PatientSummaryList`. No `nextCursor` means
+  this is the last page. Total counts are not returned by default.
+type: object
+required: [items]
+properties:
+  items:
+    description: The items on this page. Each module list schema replaces this with its own item type.
+    type: array
+    maxItems: 100
+    items:
+      type: object
+    x-phi: none
+  nextCursor:
+    $ref: './Cursor.yaml'
+    description: Cursor for the next page. Absent on the last page.
+    x-phi: none

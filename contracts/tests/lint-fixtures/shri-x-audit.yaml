@@ -1,0 +1,18 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-x-audit. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths:
+  /patients/{patientId}:
+    get:
+      operationId: getPatient
+      tags: [patients]
+      x-owner: vimal
+      x-permission: patients:read
+      x-audit: { action: R, category: phi-read }
+      description: Patient-scoped, but x-audit does not say where the patient ID comes from.
+      responses:
+        '200': { description: OK }

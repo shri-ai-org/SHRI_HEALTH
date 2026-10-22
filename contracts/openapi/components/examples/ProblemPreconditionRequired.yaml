@@ -1,0 +1,9 @@
+summary: precondition-required
+value:
+  type: tag:company-domain.invalid,2026:problem/precondition-required
+  title: "If-Match required"
+  status: 428
+  detail: "Send the If-Match header with the ETag you loaded."
+  instance: /api/v1/notes/2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+  code: precondition-required
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11

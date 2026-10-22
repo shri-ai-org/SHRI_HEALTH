@@ -1,0 +1,16 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-x-owner. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths:
+  /patients:
+    get:
+      operationId: listPatients
+      tags: [patients]
+      x-permission: patients:read
+      description: Missing x-owner.
+      responses:
+        '200': { description: OK }
