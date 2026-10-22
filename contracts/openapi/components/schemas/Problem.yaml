@@ -8,10 +8,12 @@ required: [type, title, status, code, requestId]
 properties:
   type:
     description: >-
-      Absolute URI for the problem type: `tag:<COMPANY_DOMAIN>,2026:problem/<code>` (API_STANDARDS §0, §9.1).
-      Until the domain is decided, the placeholder `company-domain.invalid` is used.
+      Absolute URI for the problem type: the base `tag:company-domain.invalid,2026:problem/` followed by the
+      `code` (API_STANDARDS §0, §9.1). `company-domain.invalid` is a placeholder until the company domain is
+      confirmed; the pattern changes with it.
     type: string
     format: uri
+    pattern: '^tag:company-domain\.invalid,2026:problem/[a-z][a-z-]*$'
     maxLength: 255
     x-phi: none
   title:

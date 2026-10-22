@@ -15,10 +15,9 @@ Values used in more than one rule are defined once here.
 
 | Constant | Value | Status |
 |---|---|---|
-| `COMPANY_DOMAIN` | `<COMPANY_DOMAIN>` (placeholder) | **Open, pending Vimal:** a domain the organization owns. Replacing the placeholder here is the only change needed; every URI below is built from it. |
-| Placeholder in machine-readable files | `company-domain.invalid` | `<` and `>` are not valid inside a URI, so the contract's examples and the Problem `type` use this reserved `.invalid` name (RFC 2606) until the domain is decided |
-| Problem type base | `tag:<COMPANY_DOMAIN>,2026:problem/` | Derived from `COMPANY_DOMAIN` (§9.1) |
-| FHIR identifier system base | `https://fhir.<COMPANY_DOMAIN>/sid/` | Derived from `COMPANY_DOMAIN` (DATA_OWNERSHIP §3.1) |
+| `COMPANY_DOMAIN` | `company-domain.invalid` (placeholder) | **Open, pending management through Vimal:** a domain the organization owns. The placeholder uses the reserved `.invalid` name (RFC 2606) so it is a valid URI part and can never resolve. When the domain is confirmed, it is replaced in the contract (`Problem.type` pattern and examples), in this table, and in `core/errors.py` settings (Thulasi, PR #7) together |
+| Problem type base | `tag:company-domain.invalid,2026:problem/` | Exactly this string, everywhere: docs, `components/schemas/Problem.yaml` (enforced by its `pattern`), examples, lint fixtures and Thulasi's `core/errors.py` default (PR #7). Derived from `COMPANY_DOMAIN` (§9.1) |
+| FHIR identifier system base | `https://fhir.company-domain.invalid/sid/` | Derived from `COMPANY_DOMAIN` (DATA_OWNERSHIP §3.1) |
 
 ## 1. Principles
 
@@ -217,7 +216,7 @@ Code system URIs (FHIR canonical):
 
 ```json
 {
-  "type": "tag:<COMPANY_DOMAIN>,2026:problem/validation-failed",
+  "type": "tag:company-domain.invalid,2026:problem/validation-failed",
   "title": "Request validation failed",
   "status": 422,
   "detail": "2 fields are invalid.",
@@ -233,7 +232,7 @@ Code system URIs (FHIR canonical):
 
 | Member | Rule |
 |---|---|
-| `type` | Absolute URI unique to the problem. **PROPOSED:** an RFC 4151 tag URI built from the Problem type base in §0: `tag:<COMPANY_DOMAIN>,2026:problem/<code>`, which needs no hosted page. **Open:** the value of `COMPANY_DOMAIN` (§0). |
+| `type` | Absolute URI unique to the problem. **PROPOSED:** an RFC 4151 tag URI: the Problem type base in §0 followed by the code, `tag:company-domain.invalid,2026:problem/<code>`, which needs no hosted page. **Open:** the value of `COMPANY_DOMAIN` (§0). |
 | `title` | Fixed English text per `code` |
 | `status` | Same as the HTTP status |
 | `detail` | Human-readable, **never contains PHI or request values** (for example never "Patient John Smith not found") |
@@ -497,8 +496,8 @@ Settled on 2026-10-22: JSON casing and list shape (Minalini, #5); hooks and heal
 
 | Item | Pending | PROPOSED answer |
 |---|---|---|
-| `COMPANY_DOMAIN` value (§0) | Vimal | Open: placeholder `<COMPANY_DOMAIN>` |
-| Problem `type` URI form | Vimal | `tag:<COMPANY_DOMAIN>,2026:problem/<code>` (accepted form; domain open) |
+| `COMPANY_DOMAIN` value (§0) | Vimal (management) | Open: placeholder `company-domain.invalid` |
+| Problem `type` URI form | — | `tag:company-domain.invalid,2026:problem/<code>` (accepted form, matches Thulasi's code in PR #7; domain open) |
 | Money shape | Anand | `{ value: "125.00", currency: "USD" }` |
 | HAPI client-assigned UUIDs; ETag translation | Anand | Yes |
 | Facility IANA time zone | Anand | Yes |
