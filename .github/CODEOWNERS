@@ -5,6 +5,21 @@
 /docs/context/                            @vimalshriai @thulasishriai-ui @anandshriai @Minalini-shriai
 /docs/adr/                                @vimalshriai @thulasishriai-ui @anandshriai @Minalini-shriai
 /contracts/                               @vimalshriai
+# Contract module files: implementing owners approve their sections (T2). Must stay after
+# /contracts/ because the last matching line wins. Vimal-only modules are covered above.
+/contracts/openapi/modules/platform.yaml        @vimalshriai @thulasishriai-ui
+/contracts/openapi/modules/medications.yaml     @vimalshriai @thulasishriai-ui
+/contracts/openapi/modules/orders.yaml          @vimalshriai @thulasishriai-ui
+/contracts/openapi/modules/files.yaml           @vimalshriai @anandshriai
+/contracts/openapi/modules/practice-setup.yaml  @vimalshriai @anandshriai
+/contracts/openapi/modules/onboarding.yaml      @vimalshriai @anandshriai
+/contracts/openapi/modules/billing.yaml         @vimalshriai @anandshriai
+/contracts/openapi/modules/documents.yaml       @vimalshriai @anandshriai
+/contracts/openapi/modules/ccda.yaml            @vimalshriai @anandshriai
+/contracts/openapi/modules/inbox.yaml           @vimalshriai @anandshriai
+/contracts/openapi/modules/exports.yaml         @vimalshriai @anandshriai
+/contracts/openapi/modules/communications.yaml  @vimalshriai @Minalini-shriai
+/contracts/openapi/modules/dashboards.yaml      @vimalshriai @Minalini-shriai
 /backend/app/core/                        @thulasishriai-ui
 /backend/app/integration/                 @thulasishriai-ui
 /backend/app/db/                          @anandshriai
