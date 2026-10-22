@@ -96,3 +96,11 @@ Idle timeout on shared workstations (15 min proposed); clinical rows of the role
 - The repository is cloned at `SHRI HEALTH/SHRI_HEALTH`, inside the old working folder. The working folder still holds the context pack (including duplicate copies of `00_` and `01_`); none of it is in the repository except through `docs/context/`, which already came from `main`. Copy `CLAUDE.local.md` into the clone if you want it loaded there (it is git-ignored).
 - `CLAUDE.local.md` points to `backend/app/db/README.md`, which will only exist once Anand's schema is in the repository.
 - Stage 2 files are on branch `vimal/contracts-foundation`: `contracts/docs/**`, `docs/adr/0002`–`0010` plus the ADR index, and `docs/context/DECISIONS.md` (new "Proposed (not yet agreed)" section and "Still open" rows only).
+
+## 7. After the Stage 2 sign-offs (2026-10-22)
+
+- Your answers to Minalini's M7 (phone is an identifier; exact full-number match only) and M15 (warning at 13 minutes, pending Thulasi), and on M11 and M13, are applied (API_STANDARDS §14.2, §15; SECURITY_MODEL §2.1, §8).
+- Thulasi's T30 point (where shared resources live in HAPI) is now Anand's item A33 and blocks Stage 4.
+- **Reminder:** when Thulasi opens the PR changing `enqueue()` (T29), all four of you review it.
+- Still open from you: `COMPANY_DOMAIN` (API_STANDARDS §0) and the encounter-close rules (DATA_OWNERSHIP §5.2).
+

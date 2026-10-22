@@ -4,6 +4,15 @@ From: Vimal (drafted with Claude Code) · 2026-10-22 · Becomes GitHub issues on
 
 Each item has a **PROPOSED** answer already written into the documents so work can continue. Please reply "agree", or give your answer. Items marked **blocks Stage 3** are needed before the shared contract components are written.
 
+## Status after your sign-off (issue #3, 2026-10-22)
+
+All items T1–T37 are **agreed**; every "Agree, with" addition is applied to the documents in PR #2. Still with you:
+
+- [ ] Confirm the idle-timeout warning at 13 minutes with a "Stay signed in" button that counts as user activity (Vimal's answer to Minalini's M15; SECURITY_MODEL §2.1).
+- [ ] Confirm `POST /orders/{orderId}/entered-in-error` is for drafts only, mirroring prescriptions (your T13 permission; ENDPOINT_INVENTORY #228, DATA_OWNERSHIP §5.5).
+- [ ] Open the PR that changes `enqueue()`'s signature (T29). **Core change, all-four review:** Vimal, Anand and Minalini review it before merge.
+- [ ] Add the CODEOWNERS lines for the contract module files once Stage 3 creates them, after the `/contracts/` line (T2). The list is in the Stage 3 PR description.
+
 ## Repository and CI
 
 | # | Item | PROPOSED answer | Where |

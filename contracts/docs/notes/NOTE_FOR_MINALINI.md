@@ -4,6 +4,19 @@ From: Vimal (drafted with Claude Code) · 2026-10-22 · Becomes GitHub issues on
 
 Each item has a **PROPOSED** answer already written into the documents so work can continue. Please reply "agree", or give your answer. Items marked **blocks Stage 3** are needed for the shared contract components; the mock server comes to you first (VG §4).
 
+## Status after your sign-off (issue #5, 2026-10-22)
+
+Applied in PR #2: M1, M2, M3 (`orval` with a custom mutator), M4, M5 (FRS v1.2 is the source for field lists), M6, M8 (your design task), M9, M11 (initials plus appointment time), M12, M13 (JPEG and PNG for P0; HEIC only if Anand's file service converts it), M14.
+
+Vimal's answers to your questions:
+
+- **M7:** yes, a full phone number is an identifier. It is only ever sent in the body of `POST /patients/search`, never in a URL. Exact match on the full number (normalized digits) only; no partial-number search in the MVP, because partial search makes it easy to fish through records (API_STANDARDS §14.2).
+- **M15:** the idle timeout is 15 minutes (Thulasi, T9, pending the clinical advisors) and 12 hours absolute. Proposed: warn at 13 minutes, two minutes before logout, with a "Stay signed in" button that counts as user activity (calls `POST /auth/refresh`). Thulasi to confirm (SECURITY_MODEL §2.1).
+
+Still with you: M10 (EVENTS §4 review) and M16 (rows #220–226). Also: please review Thulasi's PR changing `enqueue()` (core change, all four review).
+
+## Original items
+
 | # | Item | PROPOSED answer | Where |
 |---|---|---|---|
 | M1 | JSON property and query parameter casing (**blocks Stage 3**) | camelCase | API_STANDARDS §3 |

@@ -60,3 +60,14 @@ Each item has a **PROPOSED** answer already written into the documents so work c
 | A30 | Events billing, inbox and documents consume and publish | As listed | EVENTS §4 |
 | A31 | Schema change requests: `user_clinical_preference` (favorites; P0 gap), co-signature rule configuration, draft `encounter_diagnosis` (if option B), encounter row (A2), version columns (A13), no full-SSN column (pending management, VD-SSN) | Please confirm | DATA_OWNERSHIP §2.1 |
 | A32 | Sign off your rows (#148–219) | — | ENDPOINT_INVENTORY |
+
+## Added after Thulasi's and Minalini's sign-offs (2026-10-22)
+
+| # | Item | PROPOSED answer | Where |
+|---|---|---|---|
+| A33 | **Where shared resources live in HAPI** (Practitioner, Organization, Location): the default partition shared by all clinics, or a copy per clinic. Raised by Thulasi (T30); your design decision; **blocks Stage 4**. Also: outside `/fhir` clients get their partition from machine-token claims | Your design | DATA_OWNERSHIP §3.4 |
+| A34 | HEIC (iPhone photo format) for insurance-card images: accepted only if the file service converts it for display. P0 accepts JPEG and PNG (Minalini M13, Vimal) | Your call | API_STANDARDS §15 |
+| A35 | Confirm the medication-list mapping: MedicationRequest with `intent` and `reported[x]` for patient-reported items (Thulasi T36) | Confirm | DATA_OWNERSHIP §2.2 |
+| A36 | Break-glass notice to the privacy officer arrives as an **inbox item for CO**, from the `break-glass.granted` event, never as an email with PHI (Thulasi T16) | Add the inbox item type | EVENTS §4, SECURITY_MODEL §5.2 |
+| A37 | Review Thulasi's PR changing `enqueue()`'s signature (T29): core change, all four of us review it | Review | DATA_OWNERSHIP §3.1 |
+
