@@ -831,7 +831,7 @@ components:
             queued:
               $ref: '#/components/examples/OperationQueued'
     BadRequest:
-      description: '400. Bad request: the body or a parameter cannot be parsed, the cursor is invalid, or a required `Idempotency-Key` is missing. Codes: `malformed-request`, `invalid-cursor`, `idempotency-key-missing`.'
+      description: '400. The request body is not parseable JSON (`malformed-request`), the cursor is expired or tampered with (`invalid-cursor`), or a required `Idempotency-Key` is missing (`idempotency-key-missing`). An invalid or unparseable parameter is not a 400: it is `422 validation-failed` naming the parameter (API_STANDARDS §9.3).'
       headers:
         X-Request-ID:
           $ref: '#/components/headers/XRequestId'
@@ -1015,7 +1015,7 @@ components:
             unauthenticated:
               $ref: '#/components/examples/ProblemUnauthenticated'
     UnprocessableContent:
-      description: '422. Valid JSON, but invalid fields or a business rule rejects it, the `Idempotency-Key` was reused with a different body, or a referenced file is not ready. Codes: `validation-failed`, `business-rule-violation`, `idempotency-key-reused`, `file-not-ready`.'
+      description: 422. A body field or a path, query or header parameter is invalid or cannot be parsed (`validation-failed`; each field error names the body pointer or the parameter), a business rule rejects the request (`business-rule-violation`), the `Idempotency-Key` was reused with a different body (`idempotency-key-reused`), or a referenced file is not ready (`file-not-ready`). API_STANDARDS §9.3.
       headers:
         X-Request-ID:
           $ref: '#/components/headers/XRequestId'
@@ -1032,6 +1032,8 @@ components:
           examples:
             validation-failed:
               $ref: '#/components/examples/ProblemValidationFailed'
+            invalid-parameter:
+              $ref: '#/components/examples/ProblemInvalidParameter'
   securitySchemes:
     csrfHeader:
       type: apiKey
@@ -1111,6 +1113,20 @@ components:
         instance: /api/v1/me
         code: internal-error
         requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemInvalidParameter:
+      summary: invalid parameter (422, not 400)
+      value:
+        type: tag:company-domain.invalid,2026:problem/validation-failed
+        title: Request validation failed
+        status: 422
+        detail: 1 parameter is invalid.
+        instance: /api/v1/appointments
+        code: validation-failed
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+        errors:
+          - in: query
+            name: limit
+            code: out-of-range
     ProblemInvalidStateTransition:
       summary: invalid-state-transition
       value:

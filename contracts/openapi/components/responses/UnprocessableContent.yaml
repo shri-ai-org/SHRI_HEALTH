@@ -1,5 +1,5 @@
 description: >-
-  422. Valid JSON, but invalid fields or a business rule rejects it, the `Idempotency-Key` was reused with a different body, or a referenced file is not ready. Codes: `validation-failed`, `business-rule-violation`, `idempotency-key-reused`, `file-not-ready`.
+  422. A body field or a path, query or header parameter is invalid or cannot be parsed (`validation-failed`; each field error names the body pointer or the parameter), a business rule rejects the request (`business-rule-violation`), the `Idempotency-Key` was reused with a different body (`idempotency-key-reused`), or a referenced file is not ready (`file-not-ready`). API_STANDARDS §9.3.
 headers:
   X-Request-ID:
     $ref: '../headers/XRequestId.yaml'
@@ -16,3 +16,5 @@ content:
     examples:
       validation-failed:
         $ref: '../examples/ProblemValidationFailed.yaml'
+      invalid-parameter:
+        $ref: '../examples/ProblemInvalidParameter.yaml'

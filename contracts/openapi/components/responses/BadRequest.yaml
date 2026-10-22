@@ -1,5 +1,5 @@
 description: >-
-  400. Bad request: the body or a parameter cannot be parsed, the cursor is invalid, or a required `Idempotency-Key` is missing. Codes: `malformed-request`, `invalid-cursor`, `idempotency-key-missing`.
+  400. The request body is not parseable JSON (`malformed-request`), the cursor is expired or tampered with (`invalid-cursor`), or a required `Idempotency-Key` is missing (`idempotency-key-missing`). An invalid or unparseable parameter is not a 400: it is `422 validation-failed` naming the parameter (API_STANDARDS §9.3).
 headers:
   X-Request-ID:
     $ref: '../headers/XRequestId.yaml'

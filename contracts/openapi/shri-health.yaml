@@ -224,6 +224,8 @@ components:
       $ref: 'components/examples/ProblemConflictPossibleDuplicate.yaml'
     ProblemInternalError:
       $ref: 'components/examples/ProblemInternalError.yaml'
+    ProblemInvalidParameter:
+      $ref: 'components/examples/ProblemInvalidParameter.yaml'
     ProblemInvalidStateTransition:
       $ref: 'components/examples/ProblemInvalidStateTransition.yaml'
     ProblemMalformedRequest:
