@@ -1,0 +1,18 @@
+description: >-
+  422. Valid JSON, but invalid fields or a business rule rejects it, the `Idempotency-Key` was reused with a different body, or a referenced file is not ready. Codes: `validation-failed`, `business-rule-violation`, `idempotency-key-reused`, `file-not-ready`.
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  RateLimit:
+    $ref: '../headers/RateLimit.yaml'
+  RateLimit-Policy:
+    $ref: '../headers/RateLimitPolicy.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      validation-failed:
+        $ref: '../examples/ProblemValidationFailed.yaml'

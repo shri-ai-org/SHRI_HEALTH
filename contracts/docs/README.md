@@ -17,6 +17,7 @@ These documents set the rules for the API contract in `contracts/openapi/`. The 
 | [EVENTS.md](EVENTS.md) | Domain event naming, envelope, Server-Sent Events framing, the initial event catalogue | Thulasi (publisher and stream), Anand and Minalini (consumers) |
 | [TOOLCHAIN.md](TOOLCHAIN.md) | OpenAPI version, file layout, bundler, linter, mock server, breaking-change check, contract tests, client generator, with versions checked on 2026-10-22 | Vimal, Thulasi (CI), Minalini (client generator) |
 | [CONTRACT_GOVERNANCE.md](CONTRACT_GOVERNANCE.md) | How anyone proposes a change, review rules, breaking changes, the lint ruleset, contract tests | Vimal, Thulasi |
+| [EXTENSIONS.md](EXTENSIONS.md) | The `x-owner`, `x-permission`, `x-audit` and `x-phi` contract extensions: values, who reads them, lint rules | Vimal, Thulasi |
 | [GLOSSARY.md](GLOSSARY.md) | Domain terms in plain English | Everyone (review only) |
 | [notes/](notes/) | One note per person with every item that needs their answer, each with a PROPOSED answer | — |
 

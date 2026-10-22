@@ -1,0 +1,21 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-no-phi-in-query. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths:
+  /patients:
+    get:
+      operationId: listPatients
+      tags: [patients]
+      x-owner: vimal
+      x-permission: patients:search
+      description: MRN in the query string puts PHI in the URL.
+      parameters:
+        - name: mrn
+          in: query
+          schema: { type: string, maxLength: 20 }
+      responses:
+        '200': { description: OK }

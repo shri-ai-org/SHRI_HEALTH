@@ -1,0 +1,6 @@
+description: Seconds to wait before retrying or polling again (RFC 9110). Sent with `202`, `429` and `503`.
+schema:
+  type: integer
+  format: int32
+  minimum: 0
+  maximum: 86400

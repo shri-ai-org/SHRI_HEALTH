@@ -1,0 +1,18 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-cache-control. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths:
+  /me:
+    get:
+      operationId: getCurrentUser
+      tags: [platform]
+      x-owner: thulasi
+      x-permission: authenticated
+      description: 200 without Cache-Control.
+      responses:
+        '200':
+          description: OK

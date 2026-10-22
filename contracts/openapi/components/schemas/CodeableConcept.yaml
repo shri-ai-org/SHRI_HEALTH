@@ -1,0 +1,17 @@
+title: CodeableConcept
+description: One or more codings for the same concept, plus optional free text, as in FHIR `CodeableConcept` (API_STANDARDS §6.4).
+type: object
+additionalProperties: false
+properties:
+  codings:
+    description: Codings for this concept, from one or more code systems.
+    type: array
+    maxItems: 10
+    items:
+      $ref: './Coding.yaml'
+    x-phi: clinical
+  text:
+    description: Free text describing the concept.
+    type: string
+    maxLength: 1000
+    x-phi: clinical

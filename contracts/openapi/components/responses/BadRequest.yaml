@@ -1,0 +1,18 @@
+description: >-
+  400. Bad request: the body or a parameter cannot be parsed, the cursor is invalid, or a required `Idempotency-Key` is missing. Codes: `malformed-request`, `invalid-cursor`, `idempotency-key-missing`.
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  RateLimit:
+    $ref: '../headers/RateLimit.yaml'
+  RateLimit-Policy:
+    $ref: '../headers/RateLimitPolicy.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      malformed-request:
+        $ref: '../examples/ProblemMalformedRequest.yaml'

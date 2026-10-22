@@ -1,0 +1,28 @@
+title: Coding
+description: >-
+  A code from a code system, as in FHIR `Coding` (API_STANDARDS §6.4). `display` is optional and never
+  relied on for logic. When used about a patient, the code is clinical data.
+type: object
+additionalProperties: false
+required: [system, code]
+properties:
+  system:
+    description: Canonical URI of the code system, e.g. `http://hl7.org/fhir/sid/icd-10-cm`.
+    type: string
+    format: uri
+    maxLength: 255
+    x-phi: none
+  code:
+    description: The code within the system.
+    type: string
+    maxLength: 64
+    x-phi: clinical
+  display:
+    description: Human-readable text for the code.
+    type: string
+    maxLength: 500
+    x-phi: clinical
+examples:
+  - system: http://hl7.org/fhir/sid/icd-10-cm
+    code: E11.9
+    display: Type 2 diabetes mellitus without complications

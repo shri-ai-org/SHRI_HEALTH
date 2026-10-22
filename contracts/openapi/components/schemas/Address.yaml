@@ -1,0 +1,45 @@
+title: Address
+description: >-
+  A U.S. postal address (API_STANDARDS §6.2). Street, city and ZIP code are identifiers under HIPAA;
+  the state alone is not.
+type: object
+additionalProperties: false
+required: [lines, city, state, postalCode, country]
+properties:
+  lines:
+    description: Street address lines.
+    type: array
+    minItems: 1
+    maxItems: 3
+    items:
+      type: string
+      maxLength: 100
+    x-phi: identifier
+  city:
+    description: City.
+    type: string
+    maxLength: 60
+    x-phi: identifier
+  state:
+    description: USPS two-letter state code.
+    type: string
+    pattern: '^[A-Z]{2}$'
+    maxLength: 2
+    x-phi: none
+  postalCode:
+    description: ZIP (`12345`) or ZIP+4 (`12345-6789`).
+    type: string
+    pattern: '^\d{5}(-\d{4})?$'
+    maxLength: 10
+    x-phi: identifier
+  country:
+    description: Country code. Only `US` in the MVP.
+    type: string
+    const: US
+    x-phi: none
+examples:
+  - lines: [100 Test Lane]
+    city: Springfield
+    state: IL
+    postalCode: '62701'
+    country: US

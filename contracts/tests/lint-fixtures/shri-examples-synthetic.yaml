@@ -1,0 +1,23 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-examples-synthetic. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths: {}
+components:
+  schemas:
+    PatientSummary:
+      description: Examples that look like real people.
+      type: object
+      properties:
+        family: { type: string, maxLength: 100, x-phi: identifier }
+        phone: { type: string, maxLength: 16, x-phi: identifier }
+        email: { type: string, format: email, x-phi: identifier }
+        mrn: { type: string, maxLength: 20, x-phi: identifier }
+      examples:
+        - family: Smith
+          phone: '+16175551234'
+          email: jane.smith@clinic-mail.test
+          mrn: '00012345'

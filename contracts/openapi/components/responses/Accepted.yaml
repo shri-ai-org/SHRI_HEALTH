@@ -1,0 +1,23 @@
+description: >-
+  202. The work was accepted and runs in the background. `Location` points to the operation; poll it after
+  `Retry-After` seconds, or listen for `operation.completed` on the event stream (API_STANDARDS §13).
+headers:
+  Location:
+    $ref: '../headers/Location.yaml'
+  Retry-After:
+    $ref: '../headers/RetryAfter.yaml'
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  RateLimit:
+    $ref: '../headers/RateLimit.yaml'
+  RateLimit-Policy:
+    $ref: '../headers/RateLimitPolicy.yaml'
+content:
+  application/json:
+    schema:
+      $ref: '../schemas/Operation.yaml'
+    examples:
+      queued:
+        $ref: '../examples/OperationQueued.yaml'

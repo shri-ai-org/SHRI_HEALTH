@@ -1,0 +1,18 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-properties-camel. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths: {}
+components:
+  schemas:
+    Patient:
+      description: snake_case property name.
+      type: object
+      properties:
+        birth_date:
+          type: string
+          format: date
+          x-phi: identifier

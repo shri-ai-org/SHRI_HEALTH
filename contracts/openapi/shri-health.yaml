@@ -1,0 +1,246 @@
+openapi: 3.1.2
+info:
+  title: Shri Health API
+  version: 1.0.0-draft.1
+  summary: REST API for the Shri Health ambulatory EMR and practice-management system.
+  description: |
+    Contract for every endpoint the Shri Health screens and partners call. Written before the code and the
+    source of truth for it (ADR-0002). Stage 3 contains the shared components only; endpoints arrive in
+    Stage 4, module by module.
+
+    Rules every endpoint follows are in `contracts/docs/API_STANDARDS.md`; security rules in
+    `contracts/docs/SECURITY_MODEL.md`; the vendor extensions `x-owner`, `x-permission`, `x-audit` and
+    `x-phi` in `contracts/docs/EXTENSIONS.md`.
+
+    All examples are synthetic. Never put real patient data in this contract.
+servers:
+  - url: /api/v1
+    description: >-
+      Versioned API, same relative path in every environment (local, staging, production). Every path uses
+      this server unless its path item overrides `servers`.
+    x-internal: false
+  - url: /
+    description: >-
+      Routes outside `/api/v1`, same in every environment (local, staging, production): `/health` and
+      `/hooks/{partner}`, public through Nginx (API_STANDARDS §2). Only path items that override `servers`
+      with this entry use it. `/ready` is internal and not in the contract.
+    x-internal: false
+security:
+  - sessionCookie: []
+tags:
+  - name: platform
+    description: Session, current user, users and roles, operations, event stream, audit, break-glass, integration admin, health check.
+    x-owner: thulasi
+  - name: partner-callbacks
+    description: Signature-checked partner callbacks under `/hooks/{partner}`, outside `/api/v1`. Excluded from the generated browser client.
+    x-owner: thulasi
+  - name: files
+    description: Upload and download links through the file service.
+    x-owner: anand
+  - name: practice-setup
+    description: Facilities, locations, providers, appointment types, schedules, fee schedules, payers, lab accounts, note templates.
+    x-owner: anand
+  - name: onboarding
+    description: Bulk import for a new clinic.
+    x-owner: anand
+  - name: patients
+    description: Patients, identifiers, related persons, coverage, consents, duplicates and merges.
+    x-owner: vimal
+  - name: scheduling
+    description: Slots, appointments, check-in, visit status, status board.
+    x-owner: vimal
+  - name: eligibility
+    description: Insurance eligibility checks (X12 270/271 through the clearinghouse).
+    x-owner: vimal
+  - name: encounters
+    description: Encounters, vitals, diagnoses, notes, favorites, after-visit summary, co-signature rules.
+    x-owner: vimal
+  - name: history
+    description: Problem list, allergies, family, social and surgical history.
+    x-owner: vimal
+  - name: ai
+    description: Encounter audio, transcriptions, AI note drafts, chart summaries, AI decisions and settings.
+    x-owner: vimal
+  - name: medications
+    description: Medication list, prescriptions, safety checks, refill and change requests, pharmacies.
+    x-owner: thulasi
+  - name: orders
+    description: Lab compendium, orders, results, unmatched results.
+    x-owner: thulasi
+  - name: billing
+    description: Superbills, claims, payments, remittances, billing reports.
+    x-owner: anand
+  - name: documents
+    description: Documents, outbound faxes, fax inbox.
+    x-owner: anand
+  - name: ccda
+    description: C-CDA import and export.
+    x-owner: anand
+  - name: inbox
+    description: Inbox items and staff messages.
+    x-owner: anand
+  - name: exports
+    description: Permission-controlled exports.
+    x-owner: anand
+  - name: communications
+    description: Message templates, communication preferences and history.
+    x-owner: minalini
+  - name: dashboards
+    description: Operations dashboard.
+    x-owner: minalini
+paths: {}
+components:
+  schemas:
+    Address:
+      $ref: 'components/schemas/Address.yaml'
+    CodeableConcept:
+      $ref: 'components/schemas/CodeableConcept.yaml'
+    Coding:
+      $ref: 'components/schemas/Coding.yaml'
+    Cursor:
+      $ref: 'components/schemas/Cursor.yaml'
+    Date:
+      $ref: 'components/schemas/Date.yaml'
+    EmailAddress:
+      $ref: 'components/schemas/EmailAddress.yaml'
+    EventEnvelope:
+      $ref: 'components/schemas/EventEnvelope.yaml'
+    FieldError:
+      $ref: 'components/schemas/FieldError.yaml'
+    FieldErrorCode:
+      $ref: 'components/schemas/FieldErrorCode.yaml'
+    HumanName:
+      $ref: 'components/schemas/HumanName.yaml'
+    Id:
+      $ref: 'components/schemas/Id.yaml'
+    Limit:
+      $ref: 'components/schemas/Limit.yaml'
+    ListEnvelope:
+      $ref: 'components/schemas/ListEnvelope.yaml'
+    Money:
+      $ref: 'components/schemas/Money.yaml'
+    Operation:
+      $ref: 'components/schemas/Operation.yaml'
+    OperationKind:
+      $ref: 'components/schemas/OperationKind.yaml'
+    OperationStatus:
+      $ref: 'components/schemas/OperationStatus.yaml'
+    PartialDate:
+      $ref: 'components/schemas/PartialDate.yaml'
+    PhoneNumber:
+      $ref: 'components/schemas/PhoneNumber.yaml'
+    Problem:
+      $ref: 'components/schemas/Problem.yaml'
+    ProblemCode:
+      $ref: 'components/schemas/ProblemCode.yaml'
+    Quantity:
+      $ref: 'components/schemas/Quantity.yaml'
+    SearchPaging:
+      $ref: 'components/schemas/SearchPaging.yaml'
+    Timestamp:
+      $ref: 'components/schemas/Timestamp.yaml'
+  parameters:
+    Cursor:
+      $ref: 'components/parameters/Cursor.yaml'
+    IdempotencyKey:
+      $ref: 'components/parameters/IdempotencyKey.yaml'
+    IdempotencyKeyOptional:
+      $ref: 'components/parameters/IdempotencyKeyOptional.yaml'
+    IfMatch:
+      $ref: 'components/parameters/IfMatch.yaml'
+    Limit:
+      $ref: 'components/parameters/Limit.yaml'
+    Traceparent:
+      $ref: 'components/parameters/Traceparent.yaml'
+    XRequestId:
+      $ref: 'components/parameters/XRequestId.yaml'
+  headers:
+    CacheControl:
+      $ref: 'components/headers/CacheControl.yaml'
+    Deprecation:
+      $ref: 'components/headers/Deprecation.yaml'
+    ETag:
+      $ref: 'components/headers/ETag.yaml'
+    IdempotentReplayed:
+      $ref: 'components/headers/IdempotentReplayed.yaml'
+    Link:
+      $ref: 'components/headers/Link.yaml'
+    Location:
+      $ref: 'components/headers/Location.yaml'
+    RateLimit:
+      $ref: 'components/headers/RateLimit.yaml'
+    RateLimitPolicy:
+      $ref: 'components/headers/RateLimitPolicy.yaml'
+    RetryAfter:
+      $ref: 'components/headers/RetryAfter.yaml'
+    Sunset:
+      $ref: 'components/headers/Sunset.yaml'
+    Traceparent:
+      $ref: 'components/headers/Traceparent.yaml'
+    XRequestId:
+      $ref: 'components/headers/XRequestId.yaml'
+  responses:
+    Accepted:
+      $ref: 'components/responses/Accepted.yaml'
+    BadRequest:
+      $ref: 'components/responses/BadRequest.yaml'
+    Conflict:
+      $ref: 'components/responses/Conflict.yaml'
+    Forbidden:
+      $ref: 'components/responses/Forbidden.yaml'
+    InternalError:
+      $ref: 'components/responses/InternalError.yaml'
+    NotFound:
+      $ref: 'components/responses/NotFound.yaml'
+    PreconditionFailed:
+      $ref: 'components/responses/PreconditionFailed.yaml'
+    PreconditionRequired:
+      $ref: 'components/responses/PreconditionRequired.yaml'
+    ServiceUnavailable:
+      $ref: 'components/responses/ServiceUnavailable.yaml'
+    TooManyRequests:
+      $ref: 'components/responses/TooManyRequests.yaml'
+    Unauthorized:
+      $ref: 'components/responses/Unauthorized.yaml'
+    UnprocessableContent:
+      $ref: 'components/responses/UnprocessableContent.yaml'
+  securitySchemes:
+    csrfHeader:
+      $ref: 'components/securitySchemes/csrfHeader.yaml'
+    delegatedToken:
+      $ref: 'components/securitySchemes/delegatedToken.yaml'
+    sessionCookie:
+      $ref: 'components/securitySchemes/sessionCookie.yaml'
+  examples:
+    OperationQueued:
+      $ref: 'components/examples/OperationQueued.yaml'
+    OperationSucceeded:
+      $ref: 'components/examples/OperationSucceeded.yaml'
+    ProblemBreakGlassRequired:
+      $ref: 'components/examples/ProblemBreakGlassRequired.yaml'
+    ProblemClinicalStoreUnavailable:
+      $ref: 'components/examples/ProblemClinicalStoreUnavailable.yaml'
+    ProblemConflictPossibleDuplicate:
+      $ref: 'components/examples/ProblemConflictPossibleDuplicate.yaml'
+    ProblemInternalError:
+      $ref: 'components/examples/ProblemInternalError.yaml'
+    ProblemInvalidStateTransition:
+      $ref: 'components/examples/ProblemInvalidStateTransition.yaml'
+    ProblemMalformedRequest:
+      $ref: 'components/examples/ProblemMalformedRequest.yaml'
+    ProblemNotFound:
+      $ref: 'components/examples/ProblemNotFound.yaml'
+    ProblemPermissionDenied:
+      $ref: 'components/examples/ProblemPermissionDenied.yaml'
+    ProblemPreconditionFailed:
+      $ref: 'components/examples/ProblemPreconditionFailed.yaml'
+    ProblemPreconditionRequired:
+      $ref: 'components/examples/ProblemPreconditionRequired.yaml'
+    ProblemRateLimited:
+      $ref: 'components/examples/ProblemRateLimited.yaml'
+    ProblemRecordLocked:
+      $ref: 'components/examples/ProblemRecordLocked.yaml'
+    ProblemUnauthenticated:
+      $ref: 'components/examples/ProblemUnauthenticated.yaml'
+    ProblemValidationFailed:
+      $ref: 'components/examples/ProblemValidationFailed.yaml'

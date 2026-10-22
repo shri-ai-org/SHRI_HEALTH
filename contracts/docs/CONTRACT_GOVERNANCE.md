@@ -90,7 +90,23 @@ Fixed by source documents:
 
 ## 5. Lint ruleset (enforced by Spectral in CI)
 
-Base: `spectral:oas` (recommended rules) plus `@stoplight/spectral-owasp-ruleset` (TOOLCHAIN §5), plus our custom rules. Severity `error` fails CI; `warn` is shown in review.
+Base: `spectral:oas` (recommended rules) plus `@stoplight/spectral-owasp-ruleset` (TOOLCHAIN §5), plus our custom rules. Severity `error` fails CI; `warn` is shown in review. Implemented in Stage 3: `contracts/openapi/.spectral.yaml`, with the custom rule functions in `contracts/openapi/rules/`.
+
+**Every custom rule is tested.** `npm run lint:fixtures` checks that each rule has a fixture `contracts/tests/lint-fixtures/<rule>.yaml` that breaks only that rule, runs the rule on its own against it, and fails unless the rule reports it. It also lints a compliant sample module (`tests/lint-fixtures/valid/sample-module.yaml`, added to a copy of the real root) with the full ruleset and fails on any error, so the rules do not fire on correct input.
+
+**Base rules we changed, and why:**
+
+| Base rule | Change | Reason |
+|---|---|---|
+| `operation-operationId-unique` | Raised to error | Uniqueness is part of `shri-operation-id` |
+| `oas3-unused-component` | Off in Stage 3 | No paths reference the components yet; re-enable (warn) in Stage 4 |
+| `info-contact` | Off | API contact not decided |
+| `owasp:api2:2023-no-credentials-in-url` | Redefined with the same check and message, narrower JSONPath | The original JSONPath also visits schema properties named `in` (our `FieldError.in`, API_STANDARDS §9.1) and crashes Spectral |
+| `owasp:api2:2023-write-restricted` | Off | Partner callbacks are verified by signature in middleware, not by an OpenAPI security scheme; `shri-security` enforces session and CSRF on every other write |
+| `owasp:api4:2023-string-restricted` | Off | Free text has no meaningful pattern; `shri-string-limits` requires `maxLength` (or enum, const, format) on every string |
+| `owasp:api8:2023-define-cors-origin` | Off | The API is same-origin (SPA, API and Keycloak at `/kc/`), so no CORS headers (SECURITY_MODEL §2.1) |
+
+We comply with the other OWASP rules, for example integer formats and limits, rate-limit headers on every 2xx and 4xx response, and `x-internal` on servers.
 
 | Rule | Severity | Checks |
 |---|---|---|
@@ -120,6 +136,7 @@ Base: `spectral:oas` (recommended rules) plus `@stoplight/spectral-owasp-ruleset
 | `shri-examples-synthetic` | error | Example phone numbers match `+1XXX55501XX`; emails end in `example.com/.org/.net`; no SSN-shaped strings; identifier examples start with `TEST`; person-name examples are Synthea-style (end in digits) |
 | `shri-no-secrets` | error | No examples or defaults that look like tokens or keys (also covered by gitleaks, TW §4) |
 | `shri-security` | error | Every non-public operation has a security requirement; POST/PUT/PATCH include `csrfHeader` |
+| `shri-infra-server` | error | `/health` and `/hooks/*` override `servers` with `/`; no other path overrides `servers`; `/ready` is not in the contract (added in Stage 3 for API_STANDARDS §2 and Thulasi T24) |
 | `shri-cache-control` | warn | Responses document `Cache-Control: no-store` (via shared response headers) |
 | `shri-description` | warn | Every operation and schema has a description |
 

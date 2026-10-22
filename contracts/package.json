@@ -1,0 +1,28 @@
+{
+  "name": "shri-health-contracts",
+  "private": true,
+  "description": "Shri Health API contract tooling: bundle, lint, lint fixtures, mock server, breaking-change check.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "bundle": "REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_UPDATE_NOTICE=true redocly bundle openapi/shri-health.yaml --output openapi/dist/shri-health.bundled.yaml",
+    "check:bundle-fresh": "npm run bundle && git diff --exit-code -- openapi/dist/",
+    "check:layout": "node scripts/check-layout.mjs",
+    "validate": "REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_UPDATE_NOTICE=true redocly lint openapi/dist/shri-health.bundled.yaml --config openapi/redocly.yaml",
+    "lint": "npm run bundle && npm run check:layout && npm run validate && spectral lint openapi/dist/shri-health.bundled.yaml --ruleset openapi/.spectral.yaml --fail-severity error",
+    "lint:fixtures": "node tests/run-lint-fixtures.mjs",
+    "mock": "npm run -s bundle && node scripts/mock.mjs",
+    "breaking": "bash scripts/check-breaking.sh",
+    "test": "npm run lint && npm run lint:fixtures",
+    "mock:sample": "node scripts/build-sample.mjs && node scripts/mock.mjs tests/.tmp/sample.bundled.yaml"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.64.0",
+    "@stoplight/prism-cli": "5.16.0",
+    "@stoplight/spectral-cli": "6.17.0",
+    "@stoplight/spectral-owasp-ruleset": "2.0.1",
+    "yaml": "2.9.1"
+  }
+}

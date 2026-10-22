@@ -1,0 +1,16 @@
+# Shri Health API — module `ccda`
+# x-owner: anand  (implements these operations and approves their contract; Vimal approves standards conformance)
+# Scope: C-CDA import and export (`backend/app/modules/ccda/`)
+#
+# Stage 3 leaves this file empty on purpose: no endpoints yet.
+# Stage 4 adds each path item under `paths:` and references it from ../shri-health.yaml, for example:
+#
+#   # in shri-health.yaml
+#   paths:
+#     /patients/search:
+#       $ref: modules/patients.yaml#/paths/~1patients~1search
+#
+# Module-specific schemas go under `components.schemas` here; shared ones stay in ../components/.
+paths: {}
+components:
+  schemas: {}

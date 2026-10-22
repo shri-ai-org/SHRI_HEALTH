@@ -1,0 +1,17 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-search-post. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths:
+  /patients/search:
+    get:
+      operationId: searchPatients
+      tags: [patients]
+      x-owner: vimal
+      x-permission: patients:search
+      description: Search must be POST with a body.
+      responses:
+        '200': { description: OK }

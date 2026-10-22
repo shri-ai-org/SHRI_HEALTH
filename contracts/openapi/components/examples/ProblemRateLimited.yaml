@@ -1,0 +1,9 @@
+summary: rate-limited
+value:
+  type: tag:company-domain.invalid,2026:problem/rate-limited
+  title: "Too many requests"
+  status: 429
+  detail: "Wait before trying again."
+  instance: /api/v1/patients/search
+  code: rate-limited
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11

@@ -1,0 +1,5 @@
+description: Strong, opaque version tag of the returned resource. Send it back in `If-Match` to edit (API_STANDARDS §11, ADR-0008).
+schema:
+  type: string
+  pattern: '^"[^"]{1,126}"$'
+  maxLength: 128

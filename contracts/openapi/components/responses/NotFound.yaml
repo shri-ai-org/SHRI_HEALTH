@@ -1,0 +1,18 @@
+description: >-
+  404. Does not exist, or belongs to another clinic or a facility the user is not assigned to; these cases are indistinguishable (API_STANDARDS §12). Code: `not-found`.
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  RateLimit:
+    $ref: '../headers/RateLimit.yaml'
+  RateLimit-Policy:
+    $ref: '../headers/RateLimitPolicy.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      not-found:
+        $ref: '../examples/ProblemNotFound.yaml'

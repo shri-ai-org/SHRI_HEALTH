@@ -1,0 +1,12 @@
+title: SearchPaging
+description: >-
+  Paging members that every `POST …/search` body carries next to its `criteria`, because PHI searches
+  never use query strings (API_STANDARDS §14, ADR-0005).
+type: object
+properties:
+  limit:
+    $ref: './Limit.yaml'
+    x-phi: none
+  cursor:
+    $ref: './Cursor.yaml'
+    x-phi: none

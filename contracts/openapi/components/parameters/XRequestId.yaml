@@ -1,0 +1,6 @@
+name: X-Request-ID
+in: header
+description: Optional client request ID. Accepted only if it is a valid UUID; otherwise the server generates one (API_STANDARDS §18).
+required: false
+schema:
+  $ref: '../schemas/Id.yaml'
