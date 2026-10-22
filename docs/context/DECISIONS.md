@@ -37,6 +37,20 @@ This file records decisions made **after** FRS v1.2, Technical Architecture v1.1
 | **Anand** | HAPI FHIR server, FHIR client and mappings; our database and migrations; file system and file service; practice setup, billing and payments, documents and fax, C-CDA, inbox, exports and onboarding APIs; admin, billing and document screens |
 | **Minalini** | Design system and all other screens (most already exist; wire them to the APIs); browser side of login; communications and operations dashboard APIs; design review of everyone's screens |
 
+## Proposed (not yet agreed)
+
+Proposed by Vimal on 2026-10-22 (Stage 1 review). They move up to **Decisions** only after everyone named in the last column agrees. Detail: `contracts/docs/README.md` (VD table).
+
+| # | Proposed decision | Overrides | Must agree |
+|---|---|---|---|
+| D13 | No PHI in URLs. Opaque UUIDs are allowed; names, date of birth, phone, MRN, driver's license numbers, member IDs and SSN never are. PHI searches use `POST …/search` with a body (patient search is `POST /patients/search`). | `API_Catalogue.md` `GET /patients?search=` | Thulasi, Anand, Minalini |
+| D14 | No DELETE in the API. An unsigned encounter diagnosis is removed with `POST /encounters/{id}/diagnoses/{did}/remove`; signed records only get entered-in-error, through one action per resource type with its own permission. | `API_Catalogue.md` `DELETE /encounters/{id}/diagnoses` and `/records/{type}/{rid}/entered-in-error` | Thulasi, Anand, Minalini |
+| D15 | Eligibility runs at booking, in a pre-visit batch and at check-in (FRS FR-RCM-01). | `01_Vimal_Implementation_Guide.md` Steps 3–4 (check-in and batch only) | Thulasi, Anand |
+| D16 | Check-in creates the Encounter through the encounter service; `POST /encounters` is only for unscheduled encounters (telephone, documentation-only). Both use the same service. | — | Anand, Minalini |
+| D17 | The contract is one OpenAPI file per module plus shared components, bundled into one file for tools. Module owners approve the sections they implement (`x-owner`); Vimal approves standards conformance for all. | `01_Vimal_Implementation_Guide.md` Day 1 item 1 (single file) | Thulasi, Anand, Minalini |
+| D18 | U.S. spelling in every API identifier and description (e.g. `favorites`, `license`). | `API_Catalogue.md` `/me/favourites` | Thulasi, Anand, Minalini |
+| D19 | P1 endpoints and `/fhir` are out of the first contract pass. | — | Thulasi, Anand, Minalini |
+
 ## Still open
 
 | Question | Affects |
@@ -48,3 +62,20 @@ This file records decisions made **after** FRS v1.2, Technical Architecture v1.1
 | EPCS (controlled substances) on day one | Prescriptions |
 | Repository licence (the schema README says AGPL) | Commercial release |
 | ONC certification need | Customer targeting |
+| Tenant isolation inside HAPI. Agreed by Thulasi (issue #3, T30): one partition per clinic, tenant taken from the same request context as `tenant_db`, never from input. **Still open (Anand's design, blocks Stage 4):** where shared resources live (Practitioner, Organization, Location): default partition or a copy per clinic. See `contracts/docs/DATA_OWNERSHIP.md` §3.4 | Every API that reads or writes HAPI |
+| HAPI resource IDs: client-assigned UUIDs equal to ours, plus our identifier system URI (Anand; ADR-0009) | Outbox retries, every clinical API |
+| US Core version to target; 9.0.0 is current on hl7.org as of 2026-10-22 (Anand; depends on ONC need) | FHIR mappings, validator in CI |
+| Mirror Practitioner, PractitionerRole, Organization, Location (proposed by Vimal) and Coverage into HAPI (Anand) | FHIR references, C-CDA export |
+| Does our database keep an encounter row with the same UUID as the HAPI Encounter (Anand) | Check-in, status board, billing |
+| Encounter diagnoses: drafted in ours until the encounter is signed, then written to HAPI as Conditions (Vimal accepted 2026-10-22; needs Anand for the draft table) | Encounter APIs, billing, AI-04 |
+| Legal record of a signed note. Proposed by Vimal: the signed version in ours (immutable, hash-chained, audited) is the legal record; the HAPI DocumentReference is the clinical and interoperability copy carrying the same content hash (needs Anand and compliance confirmation) | Notes, release of information, audit |
+| Clinical writes when HAPI is down. Vimal accepted for the MVP: they fail with `clinical-store-unavailable`; registration and check-in never block and queue through the outbox (D7); rooming impact is an accepted risk to revisit after the pilot (needs Anand, Thulasi) | Vitals, history, rooming |
+| Full SSN collected? Proposed: no; optional last 4 for matching (management) | Registration, patient matching |
+| Domain for error-type URIs and FHIR identifier systems (Vimal) | Error format, FHIR identifiers |
+| Session idle timeout on shared workstations. Agreed by Thulasi (T9): 15 minutes idle, 12 hours absolute; only user-initiated requests reset the timer. Pending clinical advisors; the 13-minute warning (Vimal, M15) is pending Thulasi | Security, clinician workflow |
+| ~~AI gateway access to patient data~~ **Agreed (Thulasi, T10):** per-task delegated token minted by the API, at most 5 minutes, read-only, audited as `ai` | AI-02, AI security |
+| Role list and role-to-permission matrix. Agreed by Thulasi (T14), with multiple roles as a union; clinical rows pending clinical advisors | `x-permission` on every endpoint |
+| Care-team (relationship-based) access limits: MVP or P1 (Vimal) | Patient access checks |
+| ~~`/hooks/*`, `/health`, `/ready` outside `/api/v1`~~ **Agreed (Thulasi, T24):** `/health` and `/hooks/*` public through Nginx; `/ready` internal and not in the contract | Partner callback URLs, Nginx routing |
+| ~~Idempotency-Key rule~~ **Agreed (Thulasi, T21):** we adopt the expired IETF draft's behavior as our own rule, in middleware; `5xx` and `429` not stored; Anand still to sign ADR-0007 | Partner-bound and payment POSTs |
+| `enqueue()` signature change to `enqueue(db, partner, message_type, payload, idempotency_key, ordering_key=None)` (Thulasi, T29). **Core change: all four review Thulasi's PR before merge** | Outbox, registration, check-in, every partner call |
