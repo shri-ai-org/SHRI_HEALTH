@@ -198,6 +198,30 @@ Notes on the matrix:
 - "Own entries" (RN entered-in-error) is a rule inside the service, not a permission.
 - Whether MA, RN may prescribe-draft or answer refills follows clinic protocol and state law: **pending clinical advisors**.
 
+### 4.4 Matrix gaps filled in core — gap, pending clinical advisors
+
+The draft matrix in §4.3 has no row for 12 permissions in the catalogue. Thulasi's `backend/app/core/permissions.py` (branch `thulasi/fastapi-skeleton`, commit 35caa92, PR #7) fills them in and marks them `gap`; Vimal accepted them as provisional on PR #7. They are mirrored here so the contract and the code agree. Every row is **gap — pending clinical advisors**.
+
+| Permission | FD | MA | RN | MD | APP | BIL | ADM | CO | SUP | Follows (in core) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `prescriptions:update` | – | – | ✓ | ✓ | ✓ | – | – | – | – | Prescription-draft row |
+| `prescriptions:safety-check` | – | – | ✓ | ✓ | ✓ | – | – | – | – | Prescription-draft row |
+| `prescriptions:entered-in-error` | – | – | ✓ | ✓ | ✓ | – | – | – | – | Prescription-draft row |
+| `medications:create` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Prescription-draft row; MA for rooming |
+| `medication-history:fetch` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Prescription-draft row; MA for rooming |
+| `orders:read` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Order-create row |
+| `results:read` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Order-create row |
+| `lab-compendium:read` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Order-create row |
+| `orders:medical-necessity-check` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Order-create row |
+| `orders:entered-in-error` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Order-create row (drafts only, #228) |
+| `files:create` | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Not in the draft matrix |
+| `files:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | Not in the draft matrix |
+
+Two differences between core and §4.3 to settle with Thulasi and the clinical advisors (not changed here):
+
+- **MA and orders:** core gives MA the whole order-draft group, including `orders:create`; §4.3 grants MA only point-of-care results (`in-office-results:create`).
+- **ADM and onboarding files:** ADM has `onboarding:import`, but no `files:create`, so it cannot upload the import file (API_STANDARDS §15, purpose `onboarding-import`).
+
 ## 5. Clinic and facility context, restricted charts, break-glass
 
 ### 5.1 Context (agreed by Thulasi, issue #3, T15)
