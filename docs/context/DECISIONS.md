@@ -62,7 +62,7 @@ Proposed by Vimal on 2026-10-22 (Stage 1 review). They move up to **Decisions** 
 | EPCS (controlled substances) on day one | Prescriptions |
 | Repository licence (the schema README says AGPL) | Commercial release |
 | ONC certification need | Customer targeting |
-| Tenant isolation inside HAPI: one partition per clinic, or another method (Anand, Thulasi; added 2026-10-22, see `contracts/docs/DATA_OWNERSHIP.md` §3.4) | Every API that reads or writes HAPI |
+| Tenant isolation inside HAPI. Agreed by Thulasi (issue #3, T30): one partition per clinic, tenant taken from the same request context as `tenant_db`, never from input. **Still open (Anand's design, blocks Stage 4):** where shared resources live (Practitioner, Organization, Location): default partition or a copy per clinic. See `contracts/docs/DATA_OWNERSHIP.md` §3.4 | Every API that reads or writes HAPI |
 | HAPI resource IDs: client-assigned UUIDs equal to ours, plus our identifier system URI (Anand; ADR-0009) | Outbox retries, every clinical API |
 | US Core version to target; 9.0.0 is current on hl7.org as of 2026-10-22 (Anand; depends on ONC need) | FHIR mappings, validator in CI |
 | Mirror Practitioner, PractitionerRole, Organization, Location (proposed by Vimal) and Coverage into HAPI (Anand) | FHIR references, C-CDA export |
@@ -72,9 +72,10 @@ Proposed by Vimal on 2026-10-22 (Stage 1 review). They move up to **Decisions** 
 | Clinical writes when HAPI is down. Vimal accepted for the MVP: they fail with `clinical-store-unavailable`; registration and check-in never block and queue through the outbox (D7); rooming impact is an accepted risk to revisit after the pilot (needs Anand, Thulasi) | Vitals, history, rooming |
 | Full SSN collected? Proposed: no; optional last 4 for matching (management) | Registration, patient matching |
 | Domain for error-type URIs and FHIR identifier systems (Vimal) | Error format, FHIR identifiers |
-| Session idle timeout on shared workstations (Thulasi, clinical advisors) | Security, clinician workflow |
-| AI gateway access to patient data: per-request delegated token or service account (Thulasi) | AI-02, AI security |
-| Role list and role-to-permission matrix (Thulasi, clinical advisors) | `x-permission` on every endpoint |
+| Session idle timeout on shared workstations. Agreed by Thulasi (T9): 15 minutes idle, 12 hours absolute; only user-initiated requests reset the timer. Pending clinical advisors; the 13-minute warning (Vimal, M15) is pending Thulasi | Security, clinician workflow |
+| ~~AI gateway access to patient data~~ **Agreed (Thulasi, T10):** per-task delegated token minted by the API, at most 5 minutes, read-only, audited as `ai` | AI-02, AI security |
+| Role list and role-to-permission matrix. Agreed by Thulasi (T14), with multiple roles as a union; clinical rows pending clinical advisors | `x-permission` on every endpoint |
 | Care-team (relationship-based) access limits: MVP or P1 (Vimal) | Patient access checks |
-| `/hooks/*`, `/health`, `/ready` outside `/api/v1` (Thulasi) | Partner callback URLs, Nginx routing |
-| The IETF Idempotency-Key draft expired without becoming an RFC; we adopt its behavior as our own rule (Vimal, Thulasi; ADR-0007) | Partner-bound and payment POSTs |
+| ~~`/hooks/*`, `/health`, `/ready` outside `/api/v1`~~ **Agreed (Thulasi, T24):** `/health` and `/hooks/*` public through Nginx; `/ready` internal and not in the contract | Partner callback URLs, Nginx routing |
+| ~~Idempotency-Key rule~~ **Agreed (Thulasi, T21):** we adopt the expired IETF draft's behavior as our own rule, in middleware; `5xx` and `429` not stored; Anand still to sign ADR-0007 | Partner-bound and payment POSTs |
+| `enqueue()` signature change to `enqueue(db, partner, message_type, payload, idempotency_key, ordering_key=None)` (Thulasi, T29). **Core change: all four review Thulasi's PR before merge** | Outbox, registration, check-in, every partner call |
