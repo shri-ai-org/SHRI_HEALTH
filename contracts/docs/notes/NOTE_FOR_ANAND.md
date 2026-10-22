@@ -69,5 +69,5 @@ Each item has a **PROPOSED** answer already written into the documents so work c
 | A34 | HEIC (iPhone photo format) for insurance-card images: accepted only if the file service converts it for display. P0 accepts JPEG and PNG (Minalini M13, Vimal) | Your call | API_STANDARDS §15 |
 | A35 | Confirm the medication-list mapping: MedicationRequest with `intent` and `reported[x]` for patient-reported items (Thulasi T36) | Confirm | DATA_OWNERSHIP §2.2 |
 | A36 | Break-glass notice to the privacy officer arrives as an **inbox item for CO**, from the `break-glass.granted` event, never as an email with PHI (Thulasi T16) | Add the inbox item type | EVENTS §4, SECURITY_MODEL §5.2 |
-| A37 | Review Thulasi's PR changing `enqueue()`'s signature (T29): core change, all four of us review it | Review | DATA_OWNERSHIP §3.1 |
+| A37 | Review Thulasi's separate core PR changing `enqueue()`'s signature (T29), when it opens: core change, all four of us review it | Review | DATA_OWNERSHIP §3.1 |
 

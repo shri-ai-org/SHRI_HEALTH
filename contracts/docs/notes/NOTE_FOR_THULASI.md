@@ -10,7 +10,7 @@ All items T1–T37 are **agreed**; every "Agree, with" addition is applied to th
 
 - [x] Confirm the idle-timeout warning at 13 minutes with a "Stay signed in" button that counts as user activity (Vimal's answer to Minalini's M15; SECURITY_MODEL §2.1). **Confirmed** on issue #3: timed from `idleExpiresAt`, plus a notice before the 12-hour absolute limit.
 - [x] Confirm `POST /orders/{orderId}/entered-in-error` is for drafts only, mirroring prescriptions (your T13 permission; ENDPOINT_INVENTORY #228, DATA_OWNERSHIP §5.5). **Confirmed** on issue #3; signed orders use cancel before specimen collection.
-- [ ] Open the PR that changes `enqueue()`'s signature (T29). **Core change, all-four review:** Vimal, Anand and Minalini review it before merge.
+- [ ] Open the PR that changes `enqueue()`'s signature (T29). **Core change, all-four review:** Vimal, Anand and Minalini review it before merge. Confirmed on issue #3: it comes as a separate core PR, not in PR #7.
 - [ ] Add the CODEOWNERS lines for the contract module files once Stage 3 creates them, after the `/contracts/` line (T2). The list is in the Stage 3 PR description.
 
 ## Repository and CI

@@ -101,6 +101,6 @@ Idle timeout on shared workstations (15 min proposed); clinical rows of the role
 
 - Your answers to Minalini's M7 (phone is an identifier; exact full-number match only) and M15 (warning at 13 minutes, pending Thulasi), and on M11 and M13, are applied (API_STANDARDS §14.2, §15; SECURITY_MODEL §2.1, §8).
 - Thulasi's T30 point (where shared resources live in HAPI) is now Anand's item A33 and blocks Stage 4.
-- **Reminder:** when Thulasi opens the PR changing `enqueue()` (T29), all four of you review it.
+- **Reminder:** `enqueue()`'s signature change (T29) comes as a separate core PR from Thulasi (not in PR #7); all four of you review it.
 - Still open from you: `COMPANY_DOMAIN` (API_STANDARDS §0) and the encounter-close rules (DATA_OWNERSHIP §5.2).
 

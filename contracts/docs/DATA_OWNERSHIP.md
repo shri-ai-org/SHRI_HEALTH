@@ -149,7 +149,7 @@ How it works:
 **PROPOSED, pending Thulasi (outbox) and Anand (FHIR client).**
 
 1. **Transactional outbox.** The change and its outbox row (`integration.enqueue("hapi", "<resource>.upsert", id)`) are written in **the same database transaction**. If the transaction rolls back, nothing is sent; if it commits, the job exists. **Agreed by Thulasi (T29):** `enqueue()` takes the caller's session: `enqueue(db, partner, message_type, payload, idempotency_key, ordering_key=None)`. Payloads for `hapi` jobs carry IDs only. Workers claim jobs across clinics with `SKIP LOCKED`, then run each job with its own clinic set, the same way `tenant_db` does.
-   > **Core change, all-four review.** Changing `enqueue()`'s signature changes a shared core function, so Thulasi's PR for it is reviewed by all four of us (Vimal, Thulasi, Anand, Minalini) before merge.
+   > **Core change, all-four review.** Changing `enqueue()`'s signature changes a shared core function, so it comes as a **separate core PR** (not part of the FastAPI skeleton, PR #7), reviewed by all four of us (Vimal, Thulasi, Anand, Minalini) before merge.
 2. **Job carries the ID only.** The worker loads the **current** row when it runs, not a snapshot. Older jobs for the same record therefore send the latest data, so out-of-order delivery cannot restore stale data.
 3. **Idempotent write.** The HAPI resource has the **same ID** as our record (client-assigned UUID; API_STANDARDS §5) and carries our identifier: `identifier.system = <our system URI>`, `identifier.value = <our UUID>`. The worker does `PUT <Type>/<uuid>` (update-as-create). If client-assigned IDs are not allowed in HAPI's configuration, the fallback is a conditional update `PUT <Type>?identifier=<system>|<uuid>` (create if absent). Either way, retries never create duplicates. **Pending Anand:** HAPI configuration and the identifier system URI (PROPOSED: `https://fhir.<COMPANY_DOMAIN>/sid/<resource>-id`, built from `COMPANY_DOMAIN`, API_STANDARDS §0, still open).
 4. **Ordering per record.** Jobs are processed in order per record key (for example per `patientId`); different records run in parallel.
@@ -409,6 +409,6 @@ stateDiagram-v2
 | Emergency contacts as Patient.contact vs RelatedPerson | Anand | Patient.contact; RelatedPerson for representatives |
 | Merge representation in HAPI | Anand | Patient.link `replaced-by` / `replaces` |
 | Medication list mapping (`intent`, `reported[x]`) | Anand | Agreed by Thulasi (T36); Anand to confirm |
-| `enqueue()` signature change (§3.1) | All four | Core change: Thulasi's PR reviewed by all four |
+| `enqueue()` signature change (§3.1) | All four | Core change: comes as a separate core PR from Thulasi (not in PR #7), reviewed by all four (confirmed on issue #3) |
 | Claim close rule; co-signature hold | Anand, RCM analyst | As in §5.7 |
 | Close-encounter guards (diagnosis required?) | Vimal, clinical advisors | At least one signed note; diagnosis required for billable types |

@@ -78,4 +78,4 @@ Proposed by Vimal on 2026-10-22 (Stage 1 review). They move up to **Decisions** 
 | Care-team (relationship-based) access limits: MVP or P1 (Vimal) | Patient access checks |
 | ~~`/hooks/*`, `/health`, `/ready` outside `/api/v1`~~ **Agreed (Thulasi, T24):** `/health` and `/hooks/*` public through Nginx; `/ready` internal and not in the contract | Partner callback URLs, Nginx routing |
 | ~~Idempotency-Key rule~~ **Agreed (Thulasi, T21):** we adopt the expired IETF draft's behavior as our own rule, in middleware; `5xx` and `429` not stored; Anand still to sign ADR-0007 | Partner-bound and payment POSTs |
-| `enqueue()` signature change to `enqueue(db, partner, message_type, payload, idempotency_key, ordering_key=None)` (Thulasi, T29). **Core change: all four review Thulasi's PR before merge** | Outbox, registration, check-in, every partner call |
+| `enqueue()` signature change to `enqueue(db, partner, message_type, payload, idempotency_key, ordering_key=None)` (Thulasi, T29). **Core change: it comes as a separate core PR (not in PR #7), and all four review it before merge** (confirmed by Thulasi on issue #3) | Outbox, registration, check-in, every partner call |
