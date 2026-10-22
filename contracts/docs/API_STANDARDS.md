@@ -16,6 +16,7 @@ Values used in more than one rule are defined once here.
 | Constant | Value | Status |
 |---|---|---|
 | `COMPANY_DOMAIN` | `<COMPANY_DOMAIN>` (placeholder) | **Open, pending Vimal:** a domain the organization owns. Replacing the placeholder here is the only change needed; every URI below is built from it. |
+| Placeholder in machine-readable files | `company-domain.invalid` | `<` and `>` are not valid inside a URI, so the contract's examples and the Problem `type` use this reserved `.invalid` name (RFC 2606) until the domain is decided |
 | Problem type base | `tag:<COMPANY_DOMAIN>,2026:problem/` | Derived from `COMPANY_DOMAIN` (§9.1) |
 | FHIR identifier system base | `https://fhir.<COMPANY_DOMAIN>/sid/` | Derived from `COMPANY_DOMAIN` (DATA_OWNERSHIP §3.1) |
 
