@@ -1,6 +1,6 @@
 # ADR-0004: Cursor pagination for every list
 
-Status: **Proposed** · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Anand (HAPI paging through the FHIR client), Minalini (list screens)
+Status: **Proposed** (sign-offs so far: Minalini, issue #5 M2; Thulasi agreed cursor encryption, T22; Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Anand (HAPI paging through the FHIR client), Minalini (list screens)
 
 ## Context
 
@@ -10,7 +10,7 @@ VG Step 1 requires cursor pagination on every list (`?cursor=&limit=`). Lists co
 
 1. Every list accepts `limit` (default 25, maximum 100) and `cursor`, and returns `{ "items": [...], "nextCursor": "…" }`. No `nextCursor` means the last page.
 2. No total count by default; an endpoint that needs one documents a `count` field explicitly.
-3. Cursors are opaque, URL-safe, at most 512 characters, valid for 24 hours, and **never contain readable PHI**. PROPOSED: the middleware encrypts and authenticates them, bound to tenant, user and endpoint (pending Thulasi). Bad or expired cursor → `400 invalid-cursor`.
+3. Cursors are opaque, URL-safe, at most 512 characters, valid for 24 hours, and **never contain readable PHI**. The middleware encrypts them with AES-GCM using an OpenBao key with a key ID for rotation, with tenant, user and endpoint as associated data and the expiry inside (agreed, Thulasi T22). Bad or expired cursor → `400 invalid-cursor`.
 4. For `POST …/search`, `limit` and `cursor` go in the body.
 5. Our lists use keyset pagination; HAPI-backed lists wrap HAPI's paging inside our cursor so HAPI URLs never reach clients (pending Anand).
 

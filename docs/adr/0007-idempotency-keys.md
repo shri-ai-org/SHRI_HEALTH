@@ -1,6 +1,6 @@
 # ADR-0007: Idempotency-Key for partner-bound and money-moving requests
 
-Status: **Proposed** · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (middleware, integration engine), Anand (payments, claims)
+Status: **Proposed** (Thulasi agreed, issue #3 T21; Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (middleware, integration engine), Anand (payments, claims)
 
 ## Context
 
@@ -12,7 +12,7 @@ VG Step 1 and CAT require an `Idempotency-Key` header on POSTs that send somethi
 2. Value: a client-generated UUID, accepted bare or quoted.
 3. Scope: tenant + user + method + path + key. Fingerprint: SHA-256 of the canonical body. Retention: 24 hours.
 4. Behavior adopted from draft-07: missing when required → `400 idempotency-key-missing`; same key, different body → `422 idempotency-key-reused`; same key still processing → `409 idempotency-request-in-progress`; same key, same body → replay the stored status and body with `Idempotent-Replayed: true`.
-5. Stored responses can contain PHI: kept in our PostgreSQL under row-level security, encrypted at rest, purged at expiry. PROPOSED: implemented once in middleware (pending Thulasi).
+5. Implemented once in middleware (agreed, T21). Stored responses can contain PHI: kept in our PostgreSQL under row-level security, bodies encrypted with `encrypt_field`, purged at expiry. `5xx` and `429` responses are not stored, so a retry runs again.
 
 ## Alternatives considered
 

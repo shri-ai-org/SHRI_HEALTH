@@ -1,6 +1,6 @@
 # ADR-0005: PHI never in URLs; PHI search through POST
 
-Status: **Proposed** · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal (decided as VD-G2), Thulasi (logging, rate limits, audit)
+Status: **Proposed** (Thulasi agreed the related rate-limit and redaction rules, issue #3 T18, T23; Minalini agreed the search rules, M7; formal sign-off pending in DECISIONS D13) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal (decided as VD-G2), Thulasi (logging, rate limits, audit)
 
 ## Context
 
@@ -11,7 +11,7 @@ URLs are copied into Nginx access logs, browser history, proxy and monitoring to
 1. No PHI in path or query parameters. Opaque UUIDs (`x-phi: internal-id`) are allowed.
 2. Any search or filter on a PHI field uses `POST /<collection>/search` with a JSON body; `200` response; `Cache-Control: no-store`. Patient search is `POST /patients/search`.
 3. A lint rule rejects path and query parameters from a PHI denylist (API_STANDARDS §14.3). Free-text `q` is allowed only on reference catalogs (codes, pharmacies, lab compendium).
-4. Patient search requires either an exact identifier or at least two criteria, and caps results, to prevent browsing the whole patient list (PROPOSED).
+4. Patient search requires either an exact identifier (MRN, driver's license number, member ID, or the full phone number) or at least two criteria, and caps results, to prevent browsing the whole patient list. Phone search is an exact match on the full number as normalized digits; no partial-number search in the MVP (Vimal's answer to M7).
 5. Search criteria values are never logged; audit records the criteria fields used and the patient IDs returned.
 
 ## Alternatives considered

@@ -1,6 +1,6 @@
 # ADR-0006: Session cookie with reference token, plus CSRF header
 
-Status: **Proposed** · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Thulasi (owner, D3), Minalini (browser side of login)
+Status: **Accepted** (2026-10-22: Thulasi, issue #3 T7–T9 with additions; Minalini, issue #5 M4, M15) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Thulasi (owner, D3), Minalini (browser side of login)
 
 ## Context
 
@@ -8,13 +8,13 @@ D3 puts login, reference tokens and permissions in Thulasi's middleware; CAT spe
 
 ## Decision
 
-PROPOSED values; Thulasi decides each one:
+As agreed by Thulasi (T7–T9) and Minalini (M4, M15):
 
-1. Login runs server-side (`/auth/login`, `/auth/callback`); Keycloak tokens never reach the browser.
-2. Cookie `__Host-shri_session`: `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`, no `Domain`; value is a random reference token (at least 128 bits).
-3. Idle timeout 15 minutes (pending clinical advisors), absolute 12 hours; `POST /auth/refresh` extends while active; `POST /auth/logout` revokes.
-4. CSRF: `GET /auth/session` returns a session-bound `csrfToken`; the SPA sends `X-CSRF-Token` on every POST, PUT and PATCH; middleware also checks `Origin`. Failure → `403 csrf-check-failed`.
-5. The contract declares security schemes `sessionCookie` and `csrfHeader` (SECURITY_MODEL §2.3).
+1. Login runs server-side (`/auth/login`, `/auth/callback`); Keycloak tokens never reach the browser. PKCE verifier, `state` and `nonce` are stored server-side, keyed by a short-lived `__Host-shri_login` cookie (`SameSite=Lax`, 10 minutes). Keycloak is served on the same origin at `/kc/`.
+2. Cookie `__Host-shri_session`: `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`, no `Domain`. Its value is a 256-bit reference token (`secrets.token_urlsafe(32)`); the server stores only its SHA-256 hash. A new session ID is issued at every login.
+3. Idle timeout 15 minutes (pending clinical advisors), absolute 12 hours. Only user-initiated requests reset the idle timer; the event stream, keep-alives and `/operations` polling do not. `POST /auth/refresh` extends; `POST /auth/logout` revokes. The screen warns at 13 minutes with "Stay signed in" (proposed by Vimal, M15; Thulasi to confirm).
+4. CSRF: `GET /auth/session` returns a session-bound `csrfToken` that rotates at login; the SPA sends `X-CSRF-Token` on every unsafe method, including `/auth/refresh` and `/auth/logout`; comparison is constant-time; `Origin` is required and checked against an allowlist from settings. Failure → `403 csrf-check-failed`.
+5. The contract declares security schemes `sessionCookie` and `csrfHeader` (SECURITY_MODEL §2.3). Minalini's single fetch wrapper adds the header (M4).
 
 ## Alternatives considered
 
@@ -27,7 +27,7 @@ PROPOSED values; Thulasi decides each one:
 ## Consequences
 
 - The generated client must attach `X-CSRF-Token` to unsafe requests (Minalini).
-- Keycloak and the app should share a registrable domain for `SameSite=Strict`; otherwise use `Lax`.
+- Keycloak on the same origin (`/kc/`) makes `SameSite=Strict` work for the session cookie; only the short-lived login-state cookie is `Lax`.
 - Server-Sent Events use the same cookie; no CSRF needed for GET.
 
 ## References

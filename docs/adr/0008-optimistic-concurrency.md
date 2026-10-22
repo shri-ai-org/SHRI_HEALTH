@@ -1,6 +1,6 @@
 # ADR-0008: Optimistic concurrency with ETag / If-Match
 
-Status: **Proposed** · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (prescriptions), Anand (version columns, HAPI versions)
+Status: **Proposed** (Thulasi agreed for prescriptions, issue #3 T31; Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (prescriptions), Anand (version columns, HAPI versions)
 
 ## Context
 

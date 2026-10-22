@@ -1,6 +1,6 @@
 # ADR-0009: UUIDs everywhere, same UUID in HAPI
 
-Status: **Proposed** · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Anand (database and HAPI owner), Vimal
+Status: **Proposed** (Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Anand (database and HAPI owner), Vimal
 
 ## Context
 

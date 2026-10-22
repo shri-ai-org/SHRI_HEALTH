@@ -1,6 +1,6 @@
 # ADR-0003: Errors as Problem Details (RFC 9457) with a stable code catalogue
 
-Status: **Proposed** · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (owner of `backend/app/core/errors.py`)
+Status: **Accepted** (2026-10-22: Vimal; Thulasi, issue #3 T19) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (owner of `backend/app/core/errors.py`)
 
 ## Context
 
@@ -11,7 +11,7 @@ VG Step 1 requires every error to use "the shared Problem JSON object"; TW §7 r
 1. Every 4xx and 5xx response is `application/problem+json` with `type`, `title`, `status`, `detail`, `instance`, plus our extensions `code`, `requestId` and, for validation, `errors[]` (`in`, `pointer` or `name`, field `code`) (API_STANDARDS §9).
 2. `code` comes from a versioned catalogue (API_STANDARDS §9.3). Codes are never renamed or reused; new codes may be added.
 3. `detail` and field errors never contain PHI or echo submitted values. `instance` is the path only, never the query.
-4. `type` is an absolute URI per code. PROPOSED: tag URIs `tag:<COMPANY_DOMAIN>,2026:problem/<code>` (no hosted page needed). The domain is one constant, `COMPANY_DOMAIN`, defined in API_STANDARDS §0 and still open.
+4. `type` is an absolute URI per code. PROPOSED: tag URIs `tag:<COMPANY_DOMAIN>,2026:problem/<code>` (no hosted page needed). The domain is one constant, `COMPANY_DOMAIN`, defined in API_STANDARDS §0 and still open; until it is decided, `core/errors.py` takes the `type` base from a settings value (T19).
 5. `core/errors.py` (Thulasi) produces this shape, including replacing FastAPI's default 422 validation body.
 
 ## Alternatives considered

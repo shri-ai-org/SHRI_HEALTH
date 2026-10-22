@@ -1,6 +1,6 @@
 # ADR-0010: Major version in the path; additive change within v1
 
-Status: **Proposed** · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (Nginx routing, CI breaking-change check), Minalini (client)
+Status: **Proposed** (Thulasi agreed, issue #3 T24, T25; Minalini pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (Nginx routing, CI breaking-change check), Minalini (client)
 
 ## Context
 
@@ -12,7 +12,7 @@ CAT fixes the base path `/api/v1`. TW §4 runs oasdiff against `main` to catch b
 2. Within v1, only additive, non-breaking changes (CONTRACT_GOVERNANCE §4.1). Breaking needs are met by adding a new field or endpoint and deprecating the old.
 3. Deprecation: `deprecated: true` in the contract, `Deprecation` (RFC 9745) and `Sunset` (RFC 8594) headers, a `Link` to the change note; at least 30 days or two releases before removal; then `410 gone`.
 4. `/v2` only for a system-wide redesign, run in parallel with v1 during migration.
-5. `/health`, `/ready` and `/hooks/{partner}` are outside the versioned path (pending Thulasi), so load balancers and partner callback registrations never change with the API version.
+5. `/health` and `/hooks/{partner}` are outside the versioned path and public through Nginx; `/ready` is internal only and not in the contract (agreed, T24). Load balancers and partner callback registrations never change with the API version.
 6. The contract's `info.version` follows `1.MINOR.PATCH` (CONTRACT_GOVERNANCE §3).
 
 ## Alternatives considered

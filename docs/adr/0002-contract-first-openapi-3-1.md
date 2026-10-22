@@ -1,8 +1,8 @@
 # ADR-0002: Contract first with OpenAPI 3.1, one file per module
 
-Status: **Proposed** · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (CI), Minalini (generated client)
+Status: **Accepted** (2026-10-22: Vimal; Thulasi on CI, issue #3 T2–T4; Minalini on the client, issue #5 M3) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (CI), Minalini (generated client)
 
-Vimal accepted OpenAPI 3.1 on 2026-10-22; still needs Thulasi and Minalini.
+Sign-offs: Vimal accepted OpenAPI 3.1 and the 7-day rule; Thulasi agreed the CI jobs, CODEOWNERS lines per module file and SHA-pinned Actions (T2–T4); Minalini chose `orval` as the client generator (M3).
 
 ## Context
 
