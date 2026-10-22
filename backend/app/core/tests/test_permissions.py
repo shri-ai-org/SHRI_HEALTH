@@ -50,6 +50,15 @@ def test_support_staff_get_no_phi() -> None:
         ("MA", "prescriptions:sign-and-send", False),
         ("MD", "prescriptions:sign-and-send", True),
         ("RN", "encounters:entered-in-error", False),
+        # Vimal's two §4.4 differences, settled on PR #10
+        ("MA", "orders:create", False),
+        ("MA", "orders:medical-necessity-check", False),
+        ("MA", "in-office-results:create", True),
+        ("MA", "results:read", True),
+        ("ADM", "files:create", True),
+        ("ADM", "onboarding:import", True),
+        ("CO", "files:read", True),
+        ("CO", "files:create", False),
     ],
 )
 def test_matrix_rows(role: str, permission: str, allowed: bool) -> None:

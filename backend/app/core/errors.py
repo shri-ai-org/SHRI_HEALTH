@@ -32,7 +32,8 @@ class ProblemType:
     title: str
 
 
-# API_STANDARDS §9.3. Codes are permanent once released; meanings never change.
+# API_STANDARDS §9.3. Codes are permanent once released; meanings never change. Titles match
+# the contract's examples (contracts/openapi/components/examples/Problem*.yaml).
 CATALOGUE: dict[str, ProblemType] = {
     "malformed-request": ProblemType(400, "Malformed request"),
     "invalid-cursor": ProblemType(400, "Invalid cursor"),
@@ -41,31 +42,31 @@ CATALOGUE: dict[str, ProblemType] = {
     "session-expired": ProblemType(401, "Session expired"),
     "permission-denied": ProblemType(403, "Permission denied"),
     "csrf-check-failed": ProblemType(403, "CSRF check failed"),
-    "break-glass-required": ProblemType(403, "Break-glass required"),
+    "break-glass-required": ProblemType(403, "Restricted chart"),
     "not-found": ProblemType(404, "Not found"),
     "method-not-allowed": ProblemType(405, "Method not allowed"),
     "not-acceptable": ProblemType(406, "Not acceptable"),
-    "invalid-state-transition": ProblemType(409, "Invalid state transition"),
-    "record-locked": ProblemType(409, "Record locked"),
+    "invalid-state-transition": ProblemType(409, "Action not allowed in the current state"),
+    "record-locked": ProblemType(409, "Record is locked"),
     "booking-conflict": ProblemType(409, "Booking conflict"),
-    "possible-duplicate": ProblemType(409, "Possible duplicate"),
+    "possible-duplicate": ProblemType(409, "Possible duplicate patient"),
     "patient-merged": ProblemType(409, "Patient merged"),
     "idempotency-request-in-progress": ProblemType(409, "Request in progress"),
     "feature-disabled": ProblemType(409, "Feature disabled"),
     "consent-required": ProblemType(409, "Consent required"),
     "gone": ProblemType(410, "Gone"),
-    "precondition-failed": ProblemType(412, "Precondition failed"),
+    "precondition-failed": ProblemType(412, "Record changed"),
     "payload-too-large": ProblemType(413, "Payload too large"),
     "unsupported-media-type": ProblemType(415, "Unsupported media type"),
     "validation-failed": ProblemType(422, "Request validation failed"),
     "business-rule-violation": ProblemType(422, "Business rule violation"),
     "idempotency-key-reused": ProblemType(422, "Idempotency key reused"),
     "file-not-ready": ProblemType(422, "File not ready"),
-    "precondition-required": ProblemType(428, "Precondition required"),
-    "rate-limited": ProblemType(429, "Rate limited"),
+    "precondition-required": ProblemType(428, "If-Match required"),
+    "rate-limited": ProblemType(429, "Too many requests"),
     "internal-error": ProblemType(500, "Internal error"),
     "upstream-error": ProblemType(502, "Upstream error"),
-    "clinical-store-unavailable": ProblemType(503, "Clinical store unavailable"),
+    "clinical-store-unavailable": ProblemType(503, "Clinical data unavailable"),
     "service-unavailable": ProblemType(503, "Service unavailable"),
     "upstream-timeout": ProblemType(504, "Upstream timeout"),
 }
@@ -166,6 +167,8 @@ def problem(
     body.update(extensions)
 
     response_headers = dict(headers or {})
+    # Also set here: a 500 is sent outside the middleware stack (API_STANDARDS §7.2).
+    response_headers.setdefault("Cache-Control", "no-store")
     if request_id:
         response_headers[REQUEST_ID_HEADER] = request_id
     if problem_type.status == 401:
@@ -191,7 +194,8 @@ _FIELD_CODE_BY_TYPE = {
     "literal_error": "not-allowed-value",
     "enum": "not-allowed-value",
 }
-_LOCATIONS = {"body", "query", "path", "header", "cookie"}
+# The contract's FieldError.in allows only these four (no cookie parameters in the API).
+_LOCATIONS = {"body", "query", "path", "header"}
 
 
 _INVALID_TYPE_PREFIXES = ("int_", "float_", "bool_", "string_type", "list_", "dict_", "model_")

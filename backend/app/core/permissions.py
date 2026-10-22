@@ -93,8 +93,10 @@ _RX_PRESCRIBE = _expand("prescriptions:sign-and-send|cancel|change", "alerts:ove
                         "refill-requests:respond", "medications:discontinue")
 # gap: orders:read, results:read, lab-compendium:read, medical-necessity-check and draft
 # entered-in-error are not in the draft matrix; they follow the order-create row.
-_ORDER_DRAFT = _expand("orders:read|create|medical-necessity-check|entered-in-error",
-                       "results:read", "lab-compendium:read", "in-office-results:create")
+_ORDER_READ = _expand("orders:read", "results:read", "lab-compendium:read")
+_ORDER_DRAFT = _ORDER_READ | _expand(
+    "orders:create|medical-necessity-check|entered-in-error", "in-office-results:create"
+)
 _ORDER_SIGN = _expand("orders:sign-and-send|cancel", "results:acknowledge")
 _UNMATCHED = _expand("unmatched-results:read|match|reject")
 _DOCUMENTS = _expand("documents:read|create|update", "fax-inbox:read|file", "faxes:create")
@@ -131,13 +133,13 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "payments:create|card-session", "ccda:import|export",
                 "operations-dashboard:read"),
     ),
-    # Medical assistant (rooming)
+    # Medical assistant (rooming). Orders: point-of-care results only, as in §4.3; no order entry.
     "MA": frozenset().union(
-        _PATIENT_LOOKUP, _SCHEDULE_READ, _CHART_READ, _ROOMING, _MED_READ, _ORDER_DRAFT,
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _CHART_READ, _ROOMING, _MED_READ, _ORDER_READ,
         _DOCUMENTS, _INBOX, _COMMS, _FILES,
         _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
                 "codes:read", "medication-reconciliations:create", "medications:create",
-                "medication-history:fetch", "patients:break-glass"),
+                "medication-history:fetch", "in-office-results:create", "patients:break-glass"),
     ),
     # Nurse
     "RN": frozenset().union(
@@ -174,7 +176,10 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "message-templates:read|create|update", "users:read|create|update",
                 "roles:read", "user-roles:update", "superbills:read", "claims:read",
                 "remittances:read", "billing-reports:read", "exports:read|create",
-                "integration-messages:read|replay", "operations-dashboard:read"),
+                "integration-messages:read|replay", "operations-dashboard:read",
+                # gap: upload the onboarding import file and download exports; the file
+                # service limits which file purposes each role may use.
+                "files:create|read"),
     ),
     # Compliance / privacy officer
     "CO": frozenset().union(
@@ -183,7 +188,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "cosign-rules:read", "practice-setup:read", "message-templates:read",
                 "users:read", "roles:read", "exports:read|create", "audit-events:read",
                 "chart-access-reports:read", "patients:break-glass",
-                "communication-preferences:read", "communications:read"),
+                "communication-preferences:read", "communications:read",
+                "files:read"),  # gap: download exports
     ),
     # Shri platform support: no PHI by default
     "SUP": _expand("users:read", "roles:read", "integration-messages:read|replay"),

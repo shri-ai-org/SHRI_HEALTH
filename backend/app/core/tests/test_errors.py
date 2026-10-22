@@ -187,3 +187,32 @@ def test_field_error_codes_are_checked() -> None:
     }
     with pytest.raises(ValueError):
         field_error("body", "/x", "bad-code")
+
+# Titles from the contract's examples (contracts/openapi/components/examples/Problem*.yaml).
+CONTRACT_TITLES = {
+    "unauthenticated": "Not signed in",
+    "permission-denied": "Permission denied",
+    "break-glass-required": "Restricted chart",
+    "not-found": "Not found",
+    "invalid-state-transition": "Action not allowed in the current state",
+    "record-locked": "Record is locked",
+    "possible-duplicate": "Possible duplicate patient",
+    "precondition-failed": "Record changed",
+    "precondition-required": "If-Match required",
+    "rate-limited": "Too many requests",
+    "validation-failed": "Request validation failed",
+    "malformed-request": "Malformed request",
+    "internal-error": "Internal error",
+    "clinical-store-unavailable": "Clinical data unavailable",
+}
+
+
+@pytest.mark.parametrize(("code", "title"), sorted(CONTRACT_TITLES.items()))
+def test_titles_match_the_contract(code: str, title: str) -> None:
+    assert CATALOGUE[code].title == title
+
+
+def test_cookie_location_is_never_reported() -> None:
+    from app.core.errors import _to_field_error
+
+    assert _to_field_error({"loc": ("cookie", "x"), "type": "missing"})["in"] != "cookie"
