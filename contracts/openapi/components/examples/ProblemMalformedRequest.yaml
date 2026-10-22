@@ -1,0 +1,9 @@
+summary: malformed-request
+value:
+  type: tag:company-domain.invalid,2026:problem/malformed-request
+  title: "Malformed request"
+  status: 400
+  detail: "The request body is not valid JSON."
+  instance: /api/v1/patients
+  code: malformed-request
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11

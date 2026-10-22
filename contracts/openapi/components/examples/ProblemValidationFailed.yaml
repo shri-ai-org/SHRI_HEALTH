@@ -1,0 +1,10 @@
+summary: validation-failed
+value:
+  type: tag:company-domain.invalid,2026:problem/validation-failed
+  title: "Request validation failed"
+  status: 422
+  detail: "2 fields are invalid."
+  instance: /api/v1/patients
+  code: validation-failed
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+  errors: [{"in": "body", "pointer": "/birthDate", "code": "invalid-format"}, {"in": "body", "pointer": "/name/family", "code": "required"}]

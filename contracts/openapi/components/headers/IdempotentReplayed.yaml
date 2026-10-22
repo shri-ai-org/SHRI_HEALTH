@@ -1,0 +1,4 @@
+description: Present and `true` when this response is a replay of a stored response for the same `Idempotency-Key` (API_STANDARDS §10, ADR-0007).
+schema:
+  type: string
+  enum: ['true']

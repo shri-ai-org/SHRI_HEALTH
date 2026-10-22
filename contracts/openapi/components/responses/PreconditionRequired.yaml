@@ -1,0 +1,18 @@
+description: >-
+  428. `If-Match` is required on this request. Code: `precondition-required`.
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  RateLimit:
+    $ref: '../headers/RateLimit.yaml'
+  RateLimit-Policy:
+    $ref: '../headers/RateLimitPolicy.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      precondition-required:
+        $ref: '../examples/ProblemPreconditionRequired.yaml'

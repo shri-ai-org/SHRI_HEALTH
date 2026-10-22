@@ -1,0 +1,9 @@
+title: PhoneNumber
+description: >-
+  A phone number in E.164 form. It is patient data: never put it in a URL; patient search by phone is
+  an exact match on the full number in the body of `POST /patients/search` (API_STANDARDS §14.2).
+type: string
+pattern: '^\+[1-9]\d{6,14}$'
+maxLength: 16
+examples:
+  - '+16175550123'

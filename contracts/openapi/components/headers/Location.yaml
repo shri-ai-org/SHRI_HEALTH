@@ -1,0 +1,5 @@
+description: URL of the created resource (`201`) or of the operation tracking the work (`202`).
+schema:
+  type: string
+  format: uri-reference
+  maxLength: 2048

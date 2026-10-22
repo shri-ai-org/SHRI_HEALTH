@@ -1,0 +1,9 @@
+summary: unauthenticated
+value:
+  type: tag:company-domain.invalid,2026:problem/unauthenticated
+  title: "Not signed in"
+  status: 401
+  detail: "Sign in to continue."
+  instance: /api/v1/me
+  code: unauthenticated
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11

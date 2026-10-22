@@ -1,0 +1,6 @@
+description: >-
+  Remaining quota, per IETF draft-ietf-httpapi-ratelimit-headers-11 (a draft, not an RFC), e.g.
+  `"default";r=50;t=30` (API_STANDARDS §17).
+schema:
+  type: string
+  maxLength: 256

@@ -1,0 +1,22 @@
+description: >-
+  409. Conflicts with the current state. Codes: `invalid-state-transition`, `record-locked`, `booking-conflict`, `possible-duplicate`, `patient-merged`, `idempotency-request-in-progress`, `feature-disabled`, `consent-required`.
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  RateLimit:
+    $ref: '../headers/RateLimit.yaml'
+  RateLimit-Policy:
+    $ref: '../headers/RateLimitPolicy.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      invalid-state-transition:
+        $ref: '../examples/ProblemInvalidStateTransition.yaml'
+      record-locked:
+        $ref: '../examples/ProblemRecordLocked.yaml'
+      conflict-possible-duplicate:
+        $ref: '../examples/ProblemConflictPossibleDuplicate.yaml'

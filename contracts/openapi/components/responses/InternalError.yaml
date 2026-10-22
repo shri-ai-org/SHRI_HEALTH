@@ -1,0 +1,14 @@
+description: >-
+  500. Unexpected error. Details are only in server logs, without PHI. Code: `internal-error`.
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      internal-error:
+        $ref: '../examples/ProblemInternalError.yaml'

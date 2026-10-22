@@ -1,0 +1,7 @@
+title: EmailAddress
+description: An email address (API_STANDARDS §6.2). Examples use only `example.com`, `example.org` or `example.net`.
+type: string
+format: email
+maxLength: 254
+examples:
+  - ramona980.kuhlman72@example.com

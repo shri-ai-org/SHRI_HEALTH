@@ -1,0 +1,4 @@
+description: Link to the change note for a deprecated endpoint, `rel="deprecation"` (API_STANDARDS §2).
+schema:
+  type: string
+  maxLength: 1024

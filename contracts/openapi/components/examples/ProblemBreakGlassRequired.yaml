@@ -1,0 +1,10 @@
+summary: break-glass-required
+value:
+  type: tag:company-domain.invalid,2026:problem/break-glass-required
+  title: "Restricted chart"
+  status: 403
+  detail: "This chart is restricted. State a reason to open it."
+  instance: /api/v1/patients/7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+  code: break-glass-required
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+  patientId: "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"

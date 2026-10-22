@@ -1,0 +1,4 @@
+description: Quota policies, per IETF draft-ietf-httpapi-ratelimit-headers-11, e.g. `"default";q=100;w=60` (API_STANDARDS §17).
+schema:
+  type: string
+  maxLength: 256

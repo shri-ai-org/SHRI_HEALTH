@@ -1,0 +1,6 @@
+name: limit
+in: query
+description: Page size. Default 25, maximum 100 (API_STANDARDS §8.1).
+required: false
+schema:
+  $ref: '../schemas/Limit.yaml'

@@ -1,0 +1,9 @@
+name: If-Match
+in: header
+description: >-
+  The `ETag` of the version being edited. Required on every PATCH and PUT and on the listed actions.
+  Missing gives `428 precondition-required`; a mismatch gives `412 precondition-failed` (API_STANDARDS §11, ADR-0008).
+required: true
+schema:
+  type: string
+  maxLength: 128

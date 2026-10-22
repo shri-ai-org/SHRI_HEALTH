@@ -1,0 +1,9 @@
+title: Timestamp
+description: >-
+  An instant, RFC 3339 `date-time`, always UTC with `Z` in responses, at most millisecond precision.
+  Requests may send any offset; the server normalizes to UTC (API_STANDARDS §6.1).
+type: string
+format: date-time
+maxLength: 35
+examples:
+  - '2026-11-03T14:30:00Z'

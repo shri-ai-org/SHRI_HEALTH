@@ -1,0 +1,12 @@
+# Redocly configuration: structural validation of the bundled contract against the OpenAPI 3.1 specification.
+# Style rules live in .spectral.yaml (CONTRACT_GOVERNANCE §5); here we only check that the document is valid OpenAPI.
+extends:
+  - minimal
+rules:
+  struct: error
+  no-unresolved-refs: error
+  info-license: off              # repository license is an open decision (DECISIONS.md "Still open")
+  operation-4xx-response: off    # covered by shri-standard-errors
+  no-empty-servers: error
+  security-defined: off          # covered by shri-security
+  no-unused-components: off      # Stage 3 has components but no paths yet; re-enable in Stage 4

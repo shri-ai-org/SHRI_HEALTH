@@ -1,0 +1,7 @@
+title: Date
+description: A calendar date without time zone, `YYYY-MM-DD` (API_STANDARDS §6.1). Used for birth dates and service dates.
+type: string
+format: date
+maxLength: 10
+examples:
+  - '1984-07-19'

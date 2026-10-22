@@ -1,0 +1,7 @@
+type: apiKey
+in: header
+name: X-CSRF-Token
+description: >-
+  CSRF token from `GET /auth/session`, required on every unsafe method together with an allowed `Origin`
+  header. Rotates at login; compared in constant time. Failure gives `403 csrf-check-failed`
+  (SECURITY_MODEL §2.2, ADR-0006).
