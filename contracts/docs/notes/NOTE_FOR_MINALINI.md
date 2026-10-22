@@ -11,7 +11,7 @@ Applied in PR #2: M1, M2, M3 (`orval` with a custom mutator), M4, M5 (FRS v1.2 i
 Vimal's answers to your questions:
 
 - **M7:** yes, a full phone number is an identifier. It is only ever sent in the body of `POST /patients/search`, never in a URL. Exact match on the full number (normalized digits) only; no partial-number search in the MVP, because partial search makes it easy to fish through records (API_STANDARDS §14.2).
-- **M15:** the idle timeout is 15 minutes (Thulasi, T9, pending the clinical advisors) and 12 hours absolute. Proposed: warn at 13 minutes, two minutes before logout, with a "Stay signed in" button that counts as user activity (calls `POST /auth/refresh`). Thulasi to confirm (SECURITY_MODEL §2.1).
+- **M15:** the idle timeout is 15 minutes (Thulasi, T9, pending the clinical advisors) and 12 hours absolute. Warn at 13 minutes, two minutes before logout, with a "Stay signed in" button that counts as user activity (calls `POST /auth/refresh`). **Confirmed by Thulasi** (issue #3): time the warning from `idleExpiresAt` returned by `GET /auth/session`, and show a notice before the 12-hour absolute limit (`expiresAt`), which cannot be extended. ADR-0006 stays Accepted (SECURITY_MODEL §2.1).
 
 Still with you: M10 (EVENTS §4 review) and M16 (rows #220–226). Also: please review Thulasi's PR changing `enqueue()` (core change, all four review).
 

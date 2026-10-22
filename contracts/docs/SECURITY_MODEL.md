@@ -49,7 +49,8 @@ The contract has no endpoint without `x-permission` (lint rule, CONTRACT_GOVERNA
 | Idle timeout | 15 minutes (**pending clinical advisors**) | Automatic logoff on shared clinic workstations (TA §9) |
 | Absolute lifetime | 12 hours | One clinic day |
 | What resets the idle timer | **Only user-initiated requests.** The SSE stream, its keep-alives and `/operations` polling never reset it; otherwise no one would ever time out | T9 |
-| Idle warning | Shown at **13 minutes**, two minutes before logout, with a "Stay signed in" button that calls `POST /auth/refresh` and counts as user activity. **Proposed by Vimal (M15); Thulasi to confirm** | M15 |
+| Idle warning | Shown at **13 minutes**, two minutes before logout, timed from `idleExpiresAt` returned by `GET /auth/session` (not a browser-only timer, so activity in another tab counts). A "Stay signed in" button calls `POST /auth/refresh` and counts as user activity | M15; confirmed by Thulasi (issue #3) |
+| Absolute-limit notice | Shown before the 12-hour absolute limit (`expiresAt` from `GET /auth/session`), which **cannot be extended**, so people can save their work | Thulasi (issue #3) |
 | Refresh | `POST /auth/refresh` extends the idle timer (a user action) | CAT |
 | Logout | `POST /auth/logout` deletes the server session and revokes Keycloak's refresh token; returns `204` | CAT |
 
@@ -325,7 +326,6 @@ Thulasi signed off this document on issue #3 (2026-10-22). Remaining:
 | Item | Pending | Status / proposed answer |
 |---|---|---|
 | Idle timeout value (15 minutes) | Clinical advisors | Agreed by Thulasi; pending clinical advisors (§2.1) |
-| Idle warning at 13 minutes with "Stay signed in" | Thulasi | Proposed by Vimal (M15) |
 | Clinical rows of the role matrix (‡) | Clinical advisors | §4.3 |
 | HAPI partition design, including where shared resources (Practitioner, Organization, Location) live: default partition or a copy per tenant | Anand | One partition per organization agreed (T30); shared-resource location open, blocks Stage 4 |
 | How outside `/fhir` clients get their partition | Anand, Thulasi | From their machine-token claims (T30) |

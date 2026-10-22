@@ -43,7 +43,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 2 | GET | `/auth/callback` | T | O | `public` | sec | – | | | §6 | B1 | |
 | 3 | POST | `/auth/refresh` | T | O | `authenticated` | sec | – | | | §6 | B1 | |
 | 4 | POST | `/auth/logout` | T | O | `authenticated` | sec | – | | | §6 | B1 | Returns 204 (API_STANDARDS §4) |
-| 5 | GET | `/auth/session` | T | O | `authenticated` | – | – | | | §6 | B1 | Returns `csrfToken` (SECURITY_MODEL §2.2, pending Thulasi) |
+| 5 | GET | `/auth/session` | T | O | `authenticated` | – | – | | | §6 | B1 | Returns `{ user, organization, csrfToken, idleExpiresAt, expiresAt }`: the CSRF token, the idle expiry the screen times its 13-minute warning from, and the absolute (12-hour, not extendable) expiry (SECURITY_MODEL §2.1, §2.2; Thulasi T8, issue #3) |
 | 6 | GET | `/me` | T | O | `authenticated` | – | – | | | §3.10 | B1 | |
 | 7 | GET | `/users` | T | O | `users:read` | adm | – | | | §3.10 | B1 | |
 | 8 | POST | `/users` | T | O | `users:create` | adm | S | | | §3.10 | B1 | |

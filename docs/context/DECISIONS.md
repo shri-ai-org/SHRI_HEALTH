@@ -72,7 +72,7 @@ Proposed by Vimal on 2026-10-22 (Stage 1 review). They move up to **Decisions** 
 | Clinical writes when HAPI is down. Vimal accepted for the MVP: they fail with `clinical-store-unavailable`; registration and check-in never block and queue through the outbox (D7); rooming impact is an accepted risk to revisit after the pilot (needs Anand, Thulasi) | Vitals, history, rooming |
 | Full SSN collected? Proposed: no; optional last 4 for matching (management) | Registration, patient matching |
 | Domain for error-type URIs and FHIR identifier systems (Vimal) | Error format, FHIR identifiers |
-| Session idle timeout on shared workstations. Agreed by Thulasi (T9): 15 minutes idle, 12 hours absolute; only user-initiated requests reset the timer. Pending clinical advisors; the 13-minute warning (Vimal, M15) is pending Thulasi | Security, clinician workflow |
+| Session idle timeout on shared workstations. Agreed by Thulasi (T9): 15 minutes idle, 12 hours absolute; only user-initiated requests reset the timer. Pending clinical advisors. The 13-minute warning with "Stay signed in" is confirmed by Thulasi (issue #3), timed from `idleExpiresAt`, with a notice before the non-extendable 12-hour limit | Security, clinician workflow |
 | ~~AI gateway access to patient data~~ **Agreed (Thulasi, T10):** per-task delegated token minted by the API, at most 5 minutes, read-only, audited as `ai` | AI-02, AI security |
 | Role list and role-to-permission matrix. Agreed by Thulasi (T14), with multiple roles as a union; clinical rows pending clinical advisors | `x-permission` on every endpoint |
 | Care-team (relationship-based) access limits: MVP or P1 (Vimal) | Patient access checks |
