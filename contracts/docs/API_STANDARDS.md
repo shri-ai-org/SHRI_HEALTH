@@ -324,7 +324,8 @@ Operation failures (§13) reuse the same Problem object inside the operation, wi
 | Our database | ETag derived from a row version counter | **Pending schema** |
 | HAPI resources | The FHIR client translates our ETag to HAPI's `meta.versionId` and performs a version-aware update. HAPI's own weak ETags never reach clients. | **PROPOSED, pending Anand** |
 | Lists | List items do not carry ETags; clients GET the single resource before editing | **PROPOSED** |
-| Autosave | Each successful PATCH returns the new ETag; two tabs editing one draft → the second gets `412` (VG Step 5) | |
+| Autosave | Each successful PATCH returns the new ETag; two tabs editing one draft → the second gets `412` (VG Step 5) |
+| Screen | On `412`, the screen shows a "record changed" view so the user can reload and see the difference. Designed by Minalini (M4, issue #5) | |
 
 ## 12. 404 vs 403: no discovery across clinics
 
