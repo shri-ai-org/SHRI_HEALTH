@@ -1,0 +1,22 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-problem-responses. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths:
+  /patients/{patientId}:
+    get:
+      operationId: getPatient
+      tags: [patients]
+      x-owner: vimal
+      x-permission: patients:read
+      description: 404 returns plain JSON instead of Problem Details.
+      responses:
+        '200': { description: OK }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { type: object }

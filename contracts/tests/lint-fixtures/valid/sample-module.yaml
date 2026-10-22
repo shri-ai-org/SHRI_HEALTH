@@ -1,0 +1,373 @@
+# Compliant SAMPLE module — not a real endpoint and not part of the contract.
+# The fixture runner adds these paths and schemas to a copy of ../../../openapi/shri-health.yaml, bundles it,
+# and lints it with the full ruleset. It must produce no errors, which shows the shri- rules do not fire on
+# a module that follows API_STANDARDS. Keep it in step with the standards when they change.
+paths:
+  /samples/search:
+    post:
+      operationId: searchSamples
+      summary: Search samples
+      description: Sample PHI search. Criteria go in the body, never in the URL.
+      tags: [platform]
+      x-owner: thulasi
+      x-permission: samples:search
+      x-audit: { action: R, category: phi-read, patient: result }
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SampleSearchRequest'
+      responses:
+        '200':
+          description: One page of matching samples.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestId' }
+            Cache-Control: { $ref: '#/components/headers/CacheControl' }
+            RateLimit: { $ref: '#/components/headers/RateLimit' }
+            RateLimit-Policy: { $ref: '#/components/headers/RateLimitPolicy' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SampleList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableContent' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /samples:
+    get:
+      operationId: listSamples
+      summary: List samples
+      description: Sample list with cursor pagination and a non-PHI filter.
+      tags: [platform]
+      x-owner: thulasi
+      x-permission: samples:read
+      x-audit: { action: R, category: phi-read, patient: result }
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          description: Filter by status.
+          required: false
+          schema: { $ref: '#/components/schemas/SampleStatus' }
+      responses:
+        '200':
+          description: One page of samples.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestId' }
+            Cache-Control: { $ref: '#/components/headers/CacheControl' }
+            RateLimit: { $ref: '#/components/headers/RateLimit' }
+            RateLimit-Policy: { $ref: '#/components/headers/RateLimitPolicy' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SampleList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      operationId: createSample
+      summary: Create a sample
+      description: Sample create that reaches a partner, so the Idempotency-Key is required.
+      tags: [platform]
+      x-owner: thulasi
+      x-permission: samples:create
+      x-audit: { action: C, category: phi-write, patient: result }
+      x-idempotency: required
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SampleCreate' }
+      responses:
+        '201':
+          description: Created.
+          headers:
+            Location: { $ref: '#/components/headers/Location' }
+            ETag: { $ref: '#/components/headers/ETag' }
+            X-Request-ID: { $ref: '#/components/headers/XRequestId' }
+            Cache-Control: { $ref: '#/components/headers/CacheControl' }
+            RateLimit: { $ref: '#/components/headers/RateLimit' }
+            RateLimit-Policy: { $ref: '#/components/headers/RateLimitPolicy' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sample' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableContent' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /samples/{sampleId}:
+    parameters:
+      - name: sampleId
+        in: path
+        required: true
+        description: Sample ID.
+        schema: { $ref: '#/components/schemas/Id' }
+    get:
+      operationId: getSample
+      summary: Get a sample
+      description: Sample single read with ETag.
+      tags: [platform]
+      x-owner: thulasi
+      x-permission: samples:read
+      x-audit: { action: R, category: phi-read, patient: result }
+      responses:
+        '200':
+          description: The sample.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+            X-Request-ID: { $ref: '#/components/headers/XRequestId' }
+            Cache-Control: { $ref: '#/components/headers/CacheControl' }
+            RateLimit: { $ref: '#/components/headers/RateLimit' }
+            RateLimit-Policy: { $ref: '#/components/headers/RateLimitPolicy' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sample' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableContent' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      operationId: updateSample
+      summary: Update a sample
+      description: Sample JSON Merge Patch with If-Match.
+      tags: [platform]
+      x-owner: thulasi
+      x-permission: samples:update
+      x-audit: { action: U, category: phi-write, patient: result }
+      x-concurrency: if-match-required
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema: { $ref: '#/components/schemas/SamplePatch' }
+      responses:
+        '200':
+          description: The updated sample.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+            X-Request-ID: { $ref: '#/components/headers/XRequestId' }
+            Cache-Control: { $ref: '#/components/headers/CacheControl' }
+            RateLimit: { $ref: '#/components/headers/RateLimit' }
+            RateLimit-Policy: { $ref: '#/components/headers/RateLimitPolicy' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sample' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '422': { $ref: '#/components/responses/UnprocessableContent' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /samples/{sampleId}/approve:
+    parameters:
+      - name: sampleId
+        in: path
+        required: true
+        description: Sample ID.
+        schema: { $ref: '#/components/schemas/Id' }
+    post:
+      operationId: approveSample
+      summary: Approve a sample
+      description: Sample long-running action returning 202 and an operation.
+      tags: [platform]
+      x-owner: thulasi
+      x-permission: samples:approve
+      x-audit: { action: E, category: phi-write, patient: result }
+      x-async: true
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableContent' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /health:
+    servers:
+      - url: /
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: Sample public health check outside /api/v1.
+      tags: [platform]
+      x-owner: thulasi
+      x-permission: public
+      x-audit: { action: R, category: none }
+      security: []
+      responses:
+        '200':
+          description: Healthy.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/CacheControl' }
+            RateLimit: { $ref: '#/components/headers/RateLimit' }
+            RateLimit-Policy: { $ref: '#/components/headers/RateLimitPolicy' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SampleHealth' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /hooks/{partner}:
+    servers:
+      - url: /
+    parameters:
+      - name: partner
+        in: path
+        required: true
+        description: Partner key.
+        schema:
+          type: string
+          enum: [clearinghouse, erx, fax, sms]
+    post:
+      operationId: receivePartnerCallback
+      summary: Partner callback
+      description: Sample signature-checked partner callback outside /api/v1.
+      tags: [partner-callbacks]
+      x-owner: thulasi
+      x-permission: partner-signed
+      x-audit: { action: C, category: phi-write, actor: partner }
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SampleCallback' }
+      responses:
+        '200':
+          description: Stored for processing.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/CacheControl' }
+            RateLimit: { $ref: '#/components/headers/RateLimit' }
+            RateLimit-Policy: { $ref: '#/components/headers/RateLimitPolicy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableContent' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+components:
+  schemas:
+    SampleStatus:
+      description: Sample status.
+      type: string
+      enum: [draft, active, approved]
+    Sample:
+      description: Sample resource exercising the shared types.
+      type: object
+      required: [id, name, status, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id', x-phi: internal-id }
+        name: { $ref: '#/components/schemas/HumanName', x-phi: identifier }
+        mrn:
+          description: Medical record number.
+          type: string
+          pattern: '^TEST-\d{6}$'
+          maxLength: 11
+          x-phi: identifier
+        phone: { $ref: '#/components/schemas/PhoneNumber', x-phi: identifier }
+        birthDate: { $ref: '#/components/schemas/Date', x-phi: identifier }
+        onsetDate: { $ref: '#/components/schemas/PartialDate', x-phi: clinical }
+        copay: { $ref: '#/components/schemas/Money', x-phi: financial }
+        status: { $ref: '#/components/schemas/SampleStatus', x-phi: none }
+        createdAt: { $ref: '#/components/schemas/Timestamp', x-phi: none }
+      examples:
+        - id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+          name: { given: [Ramona980], family: Kuhlman72 }
+          mrn: TEST-000123
+          phone: '+16175550123'
+          birthDate: '1984-07-19'
+          copay: { value: '25.00', currency: USD }
+          status: active
+          createdAt: '2026-11-03T14:30:00Z'
+    SampleList:
+      description: One page of samples.
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/Sample' }
+          x-phi: identifier
+        nextCursor: { $ref: '#/components/schemas/Cursor', x-phi: none }
+    SampleCreate:
+      description: Body to create a sample.
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { $ref: '#/components/schemas/HumanName', x-phi: identifier }
+        birthDate: { $ref: '#/components/schemas/Date', x-phi: identifier }
+    SamplePatch:
+      description: JSON Merge Patch for a sample.
+      type: object
+      additionalProperties: false
+      properties:
+        phone: { $ref: '#/components/schemas/PhoneNumber', x-phi: identifier }
+    SampleSearchRequest:
+      description: Search body; criteria and paging travel in the body.
+      type: object
+      additionalProperties: false
+      required: [criteria]
+      properties:
+        criteria:
+          description: Search criteria.
+          type: object
+          additionalProperties: false
+          properties:
+            family:
+              type: string
+              minLength: 2
+              maxLength: 100
+              x-phi: identifier
+            birthDate: { $ref: '#/components/schemas/Date', x-phi: identifier }
+          x-phi: identifier
+        limit: { $ref: '#/components/schemas/Limit', x-phi: none }
+        cursor: { $ref: '#/components/schemas/Cursor', x-phi: none }
+    SampleHealth:
+      description: Health status.
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          x-phi: none
+    SampleCallback:
+      description: Sample partner payload.
+      type: object
+      additionalProperties: false
+      required: [messageId]
+      properties:
+        messageId:
+          type: string
+          maxLength: 100
+          x-phi: none
