@@ -23,7 +23,7 @@ from app.core.request_id import REQUEST_ID_HEADER
 log = logging.getLogger(__name__)
 
 PROBLEM_JSON = "application/problem+json"
-DEFAULT_TYPE_BASE = "tag:shri-health.invalid,2026:problem/"
+DEFAULT_TYPE_BASE = "tag:company-domain.invalid,2026:problem/"
 
 
 @dataclass(frozen=True)

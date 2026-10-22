@@ -15,7 +15,7 @@ from app.core.errors import (
     field_error,
 )
 
-TYPE_BASE = "tag:shri-health.invalid,2026:problem/"
+TYPE_BASE = "tag:company-domain.invalid,2026:problem/"
 
 
 class Name(BaseModel):

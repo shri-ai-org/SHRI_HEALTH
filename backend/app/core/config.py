@@ -35,9 +35,10 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     db_pool_size: int = 5
 
-    # Problem Details `type` = this prefix + code (API_STANDARDS §9.1). Placeholder until
-    # COMPANY_DOMAIN is decided; the target form is "tag:<COMPANY_DOMAIN>,2026:problem/".
-    problem_type_base: str = "tag:shri-health.invalid,2026:problem/"
+    # Problem Details `type` = this prefix + code (API_STANDARDS §9.1). Same placeholder as the
+    # contract (API_STANDARDS §0) until COMPANY_DOMAIN is decided; then both change to
+    # "tag:<COMPANY_DOMAIN>,2026:problem/".
+    problem_type_base: str = "tag:company-domain.invalid,2026:problem/"
 
     # PostgreSQL setting that the row-level security policies read (set per transaction).
     # Placeholder until Anand confirms the name his policies use.
