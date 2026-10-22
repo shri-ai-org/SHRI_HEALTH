@@ -32,6 +32,7 @@ functions:
   - cacheControl
   - descriptions
   - infraServer
+  - noDevUser
 
 aliases:
   Operation:
@@ -329,6 +330,15 @@ rules:
     given: "$"
     then:
       function: infraServer
+
+  shri-no-dev-user:
+    description: The X-Dev-User development and test login header never appears in the contract (Thulasi's stand-in login, PR #7).
+    message: "{{error}}"
+    severity: error
+    resolved: false
+    given: "$"
+    then:
+      function: noDevUser
 
   shri-cache-control:
     description: Success responses document Cache-Control no-store (API_STANDARDS §7.2).

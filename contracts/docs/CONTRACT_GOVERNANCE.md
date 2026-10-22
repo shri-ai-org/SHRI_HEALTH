@@ -137,6 +137,7 @@ We comply with the other OWASP rules, for example integer formats and limits, ra
 | `shri-no-secrets` | error | No examples or defaults that look like tokens or keys (also covered by gitleaks, TW §4) |
 | `shri-security` | error | Every non-public operation has a security requirement; POST/PUT/PATCH include `csrfHeader` |
 | `shri-infra-server` | error | `/health` and `/hooks/*` override `servers` with `/`; no other path overrides `servers`; `/ready` is not in the contract (added in Stage 3 for API_STANDARDS §2 and Thulasi T24) |
+| `shri-no-dev-user` | error | The `X-Dev-User` header (Thulasi's development and test stand-in login, PR #7) never appears anywhere in the contract (added 2026-10-22) |
 | `shri-cache-control` | warn | Responses document `Cache-Control: no-store` (via shared response headers) |
 | `shri-description` | warn | Every operation and schema has a description |
 
