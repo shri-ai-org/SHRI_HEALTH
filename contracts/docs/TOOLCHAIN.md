@@ -1,7 +1,7 @@
 # Contract toolchain and versions
 
 Status: **PROPOSED** · Version 0.1 · 2026-10-22 · Author: Vimal (drafted with Claude Code)
-**Needs sign-off from:** Vimal; Thulasi (CI in `.github/`, which she owns); Minalini (TypeScript client generator)
+**Needs sign-off from:** Vimal; Thulasi (CI in `.github/`, which she owns); Minalini (TypeScript client generator). **Thulasi signed off T2–T4 and Minalini chose the client generator (M3) on 2026-10-22; applied below.**
 
 Your rule 5: use current stable versions, checked live, never from memory. Every version below was checked on **2026-10-22** from the source named. Nothing is installed or pinned yet; pinning happens in Stage 5.
 
@@ -16,8 +16,8 @@ Your rule 5: use current stable versions, checked live, never from memory. Every
 | `@redocly/cli` | Bundle multi-file contract; docs preview | 2.67.1 | 2026-10-21 | npm | 3.x |
 | `oasdiff` | Breaking-change check against `main` | v1.34.1 | 2026-10-21 | GitHub releases, oasdiff/oasdiff | README: "OpenAPI 3.1 and 3.2 support" page; open issues on some 3.1 edge cases (e.g. `allOf` flattening of 3.1 keywords) |
 | `schemathesis` (Python) | Contract tests against the running API | 4.32.3 | 2026-10-21 | PyPI (requires Python ≥ 3.11) | Docs: OpenAPI 2.0, 3.0, 3.1, 3.2 |
-| `openapi-typescript` | Candidate TS client types | 7.13.0 | 2026-02-11 | npm | Pending Minalini's choice |
-| `orval` | Candidate TS client + data hooks | 8.44.0 | 2026-10-21 | npm | Pending Minalini's choice |
+| `openapi-typescript` | Considered for TS client types | 7.13.0 | 2026-02-11 | npm | Not chosen (M3) |
+| `orval` | **Chosen** TS client generator (Minalini, M3) | 8.44.0 | 2026-10-21 | npm | Minalini pins the version at install, with a custom mutator (one fetch wrapper) that applies the M4 rules: CSRF header, `ETag`/`If-Match`, `Idempotency-Key` per user action, Problem `code` handling |
 | Node.js | Runs the npm tools | **24.22.1 LTS "Krypton"** | 2026-10-20 | nodejs.org/dist/index.json | Node 26.12.1 is "Current", not LTS |
 | Python | Runs Schemathesis in CI | 3.13 (D12) | — | D12 | Patch version pinned by Thulasi with the backend image |
 
@@ -69,7 +69,7 @@ contracts/
 | Shared schemas only in `shared/`; modules never copy them | One definition of each thing (your rule 4) |
 | Module files may reference `shared/` and, rarely, another module's schema; never circular | Keeps bundling predictable |
 | `dist/` is generated, never edited by hand; committed so Prism, oasdiff, Schemathesis and the TS generator all read one file | Tools work on a single document (VD-G8) |
-| **PROPOSED:** CODEOWNERS adds the implementing owner to each module file (e.g. `/contracts/openapi/modules/billing.yaml @vimal @anand`) | Makes "owners approve their sections" enforced by GitHub, not just by habit. Needs Thulasi (owns `.github/`) |
+| CODEOWNERS adds the implementing owner to each module file (e.g. `/contracts/openapi/modules/billing.yaml @vimalshriai @anandshriai`). **Agreed (T2):** Thulasi adds the lines once the module files exist, **after** the `/contracts/` line, because the last matching pattern wins | Makes "owners approve their sections" visible in GitHub review requests |
 
 ## 4. Commands (Stage 5 will script these)
 
@@ -99,15 +99,18 @@ These go into an npm `package.json` inside `contracts/` with exact versions and 
 | Adopt a release only once it is at least 7 days old | Several tools released yesterday (Redocly, oasdiff, orval, Schemathesis); a short wait avoids broken or compromised releases |
 | Re-check versions at Stage 5 and then monthly; record the check date here | Your rule 5 |
 | OWASP ruleset 2.0.1 has had no release since March 2024. **PROPOSED:** use it, but copy the rules we rely on into `rules/` if it stops working with the Spectral version we pin | It is still the standard Spectral security ruleset; we must not depend on an unmaintained package silently |
-| Node 24 LTS in CI (Thulasi) and locally | LTS = maintained |
+| Node 24 LTS in CI (Thulasi) and locally | LTS = maintained (agreed, T4) |
+| GitHub Actions pinned by **commit SHA**, not by tag | A moved tag cannot change what CI runs (agreed, Thulasi T4) |
 
-## 6. CI jobs (proposal to Thulasi; she owns `.github/`)
+## 6. CI jobs (agreed by Thulasi, T3; she owns `.github/`)
+
+Two limits of the GitHub Free plan on a private repository (T3): (a) Actions has a monthly minutes cap, so jobs stay lean; (b) labels cannot be restricted to certain people, so `contract-breaking` checks through the GitHub API that the `breaking-change-approved` label was applied by Vimal.
 
 | Job | Runs | Fails when |
 |---|---|---|
 | `contract-bundle` | Redocly bundle, then `git diff --exit-code contracts/openapi/dist/` | The committed bundle is stale |
 | `contract-lint` | Spectral with our ruleset | Any `error` rule fails (CONTRACT_GOVERNANCE §5) |
-| `contract-breaking` | oasdiff against `main`'s bundle | A breaking change without the `breaking-change-approved` label (CONTRACT_GOVERNANCE §4) |
+| `contract-breaking` | oasdiff against `main`'s bundle | A breaking change without the `breaking-change-approved` label **applied by Vimal**, verified through the API (CONTRACT_GOVERNANCE §4) |
 | `contract-mock-smoke` | Start Prism, call a few endpoints | Mock does not start or returns invalid examples |
 | `client-generated` | Regenerate the TS client, `git diff --exit-code frontend/src/api/generated/` (TW §4) | Screens use a stale client (Minalini's generator) |
 | `contract-tests` (later) | Schemathesis against the running API (CONTRACT_GOVERNANCE §6) | Implementation differs from contract |
@@ -116,7 +119,6 @@ These go into an npm `package.json` inside `contracts/` with exact versions and 
 
 | Item | Pending | PROPOSED answer |
 |---|---|---|
-| TS client generator and HTTP/data library | Minalini | Her choice; `orval` if she wants generated data-fetching hooks, `openapi-typescript` if types only |
-| CI jobs and CODEOWNERS lines per module file | Thulasi | §3, §6 |
+| CODEOWNERS lines per module file | Thulasi | Added once Stage 3 creates the module files (T2) |
 | Where the shared mock runs (local only, or also on staging) | Thulasi, Minalini | Both: local `npx` and a staging mock redeployed on merge (TW §5) |
 | `openapi: 3.1.2` accepted by all tools | Stage 5 test | Fall back to `3.1.0` |

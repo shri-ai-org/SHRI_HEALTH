@@ -1,7 +1,7 @@
 # Contract governance
 
 Status: **PROPOSED** · Version 0.1 · 2026-10-22 · Author: Vimal (drafted with Claude Code)
-**Needs sign-off from:** Vimal (contract owner); Thulasi (CI and branch protection, which she owns)
+**Needs sign-off from:** Vimal (contract owner); Thulasi (CI and branch protection, which she owns). **Thulasi signed off T2–T6 on issue #3 (2026-10-22); applied below.**
 
 Fixed by source documents:
 
@@ -83,7 +83,7 @@ Fixed by source documents:
 ### 4.2 Process
 
 1. **Avoid it.** Prefer an additive alternative: a new field next to the old one, a new endpoint next to the old one.
-2. If it cannot be avoided: label `breaking-change`; list every consumer; get approval from Vimal and every affected owner. CI's oasdiff check passes only with the `breaking-change-approved` label, which only Vimal applies.
+2. If it cannot be avoided: label `breaking-change`; list every consumer; get approval from Vimal and every affected owner. CI's oasdiff check passes only with the `breaking-change-approved` label applied **by Vimal**. Labels cannot be restricted on the Free plan, so the CI job checks through the GitHub API who applied the label (T3).
 3. **Deprecate first:** mark `deprecated: true`, add `Deprecation` and `Sunset` headers (API_STANDARDS §2), announce in `#shri-dev` and the changelog.
 4. Remove after the deprecation period (at least 30 days or two releases), once consumers have moved.
 5. **Exception:** a security fix may break immediately with Vimal's and Thulasi's approval; consumers are told the same day.
@@ -138,4 +138,4 @@ Contract tests run in CI (Thulasi owns CI; each module owner fixes failures in t
 | 5. Mock parity | Every example in the contract validates against its schema, and the implementation accepts the request examples | Spectral + Schemathesis examples mode |
 | 6. AI-off suite | Rerun layers 2–4 with AI switched off; only AI endpoints may change behavior (`409 feature-disabled`) | Same tools (IP "Testing", FRS §3.4) |
 
-Test environment: Docker Compose with the API, our PostgreSQL, a HAPI test instance and synthetic data from Synthea (TA §8); two test clinics to prove isolation; one test user per role. No real patient data (D12).
+Test environment: Docker Compose with the API, our PostgreSQL, a HAPI test instance and synthetic data from Synthea (TA §8); two test clinics to prove isolation; one test user per role from SECURITY_MODEL §4.3 (Thulasi's skeleton already has the two clinics, T5). FastAPI's own `/openapi.json` is served only outside production (already so in the skeleton, T6). No real patient data (D12).
