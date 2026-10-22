@@ -1,0 +1,50 @@
+# Shri Health — Decisions Log (read this first)
+
+This file records decisions made **after** FRS v1.2, Technical Architecture v1.1 and Implementation Plan v1.1 were written. Where those documents disagree with this file, **this file wins**.
+
+## Which document wins
+
+1. `DECISIONS.md` (this file)
+2. The owner's implementation guide (`01_` to `04_`) and `00_Team_Workflow_and_Claude_Code_Setup.md`
+3. `API_Catalogue.md`
+4. `FRS_v1_2.md` (what the product must do)
+5. `Technical_Architecture_v1_1.md` (how it is built), except where overridden below
+6. `Implementation_Plan_v1_1.md` (background only: phases, gates, risks). Its workstream table and dates are out of date.
+
+## Decisions
+
+| # | Decision | Overrides |
+|---|---|---|
+| D1 | **Clinical data lives in HAPI FHIR** (JPA server with its own PostgreSQL). Administrative and operational data lives in our PostgreSQL. There are two databases. | Technical Architecture v1.1 ADR-19 and §1 ("application-owned PostgreSQL as clinical system of record; no HAPI in production") and the plan's matching recommendation |
+| D2 | Our API reaches HAPI **only through its FHIR API**, via the client in `backend/app/fhir/`. Nobody reads or writes HAPI's internal tables from application code. | — |
+| D3 | **Security lives in the middleware** (owner: Thulasi): login with reference tokens, permissions, row-level security, audit, encryption in transit and at rest, file-encryption keys, rate limits. Endpoints never handle tokens, passwords or encryption themselves; they use `require()` and `tenant_db`. | — |
+| D4 | **Mirth Connect is not used.** A Python integration engine handles labs (HL7 v2 over MLLP), clearinghouse, e-prescribing, fax and SMS. | — |
+| D5 | **Team ownership** is as in `00_Team_Workflow_and_Claude_Code_Setup.md` (CODEOWNERS). Summary below. | Plan v1.1 workstream table |
+| D6 | **Build order:** API contracts first. Admin and front-desk APIs before clinical APIs. Vimal moves to AI after his APIs. | Plan v1.1 "doctor-first vertical slice" |
+| D7 | **Patient registration** is stored in our database (source of truth for demographics and insurance) and mirrored to a FHIR `Patient` in HAPI on every change, through the integration engine so a HAPI outage never blocks the front desk. | — |
+| D8 | **Notes and prescriptions:** drafts and versions in our database; on signing, written to HAPI (`DocumentReference` for notes, `MedicationRequest` for prescriptions) with a `Provenance` record. | Technical Architecture v1.1 storage notes for notes |
+| D9 | **"MVP by late December"** is understood as the core clinic workflow working end to end on staging with synthetic data, with partners (lab, e-prescribing, clearinghouse) in test mode. Live partner certification, security sign-off and a real-patient pilot come after. *Awaiting management confirmation.* | Plan v1.1 dates |
+| D10 | **Dates in all documents are provisional** and will be set separately. Do not plan around them. | All documents |
+| D11 | Product name and use of "OpenEMR" are under legal review. Do not write "replaces OpenEMR" in any user-facing text. | — |
+| D12 | **Stack:** FastAPI (Python 3.13), React + TypeScript + Vite, PostgreSQL, HAPI FHIR R4 with US Core, Keycloak, Nginx, SeaweedFS, OpenBao, vLLM, faster-whisper. No patient data outside production; synthetic data (Synthea) only. | — |
+
+## Who owns what
+
+| Person | Owns |
+|---|---|
+| **Vimal** | OpenAPI contracts and mock server; patients and insurance, scheduling and check-in, eligibility, encounters and notes, patient history APIs; then AI (gateway, LLM serving, voice-to-text, AI-01 note drafting, AI-02 chart summary, scoring; P1: RAG, AI-03, AI-04, document extraction); AI screens |
+| **Thulasi** | Middleware and security; integration engine and webhooks; medications and prescriptions APIs; orders and results APIs |
+| **Anand** | HAPI FHIR server, FHIR client and mappings; our database and migrations; file system and file service; practice setup, billing and payments, documents and fax, C-CDA, inbox, exports and onboarding APIs; admin, billing and document screens |
+| **Minalini** | Design system and all other screens (most already exist; wire them to the APIs); browser side of login; communications and operations dashboard APIs; design review of everyone's screens |
+
+## Still open
+
+| Question | Affects |
+|---|---|
+| Baseline schema: 83-table version or the 89-table `shri_health_db` | Every API that stores data |
+| Which tables move to HAPI (Anand's Day 1 output) | Encounter, history, medication and order APIs |
+| Clearinghouse (Waystar is the candidate), e-prescribing vendor, first lab | Eligibility, claims, prescriptions, lab orders |
+| Licensed drug database or the e-prescribing vendor's checks | Medication safety checks |
+| EPCS (controlled substances) on day one | Prescriptions |
+| Repository licence (the schema README says AGPL) | Commercial release |
+| ONC certification need | Customer targeting |

@@ -1,0 +1,36 @@
+# Default: Thulasi reviews anything not listed below
+*                                         @thulasishriai-ui
+
+/CLAUDE.md                                @vimalshriai @thulasishriai-ui @anandshriai @Minalini-shriai
+/contracts/                               @vimalshriai
+/backend/app/core/                        @thulasishriai-ui
+/backend/app/integration/                 @thulasishriai-ui
+/backend/app/db/                          @anandshriai
+/backend/app/fhir/                        @anandshriai
+/backend/app/modules/patients/            @vimalshriai
+/backend/app/modules/scheduling/          @vimalshriai
+/backend/app/modules/eligibility/         @vimalshriai
+/backend/app/modules/encounters/          @vimalshriai
+/backend/app/modules/history/             @vimalshriai
+/backend/app/modules/ai/                  @vimalshriai
+/backend/app/modules/medications/         @thulasishriai-ui
+/backend/app/modules/orders/              @thulasishriai-ui
+/backend/app/modules/practice_setup/      @anandshriai
+/backend/app/modules/billing/             @anandshriai
+/backend/app/modules/documents/           @anandshriai
+/backend/app/modules/files/               @anandshriai
+/backend/app/modules/ccda/                @anandshriai
+/backend/app/modules/inbox/               @anandshriai
+/backend/app/modules/exports/             @anandshriai
+/backend/app/modules/onboarding/          @anandshriai
+/backend/app/modules/communications/      @Minalini-shriai
+/backend/app/modules/dashboards/          @Minalini-shriai
+/ai/                                      @vimalshriai
+/frontend/                                @Minalini-shriai
+/frontend/src/features/ai/                @vimalshriai @Minalini-shriai
+/frontend/src/features/admin-setup/       @anandshriai @Minalini-shriai
+/frontend/src/features/billing/           @anandshriai @Minalini-shriai
+/frontend/src/features/documents/         @anandshriai @Minalini-shriai
+/infra/hapi/                              @anandshriai
+/infra/postgres/                          @anandshriai
+/infra/seaweedfs/                         @anandshriai

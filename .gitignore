@@ -1,0 +1,8 @@
+# Personal Claude Code files (never committed)
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Secrets
+.env
+.env.*
+!.env.example
