@@ -1,7 +1,7 @@
 # Endpoint inventory and traceability
 
 Status: **PROPOSED** · Version 0.1 · 2026-10-22 · Author: Vimal (drafted with Claude Code)
-**Needs sign-off from:** each module owner for their rows (VD-SIGN): Thulasi (platform, medications, orders), Anand (files, practice setup, billing, documents, C-CDA, inbox, exports), Minalini (communications, dashboard), Vimal (Vimal's modules and standards conformance of all rows).
+**Needs sign-off from:** each module owner for their rows (VD-SIGN): Thulasi (platform, medications, orders), Anand (files, practice setup, billing, documents, C-CDA, inbox, exports), Minalini (communications, dashboard), Vimal (Vimal's modules and standards conformance of all rows). **Thulasi signed off rows #1–27 and #116–147 on issue #3 (2026-10-22) with the changes applied below; Minalini's rows #220–226 are pending her review (M16).**
 
 This is the checklist for Stage 4: an endpoint is "done" when its contract exists with every field below. Source: CAT, changed only where a decision says so (last column). P1 endpoints and `/fhir` are excluded (VD-SCOPE).
 
@@ -35,7 +35,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 
 ---
 
-## 1. Platform — Thulasi
+## 1. Platform — Thulasi (signed off, issue #3)
 
 | # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -53,19 +53,19 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 12 | GET | `/users/{userId}/roles` | T | O | `roles:read` | adm | – | | | §3.10 | B1 | |
 | 13 | PUT | `/users/{userId}/roles` | T | O | `user-roles:update` | sec | – | ✓ | | §3.10 | B1 | |
 | 14 | GET | `/events/stream` | T | – | `authenticated` | – | – | | | FR-ORD-02, FR-SCH-02 | B1 | |
-| 15 | GET | `/operations/{operationId}` | T | O | `authenticated` | – | – | | | — | B1 | **New** (API_STANDARDS §13), owner pending Thulasi |
+| 15 | GET | `/operations/{operationId}` | T | O | `authenticated` | – | – | | | — | B1 | **New** (API_STANDARDS §13); owner Thulasi (T26). Visible only to the creating user in the MVP; polling does not reset the idle timer |
 | 16 | POST | `/operations/{operationId}/cancel` | T | O | `authenticated` | – | – | | | — | B1 | **New** |
 | 17 | GET | `/audit-events` | T | O | `audit-events:read` | sec | – | | | §3.10, §6 Audit | B6 | |
 | 18 | GET | `/reports/chart-access` | T | O | `chart-access-reports:read` | sec | – | | | §6 Sensitive records | B6 | |
 | 19 | POST | `/patients/{patientId}/break-glass` | T | O | `patients:break-glass` | sec | S | | | FR-PAT-01 | B2 | |
-| 20 | POST | `/hooks/clearinghouse` (root) | T | O+F | `partner-signed` | – | – | | | FR-RCM-01/02 | B6 | Moved outside `/api/v1` (API_STANDARDS §2, pending Thulasi) |
-| 21 | POST | `/hooks/erx` (root) | T | O+F | `partner-signed` | – | – | | | FR-MED-01 | B5 | Same |
-| 22 | POST | `/hooks/fax` (root) | T | O+F | `partner-signed` | – | – | | | §3.9 | B3 | Same |
-| 23 | POST | `/hooks/sms` (root) | T | O+F | `partner-signed` | – | – | | | FR-SCH-01 reminders | B3 | Same |
+| 20 | POST | `/hooks/clearinghouse` (root) | T | O+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-RCM-01/02 | B6 | Outside `/api/v1`, public through Nginx (T24) |
+| 21 | POST | `/hooks/erx` (root) | T | O+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-MED-01 | B5 | Same |
+| 22 | POST | `/hooks/fax` (root) | T | O+F | `partner-signed` | pw (partner as actor, T37) | – | | | §3.9 | B3 | Same |
+| 23 | POST | `/hooks/sms` (root) | T | O+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-SCH-01 reminders | B3 | Same |
 | 24 | GET | `/admin/integration-messages` | T | O | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | O | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
-| 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1` |
-| 27 | GET | `/ready` (root) | T | – | `public` | – | – | | | §6 | B1 | Outside `/api/v1` |
+| 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |
+| 27 | GET | ~~`/ready`~~ | T | – | — | – | – | | | §6 | — | **Not in the contract:** internal only (load balancer and Compose), T24 |
 
 ## 2. Patients and insurance — Vimal
 
@@ -180,7 +180,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 114 | GET | `/admin/ai-settings` | V | O | `ai-settings:read` | adm | – | | | §3.4 kill switch, §3.10 | B7 | |
 | 115 | PUT | `/admin/ai-settings` | V | O | `ai-settings:update` | adm | – | ✓ | | §3.4 | B7 | |
 
-## 7. Medications and prescriptions — Thulasi
+## 7. Medications and prescriptions — Thulasi (signed off, issue #3)
 
 | # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -189,19 +189,20 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 118 | POST | `/medications/{medicationId}/discontinue` | T | H | `medications:discontinue` | pw | – | | | FR-MED-01 | B5 | |
 | 119 | POST | `/patients/{patientId}/medication-reconciliation` | T | H | `medication-reconciliations:create` | pw | S | | | FR-MED-01, FR-SCH-02 rooming | B5 | |
 | 120 | POST | `/prescriptions` | T | S | `prescriptions:create` | pw | S | | | FR-MED-01 | B5 | |
-| 121 | GET | `/prescriptions/{prescriptionId}` | T | S | `prescriptions:read` | pr | – | | | FR-MED-01 | B5 | **New, pending Thulasi** (missing from CAT) |
-| 122 | PATCH | `/prescriptions/{prescriptionId}` | T | S | `prescriptions:update` | pw | – | ✓ | | FR-MED-01 | B5 | **New, pending Thulasi** (VG Step 1 requires If-Match on prescription updates) |
+| 121 | GET | `/prescriptions/{prescriptionId}` | T | S | `prescriptions:read` | pr | – | | | FR-MED-01 | B5 | **New** (agreed, T31) |
+| 122 | PATCH | `/prescriptions/{prescriptionId}` | T | S | `prescriptions:update` | pw | – | ✓ | | FR-MED-01 | B5 | **New** (agreed, T31): **drafts only**; a signed prescription → `409 record-locked` |
+| 227 | POST | `/prescriptions/{prescriptionId}/entered-in-error` | T | S | `prescriptions:entered-in-error` | pw | – | | | FR-MED-01 | B5 | **New** (T34): drafts only; anything already sent uses cancel |
 | 123 | POST | `/prescriptions/{prescriptionId}/safety-check` | T | O | `prescriptions:safety-check` | pw | – | | | FR-MED-01, §3.4 CDS layer 1 | B5 | |
 | 124 | POST | `/alerts/{alertId}/override` | T | O | `alerts:override` | pw | – | | | §3.4 | B5 | |
 | 125 | POST | `/prescriptions/{prescriptionId}/sign-and-send` | T | S | `prescriptions:sign-and-send` | sg | R | ✓ | | FR-MED-01 | B5 | |
-| 126 | POST | `/prescriptions/{prescriptionId}/cancel` | T | S | `prescriptions:cancel` | pw | R | | | FR-MED-01 | B5 | |
-| 127 | POST | `/prescriptions/{prescriptionId}/change` | T | S | `prescriptions:change` | sg | R | ✓ | | FR-MED-01 | B5 | |
-| 128 | GET | `/refill-requests` | T | O | `refill-requests:read` | pr | – | | | FR-MED-01, FR-ENC-05 | B5 | |
-| 129 | POST | `/refill-requests/{refillRequestId}/respond` | T | O+S | `refill-requests:respond` | sg | R | | | FR-MED-01 | B5 | |
+| 126 | POST | `/prescriptions/{prescriptionId}/cancel` | T | S | `prescriptions:cancel` | pw | R | | | FR-MED-01 | B5 | Sets `transmissionStatus: cancel-requested` until the pharmacy confirms (T35) |
+| 127 | POST | `/prescriptions/{prescriptionId}/change` | T | S | `prescriptions:change` | sg | R | ✓ | | FR-MED-01 | B5 | A CancelRx plus a NewRx linked by `replaces` (T35) |
+| 128 | GET | `/refill-requests` | T | O | `refill-requests:read` | pr | – | | | FR-MED-01, FR-ENC-05 | B5 | Items carry `type`: `renewal` \| `change` (pharmacy RxChangeRequest via `/hooks/erx`; depends on the e-prescribing vendor; T35) |
+| 129 | POST | `/refill-requests/{refillRequestId}/respond` | T | O+S | `refill-requests:respond` | sg | R | | | FR-MED-01 | B5 | Answers both renewal and change requests (T35) |
 | 130 | GET | `/pharmacies` | T | O | `pharmacies:read` | – | – | | | FR-PAT-01, FR-MED-01 | B5 | Query `q`, `postalCode` (pharmacy data, not PHI) |
 | 131 | POST | `/patients/{patientId}/medication-history/fetch` | T | H | `medication-history:fetch` | pr | R | | ✓ | FR-MED-01 | B5 | |
 
-## 8. Orders and results — Thulasi
+## 8. Orders and results — Thulasi (signed off, issue #3)
 
 | # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -209,17 +210,19 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 133 | GET | `/lab-compendium/{testId}/questions` | T | O | `lab-compendium:read` | – | – | | | FR-ORD-01 (AOE) | B5 | |
 | 134 | POST | `/orders` | T | S | `orders:create` | pw | S | | | FR-ORD-01 | B5 | |
 | 135 | GET | `/orders` | T | S | `orders:read` | pr | – | | | FR-ORD-01 | B5 | Query `patientId`, `status` |
-| 136 | GET | `/orders/{orderId}` | T | S | `orders:read` | pr | – | | | FR-ORD-01 | B5 | **New, pending Thulasi** |
+| 136 | GET | `/orders/{orderId}` | T | S | `orders:read` | pr | – | | | FR-ORD-01 | B5 | **New** (agreed, T32) |
 | 137 | POST | `/orders/{orderId}/medical-necessity-check` | T | O | `orders:medical-necessity-check` | pw | – | | | FR-ORD-01 (ABN) | B5 | |
 | 138 | POST | `/orders/{orderId}/sign-and-send` | T | S | `orders:sign-and-send` | sg | R | ✓ | | FR-ORD-01 | B5 | |
-| 139 | POST | `/orders/{orderId}/cancel` | T | S | `orders:cancel` | pw | R | | | FR-ORD-01 | B5 | |
-| 140 | GET | `/orders/{orderId}/requisition` | T | F | `orders:read` | ex | – | | | FR-ORD-01 | B5 | **Pending Thulasi:** return a file download link, not PDF bytes (API_STANDARDS §15) |
+| 139 | POST | `/orders/{orderId}/cancel` | T | S | `orders:cancel` | pw | R | | | FR-ORD-01 | B5 | Only before `specimen-collected`; after → `409 invalid-state-transition` (T34) |
+| 228 | POST | `/orders/{orderId}/entered-in-error` | T | S | `orders:entered-in-error` | pw | – | | | FR-ORD-01 | B5 | **New** (permission from T13). Drafts only, mirroring prescriptions — **pending Thulasi** to confirm the scope |
+| 140 | GET | `/orders/{orderId}/requisition` | T | F | `orders:read` | ex | – | | | FR-ORD-01 | B5 | Returns a file download link, generated on demand through the file service; audited as `ex` (agreed, T33) |
 | 141 | GET | `/orders/{orderId}/labels` | T | F | `orders:read` | ex | – | | | FR-ORD-01 | B5 | Same |
 | 142 | GET | `/results` | T | H | `results:read` | pr | – | | | FR-ORD-02 | B5 | Query `unreviewed`, `patientId` |
 | 143 | GET | `/results/{resultId}` | T | H | `results:read` | pr | – | | | FR-ORD-02 | B5 | |
 | 144 | POST | `/results/{resultId}/acknowledge` | T | O | `results:acknowledge` | pw | – | | | FR-ORD-02 | B5 | |
 | 145 | GET | `/unmatched-results` | T | O | `unmatched-results:read` | pr | – | | | FR-ORD-02 | B5 | |
-| 146 | POST | `/unmatched-results/{unmatchedResultId}/match` | T | O+H | `unmatched-results:match` | pw | – | | | FR-ORD-02 | B5 | |
+| 146 | POST | `/unmatched-results/{unmatchedResultId}/match` | T | O+H | `unmatched-results:match` | pw | – | | | FR-ORD-02 | B5 | Body `{ patientId, orderId? }`: `orderId` optional for outside results with no order of ours (T35) |
+| 229 | POST | `/unmatched-results/{unmatchedResultId}/reject` | T | O | `unmatched-results:reject` | pw | – | | | FR-ORD-02 | B5 | **New** (T34): `{ reason }`; rejected items are kept, never deleted |
 | 147 | POST | `/encounters/{encounterId}/in-office-results` | T | H | `in-office-results:create` | pw | S | | | FR-ORD-02 | B5 | |
 
 ## 9. Files, practice setup, billing, documents, inbox, exports — Anand
@@ -297,9 +300,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | `POST /encounters` scope | Unscheduled encounters only | VD-G4 |
 | New endpoints from the Stage 1 gaps | #34–36, #44–45, #53, #61, #65, #76–77, #87–89 | Vimal, Stage 1 review |
 | New endpoints from Stage 2 design | #15–16 (operations), #112 (chart summary read) | API_STANDARDS §13 |
-| Proposed to owners | #121–122 (Thulasi), #136 (Thulasi), single GETs in practice setup and documents (Anand), #140–141 return links (Thulasi), #213 async export (Anand) | Pending owners |
-| Moved outside `/api/v1` | `/hooks/*`, `/health`, `/ready` | API_STANDARDS §2, pending Thulasi |
+| Agreed by Thulasi (issue #3) | #121–122, #136, #140–141 (links), new #227–229, state changes on #126–129, #139, #146; `/hooks/*` audited as `pw` | T31–T37 |
+| Proposed to owners | Single GETs in practice setup and documents (Anand), #213 async export (Anand), draft-only scope of #228 (Thulasi) | Pending owners |
+| Moved outside `/api/v1` | `/hooks/*`, `/health` (public through Nginx); `/ready` internal and **not in the contract** | API_STANDARDS §2; agreed T24 |
 
-Also proposed but not yet listed as rows (waiting for the owner): `POST /prescriptions/{prescriptionId}/entered-in-error` (drafts), `POST /unmatched-results/{unmatchedResultId}/reject` (Thulasi, DATA_OWNERSHIP §5.4, §5.6).
-
-**Count:** 226 operations (27 platform, 22 patients, 12 scheduling and eligibility, 28 encounters and notes, 17 history, 9 AI, 16 medications, 16 orders, 72 Anand, 7 Minalini). Recounted when the contract is written.
+**Count:** 228 contract operations: 229 rows (27 platform, 22 patients, 12 scheduling and eligibility, 28 encounters and notes, 17 history, 9 AI, 17 medications, 18 orders, 72 Anand, 7 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid. Recounted when the contract is written.

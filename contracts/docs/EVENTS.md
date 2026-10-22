@@ -1,7 +1,7 @@
 # Domain events and the live stream
 
 Status: **PROPOSED** · Version 0.1 · 2026-10-22 · Author: Vimal (drafted with Claude Code)
-**Needs sign-off from:** Thulasi (owner of `events.publish()` and `/events/stream`), Anand (billing and inbox consume events), Minalini (screens consume the stream)
+**Needs sign-off from:** Thulasi (owner of `events.publish()` and `/events/stream`), Anand (billing and inbox consume events), Minalini (screens consume the stream). **Thulasi signed off on issue #3 (T27, T28), 2026-10-22; Minalini's review of §4 is pending (M10).**
 
 Fixed by source documents:
 
@@ -25,7 +25,7 @@ OpenAPI does not describe event streams well, so events are documented here and 
 | 6 | **Adding** fields to `data` is non-breaking. Changing a field's meaning needs a new event type. | Same policy as the API (CONTRACT_GOVERNANCE §4) |
 | 7 | Every operation that publishes declares `x-events` in the contract. | Traceability |
 
-All **PROPOSED, pending Thulasi.**
+Agreed by Thulasi (T27).
 
 ## 2. Envelope
 
@@ -62,7 +62,7 @@ Aligned with CloudEvents 1.0 attribute names, so the format is familiar and tool
 
 ## 3. Server-Sent Events stream
 
-`GET /api/v1/events/stream` (`x-permission: authenticated`), response `text/event-stream`. **Pending Thulasi** for every value below.
+`GET /api/v1/events/stream` (`x-permission: authenticated`), response `text/event-stream`. Agreed by Thulasi (T28), with the additions marked T28/T9.
 
 ```
 retry: 5000
@@ -77,12 +77,12 @@ data: {"specversion":"1.0","id":"4d6f…","type":"appointment.checked-in",…}
 | Topic | PROPOSED rule |
 |---|---|
 | Authentication | Session cookie (same origin); no CSRF needed for GET |
-| Filtering | The middleware sends an event only if the user belongs to the event's organization, is assigned to its facility, and holds the read permission for the event's resource type. Events about restricted patients go only to users with a current break-glass grant, or are reduced to the type and subject. Personal events (`operation.completed`, `inbox.item-assigned`) go only to the target user. |
-| Keep-alive | Comment line every 25 seconds (keeps proxies from closing the connection) |
+| Filtering | The middleware sends an event only if the user belongs to the event's organization, is assigned to its facility, and holds the read permission for the event's resource type. Events about restricted patients go only to users with a current break-glass grant, or are reduced to the type and subject. Personal events (`operation.completed`, `inbox.item-assigned`) go only to the target user. **Replayed events are filtered again at replay time** (T28). |
+| Keep-alive | Comment line every 25 seconds (keeps proxies from closing the connection). **Keep-alives and the stream itself never reset the idle timer** (T9, T28) |
 | Resume | Browser sends `Last-Event-ID` on reconnect; the server replays from a 5-minute buffer. If the gap is longer, the server sends `stream.reset` and the screen re-fetches |
 | Connections | At most 5 open streams per user (several tabs) |
 | Session end | Stream closes when the session expires; the browser gets `401` on reconnect |
-| Nginx | Response buffering off for this path (Thulasi, `infra/nginx`) |
+| Nginx | Response buffering is already off for `/api/` (Thulasi, T28) |
 
 ## 4. Initial event catalogue
 
@@ -121,15 +121,15 @@ data: {"specversion":"1.0","id":"4d6f…","type":"appointment.checked-in",…}
 | `claim.status-changed` | claim | `status` | Anand | Billing screens | Browser |
 | `inbox.item-assigned` | inbox-item | `itemType`, `priority` | Anand | Assigned user | Browser (personal) |
 | `communication.delivery-updated` | communication | `deliveryStatus` | Minalini | Communications screen | Browser |
+| `break-glass.granted` | patient | `grantId`, `userId` | Platform (Thulasi) | **Anand (inbox item for CO)**: the privacy-officer notice is an inbox item, never an email with PHI (T16) | Internal |
 | `stream.reset` | — | — | Platform | All screens: re-fetch | Browser |
 
 ## 5. Open items
 
+Settled 2026-10-22: envelope and naming, filtering (including replay), keep-alive, resume buffer, connection limit (Thulasi, T27, T28).
+
 | Item | Pending | PROPOSED answer |
 |---|---|---|
-| Envelope and naming | Thulasi | §1, §2 |
-| Filtering rules, especially restricted patients | Thulasi | §3 |
-| Resume buffer, keep-alive, connection limit | Thulasi | §3 |
 | Who maintains this catalogue | Thulasi, Vimal | Vimal (contract owner) keeps the catalogue; publishers add events by contract PR |
-| Event list for billing, inbox and documents | Anand | §4 rows |
-| Screens that need live updates and their events | Minalini | §4 "Browser" rows |
+| Event list for billing, inbox and documents, including the CO inbox item for `break-glass.granted` | Anand | §4 rows |
+| Screens that need live updates and their events | Minalini | §4 "Browser" rows (her review pending, M10) |

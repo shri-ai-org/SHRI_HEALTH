@@ -1,7 +1,7 @@
 # Data ownership, consistency and lifecycles
 
 Status: **PROPOSED** · Version 0.1 · 2026-10-22 · Author: Vimal (drafted with Claude Code)
-**Needs sign-off from:** Anand (system of record, FHIR mappings, schema). Also Vimal (Vimal's modules), Thulasi (medications, orders, integration engine outbox), Anand and the RCM analyst (claims).
+**Needs sign-off from:** Anand (system of record, FHIR mappings, schema). Also Vimal (Vimal's modules), Thulasi (medications, orders, integration engine outbox; **signed off on issue #3, 2026-10-22**, additions applied in §2.2, §3.1, §3.4, §5.4–§5.6), Anand and the RCM analyst (claims).
 
 **Pending schema (VD-G7):** the baseline (83 vs 89 tables) and the list of tables that move to HAPI are not settled (DEC "Still open"). Every table name and every "our database also keeps a row" statement below is marked **pending schema** and will be finalized when the schema is loaded. Stage 4 does not start until then.
 
@@ -79,10 +79,10 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Audit events | `/audit-events`, `/reports/chart-access` | **O** (append-only, hash chain, TA §6) | AuditEvent (not exposed in MVP) | — | Append-only |
 | Break-glass grants | `/patients/{patientId}/break-glass` | **O** | — | — | Insert-only |
 | Integration messages | `/admin/integration-messages` | **O** + **F** (raw payloads) | — | — | System only |
-| Medication list | `/patients/{patientId}/medications` | **H** | MedicationRequest (US Core represents medication lists with MedicationRequest, including patient-reported); MedicationStatement if used — **pending Thulasi/Anand** | US Core MedicationRequest; US Core Medication | HAPI version |
+| Medication list | `/patients/{patientId}/medications` | **H** | MedicationRequest (US Core represents medication lists with MedicationRequest, including patient-reported): `intent` and `reported[x]` mark patient-reported items (agreed, Thulasi T36; **Anand to confirm the mapping**) | US Core MedicationRequest; US Core Medication | HAPI version |
 | Prescription | `/prescriptions` | **S** (D8) | MedicationRequest + Provenance | US Core MedicationRequest; US Core Provenance | `If-Match` on edits and sign-and-send |
 | Safety alerts, overrides | `/prescriptions/{prescriptionId}/safety-check`, `/alerts/{alertId}/override` | **O** | — | — | Insert-only |
-| Refill requests | `/refill-requests` | **O** + integration | MedicationRequest on approval | US Core MedicationRequest | State machine |
+| Refill and change requests | `/refill-requests` with `type`: `renewal` \| `change` (pharmacy-initiated NCPDP RxChangeRequest arrives through `/hooks/erx`; depends on the e-prescribing vendor; T35) | **O** + integration | MedicationRequest on approval | US Core MedicationRequest | State machine |
 | Pharmacy directory | `/pharmacies` | **O** | Organization (if mirrored) | US Core Organization | Read-only |
 | Outside medication history | `/patients/{patientId}/medication-history/fetch` | **H** | MedicationDispense / MedicationRequest | US Core MedicationDispense | Insert-only |
 | Lab compendium | `/lab-compendium` | **O** | — | — | Read-only (loaded by Anand's onboarding) |
@@ -148,7 +148,8 @@ How it works:
 
 **PROPOSED, pending Thulasi (outbox) and Anand (FHIR client).**
 
-1. **Transactional outbox.** The change and its outbox row (`integration.enqueue("hapi", "<resource>.upsert", id)`) are written in **the same database transaction**. If the transaction rolls back, nothing is sent; if it commits, the job exists. (Requires `integration.enqueue()` to use the caller's `tenant_db` transaction — **pending Thulasi**.)
+1. **Transactional outbox.** The change and its outbox row (`integration.enqueue("hapi", "<resource>.upsert", id)`) are written in **the same database transaction**. If the transaction rolls back, nothing is sent; if it commits, the job exists. **Agreed by Thulasi (T29):** `enqueue()` takes the caller's session: `enqueue(db, partner, message_type, payload, idempotency_key, ordering_key=None)`. Payloads for `hapi` jobs carry IDs only. Workers claim jobs across clinics with `SKIP LOCKED`, then run each job with its own clinic set, the same way `tenant_db` does.
+   > **Core change, all-four review.** Changing `enqueue()`'s signature changes a shared core function, so Thulasi's PR for it is reviewed by all four of us (Vimal, Thulasi, Anand, Minalini) before merge.
 2. **Job carries the ID only.** The worker loads the **current** row when it runs, not a snapshot. Older jobs for the same record therefore send the latest data, so out-of-order delivery cannot restore stale data.
 3. **Idempotent write.** The HAPI resource has the **same ID** as our record (client-assigned UUID; API_STANDARDS §5) and carries our identifier: `identifier.system = <our system URI>`, `identifier.value = <our UUID>`. The worker does `PUT <Type>/<uuid>` (update-as-create). If client-assigned IDs are not allowed in HAPI's configuration, the fallback is a conditional update `PUT <Type>?identifier=<system>|<uuid>` (create if absent). Either way, retries never create duplicates. **Pending Anand:** HAPI configuration and the identifier system URI (PROPOSED: `https://fhir.<COMPANY_DOMAIN>/sid/<resource>-id`, built from `COMPANY_DOMAIN`, API_STANDARDS §0, still open).
 4. **Ordering per record.** Jobs are processed in order per record key (for example per `patientId`); different records run in parallel.
@@ -179,7 +180,11 @@ How it works:
 
 ### 3.4 Tenant isolation in HAPI
 
-Our PostgreSQL isolates clinics with row-level security. HAPI needs its own isolation. **Pending Anand and Thulasi.** PROPOSED: one HAPI partition per organization, selected by the FHIR client from the request's tenant, and never from user input. Recorded in DECISIONS "Still open"; this blocks every HAPI-backed endpoint.
+Our PostgreSQL isolates clinics with row-level security. HAPI needs its own isolation.
+
+**Agreed by Thulasi (T30), design is Anand's:** one HAPI partition per organization. The FHIR client takes the tenant from the same request context as `tenant_db` (or from the job, for outbox workers), never from input. Outside `/fhir` clients get their partition from their machine-token claims.
+
+**Open, Anand's design decision (blocks Stage 4):** where shared resources live — Practitioner, Organization, Location (VD-G5 mirrors) — in the default partition shared by all clinics, or as a copy per tenant. Recorded in DECISIONS.md "Still open".
 
 ## 4. Concurrency control summary
 
@@ -290,36 +295,41 @@ stateDiagram-v2
 | `final`/`amended` → `entered-in-error` | Same | Author, MD, APP | Reason required | HAPI DocumentReference status `entered-in-error`; `note.entered-in-error`; billing notified if the encounter is closed |
 | `final` → any edit | `PATCH /notes/{noteId}` | — | — | Always `409 record-locked` |
 
-### 5.4 Prescription (ours, then HAPI on signing; FHIR MedicationRequest.status) — owner Thulasi, **pending Thulasi**
+### 5.4 Prescription (ours, then HAPI on signing; FHIR MedicationRequest.status) — owner Thulasi, agreed (issue #3, T31–T35)
 
-`status` (FHIR): `draft`, `active`, `cancelled`, `stopped`, `completed`, `entered-in-error`. `transmissionStatus` (ours): `not-sent`, `queued`, `sent`, `accepted`, `rejected`, `error`.
+`status` (FHIR): `draft`, `active`, `cancelled`, `stopped`, `completed`, `entered-in-error`. `transmissionStatus` (ours): `not-sent`, `queued`, `sent`, `accepted`, `rejected`, `error`, `cancel-requested` (T35: the screen shows a cancel waiting for the pharmacy).
 
 | From → To | Endpoint | Who | Guards | Side effects |
 |---|---|---|---|---|
-| — → `draft` | `POST /prescriptions` | MD, APP, RN, MA per clinic protocol (`prescriptions:create`) | — | — |
-| `draft` → `draft` | **`PATCH /prescriptions/{prescriptionId}`** (missing from CAT; VG Step 1 requires `If-Match` on prescription updates) | Author | `If-Match` | New draft version |
+| — → `draft` | `POST /prescriptions` | MD, APP, RN, MA per clinic protocol (`prescriptions:create`; ‡ pending clinical advisors) | — | — |
+| read | `GET /prescriptions/{prescriptionId}` (T31) | `prescriptions:read` | — | — |
+| `draft` → `draft` | `PATCH /prescriptions/{prescriptionId}` with `If-Match` (T31) | Author (`prescriptions:update`) | **Drafts only**; a signed prescription → `409 record-locked` | New draft version |
 | `draft` (safety check) | `POST /prescriptions/{prescriptionId}/safety-check` | System on request | — | Alerts created (`medication_safety_alert`, rule-based, TA §5.4) |
 | Alert overridden | `POST /alerts/{alertId}/override` `{ reason }` | MD, APP (`alerts:override`) | Reason required for high severity (FRS §3.4) | Audited |
 | `draft` → `active` | `POST /prescriptions/{prescriptionId}/sign-and-send` with `If-Match` + `Idempotency-Key` | MD, APP (`prescriptions:sign-and-send`) | Safety check run on this version; high-severity alerts overridden; controlled substances blocked until EPCS (P1, TA ADR-17) | Version locked; outbox → HAPI MedicationRequest + Provenance; eRx NewRx queued; `transmissionStatus: queued`; `prescription.signed` |
 | transmission updates | none (integration engine and `/hooks/erx`) | System | — | `queued` → `sent` → `accepted` / `rejected` / `error`; failures go to the prescriber's inbox; `prescription.transmission-updated` |
-| `active` → `cancelled` | `POST /prescriptions/{prescriptionId}/cancel` `{ reason }` | MD, APP | — | CancelRx sent; becomes `cancelled` when the pharmacy confirms; on denial stays `active`, inbox item |
-| `active` → `stopped` (+ new `active`) | `POST /prescriptions/{prescriptionId}/change` | MD, APP | `If-Match` | New prescription version replaces the old (**pending Thulasi**: RxChange flow) |
+| `active` → `cancelled` | `POST /prescriptions/{prescriptionId}/cancel` `{ reason }` with `Idempotency-Key` | MD, APP | — | CancelRx sent; `transmissionStatus: cancel-requested`; becomes `cancelled` when the pharmacy confirms; on denial stays `active`, inbox item |
+| `active` → `stopped` + new `active` | `POST /prescriptions/{prescriptionId}/change` with `If-Match` + `Idempotency-Key` | MD, APP | — | The prescriber's change is a **CancelRx plus a NewRx**, the new prescription linked to the old by `replaces` (T35) |
+| Pharmacy-initiated change | none (`/hooks/erx`, NCPDP RxChangeRequest) | System | — | Arrives as a refill request with `type: change`; answered with `POST /refill-requests/{refillRequestId}/respond`, like renewals. Depends on the e-prescribing vendor (T35) |
 | `active` → `stopped` | `POST /medications/{medicationId}/discontinue` `{ reason }` | MD, APP | — | — |
-| `draft` → `entered-in-error` | **missing endpoint** (VD-G6 pattern) — pending Thulasi | Author | — | — |
+| `draft` → `entered-in-error` | `POST /prescriptions/{prescriptionId}/entered-in-error` `{ reason }` (T34) | Author (`prescriptions:entered-in-error`) | **Drafts only**; anything already sent uses cancel → otherwise `409 invalid-state-transition` | Kept for audit |
 
-### 5.5 Order (ours, then HAPI on signing; FHIR ServiceRequest.status) — owner Thulasi, **pending Thulasi**
+### 5.5 Order (ours, then HAPI on signing; FHIR ServiceRequest.status) — owner Thulasi, agreed (issue #3, T32–T34)
 
 `status` (FHIR): `draft`, `active`, `completed`, `revoked`, `entered-in-error`. `fulfillmentStatus` (ours, FRS FR-ORD-01): `signed`, `transmitted`, `acknowledged`, `specimen-collected`, `partial-result`, `final-result`, `cancelled`.
 
 | From → To | Endpoint | Who | Guards | Side effects |
 |---|---|---|---|---|
-| — → `draft` | `POST /orders` | MD, APP, RN (`orders:create`) | — | — |
+| — → `draft` | `POST /orders` | MD, APP, RN (`orders:create`; ‡ pending clinical advisors) | — | — |
+| read | `GET /orders/{orderId}` (T32) | `orders:read` | — | — |
 | `draft` (necessity check) | `POST /orders/{orderId}/medical-necessity-check` | System on request | — | Sets `abnRequired` (FRS FR-ORD-01) |
-| `draft` → `active` (`signed`) | `POST /orders/{orderId}/sign-and-send` with `Idempotency-Key` | MD, APP (`orders:sign-and-send`) | AOE answers complete; at least one ICD-10-CM diagnosis linked; ABN signed or refusal recorded when required | Outbox → HAPI ServiceRequest + Provenance; HL7 order queued; requisition and labels printable |
+| `draft` → `active` (`signed`) | `POST /orders/{orderId}/sign-and-send` with `Idempotency-Key` | MD, APP (`orders:sign-and-send`) | AOE answers complete; at least one ICD-10-CM diagnosis linked; ABN signed or refusal recorded when required | Outbox → HAPI ServiceRequest + Provenance; HL7 order queued |
+| requisition, labels | `GET /orders/{orderId}/requisition`, `GET /orders/{orderId}/labels` (T33) | `orders:read` | — | Generated on demand through the file service; returns a download link; audited as `export` |
 | `signed` → `transmitted` → `acknowledged` → `specimen-collected` → `partial-result` → `final-result` | none (integration engine) | System | — | Status events stored (`service_request_status_event`); `order.status-changed`; on `final-result`, FHIR `completed` |
-| `draft`/`active` → `revoked` (`cancelled`) | `POST /orders/{orderId}/cancel` `{ reason }` | MD, APP (`orders:cancel`) | Before `specimen-collected` (**pending Thulasi**) | Cancel message to the lab if transmitted |
+| `draft`/`active` → `revoked` (`cancelled`) | `POST /orders/{orderId}/cancel` `{ reason }` | MD, APP (`orders:cancel`) | **Only before `specimen-collected`**; after that → `409 invalid-state-transition` (T34) | Cancel message to the lab if transmitted |
+| `draft` → `entered-in-error` | `POST /orders/{orderId}/entered-in-error` `{ reason }` | Author (`orders:entered-in-error`, T13) | Drafts only, mirroring prescriptions. **Pending Thulasi**: T13 adds the permission; confirm the draft-only scope | Kept for audit |
 
-### 5.6 Result (HAPI; FHIR DiagnosticReport.status) — owner Thulasi, **pending Thulasi**
+### 5.6 Result (HAPI; FHIR DiagnosticReport.status) — owner Thulasi, agreed (issue #3, T34–T35)
 
 Two independent dimensions:
 
@@ -330,8 +340,8 @@ Two independent dimensions:
 |---|---|---|---|---|
 | Message received, matched | none | System | Placer/filler number and patient identifiers match (TA §10.4) | DiagnosticReport + Observations → HAPI; review `unreviewed`; `result.received` within 60 s (FRS FR-ORD-02) |
 | Message received, not matched | none | System | — | Unmatched queue item `unmatched`; never filed automatically (FRS FR-ORD-02) |
-| `unmatched` → `matched` | `POST /unmatched-results/{unmatchedResultId}/match` `{ patientId, orderId }` | RN, MD (`unmatched-results:match`) | — | Filed as above |
-| `unmatched` → `rejected` | **missing endpoint** — pending Thulasi | RN, MD | Reason | — |
+| `unmatched` → `matched` | `POST /unmatched-results/{unmatchedResultId}/match` `{ patientId, orderId? }` | RN, MD (`unmatched-results:match`) | `orderId` is **optional**, for outside results that have no order of ours (T35) | Filed as above |
+| `unmatched` → `rejected` | `POST /unmatched-results/{unmatchedResultId}/reject` `{ reason }` (T34) | RN, MD (`unmatched-results:reject`) | Reason required | Rejected items are kept and can be reviewed, never deleted |
 | `unreviewed` → `acknowledged` | `POST /results/{resultId}/acknowledge` | Ordering clinician or covering MD, APP (`results:acknowledge`) | — | Critical-result escalation stops; `result.acknowledged` |
 | Corrected or amended report | none | System | — | New report version; review resets to `unreviewed`; clinician re-notified (TA §10.4) |
 | In-office result | `POST /encounters/{encounterId}/in-office-results` | MA, RN, MD, APP | — | `final` at once; `unreviewed` unless entered by a clinician |
@@ -394,11 +404,12 @@ stateDiagram-v2
 | Encounter diagnoses (§2.5) | Anand (draft table) | Decided by Vimal: B. Pending Vimal: what "encounter signed" means and adding diagnoses after signing |
 | Legal record of a signed note (§3.2) | Anand, compliance | Vimal's proposal: signed version in ours, same content hash in HAPI |
 | Clinical writes when HAPI is down (§3.3) | Anand, Thulasi | Accepted by Vimal for the MVP: fail with 503; registration and check-in queue |
-| Tenant isolation in HAPI (§3.4) | Anand, Thulasi | One partition per organization |
+| Tenant isolation in HAPI (§3.4) | Anand | One partition per organization (agreed, Thulasi T30). **Open:** where shared resources live (default partition vs copy per tenant) |
 | Client-assigned IDs in HAPI; identifier system URI | Anand; Vimal (domain) | Yes; `https://fhir.<COMPANY_DOMAIN>/sid/<resource>-id` |
 | Emergency contacts as Patient.contact vs RelatedPerson | Anand | Patient.contact; RelatedPerson for representatives |
 | Merge representation in HAPI | Anand | Patient.link `replaced-by` / `replaces` |
-| Prescription PATCH and entered-in-error endpoints; RxChange | Thulasi | Add `PATCH /prescriptions/{prescriptionId}`; add entered-in-error for drafts |
-| Unmatched result rejection endpoint; order cancel cut-off | Thulasi | Add `POST /unmatched-results/{id}/reject`; cancel before specimen collection |
+| Medication list mapping (`intent`, `reported[x]`) | Anand | Agreed by Thulasi (T36); Anand to confirm |
+| `enqueue()` signature change (§3.1) | All four | Core change: Thulasi's PR reviewed by all four |
+| Draft-only scope of `POST /orders/{orderId}/entered-in-error` | Thulasi | Drafts only (§5.5) |
 | Claim close rule; co-signature hold | Anand, RCM analyst | As in §5.7 |
 | Close-encounter guards (diagnosis required?) | Vimal, clinical advisors | At least one signed note; diagnosis required for billable types |
