@@ -1,0 +1,5 @@
+# Reviewed false positives only, one gitleaks fingerprint per line, each with its reason.
+# Never add a real secret here: rotate it and remove it from history instead.
+
+# A synthetic UUID used as a test Idempotency-Key (not a secret); renamed in the next commit.
+a81fad2902498c0d31378d8ea66e84bb663a032d:backend/app/core/tests/test_errors.py:generic-api-key:285
