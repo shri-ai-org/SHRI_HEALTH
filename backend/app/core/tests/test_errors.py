@@ -1,8 +1,9 @@
 from collections.abc import Callable
 from typing import Any
+from uuid import UUID
 
 import pytest
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, ConfigDict, Field
@@ -250,3 +251,47 @@ def test_problem_never_lets_extensions_overwrite_standard_members(
         "not-found", 404, TYPE_BASE + "not-found", "Not found")
     assert body["requestId"] == response.headers["X-Request-ID"]
     assert body["mergedIntoId"] == "m-1"  # ordinary extensions still pass through
+
+
+def _idempotent_client(make_app: Callable[..., FastAPI]) -> TestClient:
+    router = APIRouter()
+
+    @router.post("/checks")
+    async def create_check(
+        key: UUID = Header(alias="Idempotency-Key"),
+    ) -> dict[str, str]:
+        return {"key": str(key)}
+
+    app = make_app()
+    app.include_router(router)
+    return TestClient(app)
+
+
+def test_missing_idempotency_key_is_400(make_app: Callable[..., FastAPI]) -> None:
+    response = _idempotent_client(make_app).post("/checks")
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "idempotency-key-missing"
+
+
+def test_malformed_idempotency_key_is_400(make_app: Callable[..., FastAPI]) -> None:
+    response = _idempotent_client(make_app).post("/checks", headers={"Idempotency-Key": "nope"})
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "malformed-request"
+
+
+def test_valid_idempotency_key_passes(make_app: Callable[..., FastAPI]) -> None:
+    key = "0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11"
+    response = _idempotent_client(make_app).post("/checks", headers={"Idempotency-Key": key})
+
+    assert response.json() == {"key": key}
+
+
+def test_405_keeps_the_allow_header(client: TestClient) -> None:
+    response = client.delete("/health")
+
+    assert response.status_code == 405
+    assert response.json()["code"] == "method-not-allowed"
+    assert response.headers["Allow"] == "GET"
+

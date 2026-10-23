@@ -10,6 +10,7 @@ values ("Patient not found", never "Patient John Smith not found").
 """
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, ClassVar, cast
 
@@ -151,7 +152,7 @@ def problem(
     code: str,
     detail: str | None = None,
     *,
-    headers: dict[str, str] | None = None,
+    headers: Mapping[str, str] | None = None,
     **extensions: Any,
 ) -> JSONResponse:
     problem_type = CATALOGUE[code]
@@ -235,10 +236,24 @@ async def _app_error(request: Request, exc: Exception) -> JSONResponse:
     return problem(request, err.code, err.detail, headers=err.headers, **err.extensions)
 
 
+IDEMPOTENCY_HEADER = "idempotency-key"
+
+
+def _is_idempotency_header(error: dict[str, Any]) -> bool:
+    loc = tuple(error.get("loc", ()))
+    return len(loc) == 2 and loc[0] == "header" and str(loc[1]).lower() == IDEMPOTENCY_HEADER
+
+
 async def _validation_error(request: Request, exc: Exception) -> JSONResponse:
     raw = cast(RequestValidationError, exc).errors()
     if any(e.get("type") == "json_invalid" for e in raw):
         return problem(request, "malformed-request", "Request body is not valid JSON")
+    # Idempotency-Key problems are 400s, not field errors (API_STANDARDS §9.3, §10).
+    key_errors = [e for e in raw if _is_idempotency_header(e)]
+    if any(e.get("type") == "missing" for e in key_errors):
+        return problem(request, "idempotency-key-missing", "Send an Idempotency-Key header")
+    if key_errors:
+        return problem(request, "malformed-request", "Idempotency-Key must be a UUID")
     # Field errors carry location and code only: never the submitted value (may be PHI).
     errors = [_to_field_error(e) for e in raw]
     detail = "1 field is invalid." if len(errors) == 1 else f"{len(errors)} fields are invalid."
@@ -261,7 +276,10 @@ _CODE_BY_STATUS = {
 
 async def _http_error(request: Request, exc: Exception) -> JSONResponse:
     err = cast(StarletteHTTPException, exc)
-    return problem(request, _CODE_BY_STATUS.get(err.status_code, "internal-error"))
+    # Keep the framework's headers, e.g. Allow on a 405 (RFC 9110 §15.5.6).
+    return problem(
+        request, _CODE_BY_STATUS.get(err.status_code, "internal-error"), headers=err.headers
+    )
 
 
 async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
