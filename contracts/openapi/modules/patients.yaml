@@ -1886,9 +1886,10 @@ paths:
     post:
       operationId: dismissDuplicate
       summary: Dismiss a possible duplicate
-      description: 'Closes a false match: the pair becomes `not-duplicate` with the reason (new inventory row #233; D46).
-        Both records stay as they are. Audited as an access decision (category `security`) with both patient IDs. Restricted
-        charts need break-glass or care-team membership for each restricted patient, as for a merge.'
+      description: 'Closes a false match: the pair becomes `not-duplicate` and the reason is stored with it (new inventory
+        row #233; D46). The reason is never returned in the duplicates list, which has no break-glass check. Both records
+        stay as they are. Audited as an access decision (category `security`) with both patient IDs. Restricted charts need
+        break-glass or care-team membership for each restricted patient, as for a merge.'
       tags:
       - patients
       x-owner: vimal
@@ -1944,7 +1945,6 @@ paths:
                     status: not-duplicate
                     reviewedAt: '2026-11-04T09:00:00Z'
                     reviewedByUserId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
-                    reviewNote: 'Twins: same birth date and phone, different given names.'
                     createdAt: '2026-11-03T14:30:00Z'
         '400':
           $ref: ../components/responses/BadRequest.yaml
@@ -2499,7 +2499,7 @@ components:
           maxLength: 500
           description: 'Why the user registers despite possible duplicates. Required with `duplicateCheck: override`; recorded
             in the audit trail.'
-          x-phi: none
+          x-phi: identifier
     PatientPatch:
       description: JSON Merge Patch for demographics. Fields left out stay unchanged; `null` clears a field; arrays are replaced
         whole. The MRN, identifiers, restriction and status are not patched.
@@ -3134,8 +3134,9 @@ components:
           type: string
           minLength: 1
           maxLength: 500
-          description: Why the record is wrong. Recorded with the change; never shown to the patient.
-          x-phi: none
+          description: Why the record is wrong. Free text may name people, so it is treated as patient data (never logged).
+            Recorded with the change; never shown to the patient.
+          x-phi: identifier
     CoverageList:
       description: One page of coverages, by `order`.
       type: object
@@ -3368,7 +3369,7 @@ components:
           minLength: 1
           maxLength: 500
           description: Reason, recorded in the audit trail only.
-          x-phi: none
+          x-phi: identifier
     UnrestrictRequest:
       description: Body to lift a restriction.
       type: object
@@ -3381,7 +3382,7 @@ components:
           minLength: 1
           maxLength: 500
           description: Reason, recorded in the audit trail only.
-          x-phi: none
+          x-phi: identifier
     PatientRestriction:
       description: Restriction state of a chart.
       type: object
@@ -3469,11 +3470,6 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: Who merged or dismissed it.
           x-phi: internal-id
-        reviewNote:
-          type: string
-          maxLength: 2000
-          description: The reason given when it was dismissed.
-          x-phi: none
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: When it was found.
@@ -3490,7 +3486,7 @@ components:
           minLength: 1
           maxLength: 2000
           description: Why the two records are different people. Required (D46).
-          x-phi: none
+          x-phi: identifier
     DuplicateCandidateList:
       description: One page of duplicate candidates, highest score first.
       type: object
@@ -3525,7 +3521,7 @@ components:
           minLength: 1
           maxLength: 2000
           description: Why the records are the same person.
-          x-phi: none
+          x-phi: identifier
     PatientMerge:
       description: A merge. Every moved record is listed so the merge can be undone (`patient_merge`, `patient_merge_record`).
       type: object
@@ -3580,4 +3576,4 @@ components:
           minLength: 1
           maxLength: 2000
           description: Why the merge is undone.
-          x-phi: none
+          x-phi: identifier

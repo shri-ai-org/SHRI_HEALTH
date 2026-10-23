@@ -2177,7 +2177,7 @@ paths:
     post:
       operationId: dismissDuplicate
       summary: Dismiss a possible duplicate
-      description: 'Closes a false match: the pair becomes `not-duplicate` with the reason (new inventory row #233; D46). Both records stay as they are. Audited as an access decision (category `security`) with both patient IDs. Restricted charts need break-glass or care-team membership for each restricted patient, as for a merge.'
+      description: 'Closes a false match: the pair becomes `not-duplicate` and the reason is stored with it (new inventory row #233; D46). The reason is never returned in the duplicates list, which has no break-glass check. Both records stay as they are. Audited as an access decision (category `security`) with both patient IDs. Restricted charts need break-glass or care-team membership for each restricted patient, as for a merge.'
       tags:
         - patients
       x-owner: vimal
@@ -2237,7 +2237,6 @@ paths:
                     status: not-duplicate
                     reviewedAt: '2026-11-04T09:00:00Z'
                     reviewedByUserId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
-                    reviewNote: 'Twins: same birth date and phone, different given names.'
                     createdAt: '2026-11-03T14:30:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -8231,7 +8230,7 @@ components:
           minLength: 1
           maxLength: 500
           description: 'Why the user registers despite possible duplicates. Required with `duplicateCheck: override`; recorded in the audit trail.'
-          x-phi: none
+          x-phi: identifier
     PatientIdentifierType:
       description: 'Identifier type, HL7 v2 table 0203: `MR` medical record number (server-generated only, D41), `DL` driver''s license, `PI` patient internal identifier from another system (kept on migration, FRS FR-PAT-01).'
       type: string
@@ -9092,8 +9091,8 @@ components:
           type: string
           minLength: 1
           maxLength: 500
-          description: Why the record is wrong. Recorded with the change; never shown to the patient.
-          x-phi: none
+          description: Why the record is wrong. Free text may name people, so it is treated as patient data (never logged). Recorded with the change; never shown to the patient.
+          x-phi: identifier
     Consent:
       description: 'A consent or acknowledgement (FHIR-shaped `Consent`). Insert-only: changing a decision records a new consent (DATA_OWNERSHIP §2.1).'
       type: object
@@ -9324,7 +9323,7 @@ components:
           minLength: 1
           maxLength: 500
           description: Reason, recorded in the audit trail only.
-          x-phi: none
+          x-phi: identifier
     PatientRestriction:
       description: Restriction state of a chart.
       type: object
@@ -9364,7 +9363,7 @@ components:
           minLength: 1
           maxLength: 500
           description: Reason, recorded in the audit trail only.
-          x-phi: none
+          x-phi: identifier
     DuplicateCandidate:
       description: 'A pair of patients that may be the same person. Names are not embedded: the screen fetches the patients the user may see (SECURITY_MODEL §8 rule 7).'
       type: object
@@ -9424,11 +9423,6 @@ components:
           $ref: '#/components/schemas/Id'
           description: Who merged or dismissed it.
           x-phi: internal-id
-        reviewNote:
-          type: string
-          maxLength: 2000
-          description: The reason given when it was dismissed.
-          x-phi: none
         createdAt:
           $ref: '#/components/schemas/Timestamp'
           description: When it was found.
@@ -9467,7 +9461,7 @@ components:
           minLength: 1
           maxLength: 2000
           description: Why the records are the same person.
-          x-phi: none
+          x-phi: identifier
     PatientMerge:
       description: A merge. Every moved record is listed so the merge can be undone (`patient_merge`, `patient_merge_record`).
       type: object
@@ -9522,7 +9516,7 @@ components:
           minLength: 1
           maxLength: 2000
           description: Why the two records are different people. Required (D46).
-          x-phi: none
+          x-phi: identifier
     UndoMergeRequest:
       description: Body to undo a merge.
       type: object
@@ -9535,7 +9529,7 @@ components:
           minLength: 1
           maxLength: 2000
           description: Why the merge is undone.
-          x-phi: none
+          x-phi: identifier
     Slot:
       description: A free time computed from the provider's availability rules, minus exceptions and booked appointments. Slots are not stored.
       type: object
