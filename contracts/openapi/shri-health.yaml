@@ -121,6 +121,20 @@ paths:
     $ref: 'modules/patients.yaml#/paths/~1duplicates~1{duplicateId}~1merge'
   /patient-merges/{mergeId}/undo:
     $ref: 'modules/patients.yaml#/paths/~1patient-merges~1{mergeId}~1undo'
+  /slots:
+    $ref: 'modules/scheduling.yaml#/paths/~1slots'
+  /appointments:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments'
+  /appointments/{appointmentId}:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}'
+  /appointments/{appointmentId}/cancel:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1cancel'
+  /appointments/{appointmentId}/check-in:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1check-in'
+  /appointments/{appointmentId}/status:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1status'
+  /status-board:
+    $ref: 'modules/scheduling.yaml#/paths/~1status-board'
 components:
   schemas:
     Address:
