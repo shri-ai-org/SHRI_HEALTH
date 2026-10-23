@@ -24,8 +24,8 @@ shri-health/
 ├── backend/app/
 │   ├── core/                          # auth, permissions, tenancy, audit, crypto, errors, events — Thulasi
 │   ├── integration/                   # integration engine, webhooks, partner transports          — Thulasi
-│   ├── db/                            # SQLAlchemy models + Alembic migrations                     — Anand
-│   ├── fhir/                          # HAPI FHIR client and mappings                              — Anand
+│   ├── db/                            # SQLAlchemy models, Alembic migrations, data-access helpers — Anand
+│   ├── fhir/                          # read-only FHIR API for outside systems (ADR-0011)          — Anand
 │   └── modules/
 │       ├── patients/ scheduling/ eligibility/ encounters/ history/ ai/                         — Vimal
 │       ├── medications/ orders/                                                                — Thulasi
@@ -40,7 +40,9 @@ shri-health/
 │   └── src/api/generated/             # generated from the contract — nobody edits by hand
 ├── infra/
 │   ├── compose/ nginx/ keycloak/ terraform/                                                    — Thulasi
-│   └── hapi/ postgres/ seaweedfs/                                                              — Anand
+│   └── postgres/ seaweedfs/                                                                    — Anand
+│                                      # infra/hapi/ is retired (ADR-0011)
+├── proposals/                         # proposals kept for reference, e.g. fhir-schema/ (Sam's; read, never edit)
 └── docs/adr/                          # architecture decisions                                     — everyone
 ```
 
@@ -86,7 +88,6 @@ Save as `.github/CODEOWNERS`. Replace `@vimal`, `@thulasi`, `@anand`, `@minalini
 /frontend/src/features/admin-setup/       @anand @minalini
 /frontend/src/features/billing/           @anand @minalini
 /frontend/src/features/documents/         @anand @minalini
-/infra/hapi/                              @anand
 /infra/postgres/                          @anand
 /infra/seaweedfs/                         @anand
 ```
@@ -100,7 +101,7 @@ Save as `.github/CODEOWNERS`. Replace `@vimal`, `@thulasi`, `@anand`, `@minalini
 
 ### Branch and pull request rules
 
-- Branch names: `<name>/<short-task>`, for example `vimal/patient-search`, `anand/hapi-setup`.
+- Branch names: `<name>/<short-task>`, for example `vimal/patient-search`, `anand/schema-adoption`.
 - Keep pull requests small (aim for under ~400 changed lines) and merge at least once a day.
 - Rebase on `main` every morning: `git pull --rebase origin main`.
 - Unfinished features hide behind a feature flag instead of waiting on a long branch.
@@ -116,7 +117,7 @@ Save as `.github/CODEOWNERS`. Replace `@vimal`, `@thulasi`, `@anand`, `@minalini
 | Generated client up to date | regenerate and `git diff --exit-code` | Screens using a stale API |
 | Implementation matches contract | Schemathesis against the running API | Endpoint returning something different from the contract |
 | Database drift | `alembic check` | Models and migrations out of step |
-| FHIR conformance | HL7 FHIR Validator with US Core | Bad FHIR resources sent to HAPI |
+| FHIR conformance | HL7 FHIR Validator with US Core, against the read-only `/fhir` API | Bad FHIR resources served to outside systems |
 | Secrets | gitleaks | Keys or passwords committed by mistake |
 
 ## 5. How a change to an API flows between people
@@ -156,8 +157,12 @@ If a change is needed in someone else's folder, stop and write a short note desc
 for that owner instead of editing it.
 
 ## Architecture rules
-- Clinical data lives in HAPI FHIR; administrative data in our PostgreSQL.
-- Reach HAPI only through backend/app/fhir/ (its FHIR API). Never query or modify HAPI's tables.
+- One PostgreSQL database: clinical tables are FHIR-shaped, admin tables are normalized (ADR-0011). There is no HAPI.
+- Writes that belong together happen in one transaction.
+- Data access goes through each module's repository, using Anand's helpers in backend/app/db/.
+- No database role or query may bypass row-level security.
+- Outside systems use the read-only /fhir API (backend/app/fhir/); our screens use /api/v1 only.
+- The outbox is for external partners only (labs, e-prescribing, clearinghouse, fax, SMS).
 - Security lives in backend/app/core/. Endpoints never handle tokens, passwords or encryption themselves.
 - Every endpoint uses: Depends(require("<permission>")) and Depends(tenant_db).
 - Endpoints must match contracts/openapi/. Change the contract first.
@@ -172,7 +177,7 @@ for that owner instead of editing it.
 - Never edit frontend/src/api/generated/ by hand.
 ```
 
-Each owner adds a short `CLAUDE.md` inside their own folders with local conventions (for example `backend/app/fhir/CLAUDE.md` explains how to call the FHIR client). Claude loads the root file plus the folder file for the area it is working in.
+Each owner adds a short `CLAUDE.md` inside their own folders with local conventions (for example `backend/app/db/CLAUDE.md` explains how to use Anand's data-access helpers). Claude loads the root file plus the folder file for the area it is working in.
 
 ### Layer 2: hard blocks (permission rules)
 

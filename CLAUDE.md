@@ -8,8 +8,12 @@ If a change is needed in someone else's folder, stop and write a short note desc
 for that owner instead of editing it.
 
 ## Architecture rules
-- Clinical data lives in HAPI FHIR; administrative data in our PostgreSQL.
-- Reach HAPI only through backend/app/fhir/ (its FHIR API). Never query or modify HAPI's tables.
+- One PostgreSQL database: clinical tables are FHIR-shaped, admin tables are normalized (ADR-0011). There is no HAPI.
+- Writes that belong together happen in one transaction.
+- Data access goes through each module's repository, using Anand's helpers in backend/app/db/.
+- No database role or query may bypass row-level security.
+- Outside systems use the read-only /fhir API (backend/app/fhir/); our screens use /api/v1 only.
+- The outbox is for external partners only (labs, e-prescribing, clearinghouse, fax, SMS).
 - Security lives in backend/app/core/. Endpoints never handle tokens, passwords or encryption themselves.
 - Every endpoint uses: Depends(require("<permission>")) and Depends(tenant_db).
 - Endpoints must match contracts/openapi/. Change the contract first.

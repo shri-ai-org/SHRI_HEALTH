@@ -14,7 +14,9 @@ Read `00_Team_Workflow_and_Claude_Code_Setup.md` first for the repo layout, owne
 | AI gateway, model serving, speech, RAG, evaluation | `ai/` |
 | AI review screens | `frontend/src/features/ai/` |
 
-**Not yours:** login, tokens, encryption, audit (Thulasi), database tables and HAPI (Anand). You use what they provide.
+**Not yours:** login, tokens, encryption, audit (Thulasi), database tables, data-access helpers and the read-only `/fhir` API (Anand). You use what they provide.
+
+**Since ADR-0011 (2026-10-23):** there is no HAPI. Clinical data lives in FHIR-shaped tables in our one PostgreSQL database; your modules write it in the same transaction as everything else, through your repositories and Anand's helpers in `backend/app/db/`.
 
 ## 2. Day 1
 
@@ -46,12 +48,12 @@ Write all contracts before building, so the other three can work in parallel. Co
 
 Endpoints: search, register, view/edit, identifiers, coverages, card images, consents, preferred pharmacy, duplicates, merge, undo merge.
 
-- Our database is the source for registration and insurance. Every create or update also writes the FHIR `Patient` in HAPI through Anand's `fhir.patients.upsert()`. Queue that call through Thulasi's integration engine (`integration.enqueue`) so a HAPI outage never blocks the front desk.
-- Duplicate check on register: similar name + same date of birth or phone. The `duplicate_candidate` table already exists.
+- Registration and insurance are written to the FHIR-shaped `Patient`, `RelatedPerson` and `Coverage` tables in our database, in one transaction, through your repository and Anand's helpers (`backend/app/db/`). Nothing is mirrored and nothing is queued (ADR-0011).
+- Duplicate check on register: similar name + same date of birth or phone, using the schema's duplicate-candidate table (exact name at the schema lock).
 - Card images go through Anand's file service; you only store the file ID.
 - Licence scanning happens in the browser; the API just receives normal patient fields.
 
-**Done when:** a patient can be searched, registered with insurance, edited and merged, and the HAPI `Patient` matches.
+**Done when:** a patient can be searched, registered with insurance, edited and merged, with every change in one transaction and its version in `_history`.
 
 ### Step 3 — Scheduling and check-in APIs
 
@@ -61,10 +63,10 @@ Endpoints: free slots, book (including same-day add-on), list, reschedule, cance
 - Prevent double booking inside one database transaction (lock the provider's day while booking).
 - Check-in does three things:
   - triggers an eligibility check;
-  - creates the FHIR `Encounter` in HAPI;
+  - creates the `Encounter` row in the same transaction;
   - calls `events.publish()` so the status board updates live.
 
-**Done when:** booking conflicts are refused, check-in updates the status board within a second, and an Encounter exists in HAPI.
+**Done when:** booking conflicts are refused, check-in updates the status board within a second, and the Encounter row exists.
 
 ### Step 4 — Eligibility API
 
@@ -80,21 +82,22 @@ Endpoints: open visit, workspace data, vitals, diagnoses, code search, notes (dr
 
 | Data | Where it lives |
 |---|---|
-| Encounter, vitals (`Observation`), diagnoses (`Condition`) | HAPI, through Anand's FHIR client |
-| Draft notes and versions | Our database (`clinical_note`, `clinical_note_version`) |
-| Signed note | Written to HAPI as `DocumentReference` with a `Provenance` record. The note is locked; changes become addenda |
-| Favourites | Our database (`user_clinical_preference`) |
+| Encounter, vitals (`Observation`), diagnoses (`Condition`) | FHIR-shaped tables in our database, written through Anand's helpers |
+| Notes: drafts, versions and signed notes | FHIR-shaped `Composition` table in our database; every version kept in `_history` |
+| Signed note | Signing locks the row and writes its `Provenance` in the same transaction. The signed note row is the legal record; changes become addenda |
+| Diagnosis removed before signing | The `Condition` is set to entered-in-error with the reason "removed before signing"; never deleted (D24) |
+| Favourites | Our database (admin tables) |
 | Code search | Anand's terminology tables |
 
 - Autosave uses `If-Match` so two tabs can't overwrite each other.
 - After-visit summary: render a PDF from the signed note and store it through the file service.
 - Closing the visit publishes an `encounter.closed` event; Anand's billing builds the superbill from it.
 
-**Done when:** a clinician can open a visit, write and sign a note, add diagnoses and vitals, and the signed note and Provenance appear in HAPI.
+**Done when:** a clinician can open a visit, write and sign a note, add diagnoses and vitals, and the signed note and its Provenance are committed together.
 
 ### Step 6 — Patient history APIs
 
-Problems (`Condition`, problem-list category), allergies (`AllergyIntolerance`), family history (`FamilyMemberHistory`), social history (`Observation`, social-history category), surgical history (`Procedure`), and entered-in-error as a status change, never a delete. All stored in HAPI through Anand's client.
+Problems (`Condition`, problem-list category), allergies (`AllergyIntolerance`), family history (`FamilyMemberHistory`), social history (`Observation`, social-history category), surgical history (`Procedure`), and entered-in-error as a status change, never a delete. All stored in FHIR-shaped tables in our database, through Anand's helpers.
 
 ### Step 7 — AI (after the APIs above)
 
@@ -104,7 +107,7 @@ Problems (`Condition`, problem-list category), allergies (`AllergyIntolerance`),
 | 2 | Voice-to-text | faster-whisper with Silero voice-activity detection; `POST /encounters/{id}/audio` (chunked upload via the file service); a background job that writes the transcript | A 15-minute recording becomes a transcript the clinician can review |
 | 3 | AI gateway | One entry point for every AI call: on/off switch per clinic and per feature (`ai_feature_setting`), sends only the data the task needs, checks output against a JSON schema, logs request metadata (never patient text in logs), versions every prompt (`prompt_template`) | Switching AI off leaves every clinical screen working |
 | 4 | AI-01 note draft | Transcript → the provider's template sections as JSON → validation (anything not in the transcript is dropped; unknown stays unknown) → saved as a draft through your notes API, marked AI-generated | Draft appears in the note editor; every accept, edit and reject is logged |
-| 5 | AI-02 chart summary | Read permitted history through the clinical APIs (never the database or HAPI directly); each statement carries a link to its source record; missing and conflicting items listed | Every statement in the summary links to a real record |
+| 5 | AI-02 chart summary | Read permitted history through the clinical APIs (never the database directly); each statement carries a link to its source record; missing and conflicting items listed | Every statement in the summary links to a real record |
 | 6 | AI screens | Transcript review, draft note with changes highlighted, summary panel, AI settings; built with Minalini's design system, reviewed by her | Screens pass her design review |
 | 7 | Test set and scoring | Record mock patient visits with written reference notes (synthetic, scripted); score AI-01 and AI-02 in MLflow on medical-term errors, omissions, invented facts and clinician edits | Scores recorded for both models; the better model chosen |
 | 8 | P1, for the conference | RAG: approved guideline documents → Docling extraction → chunks → pgvector + full-text search → answers with citations. Then AI-03 decision support (shown separately from rule-based alerts), AI-04 coding suggestions, fax and document extraction | Answers always cite sources or say evidence is insufficient |
@@ -118,7 +121,7 @@ Start with voice-to-text and note drafting, not RAG. RAG is only needed for P1.
 | `require()`, `tenant_db`, errors, `events.publish()`, `integration.enqueue()` | Thulasi | Every endpoint |
 | GPU server secured; machine token for the AI gateway | Thulasi | AI step 1 onward |
 | Admin tables, terminology tables, `user_clinical_preference` | Anand | Steps 2–5 |
-| FHIR client functions for Patient, Encounter, Observation, Condition, AllergyIntolerance, FamilyMemberHistory, Procedure, DocumentReference, Provenance | Anand | Steps 2–6 |
+| Data-access helpers (`backend/app/db/`) for Patient, Encounter, Observation, Condition, AllergyIntolerance, FamilyMemberHistory, Procedure, Composition, Provenance; locked P0 schema | Anand | Steps 2–6 |
 | File service | Anand | Card images, audio, after-visit summary |
 
 | You give | To | Why |
