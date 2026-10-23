@@ -23,10 +23,16 @@ This file records decisions made **after** FRS v1.2, Technical Architecture v1.1
 | D6 | **Build order:** API contracts first. Admin and front-desk APIs before clinical APIs. Vimal moves to AI after his APIs. | Plan v1.1 "doctor-first vertical slice" |
 | D7 | **Patient registration** is stored in our database (source of truth for demographics and insurance)~~ and mirrored to a FHIR `Patient` in HAPI on every change, through the integration engine so a HAPI outage never blocks the front desk~~. **HAPI mirroring superseded by ADR-0011:** the FHIR-shaped `Patient` table *is* the record; nothing is mirrored. | — |
 | D8 | **Notes and prescriptions:** drafts and versions in our database~~; on signing, written to HAPI (`DocumentReference` for notes, `MedicationRequest` for prescriptions) with a `Provenance` record~~. **HAPI writes superseded by ADR-0011:** signing locks the row in the same database (Composition for notes, MedicationRequest for prescriptions), writes its `Provenance` in the same transaction, and keeps every version in `_history`. The signed note row is the legal record. | Technical Architecture v1.1 storage notes for notes |
-| D9 | **"MVP by late December"** is understood as the core clinic workflow working end to end on staging with synthetic data, with partners (lab, e-prescribing, clearinghouse) in test mode. Live partner certification, security sign-off and a real-patient pilot come after. *Awaiting management confirmation.* | Plan v1.1 dates |
 | D10 | **Dates in all documents are provisional** and will be set separately. Do not plan around them. | All documents |
 | D11 | Product name and use of "OpenEMR" are under legal review. Do not write "replaces OpenEMR" in any user-facing text. | — |
 | D12 | **Stack:** FastAPI (Python 3.13), React + TypeScript + Vite, PostgreSQL 18 (FHIR R4 / US Core-shaped clinical tables; read-only FHIR API; ADR-0011), Keycloak, Nginx, SeaweedFS, OpenBao, vLLM, faster-whisper. No patient data outside production; synthetic data (Synthea) only. *Was: ~~HAPI FHIR R4 with US Core~~ (retired by ADR-0011).* | — |
+| D13 | No PHI in URLs. Opaque UUIDs are allowed; names, date of birth, phone, MRN, driver's license numbers, member IDs and SSN never are. PHI searches use `POST …/search` with a body (patient search is `POST /patients/search`). **Agreed** (2026-10-22): applied in the Stage 2 documents that Thulasi and Minalini approved in PR #2 (VD-G2; API_STANDARDS, SECURITY_MODEL, ENDPOINT_INVENTORY, ADR-0005). | `API_Catalogue.md` `GET /patients?search=` |
+| D14 | No DELETE in the API. An unsigned encounter diagnosis is removed with `POST /encounters/{id}/diagnoses/{did}/remove` (which sets entered-in-error, D24); signed records only get entered-in-error, through one action per resource type with its own permission. **Agreed** (2026-10-22): applied in the Stage 2 documents that Thulasi and Minalini approved in PR #2 (VD-G1, VD-G6; ENDPOINT_INVENTORY, DATA_OWNERSHIP; lint rule `shri-no-delete`). | `API_Catalogue.md` `DELETE /encounters/{id}/diagnoses` and `/records/{type}/{rid}/entered-in-error` |
+| D15 | Eligibility runs at booking, in a pre-visit batch and at check-in (FRS FR-RCM-01). **Agreed** (2026-10-22): applied in the Stage 2 documents that Thulasi and Minalini approved in PR #2 (VD-G3; ARCHITECTURE_CONTEXT §4.2, DATA_OWNERSHIP eligibility states). | `01_Vimal_Implementation_Guide.md` Steps 3–4 (check-in and batch only) |
+| D16 | Check-in creates the Encounter through the encounter service; `POST /encounters` is only for unscheduled encounters (telephone, documentation-only). Both use the same service. **Agreed** (2026-10-22): applied in the Stage 2 documents that Thulasi and Minalini approved in PR #2 (VD-G4; ARCHITECTURE_CONTEXT §4.2, DATA_OWNERSHIP encounter states). | — |
+| D17 | The contract is one OpenAPI file per module plus shared components, bundled into one file for tools. Module owners approve the sections they implement (`x-owner`); Vimal approves standards conformance for all. **Agreed** (2026-10-22): applied in the Stage 2 documents that Thulasi and Minalini approved in PR #2 (VD-G8, VD-SIGN; CONTRACT_GOVERNANCE, TOOLCHAIN; Thulasi's CODEOWNERS PR #8 (T2)). | `01_Vimal_Implementation_Guide.md` Day 1 item 1 (single file) |
+| D18 | U.S. spelling in every API identifier and description (e.g. `favorites`, `license`). **Agreed** (2026-10-22): applied in the Stage 2 documents that Thulasi and Minalini approved in PR #2 (VD-G9; API_STANDARDS, ENDPOINT_INVENTORY; lint rule `shri-us-spelling`). | `API_Catalogue.md` `/me/favourites` |
+| D19 | P1 endpoints and `/fhir` are out of the first contract pass. (`/fhir` is now Anand's read-only FHIR API, D22; it is not part of the OpenAPI contract.) **Agreed** (2026-10-22): applied in the Stage 2 documents that Thulasi and Minalini approved in PR #2 (VD-SCOPE; ENDPOINT_INVENTORY, SECURITY_MODEL, ARCHITECTURE_CONTEXT §6). | — |
 | D20 | **Contract-first stays (ADR-0002).** Sam's generated admin endpoints are dropped; DB names map to contract camelCase in each module's repository. (ADR-0011 condition 1) **Accepted.** | Sam's proposal (PR #9) generated endpoints |
 | D21 | **Thulasi's core is used** (`require()`, `tenant_db`, Problem Details, session cookie). `tenant_db` sets the database settings the schema's RLS policies read (`app.current_tenant_id`, `app.current_user_id`, `app.correlation_id`). The clinic comes from the server-side session, not token claims. (ADR-0011 condition 2) **Accepted.** | Sam's proposal's own login and token-claim reading |
 | D22 | **The external `/fhir` API is read-only**, keeps OperationOutcome for its errors, offers `POST _search`, and query strings are stripped from logs (D13). Our screens never call `/fhir`. (ADR-0011 condition 3) **Accepted.** | — |
@@ -34,7 +40,9 @@ This file records decisions made **after** FRS v1.2, Technical Architecture v1.1
 | D24 | **Before the 30 October lock, only P0 tables are locked** (`P0_SCHEMA_SCOPE.md`). Owners Anand and Sam. Also decided for the lock: (1) the 0..1 simplifications are approved as listed in Sam's README; (2) **diagnosis removal:** removing a diagnosis before the note is signed sets the Condition's verification status to `entered-in-error` with a reason, and a `Provenance` record of who removed it and why. An entered-in-error diagnosis is excluded from the chart, the problem list, decision support, AI summaries, claims and patient-facing views; it is kept only for audit. The database refuses a charge or claim line that points at an entered-in-error diagnosis. There is no DELETE; (3) a load test of the visit, results and claims write paths; (4) **PostgreSQL 18, on the latest 18.x minor release** (migrations and tests re-verified on 18; UUID defaults `uuidv7()`). Move to PostgreSQL 19 only after it has had a couple of minor releases; (5) the eight "P0 items to confirm" are approved as P0. (ADR-0011 condition 5) **Accepted.** | Tech Arch ADR-03 "PostgreSQL 18" confirmed |
 | D25 | **The outbox is for external partners only** (labs, e-prescribing, clearinghouse, fax, SMS). (ADR-0011 condition 6) **Accepted.** | — |
 | D26 | **Before India:** designs for market code systems and DPDP erasure. Owner Anand. (ADR-0011 condition 7) **Accepted.** | — |
-| D27 | **Full SSN is never stored.** Only a hash and the masked last four, as the schema already enforces (HIPAA minimum necessary). Decided 2026-10-23. | — |
+| D27 | **Full SSN is never stored.** Only a hash and the masked last four, as the schema already enforces (HIPAA minimum necessary). Decided 2026-10-23 (Open Decisions Q10). | — |
+
+D9 (what "MVP by late December" means) was removed on 2026-10-23: it is question Q1 in "Still open". D13–D19 moved here from "Proposed (not yet agreed)" on 2026-10-23.
 
 ## Who owns what
 
@@ -45,42 +53,53 @@ This file records decisions made **after** FRS v1.2, Technical Architecture v1.1
 | **Anand** | The PostgreSQL schema (FHIR-shaped clinical tables and normalized admin tables), migrations and data-access helpers; the read-only FHIR API for outside systems; file system and file service; practice setup, billing and payments, documents and fax, C-CDA, inbox, exports and onboarding APIs; admin, billing and document screens |
 | **Minalini** | Design system and all other screens (most already exist; wire them to the APIs); browser side of login; communications and operations dashboard APIs; design review of everyone's screens |
 
-## Proposed (not yet agreed)
-
-Proposed by Vimal on 2026-10-22 (Stage 1 review). They move up to **Decisions** only after everyone named in the last column agrees. Detail: `contracts/docs/README.md` (VD table).
-
-| # | Proposed decision | Overrides | Must agree |
-|---|---|---|---|
-| D13 | No PHI in URLs. Opaque UUIDs are allowed; names, date of birth, phone, MRN, driver's license numbers, member IDs and SSN never are. PHI searches use `POST …/search` with a body (patient search is `POST /patients/search`). | `API_Catalogue.md` `GET /patients?search=` | Thulasi, Anand, Minalini |
-| D14 | No DELETE in the API. An unsigned encounter diagnosis is removed with `POST /encounters/{id}/diagnoses/{did}/remove`; signed records only get entered-in-error, through one action per resource type with its own permission. | `API_Catalogue.md` `DELETE /encounters/{id}/diagnoses` and `/records/{type}/{rid}/entered-in-error` | Thulasi, Anand, Minalini |
-| D15 | Eligibility runs at booking, in a pre-visit batch and at check-in (FRS FR-RCM-01). | `01_Vimal_Implementation_Guide.md` Steps 3–4 (check-in and batch only) | Thulasi, Anand |
-| D16 | Check-in creates the Encounter through the encounter service; `POST /encounters` is only for unscheduled encounters (telephone, documentation-only). Both use the same service. | — | Anand, Minalini |
-| D17 | The contract is one OpenAPI file per module plus shared components, bundled into one file for tools. Module owners approve the sections they implement (`x-owner`); Vimal approves standards conformance for all. | `01_Vimal_Implementation_Guide.md` Day 1 item 1 (single file) | Thulasi, Anand, Minalini |
-| D18 | U.S. spelling in every API identifier and description (e.g. `favorites`, `license`). | `API_Catalogue.md` `/me/favourites` | Thulasi, Anand, Minalini |
-| D19 | P1 endpoints and `/fhir` are out of the first contract pass. | — | Thulasi, Anand, Minalini |
-
 ## Still open
 
-Every row has an owner and the milestone it blocks: **schema lock** (30 October), **pilot**, **conference**, **India**. Storage and schema questions were settled by ADR-0011 and are listed under "Resolved" below.
+These are the 30 questions of **Open Decisions for the MVP, v1.0** (23 October 2026; `Shri_Health_Open_Decisions_v1_0.docx`, shared by Vimal, not in the repo), numbered as there. Where a question has a recommended answer, it becomes the decision unless the owner changes it; *Needs input* has no default. Owners answer in that document; Vimal records the answers here through one reviewed pull request.
 
-| Question | Owner | Blocks | Affects |
+**Q10 is decided** (never store a full SSN; hash and masked last four only) and is recorded as D27, not here.
+
+| # | Question | Owner | Recommended answer | Needed before | Notes |
+|---|---|---|---|---|---|
+| Q1 | What does "MVP complete by 31 December" mean? | Sena | Every P0 feature works on staging, with partners in test mode. A real-patient pilot follows on 1 March | **Now** | Was D9 (removed 2026-10-23) |
+| Q2 | Product name: can it include "OpenEMR"? | Sena | No. Keep "OpenEMR" out of the product name and all marketing. *Needs input:* the final name | Before the pilot | D11 meanwhile: never write "replaces OpenEMR" |
+| Q3 | Company domain, used in error links and identifiers | Sena | *Needs input* | Before the first staging release | Placeholder `company-domain.invalid` (API_STANDARDS §0) |
+| Q4 | Licence for our code | Sena | Proprietary, all rights reserved. Remove the AGPL mention and confirm no OpenEMR code was copied in (OpenEMR is GPL) | **Now** | The schema README says AGPL |
+| Q5 | Will we seek ONC certification? | Sena | Yes, in P2. Design for it now: audit trail, FHIR API, US Core, required data fields | **Schema lock** | Decides Q6 |
+| Q6 | Which US Core version? | Sena | The version the ONC certification program requires, checked against the current ONC rule and recorded before the schema lock | **Schema lock** | 9.0.0 current on hl7.org (checked 2026-10-22); Anand records it (A7) |
+| Q7 | Buy the AMA CPT licence? | Sena | Yes, before the pilot; real billing needs CPT codes. Placeholder codes until then | Before the pilot. The code-table design is part of the schema lock regardless | Tech Arch ADR-18; Anand A25 |
+| Q8 | Register for the free UMLS licence (for SNOMED CT)? | Sena | Yes | Before loading terminology |  |
+| Q9 | Upgrade GitHub to the Team plan? | Sena | Yes: enforced reviews and a record of who approved each change | **Now** | Approvals are kept by agreement until then (ADR-0001) |
+| Q11 | Clearinghouse | Sena, with Thulasi | Waystar, using the existing accounts | Before the eligibility and claims build |  |
+| Q12 | E-prescribing vendor | Sena, with Thulasi | One whose contract covers the Surescripts network, controlled-substance prescribing (EPCS), and drug-interaction and allergy checks. *Needs input:* Weno, DrFirst, NewCrop or another | Before the e-prescribing build |  |
+| Q13 | Drug interaction database | Sena, with Thulasi | Use the e-prescribing vendor's built-in checks if included. Otherwise license First Databank or Medi-Span | Before the medication safety checks build |  |
+| Q14 | First lab | Sena, with Thulasi | The lab the pilot practice already uses, over a direct connection. *Needs input:* Quest, Labcorp or another | Before the lab interface build |  |
+| Q15 | SMS and email provider | Sena, with Thulasi | One that signs a Business Associate Agreement (BAA). *Needs input:* which | Before the reminders build |  |
+| Q16 | eFax vendor | Sena, with Thulasi | One that signs a BAA. *Needs input:* which | Before the fax build |  |
+| Q17 | Card payment processor | Sena, with Thulasi | One with hosted payment fields, so card numbers never touch our servers. *Needs input:* which | Before the payments build |  |
+| Q18 | Pilot practice, state and specialty | Clinical advisors | *Needs input.* It decides co-signature rules, state privacy law and EPCS timing | Before clinical templates and co-signature rules |  |
+| Q19 | EPCS on day one? | Clinical advisors | Yes, if the pilot specialty prescribes controlled substances (neurology usually does) | Before the e-prescribing build |  |
+| Q20 | Session timeout | Clinical advisors | Logout after 15 minutes idle, warning at 13 minutes, 12-hour maximum session | Before the real login build | Thulasi agreed (T9) |
+| Q21 | Clinical rows of the role permissions matrix (marked ‡ in SECURITY_MODEL §4) | Clinical advisors | Approved as drafted | Before clinical validation | Includes the gap rows (SECURITY_MODEL §4.4) |
+| Q22 | Rules for closing an encounter (proposal in `contracts/docs/notes/`) | Clinical advisors | *Needs input:* approve as written, or give changes | Before the encounter APIs | DATA_OWNERSHIP §5.2 |
+| Q23 | Who are the clinical advisors, and how many hours a week? | Clinical advisors | *Needs input* | **Now** |  |
+| Q24 | Run PostgreSQL ourselves or use AWS's managed service? | Thulasi, with Anand | Amazon RDS for PostgreSQL, Multi-AZ: managed backups, encryption and automatic failover, with less work for a small team. Use it if it supports PostgreSQL 18 and our extensions (Anand checks). Otherwise self-managed on EC2 with pgBackRest | **Schema lock** |  |
+| Q25 | Availability and recovery targets | Thulasi, with Anand | 99.9% monthly uptime; at most 5 minutes of data lost; back online within 4 hours; backup copy in a second U.S. region | Before production setup |  |
+| Q26 | How long to keep records | Thulasi, with Anand | Clinical records at least 10 years after the last visit, longer for minors where the pilot state requires it; audit logs and HIPAA documents 6 years | Before the pilot |  |
+| Q27 | The eight "P0 items to confirm" | Sam and Anand | Add all eight | **Schema lock** | Approved as P0 (D24); the work is listed below |
+| Q28 | Standard U.S. demographic fields (race, ethnicity, sex, gender identity, sexual orientation, preferred language, occupation, industry, tribal affiliation) | Sam and Anand | Collect them all, optional for the patient. Certification requires them | **Schema lock** |  |
+| Q29 | Times and money | Sam and Anand | Store times in UTC; each facility has its own time zone, and appointments display in facility time. Money as exact decimals in USD, never floating point | **Schema lock** | API_STANDARDS §6.1, §6.3 (A21, A22) |
+| Q30 | Medical record numbers | Sam and Anand | One counter per practice, never reused, format practice prefix plus number | **Schema lock** |  |
+
+### Not yet in the Open Decisions document
+
+| Question | Owner | Needed before | Notes |
 |---|---|---|---|
-| US Core version to target; 9.0.0 is current on hl7.org (checked 2026-10-22). Tied to whether ONC certification is planned | Anand, with management (ONC) | **Needed before the 30 October schema lock** | Clinical table shapes, `/fhir`, FHIR Validator in CI |
-| CPT license (AMA; Tech Arch ADR-18) | Management (raised by Vimal) | **Needed before the 30 October schema lock** | Code tables, code search, mock examples |
-| ONC certification need | Management (product owner) | Schema lock (through the US Core version) | Customer targeting, US Core version |
-| Clearinghouse (Waystar is the candidate), e-prescribing vendor, first lab | Management (raised by Vimal) | Pilot | Eligibility, claims, prescriptions, lab orders |
-| Licensed drug database or the e-prescribing vendor's checks | Management and clinical advisors (raised by Thulasi) | Pilot | Medication safety checks |
-| EPCS (controlled substances) on day one | Management and clinical advisors (raised by Thulasi) | Pilot | Prescriptions |
-| Domain for error-type URIs and FHIR identifier systems (placeholder `company-domain.invalid`) | Management (raised by Vimal) | Pilot | Error format, FHIR identifiers |
-| Session idle timeout on shared workstations: 15 minutes agreed by Thulasi (T9); 13-minute warning confirmed | Clinical advisors (raised by Thulasi) | Pilot | Security, clinician workflow |
-| Clinical rows of the role-to-permission matrix, including the gap rows (SECURITY_MODEL §4.3, §4.4) | Clinical advisors (raised by Thulasi) | Pilot | `x-permission` on every endpoint |
-| Encounter-close rules (DATA_OWNERSHIP §5.2) | Clinical advisors (raised by Vimal) | Pilot | Encounter close, billing |
-| Care-team (relationship-based) access limits: MVP or P1 | Vimal, with clinical advisors | Pilot | Patient access checks |
-| `enqueue()` signature change to `enqueue(db, partner, message_type, payload, idempotency_key, ordering_key=None)` (T29): a separate core PR, reviewed by all four | Thulasi | Pilot (first partner integration) | Partner calls (outbox for partners only, D25) |
-| Repository license (the schema README says AGPL) | Management and counsel | Conference | Commercial release |
-| Market code systems and DPDP erasure designs (D26) | Anand | India | India market profile |
+| Care-team (relationship-based) access limits: MVP or P1 | Vimal, with clinical advisors | Before the encounter APIs | SECURITY_MODEL §5; to be added to the Open Decisions document |
 
-### Work before the 30 October schema lock (decided; owners named)
+### Scheduled work (decided; owners named)
+
+All rows are needed before the 30 October schema lock unless the row says otherwise.
 
 | Work | Owner | Source |
 |---|---|---|
@@ -90,6 +109,8 @@ Every row has an owner and the milestone it blocks: **schema lock** (30 October)
 | Re-verify migrations and tests on PostgreSQL 18; UUID defaults `uuidv7()` | Anand | D24 |
 | Three schemas and five roles (D23) | Anand | D23 |
 | Lock the P0 tables (afterwards they change only through new migrations) | Anand, Sam | D24 |
+| `enqueue()` signature change to `enqueue(db, partner, message_type, payload, idempotency_key, ordering_key=None)` (T29): a separate core PR, reviewed by all four. Not a schema-lock item; needed before the first partner integration | Thulasi | D25 |
+| Market code systems and DPDP erasure designs. Not a schema-lock item; needed before India | Anand | D26 |
 
 ### Resolved (kept for history)
 

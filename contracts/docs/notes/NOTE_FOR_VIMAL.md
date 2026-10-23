@@ -47,7 +47,7 @@ Reminder from TW §7: these rules stop Claude's file tools, not shell commands. 
 
 ## 2. Proposed additions to DECISIONS.md
 
-Your Stage 1 decisions are recorded in `contracts/docs/README.md` (VD table). **Status (2026-10-22):** D13–D19 are now in DECISIONS.md under "Proposed (not yet agreed)", each with who must agree; they move up to Decisions only after the team approves.
+Your Stage 1 decisions are recorded in `contracts/docs/README.md` (VD table). **Status (2026-10-23):** D13–D19 are now **Decisions** in DECISIONS.md. They were applied in the Stage 2 documents that Thulasi and Minalini approved in PR #2. ~~Under "Proposed (not yet agreed)" until the team approves.~~
 
 | # | Decision | Overrides |
 |---|---|---|
@@ -78,10 +78,12 @@ Status after your Stage 2 review (2026-10-22) is in the last column.
 
 ## 4. To raise with management
 
+All of these are now in DECISIONS.md "Still open", numbered as in the Open Decisions document (Q1–Q30).
+
 | Item | Affects | Source |
 |---|---|---|
-| SSN: no full SSN in the MVP; optional last 4 for matching (VD-SSN, pending management) | Registration, matching | VD-SSN |
-| D9 meaning of "MVP by late December" | Partner test vs live | DEC D9 |
+| ~~SSN: no full SSN in the MVP; optional last 4 for matching (VD-SSN, pending management)~~ **Decided:** D27 (Open Decisions Q10) | Registration, matching | VD-SSN |
+| Meaning of "MVP by 31 December" (was D9) | Partner test vs live | DEC "Still open" Q1 |
 | Clearinghouse, e-prescribing vendor, first lab | Eligibility, prescriptions, orders payloads | DEC "Still open" |
 | Pilot state and specialty | Co-signature rules, EPCS timing | FRS §10 |
 | CPT license (AMA) | Code search content, mock examples | TA ADR-18 |
