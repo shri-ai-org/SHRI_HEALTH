@@ -203,7 +203,6 @@ CONTRACT_TITLES = {
     "validation-failed": "Request validation failed",
     "malformed-request": "Malformed request",
     "internal-error": "Internal error",
-    "clinical-store-unavailable": "Clinical data unavailable",
 }
 
 

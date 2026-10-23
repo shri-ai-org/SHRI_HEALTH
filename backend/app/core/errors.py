@@ -66,7 +66,6 @@ CATALOGUE: dict[str, ProblemType] = {
     "rate-limited": ProblemType(429, "Too many requests"),
     "internal-error": ProblemType(500, "Internal error"),
     "upstream-error": ProblemType(502, "Upstream error"),
-    "clinical-store-unavailable": ProblemType(503, "Clinical data unavailable"),
     "service-unavailable": ProblemType(503, "Service unavailable"),
     "upstream-timeout": ProblemType(504, "Upstream timeout"),
 }
