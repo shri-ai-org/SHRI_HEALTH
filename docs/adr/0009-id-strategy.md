@@ -1,5 +1,7 @@
 # ADR-0009: UUIDs everywhere, same UUID in HAPI
 
+> **Partly superseded by ADR-0011: there is no HAPI, so no client-assigned HAPI IDs, no HAPI identifier systems and no second copy of any record; each record has one UUID in our database, and PostgreSQL 18 makes `uuidv7()` the default (D24). The rest of this ADR stands.**
+
 Status: **Proposed** (Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Anand (database and HAPI owner), Vimal
 
 ## Context

@@ -1,5 +1,7 @@
 # ADR-0010: Major version in the path; additive change within v1
 
+> **Partly superseded by ADR-0011: outside systems use our own read-only `/fhir` API (Anand), not HAPI's. The rest of this ADR stands.**
+
 Status: **Proposed** (Thulasi agreed, issue #3 T24, T25; Minalini pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (Nginx routing, CI breaking-change check), Minalini (client)
 
 ## Context

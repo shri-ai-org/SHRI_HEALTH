@@ -1,5 +1,7 @@
 # ADR-0008: Optimistic concurrency with ETag / If-Match
 
+> **Partly superseded by ADR-0011: there is no HAPI, so no ETag translation to HAPI `meta.versionId`; every ETag comes from the row version in our own PostgreSQL. The rest of this ADR stands.**
+
 Status: **Proposed** (Thulasi agreed for prescriptions, issue #3 T31; Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (prescriptions), Anand (version columns, HAPI versions)
 
 ## Context
