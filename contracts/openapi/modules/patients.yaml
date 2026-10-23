@@ -980,8 +980,9 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the `order`
-            is taken by another active coverage, the payer is inactive, or `subscriberRelatedPersonId` is sent with `self`);
-            `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+            is taken by another active coverage, the payer is inactive, or `subscriberRelatedPersonId` is sent with `self`
+            or is not a related person of this patient); `idempotency-key-reused` (the Idempotency-Key was used with a different
+            body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -1107,8 +1108,9 @@ paths:
       operationId: attachCoverageCardImage
       summary: Attach an insurance card photo
       description: 'Attaches a card photo already uploaded through the file service (inventory #40; API_STANDARDS §15). The
-        file must be `clean`, purpose `insurance-card`, JPEG or PNG, and from this clinic; otherwise `422 file-not-ready`.
-        Replaces any earlier photo of the same side. Returns the updated coverage.'
+        file must be `clean`, purpose `insurance-card`, JPEG or PNG, from this clinic, **uploaded by the same user and not
+        yet attached to anything**; otherwise `422 file-not-ready`. This stops a file uploaded for one patient from being
+        bound to another. Replaces any earlier photo of the same side. Returns the updated coverage.'
       tags:
       - patients
       x-owner: vimal
@@ -1343,9 +1345,10 @@ paths:
             (the patient was merged into another record).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `file-not-ready` (the file is not
-            scanned clean, has the wrong purpose, or belongs to another clinic); `idempotency-key-reused` (the Idempotency-Key
-            was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`grantorRelatedPersonId`
+            is not a related person of this patient (field code `invalid-reference`)); `file-not-ready` (the file is not scanned
+            clean, has the wrong purpose, or belongs to another clinic); `idempotency-key-reused` (the Idempotency-Key was
+            used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -1689,7 +1692,9 @@ paths:
       summary: Merge a duplicate pair
       description: 'Merges the other patient of the pair into `survivingPatientId` (inventory #48). Both patients are locked
         during the merge; every moved record is listed so the merge can be undone; the merged patient gets `mergedIntoId`
-        and becomes inactive. All in one transaction.'
+        and becomes inactive. All in one transaction. If either patient is restricted, the user needs a break-glass grant
+        or care-team membership for **each** restricted patient (`403 break-glass-required`), and the surviving record keeps
+        the most restrictive restriction of the pair. Both patient IDs are audited.'
       tags:
       - patients
       x-owner: vimal
@@ -1697,7 +1702,7 @@ paths:
       x-audit:
         action: E
         category: phi-write
-        patient: body:/survivingPatientId
+        patient: result
       x-idempotency: supported
       x-storage: clinical
       x-events:
@@ -1722,7 +1727,7 @@ paths:
                   reason: Same name, date of birth and phone; registered twice.
       responses:
         '200':
-          description: The duplicate candidate.
+          description: Merged. Both patient IDs in the result are audited.
           headers:
             ETag:
               $ref: ../components/headers/ETag.yaml
@@ -1753,7 +1758,8 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `duplicates:merge`); `csrf-check-failed` (missing or wrong
-            CSRF header or Origin).
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such duplicate candidate in this clinic or the user's facilities).
@@ -1783,7 +1789,8 @@ paths:
       operationId: undoPatientMerge
       summary: Undo a merge
       description: 'Undoes a merge (inventory #49): moved records go back to the merged patient, which becomes active again.
-        Refused once either record has changed in a way that cannot be split back.'
+        Refused once either record has changed in a way that cannot be split back. Restricted charts need break-glass or care-team
+        membership for each restricted patient, as for a merge. Both patient IDs are audited.'
       tags:
       - patients
       x-owner: vimal
@@ -1846,7 +1853,8 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `patient-merges:undo`); `csrf-check-failed` (missing or wrong
-            CSRF header or Origin).
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such merge in this clinic or the user's facilities).
@@ -2804,7 +2812,8 @@ components:
           x-phi: financial
         subscriberRelatedPersonId: &id048
           $ref: ../components/schemas/Id.yaml
-          description: 'The subscriber, when not the patient: a related person of this patient. Not allowed with `self`.'
+          description: 'The subscriber, when not the patient: must be a related person of this patient (same-patient link).
+            Not allowed with `self`.'
           x-phi: internal-id
         startDate: &id049
           $ref: ../components/schemas/Date.yaml
@@ -2906,8 +2915,8 @@ components:
           oneOf:
           - $ref: ../components/schemas/Id.yaml
           - type: 'null'
-          description: 'The subscriber, when not the patient: a related person of this patient. Not allowed with `self`. Send
-            `null` to clear it.'
+          description: 'The subscriber, when not the patient: must be a related person of this patient (same-patient link).
+            Not allowed with `self`. Send `null` to clear it.'
           x-phi: internal-id
         startDate: *id049
         endDate:
@@ -3012,11 +3021,13 @@ components:
           x-phi: none
         grantorRelatedPersonId: &id056
           $ref: ../components/schemas/Id.yaml
-          description: Who gave it for the patient, e.g. a guardian of a minor.
+          description: Who gave it for the patient, e.g. a guardian of a minor. Must be a related person of this patient (the
+            database enforces same-patient links).
           x-phi: internal-id
         signedFormFileId: &id057
           $ref: ../components/schemas/Id.yaml
-          description: Signed form or signature image, uploaded through the file service (purpose `document`).
+          description: Signed form or signature image, uploaded through the file service (purpose `document`) by the same
+            user and not yet attached to anything; otherwise `422 file-not-ready`.
           x-phi: internal-id
         status:
           type: string
