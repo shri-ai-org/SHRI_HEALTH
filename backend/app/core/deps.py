@@ -40,6 +40,11 @@ class CurrentUser:
     def can(self, permission: str) -> bool:
         return permissions.roles_allow(self.roles, permission)
 
+    @property
+    def is_shared_display(self) -> bool:
+        """A shared screen (role DSP only): the status board shows initials and times only."""
+        return self.roles == frozenset({permissions.SHARED_DISPLAY_ROLE})
+
 
 # Synthetic users for local development and tests only (T5): one per role in clinic A, a
 # user with no roles for permission-denied tests, and "md-b" in clinic B for cross-clinic
@@ -49,7 +54,7 @@ CLINIC_B = UUID("0b000000-0000-4000-8000-00000000000b")
 FACILITY_A = UUID("fa000000-0000-4000-8000-00000000000a")
 FACILITY_B = UUID("fb000000-0000-4000-8000-00000000000b")
 
-_DEV_ROLE_ORDER = ("FD", "MA", "RN", "MD", "APP", "BIL", "ADM", "CO", "SUP")
+_DEV_ROLE_ORDER = ("FD", "MA", "RN", "MD", "APP", "BIL", "ADM", "CO", "SUP", "DSP")
 
 
 def _dev_user(n: int, clinic: UUID, facility: UUID, roles: set[str], name: str) -> CurrentUser:

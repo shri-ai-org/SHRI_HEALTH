@@ -18,8 +18,17 @@ def test_roles_only_grant_catalogue_permissions() -> None:
         assert granted <= CATALOGUE, (role, granted - CATALOGUE)
 
 
-def test_the_nine_roles_exist() -> None:
-    assert set(ROLE_PERMISSIONS) == {"FD", "MA", "RN", "MD", "APP", "BIL", "ADM", "CO", "SUP"}
+def test_the_ten_roles_exist() -> None:
+    assert set(ROLE_PERMISSIONS) == {
+        "FD", "MA", "RN", "MD", "APP", "BIL", "ADM", "CO", "SUP", "DSP"
+    }
+
+
+def test_shared_display_reads_the_status_board_only() -> None:
+    # T39: a waiting-room screen holds no permission beyond the status board.
+    assert ROLE_PERMISSIONS["DSP"] == {"status-board:read"}
+    assert DEV_USERS["dsp"].is_shared_display
+    assert not DEV_USERS["fd"].is_shared_display
 
 
 def test_one_dev_user_per_role_and_two_clinics() -> None:
@@ -59,6 +68,16 @@ def test_support_staff_get_no_phi() -> None:
         ("ADM", "onboarding:import", True),
         ("CO", "files:read", True),
         ("CO", "files:create", False),
+        # T38: who may read the payer list
+        ("FD", "payers:read", True),
+        ("BIL", "payers:read", True),
+        ("ADM", "payers:read", True),
+        ("CO", "payers:read", True),
+        ("MA", "payers:read", False),
+        ("MD", "payers:read", False),
+        ("FD", "practice-setup:read", False),  # reading payers does not open practice setup
+        ("DSP", "patients:read", False),
+        ("DSP", "appointments:read", False),
     ],
 )
 def test_matrix_rows(role: str, permission: str, allowed: bool) -> None:

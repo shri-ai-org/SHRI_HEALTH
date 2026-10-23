@@ -62,6 +62,9 @@ CATALOGUE: frozenset[str] = _expand(
     "results:read|acknowledge", "unmatched-results:read|match|reject", "in-office-results:create",
     # Files, setup, billing, documents (Anand)
     "files:create|read", "practice-setup:read|create|update", "onboarding:import",
+    # T38: the payer list, read-only, for the roles that add insurance or run eligibility checks.
+    # Changing payers stays under practice-setup:*.
+    "payers:read",
     "superbills:read|update", "claims:read|create|scrub|submit|status-check|correct|void",
     "payments:create|card-session", "remittances:read|post", "billing-reports:read",
     "documents:read|create|update", "faxes:create", "fax-inbox:read|file", "ccda:import|export",
@@ -127,7 +130,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     # Front desk
     "FD": frozenset().union(
         _PATIENT_LOOKUP, _SCHEDULE_READ, _DOCUMENTS, _INBOX, _COMMS, _FILES,
-        _expand("patients:create|update", "coverages:read|create|update",
+        _expand("patients:create|update", "coverages:read|create|update", "payers:read",
                 "eligibility-checks:read|create", "consents:read|create", "duplicates:read",
                 "appointments:create|update|cancel|check-in|status", "codes:read",
                 "payments:create|card-session", "ccda:import|export",
@@ -156,7 +159,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     # Biller: edits coverage, not demographics (T14)
     "BIL": frozenset().union(
         _PATIENT_LOOKUP, _SCHEDULE_READ, _INBOX,
-        _expand("coverages:read|create|update", "eligibility-checks:read|create",
+        _expand("coverages:read|create|update", "payers:read", "eligibility-checks:read|create",
                 "consents:read", "encounters:read", "notes:read", "codes:read",
                 "superbills:read|update",
                 "claims:read|create|scrub|submit|status-check|correct|void",
@@ -172,7 +175,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "duplicates:read|merge", "patient-merges:undo",
                 "appointments:create|update|cancel|check-in", "encounters:entered-in-error",
                 "codes:read", "ai-settings:read|update", "cosign-rules:read|create|update",
-                "practice-setup:read|create|update", "onboarding:import",
+                "practice-setup:read|create|update", "payers:read", "onboarding:import",
                 "message-templates:read|create|update", "users:read|create|update",
                 "roles:read", "user-roles:update", "superbills:read", "claims:read",
                 "remittances:read", "billing-reports:read", "exports:read|create",
@@ -185,7 +188,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "CO": frozenset().union(
         _PATIENT_LOOKUP, _CHART_READ,
         _expand("patients:restrict", "consents:read", "duplicates:read", "ai-settings:read",
-                "cosign-rules:read", "practice-setup:read", "message-templates:read",
+                "cosign-rules:read", "practice-setup:read", "payers:read", "message-templates:read",
                 "users:read", "roles:read", "exports:read|create", "audit-events:read",
                 "chart-access-reports:read", "patients:break-glass",
                 "communication-preferences:read", "communications:read",
@@ -193,9 +196,14 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     ),
     # Shri platform support: no PHI by default
     "SUP": _expand("users:read", "roles:read", "integration-messages:read|replay"),
+    # T39: a shared display (waiting-room or hallway status board), never a person. It reads the
+    # status board only, which shows it initials plus appointment time (SECURITY_MODEL §8 rule 11).
+    "DSP": _expand("status-board:read"),
 }
 
 ROLES = frozenset(ROLE_PERMISSIONS)
+
+SHARED_DISPLAY_ROLE = "DSP"
 
 
 def is_known_permission(permission: str) -> bool:

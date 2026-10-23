@@ -51,6 +51,7 @@ Until Keycloak login is built, pick a synthetic test user with the `X-Dev-User` 
 | `adm` | ADM practice administrator | A |
 | `co` | CO compliance / privacy officer | A |
 | `sup` | SUP Shri platform support (no PHI) | A |
+| `dsp` | DSP shared display (status board only) | A |
 | `none` | no roles: use for permission-denied tests | A |
 | `md-b` | MD | B: use for cross-clinic tests |
 
@@ -58,6 +59,10 @@ Permission names and the role matrix in `app/core/permissions.py` come from
 `contracts/docs/SECURITY_MODEL.md` §4 (agreed in issue #3). `require()` refuses names that are
 not in the catalogue, so a typo fails at startup. Use `require("authenticated")` for endpoints
 any signed-in user may call. The stand-in refuses to start in staging or production.
+
+`DSP` is a shared screen, such as a waiting-room status board, never a person. It holds only
+`status-board:read`, and `user.is_shared_display` tells the status board to show initials and
+appointment times only (SECURITY_MODEL §8 rule 11).
 
 ```python
 def test_get_patient_denied(client):
