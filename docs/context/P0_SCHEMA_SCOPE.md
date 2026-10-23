@@ -130,9 +130,9 @@ A comparison against OpenEMR's current schema found these P0 needs; Sam's README
 
 ## Next steps before 30 October
 
-The storage decision comes first: this list assumes clinical data stays in our PostgreSQL (ADR-19), not HAPI FHIR (D1).
+The storage decision is made: [ADR-0011](../adr/0011-single-postgresql-retire-hapi.md) (2026-10-23) keeps clinical data in our PostgreSQL (Tech Arch ADR-19) and retires HAPI FHIR.
 
-- [x] Sena and the four owners: confirm ADR-19 replaces D1. **Done: ADR-0011 (2026-10-23).**
+- [x] Sena and the four owners: confirm ADR-19 replaces D1. **Done: [ADR-0011](../adr/0011-single-postgresql-retire-hapi.md) (2026-10-23).**
 - [ ] Anand and Sam: tag all 218 tables P0, P0 stretch, P1 or P2 in the data dictionary.
 - [ ] Sam: answer each item in "P0 items to confirm" and add what is missing.
 - [ ] Anand: load-test the visit, results and claims write paths with the composite foreign keys in place.
