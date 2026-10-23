@@ -4,14 +4,19 @@
 # Stage 4 batch 1. Shapes follow ENDPOINT_INVENTORY rows #50-58 and DATA_OWNERSHIP §5.1 (appointment states).
 # Instants are UTC; each response that shows times also carries the facility's IANA `timeZone` so screens display
 # facility time (D40). Scheduling and front-desk endpoints work on restricted charts without break-glass, showing name
-# and appointment only (SECURITY_MODEL §5.2).
+# and appointment only (SECURITY_MODEL §5.2): for a restricted patient, a user without a break-glass grant who is not on
+# the care team gets no `reasonForVisit`, `comment`, `patientInstruction` or `cancellation.reasonText`.
+# Facility scope (SECURITY_MODEL §5.1): every `facilityId`, `providerId`, `locationId` and `roomLocationId` in a request must
+# belong to a facility the user is assigned to, and the provider and room to that facility; otherwise `404 not-found`
+# (facility) or `422` with field code `invalid-reference`.
 paths:
   /slots:
     get:
       operationId: listSlots
       summary: List free slots
       description: 'Free times for a day at a facility (inventory #50): availability rules (local facility times) minus exceptions
-        and booked appointments. Reference data: no patient data, audit category `none`.'
+        and booked appointments. Reference data: no patient data, audit category `none`. A facility the user is not assigned
+        to gives `404 not-found`.'
       tags:
       - scheduling
       x-owner: vimal
@@ -89,6 +94,9 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `slots:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (the `facilityId` is not one of the user's facilities (SECURITY_MODEL §5.1)).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -197,6 +205,9 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `appointments:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (the `facilityId` is not one of the user's facilities (SECURITY_MODEL §5.1)).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (neither
@@ -212,7 +223,8 @@ paths:
       summary: Book an appointment
       description: 'Books an appointment, including a same-day add-on (inventory #51; DATA_OWNERSHIP §5.1). The provider''s
         day is locked while booking and the database refuses overlaps, so a taken slot gives `409 booking-conflict`. Overbooking
-        only where the appointment type allows it. Booking also queues an eligibility check (D15).'
+        only where the appointment type allows it. Booking also queues an eligibility check (D15). The facility must be one
+        of the user''s, and the provider and location must belong to it.'
       tags:
       - scheduling
       x-owner: vimal
@@ -292,6 +304,9 @@ paths:
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `appointments:create`); `csrf-check-failed` (missing or wrong
             CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (the facility is not one of the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `booking-conflict`
@@ -299,8 +314,9 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (outside
-            the provider's hours, overbooking not allowed for this type, or the type's overbook limit reached); `idempotency-key-reused`
-            (the Idempotency-Key was used with a different body).
+            the provider's hours, overbooking not allowed for this type, or the type's overbook limit reached; or the provider
+            or location does not belong to the facility (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -451,8 +467,9 @@ paths:
           description: 412. `precondition-failed` (`If-Match` does not match the current version).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a rule
-            rejects the request).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same
+            booking rules as `POST /appointments`, or a new provider, facility or location outside the user's facilities (field
+            code `invalid-reference`)).
         '428':
           $ref: ../components/responses/PreconditionRequired.yaml
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -756,7 +773,8 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`roomed`
-            without `roomLocationId`, or `noshow` before the start time).
+            without `roomLocationId`, a room that is not in the appointment's facility (field code `invalid-reference`), or
+            `noshow` before the start time).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -768,7 +786,8 @@ paths:
       operationId: getStatusBoard
       summary: Get the status board
       description: 'Today''s clinic flow at a facility (inventory #58), updated live through the event stream. Staff screens
-        show names; shared hallway displays must show `initials` and the time only (SECURITY_MODEL §8 rule 11).'
+        show names; shared hallway displays must use `view=shared`, which returns initials, time and status only (SECURITY_MODEL
+        §8 rule 11). A facility the user is not assigned to gives `404 not-found`.'
       tags:
       - scheduling
       x-owner: vimal
@@ -797,6 +816,17 @@ paths:
         description: Only this provider.
         schema:
           $ref: ../components/schemas/Id.yaml
+      - name: view
+        in: query
+        required: false
+        description: '`staff` (default): names for staff screens. `shared`: initials, time and status only, for displays the
+          public can see. A display-only role that forces `shared` on the server is an open question for Thulasi.'
+        schema:
+          type: string
+          enum:
+          - staff
+          - shared
+          default: staff
       responses:
         '200':
           description: One page of status board items.
@@ -833,6 +863,9 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `status-board:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (the `facilityId` is not one of the user's facilities (SECURITY_MODEL §5.1)).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -882,6 +915,11 @@ components:
           maxLength: 200
           description: Name formatted by the server for lists.
           x-phi: identifier
+        restricted:
+          type: boolean
+          description: 'True for a restricted chart: the appointment''s clinical text is left out unless the user holds a
+            break-glass grant or is on the care team (SECURITY_MODEL §5.2).'
+          x-phi: none
     SchedulingProviderRef:
       description: A provider, for display.
       type: object
@@ -977,7 +1015,9 @@ components:
           description: The facility's IANA time zone, for display (D40).
           x-phi: none
     Appointment:
-      description: An appointment (FHIR-shaped `Appointment`).
+      description: An appointment (FHIR-shaped `Appointment`). For a restricted patient seen without a break-glass grant or
+        care-team membership, `reasonForVisit`, `comment`, `patientInstruction` and `cancellation.reasonText` are left out
+        (SECURITY_MODEL §5.2).
       type: object
       required:
       - id
@@ -1107,7 +1147,7 @@ components:
           description: Last change.
           x-phi: none
     AppointmentSummary:
-      description: An appointment in day and week views.
+      description: An appointment in day and week views. `reasonForVisit` is left out for a restricted patient, as in `Appointment`.
       type: object
       required:
       - id
@@ -1333,14 +1373,12 @@ components:
           description: The exam room. Required with `roomed`.
           x-phi: internal-id
     StatusBoardItem:
-      description: One appointment on today's board. Shared hallway displays show `initials` and the time only (SECURITY_MODEL
-        §8 rule 11).
+      description: One appointment on today's board. With `view=shared` (hallway and waiting-room displays) only `appointmentId`,
+        `initials`, `startAt`, `status` and `visitStatus` are returned (SECURITY_MODEL §8 rule 11).
       type: object
       required:
       - appointmentId
-      - patient
       - initials
-      - provider
       - startAt
       - status
       properties:
@@ -1350,7 +1388,7 @@ components:
           x-phi: internal-id
         patient:
           $ref: '#/components/schemas/SchedulingPatientRef'
-          description: Patient, for staff screens.
+          description: Patient, for staff screens. Absent with `view=shared`.
           x-phi: identifier
         initials:
           type: string
