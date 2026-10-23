@@ -141,6 +141,46 @@ paths:
     $ref: 'modules/eligibility.yaml#/paths/~1eligibility-checks~1{eligibilityCheckId}'
   /appointments/{appointmentId}/eligibility-checks:
     $ref: 'modules/eligibility.yaml#/paths/~1appointments~1{appointmentId}~1eligibility-checks'
+  /facilities:
+    $ref: 'modules/practice-setup.yaml#/paths/~1facilities'
+  /facilities/{facilityId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1facilities~1{facilityId}'
+  /locations:
+    $ref: 'modules/practice-setup.yaml#/paths/~1locations'
+  /locations/{locationId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1locations~1{locationId}'
+  /providers:
+    $ref: 'modules/practice-setup.yaml#/paths/~1providers'
+  /providers/{providerId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1providers~1{providerId}'
+  /appointment-types:
+    $ref: 'modules/practice-setup.yaml#/paths/~1appointment-types'
+  /appointment-types/{appointmentTypeId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1appointment-types~1{appointmentTypeId}'
+  /provider-schedules:
+    $ref: 'modules/practice-setup.yaml#/paths/~1provider-schedules'
+  /provider-schedules/{providerScheduleId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1provider-schedules~1{providerScheduleId}'
+  /fee-schedules:
+    $ref: 'modules/practice-setup.yaml#/paths/~1fee-schedules'
+  /fee-schedules/{feeScheduleId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1fee-schedules~1{feeScheduleId}'
+  /payers:
+    $ref: 'modules/practice-setup.yaml#/paths/~1payers'
+  /payers/{payerId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1payers~1{payerId}'
+  /practice-payers:
+    $ref: 'modules/practice-setup.yaml#/paths/~1practice-payers'
+  /practice-payers/{practicePayerId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1practice-payers~1{practicePayerId}'
+  /lab-accounts:
+    $ref: 'modules/practice-setup.yaml#/paths/~1lab-accounts'
+  /lab-accounts/{labAccountId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1lab-accounts~1{labAccountId}'
+  /note-templates:
+    $ref: 'modules/practice-setup.yaml#/paths/~1note-templates'
+  /note-templates/{noteTemplateId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1note-templates~1{noteTemplateId}'
 components:
   schemas:
     Address:
