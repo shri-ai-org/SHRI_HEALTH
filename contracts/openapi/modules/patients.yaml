@@ -1186,6 +1186,104 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/coverages/{coverageId}/entered-in-error:
+    parameters:
+    - *id011
+    - name: coverageId
+      in: path
+      required: true
+      description: Coverage ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: markCoverageEnteredInError
+      summary: Mark a coverage entered in error
+      description: 'Marks a coverage recorded by mistake (new inventory row #232; D45). It becomes `entered-in-error`, is
+        never used for eligibility or claims, and stays in the record; nothing is deleted (D14). A coverage that simply ended
+        is not an error: set its `endDate` instead.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: coverages:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnteredInErrorRequest'
+            examples:
+              wrong-member-id:
+                summary: Recorded for the wrong patient
+                value:
+                  reason: Card belonged to another family member.
+      responses:
+        '200':
+          description: The coverage.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coverage'
+              examples:
+                marked:
+                  summary: Marked entered in error
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    order: 1
+                    payerId: 4b5c6d7e-8f9a-4b0c-8d1e-2f3a4b5c6d7e
+                    payerName: Test Health Plan
+                    memberId: TEST-M0012345
+                    groupNumber: TEST-G778
+                    planName: Test PPO
+                    relationshipToSubscriber: self
+                    startDate: '2026-01-01'
+                    status: entered-in-error
+                    cardImages: *id012
+                    createdAt: '2026-11-03T14:30:00Z'
+                    updatedAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `coverages:entered-in-error`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds
+            no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such coverage in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the coverage is already `entered-in-error`); `patient-merged` (the
+            patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
   /patients/{patientId}/consents:
     parameters: *id006
     get:
@@ -1777,6 +1875,105 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /duplicates/{duplicateId}/dismiss:
+    parameters:
+    - name: duplicateId
+      in: path
+      required: true
+      description: Duplicate candidate ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: dismissDuplicate
+      summary: Dismiss a possible duplicate
+      description: 'Closes a false match: the pair becomes `not-duplicate` with the reason (new inventory row #233; D46).
+        Both records stay as they are. Audited as an access decision (category `security`) with both patient IDs. Restricted
+        charts need break-glass or care-team membership for each restricted patient, as for a merge.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: duplicates:dismiss
+      x-audit:
+        action: E
+        category: security
+        patient: result
+      x-idempotency: supported
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DismissRequest'
+            examples:
+              twins:
+                summary: Different people
+                value:
+                  reason: 'Twins: same birth date and phone, different given names.'
+      responses:
+        '200':
+          description: The duplicate candidate.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DuplicateCandidate'
+              examples:
+                dismissed:
+                  summary: Dismissed
+                  value:
+                    id: 9a0b1c2d-3e4f-4a5b-9c6d-7e8f9a0b1c2d
+                    patientAId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                    patientBId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    matchScore: 0.94
+                    matchedOn:
+                    - birth-date
+                    - phone
+                    status: not-duplicate
+                    reviewedAt: '2026-11-04T09:00:00Z'
+                    reviewedByUserId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                    reviewNote: 'Twins: same birth date and phone, different given names.'
+                    createdAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `duplicates:dismiss`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such duplicate candidate in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the candidate is not `open`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
   /patient-merges/{mergeId}/undo:
     parameters:
     - name: mergeId
@@ -2143,7 +2340,7 @@ components:
           x-phi: identifier
         birthDate: &id016
           $ref: ../components/schemas/Date.yaml
-          description: Date of birth.
+          description: 'Date of birth. Required at registration (D44): matching, eligibility and claims need it.'
           x-phi: identifier
         gender: &id017
           $ref: '#/components/schemas/AdministrativeGender'
@@ -2255,7 +2452,8 @@ components:
           description: Last change.
           x-phi: none
     PatientCreate:
-      description: Body to register a patient. Only `name` and `birthDate` are required; every D39 demographic field is optional.
+      description: Body to register a patient. Only `name` and `birthDate` are required (D44); every D39 demographic field
+        is optional.
       type: object
       additionalProperties: false
       required:
@@ -2835,7 +3033,8 @@ components:
           - cancelled
           - draft
           - entered-in-error
-          description: FHIR Coverage status. New coverages are `active`.
+          description: FHIR Coverage status. New coverages are `active`; a coverage recorded by mistake becomes `entered-in-error`
+            and is never used for eligibility or claims (D45).
           x-phi: none
         cardImages:
           type: array
@@ -2874,7 +3073,8 @@ components:
         startDate: *id049
         endDate: *id050
     CoveragePatch:
-      description: JSON Merge Patch for a coverage. To end a coverage, set `endDate`.
+      description: JSON Merge Patch for a coverage. To end a coverage, set `endDate`; for a coverage recorded by mistake,
+        use its `entered-in-error` action (D45).
       type: object
       additionalProperties: false
       properties:
@@ -2923,6 +3123,19 @@ components:
           $ref: ../components/schemas/Date.yaml
           description: Coverage end date. Set it to end the coverage.
           x-phi: financial
+    EnteredInErrorRequest:
+      description: Body to mark a record entered in error.
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why the record is wrong. Recorded with the change; never shown to the patient.
+          x-phi: none
     CoverageList:
       description: One page of coverages, by `order`.
       type: object
@@ -3248,9 +3461,35 @@ components:
           - not-duplicate
           description: Review state.
           x-phi: none
+        reviewedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was merged or dismissed.
+          x-phi: none
+        reviewedByUserId:
+          $ref: ../components/schemas/Id.yaml
+          description: Who merged or dismissed it.
+          x-phi: internal-id
+        reviewNote:
+          type: string
+          maxLength: 2000
+          description: The reason given when it was dismissed.
+          x-phi: none
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: When it was found.
+          x-phi: none
+    DismissRequest:
+      description: Body to dismiss a possible duplicate.
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Why the two records are different people. Required (D46).
           x-phi: none
     DuplicateCandidateList:
       description: One page of duplicate candidates, highest score first.

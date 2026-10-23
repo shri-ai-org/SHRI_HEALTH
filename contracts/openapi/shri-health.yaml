@@ -107,6 +107,8 @@ paths:
     $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1coverages~1{coverageId}'
   /patients/{patientId}/coverages/{coverageId}/card-images:
     $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1coverages~1{coverageId}~1card-images'
+  /patients/{patientId}/coverages/{coverageId}/entered-in-error:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1coverages~1{coverageId}~1entered-in-error'
   /patients/{patientId}/consents:
     $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1consents'
   /patients/{patientId}/preferred-pharmacy:
@@ -119,6 +121,8 @@ paths:
     $ref: 'modules/patients.yaml#/paths/~1duplicates'
   /duplicates/{duplicateId}/merge:
     $ref: 'modules/patients.yaml#/paths/~1duplicates~1{duplicateId}~1merge'
+  /duplicates/{duplicateId}/dismiss:
+    $ref: 'modules/patients.yaml#/paths/~1duplicates~1{duplicateId}~1dismiss'
   /patient-merges/{mergeId}/undo:
     $ref: 'modules/patients.yaml#/paths/~1patient-merges~1{mergeId}~1undo'
   /slots:
