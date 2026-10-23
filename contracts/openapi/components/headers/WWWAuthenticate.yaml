@@ -1,0 +1,7 @@
+description: >-
+  Authentication challenge, required on every 401 by RFC 9110 §11.6.1. The value is always
+  `Cookie realm="shri-health"`: sign in again through `/auth/login`. Added at Thulasi's request (PR #7).
+schema:
+  type: string
+  maxLength: 100
+example: Cookie realm="shri-health"

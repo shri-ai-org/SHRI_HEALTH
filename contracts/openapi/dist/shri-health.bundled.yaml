@@ -12456,6 +12456,12 @@ components:
         type: string
         pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
         maxLength: 55
+    WWWAuthenticate:
+      description: 'Authentication challenge, required on every 401 by RFC 9110 §11.6.1. The value is always `Cookie realm="shri-health"`: sign in again through `/auth/login`. Added at Thulasi''s request (PR #7).'
+      schema:
+        type: string
+        maxLength: 100
+      example: Cookie realm="shri-health"
     XRequestId:
       description: Request ID, always returned and repeated in Problem `requestId`. A client-sent value is accepted only if it is a valid UUID; otherwise the server generates one (API_STANDARDS §18; Thulasi T20).
       schema:
@@ -12662,6 +12668,8 @@ components:
     Unauthorized:
       description: '401. Not signed in, or the session ended. Codes: `unauthenticated`, `session-expired`.'
       headers:
+        WWW-Authenticate:
+          $ref: '#/components/headers/WWWAuthenticate'
         X-Request-ID:
           $ref: '#/components/headers/XRequestId'
         Cache-Control:

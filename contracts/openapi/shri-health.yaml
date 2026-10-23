@@ -277,6 +277,8 @@ components:
       $ref: 'components/headers/Sunset.yaml'
     Traceparent:
       $ref: 'components/headers/Traceparent.yaml'
+    WWWAuthenticate:
+      $ref: 'components/headers/WWWAuthenticate.yaml'
     XRequestId:
       $ref: 'components/headers/XRequestId.yaml'
   responses:
