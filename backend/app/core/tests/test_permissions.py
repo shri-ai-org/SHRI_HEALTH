@@ -78,6 +78,22 @@ def test_support_staff_get_no_phi() -> None:
         ("FD", "practice-setup:read", False),  # reading payers does not open practice setup
         ("DSP", "patients:read", False),
         ("DSP", "appointments:read", False),
+        # T40 (SECURITY_MODEL §4.3, D45, D46, D48)
+        ("FD", "coverages:entered-in-error", True),
+        ("BIL", "coverages:entered-in-error", True),
+        ("ADM", "coverages:entered-in-error", True),
+        ("MD", "coverages:entered-in-error", False),
+        ("ADM", "duplicates:dismiss", True),
+        ("FD", "duplicates:dismiss", False),
+        ("CO", "duplicates:dismiss", False),
+        ("MA", "lab-providers:read", True),
+        ("RN", "lab-providers:read", True),
+        ("MD", "lab-providers:read", True),
+        ("APP", "lab-providers:read", True),
+        ("ADM", "lab-providers:read", True),
+        ("CO", "lab-providers:read", True),
+        ("FD", "lab-providers:read", False),
+        ("BIL", "lab-providers:read", False),
     ],
 )
 def test_matrix_rows(role: str, permission: str, allowed: bool) -> None:

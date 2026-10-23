@@ -34,8 +34,10 @@ CATALOGUE: frozenset[str] = _expand(
     "users:read|create|update", "roles:read", "user-roles:update", "audit-events:read",
     "chart-access-reports:read", "patients:break-glass", "integration-messages:read|replay",
     # Patients (Vimal)
-    "patients:search|read|create|update|restrict", "coverages:read|create|update",
-    "consents:read|create", "timeline:read", "duplicates:read|merge", "patient-merges:undo",
+    "patients:search|read|create|update|restrict",
+    "coverages:read|create|update|entered-in-error",  # entered-in-error: D45 (T40)
+    "consents:read|create", "timeline:read", "duplicates:read|merge|dismiss",  # dismiss: D46
+    "patient-merges:undo",
     # Scheduling, eligibility (Vimal)
     "slots:read", "appointments:read|create|update|cancel|check-in|status", "status-board:read",
     "eligibility-checks:read|create",
@@ -66,6 +68,7 @@ CATALOGUE: frozenset[str] = _expand(
     # or run eligibility checks: FD, BIL, ADM (SECURITY_MODEL §4.3). Practice payers stay under
     # practice-setup:*.
     "payers:read",
+    "lab-providers:read",  # lab providers, read-only (D48, T40)
     "superbills:read|update", "claims:read|create|scrub|submit|status-check|correct|void",
     "payments:create|card-session", "remittances:read|post", "billing-reports:read",
     "documents:read|create|update", "faxes:create", "fax-inbox:read|file", "ccda:import|export",
@@ -97,7 +100,7 @@ _RX_PRESCRIBE = _expand("prescriptions:sign-and-send|cancel|change", "alerts:ove
                         "refill-requests:respond", "medications:discontinue")
 # gap: orders:read, results:read, lab-compendium:read, medical-necessity-check and draft
 # entered-in-error are not in the draft matrix; they follow the order-create row.
-_ORDER_READ = _expand("orders:read", "results:read", "lab-compendium:read")
+_ORDER_READ = _expand("orders:read", "results:read", "lab-compendium:read", "lab-providers:read")
 _ORDER_DRAFT = _ORDER_READ | _expand(
     "orders:create|medical-necessity-check|entered-in-error", "in-office-results:create"
 )
@@ -131,7 +134,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     # Front desk
     "FD": frozenset().union(
         _PATIENT_LOOKUP, _SCHEDULE_READ, _DOCUMENTS, _INBOX, _COMMS, _FILES,
-        _expand("patients:create|update", "coverages:read|create|update", "payers:read",
+        _expand("patients:create|update", "coverages:read|create|update|entered-in-error",
+                "payers:read",
                 "eligibility-checks:read|create", "consents:read|create", "duplicates:read",
                 "appointments:create|update|cancel|check-in|status", "codes:read",
                 "payments:create|card-session", "ccda:import|export",
@@ -160,7 +164,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     # Biller: edits coverage, not demographics (T14)
     "BIL": frozenset().union(
         _PATIENT_LOOKUP, _SCHEDULE_READ, _INBOX,
-        _expand("coverages:read|create|update", "payers:read", "eligibility-checks:read|create",
+        _expand("coverages:read|create|update|entered-in-error", "payers:read",
+                "eligibility-checks:read|create",
                 "consents:read", "encounters:read", "notes:read", "codes:read",
                 "superbills:read|update",
                 "claims:read|create|scrub|submit|status-check|correct|void",
@@ -171,9 +176,10 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     # Practice administrator: no clinical access by default
     "ADM": frozenset().union(
         _PATIENT_LOOKUP, _SCHEDULE_READ, _INBOX, _COMMS,
-        _expand("patients:create|update|restrict", "coverages:read|create|update",
+        _expand("patients:create|update|restrict",
+                "coverages:read|create|update|entered-in-error",
                 "eligibility-checks:read|create", "consents:read|create",
-                "duplicates:read|merge", "patient-merges:undo",
+                "duplicates:read|merge|dismiss", "patient-merges:undo", "lab-providers:read",
                 "appointments:create|update|cancel|check-in", "encounters:entered-in-error",
                 "codes:read", "ai-settings:read|update", "cosign-rules:read|create|update",
                 "practice-setup:read|create|update", "payers:read", "onboarding:import",
@@ -189,7 +195,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "CO": frozenset().union(
         _PATIENT_LOOKUP, _CHART_READ,
         _expand("patients:restrict", "consents:read", "duplicates:read", "ai-settings:read",
-                "cosign-rules:read", "practice-setup:read", "message-templates:read",
+                "cosign-rules:read", "practice-setup:read", "lab-providers:read",
+                "message-templates:read",
                 "users:read", "roles:read", "exports:read|create", "audit-events:read",
                 "chart-access-reports:read", "patients:break-glass",
                 "communication-preferences:read", "communications:read",
