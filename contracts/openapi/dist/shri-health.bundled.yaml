@@ -847,6 +847,10 @@ components:
           examples:
             malformed-request:
               $ref: '#/components/examples/ProblemMalformedRequest'
+            invalid-cursor:
+              $ref: '#/components/examples/ProblemInvalidCursor'
+            idempotency-key-missing:
+              $ref: '#/components/examples/ProblemIdempotencyKeyMissing'
     Conflict:
       description: '409. Conflicts with the current state. Codes: `invalid-state-transition`, `record-locked`, `booking-conflict`, `possible-duplicate`, `patient-merged`, `idempotency-request-in-progress`, `feature-disabled`, `consent-required`.'
       headers:
@@ -869,6 +873,12 @@ components:
               $ref: '#/components/examples/ProblemRecordLocked'
             conflict-possible-duplicate:
               $ref: '#/components/examples/ProblemConflictPossibleDuplicate'
+            booking-conflict:
+              $ref: '#/components/examples/ProblemBookingConflict'
+            patient-merged:
+              $ref: '#/components/examples/ProblemPatientMerged'
+            idempotency-request-in-progress:
+              $ref: '#/components/examples/ProblemIdempotencyRequestInProgress'
     Forbidden:
       description: '403. The role lacks the endpoint''s permission (checked before any lookup), the CSRF or Origin check failed, or the chart is restricted. Codes: `permission-denied`, `csrf-check-failed`, `break-glass-required`.'
       headers:
@@ -1033,6 +1043,12 @@ components:
               $ref: '#/components/examples/ProblemValidationFailed'
             invalid-parameter:
               $ref: '#/components/examples/ProblemInvalidParameter'
+            business-rule-violation:
+              $ref: '#/components/examples/ProblemBusinessRuleViolation'
+            file-not-ready:
+              $ref: '#/components/examples/ProblemFileNotReady'
+            idempotency-key-reused:
+              $ref: '#/components/examples/ProblemIdempotencyKeyReused'
   securitySchemes:
     csrfHeader:
       type: apiKey
@@ -1069,6 +1085,92 @@ components:
         result:
           type: note
           id: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+    ProblemBookingConflict:
+      summary: booking-conflict
+      value:
+        type: tag:company-domain.invalid,2026:problem/booking-conflict
+        title: Booking conflict
+        status: 409
+        detail: The slot is taken or overlaps another appointment for this provider.
+        instance: /api/v1/appointments
+        code: booking-conflict
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemBusinessRuleViolation:
+      summary: business-rule-violation
+      value:
+        type: tag:company-domain.invalid,2026:problem/business-rule-violation
+        title: Business rule violation
+        status: 422
+        detail: 1 field breaks a rule.
+        instance: /api/v1/patients
+        code: business-rule-violation
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+        errors:
+          - in: body
+            pointer: /birthDate
+            code: out-of-range
+    ProblemFileNotReady:
+      summary: file-not-ready
+      value:
+        type: tag:company-domain.invalid,2026:problem/file-not-ready
+        title: File not ready
+        status: 422
+        detail: The file is not scanned clean, has the wrong purpose, or belongs to another clinic.
+        instance: /api/v1/patients/7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/coverages/4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a/card-images
+        code: file-not-ready
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+        fileId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+    ProblemIdempotencyKeyMissing:
+      summary: idempotency-key-missing
+      value:
+        type: tag:company-domain.invalid,2026:problem/idempotency-key-missing
+        title: Idempotency key missing
+        status: 400
+        detail: This request needs an Idempotency-Key header.
+        instance: /api/v1/eligibility-checks
+        code: idempotency-key-missing
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemIdempotencyKeyReused:
+      summary: idempotency-key-reused
+      value:
+        type: tag:company-domain.invalid,2026:problem/idempotency-key-reused
+        title: Idempotency key reused
+        status: 422
+        detail: This Idempotency-Key was already used with a different request body.
+        instance: /api/v1/eligibility-checks
+        code: idempotency-key-reused
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemIdempotencyRequestInProgress:
+      summary: idempotency-request-in-progress
+      value:
+        type: tag:company-domain.invalid,2026:problem/idempotency-request-in-progress
+        title: Request in progress
+        status: 409
+        detail: A request with this Idempotency-Key is still being processed.
+        instance: /api/v1/eligibility-checks
+        code: idempotency-request-in-progress
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemInvalidCursor:
+      summary: invalid-cursor
+      value:
+        type: tag:company-domain.invalid,2026:problem/invalid-cursor
+        title: Invalid cursor
+        status: 400
+        detail: The cursor has expired or is not valid for this list. Start again from the first page.
+        instance: /api/v1/patients/search
+        code: invalid-cursor
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemPatientMerged:
+      summary: patient-merged
+      value:
+        type: tag:company-domain.invalid,2026:problem/patient-merged
+        title: Patient merged
+        status: 409
+        detail: This patient record was merged into another record. Use the surviving record.
+        instance: /api/v1/patients/7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+        code: patient-merged
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+        mergedIntoId: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
     ProblemBreakGlassRequired:
       summary: break-glass-required
       value:

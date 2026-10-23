@@ -216,6 +216,22 @@ components:
       $ref: 'components/examples/OperationQueued.yaml'
     OperationSucceeded:
       $ref: 'components/examples/OperationSucceeded.yaml'
+    ProblemBookingConflict:
+      $ref: 'components/examples/ProblemBookingConflict.yaml'
+    ProblemBusinessRuleViolation:
+      $ref: 'components/examples/ProblemBusinessRuleViolation.yaml'
+    ProblemFileNotReady:
+      $ref: 'components/examples/ProblemFileNotReady.yaml'
+    ProblemIdempotencyKeyMissing:
+      $ref: 'components/examples/ProblemIdempotencyKeyMissing.yaml'
+    ProblemIdempotencyKeyReused:
+      $ref: 'components/examples/ProblemIdempotencyKeyReused.yaml'
+    ProblemIdempotencyRequestInProgress:
+      $ref: 'components/examples/ProblemIdempotencyRequestInProgress.yaml'
+    ProblemInvalidCursor:
+      $ref: 'components/examples/ProblemInvalidCursor.yaml'
+    ProblemPatientMerged:
+      $ref: 'components/examples/ProblemPatientMerged.yaml'
     ProblemBreakGlassRequired:
       $ref: 'components/examples/ProblemBreakGlassRequired.yaml'
     ProblemConflictPossibleDuplicate:

@@ -1,0 +1,10 @@
+summary: file-not-ready
+value:
+  type: tag:company-domain.invalid,2026:problem/file-not-ready
+  title: "File not ready"
+  status: 422
+  detail: "The file is not scanned clean, has the wrong purpose, or belongs to another clinic."
+  instance: /api/v1/patients/7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/coverages/4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a/card-images
+  code: file-not-ready
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+  fileId: "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b"
