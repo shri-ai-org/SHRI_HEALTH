@@ -24,6 +24,7 @@ from app.core import permissions
 from app.core.config import Settings
 from app.core.db import Database
 from app.core.errors import Forbidden, ServiceUnavailable, Unauthorized
+from app.core.request_id import current_request_id
 
 DEV_USER_HEADER = "X-Dev-User"
 
@@ -116,5 +117,8 @@ async def tenant_db(
     db: Database | None = request.app.state.db
     if db is None:
         raise ServiceUnavailable("Database is not configured")
-    async with db.tenant_session(user.organization_id) as session:
+    # The clinic and user come from the server-side session (current_user), never from
+    # request headers or the body (D21).
+    session = db.tenant_session(user.organization_id, user.id, current_request_id())
+    async with session:
         yield session

@@ -34,10 +34,14 @@ async def ready(request: Request) -> dict[str, Any] | JSONResponse:
         log.warning("Readiness check: database not configured")
         return _not_ready(request)
     try:
-        await asyncio.wait_for(db.ping(), READY_TIMEOUT_SECONDS)
+        bypasses_rls = await asyncio.wait_for(db.role_bypasses_rls(), READY_TIMEOUT_SECONDS)
     except Exception:
         # Log the cause, but never return connection details to the caller.
         log.warning("Readiness check: database unavailable", exc_info=True)
+        return _not_ready(request)
+    if bypasses_rls:
+        # D23: the API's role may never bypass row-level security. Refuse traffic instead.
+        log.error("Readiness check: the API's database role bypasses row-level security")
         return _not_ready(request)
     return {"status": "ready"}
 
