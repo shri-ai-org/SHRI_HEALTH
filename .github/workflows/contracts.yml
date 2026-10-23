@@ -4,6 +4,8 @@ name: contracts
 
 on:
   pull_request:
+    # labeled/unlabeled: re-run when the breaking-change-approved label is added or removed.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths: ["contracts/**", ".github/workflows/contracts.yml"]
   push:
     branches: [main]
@@ -14,15 +16,17 @@ permissions:
 
 concurrency:
   group: contracts-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs only; every commit on main gets a complete run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint-and-breaking:
+    # Label changes other than breaking-change-approved don't spend minutes.
+    if: >-
+      (github.event.action != 'labeled' && github.event.action != 'unlabeled')
+      || github.event.label.name == 'breaking-change-approved'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: read  # read who applied the breaking-change-approved label
     defaults:
       run:
         working-directory: contracts
@@ -48,22 +52,29 @@ jobs:
       - name: Committed bundle is up to date
         run: git diff --exit-code -- openapi/dist/
 
+      # check-breaking.sh exits 0 (no breaking change), 3 (breaking change) or 2 (the check could
+      # not run). Only exit 3 can be approved, and only by the run that applying the label starts:
+      # GitHub records who applied it (sender) and checks out the PR as it was at that moment. Any
+      # later push starts a synchronize run, which fails until the label is applied again, so an
+      # approval always comes after the latest commit. Commit dates are not trusted (authors set them).
       - name: Breaking-change check against the base branch
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: origin/${{ github.base_ref }}
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
+          ACTION: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          SENDER: ${{ github.event.sender.login }}
           APPROVER: vimalshriai  # only Vimal may approve a breaking change (CONTRACT_GOVERNANCE §4.2)
         run: |
-          if bash scripts/check-breaking.sh; then exit 0; fi
-          labelled=$(gh api "repos/$REPO/issues/$PR/labels" --jq '[.[].name] | index("breaking-change-approved") != null')
-          applied_by=$(gh api --paginate "repos/$REPO/issues/$PR/events" \
-            --jq '.[] | select(.event == "labeled" and .label.name == "breaking-change-approved") | .actor.login' | tail -n 1)
-          if [ "$labelled" = "true" ] && [ "$applied_by" = "$APPROVER" ]; then
-            echo "Breaking change approved by $APPROVER with the breaking-change-approved label."
+          set +e; bash scripts/check-breaking.sh; rc=$?; set -e
+          if [ "$rc" -eq 0 ]; then exit 0; fi
+          if [ "$rc" -ne 3 ]; then
+            echo "::error::The breaking-change check could not run (exit $rc). A tool failure is never approved by the label."
+            exit 1
+          fi
+          if [ "$ACTION" = "labeled" ] && [ "$LABEL" = "breaking-change-approved" ] && [ "$SENDER" = "$APPROVER" ]; then
+            echo "Breaking change approved by $APPROVER, who applied breaking-change-approved to this commit."
             exit 0
           fi
-          echo "::error::Breaking contract change. It needs the breaking-change-approved label, applied by $APPROVER."
+          echo "::error::Breaking contract change. $APPROVER must apply the breaking-change-approved label after the latest commit (remove and re-apply it after any new push)."
           exit 1
