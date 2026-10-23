@@ -83,7 +83,7 @@ Fixed by source documents:
 ### 4.2 Process
 
 1. **Avoid it.** Prefer an additive alternative: a new field next to the old one, a new endpoint next to the old one.
-2. If it cannot be avoided: label `breaking-change`; list every consumer; get approval from Vimal and every affected owner. CI's oasdiff check passes only with the `breaking-change-approved` label applied **by Vimal**. Labels cannot be restricted on the Free plan, so the CI job checks through the GitHub API who applied the label (T3).
+2. If it cannot be avoided: label `breaking-change`; list every consumer; get approval from Vimal and every affected owner. CI's oasdiff check passes only with the `breaking-change-approved` label applied **by Vimal after the PR's latest commit**; a new commit needs the label re-applied. Labels cannot be restricted on the Free plan, so the CI job checks through the GitHub API who applied the label (T3).
 3. **Deprecate first:** mark `deprecated: true`, add `Deprecation` and `Sunset` headers (API_STANDARDS §2), announce in `#shri-dev` and the changelog.
 4. Remove after the deprecation period (at least 30 days or two releases), once consumers have moved.
 5. **Exception:** a security fix may break immediately with Vimal's and Thulasi's approval; consumers are told the same day.
