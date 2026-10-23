@@ -98,3 +98,5 @@ All items T1–T37 are **agreed**; every "Agree, with" addition is applied to th
 | T35 | Review the prescription, order and result state machines; RxChange flow | Please review | DATA_OWNERSHIP §5.4–5.6 |
 | T36 | Medication list represented as MedicationRequest (US Core) or MedicationStatement (with Anand) | MedicationRequest, per US Core **Decided (D28):** Anand agreed (A35) | DATA_OWNERSHIP §2.2 |
 | T37 | Sign off your rows (#1–27, #116–147) | — | ENDPOINT_INVENTORY |
+| T38 | **New permission `payers:read`** for the read-only payer directory (`GET /payers`, #230–231; batch 1). Proposed grants: FD, BIL, ADM (SECURITY_MODEL §4.3). Please add it to `CATALOGUE` and the role map in `core/permissions.py` (PR #7). | Add | SECURITY_MODEL §4.2, §4.3 |
+| T39 | **Shared status-board displays.** `GET /status-board?view=shared` returns initials, time and status only (SECURITY_MODEL §8 rule 11), but the screen chooses the view. Should a display-only role force `shared` on the server? | Your call | `scheduling.yaml` |

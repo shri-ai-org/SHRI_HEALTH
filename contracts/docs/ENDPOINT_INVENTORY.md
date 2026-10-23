@@ -238,7 +238,9 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 163–166 | same 4 | `/appointment-types` | A | Ad | same | adm | S | ✓ | | FR-SCH-01 | B1 | Same |
 | 167–170 | same 4 | `/provider-schedules` | A | Ad | same | adm | S | ✓ | | FR-SCH-01 | B1 | Same |
 | 171–174 | same 4 | `/fee-schedules` | A | Ad | same | adm | S | ✓ | | FR-RCM-02 | B1 | Same |
-| 175–178 | same 4 | `/payers` | A | Ad | same | adm | S | ✓ | | FR-RCM-01 | B1 | Same |
+| 175–178 | same 4 | `/practice-payers` | A | Ad | same | adm | S | ✓ | | FR-RCM-01, §3.10 onboarding | B1 | **Was `/payers`** (Vimal, 2026-10-23): the practice's own payer setup, a payer chosen from the directory plus its enrollment status per transaction (`payer_enrollment`); practice-level table **pending schema lock** (A39). Needs Anand's review |
+| 230 | GET | `/payers` | A | Ad | `payers:read` | – | – | | | FR-RCM-01 | B1 | **New** (Vimal, 2026-10-23): the platform payer directory, read-only; filters `payerName`, `externalPayerId`, `payerType`. Reference data, audit category `none` |
+| 231 | GET | `/payers/{payerId}` | A | Ad | `payers:read` | – | – | | | FR-RCM-01 | B1 | **New**: one directory payer |
 | 179–182 | same 4 | `/lab-accounts` | A | Ad | same | adm | S | ✓ | | FR-ORD-01 | B1 | Same |
 | 183–186 | same 4 | `/note-templates` | A | Ad | same | adm | S | ✓ | | FR-ENC-04 | B1 | Same |
 | 187 | POST | `/onboarding/import` | A | Ad+F | `onboarding:import` | adm | S | | ✓ | §3.10 onboarding | B1 | |
@@ -301,7 +303,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | New endpoints from the Stage 1 gaps | #34–36, #44–45, #53, #61, #65, #76–77, #87–89 | Vimal, Stage 1 review |
 | New endpoints from Stage 2 design | #15–16 (operations), #112 (chart summary read) | API_STANDARDS §13 |
 | Agreed by Thulasi (issue #3) | #121–122, #136, #140–141 (links), new #227–229, state changes on #126–129, #139, #146; `/hooks/*` audited as `pw` | T31–T37 |
+| Payers in two layers (Vimal, 2026-10-23) | `/payers` (#175–178) → `/practice-payers`; new read-only directory #230–231 (`payers:read`) | Needs Anand's review |
 | Proposed to owners | Single GETs in practice setup and documents (Anand), #213 async export (Anand) | Pending owners |
 | Moved outside `/api/v1` | `/hooks/*`, `/health` (public through Nginx); `/ready` internal and **not in the contract** | API_STANDARDS §2; agreed T24 |
 
-**Count:** 228 contract operations: 229 rows (27 platform, 22 patients, 12 scheduling and eligibility, 28 encounters and notes, 17 history, 9 AI, 17 medications, 18 orders, 72 Anand, 7 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid. Recounted when the contract is written.
+**Count:** 230 contract operations: 231 rows (27 platform, 22 patients, 12 scheduling and eligibility, 28 encounters and notes, 17 history, 9 AI, 17 medications, 18 orders, 74 Anand, 7 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory (2026-10-23). Recounted when the contract is written.

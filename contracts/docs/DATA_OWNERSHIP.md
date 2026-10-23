@@ -105,7 +105,8 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Facilities, locations | `/facilities`, `/locations` | **Cl** | Organization, Location | US Core Organization, US Core Location |
 | Providers | `/providers` | **Cl** | Practitioner, PractitionerRole | US Core Practitioner, US Core PractitionerRole |
 | Appointment types, provider schedules, fee schedules, lab accounts, note templates | `/appointment-types`, `/provider-schedules`, `/fee-schedules`, `/lab-accounts`, `/note-templates` | **Ad** (provider calendars as FHIR Schedule in **Cl**) | Schedule (for provider calendars) | — |
-| Payers | `/payers` | **Ad** (also an Organization where FHIR needs one) | Organization | US Core Organization |
+| Payer directory | `/payers` (read-only) | **Ad**, platform-wide (`payer`, `payer_clearinghouse_id`); maintained by the platform from the clearinghouse payer list (Vimal, 2026-10-23) | Organization | US Core Organization |
+| Practice payers | `/practice-payers` | **Ad**: a directory payer the practice works with, and its enrollments (`payer_enrollment`); practice-level table **pending schema lock** (A39) | — | — |
 | Onboarding import | `/onboarding/import` | **Ad** + **F** | — | — |
 | Superbill, charges | `/encounters/{encounterId}/superbill` | **Ad** | — | — |
 | Claims, claim status events | `/claims` | **Ad** + **F** (X12) | — (FHIR Claim not used) | — |
