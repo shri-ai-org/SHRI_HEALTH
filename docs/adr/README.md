@@ -12,7 +12,7 @@ Status values: **Proposed** → **Accepted** (all named sign-offs given) → **S
 | [ADR-0002](0002-contract-first-openapi-3-1.md) | Contract first with OpenAPI 3.1, one file per module | **Accepted** | Vimal, Thulasi, Minalini |
 | [ADR-0003](0003-error-format-problem-details.md) | Errors as Problem Details (RFC 9457) with a stable code catalogue | **Accepted** | Vimal, Thulasi |
 | [ADR-0004](0004-cursor-pagination.md) | Cursor pagination for every list (partly superseded by ADR-0011) | **Accepted** | Minalini, Thulasi, Anand (2026-10-23) |
-| [ADR-0005](0005-no-phi-in-urls.md) | PHI never in URLs; PHI search through POST | Proposed | Thulasi (formally; related rules agreed) |
+| [ADR-0005](0005-no-phi-in-urls.md) | PHI never in URLs; PHI search through POST | **Accepted** | Vimal, Thulasi, Minalini, Anand (2026-10-23, as D13) |
 | [ADR-0006](0006-cookie-session-and-csrf.md) | Session cookie with reference token, plus CSRF header | **Accepted** | Thulasi, Minalini |
 | [ADR-0007](0007-idempotency-keys.md) | Idempotency-Key for partner-bound and money-moving requests | **Accepted** | Thulasi, Anand (2026-10-23) |
 | [ADR-0008](0008-optimistic-concurrency.md) | Optimistic concurrency with ETag / If-Match (partly superseded by ADR-0011) | **Accepted** | Thulasi, Anand (2026-10-23) |
