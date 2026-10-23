@@ -41,7 +41,7 @@ x-permission: notes:sign
 | On | Every operation |
 | Shape | `{ action, category, patient?, actor? }` — no other members |
 | `action` | FHIR AuditEvent action: `C` create, `R` read (including search), `U` update, `E` execute (actions) |
-| `category` | `phi-read`, `phi-write`, `sign`, `export`, `security`, `ai`, `admin`, or `none` (only health checks and reference catalogs: codes, pharmacies, lab compendium, slots) |
+| `category` | `phi-read`, `phi-write`, `sign`, `export`, `security`, `ai`, `admin`, or `none` (only health checks and reference catalogs: codes, pharmacies, payer directory, lab providers, lab compendium, slots) |
 | `patient` | Where the patient ID comes from: a path parameter name (e.g. `patientId`), `body:/<json-pointer>`, or `result` (search and list results: the IDs returned are recorded). **Required** on paths containing `{patientId}` |
 | `actor` | `user` (default) or `partner` (partner callbacks, Thulasi T37) |
 | Behavior | Audit **fails closed**: if the audit write fails, the request fails. Writes are audited in the same transaction; reads before the response is returned. Audit entries never contain request or response bodies (SECURITY_MODEL §6) |
