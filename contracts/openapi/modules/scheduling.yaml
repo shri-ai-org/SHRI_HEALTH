@@ -785,9 +785,9 @@ paths:
     get:
       operationId: getStatusBoard
       summary: Get the status board
-      description: 'Today''s clinic flow at a facility (inventory #58), updated live through the event stream. Staff screens
-        show names; shared hallway displays must use `view=shared`, which returns initials, time and status only (SECURITY_MODEL
-        §8 rule 11). A facility the user is not assigned to gives `404 not-found`.'
+      description: 'Today''s clinic flow at a facility (inventory #58), updated live through the event stream. By default
+        it returns initials, time and status only (`view=shared`), safe for hallway and waiting-room displays (SECURITY_MODEL
+        §8 rule 11); staff screens ask for names with `view=staff`. A facility the user is not assigned to gives `404 not-found`.'
       tags:
       - scheduling
       x-owner: vimal
@@ -819,14 +819,15 @@ paths:
       - name: view
         in: query
         required: false
-        description: '`staff` (default): names for staff screens. `shared`: initials, time and status only, for displays the
-          public can see. A display-only role that forces `shared` on the server is an open question for Thulasi.'
+        description: '`shared` (default): initials, time and status only, safe for displays the public can see. `staff`: names,
+          for staff screens; ask for it explicitly. A display-only role that the server always limits to `shared` is an open
+          question for Thulasi (T39).'
         schema:
           type: string
           enum:
-          - staff
           - shared
-          default: staff
+          - staff
+          default: shared
       responses:
         '200':
           description: One page of status board items.
@@ -840,8 +841,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/StatusBoardList'
               examples:
-                board:
-                  summary: One patient waiting
+                shared:
+                  summary: 'Shared view (default): one patient waiting'
+                  value:
+                    items:
+                    - appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                      initials: RK
+                      startAt: '2026-11-03T15:00:00Z'
+                      status: checked-in
+                      visitStatus: checked-in
+                    date: '2026-11-03'
+                    timeZone: America/Chicago
+                staff:
+                  summary: Staff view
                   value:
                     items:
                     - appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
@@ -1373,8 +1385,8 @@ components:
           description: The exam room. Required with `roomed`.
           x-phi: internal-id
     StatusBoardItem:
-      description: One appointment on today's board. With `view=shared` (hallway and waiting-room displays) only `appointmentId`,
-        `initials`, `startAt`, `status` and `visitStatus` are returned (SECURITY_MODEL §8 rule 11).
+      description: One appointment on today's board. With `view=shared`, the default (hallway and waiting-room displays),
+        only `appointmentId`, `initials`, `startAt`, `status` and `visitStatus` are returned (SECURITY_MODEL §8 rule 11).
       type: object
       required:
       - appointmentId
@@ -1388,7 +1400,7 @@ components:
           x-phi: internal-id
         patient:
           $ref: '#/components/schemas/SchedulingPatientRef'
-          description: Patient, for staff screens. Absent with `view=shared`.
+          description: Patient, only with `view=staff`.
           x-phi: identifier
         initials:
           type: string
