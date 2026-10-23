@@ -787,7 +787,9 @@ paths:
       summary: Get the status board
       description: 'Today''s clinic flow at a facility (inventory #58), updated live through the event stream. By default
         it returns initials, time and status only (`view=shared`), safe for hallway and waiting-room displays (SECURITY_MODEL
-        §8 rule 11); staff screens ask for names with `view=staff`. A facility the user is not assigned to gives `404 not-found`.'
+        §8 rule 11); staff screens ask for names with `view=staff`. Shared screens sign in with the status board display role
+        `DSP`, which has only `status-board:read` and always gets the shared view (D47). A facility the user is not assigned
+        to gives `404 not-found`.'
       tags:
       - scheduling
       x-owner: vimal
@@ -820,8 +822,8 @@ paths:
         in: query
         required: false
         description: '`shared` (default): initials, time and status only, safe for displays the public can see. `staff`: names,
-          for staff screens; ask for it explicitly. A display-only role that the server always limits to `shared` is an open
-          question for Thulasi (T39).'
+          for staff screens; ask for it explicitly. The status board display role `DSP` always gets `shared`, whatever it
+          asks for (D47).'
         schema:
           type: string
           enum:
