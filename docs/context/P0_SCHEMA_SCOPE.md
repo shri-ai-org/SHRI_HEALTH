@@ -5,7 +5,7 @@ Oct 22, 2026 · Imported from the team's shared doc on 2026-10-23.
 > **Status: Approved (2026-10-23).** ADR-0011 adopts Sam's schema (PR #9) in one PostgreSQL 18 database; D1 (HAPI) is retired. This scope is approved as written:
 > - the release tags below are final for the 30 October lock;
 > - every one of the eight "P0 items to confirm" is **approved as P0**: Sam and Anand add whatever is missing before the lock (D24);
-> - the remaining "Next steps" are scheduled work with named owners (DECISIONS.md, "Work before the 30 October schema lock"), not open questions;
+> - the remaining "Next steps" are scheduled work with named owners (DECISIONS.md, "Scheduled work"), not open questions;
 > - **medication list (D28):** MedicationRequest is confirmed, because US Core represents the medication list this way. MedicationStatement is tagged **P1** during Anand's tagging: the table is kept, not locked.
 
 ## What P0 means

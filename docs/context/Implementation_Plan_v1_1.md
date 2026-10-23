@@ -42,7 +42,7 @@ This plan completes the P0 MVP by 31 December 2026, readies a pilot for 1 March 
 | Initial Implementation Specification v1.0 | FHIR client pattern, thin-route/service layering, starter acceptance tests. Mirth removed; ~~HAPI FHIR as system of record reopened as ADR-19~~ (ADR-19 decided by ADR-0011: no HAPI) |
 | Kickoff meeting transcription (Oct 2026) | Priority changes and functions missing from the FRS |
 
-Where sources conflict, DECISIONS.md wins over all of them (it records the team's later decisions); otherwise the meeting wins over the FRS, and the FRS wins over the two architecture documents. Every conflict is listed in the next section, and FRS v1.2 and Technical Architecture v1.1 now carry the same changes, so the three documents agree.
+Where sources conflict, DECISIONS.md wins over all of them (it records the team's later decisions); otherwise the meeting wins over the FRS, and the FRS wins over the two architecture documents. Every conflict is listed in the next section, and FRS v1.2 and Technical Architecture v1.1 carry the meeting's changes. Technical Architecture v1.1 still differs from later decisions in four places (the pgvector pin, pg_textsearch, pgBackRest and `uuidv7()`); DECISIONS.md lists each override.
 
 The transcription is machine-generated. Names and vendor terms below are best readings and need confirming: Waystar (clearinghouse), Weno (e-prescribing used by OpenEMR), Quest and LabCorp (labs), Jitsi (video), C-CDA (record exchange).
 

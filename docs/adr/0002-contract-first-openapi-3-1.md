@@ -30,7 +30,7 @@ Tool support checked on 2026-10-22 (TOOLCHAIN §1): Prism 5.16.0 (mock server) l
 - Every endpoint change starts with a contract PR (CONTRACT_GOVERNANCE §2).
 - A bundling step is needed before any tool runs; CI must keep `dist/` in sync.
 - Moving to 3.2 later requires only a Prism upgrade check and a version-string change.
-- CODEOWNERS lines per module file can enforce owner approval (pending Thulasi).
+- CODEOWNERS lines per module file can enforce owner approval (agreed by Thulasi, T2).
 
 ## References
 
