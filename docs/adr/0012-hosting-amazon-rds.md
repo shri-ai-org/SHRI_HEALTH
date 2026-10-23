@@ -41,7 +41,7 @@ Thulasi provisions it with Terraform (`infra/terraform/`). Anand owns the parame
 **Costs:**
 
 - **Extensions and versions follow RDS.** We can only use what RDS ships, so we upgrade pgvector when RDS does (D31).
-- **Superuser actions differ.** RDS has no true superuser, so `sql/00_extensions.sql` must run as the RDS master role, and the five service roles (D23) are created by `shri_migrator` within RDS's limits. Anand checks this during schema adoption.
+- **Superuser actions differ.** RDS has no true superuser, so `sql/00_extensions.sql` must run as the RDS master role, and the five service roles (D23) are created by `shri_migrator` within RDS's limits (confirmed by Anand during adoption).
 - **Development and CI must match RDS:** a PostgreSQL 18 image with the RDS pgvector version and C.UTF-8 collation (Thulasi, with Anand).
 - **Restore drills stay our job.** RDS restores, but proving that a restore works, how long it takes, and that the audit chain verifies is ours, every quarter.
 
