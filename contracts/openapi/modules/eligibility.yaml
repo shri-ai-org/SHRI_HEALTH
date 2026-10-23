@@ -1,16 +1,512 @@
 # Shri Health API — module `eligibility`
 # x-owner: vimal  (implements these operations and approves their contract; Vimal approves standards conformance)
-# Scope: Eligibility checks (`backend/app/modules/eligibility/`)
-#
-# Stage 3 leaves this file empty on purpose: no endpoints yet.
-# Stage 4 adds each path item under `paths:` and references it from ../shri-health.yaml, for example:
-#
-#   # in shri-health.yaml
-#   paths:
-#     /patients/search:
-#       $ref: modules/patients.yaml#/paths/~1patients~1search
-#
-# Module-specific schemas go under `components.schemas` here; shared ones stay in ../components/.
-paths: {}
+# Scope: Insurance eligibility checks, X12 270/271 through the clearinghouse (`backend/app/modules/eligibility/`)
+# Stage 4 batch 1. Shapes follow ENDPOINT_INVENTORY rows #59-61 and DATA_OWNERSHIP §5.8.
+# Checks run at booking, in the nightly pre-visit batch for next-day appointments, at check-in, and on demand (D15).
+# Status follows DATA_OWNERSHIP §5.8 (`pending`, `complete`, `error`) with a separate `coverageStatus`; Sam's schema
+# stores one combined status (`pending`, `active`, `inactive`, `not-found`, `error`, `timeout`), mapped in the repository.
+# Copay and deductible are picked from the normalized 271 benefits.
+paths:
+  /eligibility-checks:
+    post:
+      operationId: runEligibilityCheck
+      summary: Run an eligibility check
+      description: 'Runs a check now (inventory #59; trigger `manual`). Saves a `pending` check and queues the 270 for the
+        clearinghouse in the same transaction (`enqueue(db, "clearinghouse", "270", …)`); the 271 arrives through the webhook
+        receiver. Returns `202` and an operation of kind `eligibility.check`, whose result is the check. Reaches a partner,
+        so `Idempotency-Key` is required. Booking, the pre-visit batch and check-in start checks themselves (D15).'
+      tags:
+      - eligibility
+      x-owner: vimal
+      x-permission: eligibility-checks:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: result
+      x-idempotency: required
+      x-async: true
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EligibilityCheckCreate'
+            examples:
+              now:
+                summary: Check the primary coverage now
+                value:
+                  coverageId: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                  appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed`
+            on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            Retry-After:
+              $ref: ../components/headers/RetryAfter.yaml
+            X-Request-ID: &id001
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control: &id002
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit: &id003
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy: &id004
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/Operation.yaml
+              examples:
+                queued:
+                  summary: Check queued
+                  value:
+                    id: 5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c
+                    kind: eligibility.check
+                    status: queued
+                    createdAt: '2026-11-03T14:52:00Z'
+                    updatedAt: '2026-11-03T14:52:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required
+            Idempotency-Key header is missing).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `eligibility-checks:create`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged`
+            (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the coverage
+            is not active, or the appointment belongs to another patient); `idempotency-key-reused` (the Idempotency-Key was
+            used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /eligibility-checks/{eligibilityCheckId}:
+    parameters:
+    - name: eligibilityCheckId
+      in: path
+      required: true
+      description: Eligibility check ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getEligibilityCheck
+      summary: Get an eligibility check
+      description: 'Returns a check with coverage status, copay and deductible (inventory #60).'
+      tags:
+      - eligibility
+      x-owner: vimal
+      x-permission: eligibility-checks:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The eligibility check.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EligibilityCheck'
+              examples:
+                active:
+                  summary: Active coverage with copay and deductible
+                  value: &id005
+                    id: 3a4b5c6d-7e8f-4a9b-9c0d-1e2f3a4b5c6d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    coverageId: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    trigger: check-in
+                    status: complete
+                    coverageStatus: active
+                    planName: Test PPO
+                    coverageStartDate: '2026-01-01'
+                    copay:
+                      value: '25.00'
+                      currency: USD
+                    deductible:
+                      value: '1500.00'
+                      currency: USD
+                    deductibleRemainingAmount:
+                      value: '640.00'
+                      currency: USD
+                    benefits:
+                    - benefitType: copay
+                      serviceTypeCode: '98'
+                      coverageLevel: individual
+                      network: in
+                      timePeriod: visit
+                      benefitAmount:
+                        value: '25.00'
+                        currency: USD
+                    - benefitType: deductible
+                      serviceTypeCode: '30'
+                      coverageLevel: individual
+                      network: in
+                      timePeriod: calendar-year
+                      benefitAmount:
+                        value: '1500.00'
+                        currency: USD
+                    - benefitType: deductible
+                      serviceTypeCode: '30'
+                      coverageLevel: individual
+                      network: in
+                      timePeriod: remaining
+                      benefitAmount:
+                        value: '640.00'
+                        currency: USD
+                    requestedAt: '2026-11-03T14:52:00Z'
+                    respondedAt: '2026-11-03T14:52:09Z'
+                    expiresAt: '2026-11-04T14:52:09Z'
+                pending:
+                  summary: Still waiting for the 271
+                  value:
+                    id: 3a4b5c6d-7e8f-4a9b-9c0d-1e2f3a4b5c6d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    coverageId: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    trigger: check-in
+                    status: pending
+                    requestedAt: '2026-11-03T14:52:00Z'
+                error:
+                  summary: Payer could not verify
+                  value:
+                    id: 3a4b5c6d-7e8f-4a9b-9c0d-1e2f3a4b5c6d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    coverageId: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    trigger: manual
+                    status: error
+                    errorCode: '72'
+                    errorMessage: 'Unable to verify: the payer reports an invalid member ID.'
+                    requestedAt: '2026-11-03T14:52:00Z'
+                    respondedAt: '2026-11-03T14:52:07Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `eligibility-checks:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such eligibility check in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /appointments/{appointmentId}/eligibility-checks:
+    parameters:
+    - name: appointmentId
+      in: path
+      required: true
+      description: Appointment ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: listAppointmentEligibilityChecks
+      summary: List an appointment's eligibility checks
+      description: 'The checks for one appointment, newest first: at booking, in the pre-visit batch, at check-in and manual
+        (inventory #61; D15).'
+      tags:
+      - eligibility
+      x-owner: vimal
+      x-permission: eligibility-checks:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page of eligibility checks.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EligibilityCheckList'
+              examples:
+                checks:
+                  summary: Check-in result
+                  value:
+                    items:
+                    - *id005
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `eligibility-checks:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such eligibility check in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
-  schemas: {}
+  schemas:
+    EligibilityBenefit:
+      description: One benefit line from the 271 (EB loop), normalized (`eligibility_benefit`).
+      type: object
+      required:
+      - benefitType
+      properties:
+        benefitType:
+          type: string
+          enum:
+          - active-coverage
+          - copay
+          - coinsurance
+          - deductible
+          - out-of-pocket
+          - limitation
+          - non-covered
+          description: Benefit type.
+          x-phi: financial
+        serviceTypeCode:
+          type: string
+          pattern: ^[A-Z0-9]{1,2}$
+          maxLength: 2
+          description: X12 service type code, e.g. `30` health benefit plan coverage, `98` professional physician visit.
+          x-phi: financial
+        coverageLevel:
+          type: string
+          enum:
+          - individual
+          - family
+          description: Individual or family.
+          x-phi: financial
+        network:
+          type: string
+          enum:
+          - in
+          - out
+          - na
+          description: In or out of network.
+          x-phi: financial
+        timePeriod:
+          type: string
+          enum:
+          - calendar-year
+          - plan-year
+          - visit
+          - remaining
+          - lifetime
+          description: Period the amount applies to.
+          x-phi: financial
+        benefitAmount:
+          $ref: ../components/schemas/Money.yaml
+          description: 'Amount, when the line has one. The schema has no currency column: always USD. **Pending schema lock.**'
+          x-phi: financial
+        percent:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Percentage, for coinsurance.
+          x-phi: financial
+        authorizationRequired:
+          type: boolean
+          description: True when the payer says prior authorization is required.
+          x-phi: financial
+        message:
+          type: string
+          maxLength: 500
+          description: Payer message for this line.
+          x-phi: financial
+    EligibilityCheck:
+      description: 'One eligibility check: an X12 270/271 round trip through the clearinghouse (`eligibility_check`).'
+      type: object
+      required:
+      - id
+      - patientId
+      - coverageId
+      - trigger
+      - status
+      - requestedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Eligibility check ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        coverageId:
+          $ref: ../components/schemas/Id.yaml
+          description: The coverage checked.
+          x-phi: internal-id
+        appointmentId:
+          $ref: ../components/schemas/Id.yaml
+          description: The appointment, when the check belongs to one.
+          x-phi: internal-id
+        trigger:
+          type: string
+          enum:
+          - booking
+          - pre-visit-batch
+          - check-in
+          - manual
+          description: What started the check (D15).
+          x-phi: none
+        status:
+          type: string
+          enum:
+          - pending
+          - complete
+          - error
+          description: '`pending` until the 271 arrives; `complete` with a coverage status; `error` when the partner failed
+            or timed out (DATA_OWNERSHIP §5.8).'
+          x-phi: none
+        coverageStatus:
+          type: string
+          enum:
+          - active
+          - inactive
+          - unknown
+          description: The answer, once `complete`. `unknown` when the payer did not find the member.
+          x-phi: financial
+        planName:
+          type: string
+          maxLength: 200
+          description: Plan name from the 271.
+          x-phi: financial
+        coverageStartDate:
+          $ref: ../components/schemas/Date.yaml
+          description: Coverage start from the 271.
+          x-phi: financial
+        coverageEndDate:
+          $ref: ../components/schemas/Date.yaml
+          description: Coverage end from the 271.
+          x-phi: financial
+        copay:
+          $ref: ../components/schemas/Money.yaml
+          description: 'Office-visit copay for the patient, in network: picked from `benefits` for the front desk (FRS FR-RCM-01).'
+          x-phi: financial
+        deductible:
+          $ref: ../components/schemas/Money.yaml
+          description: Individual in-network deductible for the year, from `benefits`.
+          x-phi: financial
+        deductibleRemainingAmount:
+          $ref: ../components/schemas/Money.yaml
+          description: What remains of that deductible, from `benefits`.
+          x-phi: financial
+        benefits:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/EligibilityBenefit'
+          description: All benefit lines from the 271.
+          x-phi: financial
+        errorCode:
+          type: string
+          maxLength: 10
+          description: X12 AAA reject reason code, or `timeout`, when `error`.
+          x-phi: none
+        errorMessage:
+          type: string
+          maxLength: 500
+          description: Readable reason for the front desk, when `error`. Never contains patient data.
+          x-phi: none
+        requestedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the 270 was queued.
+          x-phi: none
+        respondedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the 271 arrived.
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: After this, check again before relying on the result.
+          x-phi: none
+    EligibilityCheckList:
+      description: One page of eligibility checks, newest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/EligibilityCheck'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    EligibilityCheckCreate:
+      description: Body to run a check now.
+      type: object
+      additionalProperties: false
+      required:
+      - coverageId
+      properties:
+        coverageId:
+          $ref: ../components/schemas/Id.yaml
+          description: The coverage to check.
+          x-phi: internal-id
+        appointmentId:
+          $ref: ../components/schemas/Id.yaml
+          description: The appointment it is for, if any (same patient as the coverage).
+          x-phi: internal-id
+        serviceTypeCodes:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: string
+            pattern: ^[A-Z0-9]{1,2}$
+            maxLength: 2
+          description: X12 service type codes to ask about. Default `30` (health benefit plan coverage).
+          x-phi: none

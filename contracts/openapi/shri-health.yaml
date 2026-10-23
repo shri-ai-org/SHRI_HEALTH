@@ -135,6 +135,12 @@ paths:
     $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1status'
   /status-board:
     $ref: 'modules/scheduling.yaml#/paths/~1status-board'
+  /eligibility-checks:
+    $ref: 'modules/eligibility.yaml#/paths/~1eligibility-checks'
+  /eligibility-checks/{eligibilityCheckId}:
+    $ref: 'modules/eligibility.yaml#/paths/~1eligibility-checks~1{eligibilityCheckId}'
+  /appointments/{appointmentId}/eligibility-checks:
+    $ref: 'modules/eligibility.yaml#/paths/~1appointments~1{appointmentId}~1eligibility-checks'
 components:
   schemas:
     Address:
