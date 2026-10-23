@@ -181,7 +181,7 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `unmatched-results:*` ‡ | – | – | ✓ | ✓ | – | – | – | – | – | – |
 | Billing: `superbills:*`, `claims:*`, `remittances:*`, `billing-reports:read` | – | – | – | R (`superbills:read`) | R | ✓ | R | – | – | – |
 | `payments:create\|card-session` | ✓ | – | – | – | – | ✓ | – | – | – | – |
-| `payers:read` (payer directory; added 2026-10-23, in core since PR #7 db013df) | ✓ | – | – | – | – | ✓ | ✓ | ✓ | – | – |
+| `payers:read` (payer directory; added 2026-10-23, in core since PR #7) | ✓ | – | – | – | – | ✓ | ✓ | – | – | – |
 | `coverages:entered-in-error` (D45; new 2026-10-23, pending core) | ✓ | – | – | – | – | ✓ | ✓ | – | – | – |
 | `duplicates:dismiss` (D46; new 2026-10-23, pending core) | – | – | – | – | – | – | ✓ | – | – | – |
 | `lab-providers:read` (D48; new 2026-10-23, pending core) | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | – | – |
