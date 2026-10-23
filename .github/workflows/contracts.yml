@@ -1,0 +1,80 @@
+# Contract checks (TOOLCHAIN §6, CONTRACT_GOVERNANCE §4–§5). Runs only when the contract or this
+# workflow changes, to save Free-plan minutes. Every Action is pinned by commit SHA.
+name: contracts
+
+on:
+  pull_request:
+    # labeled/unlabeled: re-run when the breaking-change-approved label is added or removed.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths: ["contracts/**", ".github/workflows/contracts.yml"]
+  push:
+    branches: [main]
+    paths: ["contracts/**", ".github/workflows/contracts.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-${{ github.event.pull_request.number || github.ref }}
+  # Cancel superseded PR runs only; every commit on main gets a complete run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint-and-breaking:
+    # Label changes other than breaking-change-approved don't spend minutes.
+    if: >-
+      (github.event.action != 'labeled' && github.event.action != 'unlabeled')
+      || github.event.label.name == 'breaking-change-approved'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # the breaking check reads the base branch's bundle
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version-file: contracts/.nvmrc  # Node 24 LTS
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+
+      # --ignore-scripts: no install scripts run (this also skips @scarf/scarf analytics).
+      - name: Install pinned tools
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Lint, lint fixtures and bundle
+        run: npm test
+
+      - name: Committed bundle is up to date
+        run: git diff --exit-code -- openapi/dist/
+
+      # check-breaking.sh exits 0 (no breaking change), 3 (breaking change) or 2 (the check could
+      # not run). Only exit 3 can be approved, and only by the run that applying the label starts:
+      # GitHub records who applied it (sender) and checks out the PR as it was at that moment. Any
+      # later push starts a synchronize run, which fails until the label is applied again, so an
+      # approval always comes after the latest commit. Commit dates are not trusted (authors set them).
+      - name: Breaking-change check against the base branch
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+          ACTION: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          SENDER: ${{ github.event.sender.login }}
+          APPROVER: vimalshriai  # only Vimal may approve a breaking change (CONTRACT_GOVERNANCE §4.2)
+        run: |
+          set +e; bash scripts/check-breaking.sh; rc=$?; set -e
+          if [ "$rc" -eq 0 ]; then exit 0; fi
+          if [ "$rc" -ne 3 ]; then
+            echo "::error::The breaking-change check could not run (exit $rc). A tool failure is never approved by the label."
+            exit 1
+          fi
+          if [ "$ACTION" = "labeled" ] && [ "$LABEL" = "breaking-change-approved" ] && [ "$SENDER" = "$APPROVER" ]; then
+            echo "Breaking change approved by $APPROVER, who applied breaking-change-approved to this commit."
+            exit 0
+          fi
+          echo "::error::Breaking contract change. $APPROVER must apply the breaking-change-approved label after the latest commit (remove and re-apply it after any new push)."
+          exit 1
