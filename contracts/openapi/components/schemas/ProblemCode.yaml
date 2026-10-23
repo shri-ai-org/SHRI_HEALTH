@@ -36,7 +36,6 @@ enum:
   - rate-limited
   - internal-error
   - upstream-error
-  - clinical-store-unavailable
   - service-unavailable
   - upstream-timeout
   - ai-unavailable

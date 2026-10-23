@@ -634,7 +634,6 @@ components:
         - rate-limited
         - internal-error
         - upstream-error
-        - clinical-store-unavailable
         - service-unavailable
         - upstream-timeout
         - ai-unavailable
@@ -961,7 +960,7 @@ components:
             precondition-required:
               $ref: '#/components/examples/ProblemPreconditionRequired'
     ServiceUnavailable:
-      description: '503. HAPI (the clinical data store) is unavailable for a clinical read or write, or the service is in maintenance; retry after `Retry-After` seconds. Patient registration and check-in never return this; they queue (DATA_OWNERSHIP §3.3). Codes: `clinical-store-unavailable`, `service-unavailable`.'
+      description: '503. The database is unavailable or overloaded, or the service is in maintenance; nothing was written. Retry after `Retry-After` seconds. A partner outage never causes this: partner messages wait in the outbox (ARCHITECTURE_CONTEXT §5, §8). Code: `service-unavailable`.'
       headers:
         X-Request-ID:
           $ref: '#/components/headers/XRequestId'
@@ -974,8 +973,8 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
           examples:
-            clinical-store-unavailable:
-              $ref: '#/components/examples/ProblemClinicalStoreUnavailable'
+            service-unavailable:
+              $ref: '#/components/examples/ProblemServiceUnavailable'
     TooManyRequests:
       description: '429. Rate limit reached; wait for `Retry-After` seconds. Code: `rate-limited`.'
       headers:
@@ -1081,16 +1080,6 @@ components:
         code: break-glass-required
         requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
         patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
-    ProblemClinicalStoreUnavailable:
-      summary: clinical-store-unavailable
-      value:
-        type: tag:company-domain.invalid,2026:problem/clinical-store-unavailable
-        title: Clinical data unavailable
-        status: 503
-        detail: Clinical data is temporarily unavailable. Try again shortly.
-        instance: /api/v1/encounters/2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e/vitals
-        code: clinical-store-unavailable
-        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
     ProblemConflictPossibleDuplicate:
       summary: possible-duplicate
       value:
@@ -1207,6 +1196,16 @@ components:
         detail: A signed note cannot be edited. Add an addendum instead.
         instance: /api/v1/notes/2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
         code: record-locked
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemServiceUnavailable:
+      summary: service-unavailable
+      value:
+        type: tag:company-domain.invalid,2026:problem/service-unavailable
+        title: Service unavailable
+        status: 503
+        detail: The service is temporarily unavailable. Try again shortly.
+        instance: /api/v1/encounters/2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e/vitals
+        code: service-unavailable
         requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
     ProblemUnauthenticated:
       summary: unauthenticated
