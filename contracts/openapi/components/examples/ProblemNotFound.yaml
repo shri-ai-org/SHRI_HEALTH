@@ -1,0 +1,9 @@
+summary: not-found
+value:
+  type: tag:company-domain.invalid,2026:problem/not-found
+  title: "Not found"
+  status: 404
+  detail: "The requested record does not exist."
+  instance: /api/v1/appointments/1f0c3b8e-5d6a-4b7e-9c2d-8e7f6a5b4c3d
+  code: not-found
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11

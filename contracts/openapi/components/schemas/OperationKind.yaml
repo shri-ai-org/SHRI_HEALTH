@@ -1,0 +1,14 @@
+title: OperationKind
+description: What kind of long-running work an operation tracks (API_STANDARDS §13).
+type: string
+enum:
+  - ai.transcription
+  - ai.note-draft
+  - ai.chart-summary
+  - eligibility.check
+  - encounter.after-visit-summary
+  - export
+  - ccda.import
+  - ccda.export
+  - onboarding.import
+  - medication-history.fetch

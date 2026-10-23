@@ -43,7 +43,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 2 | GET | `/auth/callback` | T | O | `public` | sec | – | | | §6 | B1 | |
 | 3 | POST | `/auth/refresh` | T | O | `authenticated` | sec | – | | | §6 | B1 | |
 | 4 | POST | `/auth/logout` | T | O | `authenticated` | sec | – | | | §6 | B1 | Returns 204 (API_STANDARDS §4) |
-| 5 | GET | `/auth/session` | T | O | `authenticated` | – | – | | | §6 | B1 | Returns `csrfToken` (SECURITY_MODEL §2.2, pending Thulasi) |
+| 5 | GET | `/auth/session` | T | O | `authenticated` | – | – | | | §6 | B1 | Returns `{ user, organization, csrfToken, idleExpiresAt, expiresAt }`: the CSRF token, the idle expiry the screen times its 13-minute warning from, and the absolute (12-hour, not extendable) expiry (SECURITY_MODEL §2.1, §2.2; Thulasi T8, issue #3) |
 | 6 | GET | `/me` | T | O | `authenticated` | – | – | | | §3.10 | B1 | |
 | 7 | GET | `/users` | T | O | `users:read` | adm | – | | | §3.10 | B1 | |
 | 8 | POST | `/users` | T | O | `users:create` | adm | S | | | §3.10 | B1 | |
@@ -214,7 +214,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 137 | POST | `/orders/{orderId}/medical-necessity-check` | T | O | `orders:medical-necessity-check` | pw | – | | | FR-ORD-01 (ABN) | B5 | |
 | 138 | POST | `/orders/{orderId}/sign-and-send` | T | S | `orders:sign-and-send` | sg | R | ✓ | | FR-ORD-01 | B5 | |
 | 139 | POST | `/orders/{orderId}/cancel` | T | S | `orders:cancel` | pw | R | | | FR-ORD-01 | B5 | Only before `specimen-collected`; after → `409 invalid-state-transition` (T34) |
-| 228 | POST | `/orders/{orderId}/entered-in-error` | T | S | `orders:entered-in-error` | pw | – | | | FR-ORD-01 | B5 | **New** (permission from T13). Drafts only, mirroring prescriptions — **pending Thulasi** to confirm the scope |
+| 228 | POST | `/orders/{orderId}/entered-in-error` | T | S | `orders:entered-in-error` | pw | – | | | FR-ORD-01 | B5 | **New** (permission from T13). **Drafts only, confirmed by Thulasi** (issue #3): it mirrors prescriptions; a signed order uses cancel (#139), before specimen collection |
 | 140 | GET | `/orders/{orderId}/requisition` | T | F | `orders:read` | ex | – | | | FR-ORD-01 | B5 | Returns a file download link, generated on demand through the file service; audited as `ex` (agreed, T33) |
 | 141 | GET | `/orders/{orderId}/labels` | T | F | `orders:read` | ex | – | | | FR-ORD-01 | B5 | Same |
 | 142 | GET | `/results` | T | H | `results:read` | pr | – | | | FR-ORD-02 | B5 | Query `unreviewed`, `patientId` |
@@ -301,7 +301,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | New endpoints from the Stage 1 gaps | #34–36, #44–45, #53, #61, #65, #76–77, #87–89 | Vimal, Stage 1 review |
 | New endpoints from Stage 2 design | #15–16 (operations), #112 (chart summary read) | API_STANDARDS §13 |
 | Agreed by Thulasi (issue #3) | #121–122, #136, #140–141 (links), new #227–229, state changes on #126–129, #139, #146; `/hooks/*` audited as `pw` | T31–T37 |
-| Proposed to owners | Single GETs in practice setup and documents (Anand), #213 async export (Anand), draft-only scope of #228 (Thulasi) | Pending owners |
+| Proposed to owners | Single GETs in practice setup and documents (Anand), #213 async export (Anand) | Pending owners |
 | Moved outside `/api/v1` | `/hooks/*`, `/health` (public through Nginx); `/ready` internal and **not in the contract** | API_STANDARDS §2; agreed T24 |
 
 **Count:** 228 contract operations: 229 rows (27 platform, 22 patients, 12 scheduling and eligibility, 28 encounters and notes, 17 history, 9 AI, 17 medications, 18 orders, 72 Anand, 7 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid. Recounted when the contract is written.

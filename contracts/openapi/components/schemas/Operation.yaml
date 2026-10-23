@@ -1,0 +1,44 @@
+title: Operation
+description: >-
+  Tracks long-running work started with a `202 Accepted` (API_STANDARDS §13). Carries IDs and status
+  only, never PHI. Visible only to the user who created it, in the MVP. Kept for 7 days.
+type: object
+required: [id, kind, status, createdAt, updatedAt]
+properties:
+  id:
+    $ref: './Id.yaml'
+    x-phi: none
+  kind:
+    $ref: './OperationKind.yaml'
+    x-phi: none
+  status:
+    $ref: './OperationStatus.yaml'
+    x-phi: none
+  createdAt:
+    $ref: './Timestamp.yaml'
+    x-phi: none
+  updatedAt:
+    $ref: './Timestamp.yaml'
+    x-phi: none
+  completedAt:
+    $ref: './Timestamp.yaml'
+    x-phi: none
+  result:
+    description: Reference to the produced resource, once `succeeded`. Fetch it with its normal permission.
+    type: object
+    additionalProperties: false
+    required: [type, id]
+    properties:
+      type:
+        description: Resource type of the result, e.g. `note`, `chart-summary`, `eligibility-check`.
+        type: string
+        maxLength: 64
+        x-phi: none
+      id:
+        $ref: './Id.yaml'
+        x-phi: internal-id
+    x-phi: internal-id
+  error:
+    $ref: './Problem.yaml'
+    description: Why the operation failed, once `failed`.
+    x-phi: none

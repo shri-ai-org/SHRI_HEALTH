@@ -15,9 +15,9 @@ Values used in more than one rule are defined once here.
 
 | Constant | Value | Status |
 |---|---|---|
-| `COMPANY_DOMAIN` | `<COMPANY_DOMAIN>` (placeholder) | **Open, pending Vimal:** a domain the organization owns. Replacing the placeholder here is the only change needed; every URI below is built from it. |
-| Problem type base | `tag:<COMPANY_DOMAIN>,2026:problem/` | Derived from `COMPANY_DOMAIN` (§9.1) |
-| FHIR identifier system base | `https://fhir.<COMPANY_DOMAIN>/sid/` | Derived from `COMPANY_DOMAIN` (DATA_OWNERSHIP §3.1) |
+| `COMPANY_DOMAIN` | `company-domain.invalid` (placeholder) | **Open, pending management through Vimal:** a domain the organization owns. The placeholder uses the reserved `.invalid` name (RFC 2606) so it is a valid URI part and can never resolve. When the domain is confirmed, it is replaced in the contract (`Problem.type` pattern and examples), in this table, and in `core/errors.py` settings (Thulasi, PR #7) together |
+| Problem type base | `tag:company-domain.invalid,2026:problem/` | Exactly this string, everywhere: docs, `components/schemas/Problem.yaml` (enforced by its `pattern`), examples, lint fixtures and Thulasi's `core/errors.py` default (PR #7). Derived from `COMPANY_DOMAIN` (§9.1) |
+| FHIR identifier system base | `https://fhir.company-domain.invalid/sid/` | Derived from `COMPANY_DOMAIN` (DATA_OWNERSHIP §3.1) |
 
 ## 1. Principles
 
@@ -206,7 +206,7 @@ Code system URIs (FHIR canonical):
 ### 8.3 Sorting
 
 - `sort` is a comma-separated list; a `-` prefix means descending: `sort=-createdAt,id`.
-- Each endpoint lists the fields it allows; anything else → `400` with field code `not-allowed-value`.
+- Each endpoint lists the fields it allows; anything else → `422 validation-failed` with a field error `{ "in": "query", "name": "sort", "code": "not-allowed-value" }` (§9.3).
 - Each endpoint documents its default sort, which always ends with `id` so the order is total.
 - Sorting by a PHI field is only offered in `POST …/search`.
 
@@ -216,7 +216,7 @@ Code system URIs (FHIR canonical):
 
 ```json
 {
-  "type": "tag:<COMPANY_DOMAIN>,2026:problem/validation-failed",
+  "type": "tag:company-domain.invalid,2026:problem/validation-failed",
   "title": "Request validation failed",
   "status": 422,
   "detail": "2 fields are invalid.",
@@ -232,7 +232,7 @@ Code system URIs (FHIR canonical):
 
 | Member | Rule |
 |---|---|
-| `type` | Absolute URI unique to the problem. **PROPOSED:** an RFC 4151 tag URI built from the Problem type base in §0: `tag:<COMPANY_DOMAIN>,2026:problem/<code>`, which needs no hosted page. **Open:** the value of `COMPANY_DOMAIN` (§0). |
+| `type` | Absolute URI unique to the problem. **PROPOSED:** an RFC 4151 tag URI: the Problem type base in §0 followed by the code, `tag:company-domain.invalid,2026:problem/<code>`, which needs no hosted page. **Open:** the value of `COMPANY_DOMAIN` (§0). |
 | `title` | Fixed English text per `code` |
 | `status` | Same as the HTTP status |
 | `detail` | Human-readable, **never contains PHI or request values** (for example never "Patient John Smith not found") |
@@ -248,13 +248,15 @@ Code system URIs (FHIR canonical):
 
 `required`, `unknown-field`, `invalid-format`, `invalid-type`, `too-short`, `too-long`, `out-of-range`, `not-allowed-value`, `invalid-reference` (an ID that does not exist in this clinic), `conflicting-fields`, `not-editable`.
 
+**400 vs 422** (agreed with Thulasi on PR #7, 2026-10-22): an invalid or unparseable **parameter** (path, query or header: a bad UUID, a number out of range, a malformed `If-Match` or `Idempotency-Key` value) returns `422 validation-failed`, with a field error naming the parameter (`in` + `name`). `400 malformed-request` is **only** for a request **body** that is not parseable JSON. Two specific 400 codes remain in the catalogue for their own cases: `invalid-cursor` and `idempotency-key-missing` (the latter from the IETF draft); **pending Thulasi** to confirm they stay 400.
+
 ### 9.3 Error-code catalogue (v1)
 
 Codes are permanent once released; new codes may be added; meanings never change.
 
 | HTTP | `code` | When | Extensions |
 |---|---|---|---|
-| 400 | `malformed-request` | Body is not valid JSON, or a parameter cannot be parsed | — |
+| 400 | `malformed-request` | The request **body** is not parseable JSON. Only this; invalid or unparseable parameters are `422 validation-failed` | — |
 | 400 | `invalid-cursor` | Cursor expired, tampered with, or from another endpoint | — |
 | 400 | `idempotency-key-missing` | Required `Idempotency-Key` header missing (Idempotency-Key draft-07 §2.7) | — |
 | 401 | `unauthenticated` | No valid session | — |
@@ -277,7 +279,7 @@ Codes are permanent once released; new codes may be added; meanings never change
 | 412 | `precondition-failed` | `If-Match` does not match the current version | — |
 | 413 | `payload-too-large` | | `maxBytes` |
 | 415 | `unsupported-media-type` | | — |
-| 422 | `validation-failed` | Field-level validation failed | `errors` |
+| 422 | `validation-failed` | Field-level validation failed, in the body **or in a path, query or header parameter** (including values that cannot be parsed, such as a bad UUID). Each field error names the field: `in` + `pointer` for the body, `in` + `name` for parameters | `errors` |
 | 422 | `business-rule-violation` | Valid shape, but a rule rejects it (for example a date of birth in the future) | `errors` |
 | 422 | `idempotency-key-reused` | Same key sent with a different body (draft-07 §2.7) | — |
 | 422 | `file-not-ready` | Referenced file not scanned clean, wrong purpose, or from another clinic | `fileId` |
@@ -299,7 +301,7 @@ Operation failures (§13) reuse the same Problem object inside the operation, wi
 | Standard | Follows IETF draft-ietf-httpapi-idempotency-key-header-07 (latest revision 2025-10-15). **The draft has expired and is not an RFC** (checked 2026-10-22); we adopt its behavior as our own rule. | datatracker.ietf.org |
 | Required on | Every POST that reaches a partner or charges money. Marked `x-idempotency: required`. Examples: `POST /eligibility-checks`, `/claims/{claimId}/submit`, `/prescriptions/{prescriptionId}/sign-and-send`, `/orders/{orderId}/sign-and-send`, `/faxes`, `/patients/{patientId}/payments`, `/payments/card-session`. Full list in ENDPOINT_INVENTORY. | Your Stage 2 brief |
 | Accepted on | Every other creating POST (`x-idempotency: supported`) so screens can retry safely after a network error. **PROPOSED** | |
-| Value | A UUID generated by the client per logical attempt. Servers accept it bare or quoted (the draft's Structured Field form). Other formats → `400 malformed-request`. | draft-07 §2.2 recommends UUIDs |
+| Value | A UUID generated by the client per logical attempt. Servers accept it bare or quoted (the draft's Structured Field form). Other formats → `422 validation-failed` naming the header (`{ "in": "header", "name": "Idempotency-Key", "code": "invalid-format" }`, §9.3). | draft-07 §2.2 recommends UUIDs |
 | Scope | Tenant + user + method + path (with IDs) + key | **PROPOSED** |
 | Fingerprint | SHA-256 of the canonical request body | **PROPOSED** |
 | Retention | 24 hours, then purged | **PROPOSED**: covers client retries; partner-level retries are handled by the integration engine's own message IDs |
@@ -323,7 +325,8 @@ Operation failures (§13) reuse the same Problem object inside the operation, wi
 | Our database | ETag derived from a row version counter | **Pending schema** |
 | HAPI resources | The FHIR client translates our ETag to HAPI's `meta.versionId` and performs a version-aware update. HAPI's own weak ETags never reach clients. | **PROPOSED, pending Anand** |
 | Lists | List items do not carry ETags; clients GET the single resource before editing | **PROPOSED** |
-| Autosave | Each successful PATCH returns the new ETag; two tabs editing one draft → the second gets `412` (VG Step 5) | |
+| Autosave | Each successful PATCH returns the new ETag; two tabs editing one draft → the second gets `412` (VG Step 5) |
+| Screen | On `412`, the screen shows a "record changed" view so the user can reload and see the difference. Designed by Minalini (M4, issue #5) | |
 
 ## 12. 404 vs 403: no discovery across clinics
 
@@ -495,8 +498,8 @@ Settled on 2026-10-22: JSON casing and list shape (Minalini, #5); hooks and heal
 
 | Item | Pending | PROPOSED answer |
 |---|---|---|
-| `COMPANY_DOMAIN` value (§0) | Vimal | Open: placeholder `<COMPANY_DOMAIN>` |
-| Problem `type` URI form | Vimal | `tag:<COMPANY_DOMAIN>,2026:problem/<code>` (accepted form; domain open) |
+| `COMPANY_DOMAIN` value (§0) | Vimal (management) | Open: placeholder `company-domain.invalid` |
+| Problem `type` URI form | — | `tag:company-domain.invalid,2026:problem/<code>` (accepted form, matches Thulasi's code in PR #7; domain open) |
 | Money shape | Anand | `{ value: "125.00", currency: "USD" }` |
 | HAPI client-assigned UUIDs; ETag translation | Anand | Yes |
 | Facility IANA time zone | Anand | Yes |

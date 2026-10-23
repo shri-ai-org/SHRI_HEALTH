@@ -1,0 +1,18 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-idempotency. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths:
+  /eligibility-checks:
+    post:
+      operationId: runEligibilityCheck
+      tags: [eligibility]
+      x-owner: vimal
+      x-permission: eligibility-checks:create
+      x-idempotency: required
+      description: Partner-bound POST without the Idempotency-Key header.
+      responses:
+        '202': { description: Accepted }

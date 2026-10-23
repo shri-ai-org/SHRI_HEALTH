@@ -1,0 +1,55 @@
+title: EventEnvelope
+description: >-
+  Envelope of every domain event and every Server-Sent Event `data` line, using CloudEvents 1.0 attribute
+  names (EVENTS.md §2). Events are thin: `data` carries IDs, statuses and counts only, never PHI.
+type: object
+required: [specversion, id, type, source, subject, time, datacontenttype, data]
+properties:
+  specversion:
+    description: CloudEvents version.
+    type: string
+    const: '1.0'
+    x-phi: none
+  id:
+    $ref: './Id.yaml'
+    description: Unique per event; consumers deduplicate on it.
+    x-phi: none
+  type:
+    description: Event type from the catalog in EVENTS.md §4, e.g. `appointment.checked-in`.
+    type: string
+    pattern: '^[a-z][a-z-]*\.[a-z][a-z-]*$'
+    maxLength: 100
+    x-phi: none
+  source:
+    description: Publishing module path, e.g. `/scheduling`.
+    type: string
+    pattern: '^/[a-z-]+$'
+    maxLength: 50
+    x-phi: none
+  subject:
+    description: '`<resource>/<uuid>` of the record the event is about.'
+    type: string
+    maxLength: 120
+    x-phi: internal-id
+  time:
+    $ref: './Timestamp.yaml'
+    x-phi: none
+  datacontenttype:
+    description: Always `application/json`.
+    type: string
+    const: application/json
+    x-phi: none
+  data:
+    description: IDs (`internal-id`), enum statuses and counts only. Each event type documents its members in EVENTS.md §4.
+    type: object
+    maxProperties: 20
+    additionalProperties:
+      oneOf:
+        - type: string
+          maxLength: 120
+        - type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        - type: boolean
+    x-phi: internal-id

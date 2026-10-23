@@ -1,0 +1,16 @@
+description: >-
+  503. HAPI (the clinical data store) is unavailable for a clinical read or write, or the service is in maintenance; retry after `Retry-After` seconds. Patient registration and check-in never return this; they queue (DATA_OWNERSHIP §3.3). Codes: `clinical-store-unavailable`, `service-unavailable`.
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  Retry-After:
+    $ref: '../headers/RetryAfter.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      clinical-store-unavailable:
+        $ref: '../examples/ProblemClinicalStoreUnavailable.yaml'

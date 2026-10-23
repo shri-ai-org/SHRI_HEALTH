@@ -1,0 +1,23 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-security. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths:
+  /patients:
+    post:
+      operationId: createPatient
+      tags: [patients]
+      x-owner: vimal
+      x-permission: patients:create
+      description: POST with the session cookie but without the CSRF header.
+      security:
+        - sessionCookie: []
+      responses:
+        '201': { description: Created }
+components:
+  securitySchemes:
+    sessionCookie: { type: apiKey, in: cookie, name: __Host-shri_session }
+    csrfHeader: { type: apiKey, in: header, name: X-CSRF-Token }

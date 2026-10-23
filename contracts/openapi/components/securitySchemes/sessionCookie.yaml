@@ -1,0 +1,7 @@
+type: apiKey
+in: cookie
+name: __Host-shri_session
+description: >-
+  Session cookie holding a 256-bit reference token; the server stores only its SHA-256 hash. HttpOnly,
+  Secure, SameSite=Strict, Path=/. Set by `/auth/callback`; new session ID at every login
+  (SECURITY_MODEL §2.1, ADR-0006).

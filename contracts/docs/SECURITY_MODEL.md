@@ -49,7 +49,8 @@ The contract has no endpoint without `x-permission` (lint rule, CONTRACT_GOVERNA
 | Idle timeout | 15 minutes (**pending clinical advisors**) | Automatic logoff on shared clinic workstations (TA §9) |
 | Absolute lifetime | 12 hours | One clinic day |
 | What resets the idle timer | **Only user-initiated requests.** The SSE stream, its keep-alives and `/operations` polling never reset it; otherwise no one would ever time out | T9 |
-| Idle warning | Shown at **13 minutes**, two minutes before logout, with a "Stay signed in" button that calls `POST /auth/refresh` and counts as user activity. **Proposed by Vimal (M15); Thulasi to confirm** | M15 |
+| Idle warning | Shown at **13 minutes**, two minutes before logout, timed from `idleExpiresAt` returned by `GET /auth/session` (not a browser-only timer, so activity in another tab counts). A "Stay signed in" button calls `POST /auth/refresh` and counts as user activity | M15; confirmed by Thulasi (issue #3) |
+| Absolute-limit notice | Shown before the 12-hour absolute limit (`expiresAt` from `GET /auth/session`), which **cannot be extended**, so people can save their work | Thulasi (issue #3) |
 | Refresh | `POST /auth/refresh` extends the idle timer (a user action) | CAT |
 | Logout | `POST /auth/logout` deletes the server session and revokes Keycloak's refresh token; returns `204` | CAT |
 
@@ -197,6 +198,30 @@ Notes on the matrix:
 - "Own entries" (RN entered-in-error) is a rule inside the service, not a permission.
 - Whether MA, RN may prescribe-draft or answer refills follows clinic protocol and state law: **pending clinical advisors**.
 
+### 4.4 Matrix gaps filled in core — gap, pending clinical advisors
+
+The draft matrix in §4.3 has no row for 12 permissions in the catalogue. Thulasi's `backend/app/core/permissions.py` (branch `thulasi/fastapi-skeleton`, commit 35caa92, PR #7) fills them in and marks them `gap`; Vimal accepted them as provisional on PR #7. They are mirrored here so the contract and the code agree. Every row is **gap — pending clinical advisors**.
+
+| Permission | FD | MA | RN | MD | APP | BIL | ADM | CO | SUP | Follows (in core) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `prescriptions:update` | – | – | ✓ | ✓ | ✓ | – | – | – | – | Prescription-draft row |
+| `prescriptions:safety-check` | – | – | ✓ | ✓ | ✓ | – | – | – | – | Prescription-draft row |
+| `prescriptions:entered-in-error` | – | – | ✓ | ✓ | ✓ | – | – | – | – | Prescription-draft row |
+| `medications:create` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Prescription-draft row; MA for rooming |
+| `medication-history:fetch` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Prescription-draft row; MA for rooming |
+| `orders:read` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Order-create row |
+| `results:read` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Order-create row |
+| `lab-compendium:read` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Order-create row |
+| `orders:medical-necessity-check` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Order-create row |
+| `orders:entered-in-error` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Order-create row (drafts only, #228) |
+| `files:create` | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Not in the draft matrix |
+| `files:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | Not in the draft matrix |
+
+Two differences between core and §4.3 to settle with Thulasi and the clinical advisors (not changed here):
+
+- **MA and orders:** core gives MA the whole order-draft group, including `orders:create`; §4.3 grants MA only point-of-care results (`in-office-results:create`).
+- **ADM and onboarding files:** ADM has `onboarding:import`, but no `files:create`, so it cannot upload the import file (API_STANDARDS §15, purpose `onboarding-import`).
+
 ## 5. Clinic and facility context, restricted charts, break-glass
 
 ### 5.1 Context (agreed by Thulasi, issue #3, T15)
@@ -325,7 +350,6 @@ Thulasi signed off this document on issue #3 (2026-10-22). Remaining:
 | Item | Pending | Status / proposed answer |
 |---|---|---|
 | Idle timeout value (15 minutes) | Clinical advisors | Agreed by Thulasi; pending clinical advisors (§2.1) |
-| Idle warning at 13 minutes with "Stay signed in" | Thulasi | Proposed by Vimal (M15) |
 | Clinical rows of the role matrix (‡) | Clinical advisors | §4.3 |
 | HAPI partition design, including where shared resources (Practitioner, Organization, Location) live: default partition or a copy per tenant | Anand | One partition per organization agreed (T30); shared-resource location open, blocks Stage 4 |
 | How outside `/fhir` clients get their partition | Anand, Thulasi | From their machine-token claims (T30) |

@@ -1,0 +1,4 @@
+description: Every `/api/v1` response is `no-store`, so PHI never sits in browser or proxy caches (API_STANDARDS §7.2).
+schema:
+  type: string
+  const: no-store

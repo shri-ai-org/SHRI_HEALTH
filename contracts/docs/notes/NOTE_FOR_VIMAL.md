@@ -65,7 +65,7 @@ Status after your Stage 2 review (2026-10-22) is in the last column.
 
 | # | Item | PROPOSED answer | Where |
 |---|---|---|---|
-| V1 | Domain for Problem `type` URIs and our FHIR identifier systems | `tag:<COMPANY_DOMAIN>,2026:problem/<code>`; `https://fhir.<COMPANY_DOMAIN>/sid/<resource>-id` | API_STANDARDS §0, §9.1; DATA_OWNERSHIP §3.1. **Still open:** your answer kept the placeholder `<COMPANY_DOMAIN>`; it is one constant in API_STANDARDS §0 |
+| V1 | Domain for Problem `type` URIs and our FHIR identifier systems | `tag:company-domain.invalid,2026:problem/<code>`; `https://fhir.company-domain.invalid/sid/<resource>-id` (placeholder; Thulasi's code in PR #7 uses the same base) | API_STANDARDS §0, §9.1; DATA_OWNERSHIP §3.1. **Still open:** the company domain (management). Until then the placeholder `company-domain.invalid` is used everywhere; it is one constant in API_STANDARDS §0 |
 | V2 | Encounter diagnoses: option A or B (with Anand) | B: draft in ours, HAPI on signing | DATA_OWNERSHIP §2.5. **Accepted (B).** New follow-ups for you: confirm "encounter signed" = its first note signed, and that diagnoses added after signing go straight to HAPI |
 | V3 | Legal record of a signed note (with Anand) | Locked version in ours | DATA_OWNERSHIP §3.2. **Your proposal recorded:** signed version in ours (immutable, hash-chained, audited) is the legal record; HAPI copy carries the same content hash; reconciliation compares. Needs Anand and compliance |
 | V4 | Clinical writes when HAPI is down | Fail with 503 | DATA_OWNERSHIP §3.3. **Accepted for the MVP**, with registration and check-in queuing; rooming impact recorded in ARCHITECTURE_CONTEXT §8 |
@@ -101,6 +101,6 @@ Idle timeout on shared workstations (15 min proposed); clinical rows of the role
 
 - Your answers to Minalini's M7 (phone is an identifier; exact full-number match only) and M15 (warning at 13 minutes, pending Thulasi), and on M11 and M13, are applied (API_STANDARDS §14.2, §15; SECURITY_MODEL §2.1, §8).
 - Thulasi's T30 point (where shared resources live in HAPI) is now Anand's item A33 and blocks Stage 4.
-- **Reminder:** when Thulasi opens the PR changing `enqueue()` (T29), all four of you review it.
+- **Reminder:** `enqueue()`'s signature change (T29) comes as a separate core PR from Thulasi (not in PR #7); all four of you review it.
 - Still open from you: `COMPANY_DOMAIN` (API_STANDARDS §0) and the encounter-close rules (DATA_OWNERSHIP §5.2).
 

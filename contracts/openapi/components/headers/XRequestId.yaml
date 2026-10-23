@@ -1,0 +1,5 @@
+description: >-
+  Request ID, always returned and repeated in Problem `requestId`. A client-sent value is accepted only if
+  it is a valid UUID; otherwise the server generates one (API_STANDARDS §18; Thulasi T20).
+schema:
+  $ref: '../schemas/Id.yaml'

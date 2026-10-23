@@ -1,0 +1,4 @@
+title: OperationStatus
+description: Progress of an operation; `succeeded`, `failed` and `cancelled` are final (API_STANDARDS §13).
+type: string
+enum: [queued, running, succeeded, failed, cancelled]

@@ -1,0 +1,6 @@
+name: cursor
+in: query
+description: Opaque cursor from the previous page's `nextCursor` (API_STANDARDS §8.1).
+required: false
+schema:
+  $ref: '../schemas/Cursor.yaml'

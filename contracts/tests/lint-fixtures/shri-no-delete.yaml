@@ -1,0 +1,17 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-no-delete. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths:
+  /encounters/{encounterId}/diagnoses/{diagnosisId}:
+    delete:
+      operationId: deleteDiagnosis
+      tags: [encounters]
+      x-owner: vimal
+      x-permission: diagnoses:remove
+      description: DELETE is not allowed; use POST …/remove or …/entered-in-error.
+      responses:
+        '200': { description: OK }

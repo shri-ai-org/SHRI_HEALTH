@@ -1,0 +1,18 @@
+description: >-
+  400. The request body is not parseable JSON (`malformed-request`), the cursor is expired or tampered with (`invalid-cursor`), or a required `Idempotency-Key` is missing (`idempotency-key-missing`). An invalid or unparseable parameter is not a 400: it is `422 validation-failed` naming the parameter (API_STANDARDS §9.3).
+headers:
+  X-Request-ID:
+    $ref: '../headers/XRequestId.yaml'
+  Cache-Control:
+    $ref: '../headers/CacheControl.yaml'
+  RateLimit:
+    $ref: '../headers/RateLimit.yaml'
+  RateLimit-Policy:
+    $ref: '../headers/RateLimitPolicy.yaml'
+content:
+  application/problem+json:
+    schema:
+      $ref: '../schemas/Problem.yaml'
+    examples:
+      malformed-request:
+        $ref: '../examples/ProblemMalformedRequest.yaml'

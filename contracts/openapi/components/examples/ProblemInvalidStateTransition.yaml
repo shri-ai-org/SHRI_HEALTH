@@ -1,0 +1,10 @@
+summary: invalid-state-transition
+value:
+  type: tag:company-domain.invalid,2026:problem/invalid-state-transition
+  title: "Action not allowed in the current state"
+  status: 409
+  detail: "An order cannot be cancelled after the specimen is collected."
+  instance: /api/v1/orders/3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f/cancel
+  code: invalid-state-transition
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+  currentState: "specimen-collected"

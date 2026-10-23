@@ -1,0 +1,1237 @@
+openapi: 3.1.2
+info:
+  title: Shri Health API
+  version: 1.0.0-draft.1
+  summary: REST API for the Shri Health ambulatory EMR and practice-management system.
+  description: |
+    Contract for every endpoint the Shri Health screens and partners call. Written before the code and the
+    source of truth for it (ADR-0002). Stage 3 contains the shared components only; endpoints arrive in
+    Stage 4, module by module.
+
+    Rules every endpoint follows are in `contracts/docs/API_STANDARDS.md`; security rules in
+    `contracts/docs/SECURITY_MODEL.md`; the vendor extensions `x-owner`, `x-permission`, `x-audit` and
+    `x-phi` in `contracts/docs/EXTENSIONS.md`.
+
+    All examples are synthetic. Never put real patient data in this contract.
+servers:
+  - url: /api/v1
+    description: Versioned API, same relative path in every environment (local, staging, production). Every path uses this server unless its path item overrides `servers`.
+    x-internal: false
+  - url: /
+    description: 'Routes outside `/api/v1`, same in every environment (local, staging, production): `/health` and `/hooks/{partner}`, public through Nginx (API_STANDARDS §2). Only path items that override `servers` with this entry use it. `/ready` is internal and not in the contract.'
+    x-internal: false
+security:
+  - sessionCookie: []
+tags:
+  - name: platform
+    description: Session, current user, users and roles, operations, event stream, audit, break-glass, integration admin, health check.
+    x-owner: thulasi
+  - name: partner-callbacks
+    description: Signature-checked partner callbacks under `/hooks/{partner}`, outside `/api/v1`. Excluded from the generated browser client.
+    x-owner: thulasi
+  - name: files
+    description: Upload and download links through the file service.
+    x-owner: anand
+  - name: practice-setup
+    description: Facilities, locations, providers, appointment types, schedules, fee schedules, payers, lab accounts, note templates.
+    x-owner: anand
+  - name: onboarding
+    description: Bulk import for a new clinic.
+    x-owner: anand
+  - name: patients
+    description: Patients, identifiers, related persons, coverage, consents, duplicates and merges.
+    x-owner: vimal
+  - name: scheduling
+    description: Slots, appointments, check-in, visit status, status board.
+    x-owner: vimal
+  - name: eligibility
+    description: Insurance eligibility checks (X12 270/271 through the clearinghouse).
+    x-owner: vimal
+  - name: encounters
+    description: Encounters, vitals, diagnoses, notes, favorites, after-visit summary, co-signature rules.
+    x-owner: vimal
+  - name: history
+    description: Problem list, allergies, family, social and surgical history.
+    x-owner: vimal
+  - name: ai
+    description: Encounter audio, transcriptions, AI note drafts, chart summaries, AI decisions and settings.
+    x-owner: vimal
+  - name: medications
+    description: Medication list, prescriptions, safety checks, refill and change requests, pharmacies.
+    x-owner: thulasi
+  - name: orders
+    description: Lab compendium, orders, results, unmatched results.
+    x-owner: thulasi
+  - name: billing
+    description: Superbills, claims, payments, remittances, billing reports.
+    x-owner: anand
+  - name: documents
+    description: Documents, outbound faxes, fax inbox.
+    x-owner: anand
+  - name: ccda
+    description: C-CDA import and export.
+    x-owner: anand
+  - name: inbox
+    description: Inbox items and staff messages.
+    x-owner: anand
+  - name: exports
+    description: Permission-controlled exports.
+    x-owner: anand
+  - name: communications
+    description: Message templates, communication preferences and history.
+    x-owner: minalini
+  - name: dashboards
+    description: Operations dashboard.
+    x-owner: minalini
+paths: {}
+components:
+  schemas:
+    Address:
+      title: Address
+      description: A U.S. postal address (API_STANDARDS §6.2). Street, city and ZIP code are identifiers under HIPAA; the state alone is not.
+      type: object
+      additionalProperties: false
+      required:
+        - lines
+        - city
+        - state
+        - postalCode
+        - country
+      properties:
+        lines:
+          description: Street address lines.
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            type: string
+            maxLength: 100
+          x-phi: identifier
+        city:
+          description: City.
+          type: string
+          maxLength: 60
+          x-phi: identifier
+        state:
+          description: USPS two-letter state code.
+          type: string
+          pattern: ^[A-Z]{2}$
+          maxLength: 2
+          x-phi: none
+        postalCode:
+          description: ZIP (`12345`) or ZIP+4 (`12345-6789`).
+          type: string
+          pattern: ^\d{5}(-\d{4})?$
+          maxLength: 10
+          x-phi: identifier
+        country:
+          description: Country code. Only `US` in the MVP.
+          type: string
+          const: US
+          x-phi: none
+      examples:
+        - lines:
+            - 100 Test Lane
+          city: Springfield
+          state: IL
+          postalCode: '62701'
+          country: US
+    CodeableConcept:
+      title: CodeableConcept
+      description: One or more codings for the same concept, plus optional free text, as in FHIR `CodeableConcept` (API_STANDARDS §6.4).
+      type: object
+      additionalProperties: false
+      properties:
+        codings:
+          description: Codings for this concept, from one or more code systems.
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/Coding'
+          x-phi: clinical
+        text:
+          description: Free text describing the concept.
+          type: string
+          maxLength: 1000
+          x-phi: clinical
+    Coding:
+      title: Coding
+      description: A code from a code system, as in FHIR `Coding` (API_STANDARDS §6.4). `display` is optional and never relied on for logic. When used about a patient, the code is clinical data.
+      type: object
+      additionalProperties: false
+      required:
+        - system
+        - code
+      properties:
+        system:
+          description: Canonical URI of the code system, e.g. `http://hl7.org/fhir/sid/icd-10-cm`.
+          type: string
+          format: uri
+          maxLength: 255
+          x-phi: none
+        code:
+          description: The code within the system.
+          type: string
+          maxLength: 64
+          x-phi: clinical
+        display:
+          description: Human-readable text for the code.
+          type: string
+          maxLength: 500
+          x-phi: clinical
+      examples:
+        - system: http://hl7.org/fhir/sid/icd-10-cm
+          code: E11.9
+          display: Type 2 diabetes mellitus without complications
+    Cursor:
+      title: Cursor
+      description: 'Opaque pagination cursor: "continue the list from here". URL-safe, at most 512 characters, valid for 24 hours, encrypted and authenticated by the middleware, and never contains readable PHI (API_STANDARDS §8.1, ADR-0004). An expired or tampered cursor gives `400 invalid-cursor`.'
+      type: string
+      pattern: ^[A-Za-z0-9_-]+$
+      maxLength: 512
+      examples:
+        - c1Zm9vYmFy
+    Date:
+      title: Date
+      description: A calendar date without time zone, `YYYY-MM-DD` (API_STANDARDS §6.1). Used for birth dates and service dates.
+      type: string
+      format: date
+      maxLength: 10
+      examples:
+        - '1984-07-19'
+    EmailAddress:
+      title: EmailAddress
+      description: An email address (API_STANDARDS §6.2). Examples use only `example.com`, `example.org` or `example.net`.
+      type: string
+      format: email
+      maxLength: 254
+      examples:
+        - ramona980.kuhlman72@example.com
+    EventEnvelope:
+      title: EventEnvelope
+      description: 'Envelope of every domain event and every Server-Sent Event `data` line, using CloudEvents 1.0 attribute names (EVENTS.md §2). Events are thin: `data` carries IDs, statuses and counts only, never PHI.'
+      type: object
+      required:
+        - specversion
+        - id
+        - type
+        - source
+        - subject
+        - time
+        - datacontenttype
+        - data
+      properties:
+        specversion:
+          description: CloudEvents version.
+          type: string
+          const: '1.0'
+          x-phi: none
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Unique per event; consumers deduplicate on it.
+          x-phi: none
+        type:
+          description: Event type from the catalog in EVENTS.md §4, e.g. `appointment.checked-in`.
+          type: string
+          pattern: ^[a-z][a-z-]*\.[a-z][a-z-]*$
+          maxLength: 100
+          x-phi: none
+        source:
+          description: Publishing module path, e.g. `/scheduling`.
+          type: string
+          pattern: ^/[a-z-]+$
+          maxLength: 50
+          x-phi: none
+        subject:
+          description: '`<resource>/<uuid>` of the record the event is about.'
+          type: string
+          maxLength: 120
+          x-phi: internal-id
+        time:
+          $ref: '#/components/schemas/Timestamp'
+          x-phi: none
+        datacontenttype:
+          description: Always `application/json`.
+          type: string
+          const: application/json
+          x-phi: none
+        data:
+          description: IDs (`internal-id`), enum statuses and counts only. Each event type documents its members in EVENTS.md §4.
+          type: object
+          maxProperties: 20
+          additionalProperties:
+            oneOf:
+              - type: string
+                maxLength: 120
+              - type: integer
+                format: int64
+                minimum: 0
+                maximum: 9007199254740991
+              - type: boolean
+          x-phi: internal-id
+    FieldError:
+      title: FieldError
+      description: One invalid field in a `validation-failed` or `business-rule-violation` problem (API_STANDARDS §9.1). Never echoes the submitted value.
+      type: object
+      additionalProperties: false
+      required:
+        - in
+        - code
+      properties:
+        in:
+          description: Where the field is.
+          type: string
+          enum:
+            - body
+            - query
+            - path
+            - header
+          x-phi: none
+        pointer:
+          description: RFC 6901 JSON Pointer to the field, for `in = body`.
+          type: string
+          pattern: ^(/[^/]*)*$
+          maxLength: 500
+          x-phi: none
+        name:
+          description: Parameter or header name, for `in` other than `body`.
+          type: string
+          maxLength: 100
+          x-phi: none
+        code:
+          $ref: '#/components/schemas/FieldErrorCode'
+          x-phi: none
+    FieldErrorCode:
+      title: FieldErrorCode
+      description: Why one field failed validation (API_STANDARDS §9.2).
+      type: string
+      enum:
+        - required
+        - unknown-field
+        - invalid-format
+        - invalid-type
+        - too-short
+        - too-long
+        - out-of-range
+        - not-allowed-value
+        - invalid-reference
+        - conflicting-fields
+        - not-editable
+    HumanName:
+      title: HumanName
+      description: A person's name, mirroring FHIR `HumanName` (API_STANDARDS §6.2). Always an identifier under HIPAA.
+      type: object
+      additionalProperties: false
+      required:
+        - family
+      properties:
+        given:
+          description: Given names, in order.
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            maxLength: 100
+          x-phi: identifier
+        family:
+          description: Family name.
+          type: string
+          maxLength: 100
+          x-phi: identifier
+        prefix:
+          description: Prefix such as "Dr."
+          type: string
+          maxLength: 20
+          x-phi: identifier
+        suffix:
+          description: Suffix such as "Jr."
+          type: string
+          maxLength: 20
+          x-phi: identifier
+      examples:
+        - given:
+            - Ramona980
+          family: Kuhlman72
+    Id:
+      title: Id
+      description: 'Opaque resource ID: a lowercase UUID (RFC 9562), generated by the server. Clients must not parse it or infer order or time from it (API_STANDARDS §5, ADR-0009).'
+      type: string
+      format: uuid
+      pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      maxLength: 36
+      examples:
+        - 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    Limit:
+      title: Limit
+      description: Page size for a list or search. Default 25, maximum 100 (API_STANDARDS §8.1).
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 100
+      default: 25
+    ListEnvelope:
+      title: ListEnvelope
+      description: The shape of every list response (API_STANDARDS §8.1, ADR-0004). OpenAPI 3.1 has no generics, so each list schema copies this shape with its own item type, e.g. `PatientSummaryList`. No `nextCursor` means this is the last page. Total counts are not returned by default.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          description: The items on this page. Each module list schema replaces this with its own item type.
+          type: array
+          maxItems: 100
+          items:
+            type: object
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    Money:
+      title: Money
+      description: An amount of money. `value` is a decimal string with exactly two fraction digits, so JavaScript never rounds it as a float. Field names follow FHIR `Money` (API_STANDARDS §6.3; pending Anand).
+      type: object
+      additionalProperties: false
+      required:
+        - value
+        - currency
+      properties:
+        value:
+          description: Decimal amount as a string, e.g. "125.00". Negative only where an endpoint documents it.
+          type: string
+          pattern: ^-?\d{1,9}\.\d{2}$
+          maxLength: 13
+          x-phi: financial
+        currency:
+          description: ISO 4217 currency code. Only USD in the MVP.
+          type: string
+          enum:
+            - USD
+          x-phi: none
+      examples:
+        - value: '25.00'
+          currency: USD
+    Operation:
+      title: Operation
+      description: Tracks long-running work started with a `202 Accepted` (API_STANDARDS §13). Carries IDs and status only, never PHI. Visible only to the user who created it, in the MVP. Kept for 7 days.
+      type: object
+      required:
+        - id
+        - kind
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          x-phi: none
+        kind:
+          $ref: '#/components/schemas/OperationKind'
+          x-phi: none
+        status:
+          $ref: '#/components/schemas/OperationStatus'
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          x-phi: none
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+          x-phi: none
+        completedAt:
+          $ref: '#/components/schemas/Timestamp'
+          x-phi: none
+        result:
+          description: Reference to the produced resource, once `succeeded`. Fetch it with its normal permission.
+          type: object
+          additionalProperties: false
+          required:
+            - type
+            - id
+          properties:
+            type:
+              description: Resource type of the result, e.g. `note`, `chart-summary`, `eligibility-check`.
+              type: string
+              maxLength: 64
+              x-phi: none
+            id:
+              $ref: '#/components/schemas/Id'
+              x-phi: internal-id
+          x-phi: internal-id
+        error:
+          $ref: '#/components/schemas/Problem'
+          description: Why the operation failed, once `failed`.
+          x-phi: none
+    OperationKind:
+      title: OperationKind
+      description: What kind of long-running work an operation tracks (API_STANDARDS §13).
+      type: string
+      enum:
+        - ai.transcription
+        - ai.note-draft
+        - ai.chart-summary
+        - eligibility.check
+        - encounter.after-visit-summary
+        - export
+        - ccda.import
+        - ccda.export
+        - onboarding.import
+        - medication-history.fetch
+    OperationStatus:
+      title: OperationStatus
+      description: Progress of an operation; `succeeded`, `failed` and `cancelled` are final (API_STANDARDS §13).
+      type: string
+      enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+        - cancelled
+    PartialDate:
+      title: PartialDate
+      description: 'A date that may be known only to the year or month: `YYYY`, `YYYY-MM` or `YYYY-MM-DD` (API_STANDARDS §6.1). Used for history entries such as surgery dates.'
+      type: string
+      pattern: ^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$
+      maxLength: 10
+      examples:
+        - 2011-05
+    PhoneNumber:
+      title: PhoneNumber
+      description: 'A phone number in E.164 form. It is patient data: never put it in a URL; patient search by phone is an exact match on the full number in the body of `POST /patients/search` (API_STANDARDS §14.2).'
+      type: string
+      pattern: ^\+[1-9]\d{6,14}$
+      maxLength: 16
+      examples:
+        - '+16175550123'
+    Problem:
+      title: Problem
+      description: Problem Details (RFC 9457) with our extension members, returned as `application/problem+json` for every 4xx and 5xx response (API_STANDARDS §9, ADR-0003). `detail` never contains PHI or submitted values; `instance` is the request path only, never the query string.
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - code
+        - requestId
+      properties:
+        type:
+          description: 'Absolute URI for the problem type: the base `tag:company-domain.invalid,2026:problem/` followed by the `code` (API_STANDARDS §0, §9.1). `company-domain.invalid` is a placeholder until the company domain is confirmed; the pattern changes with it.'
+          type: string
+          format: uri
+          pattern: ^tag:company-domain\.invalid,2026:problem/[a-z][a-z-]*$
+          maxLength: 255
+          x-phi: none
+        title:
+          description: Fixed English text for the `code`.
+          type: string
+          maxLength: 200
+          x-phi: none
+        status:
+          description: The HTTP status code.
+          type: integer
+          format: int32
+          minimum: 400
+          maximum: 599
+          x-phi: none
+        detail:
+          description: Human-readable explanation. Never contains PHI or request values.
+          type: string
+          maxLength: 1000
+          x-phi: none
+        instance:
+          description: The request path only (may contain opaque IDs), never the query string.
+          type: string
+          format: uri-reference
+          maxLength: 2048
+          x-phi: internal-id
+        code:
+          $ref: '#/components/schemas/ProblemCode'
+          x-phi: none
+        requestId:
+          $ref: '#/components/schemas/Id'
+          description: Same value as the `X-Request-ID` response header.
+          x-phi: none
+        errors:
+          description: Field errors; present for `validation-failed` and `business-rule-violation`.
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/FieldError'
+          x-phi: none
+        currentState:
+          description: Current state, for `invalid-state-transition`.
+          type: string
+          maxLength: 64
+          x-phi: none
+        candidateIds:
+          description: IDs of possibly matching patients, for `possible-duplicate` (IDs only, minimum necessary).
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/Id'
+          x-phi: internal-id
+        mergedIntoId:
+          $ref: '#/components/schemas/Id'
+          description: The surviving patient, for `patient-merged`.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The restricted patient, for `break-glass-required`.
+          x-phi: internal-id
+        feature:
+          description: The AI feature that is switched off, for `feature-disabled`.
+          type: string
+          maxLength: 64
+          x-phi: none
+        consentType:
+          description: The missing consent, for `consent-required`.
+          type: string
+          maxLength: 64
+          x-phi: none
+        fileId:
+          $ref: '#/components/schemas/Id'
+          description: The file that is not ready, for `file-not-ready`.
+          x-phi: internal-id
+        maxBytes:
+          description: The size limit, for `payload-too-large`.
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 10737418240
+          x-phi: none
+    ProblemCode:
+      title: ProblemCode
+      description: Stable machine key for an error (API_STANDARDS §9.3, ADR-0003). Clients switch on this value, never on `title` or `detail`. Codes are never renamed or reused; new codes may be added, so clients must handle unknown values. The last four are used only inside a failed operation (API_STANDARDS §13).
+      type: string
+      enum:
+        - malformed-request
+        - invalid-cursor
+        - idempotency-key-missing
+        - unauthenticated
+        - session-expired
+        - permission-denied
+        - csrf-check-failed
+        - break-glass-required
+        - not-found
+        - method-not-allowed
+        - not-acceptable
+        - invalid-state-transition
+        - record-locked
+        - booking-conflict
+        - possible-duplicate
+        - patient-merged
+        - idempotency-request-in-progress
+        - feature-disabled
+        - consent-required
+        - gone
+        - precondition-failed
+        - payload-too-large
+        - unsupported-media-type
+        - validation-failed
+        - business-rule-violation
+        - idempotency-key-reused
+        - file-not-ready
+        - precondition-required
+        - rate-limited
+        - internal-error
+        - upstream-error
+        - clinical-store-unavailable
+        - service-unavailable
+        - upstream-timeout
+        - ai-unavailable
+        - ai-output-rejected
+        - partner-rejected
+        - partner-timeout
+    Quantity:
+      title: Quantity
+      description: A measured amount with a UCUM unit code (system `http://unitsofmeasure.org`), e.g. a vital sign (API_STANDARDS §6.4).
+      type: object
+      additionalProperties: false
+      required:
+        - value
+        - unit
+      properties:
+        value:
+          description: The measured value.
+          type: number
+          minimum: -1000000
+          maximum: 1000000
+          x-phi: clinical
+        unit:
+          description: UCUM unit code, e.g. `mm[Hg]`, `[degF]`, `kg`.
+          type: string
+          maxLength: 32
+          x-phi: none
+      examples:
+        - value: 98.6
+          unit: '[degF]'
+    SearchPaging:
+      title: SearchPaging
+      description: Paging members that every `POST …/search` body carries next to its `criteria`, because PHI searches never use query strings (API_STANDARDS §14, ADR-0005).
+      type: object
+      properties:
+        limit:
+          $ref: '#/components/schemas/Limit'
+          x-phi: none
+        cursor:
+          $ref: '#/components/schemas/Cursor'
+          x-phi: none
+    Timestamp:
+      title: Timestamp
+      description: An instant, RFC 3339 `date-time`, always UTC with `Z` in responses, at most millisecond precision. Requests may send any offset; the server normalizes to UTC (API_STANDARDS §6.1).
+      type: string
+      format: date-time
+      maxLength: 35
+      examples:
+        - '2026-11-03T14:30:00Z'
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from the previous page's `nextCursor` (API_STANDARDS §8.1).
+      required: false
+      schema:
+        $ref: '#/components/schemas/Cursor'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: 'Required: a client-generated UUID, one per user action, reused on retry. Sent bare or quoted. Same key and body replays the stored response; same key, different body gives `422 idempotency-key-reused`; same key still running gives `409 idempotency-request-in-progress`; missing gives `400 idempotency-key-missing` (API_STANDARDS §10, ADR-0007).'
+      required: true
+      schema:
+        type: string
+        pattern: ^"?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"?$
+        maxLength: 38
+    IdempotencyKeyOptional:
+      name: Idempotency-Key
+      in: header
+      description: Optional on this creating request, so a screen can retry safely after a network error (API_STANDARDS §10).
+      required: false
+      schema:
+        type: string
+        pattern: ^"?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"?$
+        maxLength: 38
+    IfMatch:
+      name: If-Match
+      in: header
+      description: The `ETag` of the version being edited. Required on every PATCH and PUT and on the listed actions. Missing gives `428 precondition-required`; a mismatch gives `412 precondition-failed` (API_STANDARDS §11, ADR-0008).
+      required: true
+      schema:
+        type: string
+        maxLength: 128
+    Limit:
+      name: limit
+      in: query
+      description: Page size. Default 25, maximum 100 (API_STANDARDS §8.1).
+      required: false
+      schema:
+        $ref: '#/components/schemas/Limit'
+    Traceparent:
+      name: traceparent
+      in: header
+      description: Optional W3C Trace Context, propagated (API_STANDARDS §18).
+      required: false
+      schema:
+        type: string
+        pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+        maxLength: 55
+    XRequestId:
+      name: X-Request-ID
+      in: header
+      description: Optional client request ID. Accepted only if it is a valid UUID; otherwise the server generates one (API_STANDARDS §18).
+      required: false
+      schema:
+        $ref: '#/components/schemas/Id'
+  headers:
+    CacheControl:
+      description: Every `/api/v1` response is `no-store`, so PHI never sits in browser or proxy caches (API_STANDARDS §7.2).
+      schema:
+        type: string
+        const: no-store
+    Deprecation:
+      description: When this endpoint was or will be deprecated (RFC 9745), as a structured date, e.g. `@1798761600` (API_STANDARDS §2, ADR-0010).
+      schema:
+        type: string
+        pattern: ^@-?\d{1,15}$
+        maxLength: 17
+    ETag:
+      description: Strong, opaque version tag of the returned resource. Send it back in `If-Match` to edit (API_STANDARDS §11, ADR-0008).
+      schema:
+        type: string
+        pattern: ^"[^"]{1,126}"$
+        maxLength: 128
+    IdempotentReplayed:
+      description: Present and `true` when this response is a replay of a stored response for the same `Idempotency-Key` (API_STANDARDS §10, ADR-0007).
+      schema:
+        type: string
+        enum:
+          - 'true'
+    Link:
+      description: Link to the change note for a deprecated endpoint, `rel="deprecation"` (API_STANDARDS §2).
+      schema:
+        type: string
+        maxLength: 1024
+    Location:
+      description: URL of the created resource (`201`) or of the operation tracking the work (`202`).
+      schema:
+        type: string
+        format: uri-reference
+        maxLength: 2048
+    RateLimit:
+      description: Remaining quota, per IETF draft-ietf-httpapi-ratelimit-headers-11 (a draft, not an RFC), e.g. `"default";r=50;t=30` (API_STANDARDS §17).
+      schema:
+        type: string
+        maxLength: 256
+    RateLimitPolicy:
+      description: Quota policies, per IETF draft-ietf-httpapi-ratelimit-headers-11, e.g. `"default";q=100;w=60` (API_STANDARDS §17).
+      schema:
+        type: string
+        maxLength: 256
+    RetryAfter:
+      description: Seconds to wait before retrying or polling again (RFC 9110). Sent with `202`, `429` and `503`.
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        maximum: 86400
+    Sunset:
+      description: When this endpoint will stop responding (RFC 8594), as an HTTP date. Never earlier than `Deprecation` (API_STANDARDS §2).
+      schema:
+        type: string
+        maxLength: 64
+    Traceparent:
+      description: W3C Trace Context for OpenTelemetry; propagated (API_STANDARDS §18).
+      schema:
+        type: string
+        pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+        maxLength: 55
+    XRequestId:
+      description: Request ID, always returned and repeated in Problem `requestId`. A client-sent value is accepted only if it is a valid UUID; otherwise the server generates one (API_STANDARDS §18; Thulasi T20).
+      schema:
+        $ref: '#/components/schemas/Id'
+  responses:
+    Accepted:
+      description: 202. The work was accepted and runs in the background. `Location` points to the operation; poll it after `Retry-After` seconds, or listen for `operation.completed` on the event stream (API_STANDARDS §13).
+      headers:
+        Location:
+          $ref: '#/components/headers/Location'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Operation'
+          examples:
+            queued:
+              $ref: '#/components/examples/OperationQueued'
+    BadRequest:
+      description: '400. The request body is not parseable JSON (`malformed-request`), the cursor is expired or tampered with (`invalid-cursor`), or a required `Idempotency-Key` is missing (`idempotency-key-missing`). An invalid or unparseable parameter is not a 400: it is `422 validation-failed` naming the parameter (API_STANDARDS §9.3).'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            malformed-request:
+              $ref: '#/components/examples/ProblemMalformedRequest'
+    Conflict:
+      description: '409. Conflicts with the current state. Codes: `invalid-state-transition`, `record-locked`, `booking-conflict`, `possible-duplicate`, `patient-merged`, `idempotency-request-in-progress`, `feature-disabled`, `consent-required`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            invalid-state-transition:
+              $ref: '#/components/examples/ProblemInvalidStateTransition'
+            record-locked:
+              $ref: '#/components/examples/ProblemRecordLocked'
+            conflict-possible-duplicate:
+              $ref: '#/components/examples/ProblemConflictPossibleDuplicate'
+    Forbidden:
+      description: '403. The role lacks the endpoint''s permission (checked before any lookup), the CSRF or Origin check failed, or the chart is restricted. Codes: `permission-denied`, `csrf-check-failed`, `break-glass-required`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            permission-denied:
+              $ref: '#/components/examples/ProblemPermissionDenied'
+            break-glass-required:
+              $ref: '#/components/examples/ProblemBreakGlassRequired'
+    InternalError:
+      description: '500. Unexpected error. Details are only in server logs, without PHI. Code: `internal-error`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            internal-error:
+              $ref: '#/components/examples/ProblemInternalError'
+    NotFound:
+      description: '404. Does not exist, or belongs to another clinic or a facility the user is not assigned to; these cases are indistinguishable (API_STANDARDS §12). Code: `not-found`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            not-found:
+              $ref: '#/components/examples/ProblemNotFound'
+    PreconditionFailed:
+      description: '412. `If-Match` does not match the current version; the `ETag` header carries the current version so the client can re-read. Code: `precondition-failed`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            precondition-failed:
+              $ref: '#/components/examples/ProblemPreconditionFailed'
+    PreconditionRequired:
+      description: '428. `If-Match` is required on this request. Code: `precondition-required`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            precondition-required:
+              $ref: '#/components/examples/ProblemPreconditionRequired'
+    ServiceUnavailable:
+      description: '503. HAPI (the clinical data store) is unavailable for a clinical read or write, or the service is in maintenance; retry after `Retry-After` seconds. Patient registration and check-in never return this; they queue (DATA_OWNERSHIP §3.3). Codes: `clinical-store-unavailable`, `service-unavailable`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            clinical-store-unavailable:
+              $ref: '#/components/examples/ProblemClinicalStoreUnavailable'
+    TooManyRequests:
+      description: '429. Rate limit reached; wait for `Retry-After` seconds. Code: `rate-limited`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            rate-limited:
+              $ref: '#/components/examples/ProblemRateLimited'
+    Unauthorized:
+      description: '401. Not signed in, or the session ended. Codes: `unauthenticated`, `session-expired`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            unauthenticated:
+              $ref: '#/components/examples/ProblemUnauthenticated'
+    UnprocessableContent:
+      description: 422. A body field or a path, query or header parameter is invalid or cannot be parsed (`validation-failed`; each field error names the body pointer or the parameter), a business rule rejects the request (`business-rule-violation`), the `Idempotency-Key` was reused with a different body (`idempotency-key-reused`), or a referenced file is not ready (`file-not-ready`). API_STANDARDS §9.3.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+        RateLimit-Policy:
+          $ref: '#/components/headers/RateLimitPolicy'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            validation-failed:
+              $ref: '#/components/examples/ProblemValidationFailed'
+            invalid-parameter:
+              $ref: '#/components/examples/ProblemInvalidParameter'
+  securitySchemes:
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: CSRF token from `GET /auth/session`, required on every unsafe method together with an allowed `Origin` header. Rotates at login; compared in constant time. Failure gives `403 csrf-check-failed` (SECURITY_MODEL §2.2, ADR-0006).
+    delegatedToken:
+      type: http
+      scheme: bearer
+      description: 'AI gateway only. A per-task delegated token minted by the API when the user starts the AI task: at most 5 minutes, bound to user, clinic, patient and task, read permissions only, every use audited as `ai` (SECURITY_MODEL §2.4).'
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-shri_session
+      description: Session cookie holding a 256-bit reference token; the server stores only its SHA-256 hash. HttpOnly, Secure, SameSite=Strict, Path=/. Set by `/auth/callback`; new session ID at every login (SECURITY_MODEL §2.1, ADR-0006).
+  examples:
+    OperationQueued:
+      summary: Operation just accepted
+      value:
+        id: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+        kind: ai.note-draft
+        status: queued
+        createdAt: '2026-11-03T14:31:00Z'
+        updatedAt: '2026-11-03T14:31:00Z'
+    OperationSucceeded:
+      summary: Operation finished, pointing to its result
+      value:
+        id: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+        kind: ai.note-draft
+        status: succeeded
+        createdAt: '2026-11-03T14:31:00Z'
+        updatedAt: '2026-11-03T14:31:42Z'
+        completedAt: '2026-11-03T14:31:42Z'
+        result:
+          type: note
+          id: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+    ProblemBreakGlassRequired:
+      summary: break-glass-required
+      value:
+        type: tag:company-domain.invalid,2026:problem/break-glass-required
+        title: Restricted chart
+        status: 403
+        detail: This chart is restricted. State a reason to open it.
+        instance: /api/v1/patients/7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+        code: break-glass-required
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    ProblemClinicalStoreUnavailable:
+      summary: clinical-store-unavailable
+      value:
+        type: tag:company-domain.invalid,2026:problem/clinical-store-unavailable
+        title: Clinical data unavailable
+        status: 503
+        detail: Clinical data is temporarily unavailable. Try again shortly.
+        instance: /api/v1/encounters/2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e/vitals
+        code: clinical-store-unavailable
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemConflictPossibleDuplicate:
+      summary: possible-duplicate
+      value:
+        type: tag:company-domain.invalid,2026:problem/possible-duplicate
+        title: Possible duplicate patient
+        status: 409
+        detail: Matching patients exist. Review them, or resend with an override reason.
+        instance: /api/v1/patients
+        code: possible-duplicate
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+        candidateIds:
+          - 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    ProblemInternalError:
+      summary: internal-error
+      value:
+        type: tag:company-domain.invalid,2026:problem/internal-error
+        title: Internal error
+        status: 500
+        detail: Something went wrong. Quote the request ID if you report it.
+        instance: /api/v1/me
+        code: internal-error
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemInvalidParameter:
+      summary: invalid parameter (422, not 400)
+      value:
+        type: tag:company-domain.invalid,2026:problem/validation-failed
+        title: Request validation failed
+        status: 422
+        detail: 1 parameter is invalid.
+        instance: /api/v1/appointments
+        code: validation-failed
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+        errors:
+          - in: query
+            name: limit
+            code: out-of-range
+    ProblemInvalidStateTransition:
+      summary: invalid-state-transition
+      value:
+        type: tag:company-domain.invalid,2026:problem/invalid-state-transition
+        title: Action not allowed in the current state
+        status: 409
+        detail: An order cannot be cancelled after the specimen is collected.
+        instance: /api/v1/orders/3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f/cancel
+        code: invalid-state-transition
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+        currentState: specimen-collected
+    ProblemMalformedRequest:
+      summary: malformed-request
+      value:
+        type: tag:company-domain.invalid,2026:problem/malformed-request
+        title: Malformed request
+        status: 400
+        detail: The request body is not valid JSON.
+        instance: /api/v1/patients
+        code: malformed-request
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemNotFound:
+      summary: not-found
+      value:
+        type: tag:company-domain.invalid,2026:problem/not-found
+        title: Not found
+        status: 404
+        detail: The requested record does not exist.
+        instance: /api/v1/appointments/1f0c3b8e-5d6a-4b7e-9c2d-8e7f6a5b4c3d
+        code: not-found
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemPermissionDenied:
+      summary: permission-denied
+      value:
+        type: tag:company-domain.invalid,2026:problem/permission-denied
+        title: Permission denied
+        status: 403
+        detail: Your role does not allow this action.
+        instance: /api/v1/notes/2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e/sign
+        code: permission-denied
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemPreconditionFailed:
+      summary: precondition-failed
+      value:
+        type: tag:company-domain.invalid,2026:problem/precondition-failed
+        title: Record changed
+        status: 412
+        detail: The record changed since you loaded it. Reload and try again.
+        instance: /api/v1/notes/2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+        code: precondition-failed
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemPreconditionRequired:
+      summary: precondition-required
+      value:
+        type: tag:company-domain.invalid,2026:problem/precondition-required
+        title: If-Match required
+        status: 428
+        detail: Send the If-Match header with the ETag you loaded.
+        instance: /api/v1/notes/2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+        code: precondition-required
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemRateLimited:
+      summary: rate-limited
+      value:
+        type: tag:company-domain.invalid,2026:problem/rate-limited
+        title: Too many requests
+        status: 429
+        detail: Wait before trying again.
+        instance: /api/v1/patients/search
+        code: rate-limited
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemRecordLocked:
+      summary: record-locked
+      value:
+        type: tag:company-domain.invalid,2026:problem/record-locked
+        title: Record is locked
+        status: 409
+        detail: A signed note cannot be edited. Add an addendum instead.
+        instance: /api/v1/notes/2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+        code: record-locked
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemUnauthenticated:
+      summary: unauthenticated
+      value:
+        type: tag:company-domain.invalid,2026:problem/unauthenticated
+        title: Not signed in
+        status: 401
+        detail: Sign in to continue.
+        instance: /api/v1/me
+        code: unauthenticated
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+    ProblemValidationFailed:
+      summary: validation-failed
+      value:
+        type: tag:company-domain.invalid,2026:problem/validation-failed
+        title: Request validation failed
+        status: 422
+        detail: 2 fields are invalid.
+        instance: /api/v1/patients
+        code: validation-failed
+        requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+        errors:
+          - in: body
+            pointer: /birthDate
+            code: invalid-format
+          - in: body
+            pointer: /name/family
+            code: required

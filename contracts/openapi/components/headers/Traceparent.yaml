@@ -1,0 +1,5 @@
+description: W3C Trace Context for OpenTelemetry; propagated (API_STANDARDS §18).
+schema:
+  type: string
+  pattern: '^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$'
+  maxLength: 55

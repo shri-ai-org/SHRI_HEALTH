@@ -1,0 +1,22 @@
+openapi: 3.1.2
+info:
+  title: Lint fixture
+  version: 1.0.0
+  description: Failing fixture for shri-dates. It must trigger exactly this rule when the rule runs on its own.
+servers:
+  - url: /api/v1
+paths: {}
+components:
+  schemas:
+    Appointment:
+      description: createdAt is not a date-time; serviceDate is not a date.
+      type: object
+      properties:
+        createdAt:
+          type: string
+          maxLength: 40
+          x-phi: none
+        serviceDate:
+          type: string
+          maxLength: 40
+          x-phi: identifier
