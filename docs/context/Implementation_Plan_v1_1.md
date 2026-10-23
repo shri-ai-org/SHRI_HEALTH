@@ -6,7 +6,7 @@
 > - HAPI is retired (ADR-0011).
 > - The decisions list points to DECISIONS.md; the questions still open are its Q-numbers.
 >
-> **Dates are unchanged** and stay provisional (D10). Where anything else here differs from DECISIONS.md (for example the doctor-first slice order, overridden by D6), DECISIONS.md wins.
+> **Dates are unchanged** and stay provisional (D10). The slice order follows D6: contracts first, then admin and front-desk APIs, then clinical. Where anything here differs from DECISIONS.md, DECISIONS.md wins.
 
 ## Document control
 
@@ -42,7 +42,7 @@ This plan completes the P0 MVP by 31 December 2026, readies a pilot for 1 March 
 | Initial Implementation Specification v1.0 | FHIR client pattern, thin-route/service layering, starter acceptance tests. Mirth removed; ~~HAPI FHIR as system of record reopened as ADR-19~~ (ADR-19 decided by ADR-0011: no HAPI) |
 | Kickoff meeting transcription (Oct 2026) | Priority changes and functions missing from the FRS |
 
-Where sources conflict, the meeting wins over the FRS, and the FRS wins over the two architecture documents. Every conflict is listed in the next section, and FRS v1.2 and Technical Architecture v1.1 now carry the same changes, so the three documents agree.
+Where sources conflict, DECISIONS.md wins over all of them (it records the team's later decisions); otherwise the meeting wins over the FRS, and the FRS wins over the two architecture documents. Every conflict is listed in the next section, and FRS v1.2 and Technical Architecture v1.1 now carry the same changes, so the three documents agree.
 
 The transcription is machine-generated. Names and vendor terms below are best readings and need confirming: Waystar (clearinghouse), Weno (e-prescribing used by OpenEMR), Quest and LabCorp (labs), Jitsi (video), C-CDA (record exchange).
 
@@ -64,7 +64,7 @@ The meeting kept the U.S. ambulatory focus but moved four things: clinical decis
 | AI dependency | Graceful AI failure | Core must work fully with AI down; AI is an augmentation layer | AI-off regression suite is release-blocking |
 | Hosting | Cloud, AWS U.S. | Cloud only; no offline or hybrid mode for U.S. | Offline/hybrid deferred to the India edition |
 | Walk-ins and queues | FR-SCH-02 includes walk-ins | U.S. clinics are appointment-only; token queues are India-only | Walk-in becomes a same-day add-on from the scheduling screen; no token queue |
-| Priority order | Not stated | Doctor first, then front office | Vertical slice 1 is the clinician encounter |
+| Priority order | Not stated | Doctor first, then front office | ~~Vertical slice 1 is the clinician encounter~~ Overridden by D6: contracts first, then admin and front-desk APIs, then clinical |
 | Clinical decision support | AI-03 in P1 | CDS is the differentiator that “carries weight”; build rule-based first, then add AI | Deterministic CDS in P0; AI-03 pulled into the conference build |
 | Alert style | Not stated | Doctors may resent “have you considered” prompts | Severity tiers, override reasons and per-user suppression in P0 |
 | OpenEMR migration | FR-MIG-01 in P0 | Don’t focus on migration; coexist with running OpenEMR later, as a separate project | Migration moves to its own track; P0 keeps a complete data mapping and C-CDA import |
@@ -267,7 +267,7 @@ Five gaps could stop a U.S. practice from going live even if every FRS item ship
 | After-visit summary | Patients expect a printed or portal summary at checkout | Template-driven summary from the signed note |
 | Rooming workflow | Medical assistants capture vitals and reconcile meds before the doctor enters | Rooming screen feeding the encounter workspace |
 | Sensitive records | Substance-use treatment records (42 CFR Part 2) and psychotherapy notes carry stricter rules | Sensitivity labels, restricted access and break-the-glass with audit |
-| Terminology licences | CPT needs an AMA licence; SNOMED CT U.S. edition comes through the UMLS licence | Close ADR-18 in Phase 0 |
+| Terminology licences | CPT needs an AMA licence; SNOMED CT U.S. edition comes through the UMLS licence | CPT licence before the pilot (Q7; the code-table design is part of the schema lock regardless); UMLS registration before loading terminology (Q8) |
 | Card payments | Collecting copays at check-in needs a processor | Hosted payment fields so card data never touches our servers |
 | Practice onboarding | A new clinic needs providers, NPIs, fee schedules, payers and templates loaded before day one | Setup wizard and import templates |
 | Support and training | A pilot practice needs a help channel, release notes and training material | Owned by the PM from Phase 3 |
@@ -275,37 +275,44 @@ Five gaps could stop a U.S. practice from going live even if every FRS item ship
 
 These need a decision from a practising clinician, not the build team: specialty templates for the pilot, default alert severities, and which history fields are mandatory.
 
-## Delivery approach: vertical slice first
+## Delivery approach: contracts first, then admin and front desk, then clinical (D6)
 
-The team builds one clinician workflow end to end before widening, as the meeting asked, so a design mistake is fixed in one slice rather than across every module. Each slice runs from table to screen and is reviewed before the pattern is copied. After slice 1, slices 2–5 run as parallel streams in Phase 2 so all of P0 lands by 31 December.
+The build order follows D6. API contracts come first, so every owner and every screen can work in parallel against the mock server. Then the admin and front-desk APIs, then the clinical APIs; Vimal moves to AI after his APIs. Within each step, work runs in slices from table to screen, and the first slice is reviewed before its pattern is copied, so a design mistake is fixed in one slice rather than across every module. ~~The meeting's doctor-first order (clinician encounter as slice 1)~~ is overridden by D6.
 
 **Slice order:**
 
-- Clinician encounter: patient (minimal) → appointment → check-in → encounter → templated note → ICD-10-CM diagnosis → sign and addendum → audit → FHIR read of Patient and Encounter.
-- Front office: full registration, licence scan, insurance, eligibility, scheduling rules, reminders.
-- Medications and rule-based CDS: med list, prescription, interaction checks, eRx sandbox.
-- Orders and results: compendium, order, lab message round trip, result inbox, 60-second alert.
-- Billing: charge capture, superbill, claim, claim status.
+1. **Contracts** (Vimal): every endpoint in `contracts/openapi/` with its permission, plus the mock server; Minalini wires screens against it.
+2. **Admin and front desk:**
+   - practice setup: facilities, providers, appointment types, schedules, fee schedules, payers (Anand);
+   - patients and insurance with licence scan, scheduling rules, check-in and eligibility (Vimal); reminders (Minalini);
+   - all on Thulasi's login, tenancy, permissions and audit.
+3. **Clinical:**
+   - encounter workspace, templated note, ICD-10-CM diagnosis, sign and addendum, vitals and history (Vimal);
+   - medications and rule-based CDS: med list, prescription, interaction checks, eRx sandbox (Thulasi);
+   - orders and results: compendium, order, lab message round trip, result inbox, 60-second alert (Thulasi);
+   - billing: charge capture, superbill, claim, claim status (Anand);
+   - the read-only `/fhir` API for Patient and Encounter (Anand).
+4. **AI** (Vimal, after his APIs): speech, AI-01 note drafting, AI-02 chart summary.
 
-**Module layout** (adapted from the Initial Spec so route handlers stay thin):
+After the first slice of each step is reviewed, the rest of that step runs as parallel streams, so all of P0 lands by 31 December.
 
-app/
+**Module layout** (as in `00_Team_Workflow_and_Claude_Code_Setup.md`; route handlers stay thin):
 
-core/          config, db session, security, audit, tenancy, errors
+backend/app/
 
-modules/
+core/          config, security, `require()`, `tenant_db`, audit, errors, events (Thulasi)
 
-<domain>/    api.py  schemas.py  service.py  repository.py  fhir_mapper.py  tests/
+db/            models, Alembic migrations, data-access helpers (Anand)
 
-integration/   partners/<lab|erx|clearinghouse|fax|sms>/  hl7/  mllp_listener.py
+fhir/          read-only FHIR API for outside systems (Anand)
 
-ai/            gateway client, prompts, validators
+integration/   partners/<lab|erx|clearinghouse|fax|sms>/  hl7/  MLLP listener, outbox worker (Thulasi)
 
-workers/       job handlers
+modules/<domain>/    api.py  service.py  repository.py  schemas.py  tests/
 
-migrations/      Alembic
+ai/            AI gateway, model serving, speech, RAG, evaluation (Vimal)
 
-frontend/        React + TypeScript + Vite, shared design system
+frontend/        React + TypeScript + Vite, shared design system (Minalini)
 
 **Definition of done for every slice:**
 
@@ -330,7 +337,7 @@ The dashed line marks P0 complete. Phase 3 (pilot readiness) and Phase 4 (P1 con
 | Phase | Key deliverables | Exit gate |
 |---|---|---|
 | Phase 0 · Architecture and schema lock | Sam's schema adopted (three schemas, PostgreSQL 18), verified, load-tested and P0 tables locked; ADR-0011 and ADR-0012 accepted; FRS v1.2 and Technical Architecture v1.1 approved; AWS BAA; vendor outreach; hires in seat | G0 |
-| Phase 1 · Foundation and vertical slice | Keycloak, tenancy, audit, CI/CD, Terraform staging, backups; slice 1 clinician encounter end to end; GPU host; P0 use cases for every stream; OpenEMR column mapping | G1 |
+| Phase 1 · Foundation and first slices | Keycloak, tenancy, audit, CI/CD, Terraform staging, backups; contracts and mock server; admin and front-desk slice end to end (D6); GPU host; P0 use cases for every stream; OpenEMR column mapping | G1 |
 | Phase 2 · P0 build | Six parallel streams covering all 58 P0 capabilities; AI-01 and AI-02; demo checkpoint and booth decision; integration test and bug fix in the final week | G2 demo, G3 P0 complete |
 | Phase 3 · Hardening and pilot readiness | Live certification with the lab, eRx vendor and clearinghouse; pen test; HIPAA risk analysis; restore drill; load test; clinical validation; training; practice onboarding | G4 pilot ready |
 | Phase 4 · P1 conference features | AI-03 and AI-04, patient portal, Jitsi telehealth, referrals, insurance card OCR, ERA posting if it slipped | Feature freeze |
