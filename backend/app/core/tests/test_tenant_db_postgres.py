@@ -237,7 +237,7 @@ def test_request_without_a_session_sees_zero_rows(
         no_clinic = client.get("/probe-no-tenant")
 
     assert no_session.status_code == 401
-    assert "a-1" not in no_session.text
+    assert no_session.json()["code"] == "unauthenticated"  # a Problem, never rows
     assert no_clinic.json() == []  # no clinic set: row-level security returns nothing
 
 
@@ -265,7 +265,7 @@ def test_tenant_db_without_require_fails_loudly_in_development(
         response = client.get("/probe-unchecked", headers={DEV_USER_HEADER: "md"})
 
     assert response.status_code == 500
-    assert "a-1" not in response.text
+    assert response.json()["code"] == "internal-error"  # a Problem, never rows
 
 
 def test_tenant_db_without_require_is_403_outside_development(
