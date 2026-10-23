@@ -1,0 +1,69 @@
+# Contract checks (TOOLCHAIN §6, CONTRACT_GOVERNANCE §4–§5). Runs only when the contract or this
+# workflow changes, to save Free-plan minutes. Every Action is pinned by commit SHA.
+name: contracts
+
+on:
+  pull_request:
+    paths: ["contracts/**", ".github/workflows/contracts.yml"]
+  push:
+    branches: [main]
+    paths: ["contracts/**", ".github/workflows/contracts.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-breaking:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read  # read who applied the breaking-change-approved label
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # the breaking check reads the base branch's bundle
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version-file: contracts/.nvmrc  # Node 24 LTS
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+
+      # --ignore-scripts: no install scripts run (this also skips @scarf/scarf analytics).
+      - name: Install pinned tools
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Lint, lint fixtures and bundle
+        run: npm test
+
+      - name: Committed bundle is up to date
+        run: git diff --exit-code -- openapi/dist/
+
+      - name: Breaking-change check against the base branch
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          APPROVER: vimalshriai  # only Vimal may approve a breaking change (CONTRACT_GOVERNANCE §4.2)
+        run: |
+          if bash scripts/check-breaking.sh; then exit 0; fi
+          labelled=$(gh api "repos/$REPO/issues/$PR/labels" --jq '[.[].name] | index("breaking-change-approved") != null')
+          applied_by=$(gh api --paginate "repos/$REPO/issues/$PR/events" \
+            --jq '.[] | select(.event == "labeled" and .label.name == "breaking-change-approved") | .actor.login' | tail -n 1)
+          if [ "$labelled" = "true" ] && [ "$applied_by" = "$APPROVER" ]; then
+            echo "Breaking change approved by $APPROVER with the breaking-change-approved label."
+            exit 0
+          fi
+          echo "::error::Breaking contract change. It needs the breaking-change-approved label, applied by $APPROVER."
+          exit 1
