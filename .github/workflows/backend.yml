@@ -15,7 +15,8 @@ permissions:
 
 concurrency:
   group: backend-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs only; every commit on main gets a complete run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -56,11 +57,11 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: backend/pyproject.toml
+          cache-dependency-path: backend/requirements-dev.lock
 
-      - name: Install
+      - name: Install (hashed lock only)
         working-directory: backend
-        run: pip install -e ".[dev]"
+        run: pip install --require-hashes --no-deps -r requirements-dev.lock
 
       - name: Lint
         working-directory: backend

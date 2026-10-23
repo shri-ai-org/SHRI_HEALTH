@@ -82,9 +82,22 @@ Python 3.13:
 
 ```bash
 cd backend
-pip install -e ".[dev]"
+pip install --require-hashes --no-deps -r requirements-dev.lock
 pytest
 ruff check . && mypy app
+```
+
+Dependencies are locked with exact versions and hashes: `requirements.lock` for the API image,
+`requirements-dev.lock` for CI and laptops. `pyproject.toml` only holds the allowed ranges. To
+change a dependency, edit `pyproject.toml`, then regenerate both locks with releases at least
+7 days old (the same rule as the contract tools) and review the diff in the PR:
+
+```bash
+pip install uv==0.13.1
+uv pip compile pyproject.toml --generate-hashes --exclude-newer <date 7 days ago>T00:00:00Z \
+  --python-version 3.13 --python-platform x86_64-unknown-linux-gnu --no-header -o requirements.lock
+uv pip compile pyproject.toml --extra dev --generate-hashes --exclude-newer <same date>T00:00:00Z \
+  --python-version 3.13 --python-platform x86_64-unknown-linux-gnu --no-header -o requirements-dev.lock
 ```
 
 Database tests run when `TEST_DATABASE_URL` points at a throwaway PostgreSQL as a superuser,
