@@ -287,10 +287,10 @@ def test_malformed_idempotency_key_is_422_naming_the_header(
 
 
 def test_valid_idempotency_key_passes(make_app: Callable[..., FastAPI]) -> None:
-    key = "0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11"
-    response = _idempotent_client(make_app).post("/checks", headers={"Idempotency-Key": key})
+    attempt = str(UUID(int=7))  # a synthetic per-attempt UUID, not a secret
+    response = _idempotent_client(make_app).post("/checks", headers={"Idempotency-Key": attempt})
 
-    assert response.json() == {"key": key}
+    assert response.json() == {"key": attempt}
 
 
 def test_405_keeps_the_allow_header(client: TestClient) -> None:
