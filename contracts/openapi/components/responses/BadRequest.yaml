@@ -16,3 +16,7 @@ content:
     examples:
       malformed-request:
         $ref: '../examples/ProblemMalformedRequest.yaml'
+      invalid-cursor:
+        $ref: '../examples/ProblemInvalidCursor.yaml'
+      idempotency-key-missing:
+        $ref: '../examples/ProblemIdempotencyKeyMissing.yaml'

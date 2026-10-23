@@ -1,6 +1,8 @@
 description: >-
   401. Not signed in, or the session ended. Codes: `unauthenticated`, `session-expired`.
 headers:
+  WWW-Authenticate:
+    $ref: '../headers/WWWAuthenticate.yaml'
   X-Request-ID:
     $ref: '../headers/XRequestId.yaml'
   Cache-Control:

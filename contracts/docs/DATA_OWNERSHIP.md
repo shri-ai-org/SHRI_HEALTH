@@ -39,13 +39,13 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Patient (demographics, contacts) | `/patients`, `/patients/{patientId}` | **Cl** | Patient | US Core Patient | Row version → ETag; `If-Match` on PATCH | Patient and its child tables |
 | Patient identifiers (MRN, driver's license) | `/patients/{patientId}/identifiers` | **Cl** (child of Patient) | Patient.identifier | (US Core Patient) | Parent's ETag | Patient identifier child table; MRN numbering per practice is an approved P0 item |
 | Related persons, emergency contacts | `/patients/{patientId}/related-persons` | **Cl** | RelatedPerson (emergency contacts, guarantors, subscribers; P0_SCHEMA_SCOPE.md) | US Core RelatedPerson | Row version | RelatedPerson |
-| Coverage (insurance) | `/patients/{patientId}/coverages` | **Cl** | Coverage | US Core Coverage | Row version; `If-Match` on PATCH | Coverage; payers in **Ad** |
+| Coverage (insurance) | `/patients/{patientId}/coverages`; ends by `endDate`, mistakes via `…/{coverageId}/entered-in-error` (D45) | **Cl** | Coverage | US Core Coverage | Row version; `If-Match` on PATCH | Coverage; payers in **Ad** |
 | Card images | `…/coverages/{coverageId}/card-images` | **F** | — | — | Append-only | File IDs on Coverage |
 | Consents | `/patients/{patientId}/consents` | **Cl** | Consent | none in US Core 9.0.0 | Insert-only; revocation is a new version | Consent |
 | Preferred pharmacy | `/patients/{patientId}/preferred-pharmacy` | **Ad** | — | — | Row version | Preferred-pharmacy table |
 | Restriction flag | `/patients/{patientId}/restrict`, `/unrestrict` | **Cl** | Patient (restricted-chart flag) | — | State action | Patient |
 | Timeline | `/patients/{patientId}/timeline` | **C** | — | — | Read-only | — |
-| Duplicates, merges | `/duplicates`, `/duplicates/{duplicateId}/merge`, `/patient-merges/{mergeId}/undo` | **Ad** + **Cl** | Patient.link (`replaced-by` / `replaces`) | US Core Patient | Lock both patients during merge | Duplicate and merge tables |
+| Duplicates, merges | `/duplicates`, `/duplicates/{duplicateId}/merge`, `/duplicates/{duplicateId}/dismiss` (D46), `/patient-merges/{mergeId}/undo` | **Ad** + **Cl** | Patient.link (`replaced-by` / `replaces`) | US Core Patient | Lock both patients during merge | Duplicate and merge tables |
 | Slots | `/slots` | **C** | Slot is computed, not stored | — | Read-only | Availability rules, exceptions, Appointment |
 | Appointment | `/appointments`, `/appointments/{appointmentId}` | **Cl** | Appointment | none in US Core 9.0.0 | Row version; no double booking (database exclusion constraint, plus the provider-day lock, VG Step 3) | Appointment; visit flow in **Ad** |
 | Status board | `/status-board` | **C** | — | — | Read-only | — |
@@ -105,7 +105,9 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Facilities, locations | `/facilities`, `/locations` | **Cl** | Organization, Location | US Core Organization, US Core Location |
 | Providers | `/providers` | **Cl** | Practitioner, PractitionerRole | US Core Practitioner, US Core PractitionerRole |
 | Appointment types, provider schedules, fee schedules, lab accounts, note templates | `/appointment-types`, `/provider-schedules`, `/fee-schedules`, `/lab-accounts`, `/note-templates` | **Ad** (provider calendars as FHIR Schedule in **Cl**) | Schedule (for provider calendars) | — |
-| Payers | `/payers` | **Ad** (also an Organization where FHIR needs one) | Organization | US Core Organization |
+| Payer directory | `/payers` (read-only) | **Ad**, platform-wide (`payer`, `payer_clearinghouse_id`); maintained by the platform from the clearinghouse payer list (Vimal, 2026-10-23) | Organization | US Core Organization |
+| Lab providers | `/lab-providers` (read-only, D48) | **Ad** (`lab_provider`); set up by onboarding or the platform; lab accounts stay practice-level (`/lab-accounts`) | — | — |
+| Practice payers | `/practice-payers` | **Ad**: a directory payer the practice works with, and its enrollments (`payer_enrollment`); practice-level table **pending schema lock** (A39) | — | — |
 | Onboarding import | `/onboarding/import` | **Ad** + **F** | — | — |
 | Superbill, charges | `/encounters/{encounterId}/superbill` | **Ad** | — | — |
 | Claims, claim status events | `/claims` | **Ad** + **F** (X12) | — (FHIR Claim not used) | — |

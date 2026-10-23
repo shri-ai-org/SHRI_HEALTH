@@ -1,0 +1,9 @@
+summary: invalid-cursor
+value:
+  type: tag:company-domain.invalid,2026:problem/invalid-cursor
+  title: "Invalid cursor"
+  status: 400
+  detail: "The cursor has expired or is not valid for this list. Start again from the first page."
+  instance: /api/v1/patients/search
+  code: invalid-cursor
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11

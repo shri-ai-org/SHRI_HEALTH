@@ -88,7 +88,107 @@ tags:
   - name: dashboards
     description: Operations dashboard.
     x-owner: minalini
-paths: {}
+paths:
+  /patients/search:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1search'
+  /patients:
+    $ref: 'modules/patients.yaml#/paths/~1patients'
+  /patients/{patientId}:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}'
+  /patients/{patientId}/identifiers:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1identifiers'
+  /patients/{patientId}/related-persons:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1related-persons'
+  /patients/{patientId}/related-persons/{relatedPersonId}:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1related-persons~1{relatedPersonId}'
+  /patients/{patientId}/coverages:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1coverages'
+  /patients/{patientId}/coverages/{coverageId}:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1coverages~1{coverageId}'
+  /patients/{patientId}/coverages/{coverageId}/card-images:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1coverages~1{coverageId}~1card-images'
+  /patients/{patientId}/coverages/{coverageId}/entered-in-error:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1coverages~1{coverageId}~1entered-in-error'
+  /patients/{patientId}/consents:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1consents'
+  /patients/{patientId}/preferred-pharmacy:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1preferred-pharmacy'
+  /patients/{patientId}/restrict:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1restrict'
+  /patients/{patientId}/unrestrict:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1unrestrict'
+  /duplicates:
+    $ref: 'modules/patients.yaml#/paths/~1duplicates'
+  /duplicates/{duplicateId}/merge:
+    $ref: 'modules/patients.yaml#/paths/~1duplicates~1{duplicateId}~1merge'
+  /duplicates/{duplicateId}/dismiss:
+    $ref: 'modules/patients.yaml#/paths/~1duplicates~1{duplicateId}~1dismiss'
+  /patient-merges/{mergeId}/undo:
+    $ref: 'modules/patients.yaml#/paths/~1patient-merges~1{mergeId}~1undo'
+  /slots:
+    $ref: 'modules/scheduling.yaml#/paths/~1slots'
+  /appointments:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments'
+  /appointments/{appointmentId}:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}'
+  /appointments/{appointmentId}/cancel:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1cancel'
+  /appointments/{appointmentId}/check-in:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1check-in'
+  /appointments/{appointmentId}/status:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1status'
+  /status-board:
+    $ref: 'modules/scheduling.yaml#/paths/~1status-board'
+  /eligibility-checks:
+    $ref: 'modules/eligibility.yaml#/paths/~1eligibility-checks'
+  /eligibility-checks/{eligibilityCheckId}:
+    $ref: 'modules/eligibility.yaml#/paths/~1eligibility-checks~1{eligibilityCheckId}'
+  /appointments/{appointmentId}/eligibility-checks:
+    $ref: 'modules/eligibility.yaml#/paths/~1appointments~1{appointmentId}~1eligibility-checks'
+  /facilities:
+    $ref: 'modules/practice-setup.yaml#/paths/~1facilities'
+  /facilities/{facilityId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1facilities~1{facilityId}'
+  /locations:
+    $ref: 'modules/practice-setup.yaml#/paths/~1locations'
+  /locations/{locationId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1locations~1{locationId}'
+  /providers:
+    $ref: 'modules/practice-setup.yaml#/paths/~1providers'
+  /providers/{providerId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1providers~1{providerId}'
+  /appointment-types:
+    $ref: 'modules/practice-setup.yaml#/paths/~1appointment-types'
+  /appointment-types/{appointmentTypeId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1appointment-types~1{appointmentTypeId}'
+  /provider-schedules:
+    $ref: 'modules/practice-setup.yaml#/paths/~1provider-schedules'
+  /provider-schedules/{providerScheduleId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1provider-schedules~1{providerScheduleId}'
+  /fee-schedules:
+    $ref: 'modules/practice-setup.yaml#/paths/~1fee-schedules'
+  /fee-schedules/{feeScheduleId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1fee-schedules~1{feeScheduleId}'
+  /payers:
+    $ref: 'modules/practice-setup.yaml#/paths/~1payers'
+  /payers/{payerId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1payers~1{payerId}'
+  /practice-payers:
+    $ref: 'modules/practice-setup.yaml#/paths/~1practice-payers'
+  /practice-payers/{practicePayerId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1practice-payers~1{practicePayerId}'
+  /lab-providers:
+    $ref: 'modules/practice-setup.yaml#/paths/~1lab-providers'
+  /lab-providers/{labProviderId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1lab-providers~1{labProviderId}'
+  /lab-accounts:
+    $ref: 'modules/practice-setup.yaml#/paths/~1lab-accounts'
+  /lab-accounts/{labAccountId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1lab-accounts~1{labAccountId}'
+  /note-templates:
+    $ref: 'modules/practice-setup.yaml#/paths/~1note-templates'
+  /note-templates/{noteTemplateId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1note-templates~1{noteTemplateId}'
 components:
   schemas:
     Address:
@@ -177,6 +277,8 @@ components:
       $ref: 'components/headers/Sunset.yaml'
     Traceparent:
       $ref: 'components/headers/Traceparent.yaml'
+    WWWAuthenticate:
+      $ref: 'components/headers/WWWAuthenticate.yaml'
     XRequestId:
       $ref: 'components/headers/XRequestId.yaml'
   responses:
@@ -216,6 +318,22 @@ components:
       $ref: 'components/examples/OperationQueued.yaml'
     OperationSucceeded:
       $ref: 'components/examples/OperationSucceeded.yaml'
+    ProblemBookingConflict:
+      $ref: 'components/examples/ProblemBookingConflict.yaml'
+    ProblemBusinessRuleViolation:
+      $ref: 'components/examples/ProblemBusinessRuleViolation.yaml'
+    ProblemFileNotReady:
+      $ref: 'components/examples/ProblemFileNotReady.yaml'
+    ProblemIdempotencyKeyMissing:
+      $ref: 'components/examples/ProblemIdempotencyKeyMissing.yaml'
+    ProblemIdempotencyKeyReused:
+      $ref: 'components/examples/ProblemIdempotencyKeyReused.yaml'
+    ProblemIdempotencyRequestInProgress:
+      $ref: 'components/examples/ProblemIdempotencyRequestInProgress.yaml'
+    ProblemInvalidCursor:
+      $ref: 'components/examples/ProblemInvalidCursor.yaml'
+    ProblemPatientMerged:
+      $ref: 'components/examples/ProblemPatientMerged.yaml'
     ProblemBreakGlassRequired:
       $ref: 'components/examples/ProblemBreakGlassRequired.yaml'
     ProblemConflictPossibleDuplicate:

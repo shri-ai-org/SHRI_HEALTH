@@ -18,3 +18,9 @@ content:
         $ref: '../examples/ProblemValidationFailed.yaml'
       invalid-parameter:
         $ref: '../examples/ProblemInvalidParameter.yaml'
+      business-rule-violation:
+        $ref: '../examples/ProblemBusinessRuleViolation.yaml'
+      file-not-ready:
+        $ref: '../examples/ProblemFileNotReady.yaml'
+      idempotency-key-reused:
+        $ref: '../examples/ProblemIdempotencyKeyReused.yaml'

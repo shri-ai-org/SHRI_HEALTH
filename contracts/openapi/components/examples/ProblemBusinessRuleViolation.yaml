@@ -1,0 +1,13 @@
+summary: business-rule-violation
+value:
+  type: tag:company-domain.invalid,2026:problem/business-rule-violation
+  title: "Business rule violation"
+  status: 422
+  detail: "1 field breaks a rule."
+  instance: /api/v1/patients
+  code: business-rule-violation
+  requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+  errors:
+    - in: body
+      pointer: /birthDate
+      code: out-of-range

@@ -20,3 +20,9 @@ content:
         $ref: '../examples/ProblemRecordLocked.yaml'
       conflict-possible-duplicate:
         $ref: '../examples/ProblemConflictPossibleDuplicate.yaml'
+      booking-conflict:
+        $ref: '../examples/ProblemBookingConflict.yaml'
+      patient-merged:
+        $ref: '../examples/ProblemPatientMerged.yaml'
+      idempotency-request-in-progress:
+        $ref: '../examples/ProblemIdempotencyRequestInProgress.yaml'
