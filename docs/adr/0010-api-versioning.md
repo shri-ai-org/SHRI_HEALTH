@@ -6,7 +6,7 @@ Status: **Proposed** (Thulasi agreed, issue #3 T24, T25; Minalini pending) · 20
 
 ## Context
 
-CAT fixes the base path `/api/v1`. TW §4 runs oasdiff against `main` to catch breaking changes. Today the only consumer of `/api/v1` is our own SPA; outside systems use HAPI's `/fhir` (CAT). RFC 9745 (March 2025) standardizes the `Deprecation` response header; RFC 8594 defines `Sunset`.
+CAT fixes the base path `/api/v1`. TW §4 runs oasdiff against `main` to catch breaking changes. Today the only consumer of `/api/v1` is our own SPA; outside systems use ~~HAPI's~~ `/fhir` (CAT; since ADR-0011, Anand's read-only FHIR API). RFC 9745 (March 2025) standardizes the `Deprecation` response header; RFC 8594 defines `Sunset`.
 
 ## Decision
 

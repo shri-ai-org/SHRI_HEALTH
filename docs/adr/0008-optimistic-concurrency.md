@@ -2,18 +2,18 @@
 
 > **Partly superseded by ADR-0011: there is no HAPI, so no ETag translation to HAPI `meta.versionId`; every ETag comes from the row version in our own PostgreSQL. The rest of this ADR stands.**
 
-Status: **Proposed** (Thulasi agreed for prescriptions, issue #3 T31; Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (prescriptions), Anand (version columns, HAPI versions)
+Status: **Proposed** (Thulasi agreed for prescriptions, issue #3 T31; Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (prescriptions), Anand (version columns~~, HAPI versions~~)
 
 ## Context
 
-VG Step 1 and CAT require `ETag` / `If-Match` on note and prescription updates "so two people can't silently overwrite each other"; VG Step 5 applies it to note autosave across two tabs. Your Stage 2 brief extends it to other edited clinical records. Records live in our PostgreSQL and in HAPI, which has its own version IDs and weak ETags. RFC 9110 requires strong comparison for `If-Match`.
+VG Step 1 and CAT require `ETag` / `If-Match` on note and prescription updates "so two people can't silently overwrite each other"; VG Step 5 applies it to note autosave across two tabs. Your Stage 2 brief extends it to other edited clinical records. ~~Records live in our PostgreSQL and in HAPI, which has its own version IDs and weak ETags.~~ Records live in our PostgreSQL (ADR-0011). RFC 9110 requires strong comparison for `If-Match`.
 
 ## Decision
 
 1. Every single-resource response carries a **strong, opaque** `ETag`.
 2. `If-Match` is **required on every PATCH and PUT**, and on the actions `sign`, `cosign`, `addenda` (notes) and `sign-and-send`, `change` (prescriptions). One rule for all edits, not only clinical ones.
 3. Missing → `428 precondition-required`; mismatch → `412 precondition-failed` with the current `ETag`.
-4. Our records: ETag from a row version counter (pending schema). HAPI records: the FHIR client translates our ETag to HAPI's `meta.versionId` and does a version-aware update; HAPI's weak ETags never reach clients (pending Anand).
+4. Our records: ETag from a row version counter (pending schema). ~~HAPI records: the FHIR client translates our ETag to HAPI's `meta.versionId` and does a version-aware update; HAPI's weak ETags never reach clients (pending Anand).~~
 5. Booking is the exception: a pessimistic provider-day lock (VG Step 3), because two different appointments conflict without editing the same row.
 
 ## Alternatives considered

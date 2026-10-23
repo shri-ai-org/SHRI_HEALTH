@@ -16,7 +16,7 @@ Status values: **Proposed** → **Accepted** (all named sign-offs given) → **S
 | [ADR-0006](0006-cookie-session-and-csrf.md) | Session cookie with reference token, plus CSRF header | **Accepted** | Thulasi, Minalini |
 | [ADR-0007](0007-idempotency-keys.md) | Idempotency-Key for partner-bound and money-moving requests | Proposed | Anand (Thulasi agreed) |
 | [ADR-0008](0008-optimistic-concurrency.md) | Optimistic concurrency with ETag / If-Match (partly superseded by ADR-0011) | Proposed | Anand (Thulasi agreed) |
-| [ADR-0009](0009-id-strategy.md) | UUIDs everywhere, same UUID in HAPI (HAPI part superseded by ADR-0011) | Proposed | Anand, Vimal |
+| [ADR-0009](0009-id-strategy.md) | UUIDs everywhere~~, same UUID in HAPI~~ (HAPI part superseded by ADR-0011) | Proposed | Anand, Vimal |
 | [ADR-0010](0010-api-versioning.md) | Major version in the path; additive change within v1 (partly superseded by ADR-0011) | Proposed | Minalini (Thulasi agreed) |
 | [ADR-0011](0011-single-postgresql-retire-hapi.md) | Single PostgreSQL with FHIR-shaped clinical tables; HAPI retired | **Accepted** | Decided by the team (2026-10-23) |
 

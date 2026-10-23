@@ -2,11 +2,11 @@
 
 > **Partly superseded by ADR-0011: there is no HAPI, so lists never wrap HAPI paging; every list uses keyset pagination over our own PostgreSQL. The rest of this ADR stands.**
 
-Status: **Proposed** (sign-offs so far: Minalini, issue #5 M2; Thulasi agreed cursor encryption, T22; Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Anand (HAPI paging through the FHIR client), Minalini (list screens)
+Status: **Proposed** (sign-offs so far: Minalini, issue #5 M2; Thulasi agreed cursor encryption, T22; Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Anand ~~(HAPI paging through the FHIR client)~~, Minalini (list screens)
 
 ## Context
 
-VG Step 1 requires cursor pagination on every list (`?cursor=&limit=`). Lists come from two stores: our PostgreSQL and HAPI, whose search paging uses its own server-side links. Counting rows is expensive in both, especially through FHIR. Cursors that encode sort keys can leak PHI (for example a family name) into URLs.
+VG Step 1 requires cursor pagination on every list (`?cursor=&limit=`). ~~Lists come from two stores: our PostgreSQL and HAPI, whose search paging uses its own server-side links. Counting rows is expensive in both, especially through FHIR.~~ Lists come from our PostgreSQL (ADR-0011); counting rows is expensive on large tables. Cursors that encode sort keys can leak PHI (for example a family name) into URLs.
 
 ## Decision
 
@@ -14,20 +14,20 @@ VG Step 1 requires cursor pagination on every list (`?cursor=&limit=`). Lists co
 2. No total count by default; an endpoint that needs one documents a `count` field explicitly.
 3. Cursors are opaque, URL-safe, at most 512 characters, valid for 24 hours, and **never contain readable PHI**. The middleware encrypts them with AES-GCM using an OpenBao key with a key ID for rotation, with tenant, user and endpoint as associated data and the expiry inside (agreed, Thulasi T22). Bad or expired cursor → `400 invalid-cursor`.
 4. For `POST …/search`, `limit` and `cursor` go in the body.
-5. Our lists use keyset pagination; HAPI-backed lists wrap HAPI's paging inside our cursor so HAPI URLs never reach clients (pending Anand).
+5. Our lists use keyset pagination. ~~HAPI-backed lists wrap HAPI's paging inside our cursor so HAPI URLs never reach clients (pending Anand).~~
 
 ## Alternatives considered
 
 | Option | Why not |
 |---|---|
-| Offset / page number | Slow on large tables; pages shift when records are inserted; HAPI paging is link-based anyway |
-| Exposing HAPI's paging links | Leaks internal URLs and couples screens to HAPI |
+| Offset / page number | Slow on large tables; pages shift when records are inserted~~; HAPI paging is link-based anyway~~ |
+| ~~Exposing HAPI's paging links~~ | ~~Leaks internal URLs and couples screens to HAPI~~ |
 | Link headers (RFC 8288) instead of a body field | Harder to use from the generated client; body field is simpler |
 
 ## Consequences
 
 - Screens cannot jump to "page 7"; they load more or narrow filters. Acceptable for clinic lists.
-- The FHIR client must implement cursor wrapping for HAPI searches.
+- ~~The FHIR client must implement cursor wrapping for HAPI searches.~~
 - A shared pagination component in `shared/pagination.yaml` and a lint rule enforce the shape.
 
 ## References
