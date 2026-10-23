@@ -115,7 +115,7 @@ Two limits of the GitHub Free plan on a private repository (T3): (a) Actions has
 |---|---|---|
 | `contract-bundle` | Redocly bundle, then `git diff --exit-code contracts/openapi/dist/` | The committed bundle is stale |
 | `contract-lint` | Spectral with our ruleset | Any `error` rule fails (CONTRACT_GOVERNANCE §5) |
-| `contract-breaking` | oasdiff against `main`'s bundle | A breaking change without the `breaking-change-approved` label **applied by Vimal**, verified through the API (CONTRACT_GOVERNANCE §4) |
+| `contract-breaking` | oasdiff against `main`'s bundle (`scripts/check-breaking.sh`: exit 3 = breaking change, 2 = tool or setup failure) | A breaking change (exit 3) without the `breaking-change-approved` label **applied by Vimal after the latest commit**, verified through the API (CONTRACT_GOVERNANCE §4); or any tool or setup failure (exit 2), which the label never overrides |
 | `contract-mock-smoke` | Start Prism, call a few endpoints | Mock does not start or returns invalid examples |
 | `client-generated` | Regenerate the TS client, `git diff --exit-code frontend/src/api/generated/` (TW §4) | Screens use a stale client (Minalini's generator) |
 | `contract-tests` (later) | Schemathesis against the running API (CONTRACT_GOVERNANCE §6) | Implementation differs from contract |

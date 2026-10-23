@@ -39,7 +39,7 @@ The versions are exact and were at least 7 days old when chosen (TOOLCHAIN §5).
 | `npm test` | `lint` + `lint:fixtures` |
 | `npm run mock` | Starts the Prism mock server on port 4010 from the bundle. Until Stage 4 adds endpoints there is nothing to mock, and it says so |
 | `npm run mock:sample` | Starts Prism on the compliant sample, to try the shared components now |
-| `npm run breaking` | Compares the bundle with the one on `origin/main` and fails on breaking changes (set `BASE_REF` to compare with another branch) |
+| `npm run breaking` | Compares the bundle with the one on `origin/main` (set `BASE_REF` to compare with another branch). Exit code 0: no breaking change; **3: a real breaking change**, listed in the output; 2: a tool or setup failure (oasdiff install or run, bundling, missing base ref), with a message saying so. In CI, only exit code 3 can be approved with the `breaking-change-approved` label |
 | `npm run check:bundle-fresh` | Fails if the committed bundle is out of date (used by CI) |
 
 Prism serves paths at the root of `http://127.0.0.1:4010`, without the `/api/v1` prefix. It returns the examples from the contract, and validates requests (a bad UUID gives a `422` Problem response).
