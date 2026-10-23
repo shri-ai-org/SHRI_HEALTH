@@ -72,7 +72,7 @@ def test_support_staff_get_no_phi() -> None:
         ("FD", "payers:read", True),
         ("BIL", "payers:read", True),
         ("ADM", "payers:read", True),
-        ("CO", "payers:read", True),
+        ("CO", "payers:read", False),
         ("MA", "payers:read", False),
         ("MD", "payers:read", False),
         ("FD", "practice-setup:read", False),  # reading payers does not open practice setup

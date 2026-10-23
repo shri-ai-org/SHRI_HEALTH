@@ -62,8 +62,9 @@ CATALOGUE: frozenset[str] = _expand(
     "results:read|acknowledge", "unmatched-results:read|match|reject", "in-office-results:create",
     # Files, setup, billing, documents (Anand)
     "files:create|read", "practice-setup:read|create|update", "onboarding:import",
-    # T38: the payer list, read-only, for the roles that add insurance or run eligibility checks.
-    # Changing payers stays under practice-setup:*.
+    # T38: the payer directory (GET /payers, #230–231), read-only, for the roles that add insurance
+    # or run eligibility checks: FD, BIL, ADM (SECURITY_MODEL §4.3). Practice payers stay under
+    # practice-setup:*.
     "payers:read",
     "superbills:read|update", "claims:read|create|scrub|submit|status-check|correct|void",
     "payments:create|card-session", "remittances:read|post", "billing-reports:read",
@@ -188,7 +189,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "CO": frozenset().union(
         _PATIENT_LOOKUP, _CHART_READ,
         _expand("patients:restrict", "consents:read", "duplicates:read", "ai-settings:read",
-                "cosign-rules:read", "practice-setup:read", "payers:read", "message-templates:read",
+                "cosign-rules:read", "practice-setup:read", "message-templates:read",
                 "users:read", "roles:read", "exports:read|create", "audit-events:read",
                 "chart-access-reports:read", "patients:break-glass",
                 "communication-preferences:read", "communications:read",
