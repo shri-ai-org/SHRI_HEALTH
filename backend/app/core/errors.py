@@ -248,12 +248,10 @@ async def _validation_error(request: Request, exc: Exception) -> JSONResponse:
     raw = cast(RequestValidationError, exc).errors()
     if any(e.get("type") == "json_invalid" for e in raw):
         return problem(request, "malformed-request", "Request body is not valid JSON")
-    # Idempotency-Key problems are 400s, not field errors (API_STANDARDS §9.3, §10).
-    key_errors = [e for e in raw if _is_idempotency_header(e)]
-    if any(e.get("type") == "missing" for e in key_errors):
+    # A missing Idempotency-Key is 400 idempotency-key-missing (API_STANDARDS §9.3, §10). A
+    # malformed one stays a field error below: 422 naming the header, like any parameter (§9.2).
+    if any(_is_idempotency_header(e) and e.get("type") == "missing" for e in raw):
         return problem(request, "idempotency-key-missing", "Send an Idempotency-Key header")
-    if key_errors:
-        return problem(request, "malformed-request", "Idempotency-Key must be a UUID")
     # Field errors carry location and code only: never the submitted value (may be PHI).
     errors = [_to_field_error(e) for e in raw]
     detail = "1 field is invalid." if len(errors) == 1 else f"{len(errors)} fields are invalid."

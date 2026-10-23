@@ -274,11 +274,16 @@ def test_missing_idempotency_key_is_400(make_app: Callable[..., FastAPI]) -> Non
     assert response.json()["code"] == "idempotency-key-missing"
 
 
-def test_malformed_idempotency_key_is_400(make_app: Callable[..., FastAPI]) -> None:
+def test_malformed_idempotency_key_is_422_naming_the_header(
+    make_app: Callable[..., FastAPI],
+) -> None:
     response = _idempotent_client(make_app).post("/checks", headers={"Idempotency-Key": "nope"})
 
-    assert response.status_code == 400
-    assert response.json()["code"] == "malformed-request"
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "validation-failed"
+    assert body["errors"] == [{"in": "header", "name": "Idempotency-Key", "code": "invalid-format"}]
+    assert "nope" not in response.text
 
 
 def test_valid_idempotency_key_passes(make_app: Callable[..., FastAPI]) -> None:
