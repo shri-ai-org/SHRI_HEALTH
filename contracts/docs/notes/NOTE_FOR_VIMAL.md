@@ -66,9 +66,9 @@ Status after your Stage 2 review (2026-10-22) is in the last column.
 | # | Item | PROPOSED answer | Where |
 |---|---|---|---|
 | V1 | Domain for Problem `type` URIs and our FHIR identifier systems | `tag:company-domain.invalid,2026:problem/<code>`; `https://fhir.company-domain.invalid/sid/<resource>-id` (placeholder; Thulasi's code in PR #7 uses the same base) | API_STANDARDS §0, §9.1; DATA_OWNERSHIP §3.1. **Still open:** the company domain (management). Until then the placeholder `company-domain.invalid` is used everywhere; it is one constant in API_STANDARDS §0 |
-| V2 | Encounter diagnoses: option A or B (with Anand) | B: draft in ours, HAPI on signing | DATA_OWNERSHIP §2.5. **Accepted (B).** New follow-ups for you: confirm "encounter signed" = its first note signed, and that diagnoses added after signing go straight to HAPI |
-| V3 | Legal record of a signed note (with Anand) | Locked version in ours | DATA_OWNERSHIP §3.2. **Your proposal recorded:** signed version in ours (immutable, hash-chained, audited) is the legal record; HAPI copy carries the same content hash; reconciliation compares. Needs Anand and compliance |
-| V4 | Clinical writes when HAPI is down | Fail with 503 | DATA_OWNERSHIP §3.3. **Accepted for the MVP**, with registration and check-in queuing; rooming impact recorded in ARCHITECTURE_CONTEXT §8 |
+| V2 | ~~Encounter diagnoses: option A or B (with Anand)~~ **Resolved by ADR-0011:** diagnoses are Condition rows; removal before signing sets entered-in-error with the reason "removed before signing" (D24). | B: draft in ours, HAPI on signing | DATA_OWNERSHIP §2.5. **Accepted (B).** New follow-ups for you: confirm "encounter signed" = its first note signed, and that diagnoses added after signing go straight to HAPI |
+| V3 | ~~Legal record of a signed note (with Anand)~~ **Resolved by ADR-0011:** the signed note row is the legal record (ADR-0011). | Locked version in ours | DATA_OWNERSHIP §3.2. **Your proposal recorded:** signed version in ours (immutable, hash-chained, audited) is the legal record; HAPI copy carries the same content hash; reconciliation compares. Needs Anand and compliance |
+| V4 | ~~Clinical writes when HAPI is down~~ **Resolved by ADR-0011:** no HAPI, so no such failure mode; partner outages go through the outbox (ARCHITECTURE_CONTEXT §8). | Fail with 503 | DATA_OWNERSHIP §3.3. **Accepted for the MVP**, with registration and check-in queuing; rooming impact recorded in ARCHITECTURE_CONTEXT §8 |
 | V5 | Guards for closing an encounter (with clinical advisors) | At least one signed note; no open drafts; diagnosis required for billable types | DATA_OWNERSHIP §5.2. **Still open:** your answer kept the placeholder ("ACCEPTED as written / my change") |
 | V6 | Care-team (relationship-based) access limits are P1 | Yes, P1; MVP uses clinic, facility and restricted charts | SECURITY_MODEL §5.1 |
 | V7 | Patient search minimum criteria and 50-result cap | Yes | API_STANDARDS §14.2 |
@@ -100,7 +100,13 @@ Idle timeout on shared workstations (15 min proposed); clinical rows of the role
 ## 7. After the Stage 2 sign-offs (2026-10-22)
 
 - Your answers to Minalini's M7 (phone is an identifier; exact full-number match only) and M15 (warning at 13 minutes, pending Thulasi), and on M11 and M13, are applied (API_STANDARDS §14.2, §15; SECURITY_MODEL §2.1, §8).
-- Thulasi's T30 point (where shared resources live in HAPI) is now Anand's item A33 and blocks Stage 4.
+- ~~Thulasi's T30 point (where shared resources live in HAPI) is now Anand's item A33 and blocks Stage 4.~~ **Resolved by ADR-0011** (no HAPI). Stage 4 now waits for the 30 October schema lock.
 - **Reminder:** `enqueue()`'s signature change (T29) comes as a separate core PR from Thulasi (not in PR #7); all four of you review it.
 - Still open from you: `COMPANY_DOMAIN` (API_STANDARDS §0) and the encounter-close rules (DATA_OWNERSHIP §5.2).
+
+## 8. After ADR-0011 (2026-10-23)
+
+- HAPI is retired. D1 is rewritten; ADR-0011 is accepted; the HAPI items V2–V4 are resolved.
+- **Still open from you:** `COMPANY_DOMAIN`, raised with management; and the encounter-close rules, which go to the clinical advisors (DECISIONS.md "Still open").
+- **Remove the architecture lines from your `CLAUDE.local.md`;** they live in DECISIONS.md and the root `CLAUDE.md`. Done locally on 2026-10-23.
 
