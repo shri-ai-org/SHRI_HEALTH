@@ -41,6 +41,7 @@ Write all contracts before building, so the other three can work in parallel. Co
 - `Idempotency-Key` header on any POST that sends something to a partner (eligibility, claims, prescriptions, lab orders).
 - `ETag` / `If-Match` on note and prescription updates, so two people can't silently overwrite each other.
 - No DELETE on clinical data; use an `entered-in-error` action.
+- IDs are UUIDv4 (D29, ADR-0009); times in UTC with the facility's time zone for display, money as exact decimal strings in USD (D40).
 
 **Done when:** every endpoint from the API list has a contract with a permission name, the mock server runs, and Spectral lint passes.
 
@@ -50,6 +51,8 @@ Endpoints: search, register, view/edit, identifiers, coverages, card images, con
 
 - Registration and insurance are written to the FHIR-shaped `Patient`, `RelatedPerson` and `Coverage` tables in our database, in one transaction, through your repository and Anand's helpers (`backend/app/db/`). Nothing is mirrored and nothing is queued (ADR-0011).
 - Duplicate check on register: similar name + same date of birth or phone, using the schema's duplicate-candidate table (exact name at the schema lock).
+- MRN: one counter per practice, never reused, practice prefix plus number (D41). The standard U.S. demographic fields are collected, all optional for the patient (D39).
+- Chart access (D37, enforced by Thulasi's `require()`): by role and facility; restricted charts need break-glass, except for the patient's care-team members; every access is audited. A practice setting that limits all charts to the care team is P1.
 - Card images go through Anand's file service; you only store the file ID.
 - Licence scanning happens in the browser; the API just receives normal patient fields.
 
@@ -110,7 +113,7 @@ Problems (`Condition`, problem-list category), allergies (`AllergyIntolerance`),
 | 5 | AI-02 chart summary | Read permitted history through the clinical APIs (never the database directly); each statement carries a link to its source record; missing and conflicting items listed | Every statement in the summary links to a real record |
 | 6 | AI screens | Transcript review, draft note with changes highlighted, summary panel, AI settings; built with Minalini's design system, reviewed by her | Screens pass her design review |
 | 7 | Test set and scoring | Record mock patient visits with written reference notes (synthetic, scripted); score AI-01 and AI-02 in MLflow on medical-term errors, omissions, invented facts and clinician edits | Scores recorded for both models; the better model chosen |
-| 8 | P1, for the conference | RAG: approved guideline documents → Docling extraction → chunks → pgvector + full-text search → answers with citations. Then AI-03 decision support (shown separately from rule-based alerts), AI-04 coding suggestions, fax and document extraction | Answers always cite sources or say evidence is insufficient |
+| 8 | P1, for the conference | RAG: approved guideline documents → Docling extraction → chunks → pgvector (the RDS version, D31) + PostgreSQL's built-in full-text search (`tsvector` + GIN, D32) → answers with citations. Then AI-03 decision support (shown separately from rule-based alerts), AI-04 coding suggestions, fax and document extraction | Answers always cite sources or say evidence is insufficient |
 
 Start with voice-to-text and note drafting, not RAG. RAG is only needed for P1.
 

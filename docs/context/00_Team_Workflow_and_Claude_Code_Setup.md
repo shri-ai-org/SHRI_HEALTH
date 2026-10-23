@@ -41,7 +41,7 @@ shri-health/
 ├── infra/
 │   ├── compose/ nginx/ keycloak/ terraform/                                                    — Thulasi
 │   └── postgres/ seaweedfs/                                                                    — Anand
-│                                      # infra/hapi/ is retired (ADR-0011)
+│                                      # infra/hapi/ is removed (ADR-0011; Thulasi, issue #12)
 ├── proposals/                         # proposals kept for reference, e.g. fhir-schema/ (Sam's; read, never edit)
 └── docs/adr/                          # architecture decisions                                     — everyone
 ```
@@ -105,6 +105,7 @@ Save as `.github/CODEOWNERS`. Replace `@vimal`, `@thulasi`, `@anand`, `@minalini
 - Keep pull requests small (aim for under ~400 changed lines) and merge at least once a day.
 - Rebase on `main` every morning: `git pull --rebase origin main`.
 - Unfinished features hide behind a feature flag instead of waiting on a long branch.
+- Merged branches are deleted automatically (repository setting "Automatically delete head branches", turned on by Thulasi). Start each task on a fresh branch from `main`.
 
 ## 4. CI checks (run on every pull request)
 
@@ -136,7 +137,7 @@ Nobody changes an endpoint's shape without a contract pull request first.
 | See every PR, merge, CI failure and deploy as it happens | GitHub app in a Slack channel (e.g. `#shri-dev`). WhatsApp only for quick chat, never patient data |
 | Track tasks and handoffs | GitHub Projects board: Backlog → In progress → Blocked → Review → Done. Each handoff is an issue with a "blocked by" link, so a blocked person can see who they're waiting on |
 | Try each other's work | Staging server redeploys `main` automatically; one `docker compose up` runs everything locally |
-| Shared context for Claude chats | The Claude Team project holding FRS v1.2, Technical Architecture v1.1, the implementation plan, the task plan and the schema README, so everyone's Claude chats answer from the same documents |
+| Shared context for Claude chats | The repository is the single source for plans and guides (D42): `docs/context/` and `docs/adr/`. The Word documents and the online plan are retired snapshots and are not updated. If a Claude Team project holds copies, re-upload them from `main` after each merge that changes them |
 | Daily sync | 15 minutes, or a written update in Slack: done, doing, blocked |
 | Decisions | A short ADR in `docs/adr/` for anything that affects more than one person |
 
@@ -226,7 +227,7 @@ Personal `.claude/settings.local.json`, not committed (git ignores it), one per 
 }
 ```
 
-Each person's guide has their own version of this file. Always start Claude Code from the repository root so these paths resolve, then run `/permissions` once to confirm the rules are active.
+Each person's guide has their own version of this file. **Always start Claude Code from the repository root**, never from a parent folder: Claude also loads `CLAUDE.md`, `CLAUDE.local.md` and memory from parent folders, so old copies kept there would override the repository. Keep your `CLAUDE.local.md` in the repository root (git ignores it) and no context documents in parent folders. Then run `/memory` and `/permissions` once to confirm the right files and rules are active.
 
 These rules stop Claude's own file-editing tools; they do not stop a shell command Claude runs. That is why CODEOWNERS and branch protection stay the real guard: even if something slips through locally, it cannot reach `main` without the owner's approval.
 

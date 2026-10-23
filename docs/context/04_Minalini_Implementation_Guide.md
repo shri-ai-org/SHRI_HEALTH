@@ -115,7 +115,7 @@ Use Thulasi's `require()` and `tenant_db`, and Anand's existing tables (`message
 - pending results;
 - open inbox items.
 
-These are plain read-only queries over our one PostgreSQL database (clinical and admin tables alike; ADR-0011), run through your module's repository, scoped by `tenant_db` like every other query. No HAPI helper is needed. Connect it to the dashboard screen.
+These are plain read-only queries over our one PostgreSQL database (clinical and admin tables alike; ADR-0011), run through your module's repository, scoped by `tenant_db` like every other query. No HAPI helper is needed. The database collation is C.UTF-8 (D33): where a screen needs a human-friendly order (for example names), the query applies it. Connect it to the dashboard screen.
 
 ### Step 7 — Design reviews
 

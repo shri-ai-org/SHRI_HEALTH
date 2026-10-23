@@ -22,7 +22,7 @@ Read `00_Team_Workflow_and_Claude_Code_Setup.md` first.
    - `/health` and `/ready`;
    - one router per module folder;
    - a global error handler returning Problem JSON.
-3. Write `infra/compose/docker-compose.yml`: API, PostgreSQL (Anand supplies the image and config), Keycloak, Nginx with a self-signed certificate for local HTTPS.
+3. Write `infra/compose/docker-compose.yml`: API, PostgreSQL, Keycloak, Nginx with a self-signed certificate for local HTTPS. The database is a **PostgreSQL 18 image with the pgvector version Amazon RDS ships for PostgreSQL 18** (0.8.2 today) and C.UTF-8 collation, identical in CI (D31, D33); Anand supplies the configuration. Production is Amazon RDS (ADR-0012).
 4. Ship a **stand-in** login and permission check with the final signatures (section 3), so everyone can build endpoints today. In development, the stand-in reads a test user from a header; it is replaced later without anyone changing their code.
 5. Ship `tenant_db`: an async SQLAlchemy session that sets, per transaction, exactly the database settings the schema's row-level security policies read: `app.current_tenant_id`, `app.current_user_id`, `app.correlation_id` (Sam's schema, adopted by Anand; D21). The clinic comes from the server-side session, never from token claims.
 
@@ -102,6 +102,8 @@ Also build `GET /me`, and `/users` and `/roles`, kept in sync with Keycloak's ad
   - Does this user work at this facility?
   - Is this chart restricted? If so, refuse unless break-glass with a reason (`POST /patients/{id}/break-glass`).
 - **`tenant_db`:** sets `app.current_tenant_id`, `app.current_user_id` and `app.correlation_id` on every transaction, from the server-side session, so the schema's row-level security policies apply (D21). The application role never bypasses RLS.
+- **One database role per service** (D23), each with its own credentials from OpenBao: the API connects as `shri_app`, the `/fhir` API as `shri_fhir_reader`, the integration worker as `shri_integration`, reporting as `shri_reporting`; migrations run as `shri_migrator`.
+- **Chart access** (D37): by role and facility; restricted charts need break-glass, except for the patient's care-team members; every access is audited. P1 adds a practice setting that limits all charts to the care team.
 - **Cross-clinic tests:** a user from clinic A gets nothing from clinic B, through every endpoint.
 
 ### Step 5 — Audit
@@ -116,7 +118,7 @@ Also build `GET /me`, and `/users` and `/roles`, kept in sync with Keycloak's ad
 
 - **Servers:** encrypted disks via AWS KMS on every server (Terraform), including the GPU server and its temporary audio.
 - **OpenBao transit engine:** provides data keys for file envelope encryption (Anand's file service calls `new_data_key()`) and powers `encrypt_field()` for any extra-sensitive column.
-- **Backups:** hold the pgBackRest encryption key; give Anand access through OpenBao.
+- **Database (ADR-0012):** provision Amazon RDS for PostgreSQL 18 with Terraform: Multi-AZ, encrypted at rest with a KMS key, automated backups with point-in-time recovery, snapshot copies to a second U.S. region. Give Anand what he needs for the quarterly restore drills. ~~Hold the pgBackRest encryption key.~~
 - **Key rotation:** write the procedure and test it once.
 
 ### Step 7 — Machine tokens for `/fhir`
@@ -214,7 +216,7 @@ Results:
 |---|---|---|
 | Skeleton, stand-in `require()` / `tenant_db`, error classes | Everyone | Any endpoint |
 | Real login and audit | Everyone | Testing with real users |
-| `new_data_key()`, backup key | Anand | File service, backups |
+| `new_data_key()`; the RDS instance and its KMS key | Anand | File service, restore drills |
 | Machine tokens for `/fhir` and the AI gateway | Anand, Vimal | `/fhir`, AI gateway |
 | GPU server | Vimal | AI work |
 | `events.publish()` and `/events/stream` | Everyone, Minalini for screens | Live updates |

@@ -2,6 +2,8 @@
 
 **Your role:** owner of all data. You own the PostgreSQL database, which holds both the FHIR-shaped clinical tables and the normalized admin tables (adopted from Sam's schema, PR #9), the read-only FHIR API for outside systems, and the file system. You also build the practice setup, billing, documents and fax, C-CDA, inbox, export and onboarding APIs, plus the admin, billing and document screens.
 
+**Decided on 2026-10-23 (DECISIONS.md D28–D41, ADR-0009, ADR-0012):** you approved Sam's schema, PostgreSQL 18, D13–D19 and your Stage 2 items; IDs stay UUIDv4; the database runs on Amazon RDS. The steps below include these.
+
 **What changed from v1:** HAPI FHIR is retired (ADR-0011). Clinical data lives in our own PostgreSQL. There is no HAPI server to run, no partitions to design and no syncing between two stores. Read `docs/context/DECISIONS.md` and ADR-0011 in `docs/adr/` first.
 
 Read `00_Team_Workflow_and_Claude_Code_Setup.md` for the repo layout, ownership and pull request rules.
@@ -28,20 +30,17 @@ Read `00_Team_Workflow_and_Claude_Code_Setup.md` for the repo layout, ownership 
 - Patient rows link only to the same patient.
 - The application's database role never bypasses row-level security.
 - Schema changes go only through Alembic migrations.
+- Every computed column is STORED (`persisted=True`); a schema test fails otherwise (D34).
+- IDs are UUIDv4 (D29): Python-side `uuid4` for primary keys, `gen_random_uuid()` for the audit `event_uuid`, as Sam's schema does today.
+- Collation is C.UTF-8 in every environment (D33).
 
 ## 2. Day 1
 
 1. Clone the repo. From this pack, copy **only** `CLAUDE.local.md` (repo root) and `.claude/settings.local.json`. Do not copy anything into `docs/context/`; the repo copies are the current ones.
 2. If the ADR-0011 pull request has merged, pull `main`. If not, read this guide, `P0_SCHEMA_SCOPE.md` and PR #9 directly.
 3. Start Claude Code from the repo root. Run `/memory` and `/permissions` to confirm your files are loaded and your edit limits are active.
-4. Run Sam's schema locally from PR #9's branch, using a separate git worktree so you don't touch it:
-   - PostgreSQL 17 with pgcrypto, pg_trgm, btree_gist and pgvector;
-   - `sql/00_extensions.sql` as superuser;
-   - migrations up, down and up again;
-   - `alembic check`;
-   - the 42 tests.
-
-   Write down the results.
+4. ~~Run Sam's schema locally on PostgreSQL 17 and write down the results.~~ **Done:** your 17-vs-18 verification passed (migrations, `alembic check` and 42/42 tests identical; D28). Commit the report into your adoption PR as `backend/app/db/docs/pg18-verification.md`. That file is the only copy.
+   - From now on, run locally on **PostgreSQL 18** with the pgvector version Amazon RDS ships for PostgreSQL 18 (0.8.2 today), C.UTF-8 collation, and pgcrypto, pg_trgm and btree_gist (D31, D33). Thulasi's development image and CI use the same versions.
 5. Run SeaweedFS (file storage) locally.
 6. Send Sam your first questions on the P0 tagging (Step 1).
 
@@ -50,7 +49,7 @@ Read `00_Team_Workflow_and_Claude_Code_Setup.md` for the repo layout, ownership 
 ### Step 1 — Schema review and P0 lock (with Sam), before the 30 October lock
 
 - Tag every one of the 218 tables P0, P0 stretch, P1 or P2 in the data dictionary, following `docs/context/P0_SCHEMA_SCOPE.md`.
-- Get a yes/no and the missing columns for each of the eight "P0 items to confirm":
+- Add the missing columns for each of the eight "P0 items to confirm" (all approved, D38):
   - claim details for corrected claims;
   - employer of patient and subscriber;
   - MRN numbering per practice;
@@ -59,11 +58,12 @@ Read `00_Team_Workflow_and_Claude_Code_Setup.md` for the repo layout, ownership 
   - visit status history;
   - staff messages in the inbox;
   - occupation, industry and tribal affiliation.
-- Decide how a diagnosis is "removed" before the note is signed, given that clinical tables allow no DELETE. One option: status entered-in-error with the reason "removed before signing". Agree it with Vimal, who owns the contract.
-- Review the proposal's "deliberate simplifications": FHIR fields that can repeat but are stored once.
-- Decide PostgreSQL 17 vs 18. On 18, UUID defaults move to `uuidv7()`.
-- Write a short design note on separate `clinical` and `admin` schemas with their own database roles (pending Sena).
-- Load-test the visit, results and claims write paths with synthetic data, and record the timings. The README warns that the many clinic-carrying links add insert cost.
+- Also add the standard U.S. demographic fields, all optional for the patient (D39), and MRNs as one counter per practice, never reused, practice prefix plus number (D41). Times are stored in UTC with an IANA time zone per facility; money is exact decimals in USD (D40).
+- Diagnosis removal is decided (D24): entered-in-error with a reason and a Provenance record; excluded from the chart, problem list, decision support, AI summaries, claims and patient-facing views; the database refuses a charge or claim line that points at it.
+- The proposal's "deliberate simplifications" (FHIR fields that can repeat but are stored once) are approved as listed (D24).
+- ~~Decide PostgreSQL 17 vs 18.~~ Decided: PostgreSQL 18, latest 18.x minor (D24, D28).
+- ~~Write a design note on separate schemas (pending Sena).~~ Decided (D23): three schemas, `clinical`, `admin` and `audit`, with one role per service (`shri_app`, `shri_fhir_reader`, `shri_integration`, `shri_reporting`, `shri_migrator`). You build the split during adoption (Step 2).
+- **Load test (D35)** on the adopted three-schema version: a Synthea-based loader with 3 clinics × 2,000 patients, 20,000 visits, 200,000 observations and 20,000 claims. Record the median and p95 for create visit, file result and create claim. The README warns that the many clinic-carrying links add insert cost.
 - Lock the P0 tables. After the lock they change only through new migrations.
 
 ### Step 2 — Adopt the schema into `backend/app/db/`
@@ -73,8 +73,12 @@ Read `00_Team_Workflow_and_Claude_Code_Setup.md` for the repo layout, ownership 
   - the generated admin CRUD endpoints (endpoints follow `contracts/openapi/`);
   - the proposal's own login and token-claim reading;
   - its error mapping (Thulasi's error format is used).
-- **Align with Thulasi:** `tenant_db` must set exactly the database settings your row-level security policies read. The clinic comes from the server-side session, not from token claims. The database roles are a migration owner, plus an application role without RLS bypass.
-- Regenerate the rules and the docs. Run migrations, `alembic check` and the tests in CI.
+- **Split into three schemas** (`clinical`, `admin`, `audit`) and create the five per-service roles with minimum grants (D23); RLS stays forced on every clinic table.
+- **Align with Thulasi:** `tenant_db` sets exactly `app.current_tenant_id`, `app.current_user_id` and `app.correlation_id`, the settings your row-level security policies read. The clinic comes from the server-side session, not from token claims. No role bypasses RLS.
+- **Keep the schema's ID generation** (UUIDv4, D29), make every computed column STORED with the schema test that enforces it (D34), and set C.UTF-8 collation (D33).
+- **Keyword search** uses the built-in `content_tsv` column and its GIN index (D32); no extra search extension.
+- **After the split, rerun everything (D36):** migrations, `alembic check`, the full test suite, the trigger and role checks, and the `content_tsv` GIN index build. Put the results and `backend/app/db/docs/pg18-verification.md` in the same PR.
+- Regenerate the rules and the docs. Run migrations, `alembic check` and the tests in CI, on the same PostgreSQL 18 image and pgvector version as RDS (D31).
 - Publish the data dictionary in the repo so everyone's Claude reads the same tables.
 
 **Done when:** CI runs the full schema with every test green, and nothing from the proposal's own API or login remains.
@@ -95,7 +99,8 @@ await fhir_store.history(db, ResourceType, id) -> list[Version]
 
 - Import Synthea's synthetic patients into the FHIR-shaped tables. This also proves the serializer round trip.
 - Seed the reference data: roles, code systems, a sample fee schedule, payers.
-- Code systems: ICD-10-CM, LOINC, RxNorm, CVX; SNOMED CT through the UMLS licence. CPT needs an AMA licence (still open, ADR-18), so use clearly fake codes until it's settled.
+- Code systems: ICD-10-CM, LOINC, RxNorm, CVX; SNOMED CT through the UMLS licence (Open Decisions Q8). CPT needs an AMA licence (Q7, before the pilot), so use clearly fake codes until it's settled; the code-table design is part of the schema lock regardless.
+- The Synthea loader from Step 1 (D35) doubles as the dev and test data set.
 
 ### Step 5 — FHIR API for outside systems (read-only)
 
@@ -118,10 +123,11 @@ await fhir_store.history(db, ResourceType, id) -> list[Version]
 - JPEG and PNG for insurance cards (M13). HEIC only if you add conversion.
 - Retention rules per document type; clinical records are never deleted.
 
-### Step 7 — Backups and restore drill
+### Step 7 — Backups and restore drills (Amazon RDS, ADR-0012)
 
-- Encrypted backups of the one database (pgBackRest, key from Thulasi) and of file storage, copied to a second U.S. region.
-- Restore to a clean server, time it, and run the audit-chain check (`shri_audit_verify`) on the restored copy.
+- The database runs on Amazon RDS for PostgreSQL 18 (Thulasi provisions it with Terraform): Multi-AZ, encrypted at rest, automated backups with point-in-time recovery, snapshot copies to a second U.S. region. ~~Backups with pgBackRest.~~
+- You own the parameter group and extensions (only what RDS supports; the RDS pgvector version, D31) and the file-storage backups, also copied to a second U.S. region.
+- **Every quarter:** restore to a new instance, time it, and run the audit-chain check (`shri_audit_verify`) on the restored copy.
 
 ### Step 8 — Practice setup APIs and admin screens
 
@@ -165,16 +171,16 @@ Facilities, locations, providers, appointment types, schedules, fee schedules, p
 | Data-access helpers and `backend/app/db/CLAUDE.md` | Vimal, Thulasi | Patient, encounter, history, medication and order APIs |
 | Terminology and compendium tables | Vimal, Thulasi | Code search, lab ordering |
 | File service | Everyone | Card images, audio, documents, PDFs |
-| The answer on diagnosis removal | Vimal | Encounter contracts |
+| ~~The answer on diagnosis removal~~ Decided (D24) | Vimal | Encounter contracts |
 
 | You need | From |
 |---|---|
-| Encryption data keys and backup key; machine tokens for `/fhir`; `require()`, `tenant_db` | Thulasi |
+| Encryption data keys; the RDS instance and its KMS key; the PostgreSQL 18 development image; machine tokens for `/fhir`; `require()`, `tenant_db` | Thulasi |
 | `enqueue()` for partner messages (claims, fax) | Thulasi |
 | Contracts for your endpoints; you co-own the practice-setup and other module files | Vimal |
 | Design review of your screens | Minalini |
 | Answers on the P0 items to confirm | Sam |
-| Final call on separate clinical/admin schemas | Sena |
+| ~~Final call on separate clinical/admin schemas~~ Decided (D23) | — |
 
 ## 5. Claude Code
 
