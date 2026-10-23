@@ -88,7 +88,39 @@ tags:
   - name: dashboards
     description: Operations dashboard.
     x-owner: minalini
-paths: {}
+paths:
+  /patients/search:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1search'
+  /patients:
+    $ref: 'modules/patients.yaml#/paths/~1patients'
+  /patients/{patientId}:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}'
+  /patients/{patientId}/identifiers:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1identifiers'
+  /patients/{patientId}/related-persons:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1related-persons'
+  /patients/{patientId}/related-persons/{relatedPersonId}:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1related-persons~1{relatedPersonId}'
+  /patients/{patientId}/coverages:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1coverages'
+  /patients/{patientId}/coverages/{coverageId}:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1coverages~1{coverageId}'
+  /patients/{patientId}/coverages/{coverageId}/card-images:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1coverages~1{coverageId}~1card-images'
+  /patients/{patientId}/consents:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1consents'
+  /patients/{patientId}/preferred-pharmacy:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1preferred-pharmacy'
+  /patients/{patientId}/restrict:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1restrict'
+  /patients/{patientId}/unrestrict:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1unrestrict'
+  /duplicates:
+    $ref: 'modules/patients.yaml#/paths/~1duplicates'
+  /duplicates/{duplicateId}/merge:
+    $ref: 'modules/patients.yaml#/paths/~1duplicates~1{duplicateId}~1merge'
+  /patient-merges/{mergeId}/undo:
+    $ref: 'modules/patients.yaml#/paths/~1patient-merges~1{mergeId}~1undo'
 components:
   schemas:
     Address:

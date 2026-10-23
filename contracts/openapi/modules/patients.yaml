@@ -1,16 +1,3333 @@
 # Shri Health API — module `patients`
 # x-owner: vimal  (implements these operations and approves their contract; Vimal approves standards conformance)
-# Scope: Patients, identifiers, related persons, coverage, consents, duplicates and merges (`backend/app/modules/patients/`)
-#
-# Stage 3 leaves this file empty on purpose: no endpoints yet.
-# Stage 4 adds each path item under `paths:` and references it from ../shri-health.yaml, for example:
-#
-#   # in shri-health.yaml
-#   paths:
-#     /patients/search:
-#       $ref: modules/patients.yaml#/paths/~1patients~1search
-#
-# Module-specific schemas go under `components.schemas` here; shared ones stay in ../components/.
-paths: {}
+# Scope: Patients, identifiers, related persons, coverage, card images, consents, preferred pharmacy, restricted charts, duplicates and merges (`backend/app/modules/patients/`)
+# Stage 4 batch 1. Shapes follow ENDPOINT_INVENTORY rows #28-49 (the timeline, #46, is batch B4).
+# Fields marked "Pending schema lock" depend on tables still under review or on Anand's adoption changes
+# (three schemas, the eight P0 items, the D39 demographic fields); they may change before 30 October.
+# No SSN anywhere (D43).
+paths:
+  /patients/search:
+    post:
+      operationId: searchPatients
+      summary: Search patients
+      description: 'Finds patients by name, date of birth, phone or identifier (inventory #28). Criteria go in the body, never
+        in the URL (D13, ADR-0005). Phone is an exact match on the full number. Restricted patients appear with summary fields
+        only and `restricted: true`. At most 50 per page.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:search
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientSearchRequest'
+            examples:
+              name-and-birth-date:
+                summary: Family name and date of birth
+                value:
+                  criteria:
+                    family: Kuhlman72
+                    birthDate: '1984-07-19'
+                  limit: 25
+              phone:
+                summary: Exact phone number
+                value:
+                  criteria:
+                    phone: '+16175550123'
+      responses:
+        '200':
+          description: One page of matching patients.
+          headers:
+            X-Request-ID: &id001
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control: &id002
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit: &id003
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy: &id004
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientSummaryList'
+              examples:
+                one-match:
+                  summary: One match
+                  value:
+                    items:
+                    - id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                        - Ramona980
+                        family: Kuhlman72
+                      birthDate: '1984-07-19'
+                      gender: female
+                      mrn: TEST-000123
+                      phoneLast4: '0123'
+                      restricted: false
+                      active: true
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `invalid-cursor` (the cursor is expired
+            or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:search`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (fewer
+            criteria than the minimum: one exact identifier or at least two criteria).'
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients:
+    post:
+      operationId: registerPatient
+      summary: Register a patient
+      description: 'Registers a patient (inventory #29). The server assigns the MRN (D41). A duplicate check runs first: similar
+        name with the same date of birth or phone gives `409 possible-duplicate` with candidate IDs only; resend with `duplicateCheck:
+        override` and a reason to proceed. Patient, names, contact points and identifiers commit in one transaction with the
+        audit event (ADR-0011).'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-storage: clinical
+      x-events:
+      - patient.created
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientCreate'
+            examples:
+              from-license-scan:
+                summary: Registration after a driver's license scan
+                value:
+                  name:
+                    given:
+                    - Ramona980
+                    family: Kuhlman72
+                  birthDate: '1984-07-19'
+                  gender: female
+                  birthSex: F
+                  preferredLanguage: en
+                  phones:
+                  - number: '+16175550123'
+                    use: mobile
+                    textMessages: true
+                  emails:
+                  - address: ramona980.kuhlman72@example.com
+                    use: home
+                  address:
+                    lines:
+                    - 100 Test Lane
+                    city: Springfield
+                    state: IL
+                    postalCode: '62701'
+                    country: US
+                  identifiers:
+                  - type: DL
+                    system: urn:oid:2.16.840.1.113883.4.3.17
+                    value: TEST-DL-4471
+                    assigner: IL
+      responses:
+        '201':
+          description: Created. The new patient.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+              examples:
+                registered:
+                  summary: Registered patient
+                  value: &id005
+                    id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    mrn: TEST-000123
+                    name:
+                      given:
+                      - Ramona980
+                      family: Kuhlman72
+                    birthDate: '1984-07-19'
+                    gender: female
+                    birthSex: F
+                    race:
+                      ombCategories:
+                      - 2106-3
+                    ethnicity:
+                      ombCategories:
+                      - 2186-5
+                    preferredLanguage: en
+                    phones:
+                    - number: '+16175550123'
+                      use: mobile
+                      textMessages: true
+                    emails:
+                    - address: ramona980.kuhlman72@example.com
+                      use: home
+                    address:
+                      lines:
+                      - 100 Test Lane
+                      city: Springfield
+                      state: IL
+                      postalCode: '62701'
+                      country: US
+                    identifiers:
+                    - id: 8f9a0b1c-2d3e-4f4a-8b5c-6d7e8f9a0b1c
+                      type: MR
+                      value: TEST-000123
+                      use: official
+                      createdAt: '2026-11-03T14:30:00Z'
+                    restricted: false
+                    active: true
+                    createdAt: '2026-11-03T14:30:00Z'
+                    updatedAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:create`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `possible-duplicate`
+            (matching patients exist).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (for example
+            a birth date in the future, an MRN sent as an identifier, or `override` without a reason); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}:
+    parameters: &id006
+    - &id011
+      name: patientId
+      in: path
+      required: true
+      description: Patient ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getPatient
+      summary: Get a patient
+      description: 'Returns demographics and identifiers (inventory #30). A restricted chart gives `403 break-glass-required`
+        unless the user holds a break-glass grant or is on the patient''s care team (D37). A merged record is returned with
+        `active: false` and `mergedIntoId`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The patient.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+              examples:
+                patient:
+                  summary: A patient
+                  value: *id005
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updatePatient
+      summary: Update a patient
+      description: 'Edits demographics with JSON Merge Patch (inventory #31). Needs the current `ETag` in `If-Match`. A merged
+        patient gives `409 patient-merged`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: patientId
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-events:
+      - patient.updated
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/PatientPatch'
+            examples:
+              new-phone:
+                summary: Replace the phone numbers
+                value:
+                  phones:
+                  - number: '+16175550188'
+                    use: mobile
+      responses:
+        '200':
+          description: The patient.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+              examples:
+                updated:
+                  summary: Updated patient
+                  value: *id005
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:update`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `patient-merged` (the patient was merged into another record).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a rule
+            rejects the request).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/identifiers:
+    parameters: *id006
+    get:
+      operationId: listPatientIdentifiers
+      summary: List a patient's identifiers
+      description: 'Lists the MRN, driver''s license and other identifiers, including `old` ones (inventory #32).'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page of identifiers.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientIdentifierList'
+              examples:
+                identifiers:
+                  summary: MRN and driver's license
+                  value:
+                    items:
+                    - id: 8f9a0b1c-2d3e-4f4a-8b5c-6d7e8f9a0b1c
+                      type: MR
+                      value: TEST-000123
+                      use: official
+                      createdAt: '2026-11-03T14:30:00Z'
+                    - id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+                      type: DL
+                      system: urn:oid:2.16.840.1.113883.4.3.17
+                      value: TEST-DL-4471
+                      assigner: IL
+                      use: official
+                      createdAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such identifier in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: addPatientIdentifier
+      summary: Add an identifier
+      description: 'Adds a driver''s license number or another system''s patient ID (inventory #33). The MRN is server-generated
+        and cannot be added. Uses the patient''s permission: identifiers are part of the patient record (SECURITY_MODEL §4.1).'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:update
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-events:
+      - patient.updated
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientIdentifierCreate'
+            examples:
+              license:
+                summary: Driver's license
+                value:
+                  type: DL
+                  system: urn:oid:2.16.840.1.113883.4.3.17
+                  value: TEST-DL-4471
+                  assigner: IL
+      responses:
+        '201':
+          description: Created. The new identifier.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientIdentifier'
+              examples:
+                added:
+                  summary: Added identifier
+                  value:
+                    id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+                    type: DL
+                    system: urn:oid:2.16.840.1.113883.4.3.17
+                    value: TEST-DL-4471
+                    assigner: IL
+                    use: official
+                    createdAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:update`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such identifier in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged`
+            (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same
+            value is already a current identifier of another patient in this clinic); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/related-persons:
+    parameters: *id006
+    get:
+      operationId: listRelatedPersons
+      summary: List related persons
+      description: 'Lists emergency contacts, guarantors, guardians and subscribers (inventory #34).'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page of related persons.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelatedPersonList'
+              examples:
+                contacts:
+                  summary: An emergency contact
+                  value:
+                    items:
+                    - &id010
+                      id: 6d7e8f9a-0b1c-4d2e-8f3a-4b5c6d7e8f9a
+                      patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name: &id007
+                        given:
+                        - Darius71
+                        family: Kuhlman72
+                      relationships: &id008
+                      - system: http://terminology.hl7.org/CodeSystem/v2-0131
+                        code: C
+                        display: Emergency Contact
+                      - system: http://terminology.hl7.org/CodeSystem/v3-RoleCode
+                        code: SPS
+                        display: spouse
+                      phones: &id009
+                      - number: '+16175550145'
+                        use: mobile
+                      active: true
+                      createdAt: '2026-11-03T14:30:00Z'
+                      updatedAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such related person in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: addRelatedPerson
+      summary: Add a related person
+      description: 'Adds an emergency contact, guarantor, guardian or insurance subscriber (inventory #35).'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:update
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelatedPersonCreate'
+            examples:
+              emergency-contact:
+                summary: Emergency contact
+                value:
+                  name: *id007
+                  relationships: *id008
+                  phones: *id009
+      responses:
+        '201':
+          description: Created. The new related person.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelatedPerson'
+              examples:
+                added:
+                  summary: Added
+                  value: *id010
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:update`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such related person in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged`
+            (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/related-persons/{relatedPersonId}:
+    parameters:
+    - *id011
+    - name: relatedPersonId
+      in: path
+      required: true
+      description: Related person ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    patch:
+      operationId: updateRelatedPerson
+      summary: Update a related person
+      description: 'Edits a related person with JSON Merge Patch (inventory #36). Set `active: false` when the relationship
+        ends.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: patientId
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/RelatedPersonPatch'
+            examples:
+              new-phone:
+                summary: New phone
+                value:
+                  phones:
+                  - number: '+16175550146'
+                    use: home
+      responses:
+        '200':
+          description: The related person.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelatedPerson'
+              examples:
+                updated:
+                  summary: Updated
+                  value: *id010
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:update`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such related person in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `patient-merged` (the patient was merged into another record).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/coverages:
+    parameters: *id006
+    get:
+      operationId: listCoverages
+      summary: List coverages
+      description: 'Lists the patient''s insurance in priority order (inventory #37).'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: coverages:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page of coverages.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoverageList'
+              examples:
+                primary:
+                  summary: Primary coverage
+                  value:
+                    items:
+                    - &id013
+                      id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                      patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      order: 1
+                      payerId: 4b5c6d7e-8f9a-4b0c-8d1e-2f3a4b5c6d7e
+                      payerName: Test Health Plan
+                      memberId: TEST-M0012345
+                      groupNumber: TEST-G778
+                      planName: Test PPO
+                      relationshipToSubscriber: self
+                      startDate: '2026-01-01'
+                      status: active
+                      cardImages: &id012
+                      - side: front
+                        fileId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                        addedAt: '2026-11-03T14:30:00Z'
+                      createdAt: '2026-11-03T14:30:00Z'
+                      updatedAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `coverages:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such coverage in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: addCoverage
+      summary: Add a coverage
+      description: 'Adds an insurance coverage (inventory #38). `order` must be free among the patient''s active coverages.
+        Eligibility is checked at booking, in the pre-visit batch and at check-in (D15); `POST /eligibility-checks` checks
+        it now.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: coverages:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoverageCreate'
+            examples:
+              primary:
+                summary: Primary insurance, patient is the subscriber
+                value:
+                  order: 1
+                  payerId: 4b5c6d7e-8f9a-4b0c-8d1e-2f3a4b5c6d7e
+                  memberId: TEST-M0012345
+                  groupNumber: TEST-G778
+                  planName: Test PPO
+                  relationshipToSubscriber: self
+                  startDate: '2026-01-01'
+      responses:
+        '201':
+          description: Created. The new coverage.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coverage'
+              examples:
+                added:
+                  summary: Added coverage
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    order: 1
+                    payerId: 4b5c6d7e-8f9a-4b0c-8d1e-2f3a4b5c6d7e
+                    payerName: Test Health Plan
+                    memberId: TEST-M0012345
+                    groupNumber: TEST-G778
+                    planName: Test PPO
+                    relationshipToSubscriber: self
+                    startDate: '2026-01-01'
+                    status: active
+                    cardImages: []
+                    createdAt: '2026-11-03T14:30:00Z'
+                    updatedAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `coverages:create`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such coverage in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged`
+            (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the `order`
+            is taken by another active coverage, the payer is inactive, or `subscriberRelatedPersonId` is sent with `self`);
+            `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/coverages/{coverageId}:
+    parameters:
+    - *id011
+    - name: coverageId
+      in: path
+      required: true
+      description: Coverage ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    patch:
+      operationId: updateCoverage
+      summary: Update a coverage
+      description: 'Edits a coverage with JSON Merge Patch (inventory #39). Set `endDate` to end it.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: coverages:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: patientId
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/CoveragePatch'
+            examples:
+              end:
+                summary: End the coverage
+                value:
+                  endDate: '2026-12-31'
+      responses:
+        '200':
+          description: The coverage.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coverage'
+              examples:
+                updated:
+                  summary: Updated
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    order: 1
+                    payerId: 4b5c6d7e-8f9a-4b0c-8d1e-2f3a4b5c6d7e
+                    payerName: Test Health Plan
+                    memberId: TEST-M0012345
+                    groupNumber: TEST-G778
+                    planName: Test PPO
+                    relationshipToSubscriber: self
+                    startDate: '2026-01-01'
+                    status: active
+                    cardImages: *id012
+                    createdAt: '2026-11-03T14:30:00Z'
+                    updatedAt: '2026-11-03T14:30:00Z'
+                    endDate: '2026-12-31'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `coverages:update`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such coverage in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `patient-merged` (the patient was merged into another record).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a rule
+            rejects the request).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/coverages/{coverageId}/card-images:
+    parameters:
+    - *id011
+    - name: coverageId
+      in: path
+      required: true
+      description: Coverage ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: attachCoverageCardImage
+      summary: Attach an insurance card photo
+      description: 'Attaches a card photo already uploaded through the file service (inventory #40; API_STANDARDS §15). The
+        file must be `clean`, purpose `insurance-card`, JPEG or PNG, and from this clinic; otherwise `422 file-not-ready`.
+        Replaces any earlier photo of the same side. Returns the updated coverage.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: coverages:update
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: files
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardImageAttach'
+            examples:
+              front:
+                summary: Front of the card
+                value:
+                  fileId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                  side: front
+      responses:
+        '200':
+          description: The coverage.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coverage'
+              examples:
+                attached:
+                  summary: Coverage with the photo
+                  value: *id013
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `coverages:update`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such coverage in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged`
+            (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `file-not-ready` (the file is not
+            scanned clean, has the wrong purpose, or belongs to another clinic); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/consents:
+    parameters: *id006
+    get:
+      operationId: listConsents
+      summary: List consents
+      description: 'Lists consents and acknowledgements, newest first (inventory #41).'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: consents:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: kind
+        in: query
+        required: false
+        description: Only consents of this kind.
+        schema:
+          type: string
+          enum:
+          - treatment
+          - privacy-notice
+          - ambient-recording
+          - telehealth
+          - research
+          - information-sharing
+          - financial
+      responses:
+        '200':
+          description: One page of consents.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentList'
+              examples:
+                consents:
+                  summary: Privacy notice acknowledged
+                  value:
+                    items:
+                    - &id014
+                      id: 7e8f9a0b-1c2d-4e3f-9a4b-5c6d7e8f9a0b
+                      patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      kind: privacy-notice
+                      decision: permit
+                      signatureMethod: electronic
+                      signedAt: '2026-11-03T14:30:00Z'
+                      policyVersion: 2026-10
+                      status: active
+                      createdAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `consents:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such consent in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: recordConsent
+      summary: Record a consent
+      description: 'Records a consent or acknowledgement with its signature method (inventory #42; FRS FR-PAT-01). Insert-only:
+        a new consent of the same kind replaces the earlier one, which becomes `inactive`. A signed form, if any, is uploaded
+        through the file service first.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: consents:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentCreate'
+            examples:
+              privacy-notice:
+                summary: Privacy notice acknowledged at check-in
+                value:
+                  kind: privacy-notice
+                  decision: permit
+                  signatureMethod: electronic
+                  signedAt: '2026-11-03T14:30:00Z'
+                  policyVersion: 2026-10
+      responses:
+        '201':
+          description: Created. The new consent.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consent'
+              examples:
+                recorded:
+                  summary: Recorded
+                  value: *id014
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `consents:create`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such consent in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged`
+            (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `file-not-ready` (the file is not
+            scanned clean, has the wrong purpose, or belongs to another clinic); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/preferred-pharmacy:
+    parameters: *id006
+    put:
+      operationId: setPreferredPharmacy
+      summary: Set the preferred pharmacy
+      description: 'Sets the patient''s preferred pharmacy from the pharmacy directory (inventory #43). `If-Match` carries
+        the patient''s current `ETag`, because the preferred pharmacy is part of the patient record; the response carries
+        the patient''s new `ETag`. Setting it must bump the patient version. **Pending schema lock.**'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: patientId
+      x-concurrency: if-match-required
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferredPharmacySet'
+            examples:
+              set:
+                summary: Choose a pharmacy
+                value:
+                  pharmacyId: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
+      responses:
+        '200':
+          description: The preferred pharmacy.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreferredPharmacy'
+              examples:
+                set:
+                  summary: Preferred pharmacy
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    pharmacyId: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
+                    name: Test Pharmacy 12
+                    ncpdpId: '0000012'
+                    city: Springfield
+                    state: IL
+                    updatedAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:update`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such preferred pharmacy in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `patient-merged` (the patient was merged into another record).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the pharmacy
+            is inactive).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/restrict:
+    parameters: *id006
+    post:
+      operationId: restrictPatient
+      summary: Restrict a chart
+      description: 'Marks the chart restricted (sensitive or VIP) (inventory #44; SECURITY_MODEL §5.2). From then on, patient-scoped
+        endpoints need break-glass unless the user is on the care team; search shows summary fields only; booking and check-in
+        still work. Repeating it updates the category. Audited as `security`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:restrict
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestrictRequest'
+            examples:
+              vip:
+                summary: VIP chart
+                value:
+                  category: vip
+                  reason: Staff member of this practice.
+      responses:
+        '200':
+          description: The patient.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientRestriction'
+              examples:
+                restricted:
+                  summary: Restricted
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    restricted: true
+                    category: vip
+                    changedAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:restrict`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/unrestrict:
+    parameters: *id006
+    post:
+      operationId: unrestrictPatient
+      summary: Lift a chart restriction
+      description: 'Lifts the restriction (inventory #45). Repeating it changes nothing. Audited as `security`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:restrict
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnrestrictRequest'
+            examples:
+              lift:
+                summary: Lift it
+                value:
+                  reason: No longer on staff.
+      responses:
+        '200':
+          description: The patient.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientRestriction'
+              examples:
+                lifted:
+                  summary: Not restricted
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    restricted: false
+                    changedAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:restrict`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /duplicates:
+    get:
+      operationId: listDuplicates
+      summary: List possible duplicates
+      description: 'Lists pairs of patients that may be the same person, highest score first (inventory #47). IDs only: the
+        screen fetches the patient summaries the user may see.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: duplicates:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: status
+        in: query
+        required: false
+        description: Filter by review state. Default `open`.
+        schema:
+          type: string
+          enum:
+          - open
+          - merged
+          - not-duplicate
+          default: open
+      responses:
+        '200':
+          description: One page of duplicate candidates.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DuplicateCandidateList'
+              examples:
+                open:
+                  summary: One open pair
+                  value:
+                    items:
+                    - id: 9a0b1c2d-3e4f-4a5b-9c6d-7e8f9a0b1c2d
+                      patientAId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                      patientBId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      matchScore: 0.94
+                      matchedOn:
+                      - name
+                      - birth-date
+                      - phone
+                      status: open
+                      createdAt: '2026-11-03T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `duplicates:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /duplicates/{duplicateId}/merge:
+    parameters:
+    - name: duplicateId
+      in: path
+      required: true
+      description: Duplicate candidate ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: mergeDuplicate
+      summary: Merge a duplicate pair
+      description: 'Merges the other patient of the pair into `survivingPatientId` (inventory #48). Both patients are locked
+        during the merge; every moved record is listed so the merge can be undone; the merged patient gets `mergedIntoId`
+        and becomes inactive. All in one transaction.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: duplicates:merge
+      x-audit:
+        action: E
+        category: phi-write
+        patient: body:/survivingPatientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-events:
+      - patient.merged
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergeRequest'
+            examples:
+              merge:
+                summary: Keep the newer record
+                value:
+                  survivingPatientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  reason: Same name, date of birth and phone; registered twice.
+      responses:
+        '200':
+          description: The duplicate candidate.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientMerge'
+              examples:
+                merged:
+                  summary: Merged
+                  value:
+                    id: 0b1c2d3e-4f5a-4b6c-8d7e-8f9a0b1c2d3e
+                    duplicateId: 9a0b1c2d-3e4f-4a5b-9c6d-7e8f9a0b1c2d
+                    survivingPatientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    mergedPatientId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                    performedAt: '2026-11-03T14:30:00Z'
+                    performedByUserId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `duplicates:merge`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such duplicate candidate in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the candidate is not `open`); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`survivingPatientId`
+            is not one of the pair); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patient-merges/{mergeId}/undo:
+    parameters:
+    - name: mergeId
+      in: path
+      required: true
+      description: Merge ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: undoPatientMerge
+      summary: Undo a merge
+      description: 'Undoes a merge (inventory #49): moved records go back to the merged patient, which becomes active again.
+        Refused once either record has changed in a way that cannot be split back.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patient-merges:undo
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UndoMergeRequest'
+            examples:
+              undo:
+                summary: Undo
+                value:
+                  reason: 'Different people: twins with the same phone.'
+      responses:
+        '200':
+          description: The merge.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientMerge'
+              examples:
+                undone:
+                  summary: Undone
+                  value:
+                    id: 0b1c2d3e-4f5a-4b6c-8d7e-8f9a0b1c2d3e
+                    duplicateId: 9a0b1c2d-3e4f-4a5b-9c6d-7e8f9a0b1c2d
+                    survivingPatientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    mergedPatientId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                    performedAt: '2026-11-03T14:30:00Z'
+                    performedByUserId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                    undoneAt: '2026-11-04T09:00:00Z'
+                    undoneByUserId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patient-merges:undo`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such merge in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the merge was already undone, or the records cannot be split back).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
-  schemas: {}
+  schemas:
+    AdministrativeGender:
+      description: Administrative gender, FHIR `AdministrativeGender` codes (US Core Patient `gender`).
+      type: string
+      enum:
+      - male
+      - female
+      - other
+      - unknown
+    BirthSex:
+      description: 'Sex assigned at birth, US Core `birthsex` codes: `F`, `M`, `UNK`. The US Core version (Open Decisions
+        Q6) may replace this with the newer US Core `sex` element.'
+      type: string
+      enum:
+      - F
+      - M
+      - UNK
+    ContactUse:
+      description: FHIR `ContactPoint.use` codes.
+      type: string
+      enum:
+      - home
+      - work
+      - mobile
+      - temp
+      - old
+    Phone:
+      description: A phone number with its use. Stored as a FHIR ContactPoint (`system` phone, or sms when texts are allowed).
+      type: object
+      additionalProperties: false
+      required:
+      - number
+      properties:
+        number:
+          $ref: ../components/schemas/PhoneNumber.yaml
+          description: Phone number in E.164 form.
+          x-phi: identifier
+        use:
+          $ref: '#/components/schemas/ContactUse'
+          description: How the number is used.
+          x-phi: none
+        textMessages:
+          type: boolean
+          description: True when the patient accepts text messages on this number (ContactPoint system `sms`).
+          x-phi: none
+    Email:
+      description: An email address with its use (FHIR ContactPoint, system `email`).
+      type: object
+      additionalProperties: false
+      required:
+      - address
+      properties:
+        address:
+          $ref: ../components/schemas/EmailAddress.yaml
+          description: Email address.
+          x-phi: identifier
+        use:
+          $ref: '#/components/schemas/ContactUse'
+          description: How the address is used.
+          x-phi: none
+    CodedValue:
+      description: A code from a code system with optional text, as in FHIR CodeableConcept with one coding.
+      type: object
+      additionalProperties: false
+      properties:
+        system:
+          type: string
+          format: uri
+          maxLength: 300
+          description: Canonical URI of the code system.
+          x-phi: none
+        code:
+          type: string
+          maxLength: 64
+          description: The code.
+          x-phi: clinical
+        display:
+          type: string
+          maxLength: 500
+          description: Display text for the code.
+          x-phi: clinical
+        text:
+          type: string
+          maxLength: 1000
+          description: Free text, when no code fits.
+          x-phi: clinical
+    RaceEthnicity:
+      description: 'Race or ethnicity as US Core collects it: OMB categories plus optional detailed CDC codes and free text
+        (D39). Stored in `patient_race_ethnicity` and `ext_*_text`.'
+      type: object
+      additionalProperties: false
+      properties:
+        ombCategories:
+          type: array
+          maxItems: 7
+          items:
+            type: string
+            maxLength: 10
+            pattern: ^(\d{4}-\d|UNK|ASKU)$
+          description: 'OMB category codes (CDC Race & Ethnicity). Race: `1002-5`, `2028-9`, `2054-5`, `2076-8`, `2106-3`;
+            ethnicity: `2135-2`, `2186-5`; either: `UNK` unknown, `ASKU` asked but declined.'
+          x-phi: clinical
+        detailed:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 10
+            pattern: ^\d{4}-\d$
+          description: Detailed CDC Race & Ethnicity codes.
+          x-phi: clinical
+        text:
+          type: string
+          maxLength: 200
+          description: Free text as the patient stated it.
+          x-phi: clinical
+    Employer:
+      description: Employer of a patient or subscriber (approved P0 item, D38; workers' compensation claims need it). **Pending
+        schema lock.**
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Employer name.
+          x-phi: identifier
+        phone:
+          $ref: ../components/schemas/PhoneNumber.yaml
+          description: Employer phone.
+          x-phi: identifier
+        address:
+          $ref: ../components/schemas/Address.yaml
+          description: Employer address.
+          x-phi: identifier
+    PatientIdentifierType:
+      description: 'Identifier type, HL7 v2 table 0203: `MR` medical record number (server-generated only, D41), `DL` driver''s
+        license, `PI` patient internal identifier from another system (kept on migration, FRS FR-PAT-01).'
+      type: string
+      enum:
+      - MR
+      - DL
+      - PI
+    PatientIdentifier:
+      description: 'An identifier of the patient: MRN, driver''s license or another system''s ID.'
+      type: object
+      required:
+      - id
+      - type
+      - value
+      - createdAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Identifier record ID.
+          x-phi: internal-id
+        type:
+          $ref: '#/components/schemas/PatientIdentifierType'
+          description: Identifier type.
+          x-phi: none
+        system:
+          type: string
+          format: uri
+          maxLength: 300
+          description: Namespace of the value, e.g. a state's driver's license OID. The MRN system is per practice. **Pending
+            schema lock.**
+          x-phi: none
+        value:
+          type: string
+          maxLength: 200
+          description: The identifier value.
+          x-phi: identifier
+        assigner:
+          type: string
+          maxLength: 300
+          description: Who issued it, e.g. the issuing state for a driver's license.
+          x-phi: none
+        use:
+          type: string
+          enum:
+          - usual
+          - official
+          - temp
+          - secondary
+          - old
+          description: FHIR `Identifier.use`. `old` marks a value that is no longer current.
+          x-phi: none
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was recorded.
+          x-phi: none
+    PatientIdentifierCreate:
+      description: 'Body to add an identifier. `MR` cannot be added: the server generates the MRN (D41).'
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - value
+      properties:
+        type:
+          type: string
+          enum:
+          - DL
+          - PI
+          description: 'Identifier type: `DL` driver''s license or `PI` another system''s patient ID.'
+          x-phi: none
+        system:
+          type: string
+          format: uri
+          maxLength: 300
+          description: Namespace of the value.
+          x-phi: none
+        value:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The identifier value.
+          x-phi: identifier
+        assigner:
+          type: string
+          maxLength: 300
+          description: Who issued it.
+          x-phi: none
+    PatientIdentifierList:
+      description: One page of a patient's identifiers.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PatientIdentifier'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    Patient:
+      description: 'A patient: demographics, contact details and identifiers (FHIR-shaped `Patient`, US Core Patient).'
+      type: object
+      required:
+      - id
+      - mrn
+      - name
+      - restricted
+      - active
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Patient ID.
+          x-phi: internal-id
+        mrn:
+          type: string
+          maxLength: 40
+          description: 'Medical record number: server-generated, one counter per practice, never reused, practice prefix plus
+            number (D41). Read-only. The counter is not in the schema yet. **Pending schema lock.**'
+          x-phi: identifier
+        name: &id015
+          $ref: ../components/schemas/HumanName.yaml
+          description: Official name.
+          x-phi: identifier
+        birthDate: &id016
+          $ref: ../components/schemas/Date.yaml
+          description: Date of birth.
+          x-phi: identifier
+        gender: &id017
+          $ref: '#/components/schemas/AdministrativeGender'
+          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (the schema
+            column is NOT NULL). **Pending schema lock.**
+          x-phi: clinical
+        birthSex: &id018
+          $ref: '#/components/schemas/BirthSex'
+          description: Sex assigned at birth (D39).
+          x-phi: clinical
+        genderIdentity: &id019
+          $ref: '#/components/schemas/CodedValue'
+          description: Gender identity, US Core gender-identity value set (D39). No column yet. **Pending schema lock.**
+          x-phi: clinical
+        sexualOrientation: &id020
+          $ref: '#/components/schemas/CodedValue'
+          description: Sexual orientation, US Core sexual-orientation value set (D39). No column yet. **Pending schema lock.**
+          x-phi: clinical
+        race: &id021
+          $ref: '#/components/schemas/RaceEthnicity'
+          description: Race (D39).
+          x-phi: clinical
+        ethnicity: &id022
+          $ref: '#/components/schemas/RaceEthnicity'
+          description: Ethnicity (D39).
+          x-phi: clinical
+        preferredLanguage: &id023
+          type: string
+          maxLength: 35
+          pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
+          description: Preferred language as a BCP 47 tag, e.g. `en`, `es`, `zh-Hant` (D39).
+          x-phi: clinical
+        maritalStatus: &id024
+          type: string
+          enum:
+          - A
+          - D
+          - I
+          - L
+          - M
+          - P
+          - S
+          - T
+          - U
+          - W
+          description: Marital status, HL7 v3 MaritalStatus codes.
+          x-phi: clinical
+        occupation: &id025
+          $ref: '#/components/schemas/CodedValue'
+          description: Occupation (D39; approved P0 item). No column yet. **Pending schema lock.**
+          x-phi: clinical
+        industry: &id026
+          $ref: '#/components/schemas/CodedValue'
+          description: Industry (D39; approved P0 item). No column yet. **Pending schema lock.**
+          x-phi: clinical
+        tribalAffiliation: &id027
+          $ref: '#/components/schemas/CodedValue'
+          description: Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). No column yet. **Pending
+            schema lock.**
+          x-phi: clinical
+        phones: &id028
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/Phone'
+          description: Phone numbers.
+          x-phi: identifier
+        emails: &id029
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/Email'
+          description: Email addresses.
+          x-phi: identifier
+        address: &id030
+          $ref: ../components/schemas/Address.yaml
+          description: Home address.
+          x-phi: identifier
+        employer: &id031
+          $ref: '#/components/schemas/Employer'
+          description: Employer. **Pending schema lock.**
+          x-phi: identifier
+        identifiers:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/PatientIdentifier'
+          description: Current identifiers, including the MRN.
+          x-phi: identifier
+        restricted:
+          type: boolean
+          description: True when the chart is restricted (sensitive or VIP); opening it needs break-glass unless the user
+            is on the care team (D37).
+          x-phi: none
+        active:
+          type: boolean
+          description: False once the record was merged into another.
+          x-phi: none
+        mergedIntoId:
+          $ref: ../components/schemas/Id.yaml
+          description: 'Present when this record was merged: the surviving patient. Writes to a merged patient give `409 patient-merged`.'
+          x-phi: internal-id
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the patient was registered.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Last change.
+          x-phi: none
+    PatientCreate:
+      description: Body to register a patient. Only `name` and `birthDate` are required; every D39 demographic field is optional.
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - birthDate
+      properties:
+        name: *id015
+        birthDate: *id016
+        gender: *id017
+        birthSex: *id018
+        genderIdentity: *id019
+        sexualOrientation: *id020
+        race: *id021
+        ethnicity: *id022
+        preferredLanguage: *id023
+        maritalStatus: *id024
+        occupation: *id025
+        industry: *id026
+        tribalAffiliation: *id027
+        phones: *id028
+        emails: *id029
+        address: *id030
+        employer: *id031
+        identifiers:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/PatientIdentifierCreate'
+          description: Identifiers to record at registration, e.g. the driver's license number from the scan. Never the MRN.
+          x-phi: identifier
+        duplicateCheck:
+          type: string
+          enum:
+          - default
+          - override
+          default: default
+          description: '`default`: refuse with `409 possible-duplicate` when similar patients exist. `override`: register
+            anyway after review; needs `duplicateOverrideReason` (API_STANDARDS §9.3).'
+          x-phi: none
+        duplicateOverrideReason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 'Why the user registers despite possible duplicates. Required with `duplicateCheck: override`; recorded
+            in the audit trail.'
+          x-phi: none
+    PatientPatch:
+      description: JSON Merge Patch for demographics. Fields left out stay unchanged; `null` clears a field; arrays are replaced
+        whole. The MRN, identifiers, restriction and status are not patched.
+      type: object
+      additionalProperties: false
+      properties:
+        name: *id015
+        birthDate: *id016
+        gender:
+          oneOf:
+          - $ref: '#/components/schemas/AdministrativeGender'
+          - type: 'null'
+          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (the schema
+            column is NOT NULL). **Pending schema lock.** Send `null` to clear it.
+          x-phi: clinical
+        birthSex:
+          oneOf:
+          - $ref: '#/components/schemas/BirthSex'
+          - type: 'null'
+          description: Sex assigned at birth (D39). Send `null` to clear it.
+          x-phi: clinical
+        genderIdentity:
+          oneOf:
+          - $ref: '#/components/schemas/CodedValue'
+          - type: 'null'
+          description: Gender identity, US Core gender-identity value set (D39). No column yet. **Pending schema lock.** Send
+            `null` to clear it.
+          x-phi: clinical
+        sexualOrientation:
+          oneOf:
+          - $ref: '#/components/schemas/CodedValue'
+          - type: 'null'
+          description: Sexual orientation, US Core sexual-orientation value set (D39). No column yet. **Pending schema lock.**
+            Send `null` to clear it.
+          x-phi: clinical
+        race:
+          oneOf:
+          - $ref: '#/components/schemas/RaceEthnicity'
+          - type: 'null'
+          description: Race (D39). Send `null` to clear it.
+          x-phi: clinical
+        ethnicity:
+          oneOf:
+          - $ref: '#/components/schemas/RaceEthnicity'
+          - type: 'null'
+          description: Ethnicity (D39). Send `null` to clear it.
+          x-phi: clinical
+        preferredLanguage:
+          type:
+          - string
+          - 'null'
+          maxLength: 35
+          pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
+          description: Preferred language as a BCP 47 tag, e.g. `en`, `es`, `zh-Hant` (D39). Send `null` to clear it.
+          x-phi: clinical
+        maritalStatus:
+          type:
+          - string
+          - 'null'
+          enum:
+          - A
+          - D
+          - I
+          - L
+          - M
+          - P
+          - S
+          - T
+          - U
+          - W
+          - null
+          description: Marital status, HL7 v3 MaritalStatus codes. Send `null` to clear it.
+          x-phi: clinical
+        occupation:
+          oneOf:
+          - $ref: '#/components/schemas/CodedValue'
+          - type: 'null'
+          description: Occupation (D39; approved P0 item). No column yet. **Pending schema lock.** Send `null` to clear it.
+          x-phi: clinical
+        industry:
+          oneOf:
+          - $ref: '#/components/schemas/CodedValue'
+          - type: 'null'
+          description: Industry (D39; approved P0 item). No column yet. **Pending schema lock.** Send `null` to clear it.
+          x-phi: clinical
+        tribalAffiliation:
+          oneOf:
+          - $ref: '#/components/schemas/CodedValue'
+          - type: 'null'
+          description: Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). No column yet. **Pending
+            schema lock.** Send `null` to clear it.
+          x-phi: clinical
+        phones:
+          oneOf:
+          - type: array
+            maxItems: 5
+            items:
+              $ref: '#/components/schemas/Phone'
+          - type: 'null'
+          description: Phone numbers. Send `null` to clear it.
+          x-phi: identifier
+        emails:
+          oneOf:
+          - type: array
+            maxItems: 3
+            items:
+              $ref: '#/components/schemas/Email'
+          - type: 'null'
+          description: Email addresses. Send `null` to clear it.
+          x-phi: identifier
+        address:
+          oneOf:
+          - $ref: ../components/schemas/Address.yaml
+          - type: 'null'
+          description: Home address. Send `null` to clear it.
+          x-phi: identifier
+        employer:
+          oneOf:
+          - $ref: '#/components/schemas/Employer'
+          - type: 'null'
+          description: Employer. **Pending schema lock.** Send `null` to clear it.
+          x-phi: identifier
+    PatientSummary:
+      description: 'Patient search result: minimum necessary (SECURITY_MODEL §8 rule 4).'
+      type: object
+      required:
+      - id
+      - name
+      - mrn
+      - restricted
+      - active
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Patient ID.
+          x-phi: internal-id
+        name:
+          $ref: ../components/schemas/HumanName.yaml
+          description: Official name.
+          x-phi: identifier
+        birthDate:
+          $ref: ../components/schemas/Date.yaml
+          description: Date of birth.
+          x-phi: identifier
+        gender:
+          $ref: '#/components/schemas/AdministrativeGender'
+          description: Administrative gender.
+          x-phi: clinical
+        mrn:
+          type: string
+          maxLength: 40
+          description: Medical record number.
+          x-phi: identifier
+        phoneLast4:
+          type: string
+          pattern: ^\d{4}$
+          maxLength: 4
+          description: Last four digits of the first phone number.
+          x-phi: identifier
+        restricted:
+          type: boolean
+          description: 'True for a restricted chart: only these summary fields are shown, and opening the chart needs break-glass
+            (SECURITY_MODEL §5.2).'
+          x-phi: none
+        active:
+          type: boolean
+          description: False for a merged record.
+          x-phi: none
+    PatientSummaryList:
+      description: One page of patient search results (at most 50).
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PatientSummary'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PatientSearchRequest:
+      description: Patient search. Give either one exact identifier (`mrn`, `driversLicenseNumber`, `memberId` or the full
+        `phone`) or at least two criteria, for example `family` and `birthDate`; otherwise `422 business-rule-violation` (API_STANDARDS
+        §14.2).
+      type: object
+      additionalProperties: false
+      required:
+      - criteria
+      properties:
+        criteria:
+          description: Search criteria.
+          type: object
+          additionalProperties: false
+          properties:
+            family:
+              type: string
+              minLength: 2
+              maxLength: 100
+              description: Family name, at least 2 characters; matches names starting with it.
+              x-phi: identifier
+            given:
+              type: string
+              minLength: 1
+              maxLength: 100
+              description: Given name; matches names starting with it.
+              x-phi: identifier
+            birthDate:
+              $ref: ../components/schemas/Date.yaml
+              description: Exact date of birth.
+              x-phi: identifier
+            phone:
+              $ref: ../components/schemas/PhoneNumber.yaml
+              description: Full phone number, exact match on its digits (E.164). No partial-number search (D13, API_STANDARDS
+                §14.2).
+              x-phi: identifier
+            mrn:
+              type: string
+              minLength: 1
+              maxLength: 40
+              description: Exact MRN.
+              x-phi: identifier
+            driversLicenseNumber:
+              type: string
+              minLength: 1
+              maxLength: 200
+              description: Exact driver's license number.
+              x-phi: identifier
+            memberId:
+              type: string
+              minLength: 1
+              maxLength: 200
+              description: Exact insurance member ID.
+              x-phi: identifier
+            includeInactive:
+              type: boolean
+              default: false
+              description: Include merged records.
+              x-phi: none
+          x-phi: identifier
+        limit:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 50
+          default: 25
+          description: Page size, at most 50 for patient search.
+          x-phi: none
+        cursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor from the previous page.
+          x-phi: none
+    RelatedPerson:
+      description: 'Someone related to the patient: emergency contact, guarantor, guardian or insurance subscriber (FHIR-shaped
+        `RelatedPerson`).'
+      type: object
+      required:
+      - id
+      - patientId
+      - name
+      - relationships
+      - active
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Related person ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        name: &id032
+          $ref: ../components/schemas/HumanName.yaml
+          description: Name.
+          x-phi: identifier
+        relationships: &id033
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/CodedValue'
+          description: Relationships to the patient, e.g. v2-0131 `C` emergency contact or `N` next of kin, v3 RoleCode `MTH`
+            mother, `GUARD` guardian, `GUAR`-type guarantor.
+          x-phi: identifier
+        gender: &id034
+          $ref: '#/components/schemas/AdministrativeGender'
+          description: Administrative gender.
+          x-phi: clinical
+        birthDate: &id035
+          $ref: ../components/schemas/Date.yaml
+          description: Date of birth (needed for an insurance subscriber).
+          x-phi: identifier
+        phones: &id036
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/Phone'
+          description: Phone numbers.
+          x-phi: identifier
+        emails: &id037
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/Email'
+          description: Email addresses.
+          x-phi: identifier
+        address: &id038
+          $ref: ../components/schemas/Address.yaml
+          description: Address.
+          x-phi: identifier
+        employer: &id039
+          $ref: '#/components/schemas/Employer'
+          description: Employer of a subscriber (approved P0 item, D38). **Pending schema lock.**
+          x-phi: identifier
+        active:
+          type: boolean
+          description: False once the relationship has ended.
+          x-phi: none
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was recorded.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Last change.
+          x-phi: none
+    RelatedPersonCreate:
+      description: Body to add a related person.
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - relationships
+      properties:
+        name: *id032
+        relationships: *id033
+        gender: *id034
+        birthDate: *id035
+        phones: *id036
+        emails: *id037
+        address: *id038
+        employer: *id039
+    RelatedPersonPatch:
+      description: JSON Merge Patch for a related person.
+      type: object
+      additionalProperties: false
+      properties:
+        name: *id032
+        relationships: *id033
+        gender:
+          oneOf:
+          - $ref: '#/components/schemas/AdministrativeGender'
+          - type: 'null'
+          description: Administrative gender. Send `null` to clear it.
+          x-phi: clinical
+        birthDate: *id035
+        phones:
+          oneOf:
+          - type: array
+            maxItems: 5
+            items:
+              $ref: '#/components/schemas/Phone'
+          - type: 'null'
+          description: Phone numbers. Send `null` to clear it.
+          x-phi: identifier
+        emails:
+          oneOf:
+          - type: array
+            maxItems: 3
+            items:
+              $ref: '#/components/schemas/Email'
+          - type: 'null'
+          description: Email addresses. Send `null` to clear it.
+          x-phi: identifier
+        address:
+          oneOf:
+          - $ref: ../components/schemas/Address.yaml
+          - type: 'null'
+          description: Address. Send `null` to clear it.
+          x-phi: identifier
+        employer:
+          oneOf:
+          - $ref: '#/components/schemas/Employer'
+          - type: 'null'
+          description: Employer of a subscriber (approved P0 item, D38). **Pending schema lock.** Send `null` to clear it.
+          x-phi: identifier
+        active:
+          type: boolean
+          description: Set to false when the relationship ends.
+          x-phi: none
+    RelatedPersonList:
+      description: One page of related persons.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/RelatedPerson'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    CoverageCardImage:
+      description: A photo of one side of the insurance card, stored by the file service.
+      type: object
+      required:
+      - side
+      - fileId
+      - addedAt
+      properties:
+        side:
+          type: string
+          enum:
+          - front
+          - back
+          description: Card side.
+          x-phi: none
+        fileId:
+          $ref: ../components/schemas/Id.yaml
+          description: File ID; download with `GET /files/{fileId}/download-url` (needs `coverages:read`).
+          x-phi: internal-id
+        addedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was attached.
+          x-phi: none
+    Coverage:
+      description: An insurance coverage of the patient (FHIR-shaped `Coverage`, US Core Coverage), in priority order.
+      type: object
+      required:
+      - id
+      - patientId
+      - order
+      - payerId
+      - memberId
+      - relationshipToSubscriber
+      - status
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Coverage ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient (beneficiary).
+          x-phi: internal-id
+        order: &id040
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 9
+          description: 'Priority: 1 primary, 2 secondary, and so on. Unique among the patient''s active coverages.'
+          x-phi: financial
+        payerId: &id041
+          $ref: ../components/schemas/Id.yaml
+          description: Payer from the payer directory (`GET /payers`).
+          x-phi: financial
+        memberId: &id042
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The patient's member ID on the card (identifier type MB).
+          x-phi: identifier
+        subscriberId: &id043
+          type: string
+          maxLength: 80
+          description: The subscriber's ID, when the policy belongs to someone else and the card shows a different ID (FHIR
+            `subscriberId`).
+          x-phi: identifier
+        groupNumber: &id044
+          type: string
+          maxLength: 80
+          description: Group number (stored as a `coverage_class` row of type `group`).
+          x-phi: financial
+        groupName: &id045
+          type: string
+          maxLength: 200
+          description: Group name.
+          x-phi: financial
+        planName: &id046
+          type: string
+          maxLength: 200
+          description: Plan name (a `coverage_class` row of type `plan`).
+          x-phi: financial
+        relationshipToSubscriber: &id047
+          type: string
+          enum:
+          - self
+          - spouse
+          - child
+          - parent
+          - common
+          - other
+          - injured
+          description: The patient's relationship to the subscriber (FHIR subscriber-relationship codes).
+          x-phi: financial
+        subscriberRelatedPersonId: &id048
+          $ref: ../components/schemas/Id.yaml
+          description: 'The subscriber, when not the patient: a related person of this patient. Not allowed with `self`.'
+          x-phi: internal-id
+        startDate: &id049
+          $ref: ../components/schemas/Date.yaml
+          description: Coverage start date.
+          x-phi: financial
+        endDate: &id050
+          $ref: ../components/schemas/Date.yaml
+          description: Coverage end date.
+          x-phi: financial
+        payerName:
+          type: string
+          maxLength: 200
+          description: Payer name from the directory, for display.
+          x-phi: none
+        status:
+          type: string
+          enum:
+          - active
+          - cancelled
+          - draft
+          - entered-in-error
+          description: FHIR Coverage status. New coverages are `active`.
+          x-phi: none
+        cardImages:
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/CoverageCardImage'
+          description: Card photos, at most one per side.
+          x-phi: identifier
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was recorded.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Last change.
+          x-phi: none
+    CoverageCreate:
+      description: Body to add a coverage.
+      type: object
+      additionalProperties: false
+      required:
+      - order
+      - payerId
+      - memberId
+      - relationshipToSubscriber
+      properties:
+        order: *id040
+        payerId: *id041
+        memberId: *id042
+        subscriberId: *id043
+        groupNumber: *id044
+        groupName: *id045
+        planName: *id046
+        relationshipToSubscriber: *id047
+        subscriberRelatedPersonId: *id048
+        startDate: *id049
+        endDate: *id050
+    CoveragePatch:
+      description: JSON Merge Patch for a coverage. To end a coverage, set `endDate`.
+      type: object
+      additionalProperties: false
+      properties:
+        order: *id040
+        payerId: *id041
+        memberId: *id042
+        subscriberId:
+          type:
+          - string
+          - 'null'
+          maxLength: 80
+          description: The subscriber's ID, when the policy belongs to someone else and the card shows a different ID (FHIR
+            `subscriberId`). Send `null` to clear it.
+          x-phi: identifier
+        groupNumber:
+          type:
+          - string
+          - 'null'
+          maxLength: 80
+          description: Group number (stored as a `coverage_class` row of type `group`). Send `null` to clear it.
+          x-phi: financial
+        groupName:
+          type:
+          - string
+          - 'null'
+          maxLength: 200
+          description: Group name. Send `null` to clear it.
+          x-phi: financial
+        planName:
+          type:
+          - string
+          - 'null'
+          maxLength: 200
+          description: Plan name (a `coverage_class` row of type `plan`). Send `null` to clear it.
+          x-phi: financial
+        relationshipToSubscriber: *id047
+        subscriberRelatedPersonId:
+          oneOf:
+          - $ref: ../components/schemas/Id.yaml
+          - type: 'null'
+          description: 'The subscriber, when not the patient: a related person of this patient. Not allowed with `self`. Send
+            `null` to clear it.'
+          x-phi: internal-id
+        startDate: *id049
+        endDate:
+          $ref: ../components/schemas/Date.yaml
+          description: Coverage end date. Set it to end the coverage.
+          x-phi: financial
+    CoverageList:
+      description: One page of coverages, by `order`.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 9
+          items:
+            $ref: '#/components/schemas/Coverage'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    CardImageAttach:
+      description: Body to attach a card photo already uploaded through the file service (purpose `insurance-card`, JPEG or
+        PNG). Replaces any earlier photo of the same side.
+      type: object
+      additionalProperties: false
+      required:
+      - fileId
+      - side
+      properties:
+        fileId:
+          $ref: ../components/schemas/Id.yaml
+          description: The uploaded file.
+          x-phi: internal-id
+        side:
+          type: string
+          enum:
+          - front
+          - back
+          description: Card side.
+          x-phi: none
+    Consent:
+      description: 'A consent or acknowledgement (FHIR-shaped `Consent`). Insert-only: changing a decision records a new consent
+        (DATA_OWNERSHIP §2.1).'
+      type: object
+      required:
+      - id
+      - patientId
+      - kind
+      - decision
+      - signatureMethod
+      - signedAt
+      - status
+      - createdAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Consent ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        kind: &id051
+          type: string
+          enum:
+          - treatment
+          - privacy-notice
+          - ambient-recording
+          - telehealth
+          - research
+          - information-sharing
+          - financial
+          description: What the consent is for. `ambient-recording` is the recording consent AI-01 needs.
+          x-phi: clinical
+        decision: &id052
+          type: string
+          enum:
+          - permit
+          - deny
+          default: permit
+          description: The patient's decision.
+          x-phi: clinical
+        signatureMethod: &id053
+          type: string
+          enum:
+          - verbal
+          - written
+          - electronic
+          description: How it was given.
+          x-phi: none
+        signedAt: &id054
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was given.
+          x-phi: identifier
+        policyVersion: &id055
+          type: string
+          maxLength: 40
+          description: Version of the form or notice the patient saw.
+          x-phi: none
+        grantorRelatedPersonId: &id056
+          $ref: ../components/schemas/Id.yaml
+          description: Who gave it for the patient, e.g. a guardian of a minor.
+          x-phi: internal-id
+        signedFormFileId: &id057
+          $ref: ../components/schemas/Id.yaml
+          description: Signed form or signature image, uploaded through the file service (purpose `document`).
+          x-phi: internal-id
+        status:
+          type: string
+          enum:
+          - active
+          - inactive
+          - entered-in-error
+          description: FHIR Consent status. A later consent of the same kind makes the earlier one `inactive`.
+          x-phi: none
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was recorded.
+          x-phi: none
+    ConsentCreate:
+      description: Body to record a consent.
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - decision
+      - signatureMethod
+      - signedAt
+      properties:
+        kind: *id051
+        decision: *id052
+        signatureMethod: *id053
+        signedAt: *id054
+        policyVersion: *id055
+        grantorRelatedPersonId: *id056
+        signedFormFileId: *id057
+    ConsentList:
+      description: One page of consents, newest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Consent'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PreferredPharmacySet:
+      description: Body to set the preferred pharmacy.
+      type: object
+      additionalProperties: false
+      required:
+      - pharmacyId
+      properties:
+        pharmacyId:
+          $ref: ../components/schemas/Id.yaml
+          description: Pharmacy from the pharmacy directory (`GET /pharmacies`).
+          x-phi: internal-id
+    PreferredPharmacy:
+      description: The patient's preferred pharmacy (`patient_pharmacy`, the default row).
+      type: object
+      required:
+      - patientId
+      - pharmacyId
+      - name
+      - ncpdpId
+      - updatedAt
+      properties:
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        pharmacyId:
+          $ref: ../components/schemas/Id.yaml
+          description: The pharmacy.
+          x-phi: internal-id
+        name:
+          type: string
+          maxLength: 200
+          description: Pharmacy name.
+          x-phi: none
+        ncpdpId:
+          type: string
+          pattern: ^\d{7}$
+          maxLength: 7
+          description: NCPDP ID.
+          x-phi: none
+        phone:
+          type: string
+          maxLength: 30
+          description: Pharmacy phone.
+          x-phi: none
+        city:
+          type: string
+          maxLength: 100
+          description: City.
+          x-phi: none
+        state:
+          type: string
+          pattern: ^[A-Z]{2}$
+          maxLength: 2
+          description: State.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was set.
+          x-phi: none
+    RestrictRequest:
+      description: Body to restrict a chart.
+      type: object
+      additionalProperties: false
+      required:
+      - category
+      - reason
+      properties:
+        category:
+          type: string
+          enum:
+          - sensitive
+          - vip
+          description: 'Why it is restricted: `sensitive` (FHIR security label R) or `vip` (V).'
+          x-phi: none
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Reason, recorded in the audit trail only.
+          x-phi: none
+    UnrestrictRequest:
+      description: Body to lift a restriction.
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Reason, recorded in the audit trail only.
+          x-phi: none
+    PatientRestriction:
+      description: Restriction state of a chart.
+      type: object
+      required:
+      - patientId
+      - restricted
+      - changedAt
+      properties:
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        restricted:
+          type: boolean
+          description: True when restricted.
+          x-phi: none
+        category:
+          type: string
+          enum:
+          - sensitive
+          - vip
+          description: Category, when restricted.
+          x-phi: none
+        changedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it last changed.
+          x-phi: none
+    DuplicateCandidate:
+      description: 'A pair of patients that may be the same person. Names are not embedded: the screen fetches the patients
+        the user may see (SECURITY_MODEL §8 rule 7).'
+      type: object
+      required:
+      - id
+      - patientAId
+      - patientBId
+      - matchScore
+      - status
+      - createdAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Candidate ID.
+          x-phi: internal-id
+        patientAId:
+          $ref: ../components/schemas/Id.yaml
+          description: First patient.
+          x-phi: internal-id
+        patientBId:
+          $ref: ../components/schemas/Id.yaml
+          description: Second patient.
+          x-phi: internal-id
+        matchScore:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Match score from 0 to 1.
+          x-phi: none
+        matchedOn:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            enum:
+            - name
+            - birth-date
+            - phone
+            - identifier
+            - address
+            - email
+          description: Which attributes matched (`duplicate_match_evidence`).
+          x-phi: none
+        status:
+          type: string
+          enum:
+          - open
+          - merged
+          - not-duplicate
+          description: Review state.
+          x-phi: none
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was found.
+          x-phi: none
+    DuplicateCandidateList:
+      description: One page of duplicate candidates, highest score first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/DuplicateCandidate'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    MergeRequest:
+      description: Body to merge a duplicate pair.
+      type: object
+      additionalProperties: false
+      required:
+      - survivingPatientId
+      - reason
+      properties:
+        survivingPatientId:
+          $ref: ../components/schemas/Id.yaml
+          description: 'The patient to keep: one of the pair. The other one is merged into it.'
+          x-phi: internal-id
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Why the records are the same person.
+          x-phi: none
+    PatientMerge:
+      description: A merge. Every moved record is listed so the merge can be undone (`patient_merge`, `patient_merge_record`).
+      type: object
+      required:
+      - id
+      - survivingPatientId
+      - mergedPatientId
+      - performedAt
+      - performedByUserId
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Merge ID.
+          x-phi: internal-id
+        duplicateId:
+          $ref: ../components/schemas/Id.yaml
+          description: The duplicate candidate it resolved.
+          x-phi: internal-id
+        survivingPatientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Kept patient.
+          x-phi: internal-id
+        mergedPatientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Merged patient; now inactive, with `mergedIntoId`.
+          x-phi: internal-id
+        performedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was merged.
+          x-phi: none
+        performedByUserId:
+          $ref: ../components/schemas/Id.yaml
+          description: Who merged.
+          x-phi: internal-id
+        undoneAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was undone, if it was.
+          x-phi: none
+        undoneByUserId:
+          $ref: ../components/schemas/Id.yaml
+          description: Who undid it.
+          x-phi: internal-id
+    UndoMergeRequest:
+      description: Body to undo a merge.
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Why the merge is undone.
+          x-phi: none
