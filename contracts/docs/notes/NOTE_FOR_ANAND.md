@@ -90,3 +90,9 @@ You approved Sam's schema, PostgreSQL 18, D13–D19 and your Stage 2 items (DECI
 | A36 | Break-glass notice to the privacy officer arrives as an **inbox item for CO**, from the `break-glass.granted` event, never as an email with PHI (Thulasi T16) | Add the inbox item type **Agreed (D28).** | EVENTS §4, SECURITY_MODEL §5.2 |
 | A37 | Review Thulasi's separate core PR changing `enqueue()`'s signature (T29), when it opens: core change, all four of us review it | Review **Agreed (D28).** | DATA_OWNERSHIP §3.1 |
 
+## Added during Stage 4 batch 1 (2026-10-23)
+
+| # | Item | PROPOSED answer | Where |
+|---|---|---|---|
+| A38 | **SSN masked last four: uniqueness defect in Sam's schema.** An SSN is an `identifier` row whose value is `sha256:<hex>` or `***-**-NNNN` (`ck_identifier_ssn_not_clear_text`). The unique index `uq_identifier_patient_value` (tenant, system, value, where `use` is not `old`) means two patients with the same last four digits cannot both have a masked row. P0 does not collect SSN (D43), so during adoption either drop the masked-last-four form from the CHECK, or remove that constraint for the SSN system. | Your choice during adoption; P0 needs no SSN rows at all | DECISIONS D27, D43; issue #13 |
+
