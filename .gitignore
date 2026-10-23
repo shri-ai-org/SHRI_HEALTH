@@ -6,3 +6,16 @@ CLAUDE.local.md
 .env
 .env.*
 !.env.example
+
+# Local development certificates
+infra/nginx/certs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/

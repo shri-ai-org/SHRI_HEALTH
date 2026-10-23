@@ -1,0 +1,87 @@
+# Local development stack: API, PostgreSQL, Keycloak, Nginx (HTTPS on https://localhost:8443).
+#
+#   cp infra/compose/example.env infra/compose/.env     # then fill in the passwords
+#   infra/nginx/make-dev-cert.sh                        # once: self-signed certificate
+#   docker compose -f infra/compose/docker-compose.yml up --build
+#
+# Synthetic data only. Never point this stack at real patient data.
+
+name: shri-health
+
+services:
+  postgres:
+    # PostgreSQL 18.6 + pgvector 0.8.2, initialised like production on Amazon RDS (ADR-0012):
+    # data checksums, SCRAM-SHA-256, C.UTF-8 collation, UTC. POSTGRES_USER stands in for the
+    # RDS master role; the service roles (D23) are created by postgres/initdb/ on first start.
+    build: ./postgres
+    image: shri-health/postgres:18.6-pgvector0.8.2
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-shri_health}
+      POSTGRES_USER: ${POSTGRES_USER:-shri}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/compose/.env}
+      SHRI_MIGRATOR_PASSWORD: ${SHRI_MIGRATOR_PASSWORD:?set SHRI_MIGRATOR_PASSWORD in infra/compose/.env}
+      SHRI_APP_PASSWORD: ${SHRI_APP_PASSWORD:?set SHRI_APP_PASSWORD in infra/compose/.env}
+      SHRI_FHIR_READER_PASSWORD: ${SHRI_FHIR_READER_PASSWORD:?set SHRI_FHIR_READER_PASSWORD in infra/compose/.env}
+      SHRI_INTEGRATION_PASSWORD: ${SHRI_INTEGRATION_PASSWORD:?set SHRI_INTEGRATION_PASSWORD in infra/compose/.env}
+      SHRI_REPORTING_PASSWORD: ${SHRI_REPORTING_PASSWORD:?set SHRI_REPORTING_PASSWORD in infra/compose/.env}
+    volumes:
+      # PostgreSQL 18 images keep data in a versioned folder under /var/lib/postgresql.
+      - pgdata18:/var/lib/postgresql
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in infra/compose/.env}
+      KC_HTTP_RELATIVE_PATH: /kc
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME: https://localhost:8443/kc
+      KC_HEALTH_ENABLED: "true"
+
+  api:
+    build:
+      context: ../../backend
+    environment:
+      ENVIRONMENT: development
+      AUTH_MODE: dev_header
+      # Trust X-Forwarded-For/-Proto only from Nginx's fixed address below, so clients cannot
+      # fake their IP in logs, rate limits or audit records.
+      FORWARDED_ALLOW_IPS: 172.31.250.10
+      # The API connects as shri_app, which cannot bypass row-level security (D23). It never gets
+      # the migrator's login; migrations run separately as shri_migrator.
+      DATABASE_URL: postgresql+asyncpg://shri_app:${SHRI_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
+      FHIR_DATABASE_URL: postgresql+asyncpg://shri_fhir_reader:${SHRI_FHIR_READER_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "127.0.0.1:8443:443"
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/certs:/etc/nginx/certs:ro
+    networks:
+      default:
+        ipv4_address: 172.31.250.10  # the only proxy the API trusts (FORWARDED_ALLOW_IPS)
+    depends_on:
+      - api
+      - keycloak
+
+volumes:
+  pgdata18:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24
