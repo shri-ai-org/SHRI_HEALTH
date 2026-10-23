@@ -48,6 +48,5 @@
 /frontend/src/features/admin-setup/       @anandshriai @Minalini-shriai
 /frontend/src/features/billing/           @anandshriai @Minalini-shriai
 /frontend/src/features/documents/         @anandshriai @Minalini-shriai
-/infra/hapi/                              @anandshriai
 /infra/postgres/                          @anandshriai
 /infra/seaweedfs/                         @anandshriai
