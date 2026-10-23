@@ -48,9 +48,9 @@ Sam's proposal (PR #9), built to Sena's brief, follows Tech Arch ADR-19 instead.
    RLS stays forced on every clinic table. Anand implements this during schema adoption.
 5. **Before the 30 October lock, only P0 tables are locked** (`P0_SCHEMA_SCOPE.md`). Also before the lock, owners Anand and Sam:
    - **0..1 simplifications:** the deliberate simplifications in Sam's README are **approved as listed**.
-   - **Diagnosis removal without DELETE:** **decided.** Removing a diagnosis before the note is signed sets the Condition's verification status to `entered-in-error` with the reason "removed before signing". It leaves the chart and the claim but stays for audit. There is no DELETE anywhere.
+   - **Diagnosis removal without DELETE:** **decided.** Removing a diagnosis before the note is signed sets the Condition's verification status to `entered-in-error` with a reason, and a `Provenance` record of who removed it and why. An entered-in-error diagnosis is excluded from the chart, the problem list, decision support, AI summaries, claims and patient-facing views; it is kept only for audit. The database refuses a charge or claim line that points at an entered-in-error diagnosis. There is no DELETE anywhere.
    - **A load test:** Anand, with Sam, on the visit, results and claims write paths.
-   - **PostgreSQL 17 vs 18:** **decided: PostgreSQL 18.** Migrations and tests are re-verified on 18; UUID defaults move to `uuidv7()` (ADR-0009).
+   - **PostgreSQL 17 vs 18:** **decided: PostgreSQL 18, on the latest 18.x minor release. Move to PostgreSQL 19 only after it has had a couple of minor releases.** Migrations and tests are re-verified on 18; UUID defaults move to `uuidv7()` (ADR-0009).
    - **The eight "P0 items to confirm"** in `P0_SCHEMA_SCOPE.md` are **approved as P0**. Sam and Anand add whatever is missing before the lock.
 6. **The outbox is for external partners only** (labs, e-prescribing, clearinghouse, fax, SMS). Never for our own database. **Accepted.**
 7. **Before India:** designs for market code systems and DPDP erasure. **Accepted**; owner Anand.
@@ -97,7 +97,7 @@ Also decided on 2026-10-23, alongside this ADR:
 - **Thulasi:** remove `/infra/hapi/` from CODEOWNERS and the folder; align `tenant_db` setting names; clinic from the server-side session; outbox for partners only; machine tokens for `/fhir`.
 - **Anand:** adopt the schema baseline (guide v2, Steps 1–2).
 
-**Still needed before the lock (not decided here):** the US Core version (tied to whether ONC certification is planned) and the CPT license (affects the code tables). Both are listed in DECISIONS.md "Still open".
+**Still open (not decided here):** the US Core version (Open Decisions Q6, needed before the schema lock; tied to ONC certification, Q5) and the CPT license (Q7, needed before the pilot; the code-table design is part of the schema lock regardless). Both are in DECISIONS.md "Still open".
 
 ## References
 

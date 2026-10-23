@@ -81,7 +81,7 @@ Allowed error statuses are listed in §9.3. `204 No Content` is used only for `P
 |---|---|---|
 | Format | UUID (RFC 9562), lowercase, canonical 36-character form; OpenAPI `type: string, format: uuid` | TA §6.1 (UUID keys); ADR-0009 |
 | Generation | Server-generated. Clients never choose IDs. | **PROPOSED**: one generator, no collisions across tenants |
-| Version | UUIDv7 for new records once the schema allows; existing uuid4 values remain valid | TA §6.1 suggests `uuidv7()` on PostgreSQL 18. **Pending Anand** |
+| Version | UUIDv7 for new records (`uuidv7()` defaults); existing uuid4 values remain valid | TA §6.1; decided with PostgreSQL 18 (D24, ADR-0011) |
 | Opaque | Clients must not parse IDs or infer order or time from them | ADR-0009 |
 | Clinical records | FHIR-shaped clinical rows use the same UUID format; the `/fhir` API serves them under the same ID. Each record has exactly one ID in one database (ADR-0011) | ADR-0009, ADR-0011 |
 | Business identifiers | MRN, NPI, claim numbers, member IDs and driver's license numbers are properties, never IDs, and (except NPI) never appear in URLs | VD-G2 |

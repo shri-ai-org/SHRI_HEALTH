@@ -13,7 +13,7 @@ Fixed by source documents:
 - **One transaction:** writes that belong together commit together, through each module's repository and Anand's helpers in `backend/app/db/` (root `CLAUDE.md`).
 - **Outbox for partners only (D25):** labs, e-prescribing, clearinghouse, fax and SMS.
 - **Signed records:** signing locks the row and writes its `Provenance` in the same transaction; every version is kept in `_history` (D8). The signed note row is the legal record.
-- **No DELETE on clinical tables:** corrections use `entered-in-error`. A diagnosis removed before signing is set to `entered-in-error` with the reason "removed before signing" (D24).
+- **No DELETE on clinical tables:** corrections use `entered-in-error`. A diagnosis removed before signing is set to `entered-in-error` with a reason and a Provenance record, and is excluded everywhere except audit (D24, §2.5).
 - **Outside systems** read the read-only `/fhir` API (D22). Our screens use `/api/v1` only.
 
 ---
@@ -134,10 +134,10 @@ Option B ("draft in ours, write to HAPI on signing") is **replaced by ADR-0011**
 | Step | What happens |
 |---|---|
 | Add | `POST /encounters/{encounterId}/diagnoses` inserts a Condition (category `encounter-diagnosis`) with Provenance, in one transaction |
-| Remove before signing | `POST …/diagnoses/{diagnosisId}/remove` sets `verificationStatus = entered-in-error` with the reason "removed before signing" (D24). It leaves the chart and the claim but stays for audit. No DELETE |
+| Remove before signing | `POST …/diagnoses/{diagnosisId}/remove` sets `verificationStatus = entered-in-error` with a reason, and writes a Provenance record of who removed it and why, in one transaction (D24). The diagnosis is then excluded from the chart, the problem list, decision support, AI summaries, claims and patient-facing views; it is kept only for audit. No DELETE |
 | After signing | Only `POST …/diagnoses/{diagnosisId}/entered-in-error` with a reason; a diagnosis added later is a new Condition |
 | "The encounter is signed" | Its first note reaches `final` (§5.3) |
-| Billing | A charge can only point at a diagnosis on its own encounter (database-enforced composite key) |
+| Billing | A charge can only point at a diagnosis on its own encounter (database-enforced composite key). The database refuses a charge or claim line that points at an entered-in-error diagnosis (D24) |
 
 ## 3. Consistency
 

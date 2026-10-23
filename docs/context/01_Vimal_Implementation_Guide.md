@@ -85,7 +85,7 @@ Endpoints: open visit, workspace data, vitals, diagnoses, code search, notes (dr
 | Encounter, vitals (`Observation`), diagnoses (`Condition`) | FHIR-shaped tables in our database, written through Anand's helpers |
 | Notes: drafts, versions and signed notes | FHIR-shaped `Composition` table in our database; every version kept in `_history` |
 | Signed note | Signing locks the row and writes its `Provenance` in the same transaction. The signed note row is the legal record; changes become addenda |
-| Diagnosis removed before signing | The `Condition` is set to entered-in-error with the reason "removed before signing"; never deleted (D24) |
+| Diagnosis removed before signing | The `Condition` is set to entered-in-error with a reason and a Provenance record (who and why); excluded from the chart, problem list, decision support, AI summaries, claims and patient-facing views; never deleted (D24) |
 | Favourites | Our database (admin tables) |
 | Code search | Anand's terminology tables |
 
