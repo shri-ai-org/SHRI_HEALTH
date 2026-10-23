@@ -2,7 +2,7 @@
 
 > **Partly superseded by ADR-0011: there is no HAPI, so lists never wrap HAPI paging; every list uses keyset pagination over our own PostgreSQL. The rest of this ADR stands.**
 
-Status: **Proposed** (sign-offs so far: Minalini, issue #5 M2; Thulasi agreed cursor encryption, T22; Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Anand ~~(HAPI paging through the FHIR client)~~, Minalini (list screens)
+Status: **Accepted** (2026-10-23: Minalini, issue #5 M2; Thulasi, cursor encryption, T22; Anand, D28) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Anand ~~(HAPI paging through the FHIR client)~~, Minalini (list screens)
 
 ## Context
 

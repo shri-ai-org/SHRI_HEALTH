@@ -2,7 +2,7 @@
 
 > **Partly superseded by ADR-0011: outside systems use our own read-only `/fhir` API (Anand), not HAPI's. The rest of this ADR stands.**
 
-Status: **Proposed** (Thulasi agreed, issue #3 T24, T25; Minalini pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (Nginx routing, CI breaking-change check), Minalini (client)
+Status: **Accepted** (2026-10-23: Thulasi, issue #3 T24, T25; Minalini, by approving PR #2, which carried this ADR) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (Nginx routing, CI breaking-change check), Minalini (client)
 
 ## Context
 

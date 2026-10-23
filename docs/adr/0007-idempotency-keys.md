@@ -1,6 +1,6 @@
 # ADR-0007: Idempotency-Key for partner-bound and money-moving requests
 
-Status: **Proposed** (Thulasi agreed, issue #3 T21; Anand pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (middleware, integration engine), Anand (payments, claims)
+Status: **Proposed** (Thulasi agreed, issue #3 T21; Anand agreed, D28) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (middleware, integration engine), Anand (payments, claims)
 
 ## Context
 

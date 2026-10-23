@@ -1,6 +1,6 @@
 # ADR-0005: PHI never in URLs; PHI search through POST
 
-Status: **Proposed** (Thulasi agreed the related rate-limit and redaction rules, issue #3 T18, T23; Minalini agreed the search rules, M7; formal sign-off pending in DECISIONS D13) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal (decided as VD-G2), Thulasi (logging, rate limits, audit)
+Status: **Proposed** (Thulasi agreed the related rate-limit and redaction rules, issue #3 T18, T23; Minalini agreed the search rules, M7; the rule itself is DECISIONS D13) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal (decided as VD-G2), Thulasi (logging, rate limits, audit)
 
 ## Context
 
