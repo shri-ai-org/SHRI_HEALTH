@@ -177,6 +177,10 @@ paths:
     $ref: 'modules/practice-setup.yaml#/paths/~1practice-payers'
   /practice-payers/{practicePayerId}:
     $ref: 'modules/practice-setup.yaml#/paths/~1practice-payers~1{practicePayerId}'
+  /lab-providers:
+    $ref: 'modules/practice-setup.yaml#/paths/~1lab-providers'
+  /lab-providers/{labProviderId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1lab-providers~1{labProviderId}'
   /lab-accounts:
     $ref: 'modules/practice-setup.yaml#/paths/~1lab-accounts'
   /lab-accounts/{labAccountId}:

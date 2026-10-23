@@ -6,7 +6,8 @@
 # Most of these are admin tables without a version column: their `ETag` comes from `updated_at` until a version column is
 # added (ADR-0008). **Pending schema lock.**
 # Payers have two layers (decided by Vimal, 2026-10-23): a read-only platform payer directory (`/payers`) and the practice's
-# own payer setup (`/practice-payers`).
+# own payer setup (`/practice-payers`). Lab providers follow the same pattern (D48): read-only `/lab-providers`, set up by onboarding or
+# the platform; lab accounts stay practice-level (`/lab-accounts`).
 paths:
   /facilities:
     get:
@@ -2233,6 +2234,130 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /lab-providers:
+    get:
+      operationId: listLabProviders
+      summary: List lab providers
+      description: 'Lists the labs connected to the practice (new inventory row #234; D48). Read-only: labs are set up by
+        onboarding or the platform. Reference data, not patient data.'
+      tags:
+      - practice-setup
+      x-owner: anand
+      x-permission: lab-providers:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: active
+        in: query
+        required: false
+        description: Only active (true) or inactive (false) labs.
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: One page of lab providers.
+          headers:
+            X-Request-ID: *id002
+            Cache-Control: *id003
+            RateLimit: *id004
+            RateLimit-Policy: *id005
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabProviderList'
+              examples:
+                one:
+                  summary: One lab
+                  value:
+                    items:
+                    - &id021
+                      id: 5a6b7c8d-9e0f-4a1b-9c2d-3e4f5a6b7c8d
+                      code: TESTLAB
+                      name: Test Reference Lab
+                      connectionType: direct-hl7
+                      supportsElectronicOrders: true
+                      supportsElectronicResults: true
+                      active: true
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `lab-providers:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /lab-providers/{labProviderId}:
+    parameters:
+    - name: labProviderId
+      in: path
+      required: true
+      description: Lab provider ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getLabProvider
+      summary: Get a lab provider
+      description: 'Returns one lab provider (new inventory row #235; D48).'
+      tags:
+      - practice-setup
+      x-owner: anand
+      x-permission: lab-providers:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The lab provider.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id002
+            Cache-Control: *id003
+            RateLimit: *id004
+            RateLimit-Policy: *id005
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabProvider'
+              examples:
+                lab:
+                  summary: A lab
+                  value: *id021
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `lab-providers:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such lab provider in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
   /lab-accounts:
     get:
       operationId: listLabAccounts
@@ -2285,7 +2410,7 @@ paths:
                   summary: One lab account
                   value:
                     items:
-                    - &id022
+                    - &id023
                       id: 4f5a6b7c-8d9e-4f0a-8b1c-2d3e4f5a6b7c
                       labProviderId: 5a6b7c8d-9e0f-4a1b-9c2d-3e4f5a6b7c8d
                       lab:
@@ -2294,7 +2419,7 @@ paths:
                         name: Test Reference Lab
                       facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                       accountNumber: TEST-ACCT-5521
-                      billTo: &id021
+                      billTo: &id022
                       - insurance
                       - patient
                       - client
@@ -2355,7 +2480,7 @@ paths:
                   labProviderId: 5a6b7c8d-9e0f-4a1b-9c2d-3e4f5a6b7c8d
                   facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                   accountNumber: TEST-ACCT-5521
-                  billTo: *id021
+                  billTo: *id022
                   default: true
       responses:
         '201':
@@ -2376,7 +2501,7 @@ paths:
               examples:
                 created:
                   summary: Created
-                  value: *id022
+                  value: *id023
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -2440,7 +2565,7 @@ paths:
               examples:
                 one:
                   summary: Lab account
-                  value: *id022
+                  value: *id023
         '401':
           $ref: ../components/responses/Unauthorized.yaml
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
@@ -2507,7 +2632,7 @@ paths:
               examples:
                 updated:
                   summary: Updated
-                  value: *id022
+                  value: *id023
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -2584,14 +2709,14 @@ paths:
                   summary: One note template
                   value:
                     items:
-                    - &id024
+                    - &id025
                       id: 6b7c8d9e-0f1a-4b2c-8d3e-4f5a6b7c8d9e
                       code: IM-FOLLOWUP
                       version: 1
                       name: Internal medicine follow-up
                       specialtyCode: 207R00000X
                       noteTypeLoinc: 11506-3
-                      sections: &id023
+                      sections: &id024
                       - sequence: 1
                         sectionCode: 10164-2
                         title: History of present illness
@@ -2658,7 +2783,7 @@ paths:
                   name: Internal medicine follow-up
                   specialtyCode: 207R00000X
                   noteTypeLoinc: 11506-3
-                  sections: *id023
+                  sections: *id024
       responses:
         '201':
           description: Created. The new note template.
@@ -2678,7 +2803,7 @@ paths:
               examples:
                 created:
                   summary: Created
-                  value: *id024
+                  value: *id025
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -2740,7 +2865,7 @@ paths:
               examples:
                 one:
                   summary: Note template
-                  value: *id024
+                  value: *id025
         '401':
           $ref: ../components/responses/Unauthorized.yaml
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
@@ -2807,7 +2932,7 @@ paths:
               examples:
                 updated:
                   summary: Updated
-                  value: *id024
+                  value: *id025
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -2879,58 +3004,58 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: Facility ID.
           x-phi: internal-id
-        code: &id025
+        code: &id026
           type: string
           minLength: 1
           maxLength: 40
           description: Short code, unique in the practice.
           x-phi: none
-        name: &id026
+        name: &id027
           type: string
           minLength: 1
           maxLength: 200
           description: Name.
           x-phi: none
-        timeZone: &id027
+        timeZone: &id028
           type: string
           maxLength: 64
           pattern: ^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$
           description: IANA time zone, e.g. `America/Chicago`. Appointments display in this zone (D40). Required here although
             the schema column is nullable. **Pending schema lock.**
           x-phi: none
-        address: &id028
+        address: &id029
           $ref: ../components/schemas/Address.yaml
           description: Street address.
           x-phi: none
-        phone: &id029
+        phone: &id030
           $ref: ../components/schemas/PhoneNumber.yaml
           description: Main phone.
           x-phi: none
-        npi: &id030
+        npi: &id031
           type: string
           pattern: ^\d{10}$
           maxLength: 10
           description: Facility (type 2) NPI; checked with the NPI check digit.
           x-phi: none
-        cliaNumber: &id031
+        cliaNumber: &id032
           type: string
           pattern: ^\d{2}D\d{7}$
           maxLength: 10
           description: CLIA number, for in-office testing.
           x-phi: none
-        placeOfServiceCode: &id032
+        placeOfServiceCode: &id033
           type: string
           pattern: ^\d{2}$
           maxLength: 2
           default: '11'
           description: CMS place-of-service code; `11` office.
           x-phi: none
-        billingLocation: &id033
+        billingLocation: &id034
           type: boolean
           default: true
           description: Appears as a billing location on claims.
           x-phi: none
-        active: &id034
+        active: &id035
           type: boolean
           description: False hides it from new work; nothing is ever deleted.
           x-phi: none
@@ -2952,29 +3077,29 @@ components:
       - timeZone
       - address
       properties:
-        code: *id025
-        name: *id026
-        timeZone: *id027
-        address: *id028
-        phone: *id029
-        npi: *id030
-        cliaNumber: *id031
-        placeOfServiceCode: *id032
-        billingLocation: *id033
+        code: *id026
+        name: *id027
+        timeZone: *id028
+        address: *id029
+        phone: *id030
+        npi: *id031
+        cliaNumber: *id032
+        placeOfServiceCode: *id033
+        billingLocation: *id034
     FacilityPatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `code`.'
       type: object
       additionalProperties: false
       properties:
-        name: *id026
-        timeZone: *id027
-        address: *id028
-        phone: *id029
-        npi: *id030
-        cliaNumber: *id031
-        placeOfServiceCode: *id032
-        billingLocation: *id033
-        active: *id034
+        name: *id027
+        timeZone: *id028
+        address: *id029
+        phone: *id030
+        npi: *id031
+        cliaNumber: *id032
+        placeOfServiceCode: *id033
+        billingLocation: *id034
+        active: *id035
     FacilityList:
       description: One page of facilities.
       type: object
@@ -3009,22 +3134,22 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: Location ID.
           x-phi: internal-id
-        facilityId: &id035
+        facilityId: &id036
           $ref: ../components/schemas/Id.yaml
           description: The facility it belongs to.
           x-phi: internal-id
-        name: &id036
+        name: &id037
           type: string
           minLength: 1
           maxLength: 200
           description: Name, e.g. "Exam room 2".
           x-phi: none
-        description: &id037
+        description: &id038
           type: string
           maxLength: 500
           description: Description.
           x-phi: none
-        physicalType: &id038
+        physicalType: &id039
           type: string
           enum:
           - bu
@@ -3033,7 +3158,7 @@ components:
           - ro
           description: 'FHIR location-physical-type: `bu` building, `wi` wing, `lvl` level, `ro` room.'
           x-phi: none
-        active: *id034
+        active: *id035
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3051,19 +3176,19 @@ components:
       - name
       - physicalType
       properties:
-        facilityId: *id035
-        name: *id036
-        description: *id037
-        physicalType: *id038
+        facilityId: *id036
+        name: *id037
+        description: *id038
+        physicalType: *id039
     LocationPatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `facilityId`.'
       type: object
       additionalProperties: false
       properties:
-        name: *id036
-        description: *id037
-        physicalType: *id038
-        active: *id034
+        name: *id037
+        description: *id038
+        physicalType: *id039
+        active: *id035
     LocationList:
       description: One page of locations.
       type: object
@@ -3133,17 +3258,17 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: Provider ID.
           x-phi: internal-id
-        name: &id039
+        name: &id040
           $ref: ../components/schemas/HumanName.yaml
           description: Name (a staff member, not a patient).
           x-phi: none
-        npi: &id040
+        npi: &id041
           type: string
           pattern: ^\d{10}$
           maxLength: 10
           description: Individual (type 1) NPI; checked with the NPI check digit; unique in the practice.
           x-phi: none
-        gender: &id041
+        gender: &id042
           type: string
           enum:
           - male
@@ -3152,21 +3277,21 @@ components:
           - unknown
           description: Administrative gender.
           x-phi: none
-        qualifications: &id042
+        qualifications: &id043
           type: array
           maxItems: 20
           items:
             $ref: '#/components/schemas/ProviderQualification'
           description: Degrees and state licenses.
           x-phi: none
-        specialties: &id043
+        specialties: &id044
           type: array
           maxItems: 10
           items:
             $ref: '#/components/schemas/SetupCoding'
           description: Specialties, NUCC provider taxonomy codes.
           x-phi: none
-        facilityIds: &id044
+        facilityIds: &id045
           type: array
           minItems: 1
           maxItems: 50
@@ -3174,15 +3299,15 @@ components:
             $ref: ../components/schemas/Id.yaml
           description: Facilities where the provider works (one PractitionerRole each).
           x-phi: internal-id
-        phone: &id045
+        phone: &id046
           $ref: ../components/schemas/PhoneNumber.yaml
           description: Work phone.
           x-phi: none
-        email: &id046
+        email: &id047
           $ref: ../components/schemas/EmailAddress.yaml
           description: Work email.
           x-phi: none
-        active: *id034
+        active: *id035
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3200,28 +3325,28 @@ components:
       - npi
       - facilityIds
       properties:
-        name: *id039
-        npi: *id040
-        gender: *id041
-        qualifications: *id042
-        specialties: *id043
-        facilityIds: *id044
-        phone: *id045
-        email: *id046
+        name: *id040
+        npi: *id041
+        gender: *id042
+        qualifications: *id043
+        specialties: *id044
+        facilityIds: *id045
+        phone: *id046
+        email: *id047
     ProviderPatch:
       description: JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole.
       type: object
       additionalProperties: false
       properties:
-        name: *id039
-        npi: *id040
-        gender: *id041
-        qualifications: *id042
-        specialties: *id043
-        facilityIds: *id044
-        phone: *id045
-        email: *id046
-        active: *id034
+        name: *id040
+        npi: *id041
+        gender: *id042
+        qualifications: *id043
+        specialties: *id044
+        facilityIds: *id045
+        phone: *id046
+        email: *id047
+        active: *id035
     ProviderList:
       description: One page of providers.
       type: object
@@ -3255,37 +3380,37 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: AppointmentType ID.
           x-phi: internal-id
-        code: &id047
+        code: &id048
           type: string
           minLength: 1
           maxLength: 40
           description: Code, unique in the practice.
           x-phi: none
-        name: &id048
+        name: &id049
           type: string
           minLength: 1
           maxLength: 120
           description: Name.
           x-phi: none
-        defaultDurationMinutes: &id049
+        defaultDurationMinutes: &id050
           type: integer
           format: int32
           minimum: 5
           maximum: 480
           description: Default length.
           x-phi: none
-        color: &id050
+        color: &id051
           type: string
           pattern: ^#[0-9A-Fa-f]{6}$
           maxLength: 7
           description: Calendar color.
           x-phi: none
-        allowOverlap: &id051
+        allowOverlap: &id052
           type: boolean
           default: false
           description: May overlap other appointments without counting as overbooking (e.g. a nurse visit).
           x-phi: none
-        maxOverbook: &id052
+        maxOverbook: &id053
           type: integer
           format: int32
           minimum: 0
@@ -3294,26 +3419,26 @@ components:
           description: How many overbooked appointments of this type a provider may have at the same time; 0 means none (FRS
             FR-SCH-01; enforced by the scheduling service).
           x-phi: none
-        requiresEligibilityCheck: &id053
+        requiresEligibilityCheck: &id054
           type: boolean
           default: true
           description: Run eligibility checks for this type (D15).
           x-phi: none
-        telehealth: &id054
+        telehealth: &id055
           type: boolean
           default: false
           description: A telehealth visit (encounter class `VR`).
           x-phi: none
-        newPatient: &id055
+        newPatient: &id056
           type: boolean
           default: false
           description: For new patients.
           x-phi: none
-        defaultNoteTemplateId: &id056
+        defaultNoteTemplateId: &id057
           $ref: ../components/schemas/Id.yaml
           description: Note template offered first.
           x-phi: internal-id
-        active: *id034
+        active: *id035
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3331,31 +3456,31 @@ components:
       - name
       - defaultDurationMinutes
       properties:
-        code: *id047
-        name: *id048
-        defaultDurationMinutes: *id049
-        color: *id050
-        allowOverlap: *id051
-        maxOverbook: *id052
-        requiresEligibilityCheck: *id053
-        telehealth: *id054
-        newPatient: *id055
-        defaultNoteTemplateId: *id056
+        code: *id048
+        name: *id049
+        defaultDurationMinutes: *id050
+        color: *id051
+        allowOverlap: *id052
+        maxOverbook: *id053
+        requiresEligibilityCheck: *id054
+        telehealth: *id055
+        newPatient: *id056
+        defaultNoteTemplateId: *id057
     AppointmentTypePatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `code`.'
       type: object
       additionalProperties: false
       properties:
-        name: *id048
-        defaultDurationMinutes: *id049
-        color: *id050
-        allowOverlap: *id051
-        maxOverbook: *id052
-        requiresEligibilityCheck: *id053
-        telehealth: *id054
-        newPatient: *id055
-        defaultNoteTemplateId: *id056
-        active: *id034
+        name: *id049
+        defaultDurationMinutes: *id050
+        color: *id051
+        allowOverlap: *id052
+        maxOverbook: *id053
+        requiresEligibilityCheck: *id054
+        telehealth: *id055
+        newPatient: *id056
+        defaultNoteTemplateId: *id057
+        active: *id035
     AppointmentTypeList:
       description: One page of appointment types.
       type: object
@@ -3485,34 +3610,34 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: ProviderSchedule ID.
           x-phi: internal-id
-        providerId: &id057
+        providerId: &id058
           $ref: ../components/schemas/Id.yaml
           description: The provider.
           x-phi: internal-id
-        facilityId: &id058
+        facilityId: &id059
           $ref: ../components/schemas/Id.yaml
           description: The facility.
           x-phi: internal-id
-        availabilityRules: &id059
+        availabilityRules: &id060
           type: array
           maxItems: 100
           items:
             $ref: '#/components/schemas/AvailabilityRule'
           description: Weekly rules.
           x-phi: none
-        exceptions: &id060
+        exceptions: &id061
           type: array
           maxItems: 500
           items:
             $ref: '#/components/schemas/ScheduleException'
           description: Blocks and extra availability.
           x-phi: none
-        comment: &id061
+        comment: &id062
           type: string
           maxLength: 1000
           description: Note for schedulers.
           x-phi: none
-        active: *id034
+        active: *id035
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3529,21 +3654,21 @@ components:
       - providerId
       - facilityId
       properties:
-        providerId: *id057
-        facilityId: *id058
-        availabilityRules: *id059
-        exceptions: *id060
-        comment: *id061
+        providerId: *id058
+        facilityId: *id059
+        availabilityRules: *id060
+        exceptions: *id061
+        comment: *id062
     ProviderSchedulePatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `providerId`,
         `facilityId`.'
       type: object
       additionalProperties: false
       properties:
-        availabilityRules: *id059
-        exceptions: *id060
-        comment: *id061
-        active: *id034
+        availabilityRules: *id060
+        exceptions: *id061
+        comment: *id062
+        active: *id035
     ProviderScheduleList:
       description: One page of provider schedules.
       type: object
@@ -3610,32 +3735,32 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: FeeSchedule ID.
           x-phi: internal-id
-        name: &id062
+        name: &id063
           type: string
           minLength: 1
           maxLength: 120
           description: Name, unique with `startDate`.
           x-phi: none
-        payerId: &id063
+        payerId: &id064
           $ref: ../components/schemas/Id.yaml
           description: Payer from the directory, when the schedule applies to one payer only.
           x-phi: internal-id
-        startDate: &id064
+        startDate: &id065
           $ref: ../components/schemas/Date.yaml
           description: First day it applies.
           x-phi: none
-        endDate: &id065
+        endDate: &id066
           $ref: ../components/schemas/Date.yaml
           description: Last day, if it ends.
           x-phi: none
-        fees: &id066
+        fees: &id067
           type: array
           maxItems: 20000
           items:
             $ref: '#/components/schemas/FeeScheduleItem'
           description: Fees. One per code system, code and modifier.
           x-phi: none
-        active: *id034
+        active: *id035
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3652,22 +3777,22 @@ components:
       - name
       - startDate
       properties:
-        name: *id062
-        payerId: *id063
-        startDate: *id064
-        endDate: *id065
-        fees: *id066
+        name: *id063
+        payerId: *id064
+        startDate: *id065
+        endDate: *id066
+        fees: *id067
     FeeSchedulePatch:
       description: JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole.
       type: object
       additionalProperties: false
       properties:
-        name: *id062
-        payerId: *id063
-        startDate: *id064
-        endDate: *id065
-        fees: *id066
-        active: *id034
+        name: *id063
+        payerId: *id064
+        startDate: *id065
+        endDate: *id066
+        fees: *id067
+        active: *id035
     FeeScheduleList:
       description: One page of fee schedules.
       type: object
@@ -3865,11 +3990,11 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: PracticePayer ID.
           x-phi: internal-id
-        payerId: &id067
+        payerId: &id068
           $ref: ../components/schemas/Id.yaml
           description: Payer from the directory (`GET /payers`).
           x-phi: internal-id
-        enrollments: &id068
+        enrollments: &id069
           type: array
           maxItems: 200
           items:
@@ -3898,7 +4023,7 @@ components:
               description: Type.
               x-phi: none
           x-phi: none
-        active: *id034
+        active: *id035
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3914,15 +4039,15 @@ components:
       required:
       - payerId
       properties:
-        payerId: *id067
-        enrollments: *id068
+        payerId: *id068
+        enrollments: *id069
     PracticePayerPatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `payerId`.'
       type: object
       additionalProperties: false
       properties:
-        enrollments: *id068
-        active: *id034
+        enrollments: *id069
+        active: *id035
     PracticePayerList:
       description: One page of practice payers.
       type: object
@@ -3934,6 +4059,80 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/PracticePayer'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    LabProvider:
+      description: 'A performing lab connected to the practice (`lab_provider`). Read-only: set up by onboarding or the platform,
+        because the connection is integration work (D48). Integration details (endpoint, local code system) are not exposed.'
+      type: object
+      required:
+      - id
+      - code
+      - name
+      - connectionType
+      - active
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Lab provider ID.
+          x-phi: internal-id
+        code:
+          type: string
+          maxLength: 40
+          description: Code, unique in the practice.
+          x-phi: none
+        name:
+          type: string
+          maxLength: 200
+          description: Name.
+          x-phi: none
+        connectionType:
+          type: string
+          enum:
+          - direct-hl7
+          - aggregator
+          - fhir
+          - manual
+          description: How orders and results travel.
+          x-phi: none
+        cliaNumber:
+          type: string
+          pattern: ^\d{2}D\d{7}$
+          maxLength: 10
+          description: The lab's CLIA number.
+          x-phi: none
+        supportsElectronicOrders:
+          type: boolean
+          description: Accepts electronic orders.
+          x-phi: none
+        supportsElectronicResults:
+          type: boolean
+          description: Sends electronic results.
+          x-phi: none
+        requisitionFormat:
+          type: string
+          maxLength: 40
+          description: Requisition format the lab expects, when it prints one.
+          x-phi: none
+        active:
+          type: boolean
+          description: False when the lab is no longer used.
+          x-phi: none
+    LabProviderList:
+      description: One page of lab providers, by name.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/LabProvider'
           description: The items on this page.
           x-phi: none
         nextCursor:
@@ -3957,26 +4156,26 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: LabAccount ID.
           x-phi: internal-id
-        labProviderId: &id069
+        labProviderId: &id070
           $ref: ../components/schemas/Id.yaml
-          description: The lab (`lab_provider`). Labs are set up by onboarding; there is no lab endpoint in the MVP contract.
+          description: The lab, from `GET /lab-providers` (read-only; D48).
           x-phi: internal-id
-        facilityId: &id070
+        facilityId: &id071
           $ref: ../components/schemas/Id.yaml
           description: The facility the account is for.
           x-phi: internal-id
-        accountNumber: &id071
+        accountNumber: &id072
           type: string
           minLength: 1
           maxLength: 40
           description: Client account number at the lab.
           x-phi: none
-        businessUnit: &id072
+        businessUnit: &id073
           type: string
           maxLength: 40
           description: Lab business unit, if the lab uses one.
           x-phi: none
-        billTo: &id073
+        billTo: &id074
           type: array
           minItems: 1
           maxItems: 3
@@ -3988,7 +4187,7 @@ components:
             - client
           description: Who the lab may bill on this account.
           x-phi: none
-        default: &id074
+        default: &id075
           type: boolean
           default: false
           description: Default account for this lab at this facility (one at most).
@@ -4015,7 +4214,7 @@ components:
               description: Name.
               x-phi: none
           x-phi: none
-        active: *id034
+        active: *id035
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -4034,23 +4233,23 @@ components:
       - accountNumber
       - billTo
       properties:
-        labProviderId: *id069
-        facilityId: *id070
-        accountNumber: *id071
-        businessUnit: *id072
-        billTo: *id073
-        default: *id074
+        labProviderId: *id070
+        facilityId: *id071
+        accountNumber: *id072
+        businessUnit: *id073
+        billTo: *id074
+        default: *id075
     LabAccountPatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `labProviderId`,
         `facilityId`.'
       type: object
       additionalProperties: false
       properties:
-        accountNumber: *id071
-        businessUnit: *id072
-        billTo: *id073
-        default: *id074
-        active: *id034
+        accountNumber: *id072
+        businessUnit: *id073
+        billTo: *id074
+        default: *id075
+        active: *id035
     LabAccountList:
       description: One page of lab accounts.
       type: object
@@ -4123,35 +4322,35 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: NoteTemplate ID.
           x-phi: internal-id
-        code: &id075
+        code: &id076
           type: string
           minLength: 1
           maxLength: 60
           description: Code, unique in the practice with `version`.
           x-phi: none
-        name: &id076
+        name: &id077
           type: string
           minLength: 1
           maxLength: 200
           description: Name.
           x-phi: none
-        specialtyCode: &id077
+        specialtyCode: &id078
           type: string
           maxLength: 10
           description: NUCC taxonomy code of the specialty, if specific.
           x-phi: none
-        noteTypeLoinc: &id078
+        noteTypeLoinc: &id079
           type: string
           pattern: ^\d{1,7}-\d$
           maxLength: 20
           description: LOINC document type, e.g. `11506-3` progress note.
           x-phi: none
-        personal: &id079
+        personal: &id080
           type: boolean
           default: false
           description: 'True for the signed-in user''s personal template: the server sets the owner from the session.'
           x-phi: none
-        sections: &id080
+        sections: &id081
           type: array
           minItems: 1
           maxItems: 50
@@ -4170,7 +4369,7 @@ components:
           maximum: 100000
           description: Version, raised by the server when `sections` change.
           x-phi: none
-        active: *id034
+        active: *id035
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -4189,22 +4388,22 @@ components:
       - noteTypeLoinc
       - sections
       properties:
-        code: *id075
-        name: *id076
-        specialtyCode: *id077
-        noteTypeLoinc: *id078
-        personal: *id079
-        sections: *id080
+        code: *id076
+        name: *id077
+        specialtyCode: *id078
+        noteTypeLoinc: *id079
+        personal: *id080
+        sections: *id081
     NoteTemplatePatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `code`, `personal`.'
       type: object
       additionalProperties: false
       properties:
-        name: *id076
-        specialtyCode: *id077
-        noteTypeLoinc: *id078
-        sections: *id080
-        active: *id034
+        name: *id077
+        specialtyCode: *id078
+        noteTypeLoinc: *id079
+        sections: *id081
+        active: *id035
     NoteTemplateList:
       description: One page of note templates.
       type: object

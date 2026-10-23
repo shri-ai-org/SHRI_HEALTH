@@ -6337,6 +6337,143 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /lab-providers:
+    get:
+      operationId: listLabProviders
+      summary: List lab providers
+      description: 'Lists the labs connected to the practice (new inventory row #234; D48). Read-only: labs are set up by onboarding or the platform. Reference data, not patient data.'
+      tags:
+        - practice-setup
+      x-owner: anand
+      x-permission: lab-providers:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: active
+          in: query
+          required: false
+          description: Only active (true) or inactive (false) labs.
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: One page of lab providers.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabProviderList'
+              examples:
+                one:
+                  summary: One lab
+                  value:
+                    items:
+                      - id: 5a6b7c8d-9e0f-4a1b-9c2d-3e4f5a6b7c8d
+                        code: TESTLAB
+                        name: Test Reference Lab
+                        connectionType: direct-hl7
+                        supportsElectronicOrders: true
+                        supportsElectronicResults: true
+                        active: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `lab-providers:read`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /lab-providers/{labProviderId}:
+    parameters:
+      - name: labProviderId
+        in: path
+        required: true
+        description: Lab provider ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getLabProvider
+      summary: Get a lab provider
+      description: 'Returns one lab provider (new inventory row #235; D48).'
+      tags:
+        - practice-setup
+      x-owner: anand
+      x-permission: lab-providers:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The lab provider.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabProvider'
+              examples:
+                lab:
+                  summary: A lab
+                  value:
+                    id: 5a6b7c8d-9e0f-4a1b-9c2d-3e4f5a6b7c8d
+                    code: TESTLAB
+                    name: Test Reference Lab
+                    connectionType: direct-hl7
+                    supportsElectronicOrders: true
+                    supportsElectronicResults: true
+                    active: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `lab-providers:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such lab provider in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /lab-accounts:
     get:
       operationId: listLabAccounts
@@ -11735,6 +11872,79 @@ components:
           type: boolean
           description: False hides it from new work; nothing is ever deleted.
           x-phi: none
+    LabProvider:
+      description: 'A performing lab connected to the practice (`lab_provider`). Read-only: set up by onboarding or the platform, because the connection is integration work (D48). Integration details (endpoint, local code system) are not exposed.'
+      type: object
+      required:
+        - id
+        - code
+        - name
+        - connectionType
+        - active
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Lab provider ID.
+          x-phi: internal-id
+        code:
+          type: string
+          maxLength: 40
+          description: Code, unique in the practice.
+          x-phi: none
+        name:
+          type: string
+          maxLength: 200
+          description: Name.
+          x-phi: none
+        connectionType:
+          type: string
+          enum:
+            - direct-hl7
+            - aggregator
+            - fhir
+            - manual
+          description: How orders and results travel.
+          x-phi: none
+        cliaNumber:
+          type: string
+          pattern: ^\d{2}D\d{7}$
+          maxLength: 10
+          description: The lab's CLIA number.
+          x-phi: none
+        supportsElectronicOrders:
+          type: boolean
+          description: Accepts electronic orders.
+          x-phi: none
+        supportsElectronicResults:
+          type: boolean
+          description: Sends electronic results.
+          x-phi: none
+        requisitionFormat:
+          type: string
+          maxLength: 40
+          description: Requisition format the lab expects, when it prints one.
+          x-phi: none
+        active:
+          type: boolean
+          description: False when the lab is no longer used.
+          x-phi: none
+    LabProviderList:
+      description: One page of lab providers, by name.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/LabProvider'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
     LabAccount:
       description: The practice's client account at a lab, per facility (`lab_account`, `lab_account_bill_to`).
       type: object
@@ -11754,7 +11964,7 @@ components:
           x-phi: internal-id
         labProviderId:
           $ref: '#/components/schemas/Id'
-          description: The lab (`lab_provider`). Labs are set up by onboarding; there is no lab endpoint in the MVP contract.
+          description: The lab, from `GET /lab-providers` (read-only; D48).
           x-phi: internal-id
         facilityId:
           $ref: '#/components/schemas/Id'
@@ -11851,7 +12061,7 @@ components:
       properties:
         labProviderId:
           $ref: '#/components/schemas/Id'
-          description: The lab (`lab_provider`). Labs are set up by onboarding; there is no lab endpoint in the MVP contract.
+          description: The lab, from `GET /lab-providers` (read-only; D48).
           x-phi: internal-id
         facilityId:
           $ref: '#/components/schemas/Id'
