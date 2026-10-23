@@ -84,7 +84,7 @@ security:
 | AI gateway → API (AI-02 reads chart data through the clinical APIs, VG Step 7) | **Agreed (Thulasi, T10):** the API **mints a delegated token when the user starts the AI task** and passes it to the gateway with the job. Lifetime: at most 5 minutes or the length of the task. Bound to user, clinic, patient and task; **read permissions only**; every use audited as `ai`. The gateway can read only what that user could read, for that patient. | Never a broad service account: a compromised gateway must not reach every chart |
 | Integration engine workers | Run inside the backend codebase; use `tenant_db` with the tenant taken from the job, not an HTTP token | TA §7.1 |
 | Partners → `/hooks/*` | Partner signature verified by middleware | CAT |
-| Outside FHIR clients → `/fhir` | Machine token checked by Thulasi; not in our contract | CAT, VD-SCOPE |
+| Outside FHIR clients → `/fhir` | Client-credentials machine token checked by Thulasi's core; the clinic comes from the token's client registration. Anand's API is read-only, runs as the `shri_fhir_reader` role (clinical read only), offers `POST _search` so search terms need not go in the URL, and strips query strings from every log. Not in our contract | D22, D23, ADR-0011, VD-SCOPE |
 
 ## 3. What middleware does on each request
 
@@ -240,6 +240,15 @@ Two differences between core and §4.3 to settle with Thulasi and the clinical a
 3. `POST /patients/{patientId}/break-glass` with `{ reasonCode, reasonText }` (Thulasi). `reasonCode`: `emergency-care`, `continuity-of-care`, `patient-request`, `other` (`reasonText` required for `other`). Grants access **for that user and that patient only**, for **4 hours**, revocable by CO (agreed, T16). Audited with `category: security` and shown in `GET /reports/chart-access`. The privacy officer is notified through an **inbox item for CO, never an email containing PHI** (event `break-glass.granted`, EVENTS §4; inbox is Anand's).
 4. The grant never widens the user's permissions; it only lifts the restriction.
 
+### 5.3 Clinic isolation in the database (ADR-0011)
+
+One PostgreSQL database holds every clinic's data. Isolation does not depend on application code alone; four database rules apply together:
+
+1. **Forced row-level security** on every clinic table, read from the settings `tenant_db` sets (`app.current_tenant_id`, `app.current_user_id`, `app.correlation_id`). A session with no clinic set sees nothing.
+2. **Clinic-carrying links.** Composite foreign keys include the clinic ID, so a row can only point at a row of the same clinic (715 such keys in Sam's schema).
+3. **Same-patient links.** Composite foreign keys include the patient, so a patient's record can only point at the same patient's records (77 such keys).
+4. **Roles that never bypass RLS.** One role per service with the minimum grants (D23): `shri_app` (API), `shri_fhir_reader` (`/fhir`, clinical read only), `shri_integration` (partner worker), `shri_reporting` (approved views only), `shri_migrator` (migrations only).
+
 ## 6. Audit (`x-audit`)
 
 Middleware writes audit events (D3; TA §6: append-only, hash-chained). The contract tells it what to write.
@@ -330,7 +339,7 @@ S spoofing · T tampering · R repudiation · I information disclosure · D deni
 |---|---|---|
 | Authentication | Valid session or `401`; CSRF on unsafe methods | Never read cookies or tokens |
 | Authorization | `require(x-permission)` before the handler runs | Enforce record-level rules the permission can't express: encounter participants, "own entries", restricted-chart exceptions |
-| Tenant isolation | `tenant_db` sets the organization for row-level security; cross-tenant reads return nothing | Use only `tenant_db`; never open its own connection; pass tenant to FHIR client calls and enqueued jobs. The FHIR client takes the tenant (one HAPI partition per organization) from the same request context as `tenant_db`, or from the job for outbox workers, never from input (agreed, T30; partition design is Anand's) |
+| Tenant isolation | `tenant_db` sets `app.current_tenant_id`, `app.current_user_id` and `app.correlation_id` per transaction, from the server-side session (never token claims), so forced row-level security applies; cross-clinic reads return nothing (D21) | Use only `tenant_db` and the module's repository; never open its own connection; pass the clinic to enqueued partner jobs. The database's clinic-carrying and same-patient links reject cross-clinic and cross-patient references (§5.3) |
 | Facility scope | Rejects facility IDs the user is not assigned to; provides a helper that limits a query to the user's facilities | Apply the helper when a list is called without `facilityId` (T15) |
 | Break-glass | Grants, expiry, audit | Return `break-glass-required` via the shared helper |
 | Audit | Writes the event from `x-audit` | Supply the patient ID when it is not in the path |
@@ -351,6 +360,5 @@ Thulasi signed off this document on issue #3 (2026-10-22). Remaining:
 |---|---|---|
 | Idle timeout value (15 minutes) | Clinical advisors | Agreed by Thulasi; pending clinical advisors (§2.1) |
 | Clinical rows of the role matrix (‡) | Clinical advisors | §4.3 |
-| HAPI partition design, including where shared resources (Practitioner, Organization, Location) live: default partition or a copy per tenant | Anand | One partition per organization agreed (T30); shared-resource location open, blocks Stage 4 |
-| How outside `/fhir` clients get their partition | Anand, Thulasi | From their machine-token claims (T30) |
+| ~~HAPI partition design and the shared-resource question (T30, A33); how `/fhir` clients get their partition~~ | — | **Resolved by ADR-0011:** no HAPI partitions; clinic isolation is §5.3; `/fhir` clients get their clinic from the machine token (D22) |
 | Care-team relationship restrictions are P1 | Vimal | Yes, P1 |

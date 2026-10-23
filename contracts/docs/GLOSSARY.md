@@ -140,13 +140,18 @@ Plain-English meanings, so all four of us and every Claude session use the same 
 | **Dead-letter** | Where a message goes after all retries failed, so an operator can fix and replay it. |
 | **ETag / If-Match** | A version stamp on a record; sending it back proves you edit the version you saw. |
 | **Event** | A short notice that something happened (`note.signed`), carrying IDs only. |
-| **HAPI FHIR** | The open-source FHIR server that stores our clinical data. |
+| **HAPI FHIR** | *Historical.* An open-source FHIR server that D1 once used for clinical data. Retired by ADR-0011 (2026-10-23); we do not run it. |
 | **Idempotency key** | A unique value sent with a request so that retrying it never does the work twice. |
-| **Integration engine** | Our Python service that talks to labs, clearinghouse, e-prescribing, fax and SMS, and queues writes to HAPI. |
-| **Mirror** | A copy of our record kept in HAPI (e.g. Patient), updated after every change. |
+| **Integration engine** | Our Python service that talks to labs, clearinghouse, e-prescribing, fax and SMS, and works through the outbox for those partners. |
+| **Mirror** | *Historical.* A copy of our record kept in HAPI. Nothing is mirrored since ADR-0011. |
 | **Mock server** | A fake API (Prism) that answers from the contract's examples so screens can be built before the backend. |
 | **Operation** (`operations`) | A record that tracks slow background work (e.g. an AI draft) and points to the result when done. |
-| **Outbox** | A table where a change and "send this to HAPI or a partner" are saved together, so neither is lost. |
+| **Outbox** | A table where a change and "send this to a partner" (lab, e-prescribing, clearinghouse, fax, SMS) are saved together, so neither is lost. Used for external partners only (D25). |
+| **Clinic-carrying link** | A foreign key that includes the clinic ID, so a row can only point at a row of the same clinic. |
+| **FHIR-shaped table** | A database table laid out like a FHIR resource (one table per resource, columns named after FHIR elements, repeating elements in child tables), so it can be served as FHIR directly. Our clinical data uses them (ADR-0011). |
+| **Read-only FHIR API** (`/fhir`) | Anand's API that lets outside systems read our clinical data as FHIR, with a machine token. Our screens never use it. |
+| **Same-patient link** | A foreign key that includes the patient, so a patient's record can only point at that same patient's records. |
+| **Schema lock** | 30 October: the P0 tables are fixed; afterwards they change only through new migrations (`P0_SCHEMA_SCOPE.md`). |
 | **Problem Details** | The standard JSON shape for every error (RFC 9457). |
 | **Provenance** | A record of who created or changed a clinical record, when, and with what help (including AI). |
 | **Server-Sent Events (SSE)** | A one-way live connection from server to browser used for status board and inbox updates. |

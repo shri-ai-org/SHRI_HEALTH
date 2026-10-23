@@ -25,7 +25,7 @@ Values used in more than one rule are defined once here.
 2. **Minimum necessary.** A response carries only what the screen or caller needs (HIPAA minimum-necessary standard; your rule 3). See SECURITY_MODEL §8.
 3. **No PHI in URLs** (VD-G2, ADR-0005).
 4. **Predictable over clever.** The same thing looks the same in every module.
-5. **The contract hides storage.** Clients never see whether data came from our PostgreSQL or HAPI. FHIR shapes are not exposed through `/api/v1`; outside FHIR clients use HAPI's `/fhir` (CAT, VD-SCOPE).
+5. **The contract hides storage.** Clients never see database table or column names: each module's repository maps them to contract camelCase (D20). FHIR shapes are not exposed through `/api/v1`; outside FHIR clients use Anand's read-only `/fhir` API (D22, VD-SCOPE).
 
 ## 2. Base URL, versioning and deprecation
 
@@ -83,7 +83,7 @@ Allowed error statuses are listed in §9.3. `204 No Content` is used only for `P
 | Generation | Server-generated. Clients never choose IDs. | **PROPOSED**: one generator, no collisions across tenants |
 | Version | UUIDv7 for new records once the schema allows; existing uuid4 values remain valid | TA §6.1 suggests `uuidv7()` on PostgreSQL 18. **Pending Anand** |
 | Opaque | Clients must not parse IDs or infer order or time from them | ADR-0009 |
-| HAPI resources | Exposed with the same UUID format. **PROPOSED, pending Anand:** HAPI resources use client-assigned IDs equal to our UUIDs (Patient.id = our patient UUID; Encounter.id = our encounter UUID; new clinical resources get a UUID from the FHIR client), so retries are idempotent and no ID mapping table is needed | ADR-0009 |
+| Clinical records | FHIR-shaped clinical rows use the same UUID format; the `/fhir` API serves them under the same ID. Each record has exactly one ID in one database (ADR-0011) | ADR-0009, ADR-0011 |
 | Business identifiers | MRN, NPI, claim numbers, member IDs and driver's license numbers are properties, never IDs, and (except NPI) never appear in URLs | VD-G2 |
 | Unknown ID | `404 not-found` (also for IDs belonging to another clinic, §12) | |
 
@@ -189,11 +189,10 @@ Code system URIs (FHIR canonical):
 |---|---|
 | Parameters | `limit` (default 25, max 100) and `cursor` (opaque). For `POST …/search`, both go in the body. |
 | Response | `{ "items": [...], "nextCursor": "…" }`. No `nextCursor` = last page. |
-| Total counts | Not returned by default: counting is expensive, especially through HAPI. Screens use "load more". Dashboard and status-board counts come from the dashboard API, not from list totals (M2). Where a screen needs a count, the endpoint documents a `count` field explicitly. |
+| Total counts | Not returned by default: counting is expensive on large tables. Screens use "load more". Dashboard and status-board counts come from the dashboard API, not from list totals (M2). Where a screen needs a count, the endpoint documents a `count` field explicitly. |
 | Cursor content | Opaque, URL-safe, at most 512 characters. **Must never contain readable PHI** (for example a family name used as a sort key). **Agreed (Thulasi, T22):** the middleware encrypts cursors with AES-GCM, using a key from OpenBao with a key ID for rotation; tenant, user and endpoint are the associated data, and the expiry is inside the encrypted payload. |
 | Cursor lifetime | 24 hours. An expired or tampered cursor → `400 invalid-cursor`. |
-| HAPI-backed lists | The FHIR client turns HAPI's paging links into our cursor; HAPI URLs never reach clients. **Pending Anand.** |
-| Consistency | Keyset pagination for our lists (stable under inserts); HAPI paging as HAPI provides. |
+| Consistency | Keyset pagination for every list (stable under inserts). |
 
 ### 8.2 Filtering
 
@@ -286,10 +285,9 @@ Codes are permanent once released; new codes may be added; meanings never change
 | 428 | `precondition-required` | `If-Match` missing where required | — |
 | 429 | `rate-limited` | Rate limit hit; `Retry-After` set | — |
 | 500 | `internal-error` | Unexpected error; details only in server logs, without PHI | — |
-| 502 | `upstream-error` | HAPI or a partner returned an unusable response | — |
-| 503 | `clinical-store-unavailable` | HAPI unavailable for a synchronous clinical read or write; `Retry-After` set | — |
+| 502 | `upstream-error` | A partner returned an unusable response to a synchronous call | — |
 | 503 | `service-unavailable` | Maintenance or overload; `Retry-After` set | — |
-| 504 | `upstream-timeout` | HAPI or a partner did not answer in time | — |
+| 504 | `upstream-timeout` | A partner did not answer a synchronous call in time | — |
 
 Operation failures (§13) reuse the same Problem object inside the operation, with these extra codes: `ai-unavailable`, `ai-output-rejected` (output failed schema or grounding validation), `partner-rejected`, `partner-timeout`.
 
@@ -323,7 +321,7 @@ Operation failures (§13) reuse the same Problem object inside the operation, wi
 | Missing | `428 precondition-required` | RFC 6585 |
 | Mismatch | `412 precondition-failed`; the response carries the current `ETag` header so the client can re-read | RFC 9110 §13.1.1 |
 | Our database | ETag derived from a row version counter | **Pending schema** |
-| HAPI resources | The FHIR client translates our ETag to HAPI's `meta.versionId` and performs a version-aware update. HAPI's own weak ETags never reach clients. | **PROPOSED, pending Anand** |
+| Clinical records | The ETag comes from the row version of the FHIR-shaped record (its `meta.versionId`); the helpers' version check (`if_version`) rejects a stale write (ADR-0011) | Anand's guide v2, Step 3 |
 | Lists | List items do not carry ETags; clients GET the single resource before editing | **PROPOSED** |
 | Autosave | Each successful PATCH returns the new ETag; two tabs editing one draft → the second gets `412` (VG Step 5) |
 | Screen | On `412`, the screen shows a "record changed" view so the user can reload and see the difference. Designed by Minalini (M4, issue #5) | |
@@ -488,7 +486,7 @@ Examples in the contract are what the mock server returns, so they must be safe:
 | `x-idempotency` | Operation | `required`, `supported` | On POSTs | §10 |
 | `x-concurrency` | Operation | `if-match-required`, `if-match-optional` | On PATCH, PUT, listed actions | §11 |
 | `x-async` | Operation | `true` | When it returns 202 | §13 |
-| `x-storage` | Operation | `ours`, `hapi`, `both`, `files` | Yes (informational) | DATA_OWNERSHIP |
+| `x-storage` | Operation | `clinical`, `admin`, `audit`, `files` (ADR-0011) | Yes (informational) | DATA_OWNERSHIP |
 | `x-events` | Operation | List of event types published | When it publishes | EVENTS.md |
 | `x-release` | Operation | `P0`, `P0-stretch` | Yes | FRS §2 |
 
@@ -501,7 +499,6 @@ Settled on 2026-10-22: JSON casing and list shape (Minalini, #5); hooks and heal
 | `COMPANY_DOMAIN` value (§0) | Vimal (management) | Open: placeholder `company-domain.invalid` |
 | Problem `type` URI form | — | `tag:company-domain.invalid,2026:problem/<code>` (accepted form, matches Thulasi's code in PR #7; domain open) |
 | Money shape | Anand | `{ value: "125.00", currency: "USD" }` |
-| HAPI client-assigned UUIDs; ETag translation | Anand | Yes |
 | Facility IANA time zone | Anand | Yes |
 | File service flow, purposes, limits, multipart; HEIC conversion | Anand | As §15 |
 | HCPCS system URI | Anand | Confirm |
