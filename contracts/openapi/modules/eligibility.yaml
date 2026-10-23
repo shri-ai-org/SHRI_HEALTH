@@ -6,6 +6,9 @@
 # Status follows DATA_OWNERSHIP §5.8 (`pending`, `complete`, `error`) with a separate `coverageStatus`; Sam's schema
 # stores one combined status (`pending`, `active`, `inactive`, `not-found`, `error`, `timeout`), mapped in the repository.
 # Copay and deductible are picked from the normalized 271 benefits.
+# Restricted charts: like coverages, every eligibility endpoint needs a break-glass grant or care-team membership for a
+# restricted patient (`403 break-glass-required`, D37); the SECURITY_MODEL §5.2 front-desk exception covers name and
+# appointment only, not payer, copay or deductible.
 paths:
   /eligibility-checks:
     post:
@@ -14,7 +17,9 @@ paths:
       description: 'Runs a check now (inventory #59; trigger `manual`). Saves a `pending` check and queues the 270 for the
         clearinghouse in the same transaction (`enqueue(db, "clearinghouse", "270", …)`); the 271 arrives through the webhook
         receiver. Returns `202` and an operation of kind `eligibility.check`, whose result is the check. Reaches a partner,
-        so `Idempotency-Key` is required. Booking, the pre-visit batch and check-in start checks themselves (D15).'
+        so `Idempotency-Key` is required. Booking, the pre-visit batch and check-in start checks themselves (D15). The coverage
+        and the appointment must be in this clinic and the user''s facilities; a restricted patient needs break-glass or care-team
+        membership.'
       tags:
       - eligibility
       x-owner: vimal
@@ -84,7 +89,11 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `eligibility-checks:create`); `csrf-check-failed` (missing
-            or wrong CSRF header or Origin).
+            or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds
+            no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (the coverage or appointment is not in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged`
@@ -92,8 +101,8 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the coverage
-            is not active, or the appointment belongs to another patient); `idempotency-key-reused` (the Idempotency-Key was
-            used with a different body).
+            is not active, or the appointment belongs to another patient (field code `invalid-reference`)); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -111,7 +120,8 @@ paths:
     get:
       operationId: getEligibilityCheck
       summary: Get an eligibility check
-      description: 'Returns a check with coverage status, copay and deductible (inventory #60).'
+      description: 'Returns a check with coverage status, copay and deductible (inventory #60). A restricted patient needs
+        break-glass or care-team membership.'
       tags:
       - eligibility
       x-owner: vimal
@@ -213,7 +223,8 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `eligibility-checks:read`).
+          description: 403. `permission-denied` (the role lacks `eligibility-checks:read`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such eligibility check in this clinic or the user's facilities).
@@ -238,7 +249,7 @@ paths:
       operationId: listAppointmentEligibilityChecks
       summary: List an appointment's eligibility checks
       description: 'The checks for one appointment, newest first: at booking, in the pre-visit batch, at check-in and manual
-        (inventory #61; D15).'
+        (inventory #61; D15). A restricted patient needs break-glass or care-team membership.'
       tags:
       - eligibility
       x-owner: vimal
@@ -278,7 +289,8 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `eligibility-checks:read`).
+          description: 403. `permission-denied` (the role lacks `eligibility-checks:read`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such eligibility check in this clinic or the user's facilities).
