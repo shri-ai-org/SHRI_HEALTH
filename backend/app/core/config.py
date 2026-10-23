@@ -4,12 +4,11 @@ Priority, highest first: values passed to Settings(...), environment variables,
 OpenBao KV secrets, defaults. Secrets never live in source control.
 """
 
-import re
 from functools import lru_cache
 from typing import Any, Literal
 
 import httpx
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import SecretStr, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
@@ -19,8 +18,6 @@ from pydantic_settings import (
 
 Environment = Literal["development", "test", "staging", "production"]
 AuthMode = Literal["dev_header", "keycloak"]
-
-_SETTING_NAME = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
 
 
 class Settings(BaseSettings):
@@ -32,7 +29,12 @@ class Settings(BaseSettings):
     # It is refused outside development and test; see _dev_auth_only_in_dev below.
     auth_mode: AuthMode = "keycloak"
 
-    database_url: SecretStr | None = None
+    # One database role per service (DECISIONS D23); each URL carries that role's login.
+    database_url: SecretStr | None = None  # shri_app: the API (no RLS bypass)
+    fhir_database_url: SecretStr | None = None  # shri_fhir_reader: read-only /fhir API
+    integration_database_url: SecretStr | None = None  # shri_integration: partner worker
+    reporting_database_url: SecretStr | None = None  # shri_reporting: read-only reports
+    migration_database_url: SecretStr | None = None  # shri_migrator: migrations only, never the API
     db_pool_size: int = 5
 
     # Problem Details `type` = this prefix + code (API_STANDARDS §9.1). Same placeholder as the
@@ -40,23 +42,12 @@ class Settings(BaseSettings):
     # "tag:<COMPANY_DOMAIN>,2026:problem/".
     problem_type_base: str = "tag:company-domain.invalid,2026:problem/"
 
-    # PostgreSQL setting that the row-level security policies read (set per transaction).
-    # Placeholder until Anand confirms the name his policies use.
-    rls_tenant_setting: str = "app.current_organization_id"
-
     # OpenBao (KV v2). When openbao_addr is set, secrets are read from
     # {openbao_addr}/v1/{openbao_kv_mount}/data/{openbao_secret_path} at startup.
     openbao_addr: str | None = None
     openbao_token: SecretStr | None = None
     openbao_kv_mount: str = "secret"
     openbao_secret_path: str = "shri-health/api"  # noqa: S105 (a path, not a secret)
-
-    @field_validator("rls_tenant_setting")
-    @classmethod
-    def _valid_setting_name(cls, value: str) -> str:
-        if not _SETTING_NAME.match(value):
-            raise ValueError("must look like 'namespace.name' (lowercase letters, digits, _)")
-        return value
 
     @model_validator(mode="after")
     def _dev_auth_only_in_dev(self) -> "Settings":

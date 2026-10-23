@@ -26,8 +26,11 @@ async def get_patient(
     raise NotFound("Patient not found")  # becomes Problem JSON
 ```
 
-- `tenant_db` is scoped to the caller's clinic (row-level security). Call `await db.commit()`
-  to save; anything not committed is rolled back when the request ends.
+- `tenant_db` is scoped to the caller's clinic (row-level security). Each transaction sets
+  `app.current_tenant_id`, `app.current_user_id` and `app.correlation_id` (the request ID) for
+  its whole length, including triggers that run at commit. The clinic comes from the server-side
+  session, never from request headers or the body. Call `await db.commit()` to save; anything
+  not committed is rolled back when the request ends.
 - Raise `NotFound`, `Conflict`, `Forbidden`, `ValidationFailed` from `app/core/errors.py`,
   with `code=` for a specific code from API_STANDARDS §9.3, e.g.
   `Conflict(code="booking-conflict")`. Responses use the Problem Details shape (§9.1) with
@@ -81,11 +84,13 @@ ruff check . && mypy app
 
 Database tests run when `TEST_DATABASE_URL` points at a throwaway PostgreSQL as a superuser,
 e.g. `postgresql+asyncpg://postgres:postgres@localhost:5432/postgres`; otherwise they are skipped.
+Add `TEST_DATABASE_IMAGE=shri` when that database is our image (below) to also check its setup.
+CI (`.github/workflows/backend.yml`) runs all of them.
 
 ## Run the whole stack locally
 
 ```bash
-cp infra/compose/example.env infra/compose/.env   # fill in the two passwords
+cp infra/compose/example.env infra/compose/.env   # fill in every password
 infra/nginx/make-dev-cert.sh                      # once
 docker compose -f infra/compose/docker-compose.yml up --build
 ```
@@ -93,7 +98,17 @@ docker compose -f infra/compose/docker-compose.yml up --build
 Then open `https://localhost:8443/health` and `https://localhost:8443/api/v1/docs`.
 Keycloak is at `https://localhost:8443/kc/`. Synthetic data only.
 
+The database is `infra/compose/postgres`: PostgreSQL 18.6 with pgvector 0.8.2, the version Amazon
+RDS ships (ADR-0012, D31), with data checksums, SCRAM-SHA-256, C.UTF-8 collation and UTC. On first
+start it creates one role per service (D23); grants come from the migrations in `backend/app/db/`.
+The API connects as `shri_app`, which cannot bypass row-level security, and `/ready` fails if it
+can. Coming from the old PostgreSQL 16 stack? Run `docker compose -f infra/compose/docker-compose.yml
+down -v` once: data now lives in the `pgdata18` volume. Production is Amazon RDS.
+
 ## Settings
 
 Environment variables (or an OpenBao KV secret when `OPENBAO_ADDR` and `OPENBAO_TOKEN` are set):
-`ENVIRONMENT`, `AUTH_MODE`, `DATABASE_URL`, `RLS_TENANT_SETTING`, `PROBLEM_TYPE_BASE`. See `app/core/config.py`.
+`ENVIRONMENT`, `AUTH_MODE`, `PROBLEM_TYPE_BASE`, and one database URL per role (D23):
+`DATABASE_URL` (`shri_app`), `FHIR_DATABASE_URL` (`shri_fhir_reader`), `INTEGRATION_DATABASE_URL`
+(`shri_integration`), `REPORTING_DATABASE_URL` (`shri_reporting`), `MIGRATION_DATABASE_URL`
+(`shri_migrator`, migrations only, never given to the API). See `app/core/config.py`.

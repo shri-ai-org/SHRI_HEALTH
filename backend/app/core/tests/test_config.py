@@ -21,12 +21,6 @@ def test_default_auth_mode_is_not_the_stand_in() -> None:
     assert Settings().auth_mode == "keycloak"
 
 
-@pytest.mark.parametrize("name", ["current_org", "app.org; DROP TABLE x", "App.Org"])
-def test_rls_setting_name_is_validated(name: str) -> None:
-    with pytest.raises(ValidationError):
-        Settings(rls_tenant_setting=name)
-
-
 def test_docs_hidden_in_production() -> None:
     assert Settings(environment="production").show_docs is False
 
@@ -59,12 +53,12 @@ def test_openbao_values_are_loaded(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_environment_variables_override_openbao(monkeypatch: pytest.MonkeyPatch) -> None:
-    _fake_openbao(monkeypatch, {"rls_tenant_setting": "bao.setting"})
+    _fake_openbao(monkeypatch, {"problem_type_base": "tag:bao.example,2026:problem/"})
     monkeypatch.setenv("OPENBAO_ADDR", "https://bao.internal:8200")
     monkeypatch.setenv("OPENBAO_TOKEN", "test-token")
-    monkeypatch.setenv("RLS_TENANT_SETTING", "env.setting")
+    monkeypatch.setenv("PROBLEM_TYPE_BASE", "tag:env.example,2026:problem/")
 
-    assert Settings().rls_tenant_setting == "env.setting"
+    assert Settings().problem_type_base == "tag:env.example,2026:problem/"
 
 
 def test_unreadable_openbao_stops_startup(monkeypatch: pytest.MonkeyPatch) -> None:

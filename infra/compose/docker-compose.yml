@@ -10,14 +10,24 @@ name: shri-health
 
 services:
   postgres:
-    # Placeholder until Anand's image and config land in infra/postgres/.
-    image: pgvector/pgvector:pg16
+    # PostgreSQL 18.6 + pgvector 0.8.2, initialised like production on Amazon RDS (ADR-0012):
+    # data checksums, SCRAM-SHA-256, C.UTF-8 collation, UTC. POSTGRES_USER stands in for the
+    # RDS master role; the service roles (D23) are created by postgres/initdb/ on first start.
+    build: ./postgres
+    image: shri-health/postgres:18.6-pgvector0.8.2
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-shri_health}
       POSTGRES_USER: ${POSTGRES_USER:-shri}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/compose/.env}
+      SHRI_MIGRATOR_PASSWORD: ${SHRI_MIGRATOR_PASSWORD:?set SHRI_MIGRATOR_PASSWORD in infra/compose/.env}
+      SHRI_APP_PASSWORD: ${SHRI_APP_PASSWORD:?set SHRI_APP_PASSWORD in infra/compose/.env}
+      SHRI_FHIR_READER_PASSWORD: ${SHRI_FHIR_READER_PASSWORD:?set SHRI_FHIR_READER_PASSWORD in infra/compose/.env}
+      SHRI_INTEGRATION_PASSWORD: ${SHRI_INTEGRATION_PASSWORD:?set SHRI_INTEGRATION_PASSWORD in infra/compose/.env}
+      SHRI_REPORTING_PASSWORD: ${SHRI_REPORTING_PASSWORD:?set SHRI_REPORTING_PASSWORD in infra/compose/.env}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # PostgreSQL 18 images keep data in a versioned folder under /var/lib/postgresql.
+      - pgdata18:/var/lib/postgresql
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -41,9 +51,10 @@ services:
     environment:
       ENVIRONMENT: development
       AUTH_MODE: dev_header
-      # Stand-in: connects as the database owner, which bypasses row-level security.
-      # Switch to the non-owner API role once infra/postgres creates it.
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-shri}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
+      # The API connects as shri_app, which cannot bypass row-level security (D23). It never gets
+      # the migrator's login; migrations run separately as shri_migrator.
+      DATABASE_URL: postgresql+asyncpg://shri_app:${SHRI_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
+      FHIR_DATABASE_URL: postgresql+asyncpg://shri_fhir_reader:${SHRI_FHIR_READER_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,4 +72,4 @@ services:
       - keycloak
 
 volumes:
-  pgdata:
+  pgdata18:
