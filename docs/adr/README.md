@@ -14,7 +14,7 @@ Status values: **Proposed** → **Accepted** (all named sign-offs given) → **S
 | [ADR-0004](0004-cursor-pagination.md) | Cursor pagination for every list (partly superseded by ADR-0011) | **Accepted** | Minalini, Thulasi, Anand (2026-10-23) |
 | [ADR-0005](0005-no-phi-in-urls.md) | PHI never in URLs; PHI search through POST | Proposed | Thulasi (formally; related rules agreed) |
 | [ADR-0006](0006-cookie-session-and-csrf.md) | Session cookie with reference token, plus CSRF header | **Accepted** | Thulasi, Minalini |
-| [ADR-0007](0007-idempotency-keys.md) | Idempotency-Key for partner-bound and money-moving requests | Proposed | Thulasi and Anand agreed; status not yet changed |
+| [ADR-0007](0007-idempotency-keys.md) | Idempotency-Key for partner-bound and money-moving requests | **Accepted** | Thulasi, Anand (2026-10-23) |
 | [ADR-0008](0008-optimistic-concurrency.md) | Optimistic concurrency with ETag / If-Match (partly superseded by ADR-0011) | **Accepted** | Thulasi, Anand (2026-10-23) |
 | [ADR-0009](0009-id-strategy.md) | UUIDs everywhere (UUIDv4)~~, same UUID in HAPI~~ (HAPI part superseded by ADR-0011; amended 2026-10-23) | **Accepted** | Anand, Vimal (2026-10-23) |
 | [ADR-0010](0010-api-versioning.md) | Major version in the path; additive change within v1 (partly superseded by ADR-0011) | **Accepted** | Thulasi, Minalini (2026-10-23) |
