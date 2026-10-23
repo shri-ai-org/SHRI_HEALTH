@@ -81,7 +81,7 @@ Allowed error statuses are listed in §9.3. `204 No Content` is used only for `P
 |---|---|---|
 | Format | UUID (RFC 9562), lowercase, canonical 36-character form; OpenAPI `type: string, format: uuid` | TA §6.1 (UUID keys); ADR-0009 |
 | Generation | Server-generated. Clients never choose IDs. | **PROPOSED**: one generator, no collisions across tenants |
-| Version | UUIDv7 for new records (`uuidv7()` defaults); existing uuid4 values remain valid | TA §6.1; decided with PostgreSQL 18 (D24, ADR-0011) |
+| Version | UUIDv4: Python-side `uuid4` for primary keys, `gen_random_uuid()` for the audit `event_uuid`, as Sam's schema does | D29, ADR-0009 (a time-ordered ID would expose each record's creation time) |
 | Opaque | Clients must not parse IDs or infer order or time from them | ADR-0009 |
 | Clinical records | FHIR-shaped clinical rows use the same UUID format; the `/fhir` API serves them under the same ID. Each record has exactly one ID in one database (ADR-0011) | ADR-0009, ADR-0011 |
 | Business identifiers | MRN, NPI, claim numbers, member IDs and driver's license numbers are properties, never IDs, and (except NPI) never appear in URLs | VD-G2 |
@@ -96,7 +96,7 @@ Allowed error statuses are listed in §9.3. `204 No Content` is used only for `P
 | Instant (when something happened) | RFC 3339 `date-time`, always UTC with `Z` in responses, at most millisecond precision. Requests may send any offset; the server normalizes to UTC. Local times without an offset are rejected. | `"2026-11-03T14:30:00Z"` | Your Stage 2 brief (ISO 8601, UTC) |
 | Calendar date (no time zone) | `date`, `YYYY-MM-DD` | `"birthDate": "1984-07-19"` | Your Stage 2 brief |
 | Partial date (history, onset) | `PartialDate`: `YYYY`, `YYYY-MM` or `YYYY-MM-DD` | `"performedDate": "2011-05"` | **PROPOSED**: patients often remember only a year for surgery or onset; FHIR allows partial dates |
-| Appointment day queries | `date` interpreted in the facility's time zone | `GET /appointments?date=2026-11-03&facilityId=…` | **PROPOSED, pending Anand**: each facility stores an IANA time zone (e.g. `America/New_York`) |
+| Appointment day queries | `date` interpreted in the facility's time zone | `GET /appointments?date=2026-11-03&facilityId=…` | **Agreed** (Anand A22, D28; D40): each facility stores an IANA time zone (e.g. `America/New_York`) |
 | Facility time zone | Returned as `timeZone` on facility and on day-view responses so screens can display local time | `"timeZone": "America/Chicago"` | **PROPOSED** |
 | Durations | Integer with the unit in the name | `durationMinutes: 20` | **PROPOSED**: avoids ISO 8601 duration parsing in clients |
 | Age | Never stored or sent; derived from `birthDate` on screen | — | **PROPOSED**: avoids stale data |
@@ -114,7 +114,7 @@ Allowed error statuses are listed in §9.3. `204 No Content` is used only for `P
 
 ### 6.3 Money
 
-**PROPOSED, pending Anand:** `Money = { "value": "125.00", "currency": "USD" }`.
+**Agreed** (Anand A21, D28; exact decimals in USD, D40): `Money = { "value": "125.00", "currency": "USD" }`.
 
 - `value` is a decimal **string** with exactly two fraction digits (`^-?\d{1,9}\.\d{2}$`), so JavaScript never rounds it as a float.
 - `currency` is ISO 4217; only `USD` in the MVP.
@@ -134,7 +134,7 @@ Code system URIs (FHIR canonical):
 |---|---|
 | ICD-10-CM | `http://hl7.org/fhir/sid/icd-10-cm` |
 | CPT | `http://www.ama-assn.org/go/cpt` |
-| HCPCS Level II | `urn:oid:2.16.840.1.113883.6.285` — **pending Anand** (confirm against the terminology tables) |
+| HCPCS Level II | `urn:oid:2.16.840.1.113883.6.285` — confirmed by Anand (A23, D28) |
 | LOINC | `http://loinc.org` |
 | RxNorm | `http://www.nlm.nih.gov/research/umls/rxnorm` |
 | SNOMED CT | `http://snomed.info/sct` |
@@ -396,7 +396,7 @@ Path segments and query parameter names must not include: `name`, `given`, `fami
 
 ## 15. Files (uploads and downloads)
 
-Files never pass through module endpoints. Module endpoints only reference a `fileId` (CAT Anand section; VG Step 2). **Pending Anand** for every detail below.
+Files never pass through module endpoints. Module endpoints only reference a `fileId` (CAT Anand section; VG Step 2). Every detail below is agreed by Anand (A24, D28).
 
 1. **Request an upload:** `POST /files/upload-url` with `{ purpose, contentType, sizeBytes, sha256 }` → `{ fileId, uploadUrl, uploadHeaders, expiresAt }`.
 2. **Upload:** the browser `PUT`s the bytes directly to `uploadUrl` (object-store quarantine).
@@ -408,7 +408,7 @@ Files never pass through module endpoints. Module endpoints only reference a `fi
 |---|---|
 | `purpose` values | `insurance-card`, `encounter-audio`, `after-visit-summary`, `document`, `fax`, `ccda`, `export`, `onboarding-import` |
 | Allowed types and sizes | Declared per purpose. `insurance-card`: **JPEG and PNG for P0**, at most 10 MB (agreed, Minalini M13 and Vimal). HEIC (iPhone photo format) only if Anand's file service converts it for display — **pending Anand** |
-| Long audio | Multipart upload with several part URLs — **pending Anand** |
+| Long audio | Multipart upload with several part URLs (agreed, A24) |
 | Secrecy | Upload and download URLs are bearer secrets: never logged, never stored by clients, never put in events |
 | File names | Not stored from the client by default (a name can contain PHI) — **PROPOSED** |
 

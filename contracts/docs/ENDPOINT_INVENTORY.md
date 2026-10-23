@@ -140,7 +140,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 84 | GET | `/me/favorites` | V | Ad | `favorites:read` | – | – | | | FR-ENC-04 | B4 | **Was `/me/favourites`** (VD-G9) |
 | 85 | PUT | `/me/favorites` | V | Ad | `favorites:update` | – | – | ✓ | | FR-ENC-04 | B4 | Same |
 | 86 | POST | `/encounters/{encounterId}/after-visit-summary` | V | F+Cl | `after-visit-summaries:create` | ex | S | | ✓ | FR-ENC-06 | B4 | Async PDF |
-| 87 | GET | `/cosign-rules` | V | Ad | `cosign-rules:read` | adm | – | | | FR-ENC-01 (co-signature by state and provider) | B4 | **New** (Stage 1 gap); owner pending Anand agreement |
+| 87 | GET | `/cosign-rules` | V | Ad | `cosign-rules:read` | adm | – | | | FR-ENC-01 (co-signature by state and provider) | B4 | **New** (Stage 1 gap); owner Vimal, agreed by Anand (A28, D28) |
 | 88 | POST | `/cosign-rules` | V | Ad | `cosign-rules:create` | adm | S | | | FR-ENC-01 | B4 | **New** |
 | 89 | PATCH | `/cosign-rules/{cosignRuleId}` | V | Ad | `cosign-rules:update` | adm | – | ✓ | | FR-ENC-01 | B4 | **New** |
 
@@ -267,7 +267,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 210 | GET | `/fax-inbox` | A | Ad+F | `fax-inbox:read` | pr | – | | | §3.9 | B3 | |
 | 211 | POST | `/fax-inbox/{faxId}/file` | A | Ad+F | `fax-inbox:file` | pw | – | | | §3.9 | B3 | |
 | 212 | POST | `/ccda/import` | A | Cl+F | `ccda:import` | pw | S | | ✓ | §3.9 | B6 | |
-| 213 | GET | `/patients/{patientId}/ccda` | A | F | `ccda:export` | ex | – | | | §3.9 | B6 | **Pending Anand:** if generation is slow, change to `POST /patients/{patientId}/ccda-exports` → 202 (API_STANDARDS §13) |
+| 213 | GET | `/patients/{patientId}/ccda` | A | F | `ccda:export` | ex | – | | | §3.9 | B6 | **Anand's call (A27, D28):** if generation is slow, change to `POST /patients/{patientId}/ccda-exports` → 202 (API_STANDARDS §13) |
 | 214 | GET | `/inbox` | A | Ad | `inbox:read` | pr | – | | | FR-ENC-05 | B3 | |
 | 215 | PATCH | `/inbox/{inboxItemId}` | A | Ad | `inbox:update` | pw | – | ✓ | | FR-ENC-05 | B3 | |
 | 216 | POST | `/inbox/{inboxItemId}/complete` | A | Ad | `inbox:complete` | pw | – | | | FR-ENC-05 | B3 | |

@@ -70,7 +70,7 @@ Status after your Stage 2 review (2026-10-22) is in the last column.
 | V3 | ~~Legal record of a signed note (with Anand)~~ **Resolved by ADR-0011:** the signed note row is the legal record (ADR-0011). | Locked version in ours | DATA_OWNERSHIP §3.2. **Your proposal recorded:** signed version in ours (immutable, hash-chained, audited) is the legal record; HAPI copy carries the same content hash; reconciliation compares. Needs Anand and compliance |
 | V4 | ~~Clinical writes when HAPI is down~~ **Resolved by ADR-0011:** no HAPI, so no such failure mode; partner outages go through the outbox (ARCHITECTURE_CONTEXT §8). | Fail with 503 | DATA_OWNERSHIP §3.3. **Accepted for the MVP**, with registration and check-in queuing; rooming impact recorded in ARCHITECTURE_CONTEXT §8 |
 | V5 | Guards for closing an encounter (with clinical advisors) | At least one signed note; no open drafts; diagnosis required for billable types | DATA_OWNERSHIP §5.2. **Still open:** your answer kept the placeholder ("ACCEPTED as written / my change") |
-| V6 | Care-team (relationship-based) access limits are P1 | Yes, P1; MVP uses clinic, facility and restricted charts | SECURITY_MODEL §5.1 |
+| V6 | ~~Care-team (relationship-based) access limits are P1~~ **Decided (D37):** MVP access by role and facility; care-team members open restricted charts without break-glass; P1 practice setting limits all charts to the care team | Yes, P1; MVP uses clinic, facility and restricted charts | SECURITY_MODEL §5.1 |
 | V7 | Patient search minimum criteria and 50-result cap | Yes | API_STANDARDS §14.2 |
 | V8 | Your guide is incomplete on eligibility at booking (VD-G3). Update VG Step 3 / Step 4 text? | Yes, one line each | VG |
 | V9 | Approve the Stage 4 batch order | B1 platform/setup → B2 patients → B3 front desk → B4 your clinical → B5 Thulasi's clinical → B6 back office → B7 AI | ENDPOINT_INVENTORY |
@@ -112,3 +112,6 @@ Idle timeout on shared workstations (15 min proposed); clinical rows of the role
 - **Still open from you:** `COMPANY_DOMAIN`, raised with management; and the encounter-close rules, which go to the clinical advisors (DECISIONS.md "Still open").
 - **Remove the architecture lines from your `CLAUDE.local.md`;** they live in DECISIONS.md and the root `CLAUDE.md`. Done locally on 2026-10-23.
 
+## 9. Decisions of 2026-10-23 (D28–D42)
+
+Anand approved the schema, PostgreSQL 18, D13–D19 and his items (D28). IDs are UUIDv4 (D29, ADR-0009 Accepted); hosting is Amazon RDS (D30, ADR-0012); care-team access is decided (D37, V6); Q24 and Q27–Q30 are decided (D30, D38–D41); the repository is the single source for plans and guides (D42). ADR-0004, ADR-0008, ADR-0009 and ADR-0010 are Accepted.

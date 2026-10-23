@@ -230,7 +230,7 @@ Two differences between core and §4.3 to settle with Thulasi and the clinical a
 |---|---|
 | Organization (clinic, tenant) | Taken **only** from the session; never from a header or body. One organization per user in the MVP. Row-level security enforces it (TA §6.1). |
 | Facility | A user is assigned to one or more facilities of their organization. List endpoints accept a `facilityId` filter; middleware rejects facilities the user is not assigned to (`404`, API_STANDARDS §12). **Lists sent without `facilityId` must still filter to the user's facilities**: an endpoint duty, using a helper from core. No "active facility" header. |
-| Patient | Any user in the organization with the right permission may access a patient, except restricted charts (§5.2). Care-team-based limits are P1 (FRS FR-PAT-02 asks for relationship-based restriction; **pending Vimal/clinical**: confirm P1). |
+| Patient | **Decided (D37):** any user in the organization with the right permission may access a patient at their facilities; restricted charts need break-glass (§5.2), except for the patient's care-team members; every access is audited (§6). **P1:** a practice setting that limits all charts to the care team (FRS FR-PAT-02). |
 | Encounter | Write actions on an encounter (notes, diagnoses) are limited to the encounter's providers and assigned staff, enforced in the service. **PROPOSED** |
 
 ### 5.2 Restricted charts and break-glass (FRS FR-PAT-01, TA §9, CAT)
@@ -239,6 +239,7 @@ Two differences between core and §4.3 to settle with Thulasi and the clinical a
 2. For a restricted patient, every patient-scoped endpoint returns `403 break-glass-required` unless the user holds a current grant. Exceptions that still work without a grant: `POST /patients/search` (summary fields only, `restricted: true`), scheduling and front-desk endpoints needed to book and check in (name and appointment only). **Agreed (T16).**
 3. `POST /patients/{patientId}/break-glass` with `{ reasonCode, reasonText }` (Thulasi). `reasonCode`: `emergency-care`, `continuity-of-care`, `patient-request`, `other` (`reasonText` required for `other`). Grants access **for that user and that patient only**, for **4 hours**, revocable by CO (agreed, T16). Audited with `category: security` and shown in `GET /reports/chart-access`. The privacy officer is notified through an **inbox item for CO, never an email containing PHI** (event `break-glass.granted`, EVENTS §4; inbox is Anand's).
 4. The grant never widens the user's permissions; it only lifts the restriction.
+5. **Care-team members** of a restricted patient (the patient's care team in the schema) open the chart without break-glass; the access is still audited (D37). Membership is checked in `require()` from the database, never from the request.
 
 ### 5.3 Clinic isolation in the database (ADR-0011)
 
@@ -361,4 +362,4 @@ Thulasi signed off this document on issue #3 (2026-10-22). Remaining:
 | Idle timeout value (15 minutes) | Clinical advisors | Agreed by Thulasi; pending clinical advisors (§2.1) |
 | Clinical rows of the role matrix (‡) | Clinical advisors | §4.3 |
 | ~~HAPI partition design and the shared-resource question (T30, A33); how `/fhir` clients get their partition~~ | — | **Resolved by ADR-0011:** no HAPI partitions; clinic isolation is §5.3; `/fhir` clients get their clinic from the machine token (D22) |
-| Care-team relationship restrictions are P1 | Vimal | Yes, P1 |
+| ~~Care-team relationship restrictions are P1~~ | — | **Decided (D37):** MVP access by role and facility, break-glass for restricted charts except care-team members, all access audited; P1 practice setting limits all charts to the care team (§5.1, §5.2) |

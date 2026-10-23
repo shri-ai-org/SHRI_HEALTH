@@ -66,7 +66,7 @@ These are Vimal's answers in the Stage 1 review. They are binding for the contra
 | VD-LOC | API docs in `contracts/docs/`; cross-team ADRs in `docs/adr/`; notes for owners in `contracts/docs/notes/` (they become GitHub issues once the repo exists). |
 | VD-SIGN | Module owners approve the contract sections they implement (`x-owner`); Vimal approves standards conformance for all. |
 | VD-TITLE | The API title is "Shri Health API". |
-| VD-SSN | PROPOSED, pending management: no full SSN in the MVP; at most an optional last 4 digits for patient matching. |
+| VD-SSN | ~~PROPOSED, pending management: no full SSN in the MVP; at most an optional last 4 digits for patient matching.~~ **Decided:** D27 (Open Decisions Q10): never store a full SSN; hash and masked last four only. |
 | VD-REPO | Work happens on `vimal/contracts-foundation`, branched from `main`. Never commit to `main`. |
 
 ### Stage 2 review answers, 2026-10-22

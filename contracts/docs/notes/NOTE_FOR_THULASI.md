@@ -14,7 +14,14 @@ HAPI is retired (ADR-0011; D1 rewritten). T30 is resolved (struck below). Your f
 - the outbox is for external partners only (D25);
 - machine tokens for Anand's read-only `/fhir` API (D22).
 
-Still with you: the `enqueue()` core PR (T29), and the medication-list question with Anand (DATA_OWNERSHIP §2.2, **NEEDS DECISION**).
+Still with you: the `enqueue()` core PR (T29). ~~The medication-list question with Anand~~ is decided: MedicationRequest (your T36, Anand's A35; D28).
+
+**Added 2026-10-23 (issue #12):**
+- the database is Amazon RDS for PostgreSQL 18 (ADR-0012, D30), provisioned with Terraform;
+- the development image and CI use PostgreSQL 18 with the RDS pgvector version (0.8.2 today) and C.UTF-8 collation (D31, D33);
+- one database role per service (D23);
+- chart access per D37 (care-team members open restricted charts without break-glass);
+- turn on automatic deletion of head branches.
 
 ## Status after your sign-off (issue #3, 2026-10-22)
 
@@ -89,5 +96,5 @@ All items T1–T37 are **agreed**; every "Agree, with" addition is applied to th
 | T33 | Requisition and labels return a file download link instead of PDF bytes | Yes | #140–141, API_STANDARDS §15 |
 | T34 | Entered-in-error for prescription drafts; `POST /unmatched-results/{id}/reject`; order cancel cut-off (before specimen collection) | Add / yes | DATA_OWNERSHIP §5.4–5.6 |
 | T35 | Review the prescription, order and result state machines; RxChange flow | Please review | DATA_OWNERSHIP §5.4–5.6 |
-| T36 | Medication list represented as MedicationRequest (US Core) or MedicationStatement (with Anand) | MedicationRequest, per US Core | DATA_OWNERSHIP §2.2 |
+| T36 | Medication list represented as MedicationRequest (US Core) or MedicationStatement (with Anand) | MedicationRequest, per US Core **Decided (D28):** Anand agreed (A35) | DATA_OWNERSHIP §2.2 |
 | T37 | Sign off your rows (#1–27, #116–147) | — | ENDPOINT_INVENTORY |

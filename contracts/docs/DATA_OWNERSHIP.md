@@ -1,7 +1,7 @@
 # Data ownership, consistency and lifecycles
 
 Status: **PROPOSED** · Version 0.2 · 2026-10-23 · Author: Vimal (drafted with Claude Code)
-**Needs sign-off from:** Anand (schema). Thulasi signed off her parts on issue #3 (2026-10-22); they are kept in §5.4–§5.6.
+**Signed off:** Thulasi (her parts, issue #3, 2026-10-22; §5.4–§5.6) and Anand (2026-10-23, D28).
 
 **Since ADR-0011 (2026-10-23):** there is one PostgreSQL 18 database. Clinical data lives in FHIR-shaped tables (Sam's schema, PR #9) and administrative data in normalized tables, in three schemas: `clinical`, `admin` and `audit` (D1, D23). There is no HAPI, so there is no mirroring, no HAPI reconciliation, no HAPI-down failure mode and no partitions.
 
@@ -80,7 +80,7 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Audit events | `/audit-events`, `/reports/chart-access` | **Au** (append-only, per-clinic hash chain) | AuditEvent is served from the audit table | — | Append-only |
 | Break-glass grants | `/patients/{patientId}/break-glass` | **Au** | — | — | Insert-only |
 | Integration messages | `/admin/integration-messages` | **Ad** + **F** (raw payloads) | — | — | System only |
-| Medication list | `/patients/{patientId}/medications` | **Cl** | MedicationStatement (medication list and reconciliation, P0_SCHEMA_SCOPE.md); see **NEEDS DECISION** below for how `/fhir` presents it under US Core | US Core MedicationRequest; US Core Medication | Row version |
+| Medication list | `/patients/{patientId}/medications` | **Cl** | MedicationRequest with `intent` and `reported[x]` for patient-reported items (D28: Thulasi T36, Anand A35) | US Core MedicationRequest; US Core Medication | Row version |
 | Prescription | `/prescriptions` | **Cl** | MedicationRequest + Provenance | US Core MedicationRequest; US Core Provenance | `If-Match` on edits and sign-and-send |
 | Safety alerts, overrides | `/prescriptions/{prescriptionId}/safety-check`, `/alerts/{alertId}/override` | **Cl** | DetectedIssue (rule-based alerts and override reasons) | — | Insert-only |
 | Refill and change requests | `/refill-requests` with `type`: `renewal` \| `change` (T35) | **Ad** (e-prescribing transactions) | MedicationRequest on approval | US Core MedicationRequest | State machine |
@@ -95,7 +95,7 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Unmatched results | `/unmatched-results` | **Ad** + **F** | — | — | State machine |
 | In-office results | `/encounters/{encounterId}/in-office-results` | **Cl** | Observation | US Core Laboratory Result Observation or US Core Observation Clinical Result (Anand, with the US Core version) | Insert-only |
 
-**NEEDS DECISION (Thulasi, Anand):** Thulasi's T36 represents the medication list as MedicationRequest with `intent` and `reported[x]`, which is how US Core profiles it. The approved P0 scope puts the medication list in a MedicationStatement table. Both tables exist in Sam's schema. It needs deciding whether `/api/v1` writes the list to MedicationStatement and `/fhir` presents it as US Core MedicationRequest, or the list is kept in MedicationRequest.
+~~NEEDS DECISION (Thulasi, Anand): Thulasi's T36 represents the medication list as MedicationRequest with `intent` and `reported[x]`, which is how US Core profiles it. The approved P0 scope puts the medication list in a MedicationStatement table. Both tables exist in Sam's schema. It needs deciding whether `/api/v1` writes the list to MedicationStatement and `/fhir` presents it as US Core MedicationRequest, or the list is kept in MedicationRequest.~~ **Decided (D28):** Thulasi (T36) and Anand (A35) agree: the medication list is `MedicationRequest` with `intent` and `reported[x]`, as US Core profiles it. Whether the `MedicationStatement` table stays P0 is part of Anand's P0 tagging.
 
 ### 2.3 Anand's resources
 
@@ -251,7 +251,7 @@ stateDiagram-v2
 
 No reopening of `finished` encounters in the MVP: late information goes in addenda (FRS FR-ENC-01). **PROPOSED.**
 
-Co-signature still pending does **not** block closing; billing holds the claim until co-signature is complete (**pending Anand / RCM analyst**).
+Co-signature still pending does **not** block closing; billing holds the claim until co-signature is complete (agreed by Anand, A29, D28; the RCM analyst reviews the billing details).
 
 ### 5.3 Note (clinical `Composition`; FHIR Composition.status) — owner Vimal
 
@@ -386,7 +386,7 @@ Storage questions are settled by ADR-0011. What remains:
 |---|---|---|---|
 | Exact table and column names for every resource above | Anand, Sam | 30 October schema lock | Fixed at the lock (P0 tables) |
 | US Core version to target | Anand, with management (ONC) | 30 October schema lock | DECISIONS.md "Still open" |
-| Medication list: MedicationStatement (P0 scope) vs MedicationRequest (T36) | Thulasi, Anand | Medication APIs | **NEEDS DECISION** (§2.2) |
+| ~~Medication list: MedicationStatement (P0 scope) vs MedicationRequest (T36)~~ | — | — | **Decided (D28):** MedicationRequest (§2.2) |
 | Claim close rule; co-signature hold before claiming | Anand | Pilot | As in §5.7; the claim tables are fixed at the lock |
 | Close-encounter guards (is a diagnosis required?) | Clinical advisors (raised by Vimal) | Pilot | DECISIONS.md "Still open" |
 | `enqueue()` signature change (§3.3) | Thulasi; all four review | Pilot (first partner integration) | Separate core PR |
