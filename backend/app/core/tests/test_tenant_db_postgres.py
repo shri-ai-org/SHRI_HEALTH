@@ -18,7 +18,18 @@ from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.db import CORRELATION_SETTING, TENANT_SETTING, USER_SETTING
-from app.core.deps import CLINIC_A, CLINIC_B, DEV_USER_HEADER, DEV_USERS, tenant_db
+from app.core.deps import (
+    CLINIC_A,
+    CLINIC_B,
+    DEV_USER_HEADER,
+    DEV_USERS,
+    CurrentUser,
+    current_user,
+    require,
+    tenant_db,
+)
+
+CHECKED = Depends(require("authenticated"))
 
 ADMIN_URL = os.environ.get("TEST_DATABASE_URL")
 ROLE = "shri_rls_test_api"
@@ -106,7 +117,9 @@ def api_database_url() -> Iterator[str]:
     asyncio.run(_teardown(ADMIN_URL))
 
 
-def _app(make_app: Callable[..., FastAPI], database_url: str) -> FastAPI:
+def _app(
+    make_app: Callable[..., FastAPI], database_url: str, **settings_overrides: str
+) -> FastAPI:
     router = APIRouter()
 
     async def labels(db: AsyncSession) -> list[str]:
@@ -114,11 +127,13 @@ def _app(make_app: Callable[..., FastAPI], database_url: str) -> FastAPI:
         return list(rows.scalars())
 
     @router.get("/probe")
-    async def probe(db: AsyncSession = Depends(tenant_db)) -> list[str]:
+    async def probe(_: CurrentUser = CHECKED, db: AsyncSession = Depends(tenant_db)) -> list[str]:
         return await labels(db)
 
     @router.get("/probe/settings")
-    async def settings(db: AsyncSession = Depends(tenant_db)) -> list[str]:
+    async def settings(
+        _: CurrentUser = CHECKED, db: AsyncSession = Depends(tenant_db)
+    ) -> list[str]:
         row = (await db.execute(text(
             f"SELECT current_setting('{TENANT_SETTING}', true), "
             f"current_setting('{USER_SETTING}', true), "
@@ -126,7 +141,9 @@ def _app(make_app: Callable[..., FastAPI], database_url: str) -> FastAPI:
         return list(row)
 
     @router.post("/probe/{label}")
-    async def add_then_read(label: str, db: AsyncSession = Depends(tenant_db)) -> list[str]:
+    async def add_then_read(
+        label: str, _: CurrentUser = CHECKED, db: AsyncSession = Depends(tenant_db)
+    ) -> list[str]:
         await db.execute(
             text(f"INSERT INTO rls_probe VALUES ("
                  f"NULLIF(current_setting('{TENANT_SETTING}', true), '')::uuid, :label)"),
@@ -135,12 +152,22 @@ def _app(make_app: Callable[..., FastAPI], database_url: str) -> FastAPI:
         await db.commit()  # the deferred trigger fires here
         return await labels(db)  # new transaction: the settings must be set again
 
+    @router.get("/probe-unchecked")
+    async def unchecked(db: AsyncSession = Depends(tenant_db)) -> list[str]:
+        return await labels(db)  # forgot require(): must be refused
+
+    @router.get("/probe-db-first")
+    async def db_first(
+        db: AsyncSession = Depends(tenant_db), _: CurrentUser = Depends(require("patients:read"))
+    ) -> list[str]:
+        return await labels(db)
+
     @router.get("/probe-no-tenant")
     async def no_tenant() -> list[str]:
         async with app.state.db.sessions() as db:
             return await labels(db)
 
-    app = make_app(database_url=database_url)
+    app = make_app(database_url=database_url, **settings_overrides)
     app.include_router(router)
     return app
 
@@ -229,3 +256,37 @@ def test_not_ready_when_the_role_can_bypass_rls(make_app: Callable[..., FastAPI]
 
     assert response.status_code == 503
     assert response.json()["code"] == "service-unavailable"
+
+
+def test_tenant_db_without_require_fails_loudly_in_development(
+    make_app: Callable[..., FastAPI], api_database_url: str
+) -> None:
+    with TestClient(_app(make_app, api_database_url), raise_server_exceptions=False) as client:
+        response = client.get("/probe-unchecked", headers={DEV_USER_HEADER: "md"})
+
+    assert response.status_code == 500
+    assert "a-1" not in response.text
+
+
+def test_tenant_db_without_require_is_403_outside_development(
+    make_app: Callable[..., FastAPI], api_database_url: str
+) -> None:
+    app = _app(make_app, api_database_url, environment="production", auth_mode="keycloak")
+    app.dependency_overrides[current_user] = lambda: DEV_USERS["md"]  # a signed-in user
+    with TestClient(app) as client:
+        response = client.get("/probe-unchecked")
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "permission-denied"
+
+
+def test_dependency_order_does_not_matter(
+    make_app: Callable[..., FastAPI], api_database_url: str
+) -> None:
+    with TestClient(_app(make_app, api_database_url)) as client:
+        allowed = client.get("/probe-db-first", headers={DEV_USER_HEADER: "md"})
+        denied = client.get("/probe-db-first", headers={DEV_USER_HEADER: "sup"})
+
+    assert allowed.json() == ["a-1", "a-2"]
+    assert denied.status_code == 403
+

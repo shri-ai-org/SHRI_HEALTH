@@ -14,6 +14,7 @@ when the session commits and starts a new transaction. A session with no clinic 
 and sees zero rows.
 """
 
+from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
@@ -34,6 +35,7 @@ USER_SETTING = "app.current_user_id"
 CORRELATION_SETTING = "app.correlation_id"
 
 _CONTEXT_KEY = "shri_tenant_context"
+_GUARD_KEY = "shri_tenant_guard"
 
 
 class Database:
@@ -48,9 +50,15 @@ class Database:
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
 
     def tenant_session(
-        self, tenant_id: UUID, user_id: UUID, correlation_id: str | None = None
+        self,
+        tenant_id: UUID,
+        user_id: UUID,
+        correlation_id: str | None = None,
+        guard: Callable[[], None] | None = None,
     ) -> AsyncSession:
+        """`guard` runs before each transaction's settings are set and may raise to refuse it."""
         session = self.sessions()
+        session.info[_GUARD_KEY] = guard
         session.info[_CONTEXT_KEY] = {
             TENANT_SETTING: str(tenant_id),
             USER_SETTING: str(user_id),
@@ -78,6 +86,9 @@ class Database:
 def _set_tenant_context(
     session: Session, transaction: SessionTransaction, connection: Connection
 ) -> Any:
+    guard = session.info.get(_GUARD_KEY)
+    if guard is not None:
+        guard()
     context = session.info.get(_CONTEXT_KEY)
     if context is not None:
         connection.execute(

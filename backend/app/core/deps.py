@@ -12,6 +12,7 @@ current_user reads a synthetic test user from the X-Dev-User header (see DEV_USE
 Real Keycloak login replaces the body later; endpoint code does not change.
 """
 
+import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any
@@ -27,6 +28,9 @@ from app.core.errors import Forbidden, ServiceUnavailable, Unauthorized
 from app.core.request_id import current_request_id
 
 DEV_USER_HEADER = "X-Dev-User"
+_PERMISSION_CHECKED = "shri_permission_checked"
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -105,25 +109,45 @@ def require(permission: str) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
             "app/core/permissions.py (SECURITY_MODEL §4.2), or 'authenticated'"
         )
 
-    async def check(user: CurrentUser = Depends(current_user)) -> CurrentUser:
+    async def check(request: Request, user: CurrentUser = Depends(current_user)) -> CurrentUser:
         if not user.can(permission):
             raise Forbidden(f"Requires {permission}")
+        setattr(request.state, _PERMISSION_CHECKED, permission)  # tenant_db looks for this
         return user
 
     check.__name__ = f"require_{permission.replace(':', '_').replace('-', '_')}"
     return check
 
 
+def _require_was_checked(request: Request) -> None:
+    """Runs at the session's first query, after all of the endpoint's dependencies, so the order
+    in which an endpoint lists require() and tenant_db does not matter."""
+    if getattr(request.state, _PERMISSION_CHECKED, None):
+        return
+    log.error("tenant_db used without require() on %s %s", request.method, request.url.path)
+    if _settings(request).environment in ("development", "test"):
+        # Loud in development and tests, so the missing check is fixed before it ships.
+        raise RuntimeError("tenant_db needs Depends(require(...)) on the same endpoint")
+    raise Forbidden("This endpoint does not check a permission")
+
+
 async def tenant_db(
     request: Request, user: CurrentUser = Depends(current_user)
 ) -> AsyncIterator[AsyncSession]:
     """A session scoped to the caller's clinic. Call `await db.commit()` to save; anything
-    not committed when the request ends is rolled back."""
+    not committed when the request ends is rolled back.
+
+    Only for endpoints that also use require(): row-level security separates clinics, but not
+    users within a clinic. Without a permission check the first query fails (500 in development
+    and tests, 403 elsewhere)."""
     db: Database | None = request.app.state.db
     if db is None:
         raise ServiceUnavailable("Database is not configured")
     # The clinic and user come from the server-side session (current_user), never from
     # request headers or the body (D21).
-    session = db.tenant_session(user.organization_id, user.id, current_request_id())
+    session = db.tenant_session(
+        user.organization_id, user.id, current_request_id(),
+        guard=lambda: _require_was_checked(request),
+    )
     async with session:
         yield session
