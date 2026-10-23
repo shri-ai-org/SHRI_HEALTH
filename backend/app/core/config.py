@@ -23,7 +23,9 @@ AuthMode = Literal["dev_header", "keycloak"]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=None, extra="ignore", case_sensitive=False)
 
-    environment: Environment = "development"
+    # Defaults to production, the safe side: an unset ENVIRONMENT never enables the stand-in
+    # login or the API docs. Local development and tests set it explicitly.
+    environment: Environment = "production"
 
     # "dev_header" is the Day 1 stand-in login (a test user picked by a request header).
     # It is refused outside development and test; see _dev_auth_only_in_dev below.

@@ -21,6 +21,18 @@ def test_default_auth_mode_is_not_the_stand_in() -> None:
     assert Settings().auth_mode == "keycloak"
 
 
+def test_unset_environment_is_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Review of #7 (Minalini): a deployment that forgets ENVIRONMENT must not end up in
+    # development, where X-Dev-User and the API docs are on.
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    settings = Settings()
+
+    assert settings.environment == "production"
+    assert settings.show_docs is False
+    with pytest.raises(ValidationError, match="only allowed in development and test"):
+        Settings(auth_mode="dev_header")
+
+
 def test_docs_hidden_in_production() -> None:
     assert Settings(environment="production").show_docs is False
 

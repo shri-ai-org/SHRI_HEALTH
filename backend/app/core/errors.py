@@ -77,6 +77,10 @@ FIELD_CODES = frozenset({
 })
 
 
+# Standard members of every Problem; extensions may never set or overwrite them.
+RESERVED_MEMBERS = frozenset({"type", "title", "status", "detail", "instance", "code", "requestId"})
+
+
 class AppError(Exception):
     """Base class. Each subclass has a default code; `code=` picks another of the same status."""
 
@@ -96,6 +100,9 @@ class AppError(Exception):
         expected = CATALOGUE[self.default_code].status
         if CATALOGUE[code].status != expected:
             raise ValueError(f"{type(self).__name__} needs a {expected} code, got {code!r}")
+        reserved = RESERVED_MEMBERS & extensions.keys()
+        if reserved:
+            raise ValueError(f"Extensions cannot set standard Problem members: {sorted(reserved)}")
         super().__init__(detail or code)
         self.code = code
         self.detail = detail
@@ -163,7 +170,8 @@ def problem(
     body["code"] = code
     if request_id:
         body["requestId"] = request_id
-    body.update(extensions)
+    # Extensions never overwrite the standard members (AppError also refuses them up front).
+    body.update({k: v for k, v in extensions.items() if k not in RESERVED_MEMBERS})
 
     response_headers = dict(headers or {})
     # Also set here: a 500 is sent outside the middleware stack (API_STANDARDS §7.2).

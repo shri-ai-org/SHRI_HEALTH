@@ -1,18 +1,22 @@
 from collections.abc import Callable
+from typing import Any
 
 import pytest
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.errors import (
     CATALOGUE,
+    RESERVED_MEMBERS,
     AppError,
     Conflict,
     Forbidden,
     NotFound,
     ValidationFailed,
     field_error,
+    problem,
 )
 
 TYPE_BASE = "tag:company-domain.invalid,2026:problem/"
@@ -215,3 +219,34 @@ def test_cookie_location_is_never_reported() -> None:
     from app.core.errors import _to_field_error
 
     assert _to_field_error({"loc": ("cookie", "x"), "type": "missing"})["in"] != "cookie"
+
+
+# `code` and `detail` are real arguments of every error class, so only these can sneak in as
+# extensions.
+@pytest.mark.parametrize("member", sorted(RESERVED_MEMBERS - {"code", "detail"}))
+def test_extensions_cannot_set_standard_members(member: str) -> None:
+    extensions: dict[str, Any] = {member: "x"}
+    with pytest.raises(ValueError, match="standard Problem members"):
+        Conflict(code="patient-merged", **extensions)
+
+
+def test_problem_never_lets_extensions_overwrite_standard_members(
+    make_app: Callable[..., FastAPI],
+) -> None:
+    router = APIRouter()
+
+    @router.get("/sneaky")
+    async def sneaky(request: Request) -> JSONResponse:
+        return problem(request, "not-found", status=200, requestId="x", title="Fine",
+                       type="about:blank", mergedIntoId="m-1")
+
+    app = make_app()
+    app.include_router(router)
+    response = TestClient(app).get("/sneaky")
+    body = response.json()
+
+    assert response.status_code == 404
+    assert (body["code"], body["status"], body["type"], body["title"]) == (
+        "not-found", 404, TYPE_BASE + "not-found", "Not found")
+    assert body["requestId"] == response.headers["X-Request-ID"]
+    assert body["mergedIntoId"] == "m-1"  # ordinary extensions still pass through

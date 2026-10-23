@@ -51,6 +51,9 @@ services:
     environment:
       ENVIRONMENT: development
       AUTH_MODE: dev_header
+      # Trust X-Forwarded-For/-Proto only from Nginx's fixed address below, so clients cannot
+      # fake their IP in logs, rate limits or audit records.
+      FORWARDED_ALLOW_IPS: 172.31.250.10
       # The API connects as shri_app, which cannot bypass row-level security (D23). It never gets
       # the migrator's login; migrations run separately as shri_migrator.
       DATABASE_URL: postgresql+asyncpg://shri_app:${SHRI_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
@@ -67,9 +70,18 @@ services:
     volumes:
       - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ../nginx/certs:/etc/nginx/certs:ro
+    networks:
+      default:
+        ipv4_address: 172.31.250.10  # the only proxy the API trusts (FORWARDED_ALLOW_IPS)
     depends_on:
       - api
       - keycloak
 
 volumes:
   pgdata18:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24
