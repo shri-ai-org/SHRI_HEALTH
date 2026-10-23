@@ -4,7 +4,7 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 
 **Conventions:** base path `/api/v1`. GET reads, POST creates or runs an action (`POST /x/{id}/action`), PATCH/PUT changes. No DELETE on clinical records; use entered-in-error. Every endpoint has an `x-permission`. POSTs that reach a partner take an `Idempotency-Key` header. Note and prescription updates use `ETag` / `If-Match`.
 
-**Storage column:** *Ours* = our PostgreSQL; *HAPI* = HAPI FHIR through `backend/app/fhir/`; *Both* = ours plus a FHIR mirror or pointer.
+**Storage column:** everything is in our one PostgreSQL database (ADR-0011). *Ours (clinical)* = FHIR-shaped clinical tables; *Ours (admin)* = normalized admin tables; *+ files* = file storage, with only the file ID in the database. There is no HAPI.
 
 ## Thulasi — platform and security
 
@@ -24,7 +24,7 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 
 ## Vimal — front desk, encounters, history, AI
 
-### Patients and insurance (Both: ours, mirrored to FHIR Patient)
+### Patients and insurance (Ours (clinical): Patient, RelatedPerson, Coverage, Consent; Ours (admin): duplicates, merges, preferred pharmacy)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -40,7 +40,7 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 | GET | `/duplicates` | Possible duplicates |
 | POST | `/duplicates/{id}/merge`, `/patient-merges/{id}/undo` | Merge and undo |
 
-### Scheduling and check-in (Ours; check-in also creates FHIR Encounter)
+### Scheduling and check-in (Ours (clinical): Appointment, Schedule, Encounter created at check-in; Ours (admin): appointment types, availability, visit flow)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -53,14 +53,14 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 | POST | `/appointments/{id}/status` | Roomed, with provider, checked out |
 | GET | `/status-board` | Today's clinic flow |
 
-### Eligibility (Ours)
+### Eligibility (Ours (admin))
 
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/eligibility-checks` | Run a 270/271 check through the integration engine |
 | GET | `/eligibility-checks/{id}` | Result: coverage, copay, deductible |
 
-### Encounters and notes (HAPI for Encounter, vitals, diagnoses, signed notes; Ours for drafts and favourites)
+### Encounters and notes (Ours (clinical): Encounter, vitals, diagnoses, notes from draft to signed, Provenance; Ours (admin): favorites, templates, co-sign rules)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -80,7 +80,7 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 | POST | `/encounters/{id}/after-visit-summary` | Patient handout PDF |
 | POST | `/encounters/{id}/close` | Close; publishes `encounter.closed` for billing |
 
-### Patient history (HAPI)
+### Patient history (Ours (clinical))
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -91,7 +91,7 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 | GET, POST | `/patients/{id}/surgical-history` | Procedure |
 | POST | `/records/{type}/{rid}/entered-in-error` | Mark wrong, never delete |
 
-### AI (Ours for requests, audio and review logs)
+### AI (Ours (admin): requests, audio, transcripts and review logs)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -105,7 +105,7 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 
 ## Thulasi — clinical: medications and orders
 
-### Medications and prescriptions (HAPI for MedicationRequest/Statement; Ours for drafts, alerts, refills)
+### Medications and prescriptions (Ours (clinical): MedicationRequest from draft to signed, MedicationStatement, MedicationDispense, safety alerts; Ours (admin): pharmacy directory, e-prescribing transactions, refills)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -121,7 +121,7 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 | GET | `/pharmacies?search=` | Pharmacy directory |
 | POST | `/patients/{id}/medication-history/fetch` | Outside prescription history |
 
-### Orders and results (HAPI for ServiceRequest, DiagnosticReport, Observation; Ours for compendium, status history, unmatched queue)
+### Orders and results (Ours (clinical): ServiceRequest, Specimen, DiagnosticReport, Observation; Ours (admin): compendium, status history, unmatched queue)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -143,20 +143,20 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 |---|---|---|---|
 | POST | `/files/upload-url`, `/files/{id}/complete` | Upload to quarantine; scan, hash, encrypt | Files |
 | GET | `/files/{id}/download-url` | Short-lived download link | Files |
-| GET, POST, PATCH | `/facilities`, `/locations`, `/providers`, `/appointment-types`, `/provider-schedules`, `/fee-schedules`, `/payers`, `/lab-accounts`, `/note-templates` | Practice setup | Ours |
-| POST | `/onboarding/import` | Bulk load for a new clinic | Ours |
-| GET, PATCH | `/encounters/{id}/superbill` | Review charges | Ours |
-| POST | `/claims`, `/claims/{id}/scrub`, `/claims/{id}/submit` | Build, check, send 837P | Ours |
-| GET | `/claims?status=`, `/claims/{id}` | Claim list and history | Ours |
-| POST | `/claims/{id}/status-check`, `/claims/{id}/correct`, `/claims/{id}/void` | Status, correct, void | Ours |
-| POST | `/patients/{id}/payments`, `/payments/card-session` | Copays and card payments | Ours |
-| GET, POST | `/remittances`, `/remittances/{id}/post` | ERA posting (P0 stretch) | Ours |
-| GET | `/reports/ar-aging`, `/reports/charges-payments` | Billing reports | Ours |
-| GET, POST, PATCH | `/documents`, `/patients/{id}/documents`, `/documents/{id}` | Document records | Ours (+ files) |
-| POST, GET | `/faxes`, `/fax-inbox`, `/fax-inbox/{id}/file` | Send fax; incoming fax queue and filing | Ours |
-| POST, GET | `/ccda/import`, `/patients/{id}/ccda` | C-CDA import and export | Both |
-| GET, PATCH, POST | `/inbox`, `/inbox/{id}`, `/inbox/{id}/complete`, `/messages` | Inbox and tasks | Ours |
-| POST, GET | `/exports`, `/exports/{id}` | Permission-controlled exports | Ours |
+| GET, POST, PATCH | `/facilities`, `/locations`, `/providers`, `/appointment-types`, `/provider-schedules`, `/fee-schedules`, `/payers`, `/lab-accounts`, `/note-templates` | Practice setup | Ours (clinical: Organization, Location, Practitioner, PractitionerRole for facilities, locations and providers; admin: the rest) |
+| POST | `/onboarding/import` | Bulk load for a new clinic | Ours (admin) |
+| GET, PATCH | `/encounters/{id}/superbill` | Review charges | Ours (admin) |
+| POST | `/claims`, `/claims/{id}/scrub`, `/claims/{id}/submit` | Build, check, send 837P | Ours (admin) |
+| GET | `/claims?status=`, `/claims/{id}` | Claim list and history | Ours (admin) |
+| POST | `/claims/{id}/status-check`, `/claims/{id}/correct`, `/claims/{id}/void` | Status, correct, void | Ours (admin) |
+| POST | `/patients/{id}/payments`, `/payments/card-session` | Copays and card payments | Ours (admin) |
+| GET, POST | `/remittances`, `/remittances/{id}/post` | ERA posting (P0 stretch) | Ours (admin) |
+| GET | `/reports/ar-aging`, `/reports/charges-payments` | Billing reports | Ours (admin) |
+| GET, POST, PATCH | `/documents`, `/patients/{id}/documents`, `/documents/{id}` | Document records | Ours (clinical: DocumentReference; admin: document records) + files |
+| POST, GET | `/faxes`, `/fax-inbox`, `/fax-inbox/{id}/file` | Send fax; incoming fax queue and filing | Ours (admin) |
+| POST, GET | `/ccda/import`, `/patients/{id}/ccda` | C-CDA import and export | Ours (clinical: DocumentReference) + files |
+| GET, PATCH, POST | `/inbox`, `/inbox/{id}`, `/inbox/{id}/complete`, `/messages` | Inbox and tasks | Ours (admin) |
+| POST, GET | `/exports`, `/exports/{id}` | Permission-controlled exports | Ours (admin) |
 
 ## Minalini — communications and dashboard
 
@@ -167,9 +167,9 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 | GET | `/patients/{id}/communications` | What was sent and delivery status |
 | GET | `/dashboards/operations` | Today's counts by status |
 
-## FHIR for outside systems (Anand)
+## FHIR for outside systems: read-only facade, owned by Anand
 
-HAPI serves the standard FHIR API (`/fhir/...`) directly, behind Thulasi's machine-token check. Outside systems read FHIR there; our screens never call HAPI directly.
+Anand's read-only FHIR API (`/fhir/...`, `backend/app/fhir/`) serves the FHIR-shaped clinical tables, behind Thulasi's machine-token check. It offers read, version read, history, search (GET and `POST _search`) and a CapabilityStatement; it returns OperationOutcome for its errors; query strings are stripped from logs (D22). It is described by its own CapabilityStatement, not by `contracts/openapi/`. Our screens never call `/fhir`. HAPI is retired (ADR-0011).
 
 ## P1 additions (not in the first contract pass)
 

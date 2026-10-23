@@ -22,9 +22,9 @@ Read `00_Team_Workflow_and_Claude_Code_Setup.md` first.
    - `/health` and `/ready`;
    - one router per module folder;
    - a global error handler returning Problem JSON.
-3. Write `infra/compose/docker-compose.yml`: API, PostgreSQL (Anand supplies the image and config), Keycloak, Nginx with a self-signed certificate for local HTTPS.
+3. Write `infra/compose/docker-compose.yml`: API, PostgreSQL, Keycloak, Nginx with a self-signed certificate for local HTTPS. The database is a **PostgreSQL 18 image with the pgvector version Amazon RDS ships for PostgreSQL 18** (0.8.2 today) and C.UTF-8 collation, identical in CI (D31, D33); Anand supplies the configuration. Production is Amazon RDS (ADR-0012).
 4. Ship a **stand-in** login and permission check with the final signatures (section 3), so everyone can build endpoints today. In development, the stand-in reads a test user from a header; it is replaced later without anyone changing their code.
-5. Ship `tenant_db`: an async SQLAlchemy session that sets the clinic on the connection for row-level security. Ask Anand for the exact setting name his RLS policies read.
+5. Ship `tenant_db`: an async SQLAlchemy session that sets, per transaction, exactly the database settings the schema's row-level security policies read: `app.current_tenant_id`, `app.current_user_id`, `app.correlation_id` (Sam's schema, adopted by Anand; D21). The clinic comes from the server-side session, never from token claims.
 
 ## 3. The building blocks you give everyone
 
@@ -67,7 +67,7 @@ async def enqueue(partner: str, message_type: str, payload: dict, idempotency_ke
   - strict CORS (frontend origin only).
 - **Every internal connection uses TLS:**
   - API to PostgreSQL (`sslmode=verify-full`);
-  - Keycloak, HAPI, file storage;
+  - Keycloak, file storage;
   - AI gateway and GPU server.
 - Lab connections (MLLP) run over TLS or VPN and end at the integration service only.
 
@@ -78,7 +78,7 @@ async def enqueue(partner: str, message_type: str, payload: dict, idempotency_ke
   - web backend (confidential);
   - integration service;
   - AI gateway;
-  - HAPI.
+  - outside FHIR clients (machine tokens for the read-only `/fhir` API).
 - Roles: doctor, nurse/MA, front desk, biller, practice admin, platform admin.
 - MFA required for all staff; strong password policy; session idle timeout.
 
@@ -101,7 +101,9 @@ Also build `GET /me`, and `/users` and `/roles`, kept in sync with Keycloak's ad
 - **`require()`:** checks the role, then context:
   - Does this user work at this facility?
   - Is this chart restricted? If so, refuse unless break-glass with a reason (`POST /patients/{id}/break-glass`).
-- **`tenant_db`:** sets the clinic on every session, so Anand's row-level security policies apply.
+- **`tenant_db`:** sets `app.current_tenant_id`, `app.current_user_id` and `app.correlation_id` on every transaction, from the server-side session, so the schema's row-level security policies apply (D21). The application role never bypasses RLS.
+- **One database role per service** (D23), each with its own credentials from OpenBao: the API connects as `shri_app`, the `/fhir` API as `shri_fhir_reader`, the integration worker as `shri_integration`, reporting as `shri_reporting`; migrations run as `shri_migrator`.
+- **Chart access** (D37): by role and facility; restricted charts need break-glass, except for the patient's care-team members; every access is audited. P1 adds a practice setting that limits all charts to the care team.
 - **Cross-clinic tests:** a user from clinic A gets nothing from clinic B, through every endpoint.
 
 ### Step 5 — Audit
@@ -116,13 +118,14 @@ Also build `GET /me`, and `/users` and `/roles`, kept in sync with Keycloak's ad
 
 - **Servers:** encrypted disks via AWS KMS on every server (Terraform), including the GPU server and its temporary audio.
 - **OpenBao transit engine:** provides data keys for file envelope encryption (Anand's file service calls `new_data_key()`) and powers `encrypt_field()` for any extra-sensitive column.
-- **Backups:** hold the pgBackRest encryption key; give Anand access through OpenBao.
+- **Database (ADR-0012):** provision Amazon RDS for PostgreSQL 18 with Terraform: Multi-AZ, encrypted at rest with a KMS key, automated backups with point-in-time recovery, snapshot copies to a second U.S. region. Give Anand what he needs for the quarterly restore drills. ~~Hold the pgBackRest encryption key.~~
 - **Key rotation:** write the procedure and test it once.
 
-### Step 7 — Machine tokens and HAPI protection
+### Step 7 — Machine tokens for `/fhir`
 
 - Client-credentials tokens for the integration service and AI gateway.
-- HAPI is reachable only from the API and integration service network, and every call needs a valid machine token. Use an Nginx check or a HAPI auth interceptor, agreed with Anand.
+- Outside systems call Anand's read-only `/fhir` API with a client-credentials machine token; the clinic is taken from the token's client registration through your core code (D22). Our own screens never call `/fhir`.
+- *Retired by ADR-0011:* ~~HAPI protection (network isolation and an auth interceptor for a HAPI server)~~. There is no HAPI.
 
 ### Step 8 — Request hygiene
 
@@ -151,7 +154,8 @@ Separate container, same codebase.
   - retries with backoff;
   - a dead-letter queue;
   - `/admin/integration-messages` with replay.
-- **Nightly consistency check:** our records that should have a HAPI resource (and the reverse); report mismatches.
+- *Retired by ADR-0011:* ~~nightly consistency check between our records and HAPI~~. There is one database, so there is nothing to reconcile.
+- **The outbox is for external partners only** (labs, e-prescribing, clearinghouse, fax, SMS; D25). Never for writes to our own database.
 
 ### Step 12 — Medications and prescriptions APIs
 
@@ -167,7 +171,7 @@ Endpoints:
 - medication history.
 
 How it fits together:
-- Drafts and versions stay in our database. On sign, write a `MedicationRequest` to HAPI (through Anand's client), then `enqueue("erx", "NewRx", ...)`.
+- Drafts, versions and signed prescriptions live in the FHIR-shaped `MedicationRequest` table. On sign, lock the row and write its `Provenance` in the same transaction (through Anand's helpers), then `enqueue("erx", "NewRx", ...)` in that same transaction for the partner.
 - Safety checks are rules, not AI:
   - allergy, interaction, duplicate therapy and dose range;
   - drug data comes from the licensed drug database or the e-prescribing vendor's checks;
@@ -185,10 +189,10 @@ Ordering:
   - cancel;
   - status;
   - requisition and label PDFs.
-- On sign, write a `ServiceRequest` to HAPI and `enqueue("lab", "ORM", ...)`. Lab status messages add rows to the order status history.
+- On sign, lock the `ServiceRequest` row and write its `Provenance` in the same transaction, then `enqueue("lab", "ORM", ...)` for the lab. Lab status messages add rows to the order status history.
 
 Results:
-- Lab result messages create a `DiagnosticReport` and its `Observation`s in HAPI, matched on order number and patient.
+- Lab result messages create a `DiagnosticReport` and its `Observation`s in our FHIR-shaped tables (the integration worker's role may file results; D23), matched on order number and patient.
 - Unmatched results go to `/unmatched-results` for staff, never auto-filed.
 - Committing a result calls `events.publish()` to the ordering clinician; the target is 60 seconds from receipt.
 - Critical results escalate until acknowledged.
@@ -212,8 +216,8 @@ Results:
 |---|---|---|
 | Skeleton, stand-in `require()` / `tenant_db`, error classes | Everyone | Any endpoint |
 | Real login and audit | Everyone | Testing with real users |
-| `new_data_key()`, backup key | Anand | File service, backups |
-| Machine tokens, HAPI protection | Anand, Vimal | Clinical APIs, AI gateway |
+| `new_data_key()`; the RDS instance and its KMS key | Anand | File service, restore drills |
+| Machine tokens for `/fhir` and the AI gateway | Anand, Vimal | `/fhir`, AI gateway |
 | GPU server | Vimal | AI work |
 | `events.publish()` and `/events/stream` | Everyone, Minalini for screens | Live updates |
 | `enqueue()` and webhook hand-off | Vimal, Anand | Eligibility, claims, fax |
@@ -221,8 +225,8 @@ Results:
 | You need | From |
 |---|---|
 | Permission names in the contract | Vimal |
-| RLS setting name, `audit_event` hash-chain function, compendium tables | Anand |
-| FHIR client functions for MedicationRequest, MedicationStatement, ServiceRequest, DiagnosticReport, Observation | Anand |
+| Confirmation of the RLS setting names and database roles (D21, D23), `audit_event` hash-chain function, compendium tables | Anand |
+| Data-access helpers (`backend/app/db/`) for MedicationRequest, MedicationStatement, ServiceRequest, DiagnosticReport, Observation | Anand |
 
 ## 6. Your Claude Code settings
 
@@ -243,7 +247,7 @@ Save as `.claude/settings.local.json`, start `claude` from the repo root, run `/
       "Edit(backend/app/modules/exports/**)", "Edit(backend/app/modules/onboarding/**)",
       "Edit(backend/app/modules/communications/**)", "Edit(backend/app/modules/dashboards/**)",
       "Edit(ai/**)", "Edit(frontend/**)",
-      "Edit(infra/hapi/**)", "Edit(infra/postgres/**)", "Edit(infra/seaweedfs/**)"
+      "Edit(infra/postgres/**)", "Edit(infra/seaweedfs/**)"
     ]
   }
 }

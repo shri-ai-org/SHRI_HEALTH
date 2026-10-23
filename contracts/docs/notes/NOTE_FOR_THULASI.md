@@ -4,6 +4,25 @@ From: Vimal (drafted with Claude Code) · 2026-10-22 · Becomes GitHub issues on
 
 Each item has a **PROPOSED** answer already written into the documents so work can continue. Please reply "agree", or give your answer. Items marked **blocks Stage 3** are needed before the shared contract components are written.
 
+## Status after ADR-0011 (2026-10-23)
+
+HAPI is retired (ADR-0011; D1 rewritten). T30 is resolved (struck below). Your follow-ups are in the issue "ADR-0011 follow-ups":
+
+- remove the `/infra/hapi/` CODEOWNERS line and the folder;
+- `tenant_db` sets exactly the settings the schema's RLS policies read: `app.current_tenant_id`, `app.current_user_id`, `app.correlation_id` (D21; confirm with Anand);
+- the clinic comes from the server-side session, never token claims;
+- the outbox is for external partners only (D25);
+- machine tokens for Anand's read-only `/fhir` API (D22).
+
+Still with you: the `enqueue()` core PR (T29). ~~The medication-list question with Anand~~ is decided: MedicationRequest (your T36, Anand's A35; D28).
+
+**Added 2026-10-23 (issue #12):**
+- the database is Amazon RDS for PostgreSQL 18 (ADR-0012, D30), provisioned with Terraform;
+- the development image and CI use PostgreSQL 18 with the RDS pgvector version (0.8.2 today) and C.UTF-8 collation (D31, D33);
+- one database role per service (D23);
+- chart access per D37 (care-team members open restricted charts without break-glass);
+- turn on automatic deletion of head branches.
+
 ## Status after your sign-off (issue #3, 2026-10-22)
 
 All items T1–T37 are **agreed**; every "Agree, with" addition is applied to the documents in PR #2. Still with you:
@@ -21,7 +40,7 @@ All items T1–T37 are **agreed**; every "Agree, with" addition is applied to th
 | T2 | Add CODEOWNERS lines per contract module file so implementing owners must approve their sections (VD-SIGN), e.g. `/contracts/openapi/modules/billing.yaml @vimal @anand` | Yes | TOOLCHAIN §3 |
 | T3 | CI jobs: bundle staleness, Spectral lint, oasdiff breaking check (with a `breaking-change-approved` label only Vimal applies), Prism smoke test, generated-client check, later Schemathesis | As listed | TOOLCHAIN §6, CONTRACT_GOVERNANCE §4–§6 |
 | T4 | Node.js 24 LTS in CI; exact tool versions with a lockfile; adopt releases only once 7 days old | Yes | TOOLCHAIN §5 |
-| T5 | Contract-test environment: two test clinics, one test user per role, HAPI test instance, Synthea data | Yes | CONTRACT_GOVERNANCE §6 |
+| T5 | Contract-test environment: two test clinics, one test user per role, PostgreSQL 18 with the locked schema (no HAPI since ADR-0011), Synthea data | Yes | CONTRACT_GOVERNANCE §6 |
 | T6 | Serve FastAPI's own `/openapi.json` only outside production | Yes | CONTRACT_GOVERNANCE §6 |
 
 ## Session, CSRF, identity (blocks Stage 3)
@@ -65,8 +84,8 @@ All items T1–T37 are **agreed**; every "Agree, with" addition is applied to th
 |---|---|---|---|
 | T27 | Event envelope (CloudEvents-style names), thin events (IDs only), naming rule | Yes | EVENTS §1–§2 |
 | T28 | SSE: filtering per user, restricted-patient handling, 25 s keep-alive, 5-minute `Last-Event-ID` replay, 5 streams per user, Nginx buffering off | Yes | EVENTS §3 |
-| T29 | `integration.enqueue()` writes in the caller's `tenant_db` transaction (true outbox); per-record ordering; dead-letter and replay also for HAPI jobs. Vimal decided registration **and check-in** never block on HAPI, so both depend on this | Yes | DATA_OWNERSHIP §3.1, §3.3 |
-| T30 | Tenant isolation inside HAPI (with Anand) | One HAPI partition per organization, chosen by the FHIR client from the request tenant | DATA_OWNERSHIP §3.4 |
+| T29 | `integration.enqueue()` writes in the caller's `tenant_db` transaction (true outbox); per-record ordering; dead-letter and replay. ~~Also for HAPI jobs; registration and check-in never block on HAPI, so both depend on this.~~ Since ADR-0011 the outbox carries partner messages only (D25) | Yes | DATA_OWNERSHIP §3.1, §3.3 |
+| T30 | ~~Tenant isolation inside HAPI (with Anand)~~ **Resolved by ADR-0011:** no HAPI partitions; `tenant_db` sets the schema's RLS settings from the server-side session, and the database's clinic-carrying links do the rest (D21, SECURITY_MODEL §5.3). | One HAPI partition per organization, chosen by the FHIR client from the request tenant | DATA_OWNERSHIP §3.4 |
 
 ## Your endpoints in the inventory
 
@@ -77,5 +96,5 @@ All items T1–T37 are **agreed**; every "Agree, with" addition is applied to th
 | T33 | Requisition and labels return a file download link instead of PDF bytes | Yes | #140–141, API_STANDARDS §15 |
 | T34 | Entered-in-error for prescription drafts; `POST /unmatched-results/{id}/reject`; order cancel cut-off (before specimen collection) | Add / yes | DATA_OWNERSHIP §5.4–5.6 |
 | T35 | Review the prescription, order and result state machines; RxChange flow | Please review | DATA_OWNERSHIP §5.4–5.6 |
-| T36 | Medication list represented as MedicationRequest (US Core) or MedicationStatement (with Anand) | MedicationRequest, per US Core | DATA_OWNERSHIP §2.2 |
+| T36 | Medication list represented as MedicationRequest (US Core) or MedicationStatement (with Anand) | MedicationRequest, per US Core **Decided (D28):** Anand agreed (A35) | DATA_OWNERSHIP §2.2 |
 | T37 | Sign off your rows (#1–27, #116–147) | — | ENDPOINT_INVENTORY |

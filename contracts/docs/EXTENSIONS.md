@@ -75,7 +75,7 @@ birthDate:
 | `x-idempotency` | POST operations | `required` (reaches a partner or moves money) or `supported` | `shri-idempotency` |
 | `x-concurrency` | Actions that need a version check | `if-match-required` (PATCH and PUT always need `If-Match`) | `shri-if-match` |
 | `x-async` | Operations returning `202` | `true` | `shri-async` |
-| `x-storage` | Operations | `ours`, `hapi`, `both`, `files` (informational, DATA_OWNERSHIP) | not linted; reviewed |
+| `x-storage` | Operations | `clinical`, `admin`, `audit`, `files` (informational; one database, ADR-0011; DATA_OWNERSHIP) | not linted; reviewed |
 | `x-events` | Operations that publish events | List of event types (EVENTS.md §4) | not linted; reviewed |
 | `x-release` | Operations | `P0`, `P0-stretch` | not linted; reviewed |
 | `x-internal` | Servers | `false` for our public servers (OWASP API9 inventory rule) | `owasp:api9:2023-inventory-access` |

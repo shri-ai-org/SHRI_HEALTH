@@ -1,5 +1,5 @@
 description: >-
-  503. HAPI (the clinical data store) is unavailable for a clinical read or write, or the service is in maintenance; retry after `Retry-After` seconds. Patient registration and check-in never return this; they queue (DATA_OWNERSHIP §3.3). Codes: `clinical-store-unavailable`, `service-unavailable`.
+  503. The database is unavailable or overloaded, or the service is in maintenance; nothing was written. Retry after `Retry-After` seconds. A partner outage never causes this: partner messages wait in the outbox (ARCHITECTURE_CONTEXT §5, §8). Code: `service-unavailable`.
 headers:
   X-Request-ID:
     $ref: '../headers/XRequestId.yaml'
@@ -12,5 +12,5 @@ content:
     schema:
       $ref: '../schemas/Problem.yaml'
     examples:
-      clinical-store-unavailable:
-        $ref: '../examples/ProblemClinicalStoreUnavailable.yaml'
+      service-unavailable:
+        $ref: '../examples/ProblemServiceUnavailable.yaml'

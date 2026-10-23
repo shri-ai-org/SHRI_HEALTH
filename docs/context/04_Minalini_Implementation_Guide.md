@@ -115,7 +115,7 @@ Use Thulasi's `require()` and `tenant_db`, and Anand's existing tables (`message
 - pending results;
 - open inbox items.
 
-These are read-only queries over our database. For counts held in HAPI, ask Anand for a helper in the FHIR client rather than calling HAPI yourself. Connect it to the dashboard screen.
+These are plain read-only queries over our one PostgreSQL database (clinical and admin tables alike; ADR-0011), run through your module's repository, scoped by `tenant_db` like every other query. No HAPI helper is needed. The database collation is C.UTF-8 (D33): where a screen needs a human-friendly order (for example names), the query applies it. Connect it to the dashboard screen.
 
 ### Step 7 — Design reviews
 
@@ -138,7 +138,7 @@ Review Vimal's AI screens and Anand's admin, billing and document screens before
 | Login endpoints, CSRF header name, `/events/stream` | Thulasi | Steps 2 and 4 |
 | File service | Anand | Card photos, documents |
 | `require()`, `tenant_db` | Thulasi | Your two backend modules |
-| Communications tables; helper for HAPI counts | Anand | Steps 5 and 6 |
+| Communications tables; table names for the dashboard counts (after the schema lock) | Anand | Steps 5 and 6 |
 
 | You give | To |
 |---|---|

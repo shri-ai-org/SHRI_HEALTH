@@ -1,5 +1,7 @@
 # ADR 0001 — Repository ownership and workflow
 
+> **Partly superseded by ADR-0011: the branch example `anand/hapi-setup` is historical; HAPI is retired. The rest of this ADR stands.**
+
 - **Status:** Accepted
 - **Date:** 2026-10-22
 - **Deciders:** Vimal, Thulasi, Anand, Minalini

@@ -20,6 +20,7 @@ Your rule 5: use current stable versions, checked live, never from memory. Every
 | `orval` | **Chosen** TS client generator (Minalini, M3) | 8.44.0 | 2026-10-21 | npm | Minalini pins the version at install, with a custom mutator (one fetch wrapper) that applies the M4 rules: CSRF header, `ETag`/`If-Match`, `Idempotency-Key` per user action, Problem `code` handling |
 | Node.js | Runs the npm tools | **24.22.1 LTS "Krypton"** | 2026-10-20 | nodejs.org/dist/index.json | Node 26.12.1 is "Current", not LTS |
 | Python | Runs Schemathesis in CI | 3.13 (D12) | — | D12 | Patch version pinned by Thulasi with the backend image |
+| PostgreSQL and pgvector | Database for contract tests in CI | PostgreSQL 18, latest 18.x minor; pgvector at the version Amazon RDS ships for PostgreSQL 18 (0.8.2 today); C.UTF-8 collation | — | D24, D31, D33 | Same image in development and CI (Thulasi, with Anand); upgraded only when RDS upgrades |
 
 Not adopted: AsyncAPI (`@asyncapi/cli` 6.2.1 exists). Events are documented in EVENTS.md and as JSON schemas in the contract; a second spec format is not worth it for one SSE stream. **PROPOSED.**
 
@@ -118,6 +119,7 @@ Two limits of the GitHub Free plan on a private repository (T3): (a) Actions has
 | `contract-mock-smoke` | Start Prism, call a few endpoints | Mock does not start or returns invalid examples |
 | `client-generated` | Regenerate the TS client, `git diff --exit-code frontend/src/api/generated/` (TW §4) | Screens use a stale client (Minalini's generator) |
 | `contract-tests` (later) | Schemathesis against the running API (CONTRACT_GOVERNANCE §6) | Implementation differs from contract |
+| `fhir-conformance` (Anand) | HL7 FHIR Validator with the US Core package against the read-only `/fhir` API (TW §4; ADR-0011) | A resource served by `/fhir` fails US Core validation. The validator stays after HAPI's retirement; its version is pinned by Anand when the job is built, under the 7-day rule |
 
 ## 7. Open items
 

@@ -47,7 +47,7 @@ Reminder from TW §7: these rules stop Claude's file tools, not shell commands. 
 
 ## 2. Proposed additions to DECISIONS.md
 
-Your Stage 1 decisions are recorded in `contracts/docs/README.md` (VD table). **Status (2026-10-22):** D13–D19 are now in DECISIONS.md under "Proposed (not yet agreed)", each with who must agree; they move up to Decisions only after the team approves.
+Your Stage 1 decisions are recorded in `contracts/docs/README.md` (VD table). **Status (2026-10-23):** D13–D19 are now **Decisions** in DECISIONS.md. They were applied in the Stage 2 documents that Thulasi and Minalini approved in PR #2. ~~Under "Proposed (not yet agreed)" until the team approves.~~
 
 | # | Decision | Overrides |
 |---|---|---|
@@ -66,11 +66,11 @@ Status after your Stage 2 review (2026-10-22) is in the last column.
 | # | Item | PROPOSED answer | Where |
 |---|---|---|---|
 | V1 | Domain for Problem `type` URIs and our FHIR identifier systems | `tag:company-domain.invalid,2026:problem/<code>`; `https://fhir.company-domain.invalid/sid/<resource>-id` (placeholder; Thulasi's code in PR #7 uses the same base) | API_STANDARDS §0, §9.1; DATA_OWNERSHIP §3.1. **Still open:** the company domain (management). Until then the placeholder `company-domain.invalid` is used everywhere; it is one constant in API_STANDARDS §0 |
-| V2 | Encounter diagnoses: option A or B (with Anand) | B: draft in ours, HAPI on signing | DATA_OWNERSHIP §2.5. **Accepted (B).** New follow-ups for you: confirm "encounter signed" = its first note signed, and that diagnoses added after signing go straight to HAPI |
-| V3 | Legal record of a signed note (with Anand) | Locked version in ours | DATA_OWNERSHIP §3.2. **Your proposal recorded:** signed version in ours (immutable, hash-chained, audited) is the legal record; HAPI copy carries the same content hash; reconciliation compares. Needs Anand and compliance |
-| V4 | Clinical writes when HAPI is down | Fail with 503 | DATA_OWNERSHIP §3.3. **Accepted for the MVP**, with registration and check-in queuing; rooming impact recorded in ARCHITECTURE_CONTEXT §8 |
+| V2 | ~~Encounter diagnoses: option A or B (with Anand)~~ **Resolved by ADR-0011:** diagnoses are Condition rows; removal before signing sets entered-in-error with the reason "removed before signing" (D24). | B: draft in ours, HAPI on signing | DATA_OWNERSHIP §2.5. **Accepted (B).** New follow-ups for you: confirm "encounter signed" = its first note signed, and that diagnoses added after signing go straight to HAPI |
+| V3 | ~~Legal record of a signed note (with Anand)~~ **Resolved by ADR-0011:** the signed note row is the legal record (ADR-0011). | Locked version in ours | DATA_OWNERSHIP §3.2. **Your proposal recorded:** signed version in ours (immutable, hash-chained, audited) is the legal record; HAPI copy carries the same content hash; reconciliation compares. Needs Anand and compliance |
+| V4 | ~~Clinical writes when HAPI is down~~ **Resolved by ADR-0011:** no HAPI, so no such failure mode; partner outages go through the outbox (ARCHITECTURE_CONTEXT §8). | Fail with 503 | DATA_OWNERSHIP §3.3. **Accepted for the MVP**, with registration and check-in queuing; rooming impact recorded in ARCHITECTURE_CONTEXT §8 |
 | V5 | Guards for closing an encounter (with clinical advisors) | At least one signed note; no open drafts; diagnosis required for billable types | DATA_OWNERSHIP §5.2. **Still open:** your answer kept the placeholder ("ACCEPTED as written / my change") |
-| V6 | Care-team (relationship-based) access limits are P1 | Yes, P1; MVP uses clinic, facility and restricted charts | SECURITY_MODEL §5.1 |
+| V6 | ~~Care-team (relationship-based) access limits are P1~~ **Decided (D37):** MVP access by role and facility; care-team members open restricted charts without break-glass; P1 practice setting limits all charts to the care team | Yes, P1; MVP uses clinic, facility and restricted charts | SECURITY_MODEL §5.1 |
 | V7 | Patient search minimum criteria and 50-result cap | Yes | API_STANDARDS §14.2 |
 | V8 | Your guide is incomplete on eligibility at booking (VD-G3). Update VG Step 3 / Step 4 text? | Yes, one line each | VG |
 | V9 | Approve the Stage 4 batch order | B1 platform/setup → B2 patients → B3 front desk → B4 your clinical → B5 Thulasi's clinical → B6 back office → B7 AI | ENDPOINT_INVENTORY |
@@ -78,10 +78,12 @@ Status after your Stage 2 review (2026-10-22) is in the last column.
 
 ## 4. To raise with management
 
+All of these are now in DECISIONS.md "Still open", numbered as in the Open Decisions document (Q1–Q30).
+
 | Item | Affects | Source |
 |---|---|---|
-| SSN: no full SSN in the MVP; optional last 4 for matching (VD-SSN, pending management) | Registration, matching | VD-SSN |
-| D9 meaning of "MVP by late December" | Partner test vs live | DEC D9 |
+| ~~SSN: no full SSN in the MVP; optional last 4 for matching (VD-SSN, pending management)~~ **Decided:** D27 (Open Decisions Q10) | Registration, matching | VD-SSN |
+| Meaning of "MVP by 31 December" (was D9) | Partner test vs live | DEC "Still open" Q1 |
 | Clearinghouse, e-prescribing vendor, first lab | Eligibility, prescriptions, orders payloads | DEC "Still open" |
 | Pilot state and specialty | Co-signature rules, EPCS timing | FRS §10 |
 | CPT license (AMA) | Code search content, mock examples | TA ADR-18 |
@@ -100,7 +102,16 @@ Idle timeout on shared workstations (15 min proposed); clinical rows of the role
 ## 7. After the Stage 2 sign-offs (2026-10-22)
 
 - Your answers to Minalini's M7 (phone is an identifier; exact full-number match only) and M15 (warning at 13 minutes, pending Thulasi), and on M11 and M13, are applied (API_STANDARDS §14.2, §15; SECURITY_MODEL §2.1, §8).
-- Thulasi's T30 point (where shared resources live in HAPI) is now Anand's item A33 and blocks Stage 4.
+- ~~Thulasi's T30 point (where shared resources live in HAPI) is now Anand's item A33 and blocks Stage 4.~~ **Resolved by ADR-0011** (no HAPI). Stage 4 now waits for the 30 October schema lock.
 - **Reminder:** `enqueue()`'s signature change (T29) comes as a separate core PR from Thulasi (not in PR #7); all four of you review it.
 - Still open from you: `COMPANY_DOMAIN` (API_STANDARDS §0) and the encounter-close rules (DATA_OWNERSHIP §5.2).
 
+## 8. After ADR-0011 (2026-10-23)
+
+- HAPI is retired. D1 is rewritten; ADR-0011 is accepted; the HAPI items V2–V4 are resolved.
+- **Still open from you:** `COMPANY_DOMAIN`, raised with management; and the encounter-close rules, which go to the clinical advisors (DECISIONS.md "Still open").
+- **Remove the architecture lines from your `CLAUDE.local.md`;** they live in DECISIONS.md and the root `CLAUDE.md`. Done locally on 2026-10-23.
+
+## 9. Decisions of 2026-10-23 (D28–D42)
+
+Anand approved the schema, PostgreSQL 18, D13–D19 and his items (D28). IDs are UUIDv4 (D29, ADR-0009 Accepted); hosting is Amazon RDS (D30, ADR-0012); care-team access is decided (D37, V6); Q24 and Q27–Q30 are decided (D30, D38–D41); the repository is the single source for plans and guides (D42). ADR-0004, ADR-0008, ADR-0009 and ADR-0010 are Accepted.

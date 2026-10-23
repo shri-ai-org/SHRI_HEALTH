@@ -218,8 +218,6 @@ components:
       $ref: 'components/examples/OperationSucceeded.yaml'
     ProblemBreakGlassRequired:
       $ref: 'components/examples/ProblemBreakGlassRequired.yaml'
-    ProblemClinicalStoreUnavailable:
-      $ref: 'components/examples/ProblemClinicalStoreUnavailable.yaml'
     ProblemConflictPossibleDuplicate:
       $ref: 'components/examples/ProblemConflictPossibleDuplicate.yaml'
     ProblemInternalError:
@@ -242,6 +240,8 @@ components:
       $ref: 'components/examples/ProblemRateLimited.yaml'
     ProblemRecordLocked:
       $ref: 'components/examples/ProblemRecordLocked.yaml'
+    ProblemServiceUnavailable:
+      $ref: 'components/examples/ProblemServiceUnavailable.yaml'
     ProblemUnauthenticated:
       $ref: 'components/examples/ProblemUnauthenticated.yaml'
     ProblemValidationFailed:

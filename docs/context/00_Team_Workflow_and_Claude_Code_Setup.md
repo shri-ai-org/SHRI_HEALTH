@@ -24,8 +24,8 @@ shri-health/
 ├── backend/app/
 │   ├── core/                          # auth, permissions, tenancy, audit, crypto, errors, events — Thulasi
 │   ├── integration/                   # integration engine, webhooks, partner transports          — Thulasi
-│   ├── db/                            # SQLAlchemy models + Alembic migrations                     — Anand
-│   ├── fhir/                          # HAPI FHIR client and mappings                              — Anand
+│   ├── db/                            # SQLAlchemy models, Alembic migrations, data-access helpers — Anand
+│   ├── fhir/                          # read-only FHIR API for outside systems (ADR-0011)          — Anand
 │   └── modules/
 │       ├── patients/ scheduling/ eligibility/ encounters/ history/ ai/                         — Vimal
 │       ├── medications/ orders/                                                                — Thulasi
@@ -40,7 +40,9 @@ shri-health/
 │   └── src/api/generated/             # generated from the contract — nobody edits by hand
 ├── infra/
 │   ├── compose/ nginx/ keycloak/ terraform/                                                    — Thulasi
-│   └── hapi/ postgres/ seaweedfs/                                                              — Anand
+│   └── postgres/ seaweedfs/                                                                    — Anand
+│                                      # infra/hapi/ is removed (ADR-0011; Thulasi, issue #12)
+├── proposals/                         # proposals kept for reference, e.g. fhir-schema/ (Sam's; read, never edit)
 └── docs/adr/                          # architecture decisions                                     — everyone
 ```
 
@@ -86,7 +88,6 @@ Save as `.github/CODEOWNERS`. Replace `@vimal`, `@thulasi`, `@anand`, `@minalini
 /frontend/src/features/admin-setup/       @anand @minalini
 /frontend/src/features/billing/           @anand @minalini
 /frontend/src/features/documents/         @anand @minalini
-/infra/hapi/                              @anand
 /infra/postgres/                          @anand
 /infra/seaweedfs/                         @anand
 ```
@@ -100,10 +101,11 @@ Save as `.github/CODEOWNERS`. Replace `@vimal`, `@thulasi`, `@anand`, `@minalini
 
 ### Branch and pull request rules
 
-- Branch names: `<name>/<short-task>`, for example `vimal/patient-search`, `anand/hapi-setup`.
+- Branch names: `<name>/<short-task>`, for example `vimal/patient-search`, `anand/schema-adoption`.
 - Keep pull requests small (aim for under ~400 changed lines) and merge at least once a day.
 - Rebase on `main` every morning: `git pull --rebase origin main`.
 - Unfinished features hide behind a feature flag instead of waiting on a long branch.
+- Merged branches are deleted automatically (repository setting "Automatically delete head branches", turned on by Thulasi). Start each task on a fresh branch from `main`.
 
 ## 4. CI checks (run on every pull request)
 
@@ -116,7 +118,7 @@ Save as `.github/CODEOWNERS`. Replace `@vimal`, `@thulasi`, `@anand`, `@minalini
 | Generated client up to date | regenerate and `git diff --exit-code` | Screens using a stale API |
 | Implementation matches contract | Schemathesis against the running API | Endpoint returning something different from the contract |
 | Database drift | `alembic check` | Models and migrations out of step |
-| FHIR conformance | HL7 FHIR Validator with US Core | Bad FHIR resources sent to HAPI |
+| FHIR conformance | HL7 FHIR Validator with US Core, against the read-only `/fhir` API | Bad FHIR resources served to outside systems |
 | Secrets | gitleaks | Keys or passwords committed by mistake |
 
 ## 5. How a change to an API flows between people
@@ -135,7 +137,7 @@ Nobody changes an endpoint's shape without a contract pull request first.
 | See every PR, merge, CI failure and deploy as it happens | GitHub app in a Slack channel (e.g. `#shri-dev`). WhatsApp only for quick chat, never patient data |
 | Track tasks and handoffs | GitHub Projects board: Backlog → In progress → Blocked → Review → Done. Each handoff is an issue with a "blocked by" link, so a blocked person can see who they're waiting on |
 | Try each other's work | Staging server redeploys `main` automatically; one `docker compose up` runs everything locally |
-| Shared context for Claude chats | The Claude Team project holding FRS v1.2, Technical Architecture v1.1, the implementation plan, the task plan and the schema README, so everyone's Claude chats answer from the same documents |
+| Shared context for Claude chats | The repository is the single source for plans and guides (D42): `docs/context/` and `docs/adr/`. The Word documents and the online plan are retired snapshots and are not updated. If a Claude Team project holds copies, re-upload them from `main` after each merge that changes them |
 | Daily sync | 15 minutes, or a written update in Slack: done, doing, blocked |
 | Decisions | A short ADR in `docs/adr/` for anything that affects more than one person |
 
@@ -156,8 +158,12 @@ If a change is needed in someone else's folder, stop and write a short note desc
 for that owner instead of editing it.
 
 ## Architecture rules
-- Clinical data lives in HAPI FHIR; administrative data in our PostgreSQL.
-- Reach HAPI only through backend/app/fhir/ (its FHIR API). Never query or modify HAPI's tables.
+- One PostgreSQL database: clinical tables are FHIR-shaped, admin tables are normalized (ADR-0011). There is no HAPI.
+- Writes that belong together happen in one transaction.
+- Data access goes through each module's repository, using Anand's helpers in backend/app/db/.
+- No database role or query may bypass row-level security.
+- Outside systems use the read-only /fhir API (backend/app/fhir/); our screens use /api/v1 only.
+- The outbox is for external partners only (labs, e-prescribing, clearinghouse, fax, SMS).
 - Security lives in backend/app/core/. Endpoints never handle tokens, passwords or encryption themselves.
 - Every endpoint uses: Depends(require("<permission>")) and Depends(tenant_db).
 - Endpoints must match contracts/openapi/. Change the contract first.
@@ -172,7 +178,7 @@ for that owner instead of editing it.
 - Never edit frontend/src/api/generated/ by hand.
 ```
 
-Each owner adds a short `CLAUDE.md` inside their own folders with local conventions (for example `backend/app/fhir/CLAUDE.md` explains how to call the FHIR client). Claude loads the root file plus the folder file for the area it is working in.
+Each owner adds a short `CLAUDE.md` inside their own folders with local conventions (for example `backend/app/db/CLAUDE.md` explains how to use Anand's data-access helpers). Claude loads the root file plus the folder file for the area it is working in.
 
 ### Layer 2: hard blocks (permission rules)
 
@@ -221,7 +227,7 @@ Personal `.claude/settings.local.json`, not committed (git ignores it), one per 
 }
 ```
 
-Each person's guide has their own version of this file. Always start Claude Code from the repository root so these paths resolve, then run `/permissions` once to confirm the rules are active.
+Each person's guide has their own version of this file. **Always start Claude Code from the repository root**, never from a parent folder: Claude also loads `CLAUDE.md`, `CLAUDE.local.md` and memory from parent folders, so old copies kept there would override the repository. Keep your `CLAUDE.local.md` in the repository root (git ignores it) and no context documents in parent folders. Then run `/memory` and `/permissions` once to confirm the right files and rules are active.
 
 These rules stop Claude's own file-editing tools; they do not stop a shell command Claude runs. That is why CODEOWNERS and branch protection stay the real guard: even if something slips through locally, it cannot reach `main` without the owner's approval.
 

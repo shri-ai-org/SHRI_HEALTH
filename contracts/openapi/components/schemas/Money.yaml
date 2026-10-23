@@ -1,7 +1,7 @@
 title: Money
 description: >-
   An amount of money. `value` is a decimal string with exactly two fraction digits, so JavaScript never
-  rounds it as a float. Field names follow FHIR `Money` (API_STANDARDS §6.3; pending Anand).
+  rounds it as a float. Field names follow FHIR `Money` (API_STANDARDS §6.3; agreed by Anand, D28, D40).
 type: object
 additionalProperties: false
 required: [value, currency]

@@ -9,7 +9,7 @@ These documents set the rules for the API contract in `contracts/openapi/`. The 
 
 | Document | What it answers | Needs sign-off from |
 |---|---|---|
-| [ARCHITECTURE_CONTEXT.md](ARCHITECTURE_CONTEXT.md) | How a request travels through middleware, modules, our PostgreSQL, HAPI FHIR, the integration engine and the AI gateway | Vimal, Thulasi, Anand |
+| [ARCHITECTURE_CONTEXT.md](ARCHITECTURE_CONTEXT.md) | How a request travels through middleware, modules, our one PostgreSQL database, the read-only `/fhir` API, the integration engine and the AI gateway | Vimal, Thulasi, Anand |
 | [API_STANDARDS.md](API_STANDARDS.md) | The rulebook every endpoint follows: naming, IDs, dates, money, pagination, errors, idempotency, concurrency, async work, files, webhooks, PHI-safe search | Vimal (all), Thulasi (errors, headers, idempotency), Anand (IDs, money, files), Minalini (casing, pagination shape) |
 | [SECURITY_MODEL.md](SECURITY_MODEL.md) | How the API relies on Thulasi's middleware: session, CSRF, permissions, roles, context, break-glass, audit, PHI classification, threats | Thulasi |
 | [DATA_OWNERSHIP.md](DATA_OWNERSHIP.md) | For every resource: system of record, FHIR resource and US Core profile, consistency, concurrency, lifecycle state machines | Anand (Vimal for Vimal's modules, Thulasi for medications and orders) |
@@ -29,7 +29,7 @@ Cross-team architecture decisions are recorded as ADRs in [`docs/adr/`](../../do
 |---|---|
 | **PROPOSED** | My recommendation, with a one-line reason. Not a fact and not approved. |
 | **Pending &lt;name&gt;** | Needs that person's answer. A PROPOSED answer is written in place so work can continue; it is collected in `notes/NOTE_FOR_<NAME>.md`. |
-| **Pending schema** | Depends on the database schema (83 vs 89 tables, and which tables move to HAPI), which is not loaded yet (DEC "Still open"). Finalized once the schema is loaded. Stage 4 does not start until then. |
+| **Pending schema lock** | Depends on exact table and column names in the adopted schema (Sam's schema, ADR-0011), fixed at the 30 October lock for P0 tables (`docs/context/P0_SCHEMA_SCOPE.md`). Stage 4 does not start until then. |
 | **Pending management** | Needs a decision outside the four of us; raised through Vimal. |
 
 ## Source abbreviations
@@ -41,7 +41,7 @@ Cross-team architecture decisions are recorded as ADRs in [`docs/adr/`](../../do
 | TW | `docs/context/00_Team_Workflow_and_Claude_Code_Setup.md` |
 | CAT | `docs/context/API_Catalogue.md` |
 | FRS | `docs/context/FRS_v1_2.md` |
-| TA | `docs/context/Technical_Architecture_v1_1.md` (ADR-19 overridden by DEC D1) |
+| TA | `docs/context/Technical_Architecture_v1_1.md` (its ADR-19 agrees with DEC D1 since ADR-0011) |
 | IP | `docs/context/Implementation_Plan_v1_1.md` (background only) |
 | VD-xx | Vimal's decisions on the Stage 1 questions, 2026-10-22 (listed below) |
 
@@ -55,7 +55,7 @@ These are Vimal's answers in the Stage 1 review. They are binding for the contra
 | VD-G2 | Opaque UUIDs are allowed in URLs. Names, date of birth, phone, MRN, driver's license numbers, member IDs and SSN never are. Any search on such fields uses `POST …/search` with a body. Patient search is `POST /patients/search`. |
 | VD-G3 | Eligibility runs at booking, in a pre-visit batch and at check-in (FRS FR-RCM-01). |
 | VD-G4 | Check-in creates the Encounter through the encounter service. `POST /encounters` is kept only for unscheduled encounters (telephone, documentation-only). Both paths use the same service. |
-| VD-G5 | PROPOSED, pending Anand: Practitioner, PractitionerRole, Organization and Location are mirrored into HAPI from practice setup, using the same pattern as Patient (D7). |
+| VD-G5 | ~~PROPOSED, pending Anand: Practitioner, PractitionerRole, Organization and Location are mirrored into HAPI from practice setup, using the same pattern as Patient (D7).~~ **Resolved by ADR-0011:** they are FHIR-shaped tables in our database; nothing is mirrored. |
 | VD-G6 | One entered-in-error action per resource type, each with its own `x-permission`, e.g. `POST /patients/{id}/problems/{pid}/entered-in-error`. |
 | VD-G7 | DATA_OWNERSHIP is drafted with "pending schema" markers and finalized when the schema is loaded. Stage 4 does not start until then. |
 | VD-G8 | One contract file per module plus shared components, bundled into one file for tools. |
@@ -66,16 +66,16 @@ These are Vimal's answers in the Stage 1 review. They are binding for the contra
 | VD-LOC | API docs in `contracts/docs/`; cross-team ADRs in `docs/adr/`; notes for owners in `contracts/docs/notes/` (they become GitHub issues once the repo exists). |
 | VD-SIGN | Module owners approve the contract sections they implement (`x-owner`); Vimal approves standards conformance for all. |
 | VD-TITLE | The API title is "Shri Health API". |
-| VD-SSN | PROPOSED, pending management: no full SSN in the MVP; at most an optional last 4 digits for patient matching. |
+| VD-SSN | ~~PROPOSED, pending management: no full SSN in the MVP; at most an optional last 4 digits for patient matching.~~ **Decided:** D27 (Open Decisions Q10): never store a full SSN; hash and masked last four only. |
 | VD-REPO | Work happens on `vimal/contracts-foundation`, branched from `main`. Never commit to `main`. |
 
 ### Stage 2 review answers, 2026-10-22
 
 | ID | Decision |
 |---|---|
-| VD-DX | Encounter diagnoses: option B. Drafted in our database until the encounter is signed; written to HAPI as Conditions on signing (DATA_OWNERSHIP §2.5). Needs Anand for the draft table. |
-| VD-LEGAL | PROPOSED, needs Anand's sign-off and compliance confirmation: the signed note version in our database (immutable, hash-chained, audited) is the legal record; the HAPI DocumentReference is the clinical and interoperability copy with the same content hash; reconciliation checks the hashes match (DATA_OWNERSHIP §3.2). |
-| VD-HAPIDOWN | Accepted for the MVP: clinical writes that need HAPI return `clinical-store-unavailable`. Patient registration and check-in never block; they queue through the outbox (D7). Rooming impact is an accepted risk, revisited after the pilot (ARCHITECTURE_CONTEXT §8). |
+| VD-DX | ~~Encounter diagnoses: option B. Drafted in our database until the encounter is signed; written to HAPI as Conditions on signing.~~ **Replaced by ADR-0011:** diagnoses are Condition rows in our database; removal before signing sets `entered-in-error` with the reason "removed before signing" (D24, DATA_OWNERSHIP §2.5). |
+| VD-LEGAL | **Resolved by ADR-0011:** the signed note row in our database is the legal record. ~~The HAPI DocumentReference as a second copy with the same content hash, checked by reconciliation.~~ |
+| VD-HAPIDOWN | ~~Accepted for the MVP: clinical writes that need HAPI return `clinical-store-unavailable`; rooming impact an accepted risk.~~ **Retired by ADR-0011:** no HAPI, so no such failure; partner outages are handled through the outbox (ARCHITECTURE_CONTEXT §8). |
 | VD-DOMAIN | Still open: the company domain is the constant `COMPANY_DOMAIN` in API_STANDARDS §0. |
 | VD-CLOSE | Still open: encounter-close rules (DATA_OWNERSHIP §5.2). |
 | VD-TOOLS | Accepted: OpenAPI 3.1; adopt tool releases only once they are 7 days old (TOOLCHAIN). |

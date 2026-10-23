@@ -1,10 +1,12 @@
 # ADR-0010: Major version in the path; additive change within v1
 
-Status: **Proposed** (Thulasi agreed, issue #3 T24, T25; Minalini pending) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (Nginx routing, CI breaking-change check), Minalini (client)
+> **Partly superseded by ADR-0011: outside systems use our own read-only `/fhir` API (Anand), not HAPI's. The rest of this ADR stands.**
+
+Status: **Accepted** (2026-10-23: Thulasi, issue #3 T24, T25; Minalini, by approving PR #2, which carried this ADR) · 2026-10-22 · Author: Vimal · **Needs sign-off from:** Vimal, Thulasi (Nginx routing, CI breaking-change check), Minalini (client)
 
 ## Context
 
-CAT fixes the base path `/api/v1`. TW §4 runs oasdiff against `main` to catch breaking changes. Today the only consumer of `/api/v1` is our own SPA; outside systems use HAPI's `/fhir` (CAT). RFC 9745 (March 2025) standardizes the `Deprecation` response header; RFC 8594 defines `Sunset`.
+CAT fixes the base path `/api/v1`. TW §4 runs oasdiff against `main` to catch breaking changes. Today the only consumer of `/api/v1` is our own SPA; outside systems use ~~HAPI's~~ `/fhir` (CAT; since ADR-0011, Anand's read-only FHIR API). RFC 9745 (March 2025) standardizes the `Deprecation` response header; RFC 8594 defines `Sunset`.
 
 ## Decision
 
