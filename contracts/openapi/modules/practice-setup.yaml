@@ -391,7 +391,7 @@ paths:
     post:
       operationId: createLocation
       summary: Create a location
-      description: Creates a location.
+      description: Creates a location. Facilities in the body must be among the user's facilities.
       tags:
       - practice-setup
       x-owner: anand
@@ -455,8 +455,9 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
-            was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (every
+            facility in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`));
+            `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -523,7 +524,8 @@ paths:
     patch:
       operationId: updateLocation
       summary: Update a location
-      description: 'Edits a location with JSON Merge Patch. Set `active: false` to retire it.'
+      description: 'Edits a location with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body must
+        be among the user''s facilities.'
       tags:
       - practice-setup
       x-owner: anand
@@ -586,7 +588,8 @@ paths:
           description: 412. `precondition-failed` (`If-Match` does not match the current version).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a body field or a parameter is invalid).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (every
+            facility in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)).
         '428':
           $ref: ../components/responses/PreconditionRequired.yaml
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -693,7 +696,7 @@ paths:
     post:
       operationId: createProvider
       summary: Create a provider
-      description: Creates a provider.
+      description: Creates a provider. Facilities in the body must be among the user's facilities.
       tags:
       - practice-setup
       x-owner: anand
@@ -760,8 +763,9 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the NPI
-            fails its check digit or is already used in this practice); `idempotency-key-reused` (the Idempotency-Key was
-            used with a different body).
+            fails its check digit or is already used in this practice; or every facility in the body must be one of the user's
+            facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -828,7 +832,9 @@ paths:
     patch:
       operationId: updateProvider
       summary: Update a provider
-      description: 'Edits a provider with JSON Merge Patch. Set `active: false` to retire it.'
+      description: 'Edits a provider with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body must
+        be among the user''s facilities. A new `facilityIds` list may neither add nor remove facilities outside the user''s
+        own.'
       tags:
       - practice-setup
       x-owner: anand
@@ -893,7 +899,8 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the NPI
-            fails its check digit or is already used in this practice).
+            fails its check digit or is already used in this practice; or every facility in the body must be one of the user's
+            facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)).
         '428':
           $ref: ../components/responses/PreconditionRequired.yaml
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -1282,7 +1289,7 @@ paths:
     post:
       operationId: createProviderSchedule
       summary: Create a provider schedule
-      description: Creates a provider schedule.
+      description: Creates a provider schedule. Facilities in the body must be among the user's facilities.
       tags:
       - practice-setup
       x-owner: anand
@@ -1353,7 +1360,8 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (overlapping
-            rules, `endTime` not after `startTime`, or the provider does not work at the facility); `idempotency-key-reused`
+            rules, `endTime` not after `startTime`, or the provider does not work at the facility; or every facility in the
+            body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)); `idempotency-key-reused`
             (the Idempotency-Key was used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
@@ -1421,7 +1429,8 @@ paths:
     patch:
       operationId: updateProviderSchedule
       summary: Update a provider schedule
-      description: 'Edits a provider schedule with JSON Merge Patch. Set `active: false` to retire it.'
+      description: 'Edits a provider schedule with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body
+        must be among the user''s facilities.'
       tags:
       - practice-setup
       x-owner: anand
@@ -1489,7 +1498,8 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (overlapping
-            rules, `endTime` not after `startTime`, or the provider does not work at the facility).
+            rules, `endTime` not after `startTime`, or the provider does not work at the facility; or every facility in the
+            body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)).
         '428':
           $ref: ../components/responses/PreconditionRequired.yaml
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -2316,7 +2326,7 @@ paths:
     post:
       operationId: createLabAccount
       summary: Create a lab account
-      description: Creates a lab account.
+      description: Creates a lab account. Facilities in the body must be among the user's facilities.
       tags:
       - practice-setup
       x-owner: anand
@@ -2383,7 +2393,8 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the account
-            number is already used for this lab and facility, or another account is already the default); `idempotency-key-reused`
+            number is already used for this lab and facility, or another account is already the default; or every facility
+            in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)); `idempotency-key-reused`
             (the Idempotency-Key was used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
@@ -2451,7 +2462,8 @@ paths:
     patch:
       operationId: updateLabAccount
       summary: Update a lab account
-      description: 'Edits a lab account with JSON Merge Patch. Set `active: false` to retire it.'
+      description: 'Edits a lab account with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body must
+        be among the user''s facilities.'
       tags:
       - practice-setup
       x-owner: anand
@@ -2515,7 +2527,8 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the account
-            number is already used for this lab and facility, or another account is already the default).
+            number is already used for this lab and facility, or another account is already the default; or every facility
+            in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)).
         '428':
           $ref: ../components/responses/PreconditionRequired.yaml
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -2749,7 +2762,8 @@ paths:
     patch:
       operationId: updateNoteTemplate
       summary: Update a note template
-      description: 'Edits a note template with JSON Merge Patch. Set `active: false` to retire it.'
+      description: 'Edits a note template with JSON Merge Patch. Set `active: false` to retire it. Only the owner may edit
+        a personal template.'
       tags:
       - practice-setup
       x-owner: anand
@@ -4132,10 +4146,11 @@ components:
           maxLength: 20
           description: LOINC document type, e.g. `11506-3` progress note.
           x-phi: none
-        ownerUserId: &id079
-          $ref: ../components/schemas/Id.yaml
-          description: Owner, for a personal template; absent for practice templates.
-          x-phi: internal-id
+        personal: &id079
+          type: boolean
+          default: false
+          description: 'True for the signed-in user''s personal template: the server sets the owner from the session.'
+          x-phi: none
         sections: &id080
           type: array
           minItems: 1
@@ -4144,6 +4159,10 @@ components:
             $ref: '#/components/schemas/NoteTemplateSection'
           description: Sections, in order.
           x-phi: none
+        ownerUserId:
+          $ref: ../components/schemas/Id.yaml
+          description: Owner of a personal template, set by the server from the session; absent for practice templates.
+          x-phi: internal-id
         version:
           type: integer
           format: int32
@@ -4174,17 +4193,16 @@ components:
         name: *id076
         specialtyCode: *id077
         noteTypeLoinc: *id078
-        ownerUserId: *id079
+        personal: *id079
         sections: *id080
     NoteTemplatePatch:
-      description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `code`.'
+      description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `code`, `personal`.'
       type: object
       additionalProperties: false
       properties:
         name: *id076
         specialtyCode: *id077
         noteTypeLoinc: *id078
-        ownerUserId: *id079
         sections: *id080
         active: *id034
     NoteTemplateList:

@@ -3002,7 +3002,7 @@ paths:
     get:
       operationId: getStatusBoard
       summary: Get the status board
-      description: 'Today''s clinic flow at a facility (inventory #58), updated live through the event stream. Staff screens show names; shared hallway displays must use `view=shared`, which returns initials, time and status only (SECURITY_MODEL §8 rule 11). A facility the user is not assigned to gives `404 not-found`.'
+      description: 'Today''s clinic flow at a facility (inventory #58), updated live through the event stream. By default it returns initials, time and status only (`view=shared`), safe for hallway and waiting-room displays (SECURITY_MODEL §8 rule 11); staff screens ask for names with `view=staff`. A facility the user is not assigned to gives `404 not-found`.'
       tags:
         - scheduling
       x-owner: vimal
@@ -3037,13 +3037,13 @@ paths:
         - name: view
           in: query
           required: false
-          description: '`staff` (default): names for staff screens. `shared`: initials, time and status only, for displays the public can see. A display-only role that forces `shared` on the server is an open question for Thulasi.'
+          description: '`shared` (default): initials, time and status only, safe for displays the public can see. `staff`: names, for staff screens; ask for it explicitly. A display-only role that the server always limits to `shared` is an open question for Thulasi (T39).'
           schema:
             type: string
             enum:
-              - staff
               - shared
-            default: staff
+              - staff
+            default: shared
       responses:
         '200':
           description: One page of status board items.
@@ -3061,8 +3061,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/StatusBoardList'
               examples:
-                board:
-                  summary: One patient waiting
+                shared:
+                  summary: 'Shared view (default): one patient waiting'
+                  value:
+                    items:
+                      - appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                        initials: RK
+                        startAt: '2026-11-03T15:00:00Z'
+                        status: checked-in
+                        visitStatus: checked-in
+                    date: '2026-11-03'
+                    timeZone: America/Chicago
+                staff:
+                  summary: Staff view
                   value:
                     items:
                       - appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
@@ -3879,7 +3890,7 @@ paths:
     post:
       operationId: createLocation
       summary: Create a location
-      description: Creates a location.
+      description: Creates a location. Facilities in the body must be among the user's facilities.
       tags:
         - practice-setup
       x-owner: anand
@@ -3953,7 +3964,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (every facility in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -4031,7 +4042,7 @@ paths:
     patch:
       operationId: updateLocation
       summary: Update a location
-      description: 'Edits a location with JSON Merge Patch. Set `active: false` to retire it.'
+      description: 'Edits a location with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body must be among the user''s facilities.'
       tags:
         - practice-setup
       x-owner: anand
@@ -4104,7 +4115,7 @@ paths:
           description: 412. `precondition-failed` (`If-Match` does not match the current version).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (every facility in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)).
         '428':
           $ref: '#/components/responses/PreconditionRequired'
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -4214,7 +4225,7 @@ paths:
     post:
       operationId: createProvider
       summary: Create a provider
-      description: Creates a provider.
+      description: Creates a provider. Facilities in the body must be among the user's facilities.
       tags:
         - practice-setup
       x-owner: anand
@@ -4323,7 +4334,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the NPI fails its check digit or is already used in this practice); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the NPI fails its check digit or is already used in this practice; or every facility in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -4420,7 +4431,7 @@ paths:
     patch:
       operationId: updateProvider
       summary: Update a provider
-      description: 'Edits a provider with JSON Merge Patch. Set `active: false` to retire it.'
+      description: 'Edits a provider with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body must be among the user''s facilities. A new `facilityIds` list may neither add nor remove facilities outside the user''s own.'
       tags:
         - practice-setup
       x-owner: anand
@@ -4513,7 +4524,7 @@ paths:
           description: 412. `precondition-failed` (`If-Match` does not match the current version).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the NPI fails its check digit or is already used in this practice).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the NPI fails its check digit or is already used in this practice; or every facility in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)).
         '428':
           $ref: '#/components/responses/PreconditionRequired'
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -4955,7 +4966,7 @@ paths:
     post:
       operationId: createProviderSchedule
       summary: Create a provider schedule
-      description: Creates a provider schedule.
+      description: Creates a provider schedule. Facilities in the body must be among the user's facilities.
       tags:
         - practice-setup
       x-owner: anand
@@ -5048,7 +5059,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (overlapping rules, `endTime` not after `startTime`, or the provider does not work at the facility); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (overlapping rules, `endTime` not after `startTime`, or the provider does not work at the facility; or every facility in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -5139,7 +5150,7 @@ paths:
     patch:
       operationId: updateProviderSchedule
       summary: Update a provider schedule
-      description: 'Edits a provider schedule with JSON Merge Patch. Set `active: false` to retire it.'
+      description: 'Edits a provider schedule with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body must be among the user''s facilities.'
       tags:
         - practice-setup
       x-owner: anand
@@ -5229,7 +5240,7 @@ paths:
           description: 412. `precondition-failed` (`If-Match` does not match the current version).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (overlapping rules, `endTime` not after `startTime`, or the provider does not work at the facility).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (overlapping rules, `endTime` not after `startTime`, or the provider does not work at the facility; or every facility in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)).
         '428':
           $ref: '#/components/responses/PreconditionRequired'
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -6217,7 +6228,7 @@ paths:
     post:
       operationId: createLabAccount
       summary: Create a lab account
-      description: Creates a lab account.
+      description: Creates a lab account. Facilities in the body must be among the user's facilities.
       tags:
         - practice-setup
       x-owner: anand
@@ -6305,7 +6316,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the account number is already used for this lab and facility, or another account is already the default); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the account number is already used for this lab and facility, or another account is already the default; or every facility in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -6392,7 +6403,7 @@ paths:
     patch:
       operationId: updateLabAccount
       summary: Update a lab account
-      description: 'Edits a lab account with JSON Merge Patch. Set `active: false` to retire it.'
+      description: 'Edits a lab account with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body must be among the user''s facilities.'
       tags:
         - practice-setup
       x-owner: anand
@@ -6474,7 +6485,7 @@ paths:
           description: 412. `precondition-failed` (`If-Match` does not match the current version).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the account number is already used for this lab and facility, or another account is already the default).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the account number is already used for this lab and facility, or another account is already the default; or every facility in the body must be one of the user's facilities (SECURITY_MODEL §5.1; field code `invalid-reference`)).
         '428':
           $ref: '#/components/responses/PreconditionRequired'
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -6773,7 +6784,7 @@ paths:
     patch:
       operationId: updateNoteTemplate
       summary: Update a note template
-      description: 'Edits a note template with JSON Merge Patch. Set `active: false` to retire it.'
+      description: 'Edits a note template with JSON Merge Patch. Set `active: false` to retire it. Only the owner may edit a personal template.'
       tags:
         - practice-setup
       x-owner: anand
@@ -9686,7 +9697,7 @@ components:
           description: The exam room. Required with `roomed`.
           x-phi: internal-id
     StatusBoardItem:
-      description: One appointment on today's board. With `view=shared` (hallway and waiting-room displays) only `appointmentId`, `initials`, `startAt`, `status` and `visitStatus` are returned (SECURITY_MODEL §8 rule 11).
+      description: One appointment on today's board. With `view=shared`, the default (hallway and waiting-room displays), only `appointmentId`, `initials`, `startAt`, `status` and `visitStatus` are returned (SECURITY_MODEL §8 rule 11).
       type: object
       required:
         - appointmentId
@@ -9700,7 +9711,7 @@ components:
           x-phi: internal-id
         patient:
           $ref: '#/components/schemas/SchedulingPatientRef'
-          description: Patient, for staff screens. Absent with `view=shared`.
+          description: Patient, only with `view=staff`.
           x-phi: identifier
         initials:
           type: string
@@ -11744,10 +11755,11 @@ components:
           maxLength: 20
           description: LOINC document type, e.g. `11506-3` progress note.
           x-phi: none
-        ownerUserId:
-          $ref: '#/components/schemas/Id'
-          description: Owner, for a personal template; absent for practice templates.
-          x-phi: internal-id
+        personal:
+          type: boolean
+          default: false
+          description: 'True for the signed-in user''s personal template: the server sets the owner from the session.'
+          x-phi: none
         sections:
           type: array
           minItems: 1
@@ -11756,6 +11768,10 @@ components:
             $ref: '#/components/schemas/NoteTemplateSection'
           description: Sections, in order.
           x-phi: none
+        ownerUserId:
+          $ref: '#/components/schemas/Id'
+          description: Owner of a personal template, set by the server from the session; absent for practice templates.
+          x-phi: internal-id
         version:
           type: integer
           format: int32
@@ -11825,10 +11841,11 @@ components:
           maxLength: 20
           description: LOINC document type, e.g. `11506-3` progress note.
           x-phi: none
-        ownerUserId:
-          $ref: '#/components/schemas/Id'
-          description: Owner, for a personal template; absent for practice templates.
-          x-phi: internal-id
+        personal:
+          type: boolean
+          default: false
+          description: 'True for the signed-in user''s personal template: the server sets the owner from the session.'
+          x-phi: none
         sections:
           type: array
           minItems: 1
@@ -11838,7 +11855,7 @@ components:
           description: Sections, in order.
           x-phi: none
     NoteTemplatePatch:
-      description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `code`.'
+      description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `code`, `personal`.'
       type: object
       additionalProperties: false
       properties:
@@ -11859,10 +11876,6 @@ components:
           maxLength: 20
           description: LOINC document type, e.g. `11506-3` progress note.
           x-phi: none
-        ownerUserId:
-          $ref: '#/components/schemas/Id'
-          description: Owner, for a personal template; absent for practice templates.
-          x-phi: internal-id
         sections:
           type: array
           minItems: 1
