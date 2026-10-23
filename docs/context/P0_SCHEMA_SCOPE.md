@@ -5,7 +5,8 @@ Oct 22, 2026 · Imported from the team's shared doc on 2026-10-23.
 > **Status: Approved (2026-10-23).** ADR-0011 adopts Sam's schema (PR #9) in one PostgreSQL 18 database; D1 (HAPI) is retired. This scope is approved as written:
 > - the release tags below are final for the 30 October lock;
 > - every one of the eight "P0 items to confirm" is **approved as P0**: Sam and Anand add whatever is missing before the lock (D24);
-> - the remaining "Next steps" are scheduled work with named owners (DECISIONS.md, "Work before the 30 October schema lock"), not open questions.
+> - the remaining "Next steps" are scheduled work with named owners (DECISIONS.md, "Work before the 30 October schema lock"), not open questions;
+> - **medication list (D28):** MedicationRequest is confirmed, because US Core represents the medication list this way. MedicationStatement is tagged **P1** during Anand's tagging: the table is kept, not locked.
 
 ## What P0 means
 
@@ -39,8 +40,8 @@ Each resource below includes its child tables (names, identifiers, codings, comp
 | Procedure | P0 | FR-PAT-03 | Past surgical history and in-office procedures |
 | FamilyMemberHistory | P0 | FR-PAT-03 | Family history |
 | Medication | P0 | FR-MED-01 | Drug definitions (RxNorm) |
-| MedicationRequest | P0 | FR-MED-01 | Prescriptions and e-prescribing |
-| MedicationStatement | P0 | FR-MED-01 | Medication list and reconciliation |
+| MedicationRequest | P0 | FR-MED-01 | Prescriptions and e-prescribing; also the medication list (D28) |
+| MedicationStatement | ~~P0~~ P1 (D28) | FR-MED-01 | ~~Medication list and reconciliation~~ Kept, not locked; tagged P1 during Anand's tagging |
 | MedicationDispense | P0 | FR-MED-01 | External medication (fill) history |
 | DetectedIssue | P0 | §3.4 rule layer, FR-MED-01 | Rule-based safety alerts and override reasons |
 | ServiceRequest | P0 | FR-ORD-01 | Lab and imaging orders |
