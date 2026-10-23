@@ -54,7 +54,8 @@ async def new_data_key() -> DataKey          # for file envelope encryption (Ana
 async def publish(audience: Audience, event_type: str, ref: dict) -> None
 
 # backend/app/integration/api.py
-async def enqueue(partner: str, message_type: str, payload: dict, idempotency_key: str) -> str
+async def enqueue(db, partner: str, message_type: str, payload: dict, idempotency_key: str,
+                  ordering_key: str | None = None) -> str   # T29: changed in a separate core PR all four review
 ```
 
 ## 4. Build steps, in order
@@ -226,7 +227,7 @@ Results:
 |---|---|
 | Permission names in the contract | Vimal |
 | Confirmation of the RLS setting names and database roles (D21, D23), `audit_event` hash-chain function, compendium tables | Anand |
-| Data-access helpers (`backend/app/db/`) for MedicationRequest, MedicationStatement, ServiceRequest, DiagnosticReport, Observation | Anand |
+| Data-access helpers (`backend/app/db/`) for MedicationRequest (also the medication list, D28), ServiceRequest, DiagnosticReport, Observation | Anand |
 
 ## 6. Your Claude Code settings
 

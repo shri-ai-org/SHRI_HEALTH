@@ -25,7 +25,7 @@ Read `00_Team_Workflow_and_Claude_Code_Setup.md` first for the repo layout, owne
 3. Add the permission each endpoint needs with an extension field, for example `x-permission: patients:write`. Thulasi builds permission checks from these.
 4. Start the mock server for the UI:
    ```bash
-   npx @stoplight/prism-cli mock contracts/openapi/shri-health.yaml
+   cd contracts && npm run mock   # bundles the per-module files (D17), then starts Prism
    ```
 5. On your laptop, install faster-whisper and transcribe a sample recording (synthetic speech only, never real patients) to get familiar with the speech tooling.
 
