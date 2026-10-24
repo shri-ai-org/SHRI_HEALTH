@@ -9,16 +9,16 @@ The database must be migrated to head first (``alembic upgrade head``).
 from __future__ import annotations
 
 import os
-import sys
 import uuid
-from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import Session
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Tests import this module and builders.py through the package (app.db.tests.*), never by bare
+# name: backend/app/core/tests/ has its own conftest.py, and a bare `conftest` would resolve to
+# whichever one pytest imported first (pyproject.toml sets pythonpath = ["."]).
 os.environ.setdefault("SHRI_DATABASE_URL",
                       "postgresql+psycopg://shri_app@localhost:5432/shri_health_test")
 

@@ -53,13 +53,16 @@ def downgrade() -> None:
                    "shri_app, shri_fhir_reader, shri_integration, shri_reporting")
     # Reference data (code systems, permissions, system roles) is kept: clinical rows reference
     # it, and the seed is idempotent on re-upgrade.
-    # Dropping the functions drops every trigger that uses them. They live in public (D23's
-    # note: shared rule functions are schema-agnostic utilities, not tied to one data schema).
+    # Dropping the functions drops every trigger that uses them. The hand-written rule functions
+    # live in public (D23's note: shared rule functions are schema-agnostic utilities, not tied
+    # to one data schema); the generated per-resource shri_snapshot_* functions and
+    # shri_resource_table (20_fhir_versioning.sql) live in clinical, next to the tables they
+    # snapshot. Both sets are this revision's, so both are dropped here.
     op.execute("""
         DO $$ DECLARE f record; BEGIN
           FOR f IN SELECT p.oid::regprocedure AS sig FROM pg_proc p
                    JOIN pg_namespace n ON n.oid = p.pronamespace
-                   WHERE n.nspname = 'public' AND p.proname LIKE 'shri\\_%'
+                   WHERE n.nspname IN ('public', 'clinical') AND p.proname LIKE 'shri\\_%'
                      AND p.proname <> 'shri_npi_valid' LOOP
             EXECUTE 'DROP FUNCTION IF EXISTS ' || f.sig || ' CASCADE';
           END LOOP;

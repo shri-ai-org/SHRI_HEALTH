@@ -8,9 +8,9 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 
-import builders as b
-from conftest import make_tenant, open_session
 from app.db.models import MAPPERS, systems
+from app.db.tests import builders as b
+from app.db.tests.conftest import make_tenant, open_session
 
 M = MAPPERS
 

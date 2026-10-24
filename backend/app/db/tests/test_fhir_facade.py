@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from fhir.resources.R4B import get_fhir_model_class
 from sqlalchemy import text
 
-import builders as b
+from app.db.tests import builders as b
 from app.fhir.serializer import SnapshotRow, to_fhir
 from app.db.models import FHIR_RESOURCES, MAPPERS, systems
 
