@@ -106,7 +106,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 51 | POST | `/appointments` | V | Cl | `appointments:create` | pw | S | | | FR-SCH-01 | B3 | Also queues eligibility (VD-G3) |
 | 52 | GET | `/appointments` | V | Cl | `appointments:read` | pr | – | | | FR-SCH-01 | B3 | Query `date` or `dateFrom`+`dateTo` (≤ 31 days, D62), `providerId`, `facilityId`, `patientId`, `status` |
 | 53 | GET | `/appointments/{appointmentId}` | V | Cl | `appointments:read` | pr | – | | | FR-SCH-01 | B3 | **New** (single read missing from CAT) |
-| 54 | PATCH | `/appointments/{appointmentId}` | V | Cl | `appointments:update` | pw | – | ✓ | | FR-SCH-01 | B3 | Notes, instructions, room; slot fields deprecated (D61), rescheduling is #243 |
+| 54 | PATCH | `/appointments/{appointmentId}` | V | Cl | `appointments:update` | pw | – | ✓ | | FR-SCH-01 | B3 | Room, reason for visit, notes, instructions; no slot or time fields (D61): rescheduling is only #243 |
 | 243 | POST | `/appointments/{appointmentId}/reschedule` | V | Cl | `appointments:reschedule` | pw | S | | | FR-SCH-01 | B3 | **New** (D61, 2026-10-24): cancels the old slot, books the new one, sets `rescheduledFromId`; reason required |
 | 242 | POST | `/appointments/{appointmentId}/undo-check-in` | V | Cl | `appointments:undo-check-in` | pw | – | | | FR-SCH-02 | B3 | **New** (D55, 2026-10-24): before rooming and any clinical data; encounter → entered-in-error |
 | 55 | POST | `/appointments/{appointmentId}/cancel` | V | Cl | `appointments:cancel` | pw | – | | | FR-SCH-01 | B3 | |

@@ -398,9 +398,9 @@ paths:
     patch:
       operationId: updateAppointment
       summary: Edit an appointment
-      description: 'Edits the notes, patient instructions and room of a `booked` appointment (inventory #54). Rescheduling
-        is `POST /appointments/{appointmentId}/reschedule` (D61); the slot fields in this body are deprecated and still accepted
-        meanwhile.'
+      description: 'Edits the room, reason for visit, staff note and patient instructions of a `booked` appointment (inventory
+        #54). The time, provider, facility, type and length change only through `POST /appointments/{appointmentId}/reschedule`
+        (D61); this body does not accept them (`additionalProperties: false`).'
       tags:
       - scheduling
       x-owner: vimal
@@ -411,8 +411,6 @@ paths:
         patient: result
       x-concurrency: if-match-required
       x-storage: clinical
-      x-events:
-      - appointment.rescheduled
       x-release: P0
       security:
       - sessionCookie: []
@@ -479,16 +477,15 @@ paths:
           description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: 409. `booking-conflict` (the slot is taken or overlaps another appointment); `invalid-state-transition`
-            (the appointment is not `booked`).
+          description: 409. `invalid-state-transition` (the appointment is not `booked`).
         '412':
           $ref: ../components/responses/PreconditionFailed.yaml
           description: 412. `precondition-failed` (`If-Match` does not match the current version).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same
-            booking rules as `POST /appointments`, or a new provider, facility or location outside the user's facilities (field
-            code `invalid-reference`)).
+          description: 422. `validation-failed` (a body field or a parameter is invalid, including a time, provider, facility,
+            type or length field, which belong to `/reschedule`); `business-rule-violation` (a location outside the user's
+            facilities (field code `invalid-reference`)).
         '428':
           $ref: ../components/responses/PreconditionRequired.yaml
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -1728,43 +1725,33 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: The patient.
           x-phi: internal-id
-        providerId: &id028
+        providerId:
           $ref: ../components/schemas/Id.yaml
-          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`,
-            which records a reason and keeps the history. Still accepted until the screens have moved.'
+          description: The provider.
           x-phi: internal-id
-          deprecated: true
-        facilityId: &id029
+        facilityId:
           $ref: ../components/schemas/Id.yaml
-          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`,
-            which records a reason and keeps the history. Still accepted until the screens have moved.'
+          description: The facility.
           x-phi: internal-id
-          deprecated: true
         locationId:
           $ref: ../components/schemas/Id.yaml
           description: Room or site, optional.
           x-phi: internal-id
-        appointmentTypeId: &id030
+        appointmentTypeId:
           $ref: ../components/schemas/Id.yaml
-          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`,
-            which records a reason and keeps the history. Still accepted until the screens have moved.'
+          description: Appointment type.
           x-phi: internal-id
-          deprecated: true
-        startAt: &id031
+        startAt:
           $ref: ../components/schemas/Timestamp.yaml
-          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`,
-            which records a reason and keeps the history. Still accepted until the screens have moved.'
+          description: Start. Any offset is accepted; stored in UTC.
           x-phi: identifier
-          deprecated: true
-        durationMinutes: &id032
+        durationMinutes:
           type: integer
           format: int32
           minimum: 5
           maximum: 480
-          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`,
-            which records a reason and keeps the history. Still accepted until the screens have moved.'
+          description: Length; defaults to the appointment type's duration.
           x-phi: none
-          deprecated: true
         reasonForVisit:
           type: string
           maxLength: 1000
@@ -1775,7 +1762,7 @@ components:
           default: false
           description: A same-day add-on (walk-in).
           x-phi: none
-        overbook: &id033
+        overbook:
           type: boolean
           default: false
           description: Book over another appointment. Allowed only when the appointment type allows overbooking, up to its
@@ -1792,23 +1779,18 @@ components:
           description: Instructions for the patient.
           x-phi: clinical
     AppointmentPatch:
-      description: JSON Merge Patch for notes, instructions and the room of a booked appointment. Time, provider, facility,
-        type and length change through `/reschedule` (D61); those fields here are deprecated. Status never changes here (API_STANDARDS
-        §7.3).
+      description: 'JSON Merge Patch for the room, reason for visit, staff note and patient instructions of a booked appointment.
+        It has no time, provider, facility, type or length fields: those change only through `POST /appointments/{appointmentId}/reschedule`,
+        which requires a reason and sets `rescheduledFromId` (D61). Status never changes here (API_STANDARDS §7.3).'
       type: object
       additionalProperties: false
       properties:
-        providerId: *id028
-        facilityId: *id029
         locationId:
           oneOf:
           - $ref: ../components/schemas/Id.yaml
           - type: 'null'
           description: Room or site, optional. Send `null` to clear it.
           x-phi: internal-id
-        appointmentTypeId: *id030
-        startAt: *id031
-        durationMinutes: *id032
         reasonForVisit:
           type:
           - string
@@ -1816,7 +1798,6 @@ components:
           maxLength: 1000
           description: Reason for the visit. Send `null` to clear it.
           x-phi: clinical
-        overbook: *id033
         comment:
           type:
           - string
