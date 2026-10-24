@@ -79,7 +79,7 @@ contracts/
 
 ## 4. Commands (scripted in Stage 3)
 
-All tools run from `contracts/` through npm scripts, with exact versions from the lockfile; see [../README.md](../README.md). `oasdiff` is installed by `scripts/install-oasdiff.sh` from its GitHub release with a pinned SHA-256 (the npm package named `oasdiff` is a security placeholder, not the tool). Redocly runs with `REDOCLY_TELEMETRY=off`.
+All tools run from `contracts/` through npm scripts, with exact versions from the lockfile; see [../README.md](../README.md). `oasdiff` is installed by `scripts/install-oasdiff.sh` from its GitHub release with a pinned SHA-256 (the npm package named `oasdiff` is a security placeholder, not the tool). Redocly runs with `REDOCLY_TELEMETRY=off`. `contracts/.npmrc` sets `ignore-scripts=true` (D63): no package lifecycle script runs on install; the tools need none. `scripts/check-breaking.sh` passes `openapi/oasdiff-severity.txt` to oasdiff, which lowers the checks that CONTRACT_GOVERNANCE §4 calls governed, not blocked (adding an enum value to a response) to warnings.
 
 ### Versions pinned in Stage 3 (7-day rule; cut-off 2026-10-15, checked 2026-10-22)
 
@@ -105,6 +105,7 @@ All npm dependencies, including transitive ones, were resolved with `npm install
 | Re-check versions at Stage 5 and then monthly; record the check date here | Your rule 5 |
 | OWASP ruleset 2.0.1 has had no release since March 2024. **PROPOSED:** use it, but copy the rules we rely on into `rules/` if it stops working with the Spectral version we pin | It is still the standard Spectral security ruleset; we must not depend on an unmaintained package silently |
 | Node 24 LTS in CI (Thulasi) and locally | LTS = maintained (agreed, T4) |
+| `contracts/.npmrc`: `ignore-scripts=true`, `fund=false`, `audit=false` (D63) | A compromised dependency cannot run code at install time; `npm ci` in CI picks the file up automatically |
 | GitHub Actions pinned by **commit SHA**, not by tag | A moved tag cannot change what CI runs (agreed, Thulasi T4) |
 
 ## 6. CI jobs (agreed by Thulasi, T3; she owns `.github/`)

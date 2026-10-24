@@ -3,6 +3,9 @@
 # branch. In CI, a breaking change may pass when the PR carries the "breaking-change-approved" label applied by Vimal
 # after the latest commit (checked through the GitHub API by the CI job, TOOLCHAIN §6). A tool or setup failure is
 # never a breaking change, so the label cannot override it.
+# openapi/oasdiff-severity.txt lowers checks that CONTRACT_GOVERNANCE §4 calls governed, not blocked (adding an enum
+# value to a response) to WARN, so they are listed but do not fail the check. The file takes no comments: one
+# "check-id LEVEL" per line.
 #   BASE_REF  git ref to compare against (default: origin/main)
 #
 # Exit codes:
@@ -42,7 +45,7 @@ git show "${BASE_REF}:contracts/openapi/dist/shri-health.bundled.yaml" > "$BASE_
 echo "Comparing ${BASE_REF} → working tree"
 # oasdiff exits 0 when nothing reaches ERR level, 1 when it finds breaking changes, and 100 or more on its own errors.
 set +e
-"$BIN" breaking "$BASE_FILE" openapi/dist/shri-health.bundled.yaml --fail-on ERR
+"$BIN" breaking "$BASE_FILE" openapi/dist/shri-health.bundled.yaml --fail-on ERR --severity-levels openapi/oasdiff-severity.txt
 rc=$?
 set -e
 case "$rc" in
