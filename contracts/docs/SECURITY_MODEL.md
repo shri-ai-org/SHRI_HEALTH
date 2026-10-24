@@ -48,11 +48,13 @@ The contract has no endpoint without `x-permission` (lint rule, CONTRACT_GOVERNA
 | Login-state cookie | `__Host-shri_login`, `SameSite=Lax`, 10 minutes | Holds only a key to the server-side PKCE state |
 | Idle timeout | 15 minutes (**pending clinical advisors**) | Automatic logoff on shared clinic workstations (TA §9) |
 | Absolute lifetime | 12 hours | One clinic day |
-| What resets the idle timer | **Only user-initiated requests.** The SSE stream, its keep-alives and `/operations` polling never reset it; otherwise no one would ever time out | T9 |
+| What resets the idle timer | **Only user-initiated requests.** The SSE stream, its keep-alives, `/operations` polling and `GET /auth/session` never reset it; otherwise no one would ever time out, and a tab re-reading the session before its idle warning would keep it alive | T9; Thulasi on #29 |
 | Idle warning | Shown at **13 minutes**, two minutes before logout, timed from `idleExpiresAt` returned by `GET /auth/session` (not a browser-only timer, so activity in another tab counts). A "Stay signed in" button calls `POST /auth/refresh` and counts as user activity | M15; confirmed by Thulasi (issue #3) |
 | Absolute-limit notice | Shown before the 12-hour absolute limit (`expiresAt` from `GET /auth/session`), which **cannot be extended**, so people can save their work | Thulasi (issue #3) |
 | Refresh | `POST /auth/refresh` extends the idle timer (a user action) | CAT |
-| Logout | `POST /auth/logout` deletes the server session and revokes Keycloak's refresh token; returns `204` | CAT |
+| Logout | `POST /auth/logout` deletes the server session **and ends the user's Keycloak login session** (Keycloak's logout endpoint over the back channel, with the stored refresh token); returns `204` | CAT; Thulasi on #29 |
+| Idle and absolute expiry | The server ends the Keycloak login session too, before deleting ours (on the next request or in the clean-up job). Backstop: the realm's SSO Session Idle is 15 minutes and SSO Session Max 12 hours, so Keycloak ends its own login even if our call fails | Thulasi on #29 |
+| Login | `GET /auth/login` always sends `prompt=login`, so every new login asks for credentials even if a Keycloak cookie survives; there is no single sign-on across apps to keep. The browser starts login only when the user clicks "Sign in", never on its own after expiry or sign-out | Thulasi on #29; Minalini's PR #29 |
 
 ### 2.2 CSRF (agreed by Thulasi, issue #3, T8)
 
