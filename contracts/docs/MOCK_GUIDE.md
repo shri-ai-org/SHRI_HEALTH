@@ -57,13 +57,15 @@ Example names are listed per operation in the contract (for example `GET /eligib
 
 ## 5. A front-desk flow
 
-These six calls work against the mock as written: search → register → add coverage → book → check in → read the eligibility result.
+These calls work against the mock as written: session → booking lists → search → register → add coverage → book → reschedule → check in → undo check-in → copay → read the eligibility result → pharmacy and summaries.
 
 ```bash
 B=http://127.0.0.1:4010
 H=(-H 'Cookie: __Host-shri_session=mock' -H 'X-CSRF-Token: mock' -H 'Content-Type: application/json')
 P=7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d   # the example patient
 
+curl -s $B/auth/session -H 'Cookie: __Host-shri_session=mock'                       # user, csrfToken, expiries (D52)
+curl -s "$B/booking/providers?facilityId=8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e" -H 'Cookie: __Host-shri_session=mock'   # bookable providers (D49)
 curl -s -X POST $B/patients/search "${H[@]}" -d '{"criteria":{"family":"Kuhlman72","birthDate":"1984-07-19"}}'
 curl -s -X POST $B/patients "${H[@]}" -d '{"name":{"given":["Ramona980"],"family":"Kuhlman72"},"birthDate":"1984-07-19"}'
 curl -s -X POST $B/patients/$P/coverages "${H[@]}" \
@@ -73,6 +75,14 @@ curl -s -X POST $B/appointments "${H[@]}" -d '{"patientId":"'$P'","providerId":"
 curl -s -X POST $B/appointments/1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b/check-in "${H[@]}" \
   -H "Idempotency-Key: $(uuidgen)" -d '{"selfPay":false}'   # a new UUID per user action
 curl -s $B/eligibility-checks/3a4b5c6d-7e8f-4a9b-9c0d-1e2f3a4b5c6d -H 'Cookie: __Host-shri_session=mock' -H 'Prefer: example=active'
+curl -s -X POST $B/appointments/1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b/reschedule "${H[@]}" \
+  -d '{"startAt":"2026-11-03T15:40:00Z","reasonCode":"pat"}'                       # D61: new appointment with rescheduledFromId
+curl -s -X POST $B/appointments/1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b/undo-check-in "${H[@]}" \
+  -d '{"reason":"Checked in the wrong patient of the same name."}'                 # D55: back to booked
+curl -s -X POST $B/patients/$P/payments "${H[@]}" -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"amount":{"value":"25.00","currency":"USD"},"method":"cash","appointmentId":"1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b"}'   # D58: receiptFileId
+curl -s "$B/pharmacies?postalCode=62703" -H 'Cookie: __Host-shri_session=mock'       # D50
+curl -s -X POST $B/patients/summaries "${H[@]}" -d '{"patientIds":["'$P'"]}'      # D54
 ```
 
 ## 6. What the mock cannot do
@@ -84,7 +94,8 @@ curl -s $B/eligibility-checks/3a4b5c6d-7e8f-4a9b-9c0d-1e2f3a4b5c6d -H 'Cookie: _
 | **Request errors are always `422`** | Prism reports any request it rejects (missing header, bad field) as `422` with the first `422` example. The real API returns `400` for a missing `Idempotency-Key` or unparseable JSON, and the right field errors (API_STANDARDS §9). Build the error display from the Problem `code`, not from these examples. |
 | **No idempotency, ETag or state rules** | No replay of a repeated `Idempotency-Key`, no `412` on a stale `If-Match`, no `409` from the state machines unless you ask for it. |
 | **No restricted-chart or facility rules** | The mock never hides fields of a restricted patient or rejects a facility. The real API does (SECURITY_MODEL §5). |
-| **Long-running work never finishes** | `POST /eligibility-checks` returns `202` with an operation, but `/operations/{operationId}` and `/events/stream` are not in batch 1. Read the result with `GET /eligibility-checks/{eligibilityCheckId}` and `Prefer: example=…`. |
+| **Long-running work never finishes** | `POST /eligibility-checks` and `POST /files/{fileId}/complete` return `202` with an operation, but `/operations/{operationId}` is not in batch 1. Read the result with `GET /eligibility-checks/{eligibilityCheckId}` and `Prefer: example=…`. |
+| **No event stream** | `GET /events/stream` is in the contract (D52) but Prism cannot serve `text/event-stream` (it answers `500 NO_COMPLEX_OBJECT_TEXT`). Build the live-update code against the `EventEnvelope` schema and EVENTS.md §3; test it against the real API. |
 | **Fixed times** | Examples use dates around 3 November 2026. |
 | **Synthetic data only** | Never type real patient details into a screen connected to the mock, and never paste mock traffic containing real data into chats or tickets. |
 

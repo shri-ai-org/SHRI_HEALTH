@@ -84,6 +84,701 @@ tags:
     description: Operations dashboard.
     x-owner: minalini
 paths:
+  /auth/login:
+    get:
+      operationId: startLogin
+      summary: Start sign-in
+      description: 'Sends the browser to Keycloak (authorization code with PKCE `S256`, `state` and `nonce`; inventory #1; SECURITY_MODEL §2.1). The PKCE verifier, `state` and `nonce` stay server-side, keyed by the short-lived `__Host-shri_login` cookie set here. Public: no session needed.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: E
+        category: security
+      x-storage: admin
+      x-release: P0
+      security: []
+      responses:
+        '302':
+          description: 302. Redirect to Keycloak; sets the login-state cookie.
+          headers:
+            Location:
+              description: Where the browser is sent next.
+              schema:
+                type: string
+                format: uri
+                maxLength: 2000
+            Set-Cookie:
+              description: '`__Host-shri_login`: `HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`; holds only a key to the server-side PKCE state.'
+              schema:
+                type: string
+                maxLength: 1000
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (the identity provider is unavailable).
+  /auth/callback:
+    get:
+      operationId: finishLogin
+      summary: Finish sign-in
+      description: 'Keycloak returns here (inventory #2; SECURITY_MODEL §2.1). The server checks `state` and `nonce`, exchanges the code, keeps Keycloak''s tokens server-side, creates a new session ID (never reusing one), sets the session cookie and sends the browser back to the app. Public: no session yet. Audited as a login.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: E
+        category: security
+      x-storage: admin
+      x-release: P0
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: Authorization code from Keycloak.
+          schema:
+            type: string
+            maxLength: 2000
+        - name: state
+          in: query
+          required: true
+          description: The `state` from `/auth/login`; must match the login-state cookie.
+          schema:
+            type: string
+            maxLength: 256
+      responses:
+        '302':
+          description: 302. Signed in; redirect back to the app. Sets the session cookie and clears the login-state cookie.
+          headers:
+            Location:
+              description: Where the browser is sent next.
+              schema:
+                type: string
+                format: uri
+                maxLength: 2000
+            Set-Cookie:
+              description: '`__Host-shri_session`: `HttpOnly; Secure; SameSite=Strict; Path=/`, a 256-bit reference token; the server stores only its hash (SECURITY_MODEL §2.1).'
+              schema:
+                type: string
+                maxLength: 1000
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (`code` or `state` missing or not matching the login-state cookie, the login state expired (10 minutes), or the nonce did not match).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (the identity provider is unavailable).
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      summary: Extend the session
+      description: 'Extends the idle timer and returns the new session state (inventory #3; SECURITY_MODEL §2.1). A user action: the "Stay signed in" button calls it. It cannot move the 12-hour absolute limit.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit:
+        action: E
+        category: security
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: Extended. The session state with the new `idleExpiresAt`.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+              examples:
+                extended:
+                  summary: Extended
+                  value:
+                    user:
+                      id: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                      displayName: Dev FD
+                      roles:
+                        - FD
+                      facilityIds:
+                        - 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    organization:
+                      id: 0a000000-0000-4000-8000-00000000000a
+                      name: Test Clinic
+                    csrfToken: TEST-csrf-placeholder
+                    idleExpiresAt: '2026-11-03T15:00:00Z'
+                    expiresAt: '2026-11-04T02:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `authenticated`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Sign out
+      description: 'Deletes the server-side session and revokes Keycloak''s refresh token (inventory #4; SECURITY_MODEL §2.1). The session cookie stops working on the next request.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit:
+        action: E
+        category: security
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: 204. Signed out; the session cookie is cleared.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `authenticated`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /auth/session:
+    get:
+      operationId: getSession
+      summary: Get the session state
+      description: 'Returns the signed-in user, their clinic, the CSRF token and the two expiry times (inventory #5; SECURITY_MODEL §2.1, §2.2; Thulasi T8). Reading it does not count as user activity. Screens call it after login and after any user request, and time the idle warning from `idleExpiresAt`.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The session state.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+              examples:
+                front-desk:
+                  summary: A front-desk user
+                  value:
+                    user:
+                      id: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                      displayName: Dev FD
+                      roles:
+                        - FD
+                      facilityIds:
+                        - 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    organization:
+                      id: 0a000000-0000-4000-8000-00000000000a
+                      name: Test Clinic
+                    csrfToken: TEST-csrf-placeholder
+                    idleExpiresAt: '2026-11-03T14:45:00Z'
+                    expiresAt: '2026-11-04T02:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the account is deactivated or has no clinic).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /me:
+    get:
+      operationId: getMe
+      summary: Get the current user
+      description: 'The current user, their clinic and their effective permissions, so screens show only what the role allows (inventory #6). The server still checks every action.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The current user.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+              examples:
+                front-desk:
+                  summary: A front-desk user
+                  value:
+                    user:
+                      id: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                      displayName: Dev FD
+                      roles:
+                        - FD
+                      facilityIds:
+                        - 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    organization:
+                      id: 0a000000-0000-4000-8000-00000000000a
+                      name: Test Clinic
+                    permissions:
+                      - patients:search
+                      - patients:read
+                      - patients:create
+                      - appointments:create
+                      - appointments:check-in
+                      - scheduling-reference:read
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the account is deactivated or has no clinic).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /events/stream:
+    get:
+      operationId: streamEvents
+      summary: Live updates (Server-Sent Events)
+      description: 'Opens a Server-Sent Events stream of the events this user may see (inventory #14; EVENTS.md §3, agreed T28). Each `data:` line is one `EventEnvelope` in JSON, with IDs and status only, never PHI; screens re-fetch details through the normal API. A comment line every 25 seconds keeps proxies open. Neither the stream nor its keep-alives reset the idle timer (T9). On reconnect the browser sends `Last-Event-ID` and the server replays from a 5-minute buffer, or sends `stream.reset` so the screen re-fetches. At most 5 open streams per user.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: ID of the last event received, to resume after a reconnect.
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        '200':
+          description: The stream. Stays open; one `EventEnvelope` per `data:` line.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/EventEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the account is deactivated or has no clinic).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests, or more than 5 open streams for this user).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/break-glass:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: breakGlass
+      summary: Open a restricted chart
+      description: 'Grants this user access to a restricted patient''s chart for 4 hours, with a stated reason (inventory #19; SECURITY_MODEL §5.2, D37, D53). The grant is for this user and this patient only, never widens permissions, is audited as `security`, and raises `break-glass.granted`, which puts an inbox item in front of the privacy officer (never an email with PHI). Care-team members do not need it. `reasonText` is required for `other`.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: patients:break-glass
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-idempotency: supported
+      x-storage: audit
+      x-events:
+        - break-glass.granted
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BreakGlassRequest'
+            examples:
+              covering:
+                summary: Covering clinician
+                value:
+                  reasonCode: continuity-of-care
+              other:
+                summary: Other, with the required note
+                value:
+                  reasonCode: other
+                  reasonText: Reviewing the chart for a quality audit requested by the practice administrator.
+      responses:
+        '200':
+          description: Access granted. The grant, with its expiry.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakGlassGrant'
+              examples:
+                granted:
+                  summary: Granted for 4 hours
+                  value:
+                    id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    userId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                    reasonCode: continuity-of-care
+                    grantedAt: '2026-11-03T14:30:00Z'
+                    expiresAt: '2026-11-03T18:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `patients:break-glass`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (the chart is not restricted, or this user already holds a current grant); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`reasonCode` is `other` without `reasonText`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /files/upload-url:
+    post:
+      operationId: createUploadUrl
+      summary: Request an upload link
+      description: 'Step 1 of an upload (inventory #148; API_STANDARDS §15): creates a file record in state `pending-upload` and returns a pre-signed link into the quarantine bucket. The browser `PUT`s the bytes there (step 2), then calls `POST /files/{fileId}/complete` (step 3). Client file names are not stored. Returns `201` without a `Location`: a file has no single-read endpoint in the MVP.'
+      tags:
+        - files
+      x-owner: anand
+      x-permission: files:create
+      x-audit:
+        action: C
+        category: phi-write
+      x-idempotency: supported
+      x-storage: files
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadUrlRequest'
+            examples:
+              card:
+                summary: Insurance card photo
+                value:
+                  purpose: insurance-card
+                  contentType: image/jpeg
+                  sizeBytes: 348211
+                  sha256: abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd
+      responses:
+        '201':
+          description: Created. The upload link.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadTicket'
+              examples:
+                ticket:
+                  summary: Upload link
+                  value:
+                    fileId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                    uploadUrl: https://files.company-domain.invalid/quarantine/TEST-upload-1
+                    uploadHeaders:
+                      Content-Type: image/jpeg
+                    expiresAt: '2026-11-03T14:45:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `files:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the media type or size is not allowed for this purpose); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /files/{fileId}/complete:
+    parameters:
+      - name: fileId
+        in: path
+        required: true
+        description: File ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: completeUpload
+      summary: Finish an upload
+      description: 'Step 3 of an upload (inventory #149; API_STANDARDS §15): the file service checks the hash, scans the file, encrypts it and moves it to the clean bucket, in the background. Returns `202` and an operation of kind `file.scan`; the file is `quarantined` until the operation ends with `clean` or `rejected` (`file.scanned` event). Only a `clean` file can be attached or downloaded.'
+      tags:
+        - files
+      x-owner: anand
+      x-permission: files:create
+      x-audit:
+        action: U
+        category: phi-write
+      x-async: true
+      x-storage: files
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed` on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+              examples:
+                scanning:
+                  summary: Scan queued
+                  value:
+                    id: 6f7a8b9c-0d1e-4f2a-8b3c-4d5e6f7a8b9c
+                    kind: file.scan
+                    status: queued
+                    createdAt: '2026-11-03T14:31:00Z'
+                    updatedAt: '2026-11-03T14:31:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `files:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such file in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the file is not `pending-upload`, or no bytes were uploaded).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /files/{fileId}/download-url:
+    parameters:
+      - name: fileId
+        in: path
+        required: true
+        description: File ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: createDownloadUrl
+      summary: Get a download link
+      description: 'A short-lived, audited link to a clean file (inventory #150; API_STANDARDS §15). Besides `files:read`, the caller needs the read permission of the file''s purpose, for example `coverages:read` for an insurance card, and a break-glass grant or care-team membership for a restricted patient''s files. Audited as an export.'
+      tags:
+        - files
+      x-owner: anand
+      x-permission: files:read
+      x-audit:
+        action: R
+        category: export
+      x-storage: files
+      x-release: P0
+      responses:
+        '200':
+          description: The download link, valid for at most 5 minutes.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadLink'
+              examples:
+                link:
+                  summary: Download link
+                  value:
+                    url: https://files.company-domain.invalid/clean/TEST-download-1
+                    expiresAt: '2026-11-03T14:35:00Z'
+                    contentType: image/jpeg
+                    sizeBytes: 348211
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `files:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such file in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the file is not `clean` yet, or was rejected).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /patients/search:
     post:
       operationId: searchPatients
@@ -295,6 +990,15 @@ paths:
                     active: true
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
+                    preferredName: Mona980
+                    preferredPharmacy:
+                      id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
+                      name: Test Pharmacy 12
+                      address:
+                        line: 300 Test Road
+                        city: Springfield
+                        state: IL
+                        postalCode: '62703'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -400,6 +1104,15 @@ paths:
                     active: true
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
+                    preferredName: Mona980
+                    preferredPharmacy:
+                      id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
+                      name: Test Pharmacy 12
+                      address:
+                        line: 300 Test Road
+                        city: Springfield
+                        state: IL
+                        postalCode: '62703'
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
@@ -515,6 +1228,15 @@ paths:
                     active: true
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
+                    preferredName: Mona980
+                    preferredPharmacy:
+                      id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
+                      name: Test Pharmacy 12
+                      address:
+                        line: 300 Test Road
+                        city: Springfield
+                        state: IL
+                        postalCode: '62703'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -627,7 +1349,7 @@ paths:
     post:
       operationId: addPatientIdentifier
       summary: Add an identifier
-      description: 'Adds a driver''s license number or another system''s patient ID (inventory #33). The MRN is server-generated and cannot be added. Uses the patient''s permission: identifiers are part of the patient record (SECURITY_MODEL §4.1).'
+      description: 'Adds a driver''s license number or another system''s patient ID (inventory #33). The MRN is server-generated and cannot be added. A scanned license image is stored as a document first (category `identity`) and referenced by `documentId` (D56). Uses the patient''s permission: identifiers are part of the patient record (SECURITY_MODEL §4.1).'
       tags:
         - patients
       x-owner: vimal
@@ -660,6 +1382,7 @@ paths:
                   system: urn:oid:2.16.840.1.113883.4.3.17
                   value: TEST-DL-4471
                   assigner: IL
+                  documentId: 6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b
       responses:
         '201':
           description: Created. The new identifier.
@@ -691,6 +1414,7 @@ paths:
                     assigner: IL
                     use: official
                     createdAt: '2026-11-03T14:30:00Z'
+                    documentId: 6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -2355,6 +3079,167 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /patient-merges:
+    get:
+      operationId: listPatientMerges
+      summary: List a patient's merges
+      description: 'Lists the merges a patient was part of, as the surviving or the merged record, newest first, with whether each can still be undone (new inventory row #240; D51). IDs only; the screen fetches the summaries it may see.'
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: patient-merges:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: patientId
+          in: query
+          required: true
+          description: The patient (either side of the merge).
+          schema:
+            $ref: '#/components/schemas/Id'
+      responses:
+        '200':
+          description: One page of merges.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientMergeList'
+              examples:
+                one:
+                  summary: One merge that can still be undone
+                  value:
+                    items:
+                      - id: 0b1c2d3e-4f5a-4b6c-8d7e-8f9a0b1c2d3e
+                        survivingPatientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        mergedPatientId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                        status: merged
+                        performedAt: '2026-11-03T14:30:00Z'
+                        undoAllowed: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `patient-merges:read`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/summaries:
+    post:
+      operationId: getPatientSummaries
+      summary: Get patient summaries by ID
+      description: 'Returns the minimum-necessary summary (SECURITY_MODEL §8 rule 4) for up to 50 patient IDs in one call (new inventory row #241; D54). A read, not a search: no criteria, IDs only in the body. Each ID returned is audited as a chart access. Restricted patients come back with summary fields only and `restricted: true`.'
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: patients:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: body:/patientIds
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientSummariesRequest'
+            examples:
+              two:
+                summary: Two IDs from a duplicate pair
+                value:
+                  patientIds:
+                    - 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                    - 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      responses:
+        '200':
+          description: The summaries found, in request order.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientSummaryBatch'
+              examples:
+                two:
+                  summary: Both found
+                  value:
+                    items:
+                      - id: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                        name:
+                          given:
+                            - Ramona980
+                          family: Kuhlman72
+                        birthDate: '1984-07-19'
+                        gender: female
+                        mrn: TEST-000098
+                        phoneLast4: '0123'
+                        restricted: false
+                        active: true
+                      - id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        name:
+                          given:
+                            - Ramona980
+                          family: Kuhlman72
+                        birthDate: '1984-07-19'
+                        gender: female
+                        mrn: TEST-000123
+                        phoneLast4: '0123'
+                        restricted: false
+                        active: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `patients:read`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /slots:
     get:
       operationId: listSlots
@@ -2453,7 +3338,7 @@ paths:
     get:
       operationId: listAppointments
       summary: List appointments
-      description: 'Day and week views (inventory #52). Give `date` (a day in the facility''s time zone) or `patientId`. Without `facilityId`, only the user''s facilities are listed.'
+      description: 'Day and week views (inventory #52). Give `date` (one day), `dateFrom` and `dateTo` (a range of at most 31 days, both in the facility''s time zone; D62), or `patientId`. Without `facilityId`, only the user''s facilities are listed.'
       tags:
         - scheduling
       x-owner: vimal
@@ -2470,7 +3355,19 @@ paths:
         - name: date
           in: query
           required: false
-          description: The day, in the facility's time zone.
+          description: One day, in the facility's time zone. Give `date`, or `dateFrom` and `dateTo` (D62).
+          schema:
+            $ref: '#/components/schemas/Date'
+        - name: dateFrom
+          in: query
+          required: false
+          description: First day of a range, inclusive, in the facility's time zone (D62).
+          schema:
+            $ref: '#/components/schemas/Date'
+        - name: dateTo
+          in: query
+          required: false
+          description: Last day of the range, inclusive; at most 31 days after `dateFrom` (D62).
           schema:
             $ref: '#/components/schemas/Date'
         - name: facilityId
@@ -2556,7 +3453,7 @@ paths:
           description: 404. `not-found` (the `facilityId` is not one of the user's facilities (SECURITY_MODEL §5.1)).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (neither `date` nor `patientId` given).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (neither `date`, a `dateFrom`/`dateTo` range nor `patientId` given; `date` together with a range; or a range longer than 31 days).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -2756,9 +3653,9 @@ paths:
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
     patch:
-      operationId: rescheduleAppointment
-      summary: Reschedule an appointment
-      description: 'Changes time, provider, place, type or notes of a `booked` appointment (inventory #54), under the same booking rules. A new date re-queues the eligibility check.'
+      operationId: updateAppointment
+      summary: Edit an appointment
+      description: 'Edits the notes, patient instructions and room of a `booked` appointment (inventory #54). Rescheduling is `POST /appointments/{appointmentId}/reschedule` (D61); the slot fields in this body are deprecated and still accepted meanwhile.'
       tags:
         - scheduling
       x-owner: vimal
@@ -2784,10 +3681,10 @@ paths:
             schema:
               $ref: '#/components/schemas/AppointmentPatch'
             examples:
-              later:
-                summary: Move it 40 minutes later
+              instructions:
+                summary: Add patient instructions
                 value:
-                  startAt: '2026-11-03T15:40:00Z'
+                  patientInstruction: Arrive 15 minutes early.
       responses:
         '200':
           description: The appointment.
@@ -2807,8 +3704,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Appointment'
               examples:
-                moved:
-                  summary: Rescheduled
+                edited:
+                  summary: Edited
                   value:
                     id: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
                     patient:
@@ -2823,8 +3720,8 @@ paths:
                       code: FOLLOWUP
                       name: Follow-up visit
                     status: booked
-                    startAt: '2026-11-03T15:40:00Z'
-                    endAt: '2026-11-03T16:00:00Z'
+                    startAt: '2026-11-03T15:00:00Z'
+                    endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
                     timeZone: America/Chicago
                     reasonForVisit: Follow-up on blood pressure
@@ -2832,6 +3729,7 @@ paths:
                     overbook: false
                     createdAt: '2026-11-02T16:05:00Z'
                     updatedAt: '2026-11-02T16:05:00Z'
+                    patientInstruction: Arrive 15 minutes early.
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -3273,6 +4171,7 @@ paths:
                         visitStatus: checked-in
                     date: '2026-11-03'
                     timeZone: America/Chicago
+                    facilityName: Test Clinic Main Street
                 staff:
                   summary: Staff view
                   value:
@@ -3289,8 +4188,15 @@ paths:
                         status: checked-in
                         visitStatus: checked-in
                         visitStatusAt: '2026-11-03T14:52:00Z'
+                        appointmentType:
+                          id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                          code: FOLLOWUP
+                          name: Follow-up visit
+                        reasonForVisit: Follow-up on blood pressure
+                        encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
                     date: '2026-11-03'
                     timeZone: America/Chicago
+                    facilityName: Test Clinic Main Street
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -3303,6 +4209,490 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (the `facilityId` is not one of the user's facilities (SECURITY_MODEL §5.1)).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /booking/facilities:
+    get:
+      operationId: listBookableFacilities
+      summary: List facilities for booking
+      description: 'The facilities a front-desk or clinical user may book at, with their time zones (new inventory row #236). Read-only and active entries only; reference data, so not audited. `practice-setup:read` (ADM, CO) stays the way to see and edit the full records (D49).'
+      tags:
+        - scheduling
+      x-owner: vimal
+      x-permission: scheduling-reference:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of facilitys.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookableFacilityList'
+              examples:
+                one:
+                  summary: One facility
+                  value:
+                    items:
+                      - id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                        code: MAIN
+                        name: Test Clinic Main Street
+                        timeZone: America/Chicago
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `scheduling-reference:read`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /booking/locations:
+    get:
+      operationId: listBookableLocations
+      summary: List rooms and sites for booking
+      description: 'Rooms and sites of a facility, for booking and rooming (new inventory row #237). Read-only and active entries only; reference data, so not audited. `practice-setup:read` (ADM, CO) stays the way to see and edit the full records (D49).'
+      tags:
+        - scheduling
+      x-owner: vimal
+      x-permission: scheduling-reference:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: facilityId
+          in: query
+          required: false
+          description: Only this facility.
+          schema:
+            $ref: '#/components/schemas/Id'
+      responses:
+        '200':
+          description: One page of locations.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookableLocationList'
+              examples:
+                one:
+                  summary: One room
+                  value:
+                    items:
+                      - id: 9c0d1e2f-3a4b-4c5d-9e6f-7a8b9c0d1e2f
+                        facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                        name: Exam room 2
+                        physicalType: ro
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `scheduling-reference:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (the `facilityId` is not one of the user's facilities (SECURITY_MODEL §5.1)).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /booking/providers:
+    get:
+      operationId: listBookableProviders
+      summary: List providers for booking
+      description: 'Providers who can be booked, with the facilities they work at; bookable fields only, no NPI, licenses or contact details (new inventory row #238). Read-only and active entries only; reference data, so not audited. `practice-setup:read` (ADM, CO) stays the way to see and edit the full records (D49).'
+      tags:
+        - scheduling
+      x-owner: vimal
+      x-permission: scheduling-reference:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: facilityId
+          in: query
+          required: false
+          description: Only providers working at this facility.
+          schema:
+            $ref: '#/components/schemas/Id'
+      responses:
+        '200':
+          description: One page of providers.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookableProviderList'
+              examples:
+                one:
+                  summary: One provider
+                  value:
+                    items:
+                      - id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                        displayName: Dr. Lowe58
+                        facilityIds:
+                          - 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                        specialties:
+                          - Internal Medicine
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `scheduling-reference:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (the `facilityId` is not one of the user's facilities (SECURITY_MODEL §5.1)).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /booking/appointment-types:
+    get:
+      operationId: listBookableAppointmentTypes
+      summary: List appointment types for booking
+      description: 'Appointment types with their durations and booking rules (new inventory row #239). Read-only and active entries only; reference data, so not audited. `practice-setup:read` (ADM, CO) stays the way to see and edit the full records (D49).'
+      tags:
+        - scheduling
+      x-owner: vimal
+      x-permission: scheduling-reference:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of appointment types.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookableAppointmentTypeList'
+              examples:
+                one:
+                  summary: One type
+                  value:
+                    items:
+                      - id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                        code: FOLLOWUP
+                        name: Follow-up visit
+                        defaultDurationMinutes: 20
+                        color: '#2E7D32'
+                        allowOverlap: false
+                        maxOverbook: 1
+                        requiresEligibilityCheck: true
+                        telehealth: false
+                        newPatient: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `scheduling-reference:read`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /appointments/{appointmentId}/reschedule:
+    parameters:
+      - name: appointmentId
+        in: path
+        required: true
+        description: Appointment ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: rescheduleAppointment
+      summary: Reschedule an appointment
+      description: 'Moves a `booked` or `arrived` appointment (new inventory row #243; D61). In one transaction: the old appointment becomes `cancelled` with the given reason, a new one is booked under the same rules as `POST /appointments` (provider-day lock, overbooking only where the type allows it), and the new one carries `rescheduledFromId`, set by the server. A new date re-queues the eligibility check (D15). Returns the new appointment; the old one keeps its history.'
+      tags:
+        - scheduling
+      x-owner: vimal
+      x-permission: appointments:reschedule
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-storage: clinical
+      x-events:
+        - appointment.rescheduled
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RescheduleRequest'
+            examples:
+              later:
+                summary: Move to the next slot, at the patient's request
+                value:
+                  startAt: '2026-11-03T15:40:00Z'
+                  reasonCode: pat
+      responses:
+        '201':
+          description: Rescheduled. The new appointment, with `rescheduledFromId`.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+              examples:
+                moved:
+                  summary: The new appointment
+                  value:
+                    id: 2e3f4a5b-6c7d-4e8f-8a9b-0c1d2e3f4a5b
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      displayName: Kuhlman72, Ramona980
+                    provider:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    appointmentType:
+                      id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      code: FOLLOWUP
+                      name: Follow-up visit
+                    status: booked
+                    startAt: '2026-11-03T15:40:00Z'
+                    endAt: '2026-11-03T16:00:00Z'
+                    durationMinutes: 20
+                    timeZone: America/Chicago
+                    reasonForVisit: Follow-up on blood pressure
+                    sameDayAddOn: false
+                    overbook: false
+                    rescheduledFromId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    createdAt: '2026-11-02T18:00:00Z'
+                    updatedAt: '2026-11-02T18:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `appointments:reschedule`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `booking-conflict` (the slot is taken or overlaps another appointment); `invalid-state-transition` (the appointment is not `booked` or `arrived`); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same booking rules as `POST /appointments`; or a provider, facility or location outside the user's facilities (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /appointments/{appointmentId}/undo-check-in:
+    parameters:
+      - name: appointmentId
+        in: path
+        required: true
+        description: Appointment ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: undoCheckIn
+      summary: Undo a check-in
+      description: 'Reverses a check-in made by mistake (new inventory row #242; D55). Allowed only while the patient has not been roomed and the encounter has no clinical data (no vitals, notes or diagnoses). In one transaction: the appointment returns to `booked`, the encounter created at check-in becomes `entered-in-error` with the reason and its Provenance (D14, D24), and the visit step history keeps the record. The eligibility check already run is kept.'
+      tags:
+        - scheduling
+      x-owner: vimal
+      x-permission: appointments:undo-check-in
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-events:
+        - appointment.status-changed
+        - encounter.entered-in-error
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UndoCheckInRequest'
+            examples:
+              wrong-patient:
+                summary: Wrong patient checked in
+                value:
+                  reason: Checked in the wrong patient of the same name.
+      responses:
+        '200':
+          description: Undone. The appointment, back to `booked`.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+              examples:
+                undone:
+                  summary: Back to booked
+                  value:
+                    id: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      displayName: Kuhlman72, Ramona980
+                    provider:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    appointmentType:
+                      id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      code: FOLLOWUP
+                      name: Follow-up visit
+                    status: booked
+                    startAt: '2026-11-03T15:00:00Z'
+                    endAt: '2026-11-03T15:20:00Z'
+                    durationMinutes: 20
+                    timeZone: America/Chicago
+                    reasonForVisit: Follow-up on blood pressure
+                    sameDayAddOn: false
+                    overbook: false
+                    createdAt: '2026-11-02T16:05:00Z'
+                    updatedAt: '2026-11-03T14:55:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `appointments:undo-check-in`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (not `checked-in`, already roomed, or the encounter has vitals, notes or diagnoses).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -5170,11 +6560,11 @@ paths:
     post:
       operationId: createProviderSchedule
       summary: Create a provider schedule
-      description: Creates a provider schedule. Facilities in the body must be among the user's facilities.
+      description: Creates a provider schedule. Facilities in the body must be among the user's facilities. Front desk and practice administrators manage schedules and blocks in the MVP; provider self-service is P1 (D66).
       tags:
         - practice-setup
       x-owner: anand
-      x-permission: practice-setup:create
+      x-permission: provider-schedules:create
       x-audit:
         action: C
         category: admin
@@ -5257,7 +6647,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `practice-setup:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `provider-schedules:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '409':
           $ref: '#/components/responses/Conflict'
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
@@ -5354,11 +6744,11 @@ paths:
     patch:
       operationId: updateProviderSchedule
       summary: Update a provider schedule
-      description: 'Edits a provider schedule with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body must be among the user''s facilities.'
+      description: 'Edits a provider schedule with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body must be among the user''s facilities. Front desk and practice administrators manage schedules and blocks in the MVP; provider self-service is P1 (D66).'
       tags:
         - practice-setup
       x-owner: anand
-      x-permission: practice-setup:update
+      x-permission: provider-schedules:update
       x-audit:
         action: U
         category: admin
@@ -5435,7 +6825,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `practice-setup:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `provider-schedules:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such provider schedule in this clinic or the user's facilities).
@@ -7223,6 +8613,635 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /consent-requirements:
+    get:
+      operationId: listConsentRequirements
+      summary: List consent requirements
+      description: 'The consents the practice asks for, with their current policy versions (new inventory row #244; D59). The front desk reads this at registration and check-in; practice administrators maintain it.'
+      tags:
+        - practice-setup
+      x-owner: anand
+      x-permission: consent-requirements:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: kind
+          in: query
+          required: false
+          description: Only this kind.
+          schema:
+            type: string
+            enum:
+              - treatment
+              - privacy-notice
+              - ambient-recording
+              - telehealth
+              - research
+              - information-sharing
+              - financial
+        - name: active
+          in: query
+          required: false
+          description: Only active (true) or retired (false) versions. Default true.
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: One page of consent requirements.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRequirementList'
+              examples:
+                one:
+                  summary: The privacy notice
+                  value:
+                    items:
+                      - id: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+                        kind: privacy-notice
+                        title: Notice of Privacy Practices
+                        policyVersion: 2026-10
+                        required: true
+                        formFileId: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                        effectiveDate: '2026-10-01'
+                        active: true
+                        createdAt: '2026-10-26T13:00:00Z'
+                        updatedAt: '2026-10-26T13:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `consent-requirements:read`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: createConsentRequirement
+      summary: Create a consent requirement
+      description: Adds a consent requirement, or a new policy version of an existing kind; the earlier version stays until retired (D59).
+      tags:
+        - practice-setup
+      x-owner: anand
+      x-permission: practice-setup:create
+      x-audit:
+        action: C
+        category: admin
+      x-idempotency: supported
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentRequirementCreate'
+            examples:
+              create:
+                summary: New privacy notice version
+                value:
+                  kind: privacy-notice
+                  title: Notice of Privacy Practices
+                  policyVersion: 2026-10
+                  required: true
+                  formFileId: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                  effectiveDate: '2026-10-01'
+      responses:
+        '201':
+          description: Created. The new consent requirement.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRequirement'
+              examples:
+                created:
+                  summary: Created
+                  value:
+                    id: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+                    kind: privacy-notice
+                    title: Notice of Privacy Practices
+                    policyVersion: 2026-10
+                    required: true
+                    formFileId: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                    effectiveDate: '2026-10-01'
+                    active: true
+                    createdAt: '2026-10-26T13:00:00Z'
+                    updatedAt: '2026-10-26T13:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `practice-setup:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (this kind already has that policy version); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /consent-requirements/{consentRequirementId}:
+    parameters:
+      - name: consentRequirementId
+        in: path
+        required: true
+        description: Consent requirement ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getConsentRequirement
+      summary: Get a consent requirement
+      description: 'Returns one consent requirement (new inventory row #246).'
+      tags:
+        - practice-setup
+      x-owner: anand
+      x-permission: consent-requirements:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The consent requirement.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRequirement'
+              examples:
+                one:
+                  summary: Consent requirement
+                  value:
+                    id: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+                    kind: privacy-notice
+                    title: Notice of Privacy Practices
+                    policyVersion: 2026-10
+                    required: true
+                    formFileId: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                    effectiveDate: '2026-10-01'
+                    active: true
+                    createdAt: '2026-10-26T13:00:00Z'
+                    updatedAt: '2026-10-26T13:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `consent-requirements:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such consent requirement in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updateConsentRequirement
+      summary: Update a consent requirement
+      description: 'Edits a consent requirement with JSON Merge Patch; set `active: false` to retire a version (new inventory row #247).'
+      tags:
+        - practice-setup
+      x-owner: anand
+      x-permission: practice-setup:update
+      x-audit:
+        action: U
+        category: admin
+      x-concurrency: if-match-required
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/ConsentRequirementPatch'
+            examples:
+              retire:
+                summary: Retire this version
+                value:
+                  active: false
+      responses:
+        '200':
+          description: The consent requirement.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRequirement'
+              examples:
+                updated:
+                  summary: Updated
+                  value:
+                    id: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+                    kind: privacy-notice
+                    title: Notice of Privacy Practices
+                    policyVersion: 2026-10
+                    required: true
+                    formFileId: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                    effectiveDate: '2026-10-01'
+                    active: false
+                    createdAt: '2026-10-26T13:00:00Z'
+                    updatedAt: '2026-10-26T13:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `practice-setup:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such consent requirement in this clinic or the user's facilities).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /pharmacies:
+    get:
+      operationId: listPharmacies
+      summary: Search the pharmacy directory
+      description: 'Searches the pharmacy directory by name or ZIP code (inventory #130; D50). Reference data about pharmacies, not patients, so the query string is allowed and nothing is audited. The front desk uses it to set a patient''s preferred pharmacy (`PUT /patients/{patientId}/preferred-pharmacy`); prescribers use it when sending a prescription.'
+      tags:
+        - medications
+      x-owner: thulasi
+      x-permission: pharmacies:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: q
+          in: query
+          required: false
+          description: Pharmacies whose name contains this text.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 200
+        - name: postalCode
+          in: query
+          required: false
+          description: Pharmacies in this ZIP code (the pharmacy's, not a patient's).
+          schema:
+            type: string
+            pattern: ^\d{5}$
+            maxLength: 5
+        - name: mailOrder
+          in: query
+          required: false
+          description: Only mail-order (true) or local (false) pharmacies.
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: One page of pharmacys.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PharmacyList'
+              examples:
+                one:
+                  summary: One pharmacy
+                  value:
+                    items:
+                      - id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
+                        ncpdpId: '0000012'
+                        name: Test Pharmacy 12
+                        phone: '+12175550130'
+                        fax: '+12175550131'
+                        address:
+                          line: 300 Test Road
+                          city: Springfield
+                          state: IL
+                          postalCode: '62703'
+                        mailOrder: false
+                        active: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `pharmacies:read`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/payments:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: recordPayment
+      summary: Record a patient payment
+      description: 'Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in, so it works for a restricted patient like check-in does (SECURITY_MODEL §5.2).'
+      tags:
+        - billing
+      x-owner: anand
+      x-permission: payments:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: required
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCreate'
+            examples:
+              copay-card:
+                summary: Copay by card at check-in
+                value:
+                  amount:
+                    value: '25.00'
+                    currency: USD
+                  method: card
+                  appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                  cardSessionId: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+              copay-cash:
+                summary: Copay in cash
+                value:
+                  amount:
+                    value: '25.00'
+                    currency: USD
+                  method: cash
+                  appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+      responses:
+        '201':
+          description: Created. The new payment.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+              examples:
+                recorded:
+                  summary: Recorded, with the receipt
+                  value:
+                    id: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                    amount:
+                      value: '25.00'
+                      currency: USD
+                    method: card
+                    processorReference: TEST-TXN-000455
+                    receiptFileId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
+                    collectedAt: '2026-11-03T14:53:00Z'
+                    collectedByUserId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                    refund: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required Idempotency-Key header is missing).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `payments:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such payment in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (the card session is not `captured`, or was already used); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`card` without `cardSessionId`, `cardSessionId` with another method, or the appointment belongs to another patient (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /payments/card-session:
+    post:
+      operationId: createCardSession
+      summary: Start a card payment
+      description: 'Starts a card payment with the processor and returns the token for its hosted fields (inventory #199; D58). The patient or staff enter the card in the processor''s fields; our servers never see the number. Then record the payment with `cardSessionId`. Reaches a partner, so `Idempotency-Key` is required.'
+      tags:
+        - billing
+      x-owner: anand
+      x-permission: payments:card-session
+      x-audit:
+        action: C
+        category: phi-write
+        patient: body:/patientId
+      x-idempotency: required
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardSessionCreate'
+            examples:
+              copay:
+                summary: Copay
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  amount:
+                    value: '25.00'
+                    currency: USD
+                  appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+      responses:
+        '201':
+          description: Created. The new card session.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardSession'
+              examples:
+                started:
+                  summary: Session started
+                  value:
+                    id: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    amount:
+                      value: '25.00'
+                      currency: USD
+                    status: pending
+                    clientToken: TEST-hosted-fields-placeholder
+                    expiresAt: '2026-11-03T15:10:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required Idempotency-Key header is missing).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `payments:card-session`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the amount is not positive, or the appointment belongs to another patient); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     Address:
@@ -7615,6 +9634,7 @@ components:
         - ccda.export
         - onboarding.import
         - medication-history.fetch
+        - file.scan
     OperationStatus:
       title: OperationStatus
       description: Progress of an operation; `succeeded`, `failed` and `cancelled` are final (API_STANDARDS §13).
@@ -7821,6 +9841,283 @@ components:
       maxLength: 35
       examples:
         - '2026-11-03T14:30:00Z'
+    SessionUser:
+      description: The signed-in user, as the session knows them. Roles use the codes in SECURITY_MODEL §4.3.
+      type: object
+      required:
+        - id
+        - displayName
+        - roles
+        - facilityIds
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: User ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name for the header (a staff member, not a patient).
+          x-phi: none
+        roles:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            enum:
+              - FD
+              - MA
+              - RN
+              - MD
+              - APP
+              - BIL
+              - ADM
+              - CO
+              - SUP
+              - DSP
+          description: Role codes (SECURITY_MODEL §4.3; `DSP` is the status board display, D47). The server checks every action; roles only decide what screens show.
+          x-phi: none
+        facilityIds:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Id'
+          description: Facilities the user is assigned to (SECURITY_MODEL §5.1).
+          x-phi: internal-id
+    SessionOrganization:
+      description: The clinic (tenant) of the session. It comes from the server-side session only, never from token claims (D21).
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Organization ID.
+          x-phi: internal-id
+        name:
+          type: string
+          maxLength: 200
+          description: Practice name.
+          x-phi: none
+    Session:
+      description: Session state for the browser (SECURITY_MODEL §2.1, §2.2). Read after login and after any user request that may have extended the session.
+      type: object
+      required:
+        - user
+        - organization
+        - csrfToken
+        - idleExpiresAt
+        - expiresAt
+      properties:
+        user:
+          $ref: '#/components/schemas/SessionUser'
+          description: The signed-in user.
+          x-phi: none
+        organization:
+          $ref: '#/components/schemas/SessionOrganization'
+          description: The clinic.
+          x-phi: none
+        csrfToken:
+          type: string
+          maxLength: 128
+          description: Send as `X-CSRF-Token` on every POST, PUT and PATCH, including `/auth/refresh` and `/auth/logout`. Bound to the session; rotates at every login. Keep it in memory only, never in storage.
+          x-phi: none
+        idleExpiresAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the session ends if there is no user activity (15 minutes idle, Q20). Only user-initiated requests move it; the event stream, its keep-alives and `/operations` polling do not. Screens time the 13-minute warning from this value, not from a browser timer.
+          x-phi: none
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: The absolute limit, 12 hours after login. It cannot be extended; screens show a notice before it so people can save their work.
+          x-phi: none
+    Me:
+      description: 'The current user, their clinic and their effective permissions, for building menus (inventory #6). The server checks every action regardless.'
+      type: object
+      required:
+        - user
+        - organization
+        - permissions
+      properties:
+        user:
+          $ref: '#/components/schemas/SessionUser'
+          description: The signed-in user.
+          x-phi: none
+        organization:
+          $ref: '#/components/schemas/SessionOrganization'
+          description: The clinic.
+          x-phi: none
+        permissions:
+          type: array
+          maxItems: 300
+          items:
+            type: string
+            maxLength: 80
+          description: Effective permission names from the user's roles (`resource:action`, SECURITY_MODEL §4.2).
+          x-phi: none
+    BreakGlassReasonCode:
+      description: Why a restricted chart is opened (SECURITY_MODEL §5.2). `other` needs `reasonText`.
+      type: string
+      enum:
+        - emergency-care
+        - continuity-of-care
+        - patient-request
+        - other
+    BreakGlassRequest:
+      description: Body to open a restricted chart. `reasonText` is required when `reasonCode` is `other`, optional otherwise (D53).
+      type: object
+      additionalProperties: false
+      required:
+        - reasonCode
+      properties:
+        reasonCode:
+          $ref: '#/components/schemas/BreakGlassReasonCode'
+          description: The reason.
+          x-phi: none
+        reasonText:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Free text explaining the reason. Required for `other`. May name people, so it is treated as patient data and never logged; it is recorded in the audit event and shown to the privacy officer.
+          x-phi: identifier
+    BreakGlassGrant:
+      description: 'A break-glass grant: this user may open this patient''s chart until `expiresAt`, 4 hours (SECURITY_MODEL §5.2, D53). It never widens permissions; it only lifts the restriction. The compliance officer can revoke it.'
+      type: object
+      required:
+        - id
+        - patientId
+        - userId
+        - reasonCode
+        - grantedAt
+        - expiresAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Grant ID (also in the `break-glass.granted` event).
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        userId:
+          $ref: '#/components/schemas/Id'
+          description: The user it was granted to.
+          x-phi: internal-id
+        reasonCode:
+          $ref: '#/components/schemas/BreakGlassReasonCode'
+          description: The reason given.
+          x-phi: none
+        grantedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was granted.
+          x-phi: none
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: 'When it ends: 4 hours after `grantedAt`.'
+          x-phi: none
+    FilePurpose:
+      description: 'What the file is for (API_STANDARDS §15). Each purpose has its own allowed types and sizes: `insurance-card` is JPEG or PNG up to 10 MB (M13).'
+      type: string
+      enum:
+        - insurance-card
+        - encounter-audio
+        - after-visit-summary
+        - document
+        - fax
+        - ccda
+        - export
+        - onboarding-import
+    UploadUrlRequest:
+      description: Body to ask for an upload link.
+      type: object
+      additionalProperties: false
+      required:
+        - purpose
+        - contentType
+        - sizeBytes
+        - sha256
+      properties:
+        purpose:
+          $ref: '#/components/schemas/FilePurpose'
+          description: What the file is for; decides the allowed types and sizes and who may later download it.
+          x-phi: none
+        contentType:
+          type: string
+          maxLength: 100
+          description: Media type of the file, e.g. `image/jpeg`.
+          x-phi: none
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 2147483648
+          description: Size in bytes.
+          x-phi: none
+        sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          maxLength: 64
+          description: SHA-256 of the content, lowercase hex; checked after upload.
+          x-phi: none
+    UploadTicket:
+      description: 'Where to PUT the bytes. The link is a bearer secret: never log it, never store it, never put it in an event.'
+      type: object
+      required:
+        - fileId
+        - uploadUrl
+        - expiresAt
+      properties:
+        fileId:
+          $ref: '#/components/schemas/Id'
+          description: The new file; `pending-upload` until completed.
+          x-phi: internal-id
+        uploadUrl:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: Pre-signed link into the quarantine bucket; the browser `PUT`s the bytes there.
+          x-phi: none
+        uploadHeaders:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 500
+          description: Headers to send with the PUT.
+          x-phi: none
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the link stops working.
+          x-phi: none
+    DownloadLink:
+      description: A short-lived link to a clean file.
+      type: object
+      required:
+        - url
+        - expiresAt
+        - contentType
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: 'Pre-signed download link, valid for at most 5 minutes. A bearer secret: never log or store it.'
+          x-phi: none
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the link stops working.
+          x-phi: none
+        contentType:
+          type: string
+          maxLength: 100
+          description: Media type.
+          x-phi: none
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 2147483648
+          description: Size in bytes.
+          x-phi: none
     PatientSearchRequest:
       description: Patient search. Give either one exact identifier (`mrn`, `driversLicenseNumber`, `memberId` or the full `phone`) or at least two criteria, for example `family` and `birthDate`; otherwise `422 business-rule-violation` (API_STANDARDS §14.2).
       type: object
@@ -8115,6 +10412,10 @@ components:
           maxLength: 300
           description: Who issued it.
           x-phi: none
+        documentId:
+          $ref: '#/components/schemas/Id'
+          description: 'For a driver''s license: the scanned image, stored through `POST /documents` (inventory #206) with category `identity`; the identifier keeps only this reference (D56). Download with `GET /files/{fileId}/download-url` through the document.'
+          x-phi: internal-id
     PatientCreate:
       description: Body to register a patient. Only `name` and `birthDate` are required (D44); every D39 demographic field is optional.
       type: object
@@ -8126,6 +10427,18 @@ components:
         name:
           $ref: '#/components/schemas/HumanName'
           description: Official name.
+          x-phi: identifier
+        preferredName:
+          type: string
+          maxLength: 100
+          description: The name the patient goes by, when it differs from the official name (FHIR name use `nickname`; D57). Shown next to the official name, never instead of it on legal documents.
+          x-phi: identifier
+        previousNames:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/HumanName'
+          description: Earlier names, e.g. a maiden name (FHIR name use `old` / `maiden`; D57). Searchable like the official name.
           x-phi: identifier
         birthDate:
           $ref: '#/components/schemas/Date'
@@ -8271,6 +10584,10 @@ components:
           maxLength: 300
           description: Who issued it, e.g. the issuing state for a driver's license.
           x-phi: none
+        documentId:
+          $ref: '#/components/schemas/Id'
+          description: 'For a driver''s license: the scanned image, stored through `POST /documents` (inventory #206) with category `identity`; the identifier keeps only this reference (D56). Download with `GET /files/{fileId}/download-url` through the document.'
+          x-phi: internal-id
         use:
           type: string
           enum:
@@ -8285,6 +10602,52 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: When it was recorded.
           x-phi: none
+    PharmacyAddress:
+      description: A pharmacy's address, as the pharmacy directory has it.
+      type: object
+      properties:
+        line:
+          type: string
+          maxLength: 200
+          description: Street address.
+          x-phi: clinical
+        city:
+          type: string
+          maxLength: 100
+          description: City.
+          x-phi: clinical
+        state:
+          type: string
+          pattern: ^[A-Z]{2}$
+          maxLength: 2
+          description: State.
+          x-phi: clinical
+        postalCode:
+          type: string
+          pattern: ^\d{5}(-\d{4})?$
+          maxLength: 10
+          description: ZIP code.
+          x-phi: clinical
+    PharmacyRef:
+      description: The patient's preferred pharmacy, from the pharmacy directory (`GET /pharmacies`, D50). A patient's pharmacy choice is health information.
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Pharmacy ID.
+          x-phi: internal-id
+        name:
+          type: string
+          maxLength: 200
+          description: Pharmacy name.
+          x-phi: clinical
+        address:
+          $ref: '#/components/schemas/PharmacyAddress'
+          description: Address.
+          x-phi: clinical
     Patient:
       description: 'A patient: demographics, contact details and identifiers (FHIR-shaped `Patient`, US Core Patient).'
       type: object
@@ -8309,6 +10672,18 @@ components:
         name:
           $ref: '#/components/schemas/HumanName'
           description: Official name.
+          x-phi: identifier
+        preferredName:
+          type: string
+          maxLength: 100
+          description: The name the patient goes by, when it differs from the official name (FHIR name use `nickname`; D57). Shown next to the official name, never instead of it on legal documents.
+          x-phi: identifier
+        previousNames:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/HumanName'
+          description: Earlier names, e.g. a maiden name (FHIR name use `old` / `maiden`; D57). Searchable like the official name.
           x-phi: identifier
         birthDate:
           $ref: '#/components/schemas/Date'
@@ -8400,6 +10775,10 @@ components:
             $ref: '#/components/schemas/PatientIdentifier'
           description: Current identifiers, including the MRN.
           x-phi: identifier
+        preferredPharmacy:
+          $ref: '#/components/schemas/PharmacyRef'
+          description: Preferred pharmacy, set with `PUT /patients/{patientId}/preferred-pharmacy` (D50). Absent when none is chosen.
+          x-phi: clinical
         restricted:
           type: boolean
           description: True when the chart is restricted (sensitive or VIP); opening it needs break-glass unless the user is on the care team (D37).
@@ -8428,6 +10807,22 @@ components:
         name:
           $ref: '#/components/schemas/HumanName'
           description: Official name.
+          x-phi: identifier
+        preferredName:
+          type:
+            - string
+            - 'null'
+          maxLength: 100
+          description: The name the patient goes by, when it differs from the official name (FHIR name use `nickname`; D57). Shown next to the official name, never instead of it on legal documents. Send `null` to clear it.
+          x-phi: identifier
+        previousNames:
+          oneOf:
+            - type: array
+              maxItems: 5
+              items:
+                $ref: '#/components/schemas/HumanName'
+            - type: 'null'
+          description: Earlier names, e.g. a maiden name (FHIR name use `old` / `maiden`; D57). Searchable like the official name. Send `null` to clear it.
           x-phi: identifier
         birthDate:
           $ref: '#/components/schemas/Date'
@@ -9530,6 +11925,100 @@ components:
           maxLength: 2000
           description: Why the merge is undone.
           x-phi: identifier
+    PatientMergeSummary:
+      description: A merge in the patient's history, with whether it can still be undone (D51).
+      type: object
+      required:
+        - id
+        - survivingPatientId
+        - mergedPatientId
+        - status
+        - performedAt
+        - undoAllowed
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Merge ID; undo it with `POST /patient-merges/{mergeId}/undo`.
+          x-phi: internal-id
+        survivingPatientId:
+          $ref: '#/components/schemas/Id'
+          description: Kept patient.
+          x-phi: internal-id
+        mergedPatientId:
+          $ref: '#/components/schemas/Id'
+          description: Merged patient.
+          x-phi: internal-id
+        status:
+          type: string
+          enum:
+            - merged
+            - undone
+          description: Whether the merge stands or was undone.
+          x-phi: none
+        performedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was merged.
+          x-phi: none
+        undoneAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was undone, if it was.
+          x-phi: none
+        undoAllowed:
+          type: boolean
+          description: 'True while the merge can still be undone: it stands, and neither record has changed in a way that cannot be split back.'
+          x-phi: none
+        undoBlockedReason:
+          type: string
+          enum:
+            - already-undone
+            - records-changed
+          description: Why undo is not allowed, when `undoAllowed` is false.
+          x-phi: none
+    PatientMergeList:
+      description: One page of merges, newest first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PatientMergeSummary'
+          description: The items on this page.
+          x-phi: internal-id
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PatientSummariesRequest:
+      description: Up to 50 patient IDs to look up at once, for screens that hold IDs (duplicates, merges, board rows) and need names (D54).
+      type: object
+      additionalProperties: false
+      required:
+        - patientIds
+      properties:
+        patientIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Id'
+          description: Patient IDs.
+          x-phi: internal-id
+    PatientSummaryBatch:
+      description: The summaries found. IDs that do not exist, belong to another clinic or are outside the user's facilities are left out, never reported (API_STANDARDS §12).
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PatientSummary'
+          description: One summary per found ID, in request order.
+          x-phi: identifier
     Slot:
       description: A free time computed from the provider's availability rules, minus exceptions and booked appointments. Slots are not stored.
       type: object
@@ -9763,31 +12252,36 @@ components:
           x-phi: internal-id
         providerId:
           $ref: '#/components/schemas/Id'
-          description: The provider.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`, which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: internal-id
+          deprecated: true
         facilityId:
           $ref: '#/components/schemas/Id'
-          description: The facility.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`, which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: internal-id
+          deprecated: true
         locationId:
           $ref: '#/components/schemas/Id'
           description: Room or site, optional.
           x-phi: internal-id
         appointmentTypeId:
           $ref: '#/components/schemas/Id'
-          description: Appointment type.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`, which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: internal-id
+          deprecated: true
         startAt:
           $ref: '#/components/schemas/Timestamp'
-          description: Start. Any offset is accepted; stored in UTC.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`, which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: identifier
+          deprecated: true
         durationMinutes:
           type: integer
           format: int32
           minimum: 5
           maximum: 480
-          description: Length; defaults to the appointment type's duration.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`, which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: none
+          deprecated: true
         reasonForVisit:
           type: string
           maxLength: 1000
@@ -9944,18 +12438,20 @@ components:
           description: Last change.
           x-phi: none
     AppointmentPatch:
-      description: JSON Merge Patch to reschedule or edit a booked appointment. Status never changes here (API_STANDARDS §7.3).
+      description: JSON Merge Patch for notes, instructions and the room of a booked appointment. Time, provider, facility, type and length change through `/reschedule` (D61); those fields here are deprecated. Status never changes here (API_STANDARDS §7.3).
       type: object
       additionalProperties: false
       properties:
         providerId:
           $ref: '#/components/schemas/Id'
-          description: The provider.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`, which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: internal-id
+          deprecated: true
         facilityId:
           $ref: '#/components/schemas/Id'
-          description: The facility.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`, which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: internal-id
+          deprecated: true
         locationId:
           oneOf:
             - $ref: '#/components/schemas/Id'
@@ -9964,19 +12460,22 @@ components:
           x-phi: internal-id
         appointmentTypeId:
           $ref: '#/components/schemas/Id'
-          description: Appointment type.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`, which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: internal-id
+          deprecated: true
         startAt:
           $ref: '#/components/schemas/Timestamp'
-          description: Start. Any offset is accepted; stored in UTC.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`, which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: identifier
+          deprecated: true
         durationMinutes:
           type: integer
           format: int32
           minimum: 5
           maximum: 480
-          description: Length; defaults to the appointment type's duration.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`, which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: none
+          deprecated: true
         reasonForVisit:
           type:
             - string
@@ -10072,7 +12571,7 @@ components:
           description: The exam room. Required with `roomed`.
           x-phi: internal-id
     StatusBoardItem:
-      description: One appointment on today's board. With `view=shared`, the default (hallway and waiting-room displays), only `appointmentId`, `initials`, `startAt`, `status` and `visitStatus` are returned (SECURITY_MODEL §8 rule 11).
+      description: One appointment on today's board. With `view=shared`, the default (hallway and waiting-room displays), only `appointmentId`, `initials`, `startAt`, `status` and `visitStatus` are returned (SECURITY_MODEL §8 rule 11). The staff view adds the patient, provider, room, appointment type, reason for visit and encounter (D60).
       type: object
       required:
         - appointmentId
@@ -10118,6 +12617,19 @@ components:
           maxLength: 200
           description: Current room, once roomed.
           x-phi: none
+        appointmentType:
+          $ref: '#/components/schemas/AppointmentTypeRef'
+          description: Appointment type. Staff view only (D60).
+          x-phi: none
+        reasonForVisit:
+          type: string
+          maxLength: 1000
+          description: Scheduled reason for the visit. Staff view only; left out for a restricted patient unless the user holds a break-glass grant or is on the care team (D60).
+          x-phi: clinical
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter, once checked in. Staff view only (D60).
+          x-phi: internal-id
     StatusBoardList:
       description: One page of the status board, by start time.
       type: object
@@ -10144,6 +12656,287 @@ components:
           maxLength: 64
           description: The facility's IANA time zone (D40).
           x-phi: none
+        facilityName:
+          type: string
+          maxLength: 200
+          description: The facility's name, in both views, so a shared display shows where it is (D60).
+          x-phi: none
+    BookableFacility:
+      description: A facility, as the booking screen needs it (D49). Full practice setup stays under `practice-setup:read`.
+      type: object
+      required:
+        - id
+        - code
+        - name
+        - timeZone
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Facility ID.
+          x-phi: internal-id
+        code:
+          type: string
+          maxLength: 40
+          description: Short code.
+          x-phi: none
+        name:
+          type: string
+          maxLength: 200
+          description: Name.
+          x-phi: none
+        timeZone:
+          type: string
+          maxLength: 64
+          description: IANA time zone; appointments at this facility display in it (D40).
+          x-phi: none
+    BookableFacilityList:
+      description: One page of active facilitys, by name.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BookableFacility'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    BookableLocation:
+      description: A room or site inside a facility, for booking and rooming (D49).
+      type: object
+      required:
+        - id
+        - facilityId
+        - name
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Location ID.
+          x-phi: internal-id
+        facilityId:
+          $ref: '#/components/schemas/Id'
+          description: Its facility.
+          x-phi: internal-id
+        name:
+          type: string
+          maxLength: 200
+          description: Name, e.g. "Exam room 2".
+          x-phi: none
+        physicalType:
+          type: string
+          enum:
+            - bu
+            - wi
+            - lvl
+            - ro
+          description: FHIR location-physical-type.
+          x-phi: none
+    BookableLocationList:
+      description: One page of active locations, by name.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BookableLocation'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    BookableProvider:
+      description: 'A provider, bookable fields only: no NPI, licenses or contact details (D49).'
+      type: object
+      required:
+        - id
+        - displayName
+        - facilityIds
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Provider ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name for lists, e.g. "Dr. Lowe58".
+          x-phi: none
+        facilityIds:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Id'
+          description: Facilities where the provider sees patients.
+          x-phi: internal-id
+        specialties:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 200
+          description: Specialty names, for display.
+          x-phi: none
+    BookableProviderList:
+      description: One page of active providers, by name.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BookableProvider'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    BookableAppointmentType:
+      description: An appointment type with its booking rules (D49).
+      type: object
+      required:
+        - id
+        - code
+        - name
+        - defaultDurationMinutes
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Appointment type ID.
+          x-phi: internal-id
+        code:
+          type: string
+          maxLength: 40
+          description: Code.
+          x-phi: none
+        name:
+          type: string
+          maxLength: 120
+          description: Name.
+          x-phi: none
+        defaultDurationMinutes:
+          type: integer
+          format: int32
+          minimum: 5
+          maximum: 480
+          description: Default length.
+          x-phi: none
+        color:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+          description: Calendar color.
+          x-phi: none
+        allowOverlap:
+          type: boolean
+          description: May overlap other appointments without counting as overbooking.
+          x-phi: none
+        maxOverbook:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 20
+          description: Overbooking limit per provider and time; 0 means none.
+          x-phi: none
+        requiresEligibilityCheck:
+          type: boolean
+          description: Eligibility checks run for this type (D15).
+          x-phi: none
+        telehealth:
+          type: boolean
+          description: A telehealth visit.
+          x-phi: none
+        newPatient:
+          type: boolean
+          description: For new patients.
+          x-phi: none
+    BookableAppointmentTypeList:
+      description: One page of active appointment types, by name.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BookableAppointmentType'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    RescheduleRequest:
+      description: 'Body to reschedule: the new time and, optionally, a new provider, facility, room, type or length, with the reason (D61).'
+      type: object
+      additionalProperties: false
+      required:
+        - startAt
+        - reasonCode
+      properties:
+        startAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: New start. Any offset is accepted; stored in UTC.
+          x-phi: identifier
+        providerId:
+          $ref: '#/components/schemas/Id'
+          description: New provider; defaults to the current one.
+          x-phi: internal-id
+        facilityId:
+          $ref: '#/components/schemas/Id'
+          description: New facility; defaults to the current one. Must be one of the user's facilities.
+          x-phi: internal-id
+        locationId:
+          $ref: '#/components/schemas/Id'
+          description: Room or site, optional.
+          x-phi: internal-id
+        appointmentTypeId:
+          $ref: '#/components/schemas/Id'
+          description: New appointment type; defaults to the current one.
+          x-phi: internal-id
+        durationMinutes:
+          type: integer
+          format: int32
+          minimum: 5
+          maximum: 480
+          description: New length; defaults to the current one.
+          x-phi: none
+        reasonCode:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 'Why it moved: an HL7 appointment-cancellation-reason code (e.g. `pat` patient, `prov` provider, `oth-weath`) or a practice picklist code. Required.'
+          x-phi: none
+        reasonText:
+          type: string
+          maxLength: 500
+          description: Free text. May name people, so it is treated as patient data.
+          x-phi: identifier
+    UndoCheckInRequest:
+      description: Body to undo a check-in (D55).
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why the check-in is undone, e.g. checked in the wrong patient. Recorded on the encounter's entered-in-error Provenance. May name people, so it is treated as patient data.
+          x-phi: identifier
     EligibilityCheckCreate:
       description: Body to run a check now.
       type: object
@@ -12335,6 +15128,436 @@ components:
         active:
           type: boolean
           description: False hides it from new work; nothing is ever deleted.
+          x-phi: none
+    ConsentRequirement:
+      description: What the practice asks patients to consent to, with the current policy version (D59). One active row per kind and version.
+      type: object
+      required:
+        - id
+        - kind
+        - title
+        - policyVersion
+        - required
+        - effectiveDate
+        - active
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Consent requirement ID.
+          x-phi: internal-id
+        kind:
+          type: string
+          enum:
+            - treatment
+            - privacy-notice
+            - ambient-recording
+            - telehealth
+            - research
+            - information-sharing
+            - financial
+          description: Which consent this is for; the same codes as a patient's `Consent.kind`.
+          x-phi: none
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Title shown to staff and patients, e.g. "Notice of Privacy Practices".
+          x-phi: none
+        policyVersion:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: Version of the form or notice; a patient's consent records the version they saw (`Consent.policyVersion`).
+          x-phi: none
+        required:
+          type: boolean
+          description: True when the practice needs this consent on file before a visit; the front desk is prompted at check-in when it is missing.
+          x-phi: none
+        formFileId:
+          $ref: '#/components/schemas/Id'
+          description: The blank form or notice, uploaded through the file service (purpose `document`), for printing or e-signature.
+          x-phi: internal-id
+        effectiveDate:
+          $ref: '#/components/schemas/Date'
+          description: First day this version applies.
+          x-phi: none
+        active:
+          type: boolean
+          description: False retires it; nothing is deleted.
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: Created.
+          x-phi: none
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: Last change.
+          x-phi: none
+    ConsentRequirementList:
+      description: One page of consent requirements, by kind then version.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ConsentRequirement'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    ConsentRequirementCreate:
+      description: Body to add a consent requirement or a new version of one.
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - title
+        - policyVersion
+        - required
+        - effectiveDate
+      properties:
+        kind:
+          type: string
+          enum:
+            - treatment
+            - privacy-notice
+            - ambient-recording
+            - telehealth
+            - research
+            - information-sharing
+            - financial
+          description: Which consent this is for; the same codes as a patient's `Consent.kind`.
+          x-phi: none
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Title shown to staff and patients, e.g. "Notice of Privacy Practices".
+          x-phi: none
+        policyVersion:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: Version of the form or notice; a patient's consent records the version they saw (`Consent.policyVersion`).
+          x-phi: none
+        required:
+          type: boolean
+          description: True when the practice needs this consent on file before a visit; the front desk is prompted at check-in when it is missing.
+          x-phi: none
+        formFileId:
+          $ref: '#/components/schemas/Id'
+          description: The blank form or notice, uploaded through the file service (purpose `document`), for printing or e-signature.
+          x-phi: internal-id
+        effectiveDate:
+          $ref: '#/components/schemas/Date'
+          description: First day this version applies.
+          x-phi: none
+    ConsentRequirementPatch:
+      description: JSON Merge Patch. `kind` is not editable; a new version is a new row.
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Title shown to staff and patients, e.g. "Notice of Privacy Practices".
+          x-phi: none
+        policyVersion:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: Version of the form or notice; a patient's consent records the version they saw (`Consent.policyVersion`).
+          x-phi: none
+        required:
+          type: boolean
+          description: True when the practice needs this consent on file before a visit; the front desk is prompted at check-in when it is missing.
+          x-phi: none
+        formFileId:
+          oneOf:
+            - $ref: '#/components/schemas/Id'
+            - type: 'null'
+          description: The blank form or notice, uploaded through the file service (purpose `document`), for printing or e-signature. Send `null` to clear it.
+          x-phi: internal-id
+        effectiveDate:
+          $ref: '#/components/schemas/Date'
+          description: First day this version applies.
+          x-phi: none
+        active:
+          type: boolean
+          description: False retires this version.
+          x-phi: none
+    PharmacyDirectoryAddress:
+      description: A pharmacy's address from the directory.
+      type: object
+      properties:
+        line:
+          type: string
+          maxLength: 200
+          description: Street address.
+          x-phi: none
+        city:
+          type: string
+          maxLength: 100
+          description: City.
+          x-phi: none
+        state:
+          type: string
+          pattern: ^[A-Z]{2}$
+          maxLength: 2
+          description: State.
+          x-phi: none
+        postalCode:
+          type: string
+          pattern: ^\d{5}(-\d{4})?$
+          maxLength: 10
+          description: ZIP code.
+          x-phi: none
+    Pharmacy:
+      description: A pharmacy in the platform directory, synced from the e-prescribing vendor (`pharmacy`). Reference data, not patient data.
+      type: object
+      required:
+        - id
+        - ncpdpId
+        - name
+        - mailOrder
+        - active
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Pharmacy ID.
+          x-phi: internal-id
+        ncpdpId:
+          type: string
+          pattern: ^\d{7}$
+          maxLength: 7
+          description: NCPDP ID.
+          x-phi: none
+        npi:
+          type: string
+          pattern: ^\d{10}$
+          maxLength: 10
+          description: NPI, if known.
+          x-phi: none
+        name:
+          type: string
+          maxLength: 200
+          description: Name.
+          x-phi: none
+        phone:
+          $ref: '#/components/schemas/PhoneNumber'
+          description: Phone.
+          x-phi: none
+        fax:
+          $ref: '#/components/schemas/PhoneNumber'
+          description: Fax.
+          x-phi: none
+        address:
+          $ref: '#/components/schemas/PharmacyDirectoryAddress'
+          description: Address.
+          x-phi: none
+        mailOrder:
+          type: boolean
+          description: A mail-order pharmacy.
+          x-phi: none
+        active:
+          type: boolean
+          description: False when the pharmacy no longer accepts prescriptions.
+          x-phi: none
+    PharmacyList:
+      description: One page of pharmacies, by name.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Pharmacy'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PaymentMethod:
+      description: How the patient paid (`patient_payment.method`).
+      type: string
+      enum:
+        - cash
+        - card
+        - check
+        - ach
+        - other
+    PaymentCreate:
+      description: Body to record a patient payment, usually the copay at check-in (FRS FR-SCH-02, FR-RCM-03).
+      type: object
+      additionalProperties: false
+      required:
+        - amount
+        - method
+      properties:
+        amount:
+          $ref: '#/components/schemas/Money'
+          description: Amount paid. Positive.
+          x-phi: financial
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+          description: How it was paid.
+          x-phi: financial
+        appointmentId:
+          $ref: '#/components/schemas/Id'
+          description: The appointment it is for, when collected at check-in.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter, when known.
+          x-phi: internal-id
+        cardSessionId:
+          $ref: '#/components/schemas/Id'
+          description: 'For `card`: the card session from `POST /payments/card-session`, completed in the processor''s hosted fields. Required for `card`, not allowed otherwise.'
+          x-phi: internal-id
+        checkNumber:
+          type: string
+          maxLength: 40
+          description: 'For `check`: the check number.'
+          x-phi: financial
+        note:
+          type: string
+          maxLength: 500
+          description: Note for the receipt or the ledger. May name people, so it is treated as patient data.
+          x-phi: identifier
+    Payment:
+      description: A patient payment (`patient_payment`). Card payments keep only the processor's reference, never a card number (the database rejects anything that looks like one).
+      type: object
+      required:
+        - id
+        - patientId
+        - amount
+        - method
+        - receiptFileId
+        - collectedAt
+        - collectedByUserId
+        - refund
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Payment ID.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        appointmentId:
+          $ref: '#/components/schemas/Id'
+          description: The appointment, if any.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter, if any.
+          x-phi: internal-id
+        amount:
+          $ref: '#/components/schemas/Money'
+          description: Amount.
+          x-phi: financial
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+          description: How it was paid.
+          x-phi: financial
+        processorReference:
+          type: string
+          maxLength: 100
+          description: The card processor's transaction reference, for `card`. Never a card number.
+          x-phi: financial
+        receiptFileId:
+          $ref: '#/components/schemas/Id'
+          description: The receipt (PDF), generated at payment and stored through the file service; download it with `GET /files/{fileId}/download-url` (D58).
+          x-phi: internal-id
+        collectedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was collected.
+          x-phi: financial
+        collectedByUserId:
+          $ref: '#/components/schemas/Id'
+          description: Who collected it.
+          x-phi: internal-id
+        refund:
+          type: boolean
+          description: True for a refund of an earlier payment.
+          x-phi: financial
+        refundOfPaymentId:
+          $ref: '#/components/schemas/Id'
+          description: The payment refunded, for a refund.
+          x-phi: internal-id
+    CardSessionCreate:
+      description: Body to start a card payment in the processor's hosted fields.
+      type: object
+      additionalProperties: false
+      required:
+        - patientId
+        - amount
+      properties:
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        amount:
+          $ref: '#/components/schemas/Money'
+          description: Amount to charge. Positive.
+          x-phi: financial
+        appointmentId:
+          $ref: '#/components/schemas/Id'
+          description: The appointment it is for, if any.
+          x-phi: internal-id
+    CardSession:
+      description: A card payment session. The screen opens the processor's hosted fields with `clientToken`; the card number goes to the processor, never to our servers (FRS FR-RCM-03, Q17). When the processor reports success, record the payment with `cardSessionId`.
+      type: object
+      required:
+        - id
+        - patientId
+        - amount
+        - status
+        - clientToken
+        - expiresAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Card session ID; send it as `cardSessionId` when recording the payment.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        amount:
+          $ref: '#/components/schemas/Money'
+          description: Amount.
+          x-phi: financial
+        status:
+          type: string
+          enum:
+            - pending
+            - authorized
+            - captured
+            - failed
+            - expired
+          description: Session state at the processor.
+          x-phi: financial
+        clientToken:
+          type: string
+          maxLength: 500
+          description: 'Short-lived token for the processor''s hosted fields. A bearer secret: never log or store it.'
+          x-phi: none
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the session stops accepting a card.
           x-phi: none
   parameters:
     Cursor:

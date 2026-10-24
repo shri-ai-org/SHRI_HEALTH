@@ -352,7 +352,7 @@ Additional rules:
 | Response | `202 Accepted`, `Location: /api/v1/operations/{operationId}`, body = `Operation` |
 | Operation | `{ id, kind, status, createdAt, updatedAt, completedAt?, result?: { type, id }, error?: Problem }` |
 | `status` | `queued` → `running` → `succeeded` \| `failed` \| `cancelled` |
-| `kind` | `ai.transcription`, `ai.note-draft`, `ai.chart-summary`, `eligibility.check`, `encounter.after-visit-summary`, `export`, `ccda.import`, `ccda.export`, `onboarding.import`, `medication-history.fetch` |
+| `kind` | `ai.transcription`, `ai.note-draft`, `ai.chart-summary`, `eligibility.check`, `encounter.after-visit-summary`, `export`, `ccda.import`, `ccda.export`, `onboarding.import`, `medication-history.fetch`, `file.scan`. The list grows with each batch; clients treat an unknown kind as generic long-running work (§6.5) |
 | Result | A reference only; the client GETs the result resource with its normal permission |
 | Polling | `GET /operations/{operationId}` with `Retry-After` while unfinished |
 | Push | Event `operation.completed` to the requesting user over Server-Sent Events (EVENTS.md) |
@@ -392,7 +392,7 @@ Response: `200` with the list envelope of `PatientSummary` items.
 
 ### 14.3 PHI field denylist for URLs (enforced by lint)
 
-Path segments and query parameter names must not include: `name`, `given`, `family`, `firstName`, `lastName`, `birthDate`, `dob`, `phone`, `email`, `address`, `postalCode`, `zip`, `mrn`, `ssn`, `ssnLast4`, `memberId`, `subscriberId`, `licenseNumber`, `driversLicense`, `policyNumber`, `search`, `q` (on patient-scoped collections). Allowed exception: `q` on non-PHI catalogs (`/codes/search`, `/pharmacies`, `/lab-compendium`), because these search reference data, not patients.
+Path segments and query parameter names must not include: `name`, `given`, `family`, `firstName`, `lastName`, `birthDate`, `dob`, `phone`, `email`, `address`, `postalCode`, `zip`, `mrn`, `ssn`, `ssnLast4`, `memberId`, `subscriberId`, `licenseNumber`, `driversLicense`, `policyNumber`, `search`, `q` (on patient-scoped collections). Allowed exception: `q` on non-PHI catalogs (`/codes/search`, `/pharmacies`, `/lab-compendium`), and `postalCode` on `/pharmacies` (the pharmacy's ZIP code), because these search reference data, not patients.
 
 ## 15. Files (uploads and downloads)
 

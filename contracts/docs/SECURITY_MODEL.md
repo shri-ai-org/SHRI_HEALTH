@@ -121,15 +121,15 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | Area (owner) | Permissions |
 |---|---|
 | Platform (Thulasi) | `users:read`, `users:create`, `users:update`, `roles:read`, `user-roles:update`, `audit-events:read`, `chart-access-reports:read`, `patients:break-glass`, `integration-messages:read`, `integration-messages:replay` |
-| Patients (Vimal) | `patients:search`, `patients:read`, `patients:create`, `patients:update`, `patients:restrict`, `coverages:read`, `coverages:create`, `coverages:update`, `coverages:entered-in-error` (D45), `consents:read`, `consents:create`, `timeline:read`, `duplicates:read`, `duplicates:merge`, `duplicates:dismiss` (D46), `patient-merges:undo` |
-| Scheduling (Vimal) | `slots:read`, `appointments:read`, `appointments:create`, `appointments:update`, `appointments:cancel`, `appointments:check-in`, `appointments:status`, `status-board:read` |
+| Patients (Vimal) | `patients:search`, `patients:read`, `patients:create`, `patients:update`, `patients:restrict`, `coverages:read`, `coverages:create`, `coverages:update`, `coverages:entered-in-error` (D45), `consents:read`, `consents:create`, `timeline:read`, `duplicates:read`, `duplicates:merge`, `duplicates:dismiss` (D46), `patient-merges:read` (D51), `patient-merges:undo` |
+| Scheduling (Vimal) | `slots:read`, `appointments:read`, `appointments:create`, `appointments:update`, `appointments:cancel`, `appointments:check-in`, `appointments:undo-check-in` (D55), `appointments:reschedule` (D61), `appointments:status`, `status-board:read`, `scheduling-reference:read` (booking lists, D49) |
 | Eligibility (Vimal) | `eligibility-checks:read`, `eligibility-checks:create` |
 | Encounters and notes (Vimal) | `encounters:read`, `encounters:create`, `encounters:update`, `encounters:close`, `encounters:entered-in-error`, `vitals:read`, `vitals:create`, `vitals:entered-in-error`, `diagnoses:create`, `diagnoses:remove`, `diagnoses:entered-in-error`, `codes:read`, `notes:read`, `notes:create`, `notes:update`, `notes:sign`, `notes:cosign`, `notes:entered-in-error`, `note-addenda:create`, `favorites:read`, `favorites:update`, `after-visit-summaries:create`, `cosign-rules:read`, `cosign-rules:create`, `cosign-rules:update` |
 | History (Vimal) | `problems:read\|create\|update\|entered-in-error`, `allergies:read\|create\|update\|entered-in-error`, `family-history:read\|create\|entered-in-error`, `social-history:read\|create\|entered-in-error`, `surgical-history:read\|create\|entered-in-error` |
 | AI (Vimal) | `encounter-audio:create`, `transcriptions:read`, `transcriptions:create`, `note-drafts:create`, `chart-summaries:read`, `chart-summaries:create`, `ai-suggestions:decision`, `ai-settings:read`, `ai-settings:update` |
 | Medications (Thulasi) | `medications:read`, `medications:create`, `medications:discontinue`, `medication-reconciliations:create`, `prescriptions:read`, `prescriptions:create`, `prescriptions:update` (drafts only, T31), `prescriptions:entered-in-error` (drafts only, T13/T34), `prescriptions:safety-check`, `prescriptions:sign-and-send`, `prescriptions:cancel`, `prescriptions:change`, `alerts:override`, `refill-requests:read`, `refill-requests:respond`, `pharmacies:read`, `medication-history:fetch` |
 | Orders and results (Thulasi) | `lab-compendium:read`, `orders:read`, `orders:create`, `orders:medical-necessity-check`, `orders:sign-and-send`, `orders:cancel`, `orders:entered-in-error` (T13), `results:read`, `results:acknowledge`, `unmatched-results:read`, `unmatched-results:match`, `unmatched-results:reject` (T13/T34), `in-office-results:create` |
-| Files, setup, billing, documents (Anand) | `files:create`, `files:read`, `practice-setup:read\|create\|update`, `payers:read` (payer directory, read-only; added 2026-10-23), `lab-providers:read` (lab providers, read-only; D48), `onboarding:import`, `superbills:read\|update`, `claims:read\|create\|scrub\|submit\|status-check\|correct\|void`, `payments:create`, `payments:card-session`, `remittances:read\|post`, `billing-reports:read`, `documents:read\|create\|update`, `faxes:create`, `fax-inbox:read`, `fax-inbox:file`, `ccda:import`, `ccda:export`, `inbox:read\|update\|complete`, `messages:create`, `exports:read\|create` |
+| Files, setup, billing, documents (Anand) | `files:create`, `files:read`, `practice-setup:read\|create\|update`, `payers:read` (payer directory, read-only; added 2026-10-23), `lab-providers:read` (lab providers, read-only; D48), `consent-requirements:read` (D59), `provider-schedules:create\|update` (D66), `onboarding:import`, `superbills:read\|update`, `claims:read\|create\|scrub\|submit\|status-check\|correct\|void`, `payments:create`, `payments:card-session`, `remittances:read\|post`, `billing-reports:read`, `documents:read\|create\|update`, `faxes:create`, `fax-inbox:read`, `fax-inbox:file`, `ccda:import`, `ccda:export`, `inbox:read\|update\|complete`, `messages:create`, `exports:read\|create` |
 | Communications and dashboard (Minalini) | `message-templates:read\|create\|update`, `communication-preferences:read\|update`, `communications:read`, `operations-dashboard:read` |
 
 ### 4.3 Draft role-to-permission matrix
@@ -158,9 +158,12 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `patients:restrict` | – | – | – | – | – | – | ✓ | ✓ | – | – |
 | `coverages:*`, `eligibility-checks:*` | ✓ | R | R | R | R | ✓ | ✓ | – | – | – |
 | `consents:*` | ✓ | ✓ | ✓ | ✓ | ✓ | R | ✓ | R | – | – |
-| `duplicates:read`, `duplicates:merge`, `patient-merges:undo` | R | – | – | – | – | – | ✓ | R | – | – |
+| `duplicates:read`, `duplicates:merge`, `duplicates:dismiss`, `patient-merges:read`, `patient-merges:undo` (D64: duplicate review is in the admin portal; FD sees only the `409 possible-duplicate` warning) | – | – | – | – | – | – | ✓ | R | – | – |
+| `scheduling-reference:read` (booking lists, D49; new 2026-10-24, pending core) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – |
+| `pharmacies:read` (pharmacy directory, D50; batch 1, pending core) | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `slots:read`, `appointments:read`, `status-board:read` | ✓ | ✓ | ✓ | ✓ | ✓ | R | ✓ | – | – | ✓ (status-board only, shared view; D47) |
-| `appointments:create\|update\|cancel\|check-in` | ✓ | – | – | – | – | – | – | ✓ | – | – |
+| `appointments:create\|update\|cancel\|check-in` (D67: clinicians are read-only on appointments and request changes through inbox tasks) | ✓ | – | – | – | – | – | ✓ | – | – | – |
+| `appointments:undo-check-in`, `appointments:reschedule` (D55, D61; new 2026-10-24, pending core) | ✓ | – | – | – | – | – | ✓ | – | – | – |
 | `appointments:status` (roomed, with provider, checked out) ‡ | ✓ (checked out) | ✓ (roomed) | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `timeline:read`, `encounters:read`, `notes:read`, `vitals:read`, history `:read` ‡ | – | ✓ | ✓ | ✓ | ✓ | R (signed notes, diagnoses) | – | R (investigations) | – | – |
 | `vitals:create`, `allergies:create\|update` ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
@@ -180,11 +183,13 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `orders:sign-and-send\|cancel`, `results:acknowledge` ‡ | – | – | – | ✓ | ✓ | – | – | – | – | – |
 | `unmatched-results:*` ‡ | – | – | ✓ | ✓ | – | – | – | – | – | – |
 | Billing: `superbills:*`, `claims:*`, `remittances:*`, `billing-reports:read` | – | – | – | R (`superbills:read`) | R | ✓ | R | – | – | – |
-| `payments:create\|card-session` | ✓ | – | – | – | – | ✓ | – | – | – | – |
+| `payments:create\|card-session` (batch 1 since D58) | ✓ | – | – | – | – | ✓ | – | – | – | – |
 | `payers:read` (payer directory; added 2026-10-23, in core since PR #7) | ✓ | – | – | – | – | ✓ | ✓ | – | – | – |
 | `coverages:entered-in-error` (D45; new 2026-10-23, pending core) | ✓ | – | – | – | – | ✓ | ✓ | – | – | – |
 | `duplicates:dismiss` (D46; new 2026-10-23, pending core) | – | – | – | – | – | – | ✓ | – | – | – |
 | `lab-providers:read` (D48; new 2026-10-23, pending core) | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | – | – |
+| `consent-requirements:read` (D59; new 2026-10-24, pending core) | ✓ | – | – | – | – | – | ✓ | R | – | – |
+| `provider-schedules:create\|update` (D66: split from `practice-setup:*`; new 2026-10-24, pending core) | ✓ | – | – | – | – | – | ✓ | – | – | – |
 | `documents:*`, `fax-inbox:*`, `faxes:create` | ✓ | ✓ | ✓ | ✓ | ✓ | R | – | – | – | – |
 | `ccda:import\|export` | ✓ | – | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `inbox:*`, `messages:create` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – |
@@ -202,6 +207,7 @@ Notes on the matrix:
 - ADM may use `encounters:entered-in-error` only for an encounter with no signed note; this is a rule inside the service (agreed, T14).
 - "Own entries" (RN entered-in-error) is a rule inside the service, not a permission.
 - Whether MA, RN may prescribe-draft or answer refills follows clinic protocol and state law: **pending clinical advisors**.
+- 2026-10-24 (D49–D67): the `appointments:create|update|cancel|check-in` row had ADM `–` and CO `✓`, the reverse of DATA_OWNERSHIP §5.1 (FD, ADM) and of core; corrected to ADM `✓`, CO `–`. Duplicate review moved to ADM only (D64). Provider self-service on schedules is P1 (D66).
 
 ### 4.4 Matrix gaps filled in core — gap, pending clinical advisors
 
@@ -278,7 +284,7 @@ x-audit:
 | `security` | Login, logout, failed login, permission and CSRF denials, break-glass, restriction changes, role changes | Yes |
 | `ai` | AI requests (metadata only), and accept, edit, reject decisions | Yes (FRS §3.4) |
 | `admin` | Practice setup, AI settings, templates, co-sign rules | Yes |
-| `none` | Only: health checks, code search, pharmacy directory, payer directory, lab providers, lab compendium, slots | No |
+| `none` | Only: health checks, code search, pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49), session reads (`GET /auth/session`, `/me`, the event stream) | No |
 
 Partner callbacks (`/hooks/*`) carry PHI, so they are audited as `phi-write` with the **partner as actor** (agreed, T37).
 

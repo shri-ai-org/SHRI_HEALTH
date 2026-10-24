@@ -89,6 +89,28 @@ tags:
     description: Operations dashboard.
     x-owner: minalini
 paths:
+  /auth/login:
+    $ref: 'modules/platform.yaml#/paths/~1auth~1login'
+  /auth/callback:
+    $ref: 'modules/platform.yaml#/paths/~1auth~1callback'
+  /auth/refresh:
+    $ref: 'modules/platform.yaml#/paths/~1auth~1refresh'
+  /auth/logout:
+    $ref: 'modules/platform.yaml#/paths/~1auth~1logout'
+  /auth/session:
+    $ref: 'modules/platform.yaml#/paths/~1auth~1session'
+  /me:
+    $ref: 'modules/platform.yaml#/paths/~1me'
+  /events/stream:
+    $ref: 'modules/platform.yaml#/paths/~1events~1stream'
+  /patients/{patientId}/break-glass:
+    $ref: 'modules/platform.yaml#/paths/~1patients~1{patientId}~1break-glass'
+  /files/upload-url:
+    $ref: 'modules/files.yaml#/paths/~1files~1upload-url'
+  /files/{fileId}/complete:
+    $ref: 'modules/files.yaml#/paths/~1files~1{fileId}~1complete'
+  /files/{fileId}/download-url:
+    $ref: 'modules/files.yaml#/paths/~1files~1{fileId}~1download-url'
   /patients/search:
     $ref: 'modules/patients.yaml#/paths/~1patients~1search'
   /patients:
@@ -125,6 +147,10 @@ paths:
     $ref: 'modules/patients.yaml#/paths/~1duplicates~1{duplicateId}~1dismiss'
   /patient-merges/{mergeId}/undo:
     $ref: 'modules/patients.yaml#/paths/~1patient-merges~1{mergeId}~1undo'
+  /patient-merges:
+    $ref: 'modules/patients.yaml#/paths/~1patient-merges'
+  /patients/summaries:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1summaries'
   /slots:
     $ref: 'modules/scheduling.yaml#/paths/~1slots'
   /appointments:
@@ -139,6 +165,18 @@ paths:
     $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1status'
   /status-board:
     $ref: 'modules/scheduling.yaml#/paths/~1status-board'
+  /booking/facilities:
+    $ref: 'modules/scheduling.yaml#/paths/~1booking~1facilities'
+  /booking/locations:
+    $ref: 'modules/scheduling.yaml#/paths/~1booking~1locations'
+  /booking/providers:
+    $ref: 'modules/scheduling.yaml#/paths/~1booking~1providers'
+  /booking/appointment-types:
+    $ref: 'modules/scheduling.yaml#/paths/~1booking~1appointment-types'
+  /appointments/{appointmentId}/reschedule:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1reschedule'
+  /appointments/{appointmentId}/undo-check-in:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1undo-check-in'
   /eligibility-checks:
     $ref: 'modules/eligibility.yaml#/paths/~1eligibility-checks'
   /eligibility-checks/{eligibilityCheckId}:
@@ -189,6 +227,16 @@ paths:
     $ref: 'modules/practice-setup.yaml#/paths/~1note-templates'
   /note-templates/{noteTemplateId}:
     $ref: 'modules/practice-setup.yaml#/paths/~1note-templates~1{noteTemplateId}'
+  /consent-requirements:
+    $ref: 'modules/practice-setup.yaml#/paths/~1consent-requirements'
+  /consent-requirements/{consentRequirementId}:
+    $ref: 'modules/practice-setup.yaml#/paths/~1consent-requirements~1{consentRequirementId}'
+  /pharmacies:
+    $ref: 'modules/medications.yaml#/paths/~1pharmacies'
+  /patients/{patientId}/payments:
+    $ref: 'modules/billing.yaml#/paths/~1patients~1{patientId}~1payments'
+  /payments/card-session:
+    $ref: 'modules/billing.yaml#/paths/~1payments~1card-session'
 components:
   schemas:
     Address:
