@@ -1,0 +1,119 @@
+import { createContext, useContext } from 'react'
+import type {
+  Allergy,
+  Appointment,
+  AppointmentAlert,
+  AppointmentCategory,
+  AppointmentRequest,
+  Bill,
+  Demographics,
+  DocumentTemplate,
+  Facility,
+  HealthIssue,
+  Immunization,
+  LabResult,
+  Message,
+  MessageCreate,
+  Page,
+  PatientReport,
+  Payment,
+  PaymentCreate,
+  PortalDocument,
+  PortalSession,
+  Prescription,
+  Provider,
+  ReferenceLists,
+  RefillRequest,
+  RefillRequestCreate,
+  RegistrationCreate,
+  Signature,
+  Slot,
+  VisitSummary,
+  Vital,
+} from './types'
+
+/**
+ * Everything the portal screens call, following the old portal's screens. Errors are thrown as
+ * Problem Details (`code` decides the copy). The mock in mockPortalApi.ts implements this today;
+ * the generated `/portal` client will.
+ */
+export interface PortalApi {
+  // Session. The session is an HttpOnly cookie set by the server; the browser never holds a token.
+  signIn(username: string, password: string): Promise<PortalSession>
+  signOut(): Promise<void>
+  refreshSession(): Promise<PortalSession>
+  /** Both always succeed, so the screens never reveal whether an account exists. */
+  requestUsernameReminder(input: { firstName: string; lastName: string; birthDate: string; email: string; postalCode: string; phone: string }): Promise<void>
+  requestPasswordReset(input: { email: string }): Promise<void>
+  getReferenceLists(): Promise<ReferenceLists>
+  /** A request the practice reviews before the account opens. */
+  register(input: RegistrationCreate): Promise<void>
+  /** The registration summary the old portal offered as "Download PDF". */
+  downloadRegistrationSummary(input: RegistrationCreate): Promise<Blob>
+
+  getAlerts(): Promise<AppointmentAlert[]>
+
+  getDemographics(): Promise<Demographics>
+  updateDemographics(input: Demographics): Promise<Demographics>
+  changePassword(input: { email: string; currentPassword: string; newPassword: string }): Promise<void>
+  getSignature(): Promise<Signature | null>
+  saveSignature(image: string): Promise<Signature>
+
+  listAppointments(): Promise<Appointment[]>
+  getAppointment(appointmentId: string): Promise<Appointment>
+  cancelAppointment(appointmentId: string): Promise<Appointment>
+  listFacilities(): Promise<Facility[]>
+  listCategories(): Promise<AppointmentCategory[]>
+  listProviders(facilityId: string): Promise<Provider[]>
+  findSlots(input: { date: string; facilityId: string; providerId: string; durationMinutes: number }): Promise<Slot[]>
+  bookAppointment(input: AppointmentRequest): Promise<Appointment>
+  rescheduleAppointment(appointmentId: string, input: AppointmentRequest): Promise<Appointment>
+  getVisitSummary(visitSummaryId: string): Promise<VisitSummary>
+  joinVideoVisit(appointmentId: string): Promise<{ joinUrl: string }>
+
+  listMessages(folder: 'inbox' | 'sent' | 'trash'): Promise<Page<Message>>
+  markMessageRead(messageId: string): Promise<void>
+  sendMessage(input: MessageCreate): Promise<Message>
+  moveMessagesToTrash(messageIds: string[]): Promise<void>
+  /** Removes messages from the patient's trash. The practice keeps its copy (record retention). */
+  deleteMessagesFromTrash(messageIds: string[]): Promise<void>
+  listRecipients(): Promise<Provider[]>
+
+  listResults(): Promise<LabResult[]>
+  getResult(resultId: string): Promise<LabResult>
+  listHealthIssues(): Promise<HealthIssue[]>
+  getHealthIssue(issueId: string): Promise<HealthIssue>
+  listAllergies(): Promise<Allergy[]>
+  getAllergy(allergyId: string): Promise<Allergy>
+  listImmunizations(): Promise<Immunization[]>
+  getImmunization(immunizationId: string): Promise<Immunization>
+  listVitals(): Promise<Vital[]>
+
+  listPrescriptions(): Promise<Prescription[]>
+  requestRefill(input: RefillRequestCreate): Promise<RefillRequest>
+  getRefillRequest(refillRequestId: string): Promise<RefillRequest>
+
+  listBills(): Promise<Bill[]>
+  makePayment(input: PaymentCreate): Promise<Payment>
+
+  listDocuments(source: 'patient' | 'provider'): Promise<PortalDocument[]>
+  uploadDocument(file: File): Promise<PortalDocument>
+  downloadDocument(documentId: string): Promise<Blob>
+
+  listTemplates(): Promise<DocumentTemplate[]>
+  getTemplate(templateId: string): Promise<DocumentTemplate>
+  saveTemplate(templateId: string, input: { values: Record<string, string>; signature?: string }): Promise<DocumentTemplate>
+  sendTemplateForReview(templateId: string): Promise<DocumentTemplate>
+  deleteTemplateDraft(templateId: string): Promise<DocumentTemplate>
+
+  getPatientReport(): Promise<PatientReport>
+  downloadReport(kind: 'ccr' | 'ccd' | 'pdf'): Promise<Blob>
+}
+
+export const PortalApiContext = createContext<PortalApi | null>(null)
+
+export function usePortalApi(): PortalApi {
+  const api = useContext(PortalApiContext)
+  if (!api) throw new Error('usePortalApi must be used inside <PortalApiContext.Provider>')
+  return api
+}
