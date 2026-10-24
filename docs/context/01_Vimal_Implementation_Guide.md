@@ -50,7 +50,7 @@ Write all contracts before building, so the other three can work in parallel. Co
 Endpoints: search, register, view/edit, identifiers, coverages, card images, consents, preferred pharmacy, duplicates, merge, undo merge.
 
 - Registration and insurance are written to the FHIR-shaped `Patient`, `RelatedPerson` and `Coverage` tables in our database, in one transaction, through your repository and Anand's helpers (`backend/app/db/`). Nothing is mirrored and nothing is queued (ADR-0011).
-- Duplicate check on register: similar name + same date of birth or phone, using the schema's duplicate-candidate table (exact name at the schema lock).
+- Duplicate check on register: similar name + same date of birth or phone, using the locked schema's duplicate-candidate table (D72).
 - MRN: one counter per practice, never reused, practice prefix plus number (D41). The standard U.S. demographic fields are collected, all optional for the patient (D39).
 - Chart access (D37, enforced by Thulasi's `require()`): by role and facility; restricted charts need break-glass, except for the patient's care-team members; every access is audited. A practice setting that limits all charts to the care team is P1.
 - Card images go through Anand's file service; you only store the file ID.

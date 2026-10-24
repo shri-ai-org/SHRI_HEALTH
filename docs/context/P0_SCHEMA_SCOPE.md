@@ -1,20 +1,20 @@
-# P0 Schema Scope for the 30 October Lock
+# P0 Schema Scope (schema locked 2026-10-24, D72)
 
 Oct 22, 2026 · Imported from the team's shared doc on 2026-10-23.
 
 > **Status: Approved (2026-10-23).** ADR-0011 adopts Sam's schema (PR #9) in one PostgreSQL 18 database; D1 (HAPI) is retired. This scope is approved as written:
-> - the release tags below are final for the 30 October lock;
-> - every one of the eight "P0 items to confirm" is **approved as P0**: Sam and Anand add whatever is missing before the lock (D24);
+> - the release tags below are final; schema locked; changes by migration (D72);
+> - every one of the eight "P0 items to confirm" is **approved as P0**: they are part of the locked schema (D24, D38, D72);
 > - the remaining "Next steps" are scheduled work with named owners (DECISIONS.md, "Scheduled work"), not open questions;
 > - **medication list (D28):** MedicationRequest is confirmed, because US Core represents the medication list this way. MedicationStatement is tagged **P1** during Anand's tagging: the table is kept, not locked.
 
 ## What P0 means
 
-P0 tables are the ones the controlled pilot needs to go live on 1 March 2027; only these must be reviewed and locked on 30 October 2026. The release labels come from MVP FRS v1.2 §2 and the backlog in the Detailed Implementation Plan v1.1.
+P0 tables are the ones the controlled pilot needs to go live on 1 March 2027; only these were reviewed for the lock. The schema is locked as of 2026-10-24 (D72); every change goes through a new migration and a reviewed PR. The release labels come from MVP FRS v1.2 §2 and the backlog in the Detailed Implementation Plan v1.1.
 
 Of the 28 FHIR resources in Sam's proposal, 27 are P0 and one (Immunization) is P1. Most admin table groups are P0; the exceptions are listed in the "Not P0" section.
 
-**How to use this:** tag every one of the 218 tables in the data dictionary as P0, P0 stretch, P1 or P2 using the sections below. Lock the P0 tables. P1 and P2 tables can stay in the code, but they are not part of the lock and can still change.
+**How to use this:** tag every one of the 218 tables in the data dictionary as P0, P0 stretch, P1 or P2 using the sections below. The schema is locked (D72). P1 and P2 tables stay in the code; like every table, they change through a new migration and a reviewed PR.
 
 This list works from the resource names and module groups in Sam's README. Exact table names come from the proposal's data dictionary, which has not been reviewed here.
 
@@ -51,7 +51,7 @@ Each resource below includes its child tables (names, identifiers, codings, comp
 | Consent | P0 | FR-PAT-01, AI-01 | Treatment, privacy-notice and recording consent |
 | Coverage | P0 | FR-PAT-01, FR-RCM-01 | Primary and secondary insurance, card images |
 | Provenance | P0 | FR-PAT-02, §3.4 | Source, author and AI-review trail for every entry |
-| Immunization | **P1** | FRS §2 (P1: immunization history) | Keep the design, but leave it out of the lock |
+| Immunization | **P1** | FRS §2 (P1: immunization history) | Keep the design; P1 (schema locked; changes by migration, D72) |
 
 ## Admin (normalized) tables
 
@@ -91,7 +91,7 @@ All admin groups are P0 except RAG knowledge, migration runs and ERA posting. Gr
 
 ## Not P0
 
-None of these tables is needed for the pilot, so none should hold up the 30 October lock.
+None of these tables is needed for the pilot, and none gates any work (D72).
 
 | Feature or table | Release | Source |
 | --- | --- | --- |
@@ -116,7 +116,7 @@ AI-03 and AI-04 reuse the P0 suggestion tables, so they add no new tables beyond
 
 ## P0 items to confirm in Sam's schema
 
-A comparison against OpenEMR's current schema found these P0 needs; Sam's README does not mention them, so each needs a yes or no before the lock.
+A comparison against OpenEMR's current schema found these P0 needs; Sam's README does not mention them, so each needed a yes or no. All eight are approved and part of the locked schema (D38, D72).
 
 | Item | Why it is P0 | What to check |
 | --- | --- | --- |
@@ -129,7 +129,7 @@ A comparison against OpenEMR's current schema found these P0 needs; Sam's README
 | Staff messages in the inbox | FR-ENC-05: messages, refill requests | Inbox holds message threads, not only tasks |
 | Occupation, industry, tribal affiliation | USCDI data in Patient | Columns present; low cost to add now |
 
-## Next steps before 30 October
+## Next steps (schema locked; changes by migration)
 
 The storage decision is made: [ADR-0011](../adr/0011-single-postgresql-retire-hapi.md) (2026-10-23) keeps clinical data in our PostgreSQL (Tech Arch ADR-19) and retires HAPI FHIR.
 
@@ -137,6 +137,6 @@ The storage decision is made: [ADR-0011](../adr/0011-single-postgresql-retire-ha
 - [ ] Anand and Sam: tag all 218 tables P0, P0 stretch, P1 or P2 in the data dictionary.
 - [ ] Sam: answer each item in "P0 items to confirm" and add what is missing.
 - [ ] Anand: load-test the visit, results and claims write paths with the composite foreign keys in place.
-- [ ] Team: review and lock the P0 tables only.
+- [x] Team: lock the schema. **Done (2026-10-24, D72).**
 
-After the lock, P0 tables change only through new migrations; P1 tables can still be reshaped until their own review.
+The schema is locked (D72): every table changes only through a new migration and a reviewed PR. The open items above go in that way; none of them gates other work.

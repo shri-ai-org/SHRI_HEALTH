@@ -5,7 +5,7 @@ Status: **PROPOSED** · Version 0.2 · 2026-10-23 · Author: Vimal (drafted with
 
 **Since ADR-0011 (2026-10-23):** there is one PostgreSQL 18 database. Clinical data lives in FHIR-shaped tables (Sam's schema, PR #9) and administrative data in normalized tables, in three schemas: `clinical`, `admin` and `audit` (D1, D23). There is no HAPI, so there is no mirroring, no HAPI reconciliation, no HAPI-down failure mode and no partitions.
 
-**Pending schema lock:** exact table and column names come from the schema's data dictionary and are fixed at the 30 October lock (P0 tables only; `docs/context/P0_SCHEMA_SCOPE.md`). Every table name below is marked **pending schema lock** until then.
+**Schema locked (D72, 2026-10-24); changes by migration.** Exact table and column names come from the locked schema's data dictionary. A remaining "pending schema lock" marker below means the name has not yet been checked against the locked schema; each batch resolves its own markers, and anything the schema lacks becomes a migration item for Anand. Every table name below is marked **pending schema lock** until then.
 
 Fixed by source documents:
 
@@ -30,7 +30,7 @@ Fixed by source documents:
 
 ## 2. Resources
 
-US Core profiles are named from **US Core 9.0.0**, the current published version on hl7.org (checked 2026-10-22). The version we target is **needed before the 30 October schema lock** (DECISIONS.md "Still open", owner Anand with management on ONC).
+US Core profiles are named from **US Core 9.0.0**, the current published version on hl7.org (checked 2026-10-22). The version we target is **still open** (schema locked; changes by migration, D72) (DECISIONS.md "Still open", owner Anand with management on ONC).
 
 ### 2.1 Vimal's resources
 
@@ -389,10 +389,10 @@ Storage questions are settled by ADR-0011. What remains:
 
 | Item | Owner | Blocks | Status |
 |---|---|---|---|
-| Exact table and column names for every resource above | Anand, Sam | 30 October schema lock | Fixed at the lock (P0 tables) |
-| US Core version to target | Anand, with management (ONC) | 30 October schema lock | DECISIONS.md "Still open" |
+| Exact table and column names for every resource above | Anand, Sam | Each contract batch | schema locked; changes by migration (D72); each batch checks its names against the locked schema |
+| US Core version to target | Anand, with management (ONC) | Before certification work (schema locked; changes by migration) | DECISIONS.md "Still open" |
 | ~~Medication list: MedicationStatement (P0 scope) vs MedicationRequest (T36)~~ | — | — | **Decided (D28):** MedicationRequest (§2.2) |
-| Claim close rule; co-signature hold before claiming | Anand | Pilot | As in §5.7; the claim tables are fixed at the lock |
+| Claim close rule; co-signature hold before claiming | Anand | Pilot | As in §5.7; the claim tables are in the locked schema (D72) |
 | Close-encounter guards (is a diagnosis required?) | Clinical advisors (raised by Vimal) | Pilot | DECISIONS.md "Still open" |
 | `enqueue()` signature change (§3.3) | Thulasi; all four review | Pilot (first partner integration) | Separate core PR |
 

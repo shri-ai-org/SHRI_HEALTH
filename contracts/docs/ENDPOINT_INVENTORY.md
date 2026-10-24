@@ -11,7 +11,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 |---|---|
 | Path | Under `/api/v1` unless marked `(root)`. Path parameters renamed to `{<resource>Id}` (API_STANDARDS §3) |
 | Owner | `x-owner`: **V** Vimal, **T** Thulasi, **A** Anand, **M** Minalini |
-| Store | DATA_OWNERSHIP §1 (one PostgreSQL, ADR-0011): Cl clinical (FHIR-shaped), Ad admin (normalized), Au audit, F files, C computed. Exact tables are fixed at the 30 October schema lock |
+| Store | DATA_OWNERSHIP §1 (one PostgreSQL, ADR-0011): Cl clinical (FHIR-shaped), Ad admin (normalized), Au audit, F files, C computed. Exact tables come from the locked schema (D72; changes by migration) |
 | Permission | `x-permission` (SECURITY_MODEL §4) |
 | Audit | `x-audit` category: pr = phi-read, pw = phi-write, sg = sign, ex = export, sec = security, ai, adm = admin, – = none |
 | Idem | `Idempotency-Key`: **R** required, S supported, – not applicable |

@@ -138,7 +138,7 @@ Review Vimal's AI screens and Anand's admin, billing and document screens before
 | Login endpoints, CSRF header name, `/events/stream` | Thulasi | Steps 2 and 4 |
 | File service | Anand | Card photos, documents |
 | `require()`, `tenant_db` | Thulasi | Your two backend modules |
-| Communications tables; table names for the dashboard counts (after the schema lock) | Anand | Steps 5 and 6 |
+| Communications tables; table names for the dashboard counts (schema locked; changes by migration, D72) | Anand | Steps 5 and 6 |
 
 | You give | To |
 |---|---|
