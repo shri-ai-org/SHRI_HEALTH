@@ -183,6 +183,52 @@ paths:
     $ref: 'modules/eligibility.yaml#/paths/~1eligibility-checks~1{eligibilityCheckId}'
   /appointments/{appointmentId}/eligibility-checks:
     $ref: 'modules/eligibility.yaml#/paths/~1appointments~1{appointmentId}~1eligibility-checks'
+  /encounters:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters'
+  /encounters/{encounterId}:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}'
+  /patients/{patientId}/encounters:
+    $ref: 'modules/encounters.yaml#/paths/~1patients~1{patientId}~1encounters'
+  /encounters/{encounterId}/close:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1close'
+  /encounters/{encounterId}/entered-in-error:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1entered-in-error'
+  /encounters/{encounterId}/vitals:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1vitals'
+  /patients/{patientId}/vitals:
+    $ref: 'modules/encounters.yaml#/paths/~1patients~1{patientId}~1vitals'
+  /patients/{patientId}/vitals/{vitalId}/entered-in-error:
+    $ref: 'modules/encounters.yaml#/paths/~1patients~1{patientId}~1vitals~1{vitalId}~1entered-in-error'
+  /encounters/{encounterId}/diagnoses:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1diagnoses'
+  /encounters/{encounterId}/diagnoses/{diagnosisId}/remove:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1diagnoses~1{diagnosisId}~1remove'
+  /encounters/{encounterId}/diagnoses/{diagnosisId}/entered-in-error:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1diagnoses~1{diagnosisId}~1entered-in-error'
+  /codes:
+    $ref: 'modules/encounters.yaml#/paths/~1codes'
+  /encounters/{encounterId}/notes:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1notes'
+  /notes/{noteId}:
+    $ref: 'modules/encounters.yaml#/paths/~1notes~1{noteId}'
+  /notes/{noteId}/sign:
+    $ref: 'modules/encounters.yaml#/paths/~1notes~1{noteId}~1sign'
+  /notes/{noteId}/addenda:
+    $ref: 'modules/encounters.yaml#/paths/~1notes~1{noteId}~1addenda'
+  /notes/{noteId}/cosign:
+    $ref: 'modules/encounters.yaml#/paths/~1notes~1{noteId}~1cosign'
+  /notes/{noteId}/versions:
+    $ref: 'modules/encounters.yaml#/paths/~1notes~1{noteId}~1versions'
+  /notes/{noteId}/entered-in-error:
+    $ref: 'modules/encounters.yaml#/paths/~1notes~1{noteId}~1entered-in-error'
+  /me/favorites:
+    $ref: 'modules/encounters.yaml#/paths/~1me~1favorites'
+  /encounters/{encounterId}/after-visit-summary:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1after-visit-summary'
+  /cosign-rules:
+    $ref: 'modules/encounters.yaml#/paths/~1cosign-rules'
+  /cosign-rules/{cosignRuleId}:
+    $ref: 'modules/encounters.yaml#/paths/~1cosign-rules~1{cosignRuleId}'
   /facilities:
     $ref: 'modules/practice-setup.yaml#/paths/~1facilities'
   /facilities/{facilityId}:

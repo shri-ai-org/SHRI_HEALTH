@@ -1,16 +1,4091 @@
 # Shri Health API — module `encounters`
 # x-owner: vimal  (implements these operations and approves their contract; Vimal approves standards conformance)
-# Scope: Encounters, vitals, diagnoses, notes, favorites, after-visit summary, co-signature rules (`backend/app/modules/encounters/`)
-#
-# Stage 3 leaves this file empty on purpose: no endpoints yet.
-# Stage 4 adds each path item under `paths:` and references it from ../shri-health.yaml, for example:
-#
-#   # in shri-health.yaml
-#   paths:
-#     /patients/search:
-#       $ref: modules/patients.yaml#/paths/~1patients~1search
-#
-# Module-specific schemas go under `components.schemas` here; shared ones stay in ../components/.
-paths: {}
+# Scope: Encounters, vitals, diagnoses, code search, notes, favorites, after-visit summary, co-signature rules (`backend/app/modules/encounters/`)
+# Contract batch 2 (inventory B4), 2026-10-24: rows #62-89 and the single GET for co-sign rules (#251), from the approved plan
+# contracts/docs/BATCH2_PLAN.md and the locked schema (D72). Clinical records are FHIR-shaped tables (ADR-0011); every action writes
+# its Provenance in the same transaction (D8); nothing is deleted (D14); signed notes are frozen (409 record-locked).
+paths:
+  /encounters:
+    post:
+      operationId: createEncounter
+      summary: Open an unscheduled encounter
+      description: 'Opens a telephone or documentation-only encounter, which starts `in-progress` (inventory #62; D16). Scheduled
+        visits start at check-in instead, through the same encounter service. The caller becomes the rendering clinician by
+        default. Raises `encounter.opened`.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: encounters:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: body:/patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-events:
+      - encounter.opened
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncounterCreate'
+            examples:
+              telephone:
+                summary: A telephone encounter
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  unscheduledType: telephone
+                  facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                  reasons:
+                  - text: Question about a refill
+      responses:
+        '201':
+          description: Created. The new encounter.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: &id001
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control: &id002
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit: &id003
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy: &id004
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Encounter'
+              examples:
+                opened:
+                  summary: Opened
+                  value:
+                    id: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: in-progress
+                    class: VR
+                    types: &id014
+                    - text: Telephone
+                    reasons: &id015
+                    - text: Question about a refill
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    timeZone: America/Chicago
+                    startedAt: '2026-11-04T14:10:00Z'
+                    participants: &id016
+                    - role: rendering
+                      practitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    diagnoses: &id017 []
+                    vitals: &id018 []
+                    notes: &id019 []
+                    createdAt: '2026-11-04T14:10:00Z'
+                    updatedAt: '2026-11-04T14:10:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `encounters:create`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged`
+            (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the facility
+            is not one of the user's facilities, or a participant is not active (field code `invalid-reference`)); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}:
+    parameters: &id007
+    - &id026
+      name: encounterId
+      in: path
+      required: true
+      description: Encounter ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getEncounter
+      summary: Get an encounter with its workspace data
+      description: 'The encounter with its ranked diagnoses, its vitals and a summary of its notes (inventory #63; FRS FR-ENC-01).
+        Problems, allergies, history, medications and results come from their own endpoints.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: encounters:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The encounter.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Encounter'
+              examples:
+                workspace:
+                  summary: An office visit in progress
+                  value: &id006
+                    id: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: in-progress
+                    class: AMB
+                    types: &id008
+                    - text: Follow-up, 20 minutes
+                    reasons: &id009
+                    - text: Follow-up on blood pressure
+                    appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    locationId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
+                    timeZone: America/Chicago
+                    startedAt: '2026-11-03T15:02:00Z'
+                    participants: &id010
+                    - role: rendering
+                      practitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    diagnoses: &id011
+                    - &id025
+                      id: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                      encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                      rank: 1
+                      code: &id027
+                        system: http://hl7.org/fhir/sid/icd-10-cm
+                        code: I10
+                        display: Essential (primary) hypertension
+                      verificationStatus: confirmed
+                      entrySource: clinician
+                      recordedAt: '2026-11-03T15:20:00Z'
+                      recordedBy: &id005
+                        id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                        displayName: Dr. Lowe58
+                    vitals: &id012
+                    - &id020
+                      id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+                      patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                      type: blood-pressure
+                      bloodPressure:
+                        systolic:
+                          value: 142
+                          unit: mm[Hg]
+                        diastolic:
+                          value: 88
+                          unit: mm[Hg]
+                      effectiveAt: '2026-11-03T15:06:00Z'
+                      status: final
+                      interpretation: H
+                      entrySource: clinician
+                      recordedAt: '2026-11-03T15:06:30Z'
+                    notes: &id013
+                    - &id029
+                      id: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                      noteType:
+                        codings:
+                        - system: http://loinc.org
+                          code: 11506-3
+                          display: Progress note
+                      title: Progress note
+                      status: preliminary
+                      cosignStatus: not-required
+                      author: *id005
+                      aiAssisted: false
+                      updatedAt: '2026-11-03T15:24:00Z'
+                    createdAt: '2026-11-03T15:02:00Z'
+                    updatedAt: '2026-11-03T15:24:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `encounters:read`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updateEncounter
+      summary: Edit an encounter
+      description: 'Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error`
+        (inventory #64). Status changes only through actions.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: encounters:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: result
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/EncounterPatch'
+            examples:
+              room:
+                summary: Move to another room
+                value:
+                  locationId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
+      responses:
+        '200':
+          description: The encounter.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Encounter'
+              examples:
+                edited:
+                  summary: Edited
+                  value: *id006
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `encounters:update`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (not allowed in the current state (DATA_OWNERSHIP §5.2); the problem
+            carries `currentState`).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (more
+            than one `rendering` or `supervising` participant, or a room outside the encounter's facility (field code `invalid-reference`)).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/encounters:
+    parameters: &id021
+    - &id023
+      name: patientId
+      in: path
+      required: true
+      description: Patient ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: listPatientEncounters
+      summary: List a patient's encounters
+      description: 'A patient''s encounters, newest first (inventory #65; FRS FR-PAT-02). Entered-in-error encounters are
+        left out unless `status` asks for them.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: encounters:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: status
+        in: query
+        required: false
+        description: Only encounters with this status.
+        schema:
+          $ref: '#/components/schemas/EncounterStatus'
+      - name: dateFrom
+        in: query
+        required: false
+        description: First day, inclusive, in the facility's time zone.
+        schema:
+          $ref: ../components/schemas/Date.yaml
+      - name: dateTo
+        in: query
+        required: false
+        description: Last day, inclusive.
+        schema:
+          $ref: ../components/schemas/Date.yaml
+      responses:
+        '200':
+          description: One page of encounters.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncounterList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - id: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                      status: in-progress
+                      class: AMB
+                      types:
+                      - text: Follow-up, 20 minutes
+                      facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                      renderingProvider: *id005
+                      startedAt: '2026-11-03T15:02:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `encounters:read`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/close:
+    parameters: *id007
+    post:
+      operationId: closeEncounter
+      summary: Close an encounter
+      description: 'Moves an `in-progress` encounter to `finished` (inventory #66; DATA_OWNERSHIP §5.2). It needs at least
+        one signed note, no open drafts, and at least one diagnosis for a billable type (the proposal waiting for the clinical
+        advisors, DECISIONS Q22). A pending co-signature does not block closing; billing holds the claim (A29). A finished
+        encounter is never reopened; late information goes in addenda. Raises `encounter.closed`, from which billing builds
+        the superbill.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: encounters:close
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-events:
+      - encounter.closed
+      - encounter.status-changed
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          description: The encounter.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Encounter'
+              examples:
+                closed:
+                  summary: Closed
+                  value:
+                    id: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: finished
+                    class: AMB
+                    types: *id008
+                    reasons: *id009
+                    appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    locationId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
+                    timeZone: America/Chicago
+                    startedAt: '2026-11-03T15:02:00Z'
+                    participants: *id010
+                    diagnoses: *id011
+                    vitals: *id012
+                    notes: *id013
+                    createdAt: '2026-11-03T15:02:00Z'
+                    updatedAt: '2026-11-03T15:24:00Z'
+                    endedAt: '2026-11-03T15:40:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `encounters:close`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (not allowed in the current state (DATA_OWNERSHIP §5.2); the problem
+            carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a close
+            rule is not met; `errors` names it: `/notes` `required` (no signed note), `/notes` `not-allowed-value` (a draft
+            is still open), `/diagnoses` `required` (billable type without a diagnosis)).'
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/entered-in-error:
+    parameters: *id007
+    post:
+      operationId: markEncounterEnteredInError
+      summary: Mark an encounter entered in error
+      description: 'Marks a wrong encounter (wrong patient, never happened) entered-in-error with a reason, in one transaction
+        with its Provenance (inventory #67; D14). Every note on it must be entered in error first, and its superbill must
+        not be billed. ADM may do this only when no note was ever signed (SECURITY_MODEL §4.3). Raises `encounter.entered-in-error`;
+        billing is notified.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: encounters:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-events:
+      - encounter.entered-in-error
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncounterEnteredInError'
+            examples:
+              wrong-patient:
+                summary: Wrong patient
+                value:
+                  reason: Opened on the wrong patient.
+      responses:
+        '200':
+          description: The encounter.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Encounter'
+              examples:
+                marked:
+                  summary: Marked
+                  value:
+                    id: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: entered-in-error
+                    class: VR
+                    types: *id014
+                    reasons: *id015
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    timeZone: America/Chicago
+                    startedAt: '2026-11-04T14:10:00Z'
+                    participants: *id016
+                    diagnoses: *id017
+                    vitals: *id018
+                    notes: *id019
+                    createdAt: '2026-11-04T14:10:00Z'
+                    updatedAt: '2026-11-04T14:10:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `encounters:entered-in-error`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds
+            no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (not allowed in the current state (DATA_OWNERSHIP §5.2); the problem
+            carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a note
+            is not entered in error, the superbill is billed, or ADM on an encounter with a signed note).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/vitals:
+    parameters: *id007
+    post:
+      operationId: recordVitals
+      summary: Record vitals
+      description: 'Records vital signs taken at one time, in one transaction (inventory #68; FRS FR-ENC-03, FR-SCH-02). Units
+        are kept as entered (D69). Out-of-range values are flagged in `interpretation`, never refused. Allowed while the encounter
+        is `arrived`, `triaged` or `in-progress`.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: vitals:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VitalsCreate'
+            examples:
+              rooming:
+                summary: Rooming vitals in U.S. units
+                value:
+                  effectiveAt: '2026-11-03T15:06:00Z'
+                  entries:
+                  - type: blood-pressure
+                    bloodPressure:
+                      systolic:
+                        value: 142
+                        unit: mm[Hg]
+                      diastolic:
+                        value: 88
+                        unit: mm[Hg]
+                  - type: body-weight
+                    value:
+                      value: 182.4
+                      unit: '[lb_av]'
+                  - type: body-temperature
+                    value:
+                      value: 98.6
+                      unit: '[degF]'
+      responses:
+        '201':
+          description: Recorded. The new vitals.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VitalsRecorded'
+              examples:
+                recorded:
+                  summary: Recorded
+                  value:
+                    vitals:
+                    - *id020
+                    - &id022
+                      id: 0c1d2e3f-4a5b-4c6d-9e7f-8a9b0c1d2e3f
+                      patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                      type: body-weight
+                      value: &id024
+                        value: 182.4
+                        unit: '[lb_av]'
+                      effectiveAt: '2026-11-03T15:06:00Z'
+                      status: final
+                      entrySource: clinician
+                      recordedAt: '2026-11-03T15:06:30Z'
+                      recordedBy: *id005
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `vitals:create`); `csrf-check-failed` (missing or wrong CSRF
+            header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such vital in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (not allowed in the current state (DATA_OWNERSHIP §5.2); the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a unit
+            not allowed for the type (field code `not-allowed-value`), `value` with `blood-pressure` or the reverse (`conflicting-fields`),
+            the same type twice, or `effectiveAt` in the future); `idempotency-key-reused` (the Idempotency-Key was used with
+            a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/vitals:
+    parameters: *id021
+    get:
+      operationId: listPatientVitals
+      summary: List a patient's vitals
+      description: 'A patient''s vital signs, newest first, for the trend view (inventory #69; FRS FR-ENC-03).'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: vitals:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: type
+        in: query
+        required: false
+        description: Only this vital sign.
+        schema:
+          $ref: '#/components/schemas/VitalType'
+      - name: dateFrom
+        in: query
+        required: false
+        description: First day, inclusive.
+        schema:
+          $ref: ../components/schemas/Date.yaml
+      - name: dateTo
+        in: query
+        required: false
+        description: Last day, inclusive.
+        schema:
+          $ref: ../components/schemas/Date.yaml
+      - name: includeEnteredInError
+        in: query
+        required: false
+        description: Include entered-in-error vitals, marked.
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: One page of vitals.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VitalList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - *id022
+                    - *id020
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `vitals:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such vital in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/vitals/{vitalId}/entered-in-error:
+    parameters:
+    - *id023
+    - name: vitalId
+      in: path
+      required: true
+      description: Vital ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: markVitalEnteredInError
+      summary: Mark a vital sign entered in error
+      description: 'Marks a wrong vital sign entered-in-error with a reason, in one transaction with its Provenance (inventory
+        #70; D14). Record the right value as a new vital. RN only for their own entries.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: vitals:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Body to mark a vital sign entered in error (D14). The reason is stored in the Provenance record,
+                never in a log.
+              type: object
+              additionalProperties: false
+              required:
+              - reason
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+                  minLength: 1
+                  description: Why the record is wrong, e.g. "Recorded on the wrong patient." Required; shown in the audit
+                    trail.
+                  x-phi: clinical
+            examples:
+              typo:
+                summary: Typing error
+                value:
+                  reason: Weight typed with an extra digit.
+      responses:
+        '200':
+          description: The vital.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vital'
+              examples:
+                marked:
+                  summary: Marked
+                  value:
+                    id: 0c1d2e3f-4a5b-4c6d-9e7f-8a9b0c1d2e3f
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    type: body-weight
+                    value: *id024
+                    effectiveAt: '2026-11-03T15:06:00Z'
+                    status: entered-in-error
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:06:30Z'
+                    recordedBy: *id005
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `vitals:entered-in-error`); `csrf-check-failed` (missing or
+            wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no
+            break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such vital in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (already entered in error).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/diagnoses:
+    parameters: *id007
+    post:
+      operationId: addEncounterDiagnosis
+      summary: Add a diagnosis
+      description: 'Adds a diagnosis to the encounter: a Condition with category `encounter-diagnosis` and its rank, with
+        Provenance, in one transaction (inventory #71; FRS FR-ENC-02). Allowed until the encounter''s first note is signed;
+        after that, a new diagnosis needs an addendum workflow outside this endpoint. AI-suggested codes are added only through
+        the AI decision endpoint (batch 7), never directly.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: diagnoses:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagnosisCreate'
+            examples:
+              hypertension:
+                summary: Essential hypertension
+                value:
+                  code:
+                    system: http://hl7.org/fhir/sid/icd-10-cm
+                    code: I10
+                    display: Essential (primary) hypertension
+      responses:
+        '201':
+          description: Created. The new diagnosis.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncounterDiagnosis'
+              examples:
+                added:
+                  summary: Added
+                  value: *id025
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `diagnoses:create`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such diagnosis in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (not allowed in the current state (DATA_OWNERSHIP §5.2); the problem carries `currentState`); `record-locked`
+            (the encounter''s note is signed (D24): use entered-in-error and the addendum workflow).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (not an
+            ICD-10-CM code, a non-billable header code, the code already on this encounter, or all 12 ranks taken); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/diagnoses/{diagnosisId}/remove:
+    parameters: &id028
+    - *id026
+    - name: diagnosisId
+      in: path
+      required: true
+      description: Diagnosis ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: removeEncounterDiagnosis
+      summary: Remove a diagnosis before signing
+      description: 'Removes a diagnosis before the encounter''s first note is signed (inventory #72; D14, D24). The Condition
+        becomes entered-in-error with the reason in its Provenance, its rank link is removed so ranks stay 1 to 12 without
+        gaps, and it is left out of the chart, problem list, decision support, AI summaries, claims and patient views. Nothing
+        is deleted.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: diagnoses:remove
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagnosisRemove'
+            examples:
+              wrong-encounter:
+                summary: Added to the wrong encounter
+                value:
+                  reason: Added to the wrong encounter.
+      responses:
+        '200':
+          description: The diagnosis.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncounterDiagnosis'
+              examples:
+                removed:
+                  summary: Removed
+                  value:
+                    id: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    rank: null
+                    code: *id027
+                    verificationStatus: entered-in-error
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:20:00Z'
+                    recordedBy: *id005
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `diagnoses:remove`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such diagnosis in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `invalid-state-transition` (already removed or entered in error); `record-locked` (the encounter''s
+            note is signed: use entered-in-error).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/diagnoses/{diagnosisId}/entered-in-error:
+    parameters: *id028
+    post:
+      operationId: markDiagnosisEnteredInError
+      summary: Mark a diagnosis entered in error
+      description: 'Marks a diagnosis on a signed encounter entered-in-error with a reason (inventory #73; D14, D24). It keeps
+        its rank link for the audit trail; the database refuses any charge or claim line that points at it, and it is left
+        out of the chart, problem list, decision support, AI summaries, claims and patient views.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: diagnoses:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagnosisEnteredInError'
+            examples:
+              wrong-code:
+                summary: Wrong code
+                value:
+                  reason: Coded the wrong laterality.
+      responses:
+        '200':
+          description: The diagnosis.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncounterDiagnosis'
+              examples:
+                marked:
+                  summary: Marked
+                  value:
+                    id: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    rank: 1
+                    code: *id027
+                    verificationStatus: entered-in-error
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:20:00Z'
+                    recordedBy: *id005
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `diagnoses:entered-in-error`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds
+            no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such diagnosis in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (already entered in error, or the encounter is not signed yet (use
+            remove)).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /codes:
+    get:
+      operationId: searchCodes
+      summary: Search codes
+      description: 'Searches a code system by code or words (inventory #74; a GET on `/codes`, like `/pharmacies`, because
+        the `/search` suffix is reserved for POST searches with PHI, API_STANDARDS §14): ICD-10-CM for diagnoses, RxNorm for
+        drugs, LOINC, SNOMED CT, CPT (placeholder codes until the AMA license, Q7), HCPCS, CVX. Reference data, not patient
+        data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: codes:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: system
+        in: query
+        required: true
+        description: Code system.
+        schema:
+          $ref: '#/components/schemas/CodeSystem'
+      - name: q
+        in: query
+        required: true
+        description: Code or words, at least 2 characters.
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 100
+      - name: billableOnly
+        in: query
+        required: false
+        description: 'ICD-10-CM only: leave out header codes.'
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: One page of codes.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeMatchList'
+              examples:
+                icd10:
+                  summary: Hypertension
+                  value:
+                    items:
+                    - system: http://hl7.org/fhir/sid/icd-10-cm
+                      code: I10
+                      display: Essential (primary) hypertension
+                      billable: true
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `codes:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/notes:
+    parameters: *id007
+    get:
+      operationId: listEncounterNotes
+      summary: List an encounter's notes
+      description: 'The notes on an encounter, newest first, without their text (inventory #76). BIL sees signed notes only
+        (SECURITY_MODEL §4.3).'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: notes:read
+      x-audit: &id030
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: status
+        in: query
+        required: false
+        description: Only notes with this status.
+        schema:
+          $ref: '#/components/schemas/NoteStatus'
+      responses:
+        '200':
+          description: One page of notes.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - *id029
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `notes:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such note in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: createNote
+      summary: Start a note
+      description: 'Starts a draft note (`preliminary`) on the encounter, from a template or a note type (inventory #75; FRS
+        FR-ENC-01, FR-ENC-04). The template''s sections are copied in. The encounter moves to `in-progress` if it was `arrived`
+        or `triaged`. AI drafts are created through `POST /ai/note-drafts` (batch 7), through the same notes service.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: notes:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-storage: clinical
+      x-events:
+      - encounter.status-changed
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteCreate'
+            examples:
+              template:
+                summary: From a template
+                value:
+                  templateId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+      responses:
+        '201':
+          description: Created. The new note.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+              examples:
+                started:
+                  summary: Started
+                  value: &id031
+                    id: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    noteType: &id032
+                      codings:
+                      - system: http://loinc.org
+                        code: 11506-3
+                        display: Progress note
+                    title: Progress note
+                    status: preliminary
+                    cosignStatus: not-required
+                    templateId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+                    author: *id005
+                    aiAssisted: false
+                    sections: &id033
+                    - id: 2e3f4a5b-6c7d-4e8f-9a9b-0c1d2e3f4a5b
+                      code: 10154-3
+                      title: Chief complaint
+                      sequence: 1
+                      required: true
+                      text: Follow-up on blood pressure.
+                      entrySource: clinician
+                    - id: 3f4a5b6c-7d8e-4f9a-8b0c-1d2e3f4a5b6c
+                      code: 51847-2
+                      title: Assessment and plan
+                      sequence: 2
+                      required: true
+                      text: Hypertension, above goal. Continue current medication; recheck in 4 weeks.
+                      entrySource: clinician
+                    - id: 4a5b6c7d-8e9f-4a0b-9c1d-2e3f4a5b6c7d
+                      code: 69730-0
+                      title: Patient instructions
+                      sequence: 3
+                      required: false
+                      text: Check your blood pressure at home twice a week and bring the log.
+                      entrySource: clinician
+                    addenda: &id034 []
+                    createdAt: '2026-11-03T15:10:00Z'
+                    updatedAt: '2026-11-03T15:24:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `notes:create`); `csrf-check-failed` (missing or wrong CSRF
+            header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such note in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (not allowed in the current state (DATA_OWNERSHIP §5.2); the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (neither
+            `templateId` nor `noteType`, or a template that is inactive or another user's personal template (field code `invalid-reference`));
+            `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /notes/{noteId}:
+    parameters: &id035
+    - name: noteId
+      in: path
+      required: true
+      description: Note ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getNote
+      summary: Get a note
+      description: 'A note with its sections and addenda (inventory #77). The `ETag` is what autosave, sign, co-sign and addenda
+        send as `If-Match`. BIL sees signed notes only.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: notes:read
+      x-audit: *id030
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The note.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+              examples:
+                draft:
+                  summary: A draft
+                  value: *id031
+                signed:
+                  summary: Signed, waiting for co-signature
+                  value: &id036
+                    id: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    noteType: *id032
+                    title: Progress note
+                    status: final
+                    cosignStatus: pending
+                    templateId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+                    author: *id005
+                    aiAssisted: false
+                    sections: *id033
+                    addenda: *id034
+                    createdAt: '2026-11-03T15:10:00Z'
+                    updatedAt: '2026-11-03T15:35:00Z'
+                    cosigner: &id037
+                      id: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                      displayName: Dr. Hessel21
+                    signedAt: '2026-11-03T15:35:00Z'
+                    signedBy: *id005
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `notes:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such note in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updateNoteDraft
+      summary: Autosave a draft note
+      description: 'Saves changes to a draft (inventory #78). Only the author may edit it; `If-Match` makes a second tab get
+        `412` instead of overwriting (ADR-0008). Every committed save is a version in `_history`; screens autosave at most
+        every 30 seconds and when leaving a section. A signed note is never edited: `409 record-locked`.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: notes:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: result
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/NotePatch'
+            examples:
+              autosave:
+                summary: Autosave one section
+                value:
+                  sections:
+                  - id: 3f4a5b6c-7d8e-4f9a-8b0c-1d2e3f4a5b6c
+                    text: Hypertension, above goal. Continue current medication; recheck in 4 weeks.
+      responses:
+        '200':
+          description: The note.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+              examples:
+                saved:
+                  summary: Saved
+                  value: *id031
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `notes:update`, or the user is not the note's author); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user
+            holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such note in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `record-locked` (the note is signed: changes go in an addendum); `invalid-state-transition` (not
+            allowed in the note''s current state (DATA_OWNERSHIP §5.3); the problem carries `currentState`).'
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a section
+            `id` that is not in this note (field code `invalid-reference`)).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /notes/{noteId}/sign:
+    parameters: *id035
+    post:
+      operationId: signNote
+      summary: Sign a note
+      description: 'Signs the draft the author last saw (`If-Match`), in one transaction: the note becomes `final` and locked,
+        a legal attester and its Provenance are written, and the version is kept (inventory #79; D8; FRS FR-ENC-01). Every
+        required section must have text, and **every AI-drafted section must have an accept, edit or reject decision** (D70;
+        FRS §3.4, §8); the database checks this too. AI never signs (FRS §3.4). If a co-sign rule matches the author, `cosignStatus`
+        becomes `pending` and the co-signer gets an inbox task. Raises `note.signed`.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: notes:sign
+      x-audit:
+        action: E
+        category: sign
+        patient: result
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-events:
+      - note.signed
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      responses:
+        '200':
+          description: The note.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+              examples:
+                signed:
+                  summary: Signed; co-signature needed
+                  value: *id036
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `notes:sign`, the user is not the note's author, or an RN
+            signing a note that is not a nursing note); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required`
+            (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such note in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (not allowed in the note's current state (DATA_OWNERSHIP §5.3); the
+            problem carries `currentState`).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`errors`
+            lists each problem: `/sections/{i}/text` `required` (a required section is empty), `/sections/{i}/aiDecision`
+            `required` (an AI section is undecided)).'
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /notes/{noteId}/addenda:
+    parameters: *id035
+    post:
+      operationId: addNoteAddendum
+      summary: Add an addendum
+      description: 'Adds an addendum to a signed note: a new Composition that appends to it, signed at once, with its Provenance,
+        in one transaction (inventory #80; FRS FR-ENC-01). `If-Match` carries the note''s ETag. The note becomes `amended`.
+        If it was `returned` by the co-signer, it goes back to `pending`. Raises `note.amended`.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: note-addenda:create
+      x-audit:
+        action: C
+        category: sign
+        patient: result
+      x-idempotency: supported
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-events:
+      - note.amended
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddendumCreate'
+            examples:
+              answer:
+                summary: Answering the co-signer
+                value:
+                  text: 'Reviewed the home blood pressure log: readings averaged above goal.'
+      responses:
+        '200':
+          description: The note.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+              examples:
+                amended:
+                  summary: Amended; back to the co-signer
+                  value:
+                    id: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    noteType: *id032
+                    title: Progress note
+                    status: amended
+                    cosignStatus: pending
+                    templateId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+                    author: *id005
+                    aiAssisted: false
+                    sections: *id033
+                    addenda: &id038
+                    - id: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+                      text: 'Reviewed the home blood pressure log: readings averaged above goal.'
+                      author: *id005
+                      signedAt: '2026-11-03T17:20:00Z'
+                    createdAt: '2026-11-03T15:10:00Z'
+                    updatedAt: '2026-11-03T17:20:00Z'
+                    cosigner: *id037
+                    signedAt: '2026-11-03T15:35:00Z'
+                    signedBy: *id005
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `note-addenda:create`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
+            grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such note in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the note is a draft (edit it instead) or entered in error).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /notes/{noteId}/cosign:
+    parameters: *id035
+    post:
+      operationId: cosignNote
+      summary: Co-sign or return a note
+      description: 'The supervising physician named by the matching co-sign rule co-signs the note, or returns it to the author
+        with a comment (inventory #81; FRS FR-ENC-01). Co-signing adds a second attester and its Provenance in one transaction
+        (`note.cosigned`). Returning keeps the note signed and frozen, records the comment, and raises `note.cosign-returned`,
+        which gives the author an inbox task; the author answers with an addendum. The co-signer is never the author.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: notes:cosign
+      x-audit:
+        action: E
+        category: sign
+        patient: result
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-events:
+      - note.cosigned
+      - note.cosign-returned
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CosignDecision'
+            examples:
+              cosign:
+                summary: Co-sign
+                value:
+                  decision: cosign
+              return:
+                summary: Return to the author
+                value:
+                  decision: return
+                  comment: Please document the home readings you reviewed.
+      responses:
+        '200':
+          description: The note.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+              examples:
+                cosigned:
+                  summary: Co-signed
+                  value:
+                    id: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    noteType: *id032
+                    title: Progress note
+                    status: amended
+                    cosignStatus: cosigned
+                    templateId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+                    author: *id005
+                    aiAssisted: false
+                    sections: *id033
+                    addenda: *id038
+                    createdAt: '2026-11-03T15:10:00Z'
+                    updatedAt: '2026-11-03T17:40:00Z'
+                    cosigner: *id037
+                    signedAt: '2026-11-03T15:35:00Z'
+                    signedBy: *id005
+                    cosignedAt: '2026-11-03T17:40:00Z'
+                    cosignedBy: *id037
+                returned:
+                  summary: Returned to the author
+                  value:
+                    id: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    noteType: *id032
+                    title: Progress note
+                    status: final
+                    cosignStatus: returned
+                    templateId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+                    author: *id005
+                    aiAssisted: false
+                    sections: *id033
+                    addenda: *id034
+                    createdAt: '2026-11-03T15:10:00Z'
+                    updatedAt: '2026-11-03T17:05:00Z'
+                    cosigner: *id037
+                    signedAt: '2026-11-03T15:35:00Z'
+                    signedBy: *id005
+                    cosignReturn:
+                      comment: Please document the home readings you reviewed.
+                      returnedAt: '2026-11-03T17:05:00Z'
+                      returnedBy: *id037
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `notes:cosign`, or the user is not the co-signer named by
+            the rule, or is the author); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required`
+            (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such note in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (`cosignStatus` is not `pending`).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`return`
+            without `comment` (field code `required`)).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /notes/{noteId}/versions:
+    parameters: *id035
+    get:
+      operationId: listNoteVersions
+      summary: List a note's versions
+      description: 'Every saved version of a note, newest first, from `_history` (inventory #82; D8). Read-only.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: notes:read
+      x-audit: *id030
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page of versions.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteVersionList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - versionId: 4
+                      recordedAt: '2026-11-03T15:35:00Z'
+                      recordedBy: *id005
+                      status: final
+                      cosignStatus: pending
+                      title: Progress note
+                      sections:
+                      - code: 10154-3
+                        title: Chief complaint
+                        text: Follow-up on blood pressure.
+                      - code: 51847-2
+                        title: Assessment and plan
+                        text: Hypertension, above goal. Continue current medication; recheck in 4 weeks.
+                      - code: 69730-0
+                        title: Patient instructions
+                        text: Check your blood pressure at home twice a week and bring the log.
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `notes:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such version in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /notes/{noteId}/entered-in-error:
+    parameters: *id035
+    post:
+      operationId: markNoteEnteredInError
+      summary: Mark a note entered in error
+      description: 'Marks a note entered-in-error with a reason and its Provenance (inventory #83; D14). A draft (the author
+        only) is kept for audit and hidden from the chart; a signed note is kept with its versions and hidden from the chart,
+        and billing is notified if the encounter is closed. Raises `note.entered-in-error`.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: notes:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-events:
+      - note.entered-in-error
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteEnteredInError'
+            examples:
+              wrong-patient:
+                summary: Written on the wrong patient
+                value:
+                  reason: Written on the wrong patient.
+      responses:
+        '200':
+          description: The note.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+              examples:
+                marked:
+                  summary: Marked
+                  value:
+                    id: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    noteType: *id032
+                    title: Progress note
+                    status: entered-in-error
+                    cosignStatus: not-required
+                    templateId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+                    author: *id005
+                    aiAssisted: false
+                    sections: *id033
+                    addenda: *id034
+                    createdAt: '2026-11-03T15:10:00Z'
+                    updatedAt: '2026-11-03T15:24:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `notes:entered-in-error`, or a draft that is not the user's
+            own); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such note in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (already entered in error).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /me/favorites:
+    get:
+      operationId: getMyFavorites
+      summary: Get my favorites
+      description: 'The current user''s favorite templates, diagnoses, orders, order sets, prescriptions and phrases (inventory
+        #84; FRS FR-ENC-04). Personal settings with no patient data, so not audited (SECURITY_MODEL §6 `none` list). The `ETag`
+        is what `PUT` sends as `If-Match`.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: favorites:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The favorites list.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Favorites'
+              examples:
+                mine:
+                  summary: Two favorites
+                  value: &id039
+                    favorites:
+                    - kind: note-template
+                      targetId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+                      label: Hypertension follow-up
+                    - kind: diagnosis
+                      diagnosis:
+                        system: http://hl7.org/fhir/sid/icd-10-cm
+                        code: I10
+                        display: Essential (primary) hypertension
+                      label: Essential (primary) hypertension
+                    updatedAt: '2026-11-02T18:00:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `favorites:read`).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    put:
+      operationId: replaceMyFavorites
+      summary: Replace my favorites
+      description: 'Replaces the current user''s favorites with the list sent (inventory #85). `If-Match` makes a second tab
+        get `412` instead of overwriting. Audited as `admin` (a settings change).'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: favorites:update
+      x-audit:
+        action: U
+        category: admin
+      x-concurrency: if-match-required
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FavoritesUpdate'
+            examples:
+              two:
+                summary: Two favorites
+                value:
+                  favorites:
+                  - kind: note-template
+                    targetId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+                  - kind: diagnosis
+                    diagnosis:
+                      system: http://hl7.org/fhir/sid/icd-10-cm
+                      code: I10
+      responses:
+        '200':
+          description: The favorites list.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Favorites'
+              examples:
+                saved:
+                  summary: Saved
+                  value: *id039
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `favorites:update`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a `targetId`
+            that does not exist or is not visible to the user (field code `invalid-reference`), `targetId` with `diagnosis`
+            or the reverse (`conflicting-fields`), or the same favorite twice).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/after-visit-summary:
+    parameters: *id007
+    post:
+      operationId: createAfterVisitSummary
+      summary: Generate the after-visit summary
+      description: 'Generates the patient''s after-visit summary as a PDF from a **signed** note (inventory #86; FRS FR-ENC-06):
+        diagnoses, medications, orders, the note''s patient instructions section (LOINC 69730-0) and follow-up. Returns `202`
+        and an operation of kind `encounter.after-visit-summary`; the result is a document (a DocumentReference with origin
+        `generated`, its PDF stored through the file service). Generating it again makes a new version. Release to the patient
+        portal is P1.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: after-visit-summaries:create
+      x-audit:
+        action: E
+        category: export
+        patient: result
+      x-idempotency: supported
+      x-async: true
+      x-storage: files
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AfterVisitSummaryRequest'
+            examples:
+              latest:
+                summary: From the latest signed note
+                value: {}
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed`
+            on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            Retry-After:
+              $ref: ../components/headers/RetryAfter.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/Operation.yaml
+              examples:
+                queued:
+                  summary: Queued
+                  value:
+                    id: 6c7d8e9f-0a1b-4c2d-9e3f-4a5b6c7d8e9f
+                    kind: encounter.after-visit-summary
+                    status: queued
+                    createdAt: '2026-11-03T15:41:00Z'
+                    updatedAt: '2026-11-03T15:41:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `after-visit-summaries:create`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds
+            no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such after-visit summary in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the encounter is entered in error).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the encounter
+            has no signed note, or `noteId` is not a signed note on it (field code `invalid-reference`)); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /cosign-rules:
+    get:
+      operationId: listCosignRules
+      summary: List co-signature rules
+      description: 'Co-signature rules by supervisee, supervising physician and state (inventory #87; FRS FR-ENC-01). Practice
+        configuration, audited as `admin`.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: cosign-rules:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: providerId
+        in: query
+        required: false
+        description: Rules where this provider is the supervisee or the supervising physician.
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      - name: activeOn
+        in: query
+        required: false
+        description: Only rules in effect on this day.
+        schema:
+          $ref: ../components/schemas/Date.yaml
+      responses:
+        '200':
+          description: One page of co-sign rules.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CosignRuleList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - &id040
+                      id: 5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e
+                      superviseeProviderId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      supervisingProviderId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                      state: IL
+                      appliesToNotes: true
+                      appliesToPrescriptions: false
+                      appliesToOrders: false
+                      cosignWithinDays: 7
+                      effectiveFrom: '2026-11-01'
+                      createdAt: '2026-10-30T16:00:00Z'
+                      updatedAt: '2026-10-30T16:00:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `cosign-rules:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: createCosignRule
+      summary: Add a co-signature rule
+      description: 'Adds a co-signature rule (inventory #88). Notes signed by the supervisee after `effectiveFrom` get `cosignStatus:
+        pending`.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: cosign-rules:create
+      x-audit:
+        action: C
+        category: admin
+      x-idempotency: supported
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CosignRuleCreate'
+            examples:
+              illinois:
+                summary: An NP supervised in Illinois
+                value:
+                  superviseeProviderId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                  supervisingProviderId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                  state: IL
+                  cosignWithinDays: 7
+                  effectiveFrom: '2026-11-01'
+      responses:
+        '201':
+          description: Created. The new co-sign rule.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CosignRule'
+              examples:
+                added:
+                  summary: Added
+                  value: *id040
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `cosign-rules:create`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same
+            provider twice, no `appliesTo…` true, `effectiveTo` before `effectiveFrom`, an inactive provider (field code `invalid-reference`),
+            or an overlapping rule for the same supervisee and state); `idempotency-key-reused` (the Idempotency-Key was used
+            with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /cosign-rules/{cosignRuleId}:
+    parameters:
+    - name: cosignRuleId
+      in: path
+      required: true
+      description: Co-sign rule ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getCosignRule
+      summary: Get a co-signature rule
+      description: 'One co-signature rule, with the `ETag` that `PATCH` needs (new inventory row #251; list items carry no
+        ETag, API_STANDARDS §11).'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: cosign-rules:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The co-sign rule.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CosignRule'
+              examples:
+                rule:
+                  summary: A rule in Illinois
+                  value: *id040
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `cosign-rules:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such co-sign rule in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updateCosignRule
+      summary: Edit a co-signature rule
+      description: 'Edits a co-signature rule, or ends it with `effectiveTo` (inventory #89). Notes already signed keep their
+        co-signature state.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: cosign-rules:update
+      x-audit:
+        action: U
+        category: admin
+      x-concurrency: if-match-required
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/CosignRulePatch'
+            examples:
+              end:
+                summary: End the rule
+                value:
+                  effectiveTo: '2027-06-30'
+      responses:
+        '200':
+          description: The co-sign rule.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CosignRule'
+              examples:
+                ended:
+                  summary: Ended
+                  value:
+                    id: 5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e
+                    superviseeProviderId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    supervisingProviderId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                    state: IL
+                    appliesToNotes: true
+                    appliesToPrescriptions: false
+                    appliesToOrders: false
+                    cosignWithinDays: 7
+                    effectiveFrom: '2026-11-01'
+                    createdAt: '2026-10-30T16:00:00Z'
+                    updatedAt: '2027-01-10T16:00:00Z'
+                    effectiveTo: '2027-06-30'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `cosign-rules:update`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such co-sign rule in this clinic or the user's facilities).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same
+            provider twice, no `appliesTo…` true, or `effectiveTo` before `effectiveFrom`).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
-  schemas: {}
+  schemas:
+    ClinicianRef:
+      description: A clinician or staff member, for display.
+      type: object
+      required:
+      - id
+      - displayName
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Practitioner ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name as shown on screens (staff, not patient data).
+          x-phi: none
+    EncounterStatus:
+      description: 'Encounter status, FHIR codes (DATA_OWNERSHIP §5.2): `arrived` at check-in, `triaged` once roomed, `in-progress`
+        with the provider or after the first note, `finished` when closed, `cancelled` when the patient left without being
+        seen, `entered-in-error`. Changes only through actions, never PATCH.'
+      type: string
+      enum:
+      - arrived
+      - triaged
+      - in-progress
+      - finished
+      - cancelled
+      - entered-in-error
+    EncounterParticipant:
+      description: 'A clinician on the encounter, with their role: `rendering` (performs the visit), `supervising` (co-signs
+        for an NP or PA), `attending` or `referring`.'
+      type: object
+      additionalProperties: false
+      required:
+      - role
+      - practitionerId
+      properties:
+        role:
+          type: string
+          enum:
+          - rendering
+          - supervising
+          - attending
+          - referring
+          description: Role on this encounter (FHIR participant type PPRF, SPRF, ATND, REF).
+          x-phi: none
+        practitionerId:
+          $ref: ../components/schemas/Id.yaml
+          description: Practitioner ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name, for display. Read-only.
+          x-phi: none
+    EncounterDiagnosis:
+      description: 'A diagnosis on this encounter: a Condition with category `encounter-diagnosis`, ranked 1 to 12 for the
+        claim (FRS FR-ENC-02; DATA_OWNERSHIP §2.5). Entered-in-error diagnoses are kept for audit but left out of the chart,
+        problem list, decision support, AI summaries, claims and patient views (D24).'
+      type: object
+      required:
+      - id
+      - encounterId
+      - code
+      - verificationStatus
+      - entrySource
+      - recordedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Diagnosis ID (the Condition).
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The encounter.
+          x-phi: internal-id
+        rank:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 1
+          maximum: 12
+          description: Order on the claim, 1 first. `null` once removed or entered in error.
+          x-phi: none
+        code:
+          $ref: ../components/schemas/Coding.yaml
+          description: ICD-10-CM code (`http://hl7.org/fhir/sid/icd-10-cm`), required for billing.
+          x-phi: clinical
+        additionalCodings:
+          type: array
+          maxItems: 5
+          items:
+            $ref: ../components/schemas/Coding.yaml
+          description: Other codings for the same diagnosis, e.g. SNOMED CT.
+          x-phi: clinical
+        verificationStatus:
+          type: string
+          enum:
+          - confirmed
+          - provisional
+          - differential
+          - entered-in-error
+          description: FHIR verification status. `entered-in-error` after removal or correction.
+          x-phi: clinical
+        onsetDate:
+          $ref: ../components/schemas/PartialDate.yaml
+          description: When it started, as far as known.
+          x-phi: clinical
+        aiSuggestionId:
+          $ref: ../components/schemas/Id.yaml
+          description: The AI suggestion it came from, when AI suggested it and a clinician accepted it (FRS FR-ENC-02). Read-only.
+          x-phi: internal-id
+        entrySource:
+          type: string
+          enum:
+          - clinician
+          - imported
+          - patient-reported
+          - ai-generated
+          - device
+          - interface
+          description: 'Where the record came from: entered by a clinician, imported, reported by the patient, generated by
+            AI and verified, from a device, or from an interface. Read-only.'
+          x-phi: none
+        recordedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was recorded. Read-only.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who recorded it, when known. Read-only.
+          x-phi: none
+    VitalType:
+      description: 'Vital sign, US Core vital-sign profiles (LOINC): `blood-pressure` 85354-9 (systolic 8480-6, diastolic
+        8462-4), `heart-rate` 8867-4, `respiratory-rate` 9279-1, `body-temperature` 8310-5, `body-height` 8302-2, `body-weight`
+        29463-7, `bmi` 39156-5, `oxygen-saturation` 59408-5, `head-circumference` 9843-4.'
+      type: string
+      enum:
+      - blood-pressure
+      - heart-rate
+      - respiratory-rate
+      - body-temperature
+      - body-height
+      - body-weight
+      - bmi
+      - oxygen-saturation
+      - head-circumference
+    BloodPressure:
+      description: Systolic and diastolic, one observation with two components (US Core Blood Pressure).
+      type: object
+      additionalProperties: false
+      required:
+      - systolic
+      - diastolic
+      properties:
+        systolic:
+          $ref: ../components/schemas/Quantity.yaml
+          description: Systolic, `mm[Hg]`.
+          x-phi: clinical
+        diastolic:
+          $ref: ../components/schemas/Quantity.yaml
+          description: Diastolic, `mm[Hg]`.
+          x-phi: clinical
+    Vital:
+      description: 'One vital sign: an Observation with category `vital-signs` (FRS FR-ENC-03; DATA_OWNERSHIP §2.1). Insert-only:
+        a correction is entered-in-error plus a new vital. Units are UCUM, accepted and stored **as entered** (D69): `body-weight`
+        `kg`, `g` or `[lb_av]`; `body-height` and `head-circumference` `cm` or `[in_i]`; `body-temperature` `Cel` or `[degF]`;
+        `blood-pressure` `mm[Hg]`; `heart-rate` and `respiratory-rate` `/min`; `oxygen-saturation` `%`; `bmi` `kg/m2`. Any
+        other unit is `422`. Nothing is converted on save; screens convert for display.'
+      type: object
+      required:
+      - id
+      - patientId
+      - type
+      - effectiveAt
+      - status
+      - entrySource
+      - recordedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Vital ID (the Observation).
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The encounter it was taken in.
+          x-phi: internal-id
+        type:
+          $ref: '#/components/schemas/VitalType'
+          description: Which vital sign.
+          x-phi: none
+        value:
+          $ref: ../components/schemas/Quantity.yaml
+          description: The value as entered. Absent for `blood-pressure`, which uses `bloodPressure`.
+          x-phi: clinical
+        bloodPressure:
+          $ref: '#/components/schemas/BloodPressure'
+          description: Systolic and diastolic, for `blood-pressure` only.
+          x-phi: clinical
+        effectiveAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was measured.
+          x-phi: none
+        status:
+          type: string
+          enum:
+          - final
+          - entered-in-error
+          description: FHIR observation status.
+          x-phi: clinical
+        interpretation:
+          type: string
+          enum:
+          - N
+          - L
+          - H
+          - LL
+          - HH
+          description: 'Flag against the practice''s adult reference range (FHIR interpretation: normal, low, high, critically
+            low, critically high), computed by the server. Out-of-range values are flagged, never refused (FRS FR-ENC-03).
+            Absent when no range applies.'
+          x-phi: clinical
+        entrySource:
+          type: string
+          enum:
+          - clinician
+          - imported
+          - patient-reported
+          - ai-generated
+          - device
+          - interface
+          description: 'Where the record came from: entered by a clinician, imported, reported by the patient, generated by
+            AI and verified, from a device, or from an interface. Read-only.'
+          x-phi: none
+        recordedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was recorded. Read-only.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who recorded it, when known. Read-only.
+          x-phi: none
+    VitalEntry:
+      description: 'One vital sign to record. Give `value`, or `bloodPressure` for `blood-pressure`. Units are UCUM, accepted
+        and stored **as entered** (D69): `body-weight` `kg`, `g` or `[lb_av]`; `body-height` and `head-circumference` `cm`
+        or `[in_i]`; `body-temperature` `Cel` or `[degF]`; `blood-pressure` `mm[Hg]`; `heart-rate` and `respiratory-rate`
+        `/min`; `oxygen-saturation` `%`; `bmi` `kg/m2`. Any other unit is `422`. Nothing is converted on save; screens convert
+        for display.'
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      properties:
+        type:
+          $ref: '#/components/schemas/VitalType'
+          description: Which vital sign.
+          x-phi: none
+        value:
+          $ref: ../components/schemas/Quantity.yaml
+          description: The value, in a unit allowed for this type.
+          x-phi: clinical
+        bloodPressure:
+          $ref: '#/components/schemas/BloodPressure'
+          description: For `blood-pressure` only.
+          x-phi: clinical
+    VitalsCreate:
+      description: Body to record vitals taken at one time. All entries are saved in one transaction, or none.
+      type: object
+      additionalProperties: false
+      required:
+      - entries
+      properties:
+        effectiveAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When they were measured. Defaults to now; never in the future.
+          x-phi: none
+        entries:
+          type: array
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/VitalEntry'
+          description: The vitals, at most one per type.
+          x-phi: clinical
+    VitalsRecorded:
+      description: The vitals just recorded.
+      type: object
+      required:
+      - vitals
+      properties:
+        vitals:
+          type: array
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/Vital'
+          description: One per entry, in the order sent.
+          x-phi: clinical
+    VitalList:
+      description: A patient's vital signs, newest first (the trend view, FRS FR-ENC-03). Entered-in-error vitals are left
+        out unless asked for.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Vital'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    NoteSummary:
+      description: A note on the encounter, without its text.
+      type: object
+      required:
+      - id
+      - noteType
+      - title
+      - status
+      - cosignStatus
+      - author
+      - aiAssisted
+      - updatedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Note ID.
+          x-phi: internal-id
+        noteType:
+          $ref: ../components/schemas/CodeableConcept.yaml
+          description: Note type, LOINC (e.g. 11506-3 progress note, 34746-8 nurse note).
+          x-phi: clinical
+        title:
+          type: string
+          maxLength: 300
+          description: Title.
+          x-phi: clinical
+        status:
+          $ref: '#/components/schemas/NoteStatus'
+          description: Draft, signed, amended or entered in error.
+          x-phi: none
+        cosignStatus:
+          $ref: '#/components/schemas/CosignStatus'
+          description: Co-signature state.
+          x-phi: none
+        author:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Author.
+          x-phi: none
+        aiAssisted:
+          type: boolean
+          description: True when any section came from an AI draft (D70).
+          x-phi: none
+        signedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was signed. Absent for a draft.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Last change.
+          x-phi: none
+    NoteStatus:
+      description: 'Note status, FHIR Composition codes (DATA_OWNERSHIP §5.3): `preliminary` (draft, editable), `final` (signed,
+        frozen), `amended` (signed, with addenda), `entered-in-error`.'
+      type: string
+      enum:
+      - preliminary
+      - final
+      - amended
+      - entered-in-error
+    CosignStatus:
+      description: 'Co-signature state (FRS FR-ENC-01): `not-required` (no co-sign rule matched the author when signing),
+        `pending` (waiting for the supervising physician), `returned` (the co-signer sent it back to the author with a comment;
+        the author answers with an addendum), `cosigned`. A draft is `not-required` until it is signed.'
+      type: string
+      enum:
+      - not-required
+      - pending
+      - returned
+      - cosigned
+    Encounter:
+      description: 'An encounter with its workspace data (inventory #63; FRS FR-ENC-01): its ranked diagnoses, its vitals
+        and a summary of its notes. Problems, allergies, history, medications and results come from their own endpoints, so
+        each owner''s data stays in one place.'
+      type: object
+      required:
+      - id
+      - patientId
+      - status
+      - class
+      - facilityId
+      - timeZone
+      - participants
+      - diagnoses
+      - vitals
+      - notes
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Encounter ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        status:
+          $ref: '#/components/schemas/EncounterStatus'
+          description: Status.
+          x-phi: none
+        class:
+          type: string
+          enum:
+          - AMB
+          - VR
+          description: 'FHIR encounter class: `AMB` ambulatory (office visit, documentation-only), `VR` virtual (telephone).
+            Set by the server.'
+          x-phi: none
+        types:
+          type: array
+          maxItems: 5
+          items:
+            $ref: ../components/schemas/CodeableConcept.yaml
+          description: 'Encounter type: the appointment type for a scheduled visit, `telephone` or `documentation-only` for
+            an unscheduled one.'
+          x-phi: clinical
+        reasons:
+          type: array
+          maxItems: 5
+          items:
+            $ref: ../components/schemas/CodeableConcept.yaml
+          description: Reason for the visit, coded or as text.
+          x-phi: clinical
+        appointmentId:
+          $ref: ../components/schemas/Id.yaml
+          description: The appointment it was checked in from. Absent for an unscheduled encounter.
+          x-phi: internal-id
+        facilityId:
+          $ref: ../components/schemas/Id.yaml
+          description: Facility.
+          x-phi: internal-id
+        locationId:
+          $ref: ../components/schemas/Id.yaml
+          description: Current room or site, when roomed.
+          x-phi: internal-id
+        timeZone:
+          type: string
+          maxLength: 64
+          pattern: ^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$
+          description: The facility's IANA time zone, for display (D40).
+          x-phi: none
+        startedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it started (check-in, or the unscheduled encounter's creation).
+          x-phi: none
+        endedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was closed. Absent until `finished`.
+          x-phi: none
+        participants:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/EncounterParticipant'
+          description: Clinicians on the encounter.
+          x-phi: none
+        diagnoses:
+          type: array
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/EncounterDiagnosis'
+          description: Ranked diagnoses, rank 1 first. Entered-in-error ones are left out.
+          x-phi: clinical
+        vitals:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Vital'
+          description: Vitals taken in this encounter, newest first. Entered-in-error ones are left out.
+          x-phi: clinical
+        notes:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/NoteSummary'
+          description: Notes on this encounter, newest first, including drafts and entered-in-error ones (marked).
+          x-phi: clinical
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Created.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Last change.
+          x-phi: none
+    EncounterCreate:
+      description: 'Body to open an unscheduled encounter (inventory #62; D16): a telephone encounter (class `VR`) or a documentation-only
+        one (class `AMB`). Scheduled visits start at check-in instead. The caller becomes the rendering clinician unless `participants`
+        says otherwise.'
+      type: object
+      additionalProperties: false
+      required:
+      - patientId
+      - unscheduledType
+      - facilityId
+      properties:
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        unscheduledType:
+          type: string
+          enum:
+          - telephone
+          - documentation-only
+          description: Kind of unscheduled encounter.
+          x-phi: none
+        facilityId:
+          $ref: ../components/schemas/Id.yaml
+          description: Facility; one of the user's facilities.
+          x-phi: internal-id
+        reasons:
+          type: array
+          maxItems: 5
+          items:
+            $ref: ../components/schemas/CodeableConcept.yaml
+          description: Reason, coded or as text.
+          x-phi: clinical
+        participants:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/EncounterParticipant'
+          description: Clinicians. Defaults to the caller as `rendering`.
+          x-phi: none
+    EncounterPatch:
+      description: 'JSON Merge Patch for an encounter that is not `finished` or `entered-in-error`: reasons, room and participants.
+        Status changes only through actions (DATA_OWNERSHIP §5).'
+      type: object
+      additionalProperties: false
+      properties:
+        reasons:
+          oneOf:
+          - type: array
+            maxItems: 5
+            items:
+              $ref: ../components/schemas/CodeableConcept.yaml
+          - type: 'null'
+          description: Reason, coded or as text. Send `null` to clear it.
+          x-phi: clinical
+        locationId:
+          oneOf:
+          - $ref: ../components/schemas/Id.yaml
+          - type: 'null'
+          description: Room or site. Send `null` to clear it.
+          x-phi: internal-id
+        participants:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/EncounterParticipant'
+          description: Clinicians; replaces the list. At most one `rendering` and one `supervising`.
+          x-phi: none
+    EncounterSummary:
+      description: An encounter in a patient's list.
+      type: object
+      required:
+      - id
+      - status
+      - class
+      - facilityId
+      - startedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Encounter ID.
+          x-phi: internal-id
+        status:
+          $ref: '#/components/schemas/EncounterStatus'
+          description: Status.
+          x-phi: none
+        class:
+          type: string
+          enum:
+          - AMB
+          - VR
+          description: Encounter class.
+          x-phi: none
+        types:
+          type: array
+          maxItems: 5
+          items:
+            $ref: ../components/schemas/CodeableConcept.yaml
+          description: Encounter type.
+          x-phi: clinical
+        facilityId:
+          $ref: ../components/schemas/Id.yaml
+          description: Facility.
+          x-phi: internal-id
+        renderingProvider:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Rendering clinician.
+          x-phi: none
+        startedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Start.
+          x-phi: none
+        endedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: End, once closed.
+          x-phi: none
+    EncounterList:
+      description: 'A patient''s encounters, newest first (inventory #65).'
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/EncounterSummary'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    EncounterEnteredInError:
+      description: Body to mark an encounter entered in error (D14). The reason is stored in the Provenance record, never
+        in a log.
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 1
+          description: Why the record is wrong, e.g. "Recorded on the wrong patient." Required; shown in the audit trail.
+          x-phi: clinical
+    DiagnosisCreate:
+      description: 'Body to add a diagnosis to an encounter that is not signed, closed or entered in error (inventory #71).'
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      properties:
+        code:
+          $ref: ../components/schemas/Coding.yaml
+          description: ICD-10-CM code; `system` must be `http://hl7.org/fhir/sid/icd-10-cm`. A non-billable (header) code
+            is `422`.
+          x-phi: clinical
+        additionalCodings:
+          type: array
+          maxItems: 5
+          items:
+            $ref: ../components/schemas/Coding.yaml
+          description: Other codings, e.g. SNOMED CT.
+          x-phi: clinical
+        rank:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 12
+          description: Order on the claim. Defaults to the next free rank; a taken rank moves the others down.
+          x-phi: none
+        verificationStatus:
+          type: string
+          enum:
+          - confirmed
+          - provisional
+          - differential
+          description: Defaults to `confirmed`.
+          x-phi: clinical
+        onsetDate:
+          $ref: ../components/schemas/PartialDate.yaml
+          description: When it started, as far as known.
+          x-phi: clinical
+    DiagnosisRemove:
+      description: 'Body to remove a diagnosis before the encounter is signed (inventory #72; D24). The diagnosis becomes
+        entered-in-error with this reason in its Provenance, and its rank is freed.'
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 1
+          description: Why it is removed, e.g. "Added to the wrong encounter."
+          x-phi: clinical
+    DiagnosisEnteredInError:
+      description: Body to mark a diagnosis on a signed encounter entered in error (D14). The reason is stored in the Provenance
+        record, never in a log.
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 1
+          description: Why the record is wrong, e.g. "Recorded on the wrong patient." Required; shown in the audit trail.
+          x-phi: clinical
+    CodeSystem:
+      description: 'Code system to search (#74): `icd-10-cm`, `snomed-ct`, `loinc`, `rxnorm` (drug search), `cpt` (placeholder
+        codes until the AMA license, Q7), `hcpcs`, `cvx`.'
+      type: string
+      enum:
+      - icd-10-cm
+      - snomed-ct
+      - loinc
+      - rxnorm
+      - cpt
+      - hcpcs
+      - cvx
+    CodeMatch:
+      description: A code that matches the search.
+      type: object
+      required:
+      - system
+      - code
+      - display
+      properties:
+        system:
+          type: string
+          maxLength: 255
+          format: uri
+          description: Canonical URI of the code system.
+          x-phi: none
+        code:
+          type: string
+          maxLength: 64
+          description: The code.
+          x-phi: none
+        display:
+          type: string
+          maxLength: 500
+          description: Display text.
+          x-phi: none
+        billable:
+          type: boolean
+          description: 'ICD-10-CM only: true for a billable (leaf) code.'
+          x-phi: none
+    CodeMatchList:
+      description: Matching codes, best match first. Reference data, not patient data.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/CodeMatch'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    NoteSection:
+      description: 'One section of a note, from the template (FRS FR-ENC-01, FR-ENC-04). LOINC section codes: 10154-3 chief
+        complaint, 10164-2 history of present illness, 10187-3 review of systems, 29545-1 physical exam, 51847-2 assessment
+        and plan, 69730-0 patient instructions (printed on the after-visit summary), 18776-5 plan of care.'
+      type: object
+      required:
+      - id
+      - code
+      - title
+      - sequence
+      - required
+      - text
+      - entrySource
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Section ID.
+          x-phi: internal-id
+        code:
+          type: string
+          maxLength: 20
+          description: LOINC section code.
+          x-phi: none
+        title:
+          type: string
+          maxLength: 200
+          description: Section title.
+          x-phi: none
+        sequence:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+          description: Order in the note.
+          x-phi: none
+        required:
+          type: boolean
+          description: The template requires it before signing.
+          x-phi: none
+        text:
+          type: string
+          maxLength: 50000
+          description: Section text. Empty while not written.
+          x-phi: clinical
+        entrySource:
+          type: string
+          enum:
+          - clinician
+          - ai-generated
+          - imported
+          description: '`ai-generated` when the text came from an AI draft (D70). Read-only.'
+          x-phi: none
+        aiSuggestionId:
+          $ref: ../components/schemas/Id.yaml
+          description: The AI suggestion behind the text, for AI-drafted sections. Read-only.
+          x-phi: internal-id
+        aiDecision:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - edited
+          - rejected
+          description: The clinician's decision on the AI text (D70). The note cannot be signed while any section is `pending`
+            (FRS §3.4, §8). Read-only; decided through the AI decision endpoint (batch 7).
+          x-phi: none
+    NoteAddendum:
+      description: 'An addendum to a signed note: a new Composition that `appends` to the original, signed when it is added
+        (DATA_OWNERSHIP §5.3). The original is never edited.'
+      type: object
+      required:
+      - id
+      - text
+      - author
+      - signedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Addendum ID.
+          x-phi: internal-id
+        text:
+          type: string
+          maxLength: 20000
+          description: Addendum text.
+          x-phi: clinical
+        author:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Author.
+          x-phi: none
+        signedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was added and signed.
+          x-phi: none
+    CosignReturn:
+      description: 'The co-signer sent the note back to its author (`cosignStatus: returned`). The note stays signed; the
+        author answers with an addendum, which makes it `pending` again.'
+      type: object
+      required:
+      - comment
+      - returnedAt
+      - returnedBy
+      properties:
+        comment:
+          type: string
+          maxLength: 2000
+          description: What the co-signer wants changed.
+          x-phi: clinical
+        returnedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was returned.
+          x-phi: none
+        returnedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: The co-signer.
+          x-phi: none
+    Note:
+      description: 'A clinical note: a FHIR Composition (D8; DATA_OWNERSHIP §5.3). A draft (`preliminary`) is edited with
+        `If-Match`; signing locks it and writes its Provenance in the same transaction; every version is kept (#82). The signed
+        note row is the legal record.'
+      type: object
+      required:
+      - id
+      - encounterId
+      - patientId
+      - noteType
+      - title
+      - status
+      - cosignStatus
+      - author
+      - aiAssisted
+      - sections
+      - addenda
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Note ID.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The encounter.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        noteType:
+          $ref: ../components/schemas/CodeableConcept.yaml
+          description: Note type, LOINC (e.g. 11506-3 progress note, 34746-8 nurse note, 34748-4 telephone encounter note).
+          x-phi: clinical
+        title:
+          type: string
+          maxLength: 300
+          description: Title.
+          x-phi: clinical
+        status:
+          $ref: '#/components/schemas/NoteStatus'
+          description: Status.
+          x-phi: none
+        cosignStatus:
+          $ref: '#/components/schemas/CosignStatus'
+          description: Co-signature state.
+          x-phi: none
+        cosigner:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: The supervising physician named by the matching co-sign rule, when a co-signature is needed.
+          x-phi: none
+        templateId:
+          $ref: ../components/schemas/Id.yaml
+          description: The template it started from (`/note-templates`).
+          x-phi: internal-id
+        author:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Author.
+          x-phi: none
+        aiAssisted:
+          type: boolean
+          description: True when any section came from an AI draft (D70).
+          x-phi: none
+        sections:
+          type: array
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/NoteSection'
+          description: Sections, in order.
+          x-phi: clinical
+        addenda:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/NoteAddendum'
+          description: Addenda, oldest first.
+          x-phi: clinical
+        signedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was signed.
+          x-phi: none
+        signedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who signed it (the author).
+          x-phi: none
+        cosignedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was co-signed.
+          x-phi: none
+        cosignedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who co-signed it.
+          x-phi: none
+        cosignReturn:
+          $ref: '#/components/schemas/CosignReturn'
+          description: Present while `cosignStatus` is `returned`.
+          x-phi: clinical
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Created.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Last change.
+          x-phi: none
+    NoteCreate:
+      description: 'Body to start a note on an encounter (inventory #75). Give `templateId`, or `noteType` for a note without
+        a template (one free-text section). The encounter moves to `in-progress` if it was earlier.'
+      type: object
+      additionalProperties: false
+      properties:
+        templateId:
+          $ref: ../components/schemas/Id.yaml
+          description: A practice or personal note template (`/note-templates`); its sections are copied in, with their default
+            text.
+          x-phi: internal-id
+        noteType:
+          $ref: ../components/schemas/CodeableConcept.yaml
+          description: Note type, LOINC. Required without `templateId`; otherwise taken from the template.
+          x-phi: clinical
+        title:
+          type: string
+          maxLength: 300
+          description: Title. Defaults to the template's or the note type's name.
+          x-phi: clinical
+    NoteSectionText:
+      description: New text for one section.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - text
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Section ID.
+          x-phi: internal-id
+        text:
+          type: string
+          maxLength: 50000
+          description: Section text.
+          x-phi: clinical
+    NotePatch:
+      description: 'JSON Merge Patch for a draft, used by autosave (inventory #78). `sections` lists the sections whose text
+        changes; others stay as they are (the one place an array is merged by `id` rather than replaced, because sections
+        are fixed by the template). Editing an AI-drafted section records the edit for the AI decision (D70).'
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          maxLength: 300
+          description: Title.
+          x-phi: clinical
+        sections:
+          type: array
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/NoteSectionText'
+          description: Changed sections, by `id`.
+          x-phi: clinical
+    AddendumCreate:
+      description: 'Body to add an addendum to a signed note (inventory #80).'
+      type: object
+      additionalProperties: false
+      required:
+      - text
+      properties:
+        text:
+          type: string
+          maxLength: 20000
+          minLength: 1
+          description: Addendum text.
+          x-phi: clinical
+    CosignDecision:
+      description: 'Body for the supervising physician''s decision (inventory #81): `cosign`, or `return` to the author with
+        a comment (Minalini''s later-batch item, approved in the batch 2 plan).'
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      properties:
+        decision:
+          type: string
+          enum:
+          - cosign
+          - return
+          description: Co-sign, or return to the author.
+          x-phi: none
+        comment:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          description: 'Required with `return`: what should change.'
+          x-phi: clinical
+    NoteEnteredInError:
+      description: Body to mark a note entered in error (D14). The reason is stored in the Provenance record, never in a log.
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 1
+          description: Why the record is wrong, e.g. "Recorded on the wrong patient." Required; shown in the audit trail.
+          x-phi: clinical
+    NoteList:
+      description: 'The notes on an encounter, newest first (inventory #76).'
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/NoteSummary'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    NoteVersionSection:
+      description: A section as it was in this version.
+      type: object
+      required:
+      - code
+      - title
+      - text
+      properties:
+        code:
+          type: string
+          maxLength: 20
+          description: LOINC section code.
+          x-phi: none
+        title:
+          type: string
+          maxLength: 200
+          description: Section title.
+          x-phi: none
+        text:
+          type: string
+          maxLength: 50000
+          description: Section text in this version.
+          x-phi: clinical
+    NoteVersion:
+      description: One saved version of a note, from `_history` (read-only; D8). Every committed autosave of a draft is a
+        version; signing and each addendum add one.
+      type: object
+      required:
+      - versionId
+      - recordedAt
+      - status
+      - cosignStatus
+      - title
+      - sections
+      properties:
+        versionId:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 1000000
+          description: Version number, 1 first.
+          x-phi: none
+        recordedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When this version was saved.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who saved it.
+          x-phi: none
+        status:
+          $ref: '#/components/schemas/NoteStatus'
+          description: Status in this version.
+          x-phi: none
+        cosignStatus:
+          $ref: '#/components/schemas/CosignStatus'
+          description: Co-signature state in this version.
+          x-phi: none
+        title:
+          type: string
+          maxLength: 300
+          description: Title in this version.
+          x-phi: clinical
+        sections:
+          type: array
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/NoteVersionSection'
+          description: Sections in this version.
+          x-phi: clinical
+    NoteVersionList:
+      description: 'A note''s versions, newest first (inventory #82).'
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/NoteVersion'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    Favorite:
+      description: 'One favorite (FRS FR-ENC-04): a note template, a diagnosis code, an order (a lab compendium test), an
+        order set, a prescription favorite or a text phrase. Give `targetId` for every kind except `diagnosis`, which gives
+        `diagnosis`.'
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      properties:
+        kind:
+          type: string
+          enum:
+          - note-template
+          - diagnosis
+          - order
+          - order-set
+          - prescription
+          - phrase
+          description: What it points at.
+          x-phi: none
+        targetId:
+          $ref: ../components/schemas/Id.yaml
+          description: The template, compendium test, order set, prescription favorite or phrase.
+          x-phi: internal-id
+        diagnosis:
+          $ref: ../components/schemas/Coding.yaml
+          description: 'For `diagnosis`: an ICD-10-CM code.'
+          x-phi: none
+        label:
+          type: string
+          maxLength: 200
+          description: Name to show, e.g. the template name. Read-only on GET; ignored on PUT.
+          x-phi: none
+    Favorites:
+      description: 'The current user''s favorites, in their order (inventory #84). Personal settings, not patient data.'
+      type: object
+      required:
+      - favorites
+      properties:
+        favorites:
+          type: array
+          maxItems: 300
+          items:
+            $ref: '#/components/schemas/Favorite'
+          description: Favorites, in order within each kind.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Last change.
+          x-phi: none
+    FavoritesUpdate:
+      description: 'Body to replace the current user''s favorites (inventory #85). The whole list is replaced; the order within
+        each kind is the order sent.'
+      type: object
+      additionalProperties: false
+      required:
+      - favorites
+      properties:
+        favorites:
+          type: array
+          maxItems: 300
+          items:
+            $ref: '#/components/schemas/Favorite'
+          description: All favorites.
+          x-phi: none
+    AfterVisitSummaryRequest:
+      description: 'Body to generate the after-visit summary (inventory #86; FRS FR-ENC-06).'
+      type: object
+      additionalProperties: false
+      properties:
+        noteId:
+          $ref: ../components/schemas/Id.yaml
+          description: The signed note to build it from. Defaults to the encounter's latest signed note.
+          x-phi: internal-id
+    CosignRule:
+      description: 'A co-signature rule (FRS FR-ENC-01 [v1.2]): notes, prescriptions or orders by the supervisee (an NP or
+        PA) need the supervising physician''s co-signature, optionally only in one state, within a number of days. A rule
+        ends by setting `effectiveTo`; nothing is deleted.'
+      type: object
+      required:
+      - id
+      - superviseeProviderId
+      - supervisingProviderId
+      - appliesToNotes
+      - appliesToPrescriptions
+      - appliesToOrders
+      - effectiveFrom
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Rule ID.
+          x-phi: internal-id
+        superviseeProviderId:
+          $ref: ../components/schemas/Id.yaml
+          description: The NP or PA whose work needs co-signing.
+          x-phi: internal-id
+        supervisingProviderId:
+          $ref: ../components/schemas/Id.yaml
+          description: The supervising physician who co-signs.
+          x-phi: internal-id
+        state:
+          type: string
+          maxLength: 2
+          pattern: ^[A-Z]{2}$
+          description: U.S. state (USPS code) where the rule applies; absent for every state.
+          x-phi: none
+        appliesToNotes:
+          type: boolean
+          description: Notes need co-signing.
+          x-phi: none
+        appliesToPrescriptions:
+          type: boolean
+          description: Prescriptions need co-signing (medications batch).
+          x-phi: none
+        appliesToOrders:
+          type: boolean
+          description: Orders need co-signing (orders batch).
+          x-phi: none
+        cosignWithinDays:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 90
+          description: Days allowed for the co-signature; the inbox escalates after that. Absent for no limit.
+          x-phi: none
+        effectiveFrom:
+          $ref: ../components/schemas/Date.yaml
+          description: First day the rule applies.
+          x-phi: none
+        effectiveTo:
+          $ref: ../components/schemas/Date.yaml
+          description: Last day; absent while it applies.
+          x-phi: none
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Created.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Last change.
+          x-phi: none
+    CosignRuleCreate:
+      description: Body to add a co-signature rule. At least one `appliesTo…` must be true; the two providers must differ.
+      type: object
+      additionalProperties: false
+      required:
+      - superviseeProviderId
+      - supervisingProviderId
+      - effectiveFrom
+      properties:
+        superviseeProviderId:
+          $ref: ../components/schemas/Id.yaml
+          description: The NP or PA.
+          x-phi: internal-id
+        supervisingProviderId:
+          $ref: ../components/schemas/Id.yaml
+          description: The supervising physician.
+          x-phi: internal-id
+        state:
+          type: string
+          maxLength: 2
+          pattern: ^[A-Z]{2}$
+          description: U.S. state, or absent for every state.
+          x-phi: none
+        appliesToNotes:
+          type: boolean
+          default: true
+          description: Notes need co-signing.
+          x-phi: none
+        appliesToPrescriptions:
+          type: boolean
+          default: false
+          description: Prescriptions need co-signing.
+          x-phi: none
+        appliesToOrders:
+          type: boolean
+          default: false
+          description: Orders need co-signing.
+          x-phi: none
+        cosignWithinDays:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 90
+          description: Days allowed for the co-signature.
+          x-phi: none
+        effectiveFrom:
+          $ref: ../components/schemas/Date.yaml
+          description: First day.
+          x-phi: none
+        effectiveTo:
+          $ref: ../components/schemas/Date.yaml
+          description: Last day, if known.
+          x-phi: none
+    CosignRulePatch:
+      description: JSON Merge Patch for a co-signature rule. The supervisee cannot change; end the rule and add a new one
+        instead.
+      type: object
+      additionalProperties: false
+      properties:
+        supervisingProviderId:
+          $ref: ../components/schemas/Id.yaml
+          description: The supervising physician.
+          x-phi: internal-id
+        appliesToNotes:
+          type: boolean
+          description: Notes need co-signing.
+          x-phi: none
+        appliesToPrescriptions:
+          type: boolean
+          description: Prescriptions need co-signing.
+          x-phi: none
+        appliesToOrders:
+          type: boolean
+          description: Orders need co-signing.
+          x-phi: none
+        cosignWithinDays:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 1
+          maximum: 90
+          description: Days allowed for the co-signature. Send `null` to clear it.
+          x-phi: none
+        effectiveTo:
+          oneOf:
+          - $ref: ../components/schemas/Date.yaml
+          - type: 'null'
+          description: Last day. Set it to end the rule. Send `null` to clear it.
+          x-phi: none
+    CosignRuleList:
+      description: 'Co-signature rules (inventory #87).'
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CosignRule'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
