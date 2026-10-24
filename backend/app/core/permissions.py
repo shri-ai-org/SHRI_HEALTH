@@ -37,9 +37,11 @@ CATALOGUE: frozenset[str] = _expand(
     "patients:search|read|create|update|restrict",
     "coverages:read|create|update|entered-in-error",  # entered-in-error: D45 (T40)
     "consents:read|create", "timeline:read", "duplicates:read|merge|dismiss",  # dismiss: D46
-    "patient-merges:undo",
+    "patient-merges:read|undo",  # read: D51 (T41)
     # Scheduling, eligibility (Vimal)
-    "slots:read", "appointments:read|create|update|cancel|check-in|status", "status-board:read",
+    "slots:read", "status-board:read",
+    "appointments:read|create|update|cancel|check-in|undo-check-in|reschedule|status",  # D55, D61
+    "scheduling-reference:read",  # booking reference lists (D49, T41)
     "eligibility-checks:read|create",
     # Encounters and notes (Vimal)
     "encounters:read|create|update|close|entered-in-error", "vitals:read|create|entered-in-error",
@@ -69,6 +71,8 @@ CATALOGUE: frozenset[str] = _expand(
     # practice-setup:*.
     "payers:read",
     "lab-providers:read",  # lab providers, read-only (D48, T40)
+    "consent-requirements:read",  # D59 (T41); writing them stays under practice-setup:*
+    "provider-schedules:create|update",  # schedule blocks, split from practice-setup:* (D66, T41)
     "superbills:read|update", "claims:read|create|scrub|submit|status-check|correct|void",
     "payments:create|card-session", "remittances:read|post", "billing-reports:read",
     "documents:read|create|update", "faxes:create", "fax-inbox:read|file", "ccda:import|export",
@@ -81,6 +85,12 @@ CATALOGUE: frozenset[str] = _expand(
 # Reusable groups from the matrix rows.
 _PATIENT_LOOKUP = _expand("patients:search|read")
 _SCHEDULE_READ = _expand("slots:read", "appointments:read", "status-board:read")
+_BOOKING_REFERENCE = _expand("scheduling-reference:read")  # FD, MA, RN, MD, APP, BIL (D49)
+# D55, D61, D66: front desk and practice admin run the schedule; clinicians are read-only (D67).
+_SCHEDULE_DESK = _expand(
+    "appointments:create|update|cancel|check-in|undo-check-in|reschedule",
+    "provider-schedules:create|update", "consent-requirements:read",
+)
 _CHART_READ = _expand(
     "timeline:read", "encounters:read", "notes:read", "vitals:read", "problems:read",
     "allergies:read", "family-history:read", "social-history:read", "surgical-history:read",
@@ -121,7 +131,8 @@ _AI_CLINICAL = _expand("encounter-audio:create", "transcriptions:read|create",
 _ROOMING = _expand("vitals:create", "allergies:create|update", "appointments:status")
 
 _MD = frozenset().union(
-    _PATIENT_LOOKUP, _SCHEDULE_READ, _CHART_READ, _CLINICIAN_WRITE, _ROOMING, _AI_CLINICAL,
+    _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _CHART_READ, _CLINICIAN_WRITE,
+    _ROOMING, _AI_CLINICAL,
     _CLINICAL_ENTERED_IN_ERROR, _MED_READ, _RX_DRAFT, _RX_PRESCRIBE, _ORDER_DRAFT, _ORDER_SIGN,
     _UNMATCHED, _DOCUMENTS, _INBOX, _COMMS, _FILES,
     _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
@@ -133,25 +144,29 @@ _MD = frozenset().union(
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     # Front desk
     "FD": frozenset().union(
-        _PATIENT_LOOKUP, _SCHEDULE_READ, _DOCUMENTS, _INBOX, _COMMS, _FILES,
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _SCHEDULE_DESK, _DOCUMENTS,
+        _INBOX, _COMMS, _FILES,
+        # No duplicates:read (D64): duplicate review is in the admin portal; the front desk only
+        # sees the 409 possible-duplicate warning when registering.
         _expand("patients:create|update", "coverages:read|create|update|entered-in-error",
-                "payers:read",
-                "eligibility-checks:read|create", "consents:read|create", "duplicates:read",
-                "appointments:create|update|cancel|check-in|status", "codes:read",
+                "payers:read", "pharmacies:read",
+                "eligibility-checks:read|create", "consents:read|create",
+                "appointments:status", "codes:read",
                 "payments:create|card-session", "ccda:import|export",
                 "operations-dashboard:read"),
     ),
     # Medical assistant (rooming). Orders: point-of-care results only, as in §4.3; no order entry.
     "MA": frozenset().union(
-        _PATIENT_LOOKUP, _SCHEDULE_READ, _CHART_READ, _ROOMING, _MED_READ, _ORDER_READ,
-        _DOCUMENTS, _INBOX, _COMMS, _FILES,
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _CHART_READ, _ROOMING, _MED_READ,
+        _ORDER_READ, _DOCUMENTS, _INBOX, _COMMS, _FILES,
         _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
                 "codes:read", "medication-reconciliations:create", "medications:create",
                 "medication-history:fetch", "in-office-results:create", "patients:break-glass"),
     ),
     # Nurse
     "RN": frozenset().union(
-        _PATIENT_LOOKUP, _SCHEDULE_READ, _CHART_READ, _ROOMING, _CLINICAL_ENTERED_IN_ERROR,
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _CHART_READ, _ROOMING,
+        _CLINICAL_ENTERED_IN_ERROR,
         _MED_READ, _RX_DRAFT, _ORDER_DRAFT, _UNMATCHED, _DOCUMENTS, _INBOX, _COMMS, _FILES,
         _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
                 "notes:create|update", "codes:read", "favorites:read|update",
@@ -163,7 +178,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "APP": _MD - _expand("notes:cosign") - _UNMATCHED,
     # Biller: edits coverage, not demographics (T14)
     "BIL": frozenset().union(
-        _PATIENT_LOOKUP, _SCHEDULE_READ, _INBOX,
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _INBOX,
         _expand("coverages:read|create|update|entered-in-error", "payers:read",
                 "eligibility-checks:read|create",
                 "consents:read", "encounters:read", "notes:read", "codes:read",
@@ -175,12 +190,12 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     ),
     # Practice administrator: no clinical access by default
     "ADM": frozenset().union(
-        _PATIENT_LOOKUP, _SCHEDULE_READ, _INBOX, _COMMS,
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _SCHEDULE_DESK, _INBOX, _COMMS,
         _expand("patients:create|update|restrict",
                 "coverages:read|create|update|entered-in-error",
                 "eligibility-checks:read|create", "consents:read|create",
-                "duplicates:read|merge|dismiss", "patient-merges:undo", "lab-providers:read",
-                "appointments:create|update|cancel|check-in", "encounters:entered-in-error",
+                "duplicates:read|merge|dismiss", "patient-merges:read|undo",
+                "lab-providers:read", "encounters:entered-in-error",
                 "codes:read", "ai-settings:read|update", "cosign-rules:read|create|update",
                 "practice-setup:read|create|update", "payers:read", "onboarding:import",
                 "message-templates:read|create|update", "users:read|create|update",
@@ -194,7 +209,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     # Compliance / privacy officer
     "CO": frozenset().union(
         _PATIENT_LOOKUP, _CHART_READ,
-        _expand("patients:restrict", "consents:read", "duplicates:read", "ai-settings:read",
+        _expand("patients:restrict", "consents:read", "duplicates:read", "patient-merges:read",
+                "consent-requirements:read", "ai-settings:read",
                 "cosign-rules:read", "practice-setup:read", "lab-providers:read",
                 "message-templates:read",
                 "users:read", "roles:read", "exports:read|create", "audit-events:read",
