@@ -94,6 +94,33 @@ def test_support_staff_get_no_phi() -> None:
         ("CO", "lab-providers:read", True),
         ("FD", "lab-providers:read", False),
         ("BIL", "lab-providers:read", False),
+        # T41 (SECURITY_MODEL §4.3 on #20, D49–D67)
+        ("FD", "duplicates:read", False),  # D64: admin portal only
+        ("ADM", "duplicates:read", True),
+        ("ADM", "patient-merges:read", True),
+        ("CO", "patient-merges:read", True),  # "R" in the duplicates row
+        ("FD", "patient-merges:read", False),
+        ("FD", "scheduling-reference:read", True),
+        ("MA", "scheduling-reference:read", True),
+        ("RN", "scheduling-reference:read", True),
+        ("MD", "scheduling-reference:read", True),
+        ("APP", "scheduling-reference:read", True),
+        ("BIL", "scheduling-reference:read", True),
+        ("ADM", "scheduling-reference:read", False),
+        ("FD", "pharmacies:read", True),
+        ("MA", "pharmacies:read", True),
+        ("BIL", "pharmacies:read", False),
+        ("FD", "appointments:undo-check-in", True),
+        ("ADM", "appointments:reschedule", True),
+        ("MD", "appointments:reschedule", False),  # D67: clinicians read-only on appointments
+        ("MD", "appointments:create", False),
+        ("FD", "consent-requirements:read", True),
+        ("ADM", "consent-requirements:read", True),
+        ("CO", "consent-requirements:read", True),  # "R" in §4.3
+        ("MA", "consent-requirements:read", False),
+        ("FD", "provider-schedules:update", True),
+        ("ADM", "provider-schedules:create", True),
+        ("RN", "provider-schedules:update", False),
     ],
 )
 def test_matrix_rows(role: str, permission: str, allowed: bool) -> None:
