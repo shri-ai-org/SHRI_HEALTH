@@ -1,21 +1,38 @@
-"""Alembic environment. Migrations run as shri_migrator (table owner), never as shri_app."""
+"""Alembic environment. Migrations run as shri_migrator (table owner), never as shri_app.
+
+The connection comes from the core's settings (app/core/config.py): MIGRATION_DATABASE_URL,
+the one URL per service role that D23 reserves for shri_migrator. Migrations are synchronous,
+so the driver is always psycopg v3 whatever driver name the configured URL carries (agreed
+with Thulasi, 2026-10-24).
+"""
 from __future__ import annotations
 
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import create_engine, pool
+from sqlalchemy.engine import make_url
 
 import app.db.models  # noqa: F401  (registers tables + generated constraints)
+from app.core.config import get_settings
 from app.db.base import Base
 
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
-URL = os.environ.get("SHRI_MIGRATION_DATABASE_URL",
-                     "postgresql+psycopg://shri_migrator@localhost:5432/shri_health")
+SYNC_DRIVER = "postgresql+psycopg"
+
+
+def migration_url() -> str:
+    secret = get_settings().migration_database_url
+    if secret is None:
+        raise RuntimeError("MIGRATION_DATABASE_URL is not configured (the shri_migrator login)")
+    url = make_url(secret.get_secret_value())
+    return url.set(drivername=SYNC_DRIVER).render_as_string(hide_password=False)
+
+
+URL = migration_url()
 target_metadata = Base.metadata
 
 
