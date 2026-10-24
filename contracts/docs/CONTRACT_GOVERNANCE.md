@@ -10,7 +10,7 @@ Fixed by source documents:
 - Module owners approve the contract sections they implement (`x-owner`); Vimal approves standards conformance for all (VD-SIGN).
 - CI checks: Spectral lint, oasdiff breaking-change check against `main`, generated client up to date, Schemathesis against the running API (TW §4).
 - Small pull requests (aim under about 400 changed lines), merged at least daily, branch names `<name>/<short-task>` (TW §3).
-- Branch protection is not available on the organization's current GitHub plan for private repositories, so "PR only" and "code-owner review required" are kept by agreement until it is (ADR-0001). The approval and label rules below are therefore also kept by agreement until then.
+- Branch protection is not available on the organization's current GitHub plan for private repositories, so "PR only" and "code-owner review required" are kept by agreement until it is (ADR-0001). The approval and label rules below are therefore also kept by agreement until then, with the team's merge rule (DECISIONS D74): every requested file owner has approved the PR's latest commit, and CI is green.
 
 ## 1. Roles
 

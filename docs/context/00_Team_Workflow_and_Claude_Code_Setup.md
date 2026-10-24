@@ -5,7 +5,7 @@ Read this first. It sets up one repository where Vimal, Thulasi, Anand and Minal
 ## 1. The short version
 
 - **One GitHub repository (monorepo)** holds everything: API contracts, backend, AI, frontend, infrastructure.
-- **Every folder has one owner.** GitHub enforces this with `CODEOWNERS`: nobody can merge a change to your folder without your approval.
+- **Every folder has one owner,** listed in `CODEOWNERS`, which asks that owner to review every change to their folder. On GitHub Free nothing stops a merge without that review, so we keep the rule by agreement (DECISIONS D74): merge only after every requested file owner has approved the latest commit and CI is green.
 - **Contracts first.** Every endpoint is defined in the OpenAPI file before anyone builds it. Screens use a client generated from that file, so a breaking API change fails the build instead of failing silently.
 - **Small changes, merged every day.** Long-lived branches are where teams drift apart.
 - **Everyone sees changes as they happen** through GitHub notifications in Slack and a staging server that redeploys on every merge.
