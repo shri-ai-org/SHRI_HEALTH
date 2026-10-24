@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, apiFetch, etagOf, ifMatch, newIdempotencyKey, onUserRequest, setCsrfToken } from './client'
+import { ApiError, apiFetch, etagOf, ifMatch, newIdempotencyKey, onUnauthenticated, onUserRequest, setCsrfToken } from './client'
 
 type Call = { url: string; init: RequestInit }
 
@@ -69,6 +69,43 @@ describe('apiFetch', () => {
     expect((error as ApiError).code).toBe('precondition-failed')
     expect((error as ApiError).status).toBe(412)
     expect(header(calls[0]!, 'If-Match')).toBe('"v3"')
+  })
+
+  it('keeps the response headers on ApiError, e.g. Retry-After on 429', async () => {
+    mockFetch(json(429, problem(429, 'rate-limited'), { 'Retry-After': '30' }))
+    const error = (await apiFetch('/pharmacies').catch((e: unknown) => e)) as ApiError
+    expect(error.code).toBe('rate-limited')
+    expect(error.headers.get('Retry-After')).toBe('30')
+    expect(error.retryAfterSeconds()).toBe(30)
+  })
+
+  it('reads Retry-After as an HTTP date too, and the current ETag from a 412', async () => {
+    const now = Date.parse('2026-11-03T15:00:00Z')
+    mockFetch(json(503, problem(503, 'service-unavailable'), { 'Retry-After': 'Tue, 03 Nov 2026 15:01:00 GMT' }))
+    const unavailable = (await apiFetch('/pharmacies').catch((e: unknown) => e)) as ApiError
+    expect(unavailable.retryAfterSeconds(now)).toBe(60)
+
+    setCsrfToken('t')
+    mockFetch(json(412, problem(412, 'precondition-failed'), { ETag: '"v5"' }))
+    const changed = (await apiFetch('/patients/p1', { method: 'PATCH', headers: ifMatch('"v3"') }).catch((e: unknown) => e)) as ApiError
+    expect(changed.headers.get('ETag')).toBe('"v5"')
+    expect(changed.retryAfterSeconds()).toBeNull()
+  })
+
+  it('maps a non-Problem error to the catalogue code for its status', async () => {
+    mockFetch(new Response('Not here', { status: 404, headers: { 'Content-Type': 'text/plain' } }))
+    const error = (await apiFetch('/pharmacies').catch((e: unknown) => e)) as ApiError
+    expect(error.code).toBe('not-found')
+  })
+
+  it('tells the session layer about a 401 from any call, but not from its own session calls', async () => {
+    const ended = vi.fn()
+    const stop = onUnauthenticated(ended)
+    mockFetch(json(401, problem(401, 'session-expired')), json(401, problem(401, 'unauthenticated')))
+    await apiFetch('/events/poll', { background: true }).catch(() => {})
+    await apiFetch('/auth/session').catch(() => {})
+    expect(ended).toHaveBeenCalledTimes(1)
+    stop()
   })
 
   it('turns a non-Problem error body into a Problem with a safe code', async () => {

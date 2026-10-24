@@ -7,7 +7,10 @@
  * - `ETag` comes back in `headers`; send it as `If-Match` with `ifMatch()` (API_STANDARDS §11).
  * - `Idempotency-Key`: make one with `newIdempotencyKey()` when the user acts, and reuse it when
  *   that same action is retried (API_STANDARDS §10). The wrapper never invents one.
- * - A non-2xx response throws `ApiError` carrying the Problem; screens switch on `problem.code`.
+ * - A non-2xx response throws `ApiError` carrying the Problem and the response headers; screens
+ *   switch on `problem.code`. The generated functions' error variants (`…Response412` and the
+ *   rest) are therefore never returned: catch `ApiError` instead. A resolved call is always 2xx.
+ * - A `401` from any call (user or background) tells the session layer, via `onUnauthenticated`.
  */
 import { isProblem, type Problem } from '../design-system'
 
@@ -24,19 +27,37 @@ export interface ApiRequestInit extends RequestInit {
 export class ApiError extends Error {
   readonly problem: Problem
   readonly status: number
+  /**
+   * The response headers: `Retry-After` on 429 and 503 (API_STANDARDS §17), the current `ETag`
+   * on 412 (§11), `X-Request-ID` for support. Empty for a network error.
+   */
+  readonly headers: Headers
   /** True when the request never reached the server (offline, DNS, connection reset). */
   readonly networkError: boolean
 
-  constructor(problem: Problem, networkError = false) {
+  constructor(problem: Problem, headers: Headers = new Headers(), networkError = false) {
     super(problem.title)
     this.name = 'ApiError'
     this.problem = problem
     this.status = problem.status
+    this.headers = headers
     this.networkError = networkError
   }
 
   get code(): string {
     return this.problem.code
+  }
+
+  /**
+   * Seconds to wait before trying again, from `Retry-After` (delay-seconds or an HTTP date), or
+   * `null` when the server did not say.
+   */
+  retryAfterSeconds(now: number = Date.now()): number | null {
+    const value = this.headers.get('Retry-After')
+    if (value === null || value.trim() === '') return null
+    if (/^\d+$/.test(value.trim())) return Number(value.trim())
+    const at = Date.parse(value)
+    return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - now) / 1000))
   }
 }
 
@@ -80,6 +101,17 @@ export function onUserRequest(listener: Listener): () => void {
   return () => userRequestListeners.delete(listener)
 }
 
+const unauthenticatedListeners = new Set<Listener>()
+
+/**
+ * The session layer listens here: any call (user or background, except the session calls the
+ * session layer makes itself) answered `401` means the session has ended on the server.
+ */
+export function onUnauthenticated(listener: Listener): () => void {
+  unauthenticatedListeners.add(listener)
+  return () => unauthenticatedListeners.delete(listener)
+}
+
 // ---- Helpers for screens ------------------------------------------------------------------
 
 /** A new key for one user action. Keep it and pass the same key if that action is retried. */
@@ -119,11 +151,15 @@ export async function apiFetch<T>(url: string, init: ApiRequestInit = {}): Promi
     body = await readBody(res)
   }
 
-  if (!background && !SESSION_PATHS.some((p) => url.startsWith(p))) {
+  const sessionCall = SESSION_PATHS.some((p) => url.startsWith(p))
+  if (!background && !sessionCall) {
     for (const listener of userRequestListeners) listener()
   }
+  if (res.status === 401 && !sessionCall) {
+    for (const listener of unauthenticatedListeners) listener()
+  }
 
-  if (!res.ok) throw new ApiError(toProblem(res, body))
+  if (!res.ok) throw new ApiError(toProblem(res, body), res.headers)
 
   return { data: body, status: res.status, headers: res.headers } as T
 }
@@ -137,6 +173,7 @@ async function send(url: string, method: string, init: RequestInit, unsafe: bool
   } catch {
     throw new ApiError(
       { type: 'about:blank', title: 'Network error', status: 0, code: 'service-unavailable' },
+      new Headers(),
       true,
     )
   }
@@ -153,7 +190,11 @@ async function readBody(res: Response): Promise<unknown> {
   }
 }
 
-/** Non-Problem error bodies (a proxy page, an empty 502) still become a Problem the screens can show. */
+/**
+ * Non-Problem error bodies (a proxy page, an empty 502) still become a Problem the screens can
+ * show. The code comes from the status, using the catalogue's code for that status (API_STANDARDS
+ * §9.3), so screens never see a code outside the catalogue.
+ */
 function toProblem(res: Response, body: unknown): Problem {
   if (isProblem(body)) return body
   const requestId = res.headers.get('X-Request-ID')
@@ -161,7 +202,29 @@ function toProblem(res: Response, body: unknown): Problem {
     type: 'about:blank',
     title: res.statusText || 'Request failed',
     status: res.status,
-    code: res.status >= 500 ? 'internal-error' : 'unknown',
+    code: codeForStatus(res.status),
     ...(requestId ? { requestId } : {}),
   }
+}
+
+const STATUS_CODES: Record<number, string> = {
+  400: 'malformed-request',
+  401: 'unauthenticated',
+  403: 'permission-denied',
+  404: 'not-found',
+  405: 'method-not-allowed',
+  406: 'not-acceptable',
+  410: 'gone',
+  412: 'precondition-failed',
+  413: 'payload-too-large',
+  415: 'unsupported-media-type',
+  422: 'validation-failed',
+  428: 'precondition-required',
+  429: 'rate-limited',
+  503: 'service-unavailable',
+  504: 'upstream-timeout',
+}
+
+function codeForStatus(status: number): string {
+  return STATUS_CODES[status] ?? (status >= 500 ? 'internal-error' : 'malformed-request')
 }

@@ -14,8 +14,17 @@ export interface IdleTimeoutWarningProps {
    */
   onStaySignedIn: () => Promise<void>
   onSignOut: () => void
-  /** The idle time ran out: the server has ended the session; send the user to sign in. */
+  /**
+   * The local clock says a limit has passed. Re-read the session before ending it here: another
+   * tab may have kept it alive. Called again if a later `idleExpiresAt` arrives and passes too.
+   */
   onExpired: () => void
+  /**
+   * Show the idle dialog only once the session layer has re-read `GET /auth/session` inside the
+   * warning window and the server still says the session ends soon (activity in another tab
+   * counts; SECURITY_MODEL §2.1). Defaults to `true`.
+   */
+  idleWarningConfirmed?: boolean
   /** Warning shows this long before `idleExpiresAt`: 2 minutes, i.e. at 13 of 15 minutes (SECURITY_MODEL §2.1). */
   warnBeforeMs?: number
   /** Notice before the absolute limit, so people can save their work. */
@@ -34,6 +43,7 @@ export function IdleTimeoutWarning({
   onStaySignedIn,
   onSignOut,
   onExpired,
+  idleWarningConfirmed = true,
   warnBeforeMs = 2 * 60_000,
   absoluteNoticeBeforeMs = 15 * 60_000,
   now = Date.now,
@@ -76,7 +86,7 @@ export function IdleTimeoutWarning({
 
   // Staying signed in cannot move the absolute limit, so the idle dialog only appears when
   // the idle limit is the one about to end the session.
-  const showIdle = left > 0 && idleLeft <= warnBeforeMs && idleLeft <= absoluteLeft
+  const showIdle = idleWarningConfirmed && left > 0 && idleLeft <= warnBeforeMs && idleLeft <= absoluteLeft
   const showAbsolute = absoluteLeft > 0 && absoluteLeft <= absoluteNoticeBeforeMs
 
   return (
