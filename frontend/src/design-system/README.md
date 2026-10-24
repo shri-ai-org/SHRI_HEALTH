@@ -35,9 +35,10 @@ The API sends contract formats; screens show U.S. formats. Always convert with t
 | Data | API (contract) | Screen | Helper |
 |---|---|---|---|
 | Calendar date (birth date) | `1984-07-19` | `07/19/1984` | `formatDate`, `parseUsDate`, `DateInput` |
+| Partial date (surgery, onset) | `2011`, `2011-05` or `2011-05-14` | `2011`, `05/2011`, `05/14/2011`: only what is known, never an invented day | `formatPartialDate`, `parsePartialDate` |
 | Instant (appointment time) | `2026-11-03T14:30:00Z` (UTC) | `8:30 AM CST`, in the **facility's** time zone from `timeZone` | `formatTime`, `formatDateTime`, `todayIn` |
 | Age | never sent | derived on screen | `ageInYears` |
-| Money | `{ value: "1234.50", currency: "USD" }` | `$1,234.50` (string maths, no floats) | `formatMoney`, `parseMoneyInput` (negatives only with `allowNegative`, for endpoints that document them) |
+| Money | `{ value: "1234.50", currency: "USD" }` | `$1,234.50` (string maths, no floats) | `formatMoney`, `parseMoneyInput`, `MoneyInput` (negatives only with `allowNegative`, for endpoints that document them) |
 
 **Time zone is required.** Always pass the facility's `timeZone` from the response; never let a
 time render in the browser's zone (API_STANDARDS §6.1). The facility time zone can be null until
@@ -70,7 +71,8 @@ A test (`tokens.test.ts`) fails if Indian-edition terms appear in `src/`.
 | Component | Use |
 |---|---|
 | `Button` | Variants primary, secondary, outline, ghost, danger; `loading` |
-| `Field` + `TextInput`, `Select`, `DateInput`, `PhoneInput`, `StateSelect` | Labelled control with hint, error and "(required)" in words |
+| `Field` + `TextInput`, `Select`, `DateInput`, `PhoneInput`, `StateSelect`, `MoneyInput` | Labelled control with hint, error and "(required)" in words. `MoneyInput`'s label names the currency ("Copay amount (USD)"); the `$` is visual only |
+| `Field` + `Textarea` | Multi-line text. With `limit` (the contract's `maxLength`), a count is read with the field; text past the limit is kept, never silently cut, and the form refuses to submit while `isOverLimit()` is true |
 | `Alert` | info, warning, critical (+ success) banners. Medication safety alerts use these three levels; a critical alert never blocks the clinician by itself |
 | `Badge` | Status chips |
 | `Modal`, `ConfirmDialog` | Focus trapped, Esc closes, focus restored |

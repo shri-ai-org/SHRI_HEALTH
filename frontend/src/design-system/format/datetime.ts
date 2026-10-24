@@ -27,6 +27,38 @@ export function parseUsDate(input: string): string | null {
   return `${year}-${pad(month)}-${pad(day)}`
 }
 
+const PARTIAL_YEAR = /^(\d{4})$/
+const PARTIAL_MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/
+
+/**
+ * A `PartialDate` (API_STANDARDS §6.1) for display: `2011` → `2011`, `2011-05` → `05/2011`,
+ * `2011-05-14` → `05/14/2011`. Patients often remember only the year of a surgery or onset, so
+ * the screen shows exactly what is known and never invents a day or month.
+ */
+export function formatPartialDate(partial: string): string {
+  if (PARTIAL_YEAR.test(partial)) return partial
+  const month = PARTIAL_MONTH.exec(partial)
+  if (month) return `${month[2]}/${month[1]}`
+  return formatDate(partial)
+}
+
+/**
+ * What a user typed → a `PartialDate`, or `null`: `2011` → `2011`, `5/2011` → `2011-05`,
+ * `5/14/2011` → `2011-05-14`. A full date must be a real date (Feb 30 is refused).
+ */
+export function parsePartialDate(input: string): string | null {
+  const text = input.trim()
+  const year = /^(\d{4})$/.exec(text)
+  if (year) return Number(year[1]) >= 1900 ? text : null
+  const month = /^(\d{1,2})\/(\d{4})$/.exec(text)
+  if (month) {
+    const m = Number(month[1])
+    const y = Number(month[2])
+    return m >= 1 && m <= 12 && y >= 1900 ? `${y}-${pad(m)}` : null
+  }
+  return parseUsDate(text)
+}
+
 /** Age in whole years on `today` (`YYYY-MM-DD`). Age is never stored or sent; screens derive it. */
 export function ageInYears(birthDate: string, today: string): number | null {
   const b = ISO_DATE.exec(birthDate)

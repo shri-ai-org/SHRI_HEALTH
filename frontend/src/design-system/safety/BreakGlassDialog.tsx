@@ -2,7 +2,11 @@ import { ShieldAlert } from 'lucide-react'
 import { useId, useState } from 'react'
 import { Button } from '../components/Button'
 import { Alert } from '../components/feedback'
+import { isOverLimit, Textarea } from '../components/inputs'
 import { Modal } from '../components/Modal'
+
+/** `reasonText` is at most 500 characters (platform.yaml, `BreakGlassRequest`). */
+const REASON_TEXT_LIMIT = 500
 
 /** Reason codes for `POST /patients/{patientId}/break-glass` (SECURITY_MODEL §5.2). */
 export type BreakGlassReasonCode = 'emergency-care' | 'continuity-of-care' | 'patient-request' | 'other'
@@ -42,11 +46,12 @@ export function BreakGlassDialog({ open, busy = false, error, onSubmit, onCancel
 
   const noteRequired = reasonCode === 'other'
   const noteMissing = noteRequired && reasonText.trim() === ''
+  const noteTooLong = isOverLimit(reasonText.trim(), REASON_TEXT_LIMIT)
   const reasonMissing = reasonCode === null
 
   function submit() {
     setTriedSubmit(true)
-    if (reasonCode === null || noteMissing) return
+    if (reasonCode === null || noteMissing || noteTooLong) return
     const text = reasonText.trim()
     onSubmit(text ? { reasonCode, reasonText: text } : { reasonCode })
   }
@@ -97,18 +102,21 @@ export function BreakGlassDialog({ open, busy = false, error, onSubmit, onCancel
           Note{noteRequired ? <span className="sr-only"> (required)</span> : <span className="text-xs font-normal text-ink-subtle"> (optional)</span>}
           {noteRequired ? <span aria-hidden="true" className="ml-1 text-critical-fg">*</span> : null}
         </label>
-        <textarea
+        <Textarea
           id={noteId}
-          rows={3}
           value={reasonText}
+          limit={REASON_TEXT_LIMIT}
           onChange={(e) => setReasonText(e.target.value)}
-          aria-invalid={triedSubmit && noteMissing ? true : undefined}
-          aria-describedby={triedSubmit && noteMissing ? noteErrorId : undefined}
-          className="w-full rounded-lg border border-border bg-surface-1 px-3.5 py-2 text-sm text-ink aria-invalid:border-critical-fg"
+          aria-invalid={triedSubmit && (noteMissing || noteTooLong) ? true : undefined}
+          aria-describedby={triedSubmit && (noteMissing || reasonMissing || noteTooLong) ? noteErrorId : undefined}
         />
-        {triedSubmit && (reasonMissing || noteMissing) ? (
+        {triedSubmit && (reasonMissing || noteMissing || noteTooLong) ? (
           <p id={noteErrorId} className="text-xs font-medium text-critical-fg">
-            {reasonMissing ? 'Choose a reason.' : 'Explain the reason for "Other".'}
+            {reasonMissing
+              ? 'Choose a reason.'
+              : noteMissing
+                ? 'Explain the reason for "Other".'
+                : `Shorten the note to ${REASON_TEXT_LIMIT} characters or fewer.`}
           </p>
         ) : null}
       </div>

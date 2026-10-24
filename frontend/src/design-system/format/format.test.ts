@@ -1,5 +1,15 @@
 import { formatAddressLines, isValidState, isValidZip, normalizeZip } from './address'
-import { ageInYears, formatDate, formatDateTime, formatTime, isValidTimeZone, parseUsDate, todayIn } from './datetime'
+import {
+  ageInYears,
+  formatDate,
+  formatDateTime,
+  formatPartialDate,
+  formatTime,
+  isValidTimeZone,
+  parsePartialDate,
+  parseUsDate,
+  todayIn,
+} from './datetime'
 import { formatMoney, parseMoneyInput } from './money'
 import { formatNameFamilyFirst, formatNameGivenFirst } from './names'
 import { formatPhone, parseUsPhone } from './phone'
@@ -17,6 +27,23 @@ describe('dates', () => {
     expect(parseUsDate('02/29/2026')).toBeNull()
     expect(parseUsDate('19/07/1984')).toBeNull()
     expect(parseUsDate('1984-07-19')).toBeNull()
+  })
+
+  it('shows a partial date with only what is known', () => {
+    expect(formatPartialDate('2011')).toBe('2011')
+    expect(formatPartialDate('2011-05')).toBe('05/2011')
+    expect(formatPartialDate('2011-05-14')).toBe('05/14/2011')
+  })
+
+  it('parses a typed partial date and rejects impossible ones', () => {
+    expect(parsePartialDate(' 2011 ')).toBe('2011')
+    expect(parsePartialDate('5/2011')).toBe('2011-05')
+    expect(parsePartialDate('05/14/2011')).toBe('2011-05-14')
+    expect(parsePartialDate('13/2011')).toBeNull()
+    expect(parsePartialDate('02/30/2011')).toBeNull()
+    expect(parsePartialDate('1850')).toBeNull()
+    expect(parsePartialDate('2011-05')).toBeNull()
+    expect(parsePartialDate('')).toBeNull()
   })
 
   it('derives age from the birth date', () => {
