@@ -5,6 +5,8 @@
 # Fields marked "Pending schema lock" depend on tables still under review or on Anand's adoption changes
 # (three schemas, the eight P0 items, the D39 demographic fields); they may change before 30 October.
 # No SSN anywhere (D43).
+# Batch 1 follow-up (2026-10-24, D49-D62): preferred pharmacy on the patient (D50), preferred and previous names (D57),
+# the license image as a document (D56), POST /patients/summaries (D54) and GET /patient-merges (D51).
 paths:
   /patients/search:
     post:
@@ -221,6 +223,15 @@ paths:
                     active: true
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
+                    preferredName: Mona980
+                    preferredPharmacy:
+                      id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
+                      name: Test Pharmacy 12
+                      address:
+                        line: 300 Test Road
+                        city: Springfield
+                        state: IL
+                        postalCode: '62703'
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -469,7 +480,8 @@ paths:
       operationId: addPatientIdentifier
       summary: Add an identifier
       description: 'Adds a driver''s license number or another system''s patient ID (inventory #33). The MRN is server-generated
-        and cannot be added. Uses the patient''s permission: identifiers are part of the patient record (SECURITY_MODEL §4.1).'
+        and cannot be added. A scanned license image is stored as a document first (category `identity`) and referenced by
+        `documentId` (D56). Uses the patient''s permission: identifiers are part of the patient record (SECURITY_MODEL §4.1).'
       tags:
       - patients
       x-owner: vimal
@@ -502,6 +514,7 @@ paths:
                   system: urn:oid:2.16.840.1.113883.4.3.17
                   value: TEST-DL-4471
                   assigner: IL
+                  documentId: 6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b
       responses:
         '201':
           description: Created. The new identifier.
@@ -529,6 +542,7 @@ paths:
                     assigner: IL
                     use: official
                     createdAt: '2026-11-03T14:30:00Z'
+                    documentId: 6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -551,7 +565,7 @@ paths:
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same
             value is already a current identifier of another patient in this clinic); `idempotency-key-reused` (the Idempotency-Key
-            was used with a different body).
+            was used with a different body); `documentId` is not an `identity` document of this patient (field code `invalid-reference`).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -2069,6 +2083,167 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /patient-merges:
+    get:
+      operationId: listPatientMerges
+      summary: List a patient's merges
+      description: 'Lists the merges a patient was part of, as the surviving or the merged record, newest first, with whether
+        each can still be undone (new inventory row #240; D51). IDs only; the screen fetches the summaries it may see.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patient-merges:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: patientId
+        in: query
+        required: true
+        description: The patient (either side of the merge).
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      responses:
+        '200':
+          description: One page of merges.
+          headers:
+            X-Request-ID: &id015
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control: &id016
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit: &id017
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy: &id018
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientMergeList'
+              examples:
+                one:
+                  summary: One merge that can still be undone
+                  value:
+                    items:
+                    - id: 0b1c2d3e-4f5a-4b6c-8d7e-8f9a0b1c2d3e
+                      survivingPatientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      mergedPatientId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                      status: merged
+                      performedAt: '2026-11-03T14:30:00Z'
+                      undoAllowed: true
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patient-merges:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/summaries:
+    post:
+      operationId: getPatientSummaries
+      summary: Get patient summaries by ID
+      description: 'Returns the minimum-necessary summary (SECURITY_MODEL §8 rule 4) for up to 50 patient IDs in one call
+        (new inventory row #241; D54). A read, not a search: no criteria, IDs only in the body. Each ID returned is audited
+        as a chart access. Restricted patients come back with summary fields only and `restricted: true`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: body:/patientIds
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientSummariesRequest'
+            examples:
+              two:
+                summary: Two IDs from a duplicate pair
+                value:
+                  patientIds:
+                  - 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                  - 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      responses:
+        '200':
+          description: The summaries found, in request order.
+          headers:
+            X-Request-ID: *id015
+            Cache-Control: *id016
+            RateLimit: *id017
+            RateLimit-Policy: *id018
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientSummaryBatch'
+              examples:
+                two:
+                  summary: Both found
+                  value:
+                    items:
+                    - id: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                      name:
+                        given:
+                        - Ramona980
+                        family: Kuhlman72
+                      birthDate: '1984-07-19'
+                      gender: female
+                      mrn: TEST-000098
+                      phoneLast4: '0123'
+                      restricted: false
+                      active: true
+                    - id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                        - Ramona980
+                        family: Kuhlman72
+                      birthDate: '1984-07-19'
+                      gender: female
+                      mrn: TEST-000123
+                      phoneLast4: '0123'
+                      restricted: false
+                      active: true
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:read`); `csrf-check-failed` (missing or wrong CSRF
+            header or Origin).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     AdministrativeGender:
@@ -2249,6 +2424,13 @@ components:
           maxLength: 300
           description: Who issued it, e.g. the issuing state for a driver's license.
           x-phi: none
+        documentId: &id019
+          $ref: ../components/schemas/Id.yaml
+          description: 'For a driver''s license: the scanned image, stored first through `POST /documents` (inventory #206)
+            with category `identity` **for this patient**; the identifier keeps only this reference (D56). A document of another
+            patient, another category or another clinic is refused (`422`, field code `invalid-reference`). Download it through
+            the document (`GET /files/{fileId}/download-url`, purpose `identity`, `patients:read`).'
+          x-phi: internal-id
         use:
           type: string
           enum:
@@ -2295,6 +2477,7 @@ components:
           maxLength: 300
           description: Who issued it.
           x-phi: none
+        documentId: *id019
     PatientIdentifierList:
       description: One page of a patient's identifiers.
       type: object
@@ -2334,46 +2517,60 @@ components:
           description: 'Medical record number: server-generated, one counter per practice, never reused, practice prefix plus
             number (D41). Read-only. The counter is not in the schema yet. **Pending schema lock.**'
           x-phi: identifier
-        name: &id015
+        name: &id020
           $ref: ../components/schemas/HumanName.yaml
           description: Official name.
           x-phi: identifier
-        birthDate: &id016
+        preferredName: &id021
+          type: string
+          maxLength: 100
+          description: The name the patient goes by, when it differs from the official name (FHIR name use `nickname`; D57).
+            Shown next to the official name, never instead of it on legal documents.
+          x-phi: identifier
+        previousNames: &id022
+          type: array
+          maxItems: 5
+          items:
+            $ref: ../components/schemas/HumanName.yaml
+          description: Earlier names, e.g. a maiden name (FHIR name use `old` / `maiden`; D57). Searchable like the official
+            name.
+          x-phi: identifier
+        birthDate: &id023
           $ref: ../components/schemas/Date.yaml
           description: 'Date of birth. Required at registration (D44): matching, eligibility and claims need it.'
           x-phi: identifier
-        gender: &id017
+        gender: &id024
           $ref: '#/components/schemas/AdministrativeGender'
           description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (the schema
             column is NOT NULL). **Pending schema lock.**
           x-phi: clinical
-        birthSex: &id018
+        birthSex: &id025
           $ref: '#/components/schemas/BirthSex'
           description: Sex assigned at birth (D39).
           x-phi: clinical
-        genderIdentity: &id019
+        genderIdentity: &id026
           $ref: '#/components/schemas/CodedValue'
           description: Gender identity, US Core gender-identity value set (D39). No column yet. **Pending schema lock.**
           x-phi: clinical
-        sexualOrientation: &id020
+        sexualOrientation: &id027
           $ref: '#/components/schemas/CodedValue'
           description: Sexual orientation, US Core sexual-orientation value set (D39). No column yet. **Pending schema lock.**
           x-phi: clinical
-        race: &id021
+        race: &id028
           $ref: '#/components/schemas/RaceEthnicity'
           description: Race (D39).
           x-phi: clinical
-        ethnicity: &id022
+        ethnicity: &id029
           $ref: '#/components/schemas/RaceEthnicity'
           description: Ethnicity (D39).
           x-phi: clinical
-        preferredLanguage: &id023
+        preferredLanguage: &id030
           type: string
           maxLength: 35
           pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
           description: Preferred language as a BCP 47 tag, e.g. `en`, `es`, `zh-Hant` (D39).
           x-phi: clinical
-        maritalStatus: &id024
+        maritalStatus: &id031
           type: string
           enum:
           - A
@@ -2388,38 +2585,38 @@ components:
           - W
           description: Marital status, HL7 v3 MaritalStatus codes.
           x-phi: clinical
-        occupation: &id025
+        occupation: &id032
           $ref: '#/components/schemas/CodedValue'
           description: Occupation (D39; approved P0 item). No column yet. **Pending schema lock.**
           x-phi: clinical
-        industry: &id026
+        industry: &id033
           $ref: '#/components/schemas/CodedValue'
           description: Industry (D39; approved P0 item). No column yet. **Pending schema lock.**
           x-phi: clinical
-        tribalAffiliation: &id027
+        tribalAffiliation: &id034
           $ref: '#/components/schemas/CodedValue'
           description: Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). No column yet. **Pending
             schema lock.**
           x-phi: clinical
-        phones: &id028
+        phones: &id035
           type: array
           maxItems: 5
           items:
             $ref: '#/components/schemas/Phone'
           description: Phone numbers.
           x-phi: identifier
-        emails: &id029
+        emails: &id036
           type: array
           maxItems: 3
           items:
             $ref: '#/components/schemas/Email'
           description: Email addresses.
           x-phi: identifier
-        address: &id030
+        address: &id037
           $ref: ../components/schemas/Address.yaml
           description: Home address.
           x-phi: identifier
-        employer: &id031
+        employer: &id038
           $ref: '#/components/schemas/Employer'
           description: Employer. **Pending schema lock.**
           x-phi: identifier
@@ -2430,6 +2627,11 @@ components:
             $ref: '#/components/schemas/PatientIdentifier'
           description: Current identifiers, including the MRN.
           x-phi: identifier
+        preferredPharmacy:
+          $ref: '#/components/schemas/PharmacyRef'
+          description: Preferred pharmacy, set with `PUT /patients/{patientId}/preferred-pharmacy` (D50). Absent when none
+            is chosen.
+          x-phi: clinical
         restricted:
           type: boolean
           description: True when the chart is restricted (sensitive or VIP); opening it needs break-glass unless the user
@@ -2460,23 +2662,25 @@ components:
       - name
       - birthDate
       properties:
-        name: *id015
-        birthDate: *id016
-        gender: *id017
-        birthSex: *id018
-        genderIdentity: *id019
-        sexualOrientation: *id020
-        race: *id021
-        ethnicity: *id022
-        preferredLanguage: *id023
-        maritalStatus: *id024
-        occupation: *id025
-        industry: *id026
-        tribalAffiliation: *id027
-        phones: *id028
-        emails: *id029
-        address: *id030
-        employer: *id031
+        name: *id020
+        preferredName: *id021
+        previousNames: *id022
+        birthDate: *id023
+        gender: *id024
+        birthSex: *id025
+        genderIdentity: *id026
+        sexualOrientation: *id027
+        race: *id028
+        ethnicity: *id029
+        preferredLanguage: *id030
+        maritalStatus: *id031
+        occupation: *id032
+        industry: *id033
+        tribalAffiliation: *id034
+        phones: *id035
+        emails: *id036
+        address: *id037
+        employer: *id038
         identifiers:
           type: array
           maxItems: 10
@@ -2506,8 +2710,26 @@ components:
       type: object
       additionalProperties: false
       properties:
-        name: *id015
-        birthDate: *id016
+        name: *id020
+        preferredName:
+          type:
+          - string
+          - 'null'
+          maxLength: 100
+          description: The name the patient goes by, when it differs from the official name (FHIR name use `nickname`; D57).
+            Shown next to the official name, never instead of it on legal documents. Send `null` to clear it.
+          x-phi: identifier
+        previousNames:
+          oneOf:
+          - type: array
+            maxItems: 5
+            items:
+              $ref: ../components/schemas/HumanName.yaml
+          - type: 'null'
+          description: Earlier names, e.g. a maiden name (FHIR name use `old` / `maiden`; D57). Searchable like the official
+            name. Send `null` to clear it.
+          x-phi: identifier
+        birthDate: *id023
         gender:
           oneOf:
           - $ref: '#/components/schemas/AdministrativeGender'
@@ -2777,11 +2999,11 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: The patient.
           x-phi: internal-id
-        name: &id032
+        name: &id039
           $ref: ../components/schemas/HumanName.yaml
           description: Name.
           x-phi: identifier
-        relationships: &id033
+        relationships: &id040
           type: array
           minItems: 1
           maxItems: 5
@@ -2790,33 +3012,33 @@ components:
           description: Relationships to the patient, e.g. v2-0131 `C` emergency contact or `N` next of kin, v3 RoleCode `MTH`
             mother, `GUARD` guardian, `GUAR`-type guarantor.
           x-phi: identifier
-        gender: &id034
+        gender: &id041
           $ref: '#/components/schemas/AdministrativeGender'
           description: Administrative gender.
           x-phi: clinical
-        birthDate: &id035
+        birthDate: &id042
           $ref: ../components/schemas/Date.yaml
           description: Date of birth (needed for an insurance subscriber).
           x-phi: identifier
-        phones: &id036
+        phones: &id043
           type: array
           maxItems: 5
           items:
             $ref: '#/components/schemas/Phone'
           description: Phone numbers.
           x-phi: identifier
-        emails: &id037
+        emails: &id044
           type: array
           maxItems: 3
           items:
             $ref: '#/components/schemas/Email'
           description: Email addresses.
           x-phi: identifier
-        address: &id038
+        address: &id045
           $ref: ../components/schemas/Address.yaml
           description: Address.
           x-phi: identifier
-        employer: &id039
+        employer: &id046
           $ref: '#/components/schemas/Employer'
           description: Employer of a subscriber (approved P0 item, D38). **Pending schema lock.**
           x-phi: identifier
@@ -2840,28 +3062,28 @@ components:
       - name
       - relationships
       properties:
-        name: *id032
-        relationships: *id033
-        gender: *id034
-        birthDate: *id035
-        phones: *id036
-        emails: *id037
-        address: *id038
-        employer: *id039
+        name: *id039
+        relationships: *id040
+        gender: *id041
+        birthDate: *id042
+        phones: *id043
+        emails: *id044
+        address: *id045
+        employer: *id046
     RelatedPersonPatch:
       description: JSON Merge Patch for a related person.
       type: object
       additionalProperties: false
       properties:
-        name: *id032
-        relationships: *id033
+        name: *id039
+        relationships: *id040
         gender:
           oneOf:
           - $ref: '#/components/schemas/AdministrativeGender'
           - type: 'null'
           description: Administrative gender. Send `null` to clear it.
           x-phi: clinical
-        birthDate: *id035
+        birthDate: *id042
         phones:
           oneOf:
           - type: array
@@ -2958,45 +3180,45 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: The patient (beneficiary).
           x-phi: internal-id
-        order: &id040
+        order: &id047
           type: integer
           format: int32
           minimum: 1
           maximum: 9
           description: 'Priority: 1 primary, 2 secondary, and so on. Unique among the patient''s active coverages.'
           x-phi: financial
-        payerId: &id041
+        payerId: &id048
           $ref: ../components/schemas/Id.yaml
           description: Payer from the payer directory (`GET /payers`).
           x-phi: financial
-        memberId: &id042
+        memberId: &id049
           type: string
           minLength: 1
           maxLength: 200
           description: The patient's member ID on the card (identifier type MB).
           x-phi: identifier
-        subscriberId: &id043
+        subscriberId: &id050
           type: string
           maxLength: 80
           description: The subscriber's ID, when the policy belongs to someone else and the card shows a different ID (FHIR
             `subscriberId`).
           x-phi: identifier
-        groupNumber: &id044
+        groupNumber: &id051
           type: string
           maxLength: 80
           description: Group number (stored as a `coverage_class` row of type `group`).
           x-phi: financial
-        groupName: &id045
+        groupName: &id052
           type: string
           maxLength: 200
           description: Group name.
           x-phi: financial
-        planName: &id046
+        planName: &id053
           type: string
           maxLength: 200
           description: Plan name (a `coverage_class` row of type `plan`).
           x-phi: financial
-        relationshipToSubscriber: &id047
+        relationshipToSubscriber: &id054
           type: string
           enum:
           - self
@@ -3008,16 +3230,16 @@ components:
           - injured
           description: The patient's relationship to the subscriber (FHIR subscriber-relationship codes).
           x-phi: financial
-        subscriberRelatedPersonId: &id048
+        subscriberRelatedPersonId: &id055
           $ref: ../components/schemas/Id.yaml
           description: 'The subscriber, when not the patient: must be a related person of this patient (same-patient link).
             Not allowed with `self`.'
           x-phi: internal-id
-        startDate: &id049
+        startDate: &id056
           $ref: ../components/schemas/Date.yaml
           description: Coverage start date.
           x-phi: financial
-        endDate: &id050
+        endDate: &id057
           $ref: ../components/schemas/Date.yaml
           description: Coverage end date.
           x-phi: financial
@@ -3061,26 +3283,26 @@ components:
       - memberId
       - relationshipToSubscriber
       properties:
-        order: *id040
-        payerId: *id041
-        memberId: *id042
-        subscriberId: *id043
-        groupNumber: *id044
-        groupName: *id045
-        planName: *id046
-        relationshipToSubscriber: *id047
-        subscriberRelatedPersonId: *id048
-        startDate: *id049
-        endDate: *id050
+        order: *id047
+        payerId: *id048
+        memberId: *id049
+        subscriberId: *id050
+        groupNumber: *id051
+        groupName: *id052
+        planName: *id053
+        relationshipToSubscriber: *id054
+        subscriberRelatedPersonId: *id055
+        startDate: *id056
+        endDate: *id057
     CoveragePatch:
       description: JSON Merge Patch for a coverage. To end a coverage, set `endDate`; for a coverage recorded by mistake,
         use its `entered-in-error` action (D45).
       type: object
       additionalProperties: false
       properties:
-        order: *id040
-        payerId: *id041
-        memberId: *id042
+        order: *id047
+        payerId: *id048
+        memberId: *id049
         subscriberId:
           type:
           - string
@@ -3110,7 +3332,7 @@ components:
           maxLength: 200
           description: Plan name (a `coverage_class` row of type `plan`). Send `null` to clear it.
           x-phi: financial
-        relationshipToSubscriber: *id047
+        relationshipToSubscriber: *id054
         subscriberRelatedPersonId:
           oneOf:
           - $ref: ../components/schemas/Id.yaml
@@ -3118,7 +3340,7 @@ components:
           description: 'The subscriber, when not the patient: must be a related person of this patient (same-patient link).
             Not allowed with `self`. Send `null` to clear it.'
           x-phi: internal-id
-        startDate: *id049
+        startDate: *id056
         endDate:
           $ref: ../components/schemas/Date.yaml
           description: Coverage end date. Set it to end the coverage.
@@ -3196,7 +3418,7 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: The patient.
           x-phi: internal-id
-        kind: &id051
+        kind: &id058
           type: string
           enum:
           - treatment
@@ -3208,7 +3430,7 @@ components:
           - financial
           description: What the consent is for. `ambient-recording` is the recording consent AI-01 needs.
           x-phi: clinical
-        decision: &id052
+        decision: &id059
           type: string
           enum:
           - permit
@@ -3216,7 +3438,7 @@ components:
           default: permit
           description: The patient's decision.
           x-phi: clinical
-        signatureMethod: &id053
+        signatureMethod: &id060
           type: string
           enum:
           - verbal
@@ -3224,21 +3446,21 @@ components:
           - electronic
           description: How it was given.
           x-phi: none
-        signedAt: &id054
+        signedAt: &id061
           $ref: ../components/schemas/Timestamp.yaml
           description: When it was given.
           x-phi: identifier
-        policyVersion: &id055
+        policyVersion: &id062
           type: string
           maxLength: 40
           description: Version of the form or notice the patient saw.
           x-phi: none
-        grantorRelatedPersonId: &id056
+        grantorRelatedPersonId: &id063
           $ref: ../components/schemas/Id.yaml
           description: Who gave it for the patient, e.g. a guardian of a minor. Must be a related person of this patient (the
             database enforces same-patient links).
           x-phi: internal-id
-        signedFormFileId: &id057
+        signedFormFileId: &id064
           $ref: ../components/schemas/Id.yaml
           description: Signed form or signature image, uploaded through the file service (purpose `document`) by the same
             user and not yet attached to anything; otherwise `422 file-not-ready`.
@@ -3265,13 +3487,13 @@ components:
       - signatureMethod
       - signedAt
       properties:
-        kind: *id051
-        decision: *id052
-        signatureMethod: *id053
-        signedAt: *id054
-        policyVersion: *id055
-        grantorRelatedPersonId: *id056
-        signedFormFileId: *id057
+        kind: *id058
+        decision: *id059
+        signatureMethod: *id060
+        signedAt: *id061
+        policyVersion: *id062
+        grantorRelatedPersonId: *id063
+        signedFormFileId: *id064
     ConsentList:
       description: One page of consents, newest first.
       type: object
@@ -3576,4 +3798,148 @@ components:
           minLength: 1
           maxLength: 2000
           description: Why the merge is undone.
+          x-phi: identifier
+    PharmacyAddress:
+      description: A pharmacy's address, as the pharmacy directory has it.
+      type: object
+      properties:
+        line:
+          type: string
+          maxLength: 200
+          description: Street address.
+          x-phi: clinical
+        city:
+          type: string
+          maxLength: 100
+          description: City.
+          x-phi: clinical
+        state:
+          type: string
+          pattern: ^[A-Z]{2}$
+          maxLength: 2
+          description: State.
+          x-phi: clinical
+        postalCode:
+          type: string
+          pattern: ^\d{5}(-\d{4})?$
+          maxLength: 10
+          description: ZIP code.
+          x-phi: clinical
+    PharmacyRef:
+      description: The patient's preferred pharmacy, from the pharmacy directory (`GET /pharmacies`, D50). A patient's pharmacy
+        choice is health information.
+      type: object
+      required:
+      - id
+      - name
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Pharmacy ID.
+          x-phi: internal-id
+        name:
+          type: string
+          maxLength: 200
+          description: Pharmacy name.
+          x-phi: clinical
+        address:
+          $ref: '#/components/schemas/PharmacyAddress'
+          description: Address.
+          x-phi: clinical
+    PatientMergeSummary:
+      description: A merge in the patient's history, with whether it can still be undone (D51).
+      type: object
+      required:
+      - id
+      - survivingPatientId
+      - mergedPatientId
+      - status
+      - performedAt
+      - undoAllowed
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Merge ID; undo it with `POST /patient-merges/{mergeId}/undo`.
+          x-phi: internal-id
+        survivingPatientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Kept patient.
+          x-phi: internal-id
+        mergedPatientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Merged patient.
+          x-phi: internal-id
+        status:
+          type: string
+          enum:
+          - merged
+          - undone
+          description: Whether the merge stands or was undone.
+          x-phi: none
+        performedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was merged.
+          x-phi: none
+        undoneAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was undone, if it was.
+          x-phi: none
+        undoAllowed:
+          type: boolean
+          description: 'True while the merge can still be undone: it stands, and neither record has changed in a way that
+            cannot be split back.'
+          x-phi: none
+        undoBlockedReason:
+          type: string
+          enum:
+          - already-undone
+          - records-changed
+          description: Why undo is not allowed, when `undoAllowed` is false.
+          x-phi: none
+    PatientMergeList:
+      description: One page of merges, newest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PatientMergeSummary'
+          description: The items on this page.
+          x-phi: internal-id
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PatientSummariesRequest:
+      description: Up to 50 patient IDs to look up at once, for screens that hold IDs (duplicates, merges, board rows) and
+        need names (D54).
+      type: object
+      additionalProperties: false
+      required:
+      - patientIds
+      properties:
+        patientIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: ../components/schemas/Id.yaml
+          description: Patient IDs.
+          x-phi: internal-id
+    PatientSummaryBatch:
+      description: The summaries found. IDs that do not exist, belong to another clinic or are outside the user's facilities
+        are left out, never reported (API_STANDARDS §12).
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PatientSummary'
+          description: One summary per found ID, in request order.
           x-phi: identifier

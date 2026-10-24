@@ -39,12 +39,12 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 
 | # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | GET | `/auth/login` | T | – | `public` | – | – | | | §6 Security | B1 | |
-| 2 | GET | `/auth/callback` | T | Ad | `public` | sec | – | | | §6 | B1 | |
-| 3 | POST | `/auth/refresh` | T | Ad | `authenticated` | sec | – | | | §6 | B1 | |
-| 4 | POST | `/auth/logout` | T | Ad | `authenticated` | sec | – | | | §6 | B1 | Returns 204 (API_STANDARDS §4) |
-| 5 | GET | `/auth/session` | T | Ad | `authenticated` | – | – | | | §6 | B1 | Returns `{ user, organization, csrfToken, idleExpiresAt, expiresAt }`: the CSRF token, the idle expiry the screen times its 13-minute warning from, and the absolute (12-hour, not extendable) expiry (SECURITY_MODEL §2.1, §2.2; Thulasi T8, issue #3) |
-| 6 | GET | `/me` | T | Ad | `authenticated` | – | – | | | §3.10 | B1 | |
+| 1 | GET | `/auth/login` | T | – | `public` | sec | – | | | §6 Security | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52): 302 to Keycloak; audited as `security` like the callback |
+| 2 | GET | `/auth/callback` | T | Ad | `public` | sec | – | | | §6 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52) |
+| 3 | POST | `/auth/refresh` | T | Ad | `authenticated` | sec | – | | | §6 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52): returns `Session` |
+| 4 | POST | `/auth/logout` | T | Ad | `authenticated` | sec | – | | | §6 | B1 | Returns 204 (API_STANDARDS §4). **Contract written in the batch 1 follow-up** (2026-10-24, D52) |
+| 5 | GET | `/auth/session` | T | Ad | `authenticated` | – | – | | | §6 | B1 | Returns `{ user, organization, csrfToken, idleExpiresAt, expiresAt }`: the CSRF token, the idle expiry the screen times its 13-minute warning from, and the absolute (12-hour, not extendable) expiry (SECURITY_MODEL §2.1, §2.2; Thulasi T8, issue #3). **Contract written in the batch 1 follow-up** (2026-10-24, D52) |
+| 6 | GET | `/me` | T | Ad | `authenticated` | – | – | | | §3.10 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52): user, organization, effective permissions |
 | 7 | GET | `/users` | T | Ad | `users:read` | adm | – | | | §3.10 | B1 | |
 | 8 | POST | `/users` | T | Ad | `users:create` | adm | S | | | §3.10 | B1 | |
 | 9 | GET | `/users/{userId}` | T | Ad | `users:read` | adm | – | | | §3.10 | B1 | |
@@ -52,12 +52,12 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 11 | GET | `/roles` | T | Ad | `roles:read` | – | – | | | §3.10 | B1 | |
 | 12 | GET | `/users/{userId}/roles` | T | Ad | `roles:read` | adm | – | | | §3.10 | B1 | |
 | 13 | PUT | `/users/{userId}/roles` | T | Ad | `user-roles:update` | sec | – | ✓ | | §3.10 | B1 | |
-| 14 | GET | `/events/stream` | T | – | `authenticated` | – | – | | | FR-ORD-02, FR-SCH-02 | B1 | |
+| 14 | GET | `/events/stream` | T | – | `authenticated` | – | – | | | FR-ORD-02, FR-SCH-02 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52): `text/event-stream`, `Last-Event-ID` resume (EVENTS.md §3) |
 | 15 | GET | `/operations/{operationId}` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** (API_STANDARDS §13); owner Thulasi (T26). Visible only to the creating user in the MVP; polling does not reset the idle timer |
 | 16 | POST | `/operations/{operationId}/cancel` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** |
 | 17 | GET | `/audit-events` | T | Au | `audit-events:read` | sec | – | | | §3.10, §6 Audit | B6 | |
 | 18 | GET | `/reports/chart-access` | T | Au | `chart-access-reports:read` | sec | – | | | §6 Sensitive records | B6 | |
-| 19 | POST | `/patients/{patientId}/break-glass` | T | Au | `patients:break-glass` | sec | S | | | FR-PAT-01 | B2 | |
+| 19 | POST | `/patients/{patientId}/break-glass` | T | Au | `patients:break-glass` | sec | S | | | FR-PAT-01 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D53): four reason codes, `reasonText` required for `other`, grant with `expiresAt` (4 hours) |
 | 20 | POST | `/hooks/clearinghouse` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-RCM-01/02 | B6 | Outside `/api/v1`, public through Nginx (T24) |
 | 21 | POST | `/hooks/erx` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-MED-01 | B5 | Same |
 | 22 | POST | `/hooks/fax` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | §3.9 | B3 | Same |
@@ -76,7 +76,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 30 | GET | `/patients/{patientId}` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 | B2 | |
 | 31 | PATCH | `/patients/{patientId}` | V | Cl | `patients:update` | pw | – | ✓ | | FR-PAT-01 | B2 | |
 | 32 | GET | `/patients/{patientId}/identifiers` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 | B2 | |
-| 33 | POST | `/patients/{patientId}/identifiers` | V | Cl | `patients:update` | pw | S | | | FR-PAT-01 (license scan) | B2 | |
+| 33 | POST | `/patients/{patientId}/identifiers` | V | Cl | `patients:update` | pw | S | | | FR-PAT-01 (license scan) | B2 | License image is a document (category `identity`), referenced by `documentId` (D56) |
 | 34 | GET | `/patients/{patientId}/related-persons` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 (emergency contacts) | B2 | **New** (Stage 1 gap) |
 | 35 | POST | `/patients/{patientId}/related-persons` | V | Cl | `patients:update` | pw | S | | | FR-PAT-01 | B2 | **New** |
 | 36 | PATCH | `/patients/{patientId}/related-persons/{relatedPersonId}` | V | Cl | `patients:update` | pw | – | ✓ | | FR-PAT-01 | B2 | **New** |
@@ -95,6 +95,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 48 | POST | `/duplicates/{duplicateId}/merge` | V | Ad+Cl | `duplicates:merge` | pw | S | | | FR-PAT-01 | B2 | |
 | 233 | POST | `/duplicates/{duplicateId}/dismiss` | V | Ad | `duplicates:dismiss` | sec | S | | | FR-PAT-01 | B2 | **New** (D46, 2026-10-23): dismiss a false match with a required reason; audited as `security` with both patient IDs |
 | 49 | POST | `/patient-merges/{mergeId}/undo` | V | Ad+Cl | `patient-merges:undo` | pw | S | | | FR-PAT-01 | B2 | |
+| 240 | GET | `/patient-merges` | V | Ad | `patient-merges:read` | pr | – | | | FR-PAT-01 | B2 | **New** (D51, 2026-10-24): query `patientId`; merge ID, status, `undoAllowed` |
+| 241 | POST | `/patients/summaries` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 | B2 | **New** (D54, 2026-10-24): up to 50 IDs in the body; each ID returned is audited |
 
 ## 3. Scheduling, check-in, eligibility — Vimal
 
@@ -102,13 +104,19 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 50 | GET | `/slots` | V | C | `slots:read` | – | – | | | FR-SCH-01 | B3 | Query `providerId`, `date`, `appointmentTypeId`, `facilityId` |
 | 51 | POST | `/appointments` | V | Cl | `appointments:create` | pw | S | | | FR-SCH-01 | B3 | Also queues eligibility (VD-G3) |
-| 52 | GET | `/appointments` | V | Cl | `appointments:read` | pr | – | | | FR-SCH-01 | B3 | Query `date`, `providerId`, `facilityId`, `patientId`, `status` |
+| 52 | GET | `/appointments` | V | Cl | `appointments:read` | pr | – | | | FR-SCH-01 | B3 | Query `date` or `dateFrom`+`dateTo` (≤ 31 days, D62), `providerId`, `facilityId`, `patientId`, `status` |
 | 53 | GET | `/appointments/{appointmentId}` | V | Cl | `appointments:read` | pr | – | | | FR-SCH-01 | B3 | **New** (single read missing from CAT) |
-| 54 | PATCH | `/appointments/{appointmentId}` | V | Cl | `appointments:update` | pw | – | ✓ | | FR-SCH-01 | B3 | |
+| 54 | PATCH | `/appointments/{appointmentId}` | V | Cl | `appointments:update` | pw | – | ✓ | | FR-SCH-01 | B3 | Room, reason for visit, notes, instructions; no slot or time fields (D61): rescheduling is only #243 |
+| 243 | POST | `/appointments/{appointmentId}/reschedule` | V | Cl | `appointments:reschedule` | pw | S | | | FR-SCH-01 | B3 | **New** (D61, 2026-10-24): cancels the old slot, books the new one, sets `rescheduledFromId`; reason required |
+| 242 | POST | `/appointments/{appointmentId}/undo-check-in` | V | Cl | `appointments:undo-check-in` | pw | – | | | FR-SCH-02 | B3 | **New** (D55, 2026-10-24): before rooming and any clinical data; encounter → entered-in-error |
 | 55 | POST | `/appointments/{appointmentId}/cancel` | V | Cl | `appointments:cancel` | pw | – | | | FR-SCH-01 | B3 | |
 | 56 | POST | `/appointments/{appointmentId}/check-in` | V | Cl | `appointments:check-in` | pw | R | | | FR-SCH-02 | B3 | Creates Encounter (VD-G4); eligibility (VD-G3) — reaches a partner, so key required |
 | 57 | POST | `/appointments/{appointmentId}/status` | V | Cl+Ad | `appointments:status` | pw | – | | | FR-SCH-02 | B3 | Values: `arrived`, `roomed`, `with-provider`, `checked-out`, `noshow` (DATA_OWNERSHIP §5.1) |
-| 58 | GET | `/status-board` | V | C | `status-board:read` | pr | – | | | FR-SCH-02 | B3 | |
+| 58 | GET | `/status-board` | V | C | `status-board:read` | pr | – | | | FR-SCH-02 | B3 | `facilityName` in both views; staff view adds `appointmentType`, `reasonForVisit`, `encounterId` (D60) |
+| 236 | GET | `/booking/facilities` | V | Cl | `scheduling-reference:read` | – | – | | | FR-SCH-01 | B3 | **New** (D49, 2026-10-24): bookable fields only; reference data |
+| 237 | GET | `/booking/locations` | V | Cl | `scheduling-reference:read` | – | – | | | FR-SCH-01 | B3 | **New** (D49) |
+| 238 | GET | `/booking/providers` | V | Cl | `scheduling-reference:read` | – | – | | | FR-SCH-01 | B3 | **New** (D49): no NPI, licenses or contact details |
+| 239 | GET | `/booking/appointment-types` | V | Ad | `scheduling-reference:read` | – | – | | | FR-SCH-01 | B3 | **New** (D49) |
 | 59 | POST | `/eligibility-checks` | V | Ad | `eligibility-checks:create` | pw | R | | ✓ | FR-RCM-01 | B3 | |
 | 60 | GET | `/eligibility-checks/{eligibilityCheckId}` | V | Ad | `eligibility-checks:read` | pr | – | | | FR-RCM-01 | B3 | |
 | 61 | GET | `/appointments/{appointmentId}/eligibility-checks` | V | Ad | `eligibility-checks:read` | pr | – | | | FR-RCM-01 | B3 | **New** (Stage 1 gap) |
@@ -201,7 +209,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 127 | POST | `/prescriptions/{prescriptionId}/change` | T | Cl | `prescriptions:change` | sg | R | ✓ | | FR-MED-01 | B5 | A CancelRx plus a NewRx linked by `replaces` (T35) |
 | 128 | GET | `/refill-requests` | T | Ad | `refill-requests:read` | pr | – | | | FR-MED-01, FR-ENC-05 | B5 | Items carry `type`: `renewal` \| `change` (pharmacy RxChangeRequest via `/hooks/erx`; depends on the e-prescribing vendor; T35) |
 | 129 | POST | `/refill-requests/{refillRequestId}/respond` | T | Ad+Cl | `refill-requests:respond` | sg | R | | | FR-MED-01 | B5 | Answers both renewal and change requests (T35) |
-| 130 | GET | `/pharmacies` | T | Ad | `pharmacies:read` | – | – | | | FR-PAT-01, FR-MED-01 | B5 | Query `q`, `postalCode` (pharmacy data, not PHI) |
+| 130 | GET | `/pharmacies` | T | Ad | `pharmacies:read` | – | – | | | FR-PAT-01, FR-MED-01 | B1 | Query `q`, `postalCode`, `mailOrder` (pharmacy data, not PHI). **Moved to batch 1** (D50, 2026-10-24); contract written |
 | 131 | POST | `/patients/{patientId}/medication-history/fetch` | T | Cl | `medication-history:fetch` | pr | R | | ✓ | FR-MED-01 | B5 | |
 
 ## 8. Orders and results — Thulasi (signed off, issue #3)
@@ -231,14 +239,14 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 
 | # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 148 | POST | `/files/upload-url` | A | F | `files:create` | pw | S | | | §3.9 | B1 | |
-| 149 | POST | `/files/{fileId}/complete` | A | F | `files:create` | pw | – | | ✓ | §3.9, TA §9 scan | B1 | Scan is async |
-| 150 | GET | `/files/{fileId}/download-url` | A | F | `files:read` | ex | – | | | §3.9 | B1 | Plus purpose-based check |
+| 148 | POST | `/files/upload-url` | A | F | `files:create` | pw | S | | | §3.9 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52): returns `201` with the upload ticket |
+| 149 | POST | `/files/{fileId}/complete` | A | F | `files:create` | pw | – | | ✓ | §3.9, TA §9 scan | B1 | Scan is async: operation kind `file.scan`. **Contract written in the batch 1 follow-up** (2026-10-24, D52) |
+| 150 | GET | `/files/{fileId}/download-url` | A | F | `files:read` | ex | – | | | §3.9 | B1 | Plus purpose-based check. **Contract written in the batch 1 follow-up** (2026-10-24, D52) |
 | 151–154 | GET, POST, GET `{facilityId}`, PATCH `{facilityId}` | `/facilities` | A | Cl | `practice-setup:read\|create\|update` | adm | S on POST | ✓ on PATCH | | §3.10 | B1 | Single GET added |
 | 155–158 | same 4 | `/locations` | A | Cl | same | adm | S | ✓ | | §3.10 | B1 | Same |
 | 159–162 | same 4 | `/providers` | A | Cl | same | adm | S | ✓ | | §3.10 (NPIs) | B1 | Same |
 | 163–166 | same 4 | `/appointment-types` | A | Ad | same | adm | S | ✓ | | FR-SCH-01 | B1 | Same |
-| 167–170 | same 4 | `/provider-schedules` | A | Ad | same | adm | S | ✓ | | FR-SCH-01 | B1 | Same |
+| 167–170 | same 4 | `/provider-schedules` | A | Ad | `practice-setup:read`; writes `provider-schedules:create\|update` (FD, ADM; D66) | adm | S | ✓ | | FR-SCH-01 | B1 | Same. Writes split from `practice-setup:*` (D66, 2026-10-24) |
 | 171–174 | same 4 | `/fee-schedules` | A | Ad | same | adm | S | ✓ | | FR-RCM-02 | B1 | Same |
 | 175–178 | same 4 | `/practice-payers` | A | Ad | same | adm | S | ✓ | | FR-RCM-01, §3.10 onboarding | B1 | **Was `/payers`** (Vimal, 2026-10-23): the practice's own payer setup, a payer chosen from the directory plus its enrollment status per transaction (`payer_enrollment`); practice-level table **pending schema lock** (A39). Needs Anand's review |
 | 230 | GET | `/payers` | A | Ad | `payers:read` | – | – | | | FR-RCM-01 | B1 | **New** (Vimal, 2026-10-23): the platform payer directory, read-only; filters `payerName`, `externalPayerId`, `payerType`. Reference data, audit category `none` |
@@ -247,6 +255,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 235 | GET | `/lab-providers/{labProviderId}` | A | Ad | `lab-providers:read` | – | – | | | FR-ORD-01 | B1 | **New** (D48) |
 | 179–182 | same 4 | `/lab-accounts` | A | Ad | same | adm | S | ✓ | | FR-ORD-01 | B1 | Same |
 | 183–186 | same 4 | `/note-templates` | A | Ad | same | adm | S | ✓ | | FR-ENC-04 | B1 | Same |
+| 244–247 | same 4 | `/consent-requirements` | A | Ad | reads `consent-requirements:read` (FD, ADM); writes `practice-setup:create\|update` | adm | S | ✓ | | FR-PAT-01 | B1 | **New** (D59, 2026-10-24): consent kinds with the current `policyVersion` |
 | 187 | POST | `/onboarding/import` | A | Ad+F | `onboarding:import` | adm | S | | ✓ | §3.10 onboarding | B1 | |
 | 188 | GET | `/encounters/{encounterId}/superbill` | A | Cl | `superbills:read` | pr | – | | | FR-RCM-02 | B6 | |
 | 189 | PATCH | `/encounters/{encounterId}/superbill` | A | Cl | `superbills:update` | pw | – | ✓ | | FR-RCM-02 | B6 | |
@@ -258,8 +267,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 195 | POST | `/claims/{claimId}/status-check` | A | Ad | `claims:status-check` | pr | R | | | FR-RCM-02 | B6 | |
 | 196 | POST | `/claims/{claimId}/correct` | A | Ad | `claims:correct` | pw | R | | | FR-RCM-02 | B6 | |
 | 197 | POST | `/claims/{claimId}/void` | A | Ad | `claims:void` | pw | R | | | FR-RCM-02 | B6 | |
-| 198 | POST | `/patients/{patientId}/payments` | A | Ad | `payments:create` | pw | R | | | FR-RCM-03, FR-SCH-02 copay | B3 | Charges money |
-| 199 | POST | `/payments/card-session` | A | Ad | `payments:card-session` | pw | R | | | FR-RCM-03 | B3 | |
+| 198 | POST | `/patients/{patientId}/payments` | A | Ad | `payments:create` | pw | R | | | FR-RCM-03, FR-SCH-02 copay | B1 | Charges money. **Moved to batch 1** (D58, 2026-10-24): response carries `receiptFileId` |
+| 199 | POST | `/payments/card-session` | A | Ad | `payments:card-session` | pw | R | | | FR-RCM-03 | B1 | **Moved to batch 1** (D58): hosted fields token, card numbers never reach our servers |
 | 200 | GET | `/remittances` | A | Ad | `remittances:read` | pr | – | | | FR-RCM-03 | B6 | |
 | 201 | POST | `/remittances/{remittanceId}/post` | A | Ad | `remittances:post` | pw | S | | | FR-RCM-03 (P0 stretch) | B6 | |
 | 202 | GET | `/reports/ar-aging` | A | C | `billing-reports:read` | pr | – | | | FR-RCM-03 | B6 | |
@@ -310,6 +319,28 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | Payers in two layers (Vimal, 2026-10-23) | `/payers` (#175–178) → `/practice-payers`; new read-only directory #230–231 (`payers:read`) | Needs Anand's review |
 | Batch 1 review decisions (2026-10-23) | #232 coverage entered-in-error (D45), #233 dismiss a duplicate (D46), #234–235 read-only lab providers (D48) | Decided |
 | Proposed to owners | Single GETs in practice setup and documents (Anand), #213 async export (Anand) | Pending owners |
+| Batch 1 follow-up: Minalini's screen-mapping gaps (2026-10-24) | New #236–239 booking lists (D49), #240 merge list (D51), #241 summaries (D54), #242 undo check-in (D55), #243 reschedule (D61), #244–247 consent requirements (D59); #1–6, #14, #19, #148–150 written (D52, D53); #130 and #198–199 moved to batch 1 (D50, D58); `provider-schedules:create\|update` (D66) | D49–D70 |
 | Moved outside `/api/v1` | `/hooks/*`, `/health` (public through Nginx); `/ready` internal and **not in the contract** | API_STANDARDS §2; agreed T24 |
 
-**Count:** 234 contract operations: 235 rows (27 platform, 24 patients, 12 scheduling and eligibility, 28 encounters and notes, 17 history, 9 AI, 17 medications, 18 orders, 76 Anand, 7 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23). Recounted when the contract is written.
+**Count:** 246 contract operations: 247 rows (27 platform, 24 patients, 12 scheduling and eligibility, 28 encounters and notes, 17 history, 9 AI, 17 medications, 18 orders, 76 Anand, 7 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24). Recounted when the contract is written.
+
+## Later batches: items recorded on 2026-10-24 (no contract change now)
+
+Minalini's clinical items from the screen mapping, to be written in the batch named; each gets its contract there, not before.
+
+| Item | Batch | Note |
+|---|---|---|
+| Inbox task creation (`POST /messages`, #217) with assignee, due date and link to a record; clinicians request appointment changes this way (D67) | B3 | Anand |
+| Co-sign "return to author" with a comment (`POST /notes/{noteId}/cosign` with `decision: return`) | B4 | Vimal |
+| Where patient instructions are stored (after-visit summary section vs. note section) | B4 | Vimal; decide with the clinical advisors |
+| Timeline filters (`GET /patients/{patientId}/timeline`: type, date range) | B4 | Vimal |
+| Personal note templates (user-owned templates next to practice templates) | B4 | Vimal, with Anand (`user_clinical_preference`) |
+| Results: filters (`unreviewed`, `patientId`, date range, abnormal), result versions, `acknowledge` body (comment, patient notified) | B5 | Thulasi |
+| Orders: filters, cancel reason body, order sets, duplicate-order check at signing | B5 | Thulasi |
+| Medication reconciliation request body (`POST /patients/{patientId}/medication-reconciliation`) | B5 | Thulasi |
+| Whole-list interaction check (not only per prescription) | B5 | Thulasi |
+| Prescription history per patient (`GET /patients/{patientId}/prescriptions`) | B5 | Thulasi |
+| **Confirmed:** drug search is `GET /codes/search?system=rxnorm` (#74), no separate drug endpoint | B4 | — |
+| **Confirmed:** per-user alert suppression is in-product (FRS §3.4), in the medications batch | B5 | Thulasi |
+| Vitals in U.S. customary UCUM units as entered (D69) | B4 | Vimal |
+| AI contract shapes from Minalini's Stage 3 design (D70) | B7 | Vimal |

@@ -103,7 +103,7 @@ data: {"specversion":"1.0","id":"4d6f…","type":"appointment.checked-in",…}
 | `encounter.opened` | encounter | `patientId` | Vimal (encounters) | Clinician lists | Browser |
 | `encounter.status-changed` | encounter | `status` | Vimal | Status board | Browser |
 | `encounter.closed` | encounter | `patientId` | Vimal | **Anand (superbill)** | Internal (+ browser) |
-| `encounter.entered-in-error` | encounter | — | Vimal | Anand (billing) | Internal |
+| `encounter.entered-in-error` | encounter | — | Vimal | Anand (billing) | Internal. Also raised by undo check-in (D55) |
 | `note.signed` | note | `encounterId`, `cosignStatus` | Vimal (notes) | Anand (inbox: remove "unsigned note", add co-sign task) | Internal + browser |
 | `note.cosigned` | note | `encounterId` | Vimal | Anand (inbox, billing hold release) | Internal + browser |
 | `note.amended` | note | `encounterId` | Vimal | Anand (billing notice if claimed) | Internal |

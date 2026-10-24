@@ -11,6 +11,402 @@
 #       $ref: modules/patients.yaml#/paths/~1patients~1search
 #
 # Module-specific schemas go under `components.schemas` here; shared ones stay in ../components/.
-paths: {}
+# Batch 1 follow-up (2026-10-24, D58): copay collection at check-in (#198-199) moves into batch 1, with a receipt file. Card numbers
+# never touch our servers: the processor's hosted fields take them. Patient balance and statements are P1 (ledger P1). Anand approves
+# these operations.
+paths:
+  /patients/{patientId}/payments:
+    parameters:
+    - name: patientId
+      in: path
+      required: true
+      description: Patient ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: recordPayment
+      summary: Record a patient payment
+      description: 'Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check
+        and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card
+        numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in, so it works
+        for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session
+        is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`.'
+      tags:
+      - billing
+      x-owner: anand
+      x-permission: payments:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: required
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCreate'
+            examples:
+              copay-card:
+                summary: Copay by card at check-in
+                value:
+                  amount:
+                    value: '25.00'
+                    currency: USD
+                  method: card
+                  appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                  cardSessionId: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+              copay-cash:
+                summary: Copay in cash
+                value:
+                  amount:
+                    value: '25.00'
+                    currency: USD
+                  method: cash
+                  appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+      responses:
+        '201':
+          description: Created. The new payment.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: &id001
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control: &id002
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit: &id003
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy: &id004
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+              examples:
+                recorded:
+                  summary: Recorded, with the receipt
+                  value:
+                    id: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                    amount:
+                      value: '25.00'
+                      currency: USD
+                    method: card
+                    processorReference: TEST-TXN-000455
+                    receiptFileId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
+                    collectedAt: '2026-11-03T14:53:00Z'
+                    collectedByUserId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                    refund: false
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required
+            Idempotency-Key header is missing).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `payments:create`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such payment in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the card session is not `captured`, or was already used); `patient-merged` (the patient was merged into another
+            record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`card`
+            without `cardSessionId`, `cardSessionId` with another method, the card session belongs to another patient, its
+            captured amount or currency differs from `amount`, or the appointment belongs to another patient (field code `invalid-reference`));
+            `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /payments/card-session:
+    post:
+      operationId: createCardSession
+      summary: Start a card payment
+      description: 'Starts a card payment with the processor and returns the token for its hosted fields (inventory #199;
+        D58). The patient or staff enter the card in the processor''s fields; our servers never see the number. Then record
+        the payment with `cardSessionId`. Reaches a partner, so `Idempotency-Key` is required.'
+      tags:
+      - billing
+      x-owner: anand
+      x-permission: payments:card-session
+      x-audit:
+        action: C
+        category: phi-write
+        patient: body:/patientId
+      x-idempotency: required
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardSessionCreate'
+            examples:
+              copay:
+                summary: Copay
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  amount:
+                    value: '25.00'
+                    currency: USD
+                  appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+      responses:
+        '201':
+          description: Created. The new card session.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardSession'
+              examples:
+                started:
+                  summary: Session started
+                  value:
+                    id: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    amount:
+                      value: '25.00'
+                      currency: USD
+                    status: pending
+                    clientToken: TEST-hosted-fields-placeholder
+                    expiresAt: '2026-11-03T15:10:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required
+            Idempotency-Key header is missing).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `payments:card-session`); `csrf-check-failed` (missing or
+            wrong CSRF header or Origin).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged`
+            (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the amount
+            is not positive, or the appointment belongs to another patient (field code `invalid-reference`)); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
-  schemas: {}
+  schemas:
+    PaymentMethod:
+      description: How the patient paid (`patient_payment.method`).
+      type: string
+      enum:
+      - cash
+      - card
+      - check
+      - ach
+      - other
+    PaymentCreate:
+      description: Body to record a patient payment, usually the copay at check-in (FRS FR-SCH-02, FR-RCM-03).
+      type: object
+      additionalProperties: false
+      required:
+      - amount
+      - method
+      properties:
+        amount:
+          $ref: ../components/schemas/Money.yaml
+          description: Amount paid. Positive. For `card` it must equal the card session's captured amount.
+          x-phi: financial
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+          description: How it was paid.
+          x-phi: financial
+        appointmentId:
+          $ref: ../components/schemas/Id.yaml
+          description: The appointment it is for, when collected at check-in.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The encounter, when known.
+          x-phi: internal-id
+        cardSessionId:
+          $ref: ../components/schemas/Id.yaml
+          description: 'For `card`: the card session from `POST /payments/card-session`, completed in the processor''s hosted
+            fields. Required for `card`, not allowed otherwise. The session must belong to this patient and be `captured`
+            for exactly this `amount`; the server takes the processor reference from the session, never from the body.'
+          x-phi: internal-id
+        checkNumber:
+          type: string
+          maxLength: 40
+          description: 'For `check`: the check number.'
+          x-phi: financial
+        note:
+          type: string
+          maxLength: 500
+          description: Note for the receipt or the ledger. May name people, so it is treated as patient data.
+          x-phi: identifier
+    Payment:
+      description: A patient payment (`patient_payment`). Card payments keep only the processor's reference, never a card
+        number (the database rejects anything that looks like one).
+      type: object
+      required:
+      - id
+      - patientId
+      - amount
+      - method
+      - receiptFileId
+      - collectedAt
+      - collectedByUserId
+      - refund
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Payment ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        appointmentId:
+          $ref: ../components/schemas/Id.yaml
+          description: The appointment, if any.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The encounter, if any.
+          x-phi: internal-id
+        amount:
+          $ref: ../components/schemas/Money.yaml
+          description: Amount.
+          x-phi: financial
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+          description: How it was paid.
+          x-phi: financial
+        processorReference:
+          type: string
+          maxLength: 100
+          description: The card processor's transaction reference, for `card`. Never a card number.
+          x-phi: financial
+        receiptFileId:
+          $ref: ../components/schemas/Id.yaml
+          description: The receipt (PDF), generated at payment and stored through the file service with purpose `receipt`;
+            download it with `GET /files/{fileId}/download-url`, which needs `payments:create` or `superbills:read` (D58).
+          x-phi: internal-id
+        collectedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was collected.
+          x-phi: financial
+        collectedByUserId:
+          $ref: ../components/schemas/Id.yaml
+          description: Who collected it.
+          x-phi: internal-id
+        refund:
+          type: boolean
+          description: True for a refund of an earlier payment.
+          x-phi: financial
+        refundOfPaymentId:
+          $ref: ../components/schemas/Id.yaml
+          description: The payment refunded, for a refund.
+          x-phi: internal-id
+    CardSessionCreate:
+      description: Body to start a card payment in the processor's hosted fields.
+      type: object
+      additionalProperties: false
+      required:
+      - patientId
+      - amount
+      properties:
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        amount:
+          $ref: ../components/schemas/Money.yaml
+          description: Amount to charge. Positive.
+          x-phi: financial
+        appointmentId:
+          $ref: ../components/schemas/Id.yaml
+          description: The appointment it is for, if any.
+          x-phi: internal-id
+    CardSession:
+      description: A card payment session. The screen opens the processor's hosted fields with `clientToken`; the card number
+        goes to the processor, never to our servers (FRS FR-RCM-03, Q17). When the processor reports success, record the payment
+        with `cardSessionId`.
+      type: object
+      required:
+      - id
+      - patientId
+      - amount
+      - status
+      - clientToken
+      - expiresAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Card session ID; send it as `cardSessionId` when recording the payment.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        amount:
+          $ref: ../components/schemas/Money.yaml
+          description: Amount.
+          x-phi: financial
+        status:
+          type: string
+          enum:
+          - pending
+          - authorized
+          - captured
+          - failed
+          - expired
+          description: Session state at the processor.
+          x-phi: financial
+        clientToken:
+          type: string
+          maxLength: 500
+          description: 'Short-lived token for the processor''s hosted fields. A bearer secret: never log or store it.'
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the session stops accepting a card.
+          x-phi: none

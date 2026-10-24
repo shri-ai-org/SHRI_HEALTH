@@ -105,7 +105,7 @@ Allowed error statuses are listed in §9.3. `204 No Content` is used only for `P
 
 | Item | Rule |
 |---|---|
-| Every string | Has `maxLength`. Enumerated values use `enum`. Free text is normalized to Unicode NFC and trimmed. |
+| Every string | Has `maxLength`. Enumerated values use `enum`, or `x-extensible-enum` for a response enum that may grow (§6.5). Free text is normalized to Unicode NFC and trimmed. |
 | Phone | E.164: `"+16175550123"`. Optional `extension`. |
 | Email | `format: email`, max 254. |
 | Address | `{ lines: [string] (max 3), city, state (USPS 2-letter), postalCode (ZIP `12345` or ZIP+4 `12345-6789`), country: "US" }` |
@@ -146,7 +146,10 @@ Code system URIs (FHIR canonical):
 - Use the FHIR value set's codes where FHIR defines the concept (appointment status, encounter status, condition clinical status, allergy criticality, gender, …), with FHIR's exact spelling.
 - Our own enums use lowercase kebab-case (`with-provider`, `ai-generated`).
 - Enums are strings, never integers.
-- Clients must handle unknown enum values in responses (show the raw value); adding a response enum value is a governed change (CONTRACT_GOVERNANCE §4).
+- **Strict by default.** Every enum is a strict `enum` unless it is a response enum that is expected to grow.
+- **Extensible response enums.** A response enum that may grow (for example `OperationKind`, which gains a kind with new batches) lists its values under `x-extensible-enum` instead of `enum`, with `type: string` and a `maxLength`. Clients must render an unknown value safely: show the raw value or a generic label, never fail or hide the record. Adding a value is then a governed change, not a breaking one; removing a value is breaking (CONTRACT_GOVERNANCE §4.1).
+- `x-extensible-enum` is never used for a value the client sends: request enums stay strict, so the server rejects a value it does not know.
+- Adding a value to a strict response enum is a breaking change (CONTRACT_GOVERNANCE §4).
 
 ## 7. Request and response bodies
 
@@ -352,7 +355,7 @@ Additional rules:
 | Response | `202 Accepted`, `Location: /api/v1/operations/{operationId}`, body = `Operation` |
 | Operation | `{ id, kind, status, createdAt, updatedAt, completedAt?, result?: { type, id }, error?: Problem }` |
 | `status` | `queued` → `running` → `succeeded` \| `failed` \| `cancelled` |
-| `kind` | `ai.transcription`, `ai.note-draft`, `ai.chart-summary`, `eligibility.check`, `encounter.after-visit-summary`, `export`, `ccda.import`, `ccda.export`, `onboarding.import`, `medication-history.fetch` |
+| `kind` | `ai.transcription`, `ai.note-draft`, `ai.chart-summary`, `eligibility.check`, `encounter.after-visit-summary`, `export`, `ccda.import`, `ccda.export`, `onboarding.import`, `medication-history.fetch`, `file.scan`. The list grows with each batch; clients treat an unknown kind as generic long-running work (§6.5) |
 | Result | A reference only; the client GETs the result resource with its normal permission |
 | Polling | `GET /operations/{operationId}` with `Retry-After` while unfinished |
 | Push | Event `operation.completed` to the requesting user over Server-Sent Events (EVENTS.md) |
@@ -392,7 +395,7 @@ Response: `200` with the list envelope of `PatientSummary` items.
 
 ### 14.3 PHI field denylist for URLs (enforced by lint)
 
-Path segments and query parameter names must not include: `name`, `given`, `family`, `firstName`, `lastName`, `birthDate`, `dob`, `phone`, `email`, `address`, `postalCode`, `zip`, `mrn`, `ssn`, `ssnLast4`, `memberId`, `subscriberId`, `licenseNumber`, `driversLicense`, `policyNumber`, `search`, `q` (on patient-scoped collections). Allowed exception: `q` on non-PHI catalogs (`/codes/search`, `/pharmacies`, `/lab-compendium`), because these search reference data, not patients.
+Path segments and query parameter names must not include: `name`, `given`, `family`, `firstName`, `lastName`, `birthDate`, `dob`, `phone`, `email`, `address`, `postalCode`, `zip`, `mrn`, `ssn`, `ssnLast4`, `memberId`, `subscriberId`, `licenseNumber`, `driversLicense`, `policyNumber`, `search`, `q` (on patient-scoped collections). Allowed exception: `q` on non-PHI catalogs (`/codes/search`, `/pharmacies`, `/lab-compendium`), and `postalCode` on `/pharmacies` (the pharmacy's ZIP code), because these search reference data, not patients.
 
 ## 15. Files (uploads and downloads)
 
@@ -406,7 +409,7 @@ Files never pass through module endpoints. Module endpoints only reference a `fi
 
 | Rule | Detail |
 |---|---|
-| `purpose` values | `insurance-card`, `encounter-audio`, `after-visit-summary`, `document`, `fax`, `ccda`, `export`, `onboarding-import` |
+| `purpose` values | `insurance-card`, `identity` (license images, D56), `receipt` (payment receipts, D58; server-generated), `encounter-audio`, `after-visit-summary`, `document`, `fax`, `ccda`, `export`, `onboarding-import`. Each purpose maps to one read permission for the download link (`FilePurpose` in `files.yaml`); a purpose with no mapping is denied |
 | Allowed types and sizes | Declared per purpose. `insurance-card`: **JPEG and PNG for P0**, at most 10 MB (agreed, Minalini M13 and Vimal). HEIC (iPhone photo format) only if Anand's file service converts it for display — **pending Anand** |
 | Long audio | Multipart upload with several part URLs (agreed, A24) |
 | Secrecy | Upload and download URLs are bearer secrets: never logged, never stored by clients, never put in events |
@@ -489,6 +492,7 @@ Examples in the contract are what the mock server returns, so they must be safe:
 | `x-storage` | Operation | `clinical`, `admin`, `audit`, `files` (ADR-0011) | Yes (informational) | DATA_OWNERSHIP |
 | `x-events` | Operation | List of event types published | When it publishes | EVENTS.md |
 | `x-release` | Operation | `P0`, `P0-stretch` | Yes | FRS §2 |
+| `x-extensible-enum` | String schema in a response | List of known values, in place of `enum` | Only for response enums that may grow | §6.5; CONTRACT_GOVERNANCE §4.1 |
 
 ## 22. Open items in this document
 
