@@ -356,7 +356,8 @@ components:
           x-phi: financial
         benefitAmount:
           $ref: ../components/schemas/Money.yaml
-          description: 'Amount, when the line has one. The schema has no currency column: always USD. **Pending schema lock.**'
+          description: Amount, when the line has one. Always USD (D40); `eligibility_benefit.amount` is NUMERIC(12,2) and
+            never negative.
           x-phi: financial
         percent:
           type: number

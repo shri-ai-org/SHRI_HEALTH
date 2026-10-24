@@ -3,8 +3,8 @@
 # Scope: Facilities, locations, providers, appointment types, provider schedules, fee schedules, the payer directory and practice payers, lab accounts, note templates (`backend/app/modules/practice_setup/`)
 # Stage 4 batch 1. Shapes follow ENDPOINT_INVENTORY rows #151-186 and #230-231. x-owner Anand: he approves these operations.
 # Practice configuration, not patient data: every field is `x-phi: none` unless marked otherwise.
-# Most of these are admin tables without a version column: their `ETag` comes from `updated_at` until a version column is
-# added (ADR-0008). **Pending schema lock.**
+# Every editable resource has a version for its `ETag` (ADR-0008): `version` on the admin tables (A41) or FHIR
+# `meta_version_id` on locations, providers and schedules. Aligned with the locked schema (D72).
 # Payers have two layers (decided by Vimal, 2026-10-23): a read-only platform payer directory (`/payers`) and the practice's
 # own payer setup (`/practice-payers`). Lab providers follow the same pattern (D48): read-only `/lab-providers`, set up by onboarding or
 # the platform; lab accounts stay practice-level (`/lab-accounts`).
@@ -3339,8 +3339,8 @@ components:
           type: string
           maxLength: 64
           pattern: ^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$
-          description: IANA time zone, e.g. `America/Chicago`. Appointments display in this zone (D40). Required here although
-            the schema column is nullable. **Pending schema lock.**
+          description: IANA time zone, e.g. `America/Chicago`. Appointments display in this zone (D40). Required by the API;
+            `facility.timezone` is still nullable in the schema, so NOT NULL is migration item A45.
           x-phi: none
         address: &id034
           $ref: ../components/schemas/Address.yaml
@@ -4295,8 +4295,8 @@ components:
           x-phi: none
     PracticePayer:
       description: 'A payer the practice works with: chosen from the payer directory, with its enrollment status per transaction
-        (inventory #175-178). Enrollments map to `payer_enrollment`; there is no practice-level table for the payer itself
-        yet, so the record and its `active` flag need one (item for Anand). **Pending schema lock.**'
+        (inventory #175-178). Stored in `practice_payer` (A39: the directory payer, `is_active` as `active`, `version` for
+        the ETag); enrollments map to `payer_enrollment`.'
       type: object
       required:
       - id
