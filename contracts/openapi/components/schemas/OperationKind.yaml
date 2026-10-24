@@ -1,6 +1,7 @@
 title: OperationKind
 description: What kind of long-running work an operation tracks (API_STANDARDS §13).
 type: string
+# Grows with every batch; clients treat an unknown kind as generic long-running work (API_STANDARDS §6.5).
 enum:
   - ai.transcription
   - ai.note-draft
@@ -12,3 +13,4 @@ enum:
   - ccda.export
   - onboarding.import
   - medication-history.fetch
+  - file.scan

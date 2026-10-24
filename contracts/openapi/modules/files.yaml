@@ -1,16 +1,334 @@
 # Shri Health API — module `files`
 # x-owner: anand  (implements these operations and approves their contract; Vimal approves standards conformance)
-# Scope: File upload and download links (`backend/app/modules/files/`)
-#
-# Stage 3 leaves this file empty on purpose: no endpoints yet.
-# Stage 4 adds each path item under `paths:` and references it from ../shri-health.yaml, for example:
-#
-#   # in shri-health.yaml
-#   paths:
-#     /patients/search:
-#       $ref: modules/patients.yaml#/paths/~1patients~1search
-#
-# Module-specific schemas go under `components.schemas` here; shared ones stay in ../components/.
-paths: {}
+# Scope: Upload and download links through the file service (`backend/app/modules/files/`)
+# Batch 1 follow-up (2026-10-24, D52): the three file-service operations (#148-150), API_STANDARDS §15 (agreed by Anand, A24, D28), because
+# insurance card photos, signed consent forms and payment receipts in batch 1 reference file IDs. Anand approves these operations.
+paths:
+  /files/upload-url:
+    post:
+      operationId: createUploadUrl
+      summary: Request an upload link
+      description: 'Step 1 of an upload (inventory #148; API_STANDARDS §15): creates a file record in state `pending-upload`
+        and returns a pre-signed link into the quarantine bucket. The browser `PUT`s the bytes there (step 2), then calls
+        `POST /files/{fileId}/complete` (step 3). Client file names are not stored. Returns `201` without a `Location`: a
+        file has no single-read endpoint in the MVP.'
+      tags:
+      - files
+      x-owner: anand
+      x-permission: files:create
+      x-audit:
+        action: C
+        category: phi-write
+      x-idempotency: supported
+      x-storage: files
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadUrlRequest'
+            examples:
+              card:
+                summary: Insurance card photo
+                value:
+                  purpose: insurance-card
+                  contentType: image/jpeg
+                  sizeBytes: 348211
+                  sha256: abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd
+      responses:
+        '201':
+          description: Created. The upload link.
+          headers:
+            X-Request-ID: &id001
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control: &id002
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit: &id003
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy: &id004
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadTicket'
+              examples:
+                ticket:
+                  summary: Upload link
+                  value:
+                    fileId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                    uploadUrl: https://files.company-domain.invalid/quarantine/TEST-upload-1
+                    uploadHeaders:
+                      Content-Type: image/jpeg
+                    expiresAt: '2026-11-03T14:45:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `files:create`); `csrf-check-failed` (missing or wrong CSRF
+            header or Origin).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the media
+            type or size is not allowed for this purpose); `idempotency-key-reused` (the Idempotency-Key was used with a different
+            body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /files/{fileId}/complete:
+    parameters: &id005
+    - name: fileId
+      in: path
+      required: true
+      description: File ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: completeUpload
+      summary: Finish an upload
+      description: 'Step 3 of an upload (inventory #149; API_STANDARDS §15): the file service checks the hash, scans the file,
+        encrypts it and moves it to the clean bucket, in the background. Returns `202` and an operation of kind `file.scan`;
+        the file is `quarantined` until the operation ends with `clean` or `rejected` (`file.scanned` event). Only a `clean`
+        file can be attached or downloaded.'
+      tags:
+      - files
+      x-owner: anand
+      x-permission: files:create
+      x-audit:
+        action: U
+        category: phi-write
+      x-async: true
+      x-storage: files
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed`
+            on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            Retry-After:
+              $ref: ../components/headers/RetryAfter.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/Operation.yaml
+              examples:
+                scanning:
+                  summary: Scan queued
+                  value:
+                    id: 6f7a8b9c-0d1e-4f2a-8b3c-4d5e6f7a8b9c
+                    kind: file.scan
+                    status: queued
+                    createdAt: '2026-11-03T14:31:00Z'
+                    updatedAt: '2026-11-03T14:31:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `files:create`); `csrf-check-failed` (missing or wrong CSRF
+            header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such file in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the file is not `pending-upload`, or no bytes were uploaded).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /files/{fileId}/download-url:
+    parameters: *id005
+    get:
+      operationId: createDownloadUrl
+      summary: Get a download link
+      description: 'A short-lived, audited link to a clean file (inventory #150; API_STANDARDS §15). Besides `files:read`,
+        the caller needs the read permission of the file''s purpose, for example `coverages:read` for an insurance card, and
+        a break-glass grant or care-team membership for a restricted patient''s files. Audited as an export.'
+      tags:
+      - files
+      x-owner: anand
+      x-permission: files:read
+      x-audit:
+        action: R
+        category: export
+      x-storage: files
+      x-release: P0
+      responses:
+        '200':
+          description: The download link, valid for at most 5 minutes.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadLink'
+              examples:
+                link:
+                  summary: Download link
+                  value:
+                    url: https://files.company-domain.invalid/clean/TEST-download-1
+                    expiresAt: '2026-11-03T14:35:00Z'
+                    contentType: image/jpeg
+                    sizeBytes: 348211
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `files:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such file in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the file is not `clean` yet, or was rejected).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
-  schemas: {}
+  schemas:
+    FilePurpose:
+      description: 'What the file is for (API_STANDARDS §15). Each purpose has its own allowed types and sizes: `insurance-card`
+        is JPEG or PNG up to 10 MB (M13).'
+      type: string
+      enum:
+      - insurance-card
+      - encounter-audio
+      - after-visit-summary
+      - document
+      - fax
+      - ccda
+      - export
+      - onboarding-import
+    UploadUrlRequest:
+      description: Body to ask for an upload link.
+      type: object
+      additionalProperties: false
+      required:
+      - purpose
+      - contentType
+      - sizeBytes
+      - sha256
+      properties:
+        purpose:
+          $ref: '#/components/schemas/FilePurpose'
+          description: What the file is for; decides the allowed types and sizes and who may later download it.
+          x-phi: none
+        contentType:
+          type: string
+          maxLength: 100
+          description: Media type of the file, e.g. `image/jpeg`.
+          x-phi: none
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 2147483648
+          description: Size in bytes.
+          x-phi: none
+        sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          maxLength: 64
+          description: SHA-256 of the content, lowercase hex; checked after upload.
+          x-phi: none
+    UploadTicket:
+      description: 'Where to PUT the bytes. The link is a bearer secret: never log it, never store it, never put it in an
+        event.'
+      type: object
+      required:
+      - fileId
+      - uploadUrl
+      - expiresAt
+      properties:
+        fileId:
+          $ref: ../components/schemas/Id.yaml
+          description: The new file; `pending-upload` until completed.
+          x-phi: internal-id
+        uploadUrl:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: Pre-signed link into the quarantine bucket; the browser `PUT`s the bytes there.
+          x-phi: none
+        uploadHeaders:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 500
+          description: Headers to send with the PUT.
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the link stops working.
+          x-phi: none
+    DownloadLink:
+      description: A short-lived link to a clean file.
+      type: object
+      required:
+      - url
+      - expiresAt
+      - contentType
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: 'Pre-signed download link, valid for at most 5 minutes. A bearer secret: never log or store it.'
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the link stops working.
+          x-phi: none
+        contentType:
+          type: string
+          maxLength: 100
+          description: Media type.
+          x-phi: none
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 2147483648
+          description: Size in bytes.
+          x-phi: none

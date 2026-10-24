@@ -1,16 +1,642 @@
 # Shri Health API — module `platform`
 # x-owner: thulasi  (implements these operations and approves their contract; Vimal approves standards conformance)
 # Scope: Session, current user, users and roles, operations, event stream, audit, break-glass, integration admin, health check, partner callbacks (`backend/app/core/`, `backend/app/integration/`)
-#
-# Stage 3 leaves this file empty on purpose: no endpoints yet.
-# Stage 4 adds each path item under `paths:` and references it from ../shri-health.yaml, for example:
-#
-#   # in shri-health.yaml
-#   paths:
-#     /patients/search:
-#       $ref: modules/patients.yaml#/paths/~1patients~1search
-#
-# Module-specific schemas go under `components.schemas` here; shared ones stay in ../components/.
-paths: {}
+# Batch 1 follow-up (2026-10-24, D52, D53): sign-in and session (#1-6), the event stream (#14) and break-glass (#19), because the
+# design system (PR #19) and every screen build on them. Users, roles, operations, audit and integration admin follow in the
+# platform batch. Thulasi approves these operations.
+paths:
+  /auth/login:
+    get:
+      operationId: startLogin
+      summary: Start sign-in
+      description: 'Sends the browser to Keycloak (authorization code with PKCE `S256`, `state` and `nonce`; inventory #1;
+        SECURITY_MODEL §2.1). The PKCE verifier, `state` and `nonce` stay server-side, keyed by the short-lived `__Host-shri_login`
+        cookie set here. Public: no session needed.'
+      tags:
+      - platform
+      x-owner: thulasi
+      x-permission: public
+      x-audit: &id001
+        action: E
+        category: security
+      x-storage: admin
+      x-release: P0
+      security: []
+      responses:
+        '302':
+          description: 302. Redirect to Keycloak; sets the login-state cookie.
+          headers:
+            Location: &id002
+              description: Where the browser is sent next.
+              schema:
+                type: string
+                format: uri
+                maxLength: 2000
+            Set-Cookie:
+              description: '`__Host-shri_login`: `HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`; holds only a key to
+                the server-side PKCE state.'
+              schema:
+                type: string
+                maxLength: 1000
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the identity provider is unavailable).
+  /auth/callback:
+    get:
+      operationId: finishLogin
+      summary: Finish sign-in
+      description: 'Keycloak returns here (inventory #2; SECURITY_MODEL §2.1). The server checks `state` and `nonce`, exchanges
+        the code, keeps Keycloak''s tokens server-side, creates a new session ID (never reusing one), sets the session cookie
+        and sends the browser back to the app. Public: no session yet. Audited as a login.'
+      tags:
+      - platform
+      x-owner: thulasi
+      x-permission: public
+      x-audit: *id001
+      x-storage: admin
+      x-release: P0
+      security: []
+      parameters:
+      - name: code
+        in: query
+        required: true
+        description: Authorization code from Keycloak.
+        schema:
+          type: string
+          maxLength: 2000
+      - name: state
+        in: query
+        required: true
+        description: The `state` from `/auth/login`; must match the login-state cookie.
+        schema:
+          type: string
+          maxLength: 256
+      responses:
+        '302':
+          description: 302. Signed in; redirect back to the app. Sets the session cookie and clears the login-state cookie.
+          headers:
+            Location: *id002
+            Set-Cookie:
+              description: '`__Host-shri_session`: `HttpOnly; Secure; SameSite=Strict; Path=/`, a 256-bit reference token;
+                the server stores only its hash (SECURITY_MODEL §2.1).'
+              schema:
+                type: string
+                maxLength: 1000
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (`code` or `state` missing or not matching the login-state cookie, the login
+            state expired (10 minutes), or the nonce did not match).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the identity provider is unavailable).
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      summary: Extend the session
+      description: 'Extends the idle timer and returns the new session state (inventory #3; SECURITY_MODEL §2.1). A user action:
+        the "Stay signed in" button calls it. It cannot move the 12-hour absolute limit.'
+      tags:
+      - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit: *id001
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          description: Extended. The session state with the new `idleExpiresAt`.
+          headers:
+            X-Request-ID: &id003
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control: &id004
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit: &id005
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy: &id006
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+              examples:
+                extended:
+                  summary: Extended
+                  value:
+                    user: &id007
+                      id: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                      displayName: Dev FD
+                      roles:
+                      - FD
+                      facilityIds:
+                      - 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    organization: &id008
+                      id: 0a000000-0000-4000-8000-00000000000a
+                      name: Test Clinic
+                    csrfToken: TEST-csrf-placeholder
+                    idleExpiresAt: '2026-11-03T15:00:00Z'
+                    expiresAt: '2026-11-04T02:00:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `authenticated`); `csrf-check-failed` (missing or wrong CSRF
+            header or Origin).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Sign out
+      description: 'Deletes the server-side session and revokes Keycloak''s refresh token (inventory #4; SECURITY_MODEL §2.1).
+        The session cookie stops working on the next request.'
+      tags:
+      - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit: *id001
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '204':
+          description: 204. Signed out; the session cookie is cleared.
+          headers:
+            X-Request-ID: *id003
+            Cache-Control: *id004
+            RateLimit: *id005
+            RateLimit-Policy: *id006
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `authenticated`); `csrf-check-failed` (missing or wrong CSRF
+            header or Origin).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /auth/session:
+    get:
+      operationId: getSession
+      summary: Get the session state
+      description: 'Returns the signed-in user, their clinic, the CSRF token and the two expiry times (inventory #5; SECURITY_MODEL
+        §2.1, §2.2; Thulasi T8). Reading it does not count as user activity. Screens call it after login and after any user
+        request, and time the idle warning from `idleExpiresAt`.'
+      tags:
+      - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit: &id009
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The session state.
+          headers:
+            X-Request-ID: *id003
+            Cache-Control: *id004
+            RateLimit: *id005
+            RateLimit-Policy: *id006
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+              examples:
+                front-desk:
+                  summary: A front-desk user
+                  value:
+                    user: *id007
+                    organization: *id008
+                    csrfToken: TEST-csrf-placeholder
+                    idleExpiresAt: '2026-11-03T14:45:00Z'
+                    expiresAt: '2026-11-04T02:00:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the account is deactivated or has no clinic).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /me:
+    get:
+      operationId: getMe
+      summary: Get the current user
+      description: 'The current user, their clinic and their effective permissions, so screens show only what the role allows
+        (inventory #6). The server still checks every action.'
+      tags:
+      - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit: *id009
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The current user.
+          headers:
+            X-Request-ID: *id003
+            Cache-Control: *id004
+            RateLimit: *id005
+            RateLimit-Policy: *id006
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+              examples:
+                front-desk:
+                  summary: A front-desk user
+                  value:
+                    user: *id007
+                    organization: *id008
+                    permissions:
+                    - patients:search
+                    - patients:read
+                    - patients:create
+                    - appointments:create
+                    - appointments:check-in
+                    - scheduling-reference:read
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the account is deactivated or has no clinic).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /events/stream:
+    get:
+      operationId: streamEvents
+      summary: Live updates (Server-Sent Events)
+      description: 'Opens a Server-Sent Events stream of the events this user may see (inventory #14; EVENTS.md §3, agreed
+        T28). Each `data:` line is one `EventEnvelope` in JSON, with IDs and status only, never PHI; screens re-fetch details
+        through the normal API. A comment line every 25 seconds keeps proxies open. Neither the stream nor its keep-alives
+        reset the idle timer (T9). On reconnect the browser sends `Last-Event-ID` and the server replays from a 5-minute buffer,
+        or sends `stream.reset` so the screen re-fetches. At most 5 open streams per user.'
+      tags:
+      - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit: *id009
+      x-storage: admin
+      x-release: P0
+      parameters:
+      - name: Last-Event-ID
+        in: header
+        required: false
+        description: ID of the last event received, to resume after a reconnect.
+        schema:
+          type: string
+          maxLength: 64
+      responses:
+        '200':
+          description: The stream. Stays open; one `EventEnvelope` per `data:` line.
+          headers:
+            X-Request-ID: *id003
+            Cache-Control: *id004
+            RateLimit: *id005
+            RateLimit-Policy: *id006
+          content:
+            text/event-stream:
+              schema:
+                $ref: ../components/schemas/EventEnvelope.yaml
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the account is deactivated or has no clinic).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests, or more than 5 open streams for this user).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/break-glass:
+    parameters:
+    - name: patientId
+      in: path
+      required: true
+      description: Patient ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: breakGlass
+      summary: Open a restricted chart
+      description: 'Grants this user access to a restricted patient''s chart for 4 hours, with a stated reason (inventory
+        #19; SECURITY_MODEL §5.2, D37, D53). The grant is for this user and this patient only, never widens permissions, is
+        audited as `security`, and raises `break-glass.granted`, which puts an inbox item in front of the privacy officer
+        (never an email with PHI). Care-team members do not need it. `reasonText` is required for `other`.'
+      tags:
+      - platform
+      x-owner: thulasi
+      x-permission: patients:break-glass
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-idempotency: supported
+      x-storage: audit
+      x-events:
+      - break-glass.granted
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BreakGlassRequest'
+            examples:
+              covering:
+                summary: Covering clinician
+                value:
+                  reasonCode: continuity-of-care
+              other:
+                summary: Other, with the required note
+                value:
+                  reasonCode: other
+                  reasonText: Reviewing the chart for a quality audit requested by the practice administrator.
+      responses:
+        '200':
+          description: Access granted. The grant, with its expiry.
+          headers:
+            X-Request-ID: *id003
+            Cache-Control: *id004
+            RateLimit: *id005
+            RateLimit-Policy: *id006
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakGlassGrant'
+              examples:
+                granted:
+                  summary: Granted for 4 hours
+                  value:
+                    id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    userId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                    reasonCode: continuity-of-care
+                    grantedAt: '2026-11-03T14:30:00Z'
+                    expiresAt: '2026-11-03T18:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:break-glass`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the chart is not restricted, or this user already holds a current grant); `patient-merged` (the patient was merged
+            into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`reasonCode`
+            is `other` without `reasonText`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
-  schemas: {}
+  schemas:
+    SessionUser:
+      description: The signed-in user, as the session knows them. Roles use the codes in SECURITY_MODEL §4.3.
+      type: object
+      required:
+      - id
+      - displayName
+      - roles
+      - facilityIds
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: User ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name for the header (a staff member, not a patient).
+          x-phi: none
+        roles:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            enum:
+            - FD
+            - MA
+            - RN
+            - MD
+            - APP
+            - BIL
+            - ADM
+            - CO
+            - SUP
+            - DSP
+          description: Role codes (SECURITY_MODEL §4.3; `DSP` is the status board display, D47). The server checks every action;
+            roles only decide what screens show.
+          x-phi: none
+        facilityIds:
+          type: array
+          maxItems: 50
+          items:
+            $ref: ../components/schemas/Id.yaml
+          description: Facilities the user is assigned to (SECURITY_MODEL §5.1).
+          x-phi: internal-id
+    SessionOrganization:
+      description: The clinic (tenant) of the session. It comes from the server-side session only, never from token claims
+        (D21).
+      type: object
+      required:
+      - id
+      - name
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Organization ID.
+          x-phi: internal-id
+        name:
+          type: string
+          maxLength: 200
+          description: Practice name.
+          x-phi: none
+    Session:
+      description: Session state for the browser (SECURITY_MODEL §2.1, §2.2). Read after login and after any user request
+        that may have extended the session.
+      type: object
+      required:
+      - user
+      - organization
+      - csrfToken
+      - idleExpiresAt
+      - expiresAt
+      properties:
+        user:
+          $ref: '#/components/schemas/SessionUser'
+          description: The signed-in user.
+          x-phi: none
+        organization:
+          $ref: '#/components/schemas/SessionOrganization'
+          description: The clinic.
+          x-phi: none
+        csrfToken:
+          type: string
+          maxLength: 128
+          description: Send as `X-CSRF-Token` on every POST, PUT and PATCH, including `/auth/refresh` and `/auth/logout`.
+            Bound to the session; rotates at every login. Keep it in memory only, never in storage.
+          x-phi: none
+        idleExpiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the session ends if there is no user activity (15 minutes idle, Q20). Only user-initiated requests
+            move it; the event stream, its keep-alives and `/operations` polling do not. Screens time the 13-minute warning
+            from this value, not from a browser timer.
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: The absolute limit, 12 hours after login. It cannot be extended; screens show a notice before it so
+            people can save their work.
+          x-phi: none
+    Me:
+      description: 'The current user, their clinic and their effective permissions, for building menus (inventory #6). The
+        server checks every action regardless.'
+      type: object
+      required:
+      - user
+      - organization
+      - permissions
+      properties:
+        user:
+          $ref: '#/components/schemas/SessionUser'
+          description: The signed-in user.
+          x-phi: none
+        organization:
+          $ref: '#/components/schemas/SessionOrganization'
+          description: The clinic.
+          x-phi: none
+        permissions:
+          type: array
+          maxItems: 300
+          items:
+            type: string
+            maxLength: 80
+          description: Effective permission names from the user's roles (`resource:action`, SECURITY_MODEL §4.2).
+          x-phi: none
+    BreakGlassReasonCode:
+      description: Why a restricted chart is opened (SECURITY_MODEL §5.2). `other` needs `reasonText`.
+      type: string
+      enum:
+      - emergency-care
+      - continuity-of-care
+      - patient-request
+      - other
+    BreakGlassRequest:
+      description: Body to open a restricted chart. `reasonText` is required when `reasonCode` is `other`, optional otherwise
+        (D53).
+      type: object
+      additionalProperties: false
+      required:
+      - reasonCode
+      properties:
+        reasonCode:
+          $ref: '#/components/schemas/BreakGlassReasonCode'
+          description: The reason.
+          x-phi: none
+        reasonText:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Free text explaining the reason. Required for `other`. May name people, so it is treated as patient
+            data and never logged; it is recorded in the audit event and shown to the privacy officer.
+          x-phi: identifier
+    BreakGlassGrant:
+      description: 'A break-glass grant: this user may open this patient''s chart until `expiresAt`, 4 hours (SECURITY_MODEL
+        §5.2, D53). It never widens permissions; it only lifts the restriction. The compliance officer can revoke it.'
+      type: object
+      required:
+      - id
+      - patientId
+      - userId
+      - reasonCode
+      - grantedAt
+      - expiresAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Grant ID (also in the `break-glass.granted` event).
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        userId:
+          $ref: ../components/schemas/Id.yaml
+          description: The user it was granted to.
+          x-phi: internal-id
+        reasonCode:
+          $ref: '#/components/schemas/BreakGlassReasonCode'
+          description: The reason given.
+          x-phi: none
+        grantedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was granted.
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: 'When it ends: 4 hours after `grantedAt`.'
+          x-phi: none
