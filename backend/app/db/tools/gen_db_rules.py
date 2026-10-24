@@ -218,7 +218,11 @@ def versioning_sql() -> str:
                 f"  FOR EACH ROW EXECUTE FUNCTION shri_fhir_touch_parent({argstr});"]
     cases = " ".join(f"WHEN '{r}' THEN '{c.__tablename__}'"
                      for r, c in sorted(FHIR_RESOURCES.items()))
-    out += ["", "CREATE OR REPLACE FUNCTION shri_resource_table(resource_type text) RETURNS text",
+    # Schema-qualified like the snapshot functions above: unqualified, the function landed in
+    # whichever schema came first on the migrating role's search_path.
+    out += ["",
+            f"CREATE OR REPLACE FUNCTION {CLINICAL_SCHEMA}.shri_resource_table("
+            "resource_type text) RETURNS text",
             f"LANGUAGE sql IMMUTABLE AS $$ SELECT CASE resource_type {cases} END $$;", ""]
     return "\n".join(out) + "\n"
 

@@ -394,13 +394,13 @@ END $$;
 
 -- =============================================================================== provenance
 CREATE OR REPLACE FUNCTION public.shri_provenance_target_check() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE tbl text := shri_resource_table(NEW.target_resource_type); found boolean;
+DECLARE tbl text := clinical.shri_resource_table(NEW.target_resource_type); found boolean;
 BEGIN
   IF tbl IS NULL THEN
     RAISE EXCEPTION 'provenance target type % is not a stored FHIR resource',
       NEW.target_resource_type USING ERRCODE = 'P0001';
   END IF;
-  EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I WHERE id = $1)', tbl) INTO found
+  EXECUTE format('SELECT EXISTS (SELECT 1 FROM clinical.%I WHERE id = $1)', tbl) INTO found
     USING NEW.target_id;
   IF NOT found THEN
     RAISE EXCEPTION 'provenance target %/% does not exist', NEW.target_resource_type,
@@ -411,7 +411,7 @@ END $$;
 
 -- =============================================================================== audit chain
 -- Canonical, timezone-independent payload covering every column.
-CREATE OR REPLACE FUNCTION public.shri_audit_payload(e audit_event) RETURNS text LANGUAGE sql STABLE AS $$
+CREATE OR REPLACE FUNCTION public.shri_audit_payload(e audit.audit_event) RETURNS text LANGUAGE sql STABLE AS $$
   SELECT jsonb_build_array('v1', e.chain_seq, e.prev_hash, e.event_uuid, e.tenant_id,
            to_char(e.recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
            e.actor_type, e.actor_user_id, e.actor_display, e.action, e.outcome, e.entity_type,
