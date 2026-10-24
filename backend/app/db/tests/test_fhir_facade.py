@@ -11,9 +11,12 @@ from fastapi.testclient import TestClient
 from fhir.resources.R4B import get_fhir_model_class
 from sqlalchemy import text
 
-from app.db.tests import builders as b
-from app.fhir.serializer import SnapshotRow, to_fhir
 from app.db.models import FHIR_RESOURCES, MAPPERS, systems
+from app.db.tests import builders as b
+from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, TEST_DATABASE_URL, switch_to_app_role
+from app.fhir.serializer import SnapshotRow, to_fhir
+
+pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
 
 M = MAPPERS
 
@@ -207,7 +210,8 @@ def test_observation_components_and_condition_codings(db, chart):
 
 def test_history_snapshot_serializes_like_the_live_row(db, chart):
     pt = chart["patient"]
-    snap = db.execute(text("SELECT snapshot FROM fhir_resource_history WHERE resource_id = :i "
+    snap = db.execute(text("SELECT snapshot FROM clinical.fhir_resource_history "
+                           "WHERE resource_id = :i "
                            "AND version_id = :v"), {"i": pt.id, "v": pt.meta_version_id}).scalar()
     live, hist = to_fhir(pt), to_fhir(M["patient"], SnapshotRow(snap))
     assert hist == live
@@ -216,15 +220,18 @@ def test_history_snapshot_serializes_like_the_live_row(db, chart):
 # --------------------------------------------------------------------------- HTTP
 @pytest.fixture
 def client(chart, db):
-    """Minimal local test app mounting only the FHIR facade router. There is no full
-    assembled FastAPI app to import yet (backend/app/core/ - machine-token auth, the real
-    app factory - isn't on `main`; see the schema-adoption report), so this builds just enough
-    to exercise app.fhir.api over HTTP: the router, its machine_token_auth seam overridden with
-    a fixed AuthContext, and the DB-error -> OperationOutcome mapping from app.db.errors."""
+    """A local app mounting only the FHIR facade router, with both of its seams overridden:
+    ``machine_token_auth`` with a fixed AuthContext, and ``fhir_db`` with a session from the
+    core's own ``Database.tenant_session`` (the same per-transaction clinic settings
+    ``tenant_db`` uses). /fhir will run as ``shri_fhir_reader``; these tests connect as
+    ``shri_app`` until the audit grants for that role are decided (open question in the PR)."""
     from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
     from sqlalchemy.exc import DBAPIError
 
-    from app.fhir.api import AuthContext, machine_token_auth, outcome_from_db_error, router
+    from app.core.config import Settings
+    from app.core.db import Database
+    from app.fhir.api import AuthContext, fhir_db, machine_token_auth, outcome_from_db_error, router
 
     app = FastAPI()
     app.include_router(router)
@@ -232,13 +239,22 @@ def client(chart, db):
     @app.exception_handler(DBAPIError)
     async def _db_error(request, exc):
         http_exc = outcome_from_db_error(exc)
-        from fastapi.responses import JSONResponse
         return JSONResponse(http_exc.detail, status_code=http_exc.status_code)
 
+    database = Database(Settings(database_url=TEST_DATABASE_URL))
+    switch_to_app_role(database.engine.sync_engine)
     ctx = AuthContext(db.info["tenant_id"], chart["ctx"]["user"].id, frozenset({"clinician"}))
+
+    async def _fhir_db():
+        session = database.tenant_session(ctx.tenant_id, ctx.user_id, ctx.correlation_id)
+        async with session:
+            yield session
+
     app.dependency_overrides[machine_token_auth] = lambda: ctx
+    app.dependency_overrides[fhir_db] = _fhir_db
     with TestClient(app) as c:
         yield c
+        c.portal.call(database.dispose)  # on the loop that owns the connections
     app.dependency_overrides.clear()
 
 

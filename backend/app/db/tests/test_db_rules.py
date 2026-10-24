@@ -10,7 +10,9 @@ from sqlalchemy.exc import DBAPIError
 
 from app.db.models import MAPPERS, systems
 from app.db.tests import builders as b
-from app.db.tests.conftest import make_tenant, open_session
+from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, make_tenant, open_session
+
+pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
 
 M = MAPPERS
 

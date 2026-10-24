@@ -18,9 +18,23 @@ request's tenant into the next):
 | `app.current_user_id` | the signed-in user, for provenance and the audit chain |
 | `app.correlation_id` | the request ID, carried into `audit_event.correlation_id` |
 
-`app/db/session.py`'s `tenant_session()` is the reference implementation of this contract (used
-by this package's own tests and by `backend/app/fhir/api.py` until a full app exists to wire
-Thulasi's real `tenant_db` in instead) — copy its `set_config` call exactly.
+The implementation is the core's: `Database.tenant_session` in `backend/app/core/db.py` and
+`tenant_db` in `backend/app/core/deps.py`. This package owns no engine and no session.
+`app/db/session.py` only holds the hook that fills `tenant_id` on new rows from
+`session.info["tenant_id"]`, which the core's `tenant_session()` sets to the clinic UUID (PR #28,
+`app.core.db.TENANT_ID_INFO_KEY`). It fills only an empty `tenant_id` and never overwrites one.
+
+## The /fhir session
+
+`/fhir` does not use `tenant_db`. It runs as `shri_fhir_reader` (`FHIR_DATABASE_URL`, read-only,
+D22/D23) with the clinic taken from the machine token. `backend/app/fhir/api.py` gets its
+session from one dependency, `fhir_db`, a seam (like `machine_token_auth`) until Thulasi's core
+provides it. The facade commits its own audit rows (`audit()`), including before a 403, so the
+real `fhir_db` must set the three settings again on every new transaction, as `tenant_db` does.
+
+Open question: `shri_fhir_reader` has SELECT on `clinical` only, but every `/fhir` read writes
+`audit.audit_event` and checks `audit.break_glass_access`. Until that is decided, the facade
+tests run as `shri_app`.
 
 A role never bypasses RLS: `shri_app`, `shri_fhir_reader`, `shri_integration` and
 `shri_reporting` are all `NOBYPASSRLS`. Only `shri_migrator` has elevated rights, and only for
@@ -44,9 +58,11 @@ TO` a role here without checking it isn't already owned by that script.
 
 ## Data-access helpers (for Vimal, Thulasi)
 
-Write a FHIR-shaped record correctly is easy to get wrong by hand: child tables, version
-history, provenance, entered-in-error. Use these instead of touching the ORM models directly
-from another module's `repository.py`:
+Writing a FHIR-shaped record correctly is easy to get wrong by hand: child tables, version
+history, provenance, entered-in-error. Helpers take the `AsyncSession` that `tenant_db` gives
+the endpoint, never a session of their own, so the clinic settings and the `require()` guard
+always apply. Use these instead of touching the ORM models directly from another module's
+`repository.py`:
 
 ```python
 from app.fhir.serializer import to_fhir          # ORM row / history snapshot -> FHIR JSON

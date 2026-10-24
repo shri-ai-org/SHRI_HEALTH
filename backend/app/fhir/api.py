@@ -6,10 +6,15 @@ need an active break-the-glass grant.
 
 Access is machine-token only (ADR-0011 condition 3 / D22): the clinic comes from the token
 through Thulasi's core, never from client input, and our own screens never call /fhir - they
-use /api/v1. ``machine_token_auth`` below is a seam, not an implementation: backend/app/core/
-does not exist on `main` yet (see the adoption report), so this raises NotImplementedError
-until Thulasi's machine-token check is wired in here. Tests exercise everything above that seam
-via ``app.dependency_overrides[machine_token_auth]``.
+use /api/v1. Two seams stand in for core code that does not exist yet (issue #12), and both
+raise NotImplementedError until it does:
+
+- ``machine_token_auth``: the machine-token check, which gives the clinic and the client.
+- ``fhir_db``: the database session for /fhir. It is deliberately not ``tenant_db``: /fhir runs
+  as ``shri_fhir_reader`` (``FHIR_DATABASE_URL``, read-only, D22/D23), with the clinic taken
+  from the machine token. Thulasi's core will provide it.
+
+Tests exercise everything above the seams through ``app.dependency_overrides``.
 
 Search is POST, not GET-with-query-params (D13/D22): ``family=``, ``identifier=`` and
 ``birthdate=`` in a URL query string would put PHI in logs and server access records, which
@@ -23,6 +28,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -37,7 +43,6 @@ from app.db.errors import db_error_detail
 from app.db.models import FHIR_RESOURCES, MAPPERS
 from app.db.models.admin.platform import AuditEvent, BreakGlassAccess
 from app.db.models.fhir.records import FhirResourceHistory
-from app.db.session import tenant_session
 from app.fhir.serializer import SnapshotRow, to_fhir
 
 router = APIRouter(prefix="/fhir/r4", tags=["FHIR R4"])
@@ -108,20 +113,36 @@ def patient_id_of(cls: type, obj: Any) -> uuid.UUID | None:
     return getattr(obj, col.key, None) if col is not None else None
 
 
-async def get_db(ctx: AuthContext = Depends(machine_token_auth)):
-    async for session in tenant_session(ctx.tenant_id, ctx.user_id, ctx.correlation_id):
-        yield session
+async def fhir_db(ctx: AuthContext = Depends(machine_token_auth)) -> AsyncIterator[AsyncSession]:
+    """Seam for the /fhir database session, which Thulasi's core will provide (D22, D23).
+
+    What the real dependency must do, so this module works unchanged on top of it:
+    - connect as ``shri_fhir_reader`` through ``FHIR_DATABASE_URL``, never as ``shri_app``;
+    - set ``app.current_tenant_id``, ``app.current_user_id`` and ``app.correlation_id`` from the
+      machine token, transaction-local, and again for every new transaction on the session
+      (this module commits mid-request: see ``audit``), exactly as ``tenant_db`` does;
+    - roll back whatever is not committed when the request ends.
+
+    Open question (PR text): ``shri_fhir_reader`` is granted SELECT on ``clinical`` only, but
+    every /fhir read writes ``audit.audit_event`` and checks ``audit.break_glass_access``.
+    """
+    raise NotImplementedError(
+        "fhir_db is a seam for the /fhir session from Thulasi's core (shri_fhir_reader, clinic "
+        "from the machine token). Override this dependency in tests.")
+    yield  # pragma: no cover  (makes this an async generator, like the real dependency)
 
 
 async def audit(db: AsyncSession, ctx: AuthContext, action: str, outcome_: str, *,
                 entity_type: str | None = None, entity_id: Any = None, version: int | None = None,
                 patient_id: uuid.UUID | None = None, reason: str | None = None) -> None:
+    """Writes one audit row and commits it. /fhir changes nothing else, so committing here is
+    what makes the audit row outlast the request, including a request that ends in a 403."""
     db.add(AuditEvent(tenant_id=ctx.tenant_id, actor_type="user", actor_user_id=ctx.user_id,
                       action=action, outcome=outcome_, entity_type=entity_type,
                       entity_id=str(entity_id) if entity_id else None,
                       entity_version_id=version, patient_id=patient_id, reason=reason,
                       purpose_of_use="TREAT", correlation_id=ctx.correlation_id))
-    await db.flush()
+    await db.commit()
 
 
 async def ensure_chart_access(db: AsyncSession, ctx: AuthContext,
@@ -136,11 +157,10 @@ async def ensure_chart_access(db: AsyncSession, ctx: AuthContext,
         BreakGlassAccess.patient_id == patient_id, BreakGlassAccess.user_id == ctx.user_id,
         BreakGlassAccess.expires_at > func.now(), BreakGlassAccess.granted_at <= func.now()))
     if not granted:
-        # The request transaction rolls back with the 403, so the denial is audited in its own
-        # transaction (FRS §6: access denials must be traceable).
-        async for own in tenant_session(ctx.tenant_id, ctx.user_id, ctx.correlation_id):
-            await audit(own, ctx, "access-denied", "denied", entity_type="Patient",
-                        entity_id=patient_id, patient_id=patient_id, reason="restricted chart")
+        # FRS §6: access denials must be traceable. audit() commits, so the denial is saved
+        # before the 403 ends the request; nothing else was written in this transaction.
+        await audit(db, ctx, "access-denied", "denied", entity_type="Patient",
+                    entity_id=patient_id, patient_id=patient_id, reason="restricted chart")
         raise outcome(403, "forbidden", "restricted chart: break-the-glass access required")
 
 
@@ -170,7 +190,7 @@ async def capability_statement() -> JSONResponse:
 
 # --------------------------------------------------------------------------- read / vread
 @router.get("/{rtype}/{rid}")
-async def read(rtype: str, rid: uuid.UUID, db: AsyncSession = Depends(get_db),
+async def read(rtype: str, rid: uuid.UUID, db: AsyncSession = Depends(fhir_db),
                ctx: AuthContext = Depends(machine_token_auth)) -> JSONResponse:
     cls = resource_class(rtype)
     obj = await db.get(cls, rid)
@@ -178,11 +198,13 @@ async def read(rtype: str, rid: uuid.UUID, db: AsyncSession = Depends(get_db),
         raise outcome(404, "not-found", f"{rtype}/{rid} not found")
     pid = patient_id_of(cls, obj)
     await ensure_chart_access(db, ctx, pid)
-    await audit(db, ctx, "read", "success", entity_type=rtype, entity_id=rid,
-                version=obj.meta_version_id, patient_id=pid)
-    return fhir_response(to_fhir(obj), headers={
-        "ETag": f'W/"{obj.meta_version_id}"',
+    version = obj.meta_version_id
+    response = fhir_response(to_fhir(obj), headers={
+        "ETag": f'W/"{version}"',
         "Last-Modified": obj.meta_last_updated.strftime("%a, %d %b %Y %H:%M:%S GMT")})
+    await audit(db, ctx, "read", "success", entity_type=rtype, entity_id=rid,
+                version=version, patient_id=pid)
+    return response
 
 
 async def _history_rows(db: AsyncSession, rtype: str, rid: uuid.UUID,
@@ -195,7 +217,7 @@ async def _history_rows(db: AsyncSession, rtype: str, rid: uuid.UUID,
 
 
 @router.get("/{rtype}/{rid}/_history/{vid}")
-async def vread(rtype: str, rid: uuid.UUID, vid: int, db: AsyncSession = Depends(get_db),
+async def vread(rtype: str, rid: uuid.UUID, vid: int, db: AsyncSession = Depends(fhir_db),
                 ctx: AuthContext = Depends(machine_token_auth)) -> JSONResponse:
     cls = resource_class(rtype)
     rows = await _history_rows(db, rtype, rid, vid)
@@ -215,7 +237,7 @@ def _snapshot_patient(cls: type, snap: dict) -> uuid.UUID | None:
 
 
 @router.get("/{rtype}/{rid}/_history")
-async def history(rtype: str, rid: uuid.UUID, db: AsyncSession = Depends(get_db),
+async def history(rtype: str, rid: uuid.UUID, db: AsyncSession = Depends(fhir_db),
                   ctx: AuthContext = Depends(machine_token_auth)) -> JSONResponse:
     cls = resource_class(rtype)
     rows = await _history_rows(db, rtype, rid)
@@ -223,13 +245,13 @@ async def history(rtype: str, rid: uuid.UUID, db: AsyncSession = Depends(get_db)
         raise outcome(404, "not-found", f"{rtype}/{rid} has no history")
     pid = rid if cls is Patient else _snapshot_patient(cls, rows[0].snapshot)
     await ensure_chart_access(db, ctx, pid)
-    await audit(db, ctx, "read", "success", entity_type=rtype, entity_id=rid, patient_id=pid)
     entries = [{"fullUrl": f"{FHIR_BASE_URL}/{rtype}/{rid}/_history/{r.version_id}",
                 "resource": to_fhir(cls, SnapshotRow(r.snapshot)),
                 "request": {"method": "POST" if r.version_id == 1 else "PUT",
                             "url": f"{rtype}/{rid}"},
                 "response": {"status": "201" if r.version_id == 1 else "200",
                              "lastModified": r.recorded_at.isoformat()}} for r in rows]
+    await audit(db, ctx, "read", "success", entity_type=rtype, entity_id=rid, patient_id=pid)
     return fhir_response({"resourceType": "Bundle", "type": "history", "total": len(entries),
                           "entry": entries})
 
@@ -258,7 +280,7 @@ def _ref_id(value: str) -> uuid.UUID:
 
 @router.post("/{rtype}/_search")
 async def search(rtype: str, request: Request, params: SearchParams,
-                 db: AsyncSession = Depends(get_db),
+                 db: AsyncSession = Depends(fhir_db),
                  ctx: AuthContext = Depends(machine_token_auth)) -> JSONResponse:
     cls = resource_class(rtype)
     q = select(cls)
@@ -303,10 +325,11 @@ async def search(rtype: str, request: Request, params: SearchParams,
     # either, not just the URL - this used to be `f"search {request.url.query}"`, the raw query
     # string, which leaked family/identifier/birthdate values verbatim into audit_event.reason).
     searched = ",".join(k for k, v in params.model_dump(exclude={"count"}).items() if v)
-    await audit(db, ctx, "read", "success", entity_type=rtype, patient_id=pid,
-                reason=f"search params: {searched or 'none'}")
-    return fhir_response({
+    body = {
         "resourceType": "Bundle", "type": "searchset", "total": len(rows),
         "link": [{"relation": "self", "url": str(request.url)}],
         "entry": [{"fullUrl": f"{FHIR_BASE_URL}/{rtype}/{r.id}",
-                   "resource": to_fhir(r), "search": {"mode": "match"}} for r in rows]})
+                   "resource": to_fhir(r), "search": {"mode": "match"}} for r in rows]}
+    await audit(db, ctx, "read", "success", entity_type=rtype, patient_id=pid,
+                reason=f"search params: {searched or 'none'}")
+    return fhir_response(body)

@@ -1,56 +1,37 @@
-"""Reference tenant-scoped session for this package's own tests and tooling.
+"""New rows inherit the session's clinic, so building a resource with child rows (names,
+identifiers, components ...) does not repeat ``tenant_id`` on every object.
 
-This is NOT the API's ``tenant_db`` dependency - that's Thulasi's (``backend/app/core/db.py``,
-D21/ADR-0011 condition 2), which every endpoint actually uses via ``Depends(tenant_db)``. This
-module exists so ``backend/app/db/`` can be tested and migrated on its own, and because it is
-the reference implementation of the three-setting contract Thulasi's ``tenant_db`` must match:
-``app.current_tenant_id``, ``app.current_user_id``, ``app.correlation_id``, set transaction-
-local (``set_config(..., true)``) so pooled connections never leak a tenant between requests.
-The API connects as ``shri_app`` (NOBYPASSRLS): with no tenant set it sees zero rows.
+This module owns no engine and no session. The API's sessions come from the core's
+``tenant_db`` (``backend/app/core/deps.py``, D21), which sets the three settings the schema's
+row-level security reads; ``/fhir`` gets its session from the ``fhir_db`` seam in
+``backend/app/fhir/api.py``. Row-level security still checks every row this hook fills in.
+
+The hook reads ``session.info["tenant_id"]``, the clinic UUID. The core's ``tenant_session()``
+sets it (PR #28, ``app.core.db.TENANT_ID_INFO_KEY``); sessions without a clinic don't have the
+key, and the hook then does nothing. ``AsyncSession.info`` is the sync session's ``info`` dict,
+so ``before_flush`` sees it. The schema tests set the key themselves.
+
+Rule: fill ``tenant_id`` only where it is empty; never overwrite one. A row explicitly given
+another clinic keeps it, and forced RLS then refuses the insert.
 """
-from __future__ import annotations
 
-import os
-import uuid
-from collections.abc import AsyncIterator
+from typing import Any
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import event
+from sqlalchemy.orm import Session
 
-#: Overridable for tests/CI; production wiring (connection pool size, URL) is Thulasi's
-#: core.config, not duplicated here.
-DATABASE_URL = os.environ.get(
-    "SHRI_DATABASE_URL", "postgresql+psycopg://shri_app@localhost:5432/shri_health")
-
-engine = create_async_engine(DATABASE_URL, pool_pre_ping=True)
-SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
-
-
-async def tenant_session(tenant_id: uuid.UUID, user_id: uuid.UUID | None = None,
-                         correlation_id: str | None = None) -> AsyncIterator[AsyncSession]:
-    async with SessionLocal() as session, session.begin():
-        session.sync_session.info["tenant_id"] = tenant_id
-        await session.execute(
-            text("SELECT set_config('app.current_tenant_id', :t, true), "
-                 "set_config('app.current_user_id', :u, true), "
-                 "set_config('app.correlation_id', :c, true)"),
-            {"t": str(tenant_id), "u": str(user_id or ""), "c": correlation_id or ""})
-        yield session
-
-
-# New rows inherit the session's tenant, so building a resource with child rows (names,
-# identifiers, components ...) does not repeat tenant_id on every object. RLS still checks it.
-from sqlalchemy import event  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
+# The literal value of app.core.db.TENANT_ID_INFO_KEY as PR #28 defines it. Switch to importing
+# it once #28 is on main and this branch is rebased onto it.
+TENANT_INFO_KEY = "tenant_id"
 
 
 @event.listens_for(Session, "before_flush")
-def _default_tenant(session: Session, flush_context, instances) -> None:
-    tenant = session.info.get("tenant_id")
+def _default_tenant(session: Session, flush_context: Any, instances: Any) -> None:
+    tenant = session.info.get(TENANT_INFO_KEY)
     if tenant is None:
         return
     for obj in session.new:
-        if hasattr(obj, "tenant_id") and getattr(obj, "tenant_id") is None:
+        if getattr(obj, "tenant_id", False) is None:
             table = getattr(type(obj), "__table__", None)
             if table is not None and not table.c.tenant_id.nullable:
                 obj.tenant_id = tenant
