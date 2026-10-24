@@ -1,0 +1,177 @@
+/*
+ * Shri Health design tokens, U.S. ambulatory edition.
+ * Adapted from the Indian portals' design system: same calm palette and type scale, without the
+ * Indic font fallbacks. Components use these tokens only (eslint blocks raw hex in components),
+ * so dark mode and high contrast work everywhere. Contrast pairs are checked in tokens.test.ts.
+ */
+@import '@fontsource-variable/plus-jakarta-sans';
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme static {
+  --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Type scale: 14px reading floor (text-sm). Large-text mode redefines these. */
+  --text-2xs: 0.75rem;
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  /* Neutrals */
+  --color-bg: #e8edf4;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #f4f7fa;
+  --color-surface-3: #e4eaf2;
+  --color-scrim: rgba(15, 23, 42, 0.45);
+  --color-ink: #0f172a;
+  --color-ink-muted: #3f4e63;
+  --color-ink-subtle: #57677c;
+  --color-ink-inverse: #ffffff;
+  --color-border-soft: #d9e1ea;
+  --color-border: #c2cedb;
+  --color-border-strong: #6b7a8f;
+
+  /* Action blue */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-on-primary: #ffffff;
+  --color-focus: #2563eb;
+
+  /* Status pairs: always use -bg with -fg. */
+  --color-success-bg: #e6f0ee;
+  --color-success-fg: #2f6b5e;
+  --color-warning-bg: #fbf0e2;
+  --color-warning-fg: #8a5a1b;
+  --color-critical-bg: #fbeae7;
+  --color-critical-fg: #a33a28;
+  --color-info-bg: #e8eff6;
+  --color-info-fg: #33608a;
+  /* Emergency only (e.g. "Call 911"); ordinary errors use critical. */
+  --color-danger: #c81e1e;
+  /* Reserved for AI surfaces. */
+  --color-ai: #4f46e5;
+  --color-ai-soft: #eef0fd;
+
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  --shadow-card: 0 1px 2px 0 rgba(15, 23, 42, 0.04), 0 1px 3px 0 rgba(15, 23, 42, 0.06);
+  --shadow-card-lg: 0 4px 16px 0 rgba(15, 23, 42, 0.08), 0 2px 6px 0 rgba(15, 23, 42, 0.04);
+  --shadow-modal: 0 20px 60px 0 rgba(15, 23, 42, 0.18);
+
+  --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  /* Dark mode has its own ramp, not an inversion. Text is not pure white, to limit halation. */
+  .dark {
+    --color-bg: #14181f;
+    --color-surface-1: #1d232d;
+    --color-surface-2: #262e39;
+    --color-surface-3: #303945;
+    --color-scrim: rgba(0, 0, 0, 0.66);
+    --color-ink: #e7ecf3;
+    --color-ink-muted: #b3becd;
+    --color-ink-subtle: #93a1b3;
+    --color-ink-inverse: #14181f;
+    --color-border-soft: #2b333e;
+    --color-border: #3a4450;
+    --color-border-strong: #7d899b;
+    --color-primary-50: #1e2a3d;
+    --color-primary-100: #24344b;
+    --color-primary-500: #7fa9f0;
+    --color-primary-600: #2f5fbf;
+    --color-primary-700: #9cbcf3;
+    --color-on-primary: #f2f6ff;
+    --color-focus: #7fa9f0;
+    --color-success-bg: #1a2b29;
+    --color-success-fg: #93c6bc;
+    --color-warning-bg: #2a2519;
+    --color-warning-fg: #d7be86;
+    --color-critical-bg: #33201c;
+    --color-critical-fg: #f0a99a;
+    --color-info-bg: #1e2a38;
+    --color-info-fg: #9cc0e8;
+    --color-danger: #c0322d;
+    --color-ai: #a5a0f5;
+    --color-ai-soft: #22203a;
+  }
+
+  /* Accessibility modes, set on <html> from user settings. */
+  html[data-large-text='true'] {
+    --text-xs: 0.9375rem;
+    --text-sm: 1rem;
+    --text-base: 1.125rem;
+    --text-lg: 1.25rem;
+  }
+  html[data-high-contrast='true'] {
+    --color-ink: #000000;
+    --color-ink-muted: #1e293b;
+    --color-ink-subtle: #1e293b;
+    --color-border: #475569;
+    --color-border-strong: #334155;
+  }
+  html[data-high-contrast='true'].dark {
+    --color-ink: #ffffff;
+    --color-ink-muted: #e2e8f0;
+    --color-ink-subtle: #cbd5e1;
+    --color-border: #8d9bad;
+    --color-border-strong: #b3becd;
+  }
+
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    letter-spacing: 0.01em;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  /* WCAG 2.4.7: every focusable element shows focus; the outline survives Windows High Contrast. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  /* iOS zooms into inputs under 16px. */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: max(16px, 1em);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility tap-target {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
