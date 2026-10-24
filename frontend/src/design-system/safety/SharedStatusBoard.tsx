@@ -23,11 +23,14 @@ const APPOINTMENT_LABEL: Record<AppointmentStatus, string> = {
   noshow: 'No-show',
 }
 
-/** Visit step if there is one, else the appointment status; unknown values are shown as sent. */
-export function statusLabel(status: string, visitStatus?: string): string {
+/**
+ * Visit step if there is one, else the appointment status. Unknown values (added to the contract
+ * later) are shown as sent on staff screens; public displays pass `unknown: 'dash'` to show "—".
+ */
+export function statusLabel(status: string, visitStatus?: string, { unknown = 'raw' }: { unknown?: 'raw' | 'dash' } = {}): string {
   if (visitStatus && visitStatus in VISIT_LABEL) return VISIT_LABEL[visitStatus as VisitStatus]
   if (status in APPOINTMENT_LABEL) return APPOINTMENT_LABEL[status as AppointmentStatus]
-  return visitStatus ?? status
+  return unknown === 'dash' ? '—' : (visitStatus ?? status)
 }
 
 /**
@@ -53,8 +56,8 @@ export function safeInitials(value: string): string {
 
 export interface SharedStatusBoardProps {
   items: SharedBoardItem[]
-  /** Facility time zone from the response (`timeZone`). */
-  timeZone: string
+  /** Facility time zone from the response (`timeZone`); null shows UTC with "time zone missing". */
+  timeZone: string | null
   heading?: string
 }
 
@@ -83,7 +86,7 @@ export function SharedStatusBoard({ items, timeZone, heading = "Today's patients
               <tr key={item.appointmentId} className="border-b border-border-soft text-2xl last:border-0">
                 <td className="py-3 font-bold tracking-widest text-ink">{safeInitials(item.initials)}</td>
                 <td className="py-3 text-ink tabular-nums">{formatTime(item.startAt, timeZone, { withZone: false })}</td>
-                <td className="py-3 text-ink-muted">{statusLabel(item.status, item.visitStatus)}</td>
+                <td className="py-3 text-ink-muted">{statusLabel(item.status, item.visitStatus, { unknown: 'dash' })}</td>
               </tr>
             ))}
           </tbody>

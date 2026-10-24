@@ -37,7 +37,12 @@ The API sends contract formats; screens show U.S. formats. Always convert with t
 | Calendar date (birth date) | `1984-07-19` | `07/19/1984` | `formatDate`, `parseUsDate`, `DateInput` |
 | Instant (appointment time) | `2026-11-03T14:30:00Z` (UTC) | `8:30 AM CST`, in the **facility's** time zone from `timeZone` | `formatTime`, `formatDateTime`, `todayIn` |
 | Age | never sent | derived on screen | `ageInYears` |
-| Money | `{ value: "1234.50", currency: "USD" }` | `$1,234.50` (string maths, no floats) | `formatMoney`, `parseMoneyInput` |
+| Money | `{ value: "1234.50", currency: "USD" }` | `$1,234.50` (string maths, no floats) | `formatMoney`, `parseMoneyInput` (negatives only with `allowNegative`, for endpoints that document them) |
+
+**Time zone is required.** Always pass the facility's `timeZone` from the response; never let a
+time render in the browser's zone (API_STANDARDS §6.1). The facility time zone can be null until
+the schema lock, so when it is missing or invalid the formatters show UTC with a visible marker,
+`2:30 PM UTC · time zone missing`, instead of guessing.
 | Phone | `+16175550123` (E.164) | `(617) 555-0123` | `formatPhone`, `parseUsPhone`, `PhoneInput` |
 | State | `IL` (USPS) | `Illinois (IL)` in pickers | `US_STATES`, `StateSelect` |
 | ZIP | `62701` or `62701-1234` | same | `isValidZip`, `normalizeZip` |
@@ -80,9 +85,9 @@ A test (`tokens.test.ts`) fails if Indian-edition terms appear in `src/`.
 |---|---|---|
 | `ProblemAlert` | Any API error not routed to a flow below; lists field errors and the reference | Problem Details, `code` (API_STANDARDS §9) |
 | `BreakGlassDialog` | `403 break-glass-required` on a restricted chart. Reason required; note required for "Other". Then call `POST /patients/{patientId}/break-glass` | SECURITY_MODEL §5.2: `reasonCode` `emergency-care`, `continuity-of-care`, `patient-request`, `other`; 4-hour grant |
-| `SharedStatusBoard` | Waiting-room or hallway display (`GET /status-board?view=shared`, `DSP` role). Initials, time and status only; anything that is not initials is hidden | SECURITY_MODEL §8 rule 11, D47 |
+| `SharedStatusBoard` | Waiting-room or hallway display (`GET /status-board?view=shared`, `DSP` role). Initials, time and status only; anything that is not initials, and any status value it doesn't know, shows "—" | SECURITY_MODEL §8 rule 11, D47 |
 | `RecordChangedDialog` | `412 precondition-failed` (or `428`) on save: re-read the record, show the differences, let the user use the latest or reapply their edits. No "save anyway" | ADR-0008, API_STANDARDS §11 (M4) |
-| `IdleTimeoutWarning` | Mounted once in the app shell. Warns 2 minutes before idle logout (at 13 of 15 minutes), timed from `idleExpiresAt`; "Stay signed in" calls `POST /auth/refresh`. Notice before the 12-hour `expiresAt`, which cannot be extended | SECURITY_MODEL §2.1 (M15) |
+| `IdleTimeoutWarning` | Mounted once in the app shell. Warns 2 minutes before idle logout (at 13 of 15 minutes), timed from `idleExpiresAt`; `onStaySignedIn` returns a promise that calls `POST /auth/refresh` and re-reads the session (the dialog shows busy and failure states itself). Notice before the 12-hour `expiresAt`, which cannot be extended | SECURITY_MODEL §2.1 (M15) |
 
 Route codes with `problemCopy(problem).action`: `break-glass` → `BreakGlassDialog`,
 `record-changed` → `RecordChangedDialog`, `sign-in` → sign-in page, `review-duplicates` → duplicate

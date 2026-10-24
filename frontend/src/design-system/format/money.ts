@@ -19,11 +19,18 @@ export function formatMoney(money: Money): string {
   return `${sign}$${grouped}.${cents}`
 }
 
-/** What a user typed (`$1,234.5`, `25`) → a contract value string (`1234.50`), or `null`. */
-export function parseMoneyInput(input: string): string | null {
-  const cleaned = input.trim().replace(/[$,\s]/g, '')
-  const m = /^(-?)(\d{1,9})(?:\.(\d{0,2}))?$/.exec(cleaned)
+/**
+ * What a user typed (`$1,234.5`, `25`) → a contract value string (`1234.50`), or `null`.
+ * Commas must group thousands (`1,234`, not `1,2,3`). Negative amounts are refused unless the
+ * endpoint documents them (adjustments, refunds; API_STANDARDS §6.3): pass `allowNegative`.
+ */
+export function parseMoneyInput(input: string, { allowNegative = false }: { allowNegative?: boolean } = {}): string | null {
+  const cleaned = input.trim().replace(/[$\s]/g, '')
+  const m = /^(-?)(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{0,2}))?$/.exec(cleaned)
   if (!m) return null
-  const [, sign, whole = '', cents = ''] = m
+  const [, sign = '', grouped = '', cents = ''] = m
+  if (sign && !allowNegative) return null
+  const whole = grouped.replace(/,/g, '')
+  if (whole.length > 9) return null
   return `${sign}${String(Number(whole))}.${cents.padEnd(2, '0')}`
 }

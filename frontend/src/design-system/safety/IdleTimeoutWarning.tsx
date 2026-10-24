@@ -8,12 +8,14 @@ export interface IdleTimeoutWarningProps {
   idleExpiresAt: string
   /** `expiresAt`: the 12-hour absolute limit, which cannot be extended. */
   expiresAt: string
-  /** Calls `POST /auth/refresh` (a user action), then re-reads the session. */
-  onStaySignedIn: () => void
+  /**
+   * Calls `POST /auth/refresh` (a user action) and re-reads the session, resolving when done. The
+   * dialog shows its own busy state, and an error if the refresh fails.
+   */
+  onStaySignedIn: () => Promise<void>
   onSignOut: () => void
   /** The idle time ran out: the server has ended the session; send the user to sign in. */
   onExpired: () => void
-  staying?: boolean
   /** Warning shows this long before `idleExpiresAt`: 2 minutes, i.e. at 13 of 15 minutes (SECURITY_MODEL §2.1). */
   warnBeforeMs?: number
   /** Notice before the absolute limit, so people can save their work. */
@@ -32,12 +34,25 @@ export function IdleTimeoutWarning({
   onStaySignedIn,
   onSignOut,
   onExpired,
-  staying = false,
   warnBeforeMs = 2 * 60_000,
   absoluteNoticeBeforeMs = 15 * 60_000,
   now = Date.now,
 }: IdleTimeoutWarningProps) {
   const [current, setCurrent] = useState(now)
+  const [staying, setStaying] = useState(false)
+  const [refreshFailed, setRefreshFailed] = useState(false)
+
+  async function staySignedIn() {
+    setStaying(true)
+    setRefreshFailed(false)
+    try {
+      await onStaySignedIn()
+    } catch {
+      setRefreshFailed(true)
+    } finally {
+      setStaying(false)
+    }
+  }
   const expiredFired = useRef(false)
   const stayRef = useRef<HTMLButtonElement>(null)
 
@@ -86,7 +101,7 @@ export function IdleTimeoutWarning({
             <Button variant="outline" onClick={onSignOut}>
               Sign out
             </Button>
-            <Button ref={stayRef} loading={staying} onClick={onStaySignedIn}>
+            <Button ref={stayRef} loading={staying} onClick={() => void staySignedIn()}>
               Stay signed in
             </Button>
           </>
@@ -99,6 +114,13 @@ export function IdleTimeoutWarning({
           </strong>{' '}
           because there has been no activity.
         </p>
+        {refreshFailed ? (
+          <div className="mt-3">
+            <Alert tone="critical" title="Couldn't keep you signed in">
+              Save your work now. Try again, or sign in again after you&apos;re signed out.
+            </Alert>
+          </div>
+        ) : null}
       </Modal>
     </>
   )

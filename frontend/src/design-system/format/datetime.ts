@@ -37,35 +37,73 @@ export function ageInYears(birthDate: string, today: string): number | null {
   return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0)
 }
 
-/** Today's date in the facility's time zone, as `YYYY-MM-DD`. */
-export function todayIn(timeZone: string, now: Date = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
-  return parts.format(now)
+/** Shown after a time when the facility time zone is missing or invalid, so nobody misreads it. */
+export const TIME_ZONE_MISSING = 'time zone missing'
+
+/**
+ * True for an IANA zone the browser knows (e.g. `America/Chicago`). The facility time zone may be
+ * null until the schema lock, and Intl silently uses the browser's zone when none is given, which
+ * API_STANDARDS §6.1 forbids; every formatter checks this first.
+ */
+export function isValidTimeZone(timeZone: string | null | undefined): timeZone is string {
+  if (!timeZone) return false
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone })
+    return true
+  } catch {
+    return false
+  }
 }
 
-/** `2026-11-03T14:30:00Z` in America/Chicago → `8:30 AM CST`. 12-hour clock with the zone shown. */
-export function formatTime(instant: string, timeZone: string, { withZone = true } = {}): string {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone,
+/**
+ * Today's date in the facility's time zone, as `YYYY-MM-DD`. Without a valid zone it uses UTC
+ * (never the browser's zone); screens show the missing zone through formatTime.
+ */
+export function todayIn(timeZone: string | null, now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: isValidTimeZone(timeZone) ? timeZone : 'UTC',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+/**
+ * `2026-11-03T14:30:00Z` in America/Chicago → `8:30 AM CST`. 12-hour clock with the zone shown.
+ * `timeZone` is required: pass the facility's `timeZone` from the response. If it is null or
+ * invalid, the time is shown in UTC with a marker: `2:30 PM UTC · time zone missing`.
+ */
+export function formatTime(instant: string, timeZone: string | null, { withZone = true } = {}): string {
+  const valid = isValidTimeZone(timeZone)
+  const text = new Intl.DateTimeFormat('en-US', {
+    timeZone: valid ? timeZone : 'UTC',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-    ...(withZone ? { timeZoneName: 'short' as const } : {}),
+    ...(withZone && valid ? { timeZoneName: 'short' as const } : {}),
   }).format(new Date(instant))
+  return valid ? text : `${text} UTC · ${TIME_ZONE_MISSING}`
 }
 
-/** `2026-11-03T14:30:00Z` in America/Chicago → `11/03/2026, 8:30 AM CST`. */
-export function formatDateTime(instant: string, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone,
+/**
+ * `2026-11-03T14:30:00Z` in America/Chicago → `11/03/2026, 8:30 AM CST`. Same rule as formatTime
+ * when the zone is missing: `11/03/2026, 2:30 PM UTC · time zone missing`.
+ */
+export function formatDateTime(instant: string, timeZone: string | null): string {
+  const valid = isValidTimeZone(timeZone)
+  const text = new Intl.DateTimeFormat('en-US', {
+    timeZone: valid ? timeZone : 'UTC',
     month: '2-digit',
     day: '2-digit',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-    timeZoneName: 'short',
+    ...(valid ? { timeZoneName: 'short' as const } : {}),
   }).format(new Date(instant))
+  return valid ? text : `${text} UTC · ${TIME_ZONE_MISSING}`
 }
 
 /** Minutes between two instants, rounded down, e.g. how long a patient has waited. */

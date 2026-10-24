@@ -9,7 +9,17 @@ export { Tabs, type TabItem } from './components/Tabs'
 export { ToastProvider, useToast } from './components/Toast'
 
 export { formatAddressLines, isValidState, isValidZip, normalizeZip, US_STATES, type Address } from './format/address'
-export { ageInYears, formatDate, formatDateTime, formatTime, minutesBetween, parseUsDate, todayIn } from './format/datetime'
+export {
+  ageInYears,
+  formatDate,
+  formatDateTime,
+  formatTime,
+  isValidTimeZone,
+  minutesBetween,
+  parseUsDate,
+  TIME_ZONE_MISSING,
+  todayIn,
+} from './format/datetime'
 export { formatMoney, parseMoneyInput, type Money } from './format/money'
 export { formatNameFamilyFirst, formatNameGivenFirst, type HumanName } from './format/names'
 export { formatPhone, formatPhoneLast4, parseUsPhone } from './format/phone'

@@ -25,11 +25,11 @@ import {
   useToast,
 } from '../design-system'
 
-// Synthetic data only (Synthea-style names, 555-01xx phones), as in the contract examples.
+// The contract's own example people (API_STANDARDS §20), so the preview matches the mock server.
 const TZ = 'America/Chicago'
 const APPOINTMENTS = [
-  { id: 'a1', startAt: '2026-11-03T14:30:00Z', patient: 'Kuhlman, Ramona', type: 'Follow-up visit', status: 'Checked in' },
-  { id: 'a2', startAt: '2026-11-03T15:00:00Z', patient: 'Okuneva, Lucas', type: 'New patient', status: 'Scheduled' },
+  { id: 'a1', startAt: '2026-11-03T14:30:00Z', patient: 'Kuhlman72, Ramona980', provider: 'Dr. Gerard14 Lowe58', type: 'Follow-up visit', status: 'Checked in' },
+  { id: 'a2', startAt: '2026-11-03T15:00:00Z', patient: 'Kuhlman72, Darius71', provider: 'Dr. Gerard14 Lowe58', type: 'New patient', status: 'Scheduled' },
 ]
 
 /** A page of every design-system component with synthetic data, for review and screenshots. */
@@ -162,6 +162,7 @@ export function DesignSystemPreview() {
                 columns={[
                   { key: 'time', header: 'Time', render: (r) => formatTime(r.startAt, TZ, { withZone: false }) },
                   { key: 'patient', header: 'Patient', render: (r) => r.patient },
+                  { key: 'provider', header: 'Provider', render: (r) => r.provider },
                   { key: 'type', header: 'Visit type', render: (r) => r.type },
                   { key: 'status', header: 'Status', render: (r) => <Badge tone={r.status === 'Checked in' ? 'success' : 'neutral'}>{r.status}</Badge> },
                 ]}
@@ -196,8 +197,7 @@ export function DesignSystemPreview() {
                 timeZone={TZ}
                 items={[
                   { appointmentId: 's1', initials: 'RK', startAt: '2026-11-03T14:30:00Z', status: 'checked-in', visitStatus: 'roomed' },
-                  { appointmentId: 's2', initials: 'LO', startAt: '2026-11-03T15:00:00Z', status: 'arrived', visitStatus: 'arrived' },
-                  { appointmentId: 's3', initials: 'MT', startAt: '2026-11-03T15:30:00Z', status: 'booked' },
+                  { appointmentId: 's2', initials: 'DK', startAt: '2026-11-03T15:00:00Z', status: 'arrived', visitStatus: 'arrived' },
                 ]}
               />
             ),
@@ -240,7 +240,7 @@ export function DesignSystemPreview() {
         <IdleTimeoutWarning
           idleExpiresAt={new Date(idleDemoStart + 115_000).toISOString()}
           expiresAt={new Date(idleDemoStart + 8 * 3_600_000).toISOString()}
-          onStaySignedIn={() => setDialog('none')}
+          onStaySignedIn={async () => setDialog('none')}
           onSignOut={() => setDialog('none')}
           onExpired={() => setDialog('none')}
         />

@@ -1,5 +1,5 @@
 import { formatAddressLines, isValidState, isValidZip, normalizeZip } from './address'
-import { ageInYears, formatDate, formatDateTime, formatTime, parseUsDate, todayIn } from './datetime'
+import { ageInYears, formatDate, formatDateTime, formatTime, isValidTimeZone, parseUsDate, todayIn } from './datetime'
 import { formatMoney, parseMoneyInput } from './money'
 import { formatNameFamilyFirst, formatNameGivenFirst } from './names'
 import { formatPhone, parseUsPhone } from './phone'
@@ -34,6 +34,28 @@ describe('dates', () => {
   it("gives today's date in the facility, not the browser", () => {
     expect(todayIn('America/Los_Angeles', new Date('2026-11-04T05:00:00Z'))).toBe('2026-11-03')
     expect(todayIn('America/New_York', new Date('2026-11-04T05:00:00Z'))).toBe('2026-11-04')
+    expect(todayIn(null, new Date('2026-11-04T05:00:00Z'))).toBe('2026-11-04')
+  })
+
+  it('shows UTC with a visible marker when the facility time zone is missing or invalid', () => {
+    const at = '2026-11-03T14:30:00Z'
+    expect(formatTime(at, null)).toBe('2:30 PM UTC · time zone missing')
+    expect(formatTime(at, '')).toBe('2:30 PM UTC · time zone missing')
+    expect(formatTime(at, undefined as unknown as string)).toBe('2:30 PM UTC · time zone missing')
+    expect(formatTime(at, 'Mars/Olympus_Mons')).toBe('2:30 PM UTC · time zone missing')
+    // The marker stays even where the zone name is normally hidden.
+    expect(formatTime(at, null, { withZone: false })).toBe('2:30 PM UTC · time zone missing')
+    expect(formatDateTime(at, 'not-a-zone')).toBe('11/03/2026, 2:30 PM UTC · time zone missing')
+    expect(isValidTimeZone('America/Phoenix')).toBe(true)
+    expect(isValidTimeZone('Mars/Olympus_Mons')).toBe(false)
+  })
+
+  it('handles daylight saving changes and zones without them', () => {
+    // Chicago: DST ends 1 Nov 2026 at 2:00 AM.
+    expect(formatTime('2026-11-01T06:30:00Z', 'America/Chicago')).toBe('1:30 AM CDT')
+    expect(formatTime('2026-11-01T07:30:00Z', 'America/Chicago')).toBe('1:30 AM CST')
+    expect(formatTime('2026-07-03T21:05:00Z', 'America/Phoenix')).toBe('2:05 PM MST')
+    expect(formatTime('2026-07-03T21:05:00Z', 'Pacific/Honolulu')).toBe('11:05 AM HST')
   })
 })
 
@@ -50,6 +72,15 @@ describe('money', () => {
     expect(parseMoneyInput('0.1')).toBe('0.10')
     expect(parseMoneyInput('12.345')).toBeNull()
     expect(parseMoneyInput('abc')).toBeNull()
+  })
+
+  it('refuses negatives unless allowed, and commas that are not thousands', () => {
+    expect(parseMoneyInput('-5')).toBeNull()
+    expect(parseMoneyInput('-5', { allowNegative: true })).toBe('-5.00')
+    expect(parseMoneyInput('1,2,3')).toBeNull()
+    expect(parseMoneyInput('12,34')).toBeNull()
+    expect(parseMoneyInput('1,234,567.8')).toBe('1234567.80')
+    expect(parseMoneyInput('1234567890')).toBeNull()
   })
 })
 

@@ -166,7 +166,7 @@ const FIELD_MESSAGES: Record<string, string> = {
   'too-long': 'This is too long.',
   'out-of-range': 'This value is out of range.',
   'not-allowed-value': 'Choose one of the listed options.',
-  'invalid-reference': 'This refers to a record that no longer exists.',
+  'invalid-reference': "This refers to a record that isn't available here.",
   'conflicting-fields': 'This conflicts with another field.',
   'not-editable': 'This can no longer be changed.',
 }

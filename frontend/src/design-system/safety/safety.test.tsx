@@ -61,6 +61,8 @@ describe('SharedStatusBoard', () => {
     expect(statusLabel('noshow')).toBe('No-show')
     expect(statusLabel('checked-in', 'with-provider')).toBe('With provider')
     expect(statusLabel('something-new')).toBe('something-new')
+    expect(statusLabel('booked', 'left-without-being-seen', { unknown: 'dash' })).toBe('Scheduled')
+    expect(statusLabel('left-without-being-seen', undefined, { unknown: 'dash' })).toBe('—')
     expect(safeInitials('r.k.')).toBe('RK')
   })
 })
@@ -101,7 +103,7 @@ describe('IdleTimeoutWarning', () => {
       <IdleTimeoutWarning
         idleExpiresAt="2026-11-03T14:15:00Z"
         expiresAt="2026-11-04T02:00:00Z"
-        onStaySignedIn={() => {}}
+        onStaySignedIn={async () => {}}
         onSignOut={() => {}}
         onExpired={onExpired}
         now={() => clock}
@@ -121,6 +123,25 @@ describe('IdleTimeoutWarning', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
+  it('drives its own busy state and shows an error if the refresh fails', async () => {
+    const clock = Date.parse('2026-11-03T14:13:30Z')
+    const onStaySignedIn = vi.fn().mockRejectedValue(new Error('network'))
+    render(
+      <IdleTimeoutWarning
+        idleExpiresAt="2026-11-03T14:15:00Z"
+        expiresAt="2026-11-04T02:00:00Z"
+        onStaySignedIn={onStaySignedIn}
+        onSignOut={() => {}}
+        onExpired={() => {}}
+        now={() => clock}
+      />,
+    )
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Stay signed in' }))
+    expect(onStaySignedIn).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText("Couldn't keep you signed in")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stay signed in' })).toBeEnabled()
+  })
+
   it('gives notice before the 12-hour limit, which cannot be extended', () => {
     vi.useFakeTimers()
     const clock = Date.parse('2026-11-04T01:50:00Z')
@@ -128,7 +149,7 @@ describe('IdleTimeoutWarning', () => {
       <IdleTimeoutWarning
         idleExpiresAt="2026-11-04T02:05:00Z"
         expiresAt="2026-11-04T02:00:00Z"
-        onStaySignedIn={() => {}}
+        onStaySignedIn={async () => {}}
         onSignOut={() => {}}
         onExpired={() => {}}
         now={() => clock}
