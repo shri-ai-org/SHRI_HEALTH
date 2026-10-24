@@ -26,4 +26,4 @@ for that owner instead of editing it.
 - Tests: pytest in the module's tests/ folder; every endpoint gets at least one success and one permission-denied test.
 - Never put patient data in logs, test fixtures or prompts. Synthetic data only.
 - Never edit frontend/src/api/generated/ by hand.
-- Never run npx or npm install for a package that is not already in a project lockfile. New dependencies are added only through a pull request that changes the lockfile, follows the 7-day rule, and is reviewed by that folder's owner.
+- Never run npx, npm install, pip install, uv pip install or uvx for a package that is not already in a project lockfile. New dependencies are added only through a pull request that changes the lockfile, follows the 7-day rule, and is reviewed by that folder's owner; Python dependencies go through pyproject.toml plus regenerated hashed locks (backend/README.md).
