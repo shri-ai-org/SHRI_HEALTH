@@ -8261,6 +8261,2081 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/timeline:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getPatientTimeline
+      summary: Get a patient's timeline
+      description: 'The patient''s longitudinal record, newest first: encounters, diagnoses, problems, allergies, vitals, notes, procedures, and family and social history, each with its source, author and date (inventory #46; FRS FR-PAT-02). Medications, results and documents join when their batches exist. Filters use record kinds and days only, never PHI (D13).'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: timeline:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: types
+          in: query
+          required: false
+          style: form
+          explode: true
+          description: Only these kinds of record; repeat the parameter for several.
+          schema:
+            type: array
+            maxItems: 12
+            items:
+              type: string
+              enum:
+                - encounter
+                - diagnosis
+                - problem
+                - allergy
+                - vital
+                - note
+                - procedure
+                - family-history
+                - social-history
+                - medication
+                - result
+                - document
+        - name: dateFrom
+          in: query
+          required: false
+          description: First day, inclusive.
+          schema:
+            $ref: '#/components/schemas/Date'
+        - name: dateTo
+          in: query
+          required: false
+          description: Last day, inclusive.
+          schema:
+            $ref: '#/components/schemas/Date'
+      responses:
+        '200':
+          description: One page of timeline entrys.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Timeline'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                      - type: note
+                        id: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                        date: '2026-11-03'
+                        title: Progress note
+                        status: final
+                        encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                        entrySource: clinician
+                        recordedAt: '2026-11-03T15:35:00Z'
+                        recordedBy:
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+                      - type: problem
+                        id: 8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b
+                        date: '2019'
+                        title: Type 2 diabetes mellitus without complications
+                        status: active
+                        entrySource: clinician
+                        recordedAt: '2026-11-03T15:30:00Z'
+                      - type: procedure
+                        id: 2c3d4e5f-6a7b-4c8d-9e9f-0a1b2c3d4e5f
+                        date: '2011'
+                        title: Appendectomy
+                        status: completed
+                        entrySource: patient-reported
+                        recordedAt: '2026-11-03T15:14:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `timeline:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such timeline entry in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/problems:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: listProblems
+      summary: List a patient's problems
+      description: 'A patient''s problems, newest first (inventory #90; FRS FR-PAT-03). Entered-in-error entries are left out unless asked for.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: problems:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: includeEnteredInError
+          in: query
+          required: false
+          description: Include entered-in-error records, marked.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: One page of problemss.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                      - id: 8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        code:
+                          codings:
+                            - system: http://hl7.org/fhir/sid/icd-10-cm
+                              code: E11.9
+                              display: Type 2 diabetes mellitus without complications
+                        clinicalStatus: active
+                        verificationStatus: confirmed
+                        onsetDate: '2019'
+                        entrySource: clinician
+                        recordedAt: '2026-11-03T15:30:00Z'
+                        recordedBy:
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `problems:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such problems in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: addProblem
+      summary: Add problem
+      description: 'Adds problem with its Provenance, in one transaction (inventory #91; FRS FR-PAT-03). The entry records who entered it and its source.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: problems:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProblemCreate'
+            examples:
+              add:
+                summary: Add
+                value:
+                  code:
+                    codings:
+                      - system: http://hl7.org/fhir/sid/icd-10-cm
+                        code: E11.9
+                  onsetDate: '2019'
+      responses:
+        '201':
+          description: Created. The new problem.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem-2'
+              examples:
+                added:
+                  summary: Added
+                  value:
+                    id: 8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://hl7.org/fhir/sid/icd-10-cm
+                          code: E11.9
+                          display: Type 2 diabetes mellitus without complications
+                    clinicalStatus: active
+                    verificationStatus: confirmed
+                    onsetDate: '2019'
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:30:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `problems:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such problem in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a rule rejects it: a code from a system not allowed here, or a date in the future (field code `out-of-range`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/problems/{problemId}:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: problemId
+        in: path
+        required: true
+        description: Problem ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getProblem
+      summary: Get one problem
+      description: 'One problem, with the `ETag` that `PATCH` needs (new inventory row #249; list items carry no ETag, API_STANDARDS §11).'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: problems:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The problem.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem-2'
+              examples:
+                one:
+                  summary: One problem
+                  value:
+                    id: 8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://hl7.org/fhir/sid/icd-10-cm
+                          code: E11.9
+                          display: Type 2 diabetes mellitus without complications
+                    clinicalStatus: active
+                    verificationStatus: confirmed
+                    onsetDate: '2019'
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:30:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `problems:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such problem in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updateProblem
+      summary: Edit problem
+      description: 'Edits problem with `If-Match` (inventory #92). A wrong code is corrected by entered-in-error plus a new entry.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: problems:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: patientId
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/ProblemPatch'
+            examples:
+              edit:
+                summary: Edit
+                value:
+                  clinicalStatus: resolved
+                  abatementDate: 2026-10
+      responses:
+        '200':
+          description: The problem.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem-2'
+              examples:
+                edited:
+                  summary: Edited
+                  value:
+                    id: 8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://hl7.org/fhir/sid/icd-10-cm
+                          code: E11.9
+                          display: Type 2 diabetes mellitus without complications
+                    clinicalStatus: active
+                    verificationStatus: confirmed
+                    onsetDate: '2019'
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:30:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `problems:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such problem in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the entry is entered in error).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a status and date that do not fit together (e.g. an abatement date while `active`, FHIR con-4)).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/problems/{problemId}/entered-in-error:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: problemId
+        in: path
+        required: true
+        description: Problem ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: markProblemEnteredInError
+      summary: Mark problem entered in error
+      description: 'Marks a wrong entry entered-in-error with a reason, in one transaction with its Provenance (inventory #93; D14). It is kept for audit and left out of the chart. RN only for their own entries.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: problems:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Body to mark problem entered in error (D14). The reason is stored in the Provenance record, never in a log.
+              type: object
+              additionalProperties: false
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+                  minLength: 1
+                  description: Why the record is wrong, e.g. "Recorded on the wrong patient." Required; shown in the audit trail.
+                  x-phi: clinical
+            examples:
+              wrong:
+                summary: Wrong patient
+                value:
+                  reason: Recorded on the wrong patient.
+      responses:
+        '200':
+          description: The problem.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem-2'
+              examples:
+                marked:
+                  summary: Marked
+                  value:
+                    id: 8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://hl7.org/fhir/sid/icd-10-cm
+                          code: E11.9
+                          display: Type 2 diabetes mellitus without complications
+                    verificationStatus: entered-in-error
+                    onsetDate: '2019'
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:30:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `problems:entered-in-error`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such problem in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (already entered in error).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/allergies:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: listAllergies
+      summary: List a patient's allergies
+      description: 'A patient''s allergies, newest first (inventory #94; FRS FR-PAT-03). Entered-in-error entries are left out unless asked for.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: allergies:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: includeEnteredInError
+          in: query
+          required: false
+          description: Include entered-in-error records, marked.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: One page of allergiess.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllergyList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                      - id: 9f0a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        code:
+                          codings:
+                            - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                              code: '7980'
+                              display: Penicillin G
+                        type: allergy
+                        categories:
+                          - medication
+                        criticality: high
+                        clinicalStatus: active
+                        verificationStatus: confirmed
+                        reactions:
+                          - manifestations:
+                              - text: Hives
+                            severity: moderate
+                        entrySource: clinician
+                        recordedAt: '2026-11-03T15:08:00Z'
+                        recordedBy:
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `allergies:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such allergies in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: addAllergy
+      summary: Add allergy
+      description: 'Adds allergy with its Provenance, in one transaction (inventory #95; FRS FR-PAT-03). The entry records who entered it and its source.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: allergies:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AllergyCreate'
+            examples:
+              add:
+                summary: Add
+                value:
+                  code:
+                    codings:
+                      - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                        code: '7980'
+                  type: allergy
+                  categories:
+                    - medication
+                  criticality: high
+                  reactions:
+                    - manifestations:
+                        - text: Hives
+                      severity: moderate
+      responses:
+        '201':
+          description: Created. The new allergy.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Allergy'
+              examples:
+                added:
+                  summary: Added
+                  value:
+                    id: 9f0a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '7980'
+                          display: Penicillin G
+                    type: allergy
+                    categories:
+                      - medication
+                    criticality: high
+                    clinicalStatus: active
+                    verificationStatus: confirmed
+                    reactions:
+                      - manifestations:
+                          - text: Hives
+                        severity: moderate
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:08:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `allergies:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such allergy in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a rule rejects it: a code from a system not allowed here, or a date in the future (field code `out-of-range`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/allergies/{allergyId}:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: allergyId
+        in: path
+        required: true
+        description: Allergy ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getAllergy
+      summary: Get one allergy
+      description: 'One allergy, with the `ETag` that `PATCH` needs (new inventory row #250; list items carry no ETag, API_STANDARDS §11).'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: allergies:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The allergy.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Allergy'
+              examples:
+                one:
+                  summary: One allergy
+                  value:
+                    id: 9f0a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '7980'
+                          display: Penicillin G
+                    type: allergy
+                    categories:
+                      - medication
+                    criticality: high
+                    clinicalStatus: active
+                    verificationStatus: confirmed
+                    reactions:
+                      - manifestations:
+                          - text: Hives
+                        severity: moderate
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:08:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `allergies:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such allergy in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updateAllergy
+      summary: Edit allergy
+      description: 'Edits allergy with `If-Match` (inventory #96). A wrong code is corrected by entered-in-error plus a new entry.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: allergies:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: patientId
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/AllergyPatch'
+            examples:
+              edit:
+                summary: Edit
+                value:
+                  criticality: low
+      responses:
+        '200':
+          description: The allergy.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Allergy'
+              examples:
+                edited:
+                  summary: Edited
+                  value:
+                    id: 9f0a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '7980'
+                          display: Penicillin G
+                    type: allergy
+                    categories:
+                      - medication
+                    criticality: high
+                    clinicalStatus: active
+                    verificationStatus: confirmed
+                    reactions:
+                      - manifestations:
+                          - text: Hives
+                        severity: moderate
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:08:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `allergies:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such allergy in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the entry is entered in error).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a status and date that do not fit together (e.g. an abatement date while `active`, FHIR con-4)).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/allergies/{allergyId}/entered-in-error:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: allergyId
+        in: path
+        required: true
+        description: Allergy ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: markAllergyEnteredInError
+      summary: Mark allergy entered in error
+      description: 'Marks a wrong entry entered-in-error with a reason, in one transaction with its Provenance (inventory #97; D14). It is kept for audit and left out of the chart. RN only for their own entries.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: allergies:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Body to mark allergy entered in error (D14). The reason is stored in the Provenance record, never in a log.
+              type: object
+              additionalProperties: false
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+                  minLength: 1
+                  description: Why the record is wrong, e.g. "Recorded on the wrong patient." Required; shown in the audit trail.
+                  x-phi: clinical
+            examples:
+              wrong:
+                summary: Wrong patient
+                value:
+                  reason: Recorded on the wrong patient.
+      responses:
+        '200':
+          description: The allergy.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Allergy'
+              examples:
+                marked:
+                  summary: Marked
+                  value:
+                    id: 9f0a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '7980'
+                          display: Penicillin G
+                    type: allergy
+                    categories:
+                      - medication
+                    criticality: high
+                    verificationStatus: entered-in-error
+                    reactions:
+                      - manifestations:
+                          - text: Hives
+                        severity: moderate
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:08:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `allergies:entered-in-error`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such allergy in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (already entered in error).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/family-history:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: listFamilyHistory
+      summary: List a patient's family history
+      description: 'A patient''s family history, newest first (inventory #98; FRS FR-PAT-03). Entered-in-error entries are left out unless asked for.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: family-history:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: includeEnteredInError
+          in: query
+          required: false
+          description: Include entered-in-error records, marked.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: One page of family historys.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyHistoryList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                      - id: 0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        relationship:
+                          codings:
+                            - system: http://terminology.hl7.org/CodeSystem/v3-RoleCode
+                              code: MTH
+                              display: mother
+                        status: completed
+                        sex: female
+                        conditions:
+                          - code:
+                              codings:
+                                - system: http://snomed.info/sct
+                                  code: '38341003'
+                                  display: Hypertensive disorder
+                            onsetAge: 50
+                        entrySource: patient-reported
+                        recordedAt: '2026-11-03T15:12:00Z'
+                        recordedBy:
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `family-history:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such family history in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: addFamilyHistory
+      summary: Add family history
+      description: 'Adds family history with its Provenance, in one transaction (inventory #99; FRS FR-PAT-03). The entry records who entered it and its source.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: family-history:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FamilyHistoryCreate'
+            examples:
+              add:
+                summary: Add
+                value:
+                  relationship:
+                    codings:
+                      - system: http://terminology.hl7.org/CodeSystem/v3-RoleCode
+                        code: MTH
+                  conditions:
+                    - code:
+                        codings:
+                          - system: http://snomed.info/sct
+                            code: '38341003'
+                      onsetAge: 50
+      responses:
+        '201':
+          description: Created. The new family history.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyHistory'
+              examples:
+                added:
+                  summary: Added
+                  value:
+                    id: 0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    relationship:
+                      codings:
+                        - system: http://terminology.hl7.org/CodeSystem/v3-RoleCode
+                          code: MTH
+                          display: mother
+                    status: completed
+                    sex: female
+                    conditions:
+                      - code:
+                          codings:
+                            - system: http://snomed.info/sct
+                              code: '38341003'
+                              display: Hypertensive disorder
+                        onsetAge: 50
+                    entrySource: patient-reported
+                    recordedAt: '2026-11-03T15:12:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `family-history:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such family history in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a rule rejects it: a code from a system not allowed here, or a date in the future (field code `out-of-range`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/family-history/{familyHistoryId}/entered-in-error:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: familyHistoryId
+        in: path
+        required: true
+        description: Family History ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: markFamilyHistoryEnteredInError
+      summary: Mark family history entered in error
+      description: 'Marks a wrong entry entered-in-error with a reason, in one transaction with its Provenance (inventory #100; D14). It is kept for audit and left out of the chart. RN only for their own entries.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: family-history:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Body to mark family history entered in error (D14). The reason is stored in the Provenance record, never in a log.
+              type: object
+              additionalProperties: false
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+                  minLength: 1
+                  description: Why the record is wrong, e.g. "Recorded on the wrong patient." Required; shown in the audit trail.
+                  x-phi: clinical
+            examples:
+              wrong:
+                summary: Wrong patient
+                value:
+                  reason: Recorded on the wrong patient.
+      responses:
+        '200':
+          description: The family history.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyHistory'
+              examples:
+                marked:
+                  summary: Marked
+                  value:
+                    id: 0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    relationship:
+                      codings:
+                        - system: http://terminology.hl7.org/CodeSystem/v3-RoleCode
+                          code: MTH
+                          display: mother
+                    status: entered-in-error
+                    sex: female
+                    conditions:
+                      - code:
+                          codings:
+                            - system: http://snomed.info/sct
+                              code: '38341003'
+                              display: Hypertensive disorder
+                        onsetAge: 50
+                    entrySource: patient-reported
+                    recordedAt: '2026-11-03T15:12:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `family-history:entered-in-error`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such family history in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (already entered in error).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/social-history:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: listSocialHistory
+      summary: List a patient's social history
+      description: 'A patient''s social history, newest first (inventory #101; FRS FR-PAT-03). Entered-in-error entries are left out unless asked for.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: social-history:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: includeEnteredInError
+          in: query
+          required: false
+          description: Include entered-in-error records, marked.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: One page of social historys.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialHistoryList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                      - id: 1b2c3d4e-5f6a-4b7c-8d8e-9f0a1b2c3d4e
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        code:
+                          codings:
+                            - system: http://loinc.org
+                              code: 72166-2
+                              display: Tobacco smoking status
+                        value:
+                          codeableConcept:
+                            codings:
+                              - system: http://snomed.info/sct
+                                code: '8517006'
+                                display: Ex-smoker
+                        effectiveDate: '2026-11-03'
+                        status: final
+                        entrySource: clinician
+                        recordedAt: '2026-11-03T15:13:00Z'
+                        recordedBy:
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `social-history:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such social history in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: addSocialHistory
+      summary: Add social history
+      description: 'Adds social history with its Provenance, in one transaction (inventory #102; FRS FR-PAT-03). The entry records who entered it and its source.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: social-history:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SocialHistoryCreate'
+            examples:
+              add:
+                summary: Add
+                value:
+                  code:
+                    codings:
+                      - system: http://loinc.org
+                        code: 72166-2
+                  value:
+                    codeableConcept:
+                      codings:
+                        - system: http://snomed.info/sct
+                          code: '8517006'
+      responses:
+        '201':
+          description: Created. The new social history.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialHistory'
+              examples:
+                added:
+                  summary: Added
+                  value:
+                    id: 1b2c3d4e-5f6a-4b7c-8d8e-9f0a1b2c3d4e
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://loinc.org
+                          code: 72166-2
+                          display: Tobacco smoking status
+                    value:
+                      codeableConcept:
+                        codings:
+                          - system: http://snomed.info/sct
+                            code: '8517006'
+                            display: Ex-smoker
+                    effectiveDate: '2026-11-03'
+                    status: final
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:13:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `social-history:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such social history in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a rule rejects it: a code from a system not allowed here, or a date in the future (field code `out-of-range`); not exactly one of `value.codeableConcept`, `value.quantity`, `value.text` (`conflicting-fields`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/social-history/{socialHistoryId}/entered-in-error:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: socialHistoryId
+        in: path
+        required: true
+        description: Social History ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: markSocialHistoryEnteredInError
+      summary: Mark social history entered in error
+      description: 'Marks a wrong entry entered-in-error with a reason, in one transaction with its Provenance (inventory #103; D14). It is kept for audit and left out of the chart. RN only for their own entries.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: social-history:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Body to mark social history entered in error (D14). The reason is stored in the Provenance record, never in a log.
+              type: object
+              additionalProperties: false
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+                  minLength: 1
+                  description: Why the record is wrong, e.g. "Recorded on the wrong patient." Required; shown in the audit trail.
+                  x-phi: clinical
+            examples:
+              wrong:
+                summary: Wrong patient
+                value:
+                  reason: Recorded on the wrong patient.
+      responses:
+        '200':
+          description: The social history.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialHistory'
+              examples:
+                marked:
+                  summary: Marked
+                  value:
+                    id: 1b2c3d4e-5f6a-4b7c-8d8e-9f0a1b2c3d4e
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://loinc.org
+                          code: 72166-2
+                          display: Tobacco smoking status
+                    value:
+                      codeableConcept:
+                        codings:
+                          - system: http://snomed.info/sct
+                            code: '8517006'
+                            display: Ex-smoker
+                    effectiveDate: '2026-11-03'
+                    status: entered-in-error
+                    entrySource: clinician
+                    recordedAt: '2026-11-03T15:13:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `social-history:entered-in-error`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such social history in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (already entered in error).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/surgical-history:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: listSurgicalHistory
+      summary: List a patient's surgical history
+      description: 'A patient''s surgical history, newest first (inventory #104; FRS FR-PAT-03). Entered-in-error entries are left out unless asked for.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: surgical-history:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: includeEnteredInError
+          in: query
+          required: false
+          description: Include entered-in-error records, marked.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: One page of surgical historys.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SurgicalHistoryList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                      - id: 2c3d4e5f-6a7b-4c8d-9e9f-0a1b2c3d4e5f
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        code:
+                          codings:
+                            - system: http://snomed.info/sct
+                              code: '80146002'
+                              display: Appendectomy
+                        performedDate: '2011'
+                        status: completed
+                        entrySource: patient-reported
+                        recordedAt: '2026-11-03T15:14:00Z'
+                        recordedBy:
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `surgical-history:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such surgical history in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: addSurgicalHistory
+      summary: Add surgical history
+      description: 'Adds surgical history with its Provenance, in one transaction (inventory #105; FRS FR-PAT-03). The entry records who entered it and its source.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: surgical-history:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SurgicalHistoryCreate'
+            examples:
+              add:
+                summary: Add
+                value:
+                  code:
+                    codings:
+                      - system: http://snomed.info/sct
+                        code: '80146002'
+                  performedDate: '2011'
+      responses:
+        '201':
+          description: Created. The new surgical history.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SurgicalHistory'
+              examples:
+                added:
+                  summary: Added
+                  value:
+                    id: 2c3d4e5f-6a7b-4c8d-9e9f-0a1b2c3d4e5f
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://snomed.info/sct
+                          code: '80146002'
+                          display: Appendectomy
+                    performedDate: '2011'
+                    status: completed
+                    entrySource: patient-reported
+                    recordedAt: '2026-11-03T15:14:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `surgical-history:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such surgical history in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a rule rejects it: a code from a system not allowed here, or a date in the future (field code `out-of-range`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/surgical-history/{surgicalHistoryId}/entered-in-error:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: surgicalHistoryId
+        in: path
+        required: true
+        description: Surgical History ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: markSurgicalHistoryEnteredInError
+      summary: Mark surgical history entered in error
+      description: 'Marks a wrong entry entered-in-error with a reason, in one transaction with its Provenance (inventory #106; D14). It is kept for audit and left out of the chart. RN only for their own entries.'
+      tags:
+        - history
+      x-owner: vimal
+      x-permission: surgical-history:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Body to mark surgical history entered in error (D14). The reason is stored in the Provenance record, never in a log.
+              type: object
+              additionalProperties: false
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+                  minLength: 1
+                  description: Why the record is wrong, e.g. "Recorded on the wrong patient." Required; shown in the audit trail.
+                  x-phi: clinical
+            examples:
+              wrong:
+                summary: Wrong patient
+                value:
+                  reason: Recorded on the wrong patient.
+      responses:
+        '200':
+          description: The surgical history.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SurgicalHistory'
+              examples:
+                marked:
+                  summary: Marked
+                  value:
+                    id: 2c3d4e5f-6a7b-4c8d-9e9f-0a1b2c3d4e5f
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    code:
+                      codings:
+                        - system: http://snomed.info/sct
+                          code: '80146002'
+                          display: Appendectomy
+                    performedDate: '2011'
+                    status: entered-in-error
+                    entrySource: patient-reported
+                    recordedAt: '2026-11-03T15:14:00Z'
+                    recordedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `surgical-history:entered-in-error`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such surgical history in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (already entered in error).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /facilities:
     get:
       operationId: listFacilitys
@@ -17746,6 +19821,946 @@ components:
             - type: 'null'
           description: Last day. Set it to end the rule. Send `null` to clear it.
           x-phi: none
+    TimelineEntryType:
+      description: 'Kind of record on the timeline. An extensible enum (API_STANDARDS §6.5): later batches add kinds, so screens show an unknown kind as a generic record. `medication`, `result` and `document` appear once their batches exist.'
+      type: string
+      maxLength: 40
+      x-extensible-enum:
+        - encounter
+        - diagnosis
+        - problem
+        - allergy
+        - vital
+        - note
+        - procedure
+        - family-history
+        - social-history
+        - medication
+        - result
+        - document
+    TimelineEntry:
+      description: 'One record on the patient''s timeline (FRS FR-PAT-02): enough to list it and open it through its own endpoint. Entered-in-error records are left out.'
+      type: object
+      required:
+        - type
+        - id
+        - title
+        - entrySource
+      properties:
+        type:
+          $ref: '#/components/schemas/TimelineEntryType'
+          description: Kind of record.
+          x-phi: none
+        id:
+          $ref: '#/components/schemas/Id'
+          description: The record's ID, for its own endpoint.
+          x-phi: internal-id
+        date:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it happened, as far as known.
+          x-phi: clinical
+        title:
+          type: string
+          maxLength: 300
+          description: Short text to show, e.g. the diagnosis or note title.
+          x-phi: clinical
+        status:
+          type: string
+          maxLength: 40
+          description: The record's own status code, e.g. `final`, `active`, `finished`.
+          x-phi: none
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter it belongs to, if any.
+          x-phi: internal-id
+        entrySource:
+          type: string
+          enum:
+            - clinician
+            - imported
+            - patient-reported
+            - ai-generated
+            - device
+            - interface
+          description: 'Where the record came from: entered by a clinician, imported, reported by the patient, generated by AI and verified, from a device, or from an interface. Read-only.'
+          x-phi: none
+        recordedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was recorded. Read-only.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who recorded it, when known. Read-only.
+          x-phi: none
+    Timeline:
+      description: 'A patient''s longitudinal record, newest first (inventory #46; FRS FR-PAT-02).'
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/TimelineEntry'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    Problem-2:
+      description: 'A problem-list entry: a Condition with category `problem-list-item`, separate from encounter diagnoses (FRS FR-PAT-03; US Core Condition Problems and Health Concerns).'
+      type: object
+      required:
+        - id
+        - patientId
+        - code
+        - verificationStatus
+        - entrySource
+        - recordedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Problem ID (the Condition).
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: 'The problem: ICD-10-CM or SNOMED CT, or text.'
+          x-phi: clinical
+        clinicalStatus:
+          type: string
+          enum:
+            - active
+            - recurrence
+            - relapse
+            - inactive
+            - remission
+            - resolved
+          description: FHIR clinical status. Absent once entered in error (FHIR con-5).
+          x-phi: clinical
+        verificationStatus:
+          type: string
+          enum:
+            - unconfirmed
+            - provisional
+            - differential
+            - confirmed
+            - refuted
+            - entered-in-error
+          description: FHIR verification status.
+          x-phi: clinical
+        onsetDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it started, as far as known.
+          x-phi: clinical
+        abatementDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it resolved or went into remission; only with `inactive`, `resolved` or `remission` (FHIR con-4).
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 2000
+          description: Free-text note.
+          x-phi: clinical
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter it was recorded in, if any.
+          x-phi: internal-id
+        entrySource:
+          type: string
+          enum:
+            - clinician
+            - imported
+            - patient-reported
+            - ai-generated
+            - device
+            - interface
+          description: 'Where the record came from: entered by a clinician, imported, reported by the patient, generated by AI and verified, from a device, or from an interface. Read-only.'
+          x-phi: none
+        recordedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was recorded. Read-only.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who recorded it, when known. Read-only.
+          x-phi: none
+    ProblemList:
+      description: 'A patient''s problem list (inventory #90). Entered-in-error problems are left out unless asked for.'
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Problem-2'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    ProblemCreate:
+      description: 'Body to add a problem (inventory #91).'
+      type: object
+      additionalProperties: false
+      required:
+        - code
+      properties:
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: 'The problem: ICD-10-CM or SNOMED CT, or text.'
+          x-phi: clinical
+        clinicalStatus:
+          type: string
+          enum:
+            - active
+            - recurrence
+            - relapse
+            - inactive
+            - remission
+            - resolved
+          description: Defaults to `active`.
+          x-phi: clinical
+        verificationStatus:
+          type: string
+          enum:
+            - unconfirmed
+            - provisional
+            - differential
+            - confirmed
+            - refuted
+          description: Defaults to `confirmed`.
+          x-phi: clinical
+        onsetDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it started.
+          x-phi: clinical
+        abatementDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it resolved; only with `inactive`, `resolved` or `remission`.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 2000
+          description: Free-text note.
+          x-phi: clinical
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter it is recorded in, if any.
+          x-phi: internal-id
+    ProblemPatch:
+      description: 'JSON Merge Patch for a problem: status, dates and note. The code does not change; mark a wrong problem entered in error and add the right one.'
+      type: object
+      additionalProperties: false
+      properties:
+        clinicalStatus:
+          type: string
+          enum:
+            - active
+            - recurrence
+            - relapse
+            - inactive
+            - remission
+            - resolved
+          description: FHIR clinical status.
+          x-phi: clinical
+        verificationStatus:
+          type: string
+          enum:
+            - unconfirmed
+            - provisional
+            - differential
+            - confirmed
+            - refuted
+          description: FHIR verification status (entered-in-error has its own action).
+          x-phi: clinical
+        onsetDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it started.
+          x-phi: clinical
+        abatementDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it resolved; only with `inactive`, `resolved` or `remission`. Setting `clinicalStatus` back to `active`, `recurrence` or `relapse` clears it (FHIR con-4).
+          x-phi: clinical
+        note:
+          type:
+            - string
+            - 'null'
+          maxLength: 2000
+          description: Free-text note. Send `null` to clear it.
+          x-phi: clinical
+    AllergyReaction:
+      description: A reaction to the substance.
+      type: object
+      additionalProperties: false
+      required:
+        - manifestations
+      properties:
+        manifestations:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/CodeableConcept'
+          description: What happened, e.g. hives, SNOMED CT or text.
+          x-phi: clinical
+        severity:
+          type: string
+          enum:
+            - mild
+            - moderate
+            - severe
+          description: Severity.
+          x-phi: clinical
+        description:
+          type: string
+          maxLength: 1000
+          description: Free-text description.
+          x-phi: clinical
+        onsetDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it happened.
+          x-phi: clinical
+    Allergy:
+      description: An allergy or intolerance (US Core AllergyIntolerance; FRS FR-PAT-03, FR-MED-01). The medications batch checks prescriptions against active, confirmed allergies.
+      type: object
+      required:
+        - id
+        - patientId
+        - code
+        - verificationStatus
+        - entrySource
+        - recordedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Allergy ID.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        clinicalStatus:
+          type: string
+          enum:
+            - active
+            - inactive
+            - resolved
+          description: FHIR clinical status. Absent once entered in error (FHIR ait-2).
+          x-phi: clinical
+        verificationStatus:
+          type: string
+          enum:
+            - unconfirmed
+            - confirmed
+            - refuted
+            - entered-in-error
+          description: FHIR verification status.
+          x-phi: clinical
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter it was recorded in, if any.
+          x-phi: internal-id
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003.'
+          x-phi: clinical
+        type:
+          type: string
+          enum:
+            - allergy
+            - intolerance
+          description: Allergy or intolerance.
+          x-phi: clinical
+        categories:
+          type: array
+          maxItems: 4
+          items:
+            type: string
+            enum:
+              - food
+              - medication
+              - environment
+              - biologic
+          description: Categories.
+          x-phi: clinical
+        criticality:
+          type: string
+          enum:
+            - low
+            - high
+            - unable-to-assess
+          description: Potential for a serious reaction.
+          x-phi: clinical
+        onsetDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it started.
+          x-phi: clinical
+        reactions:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AllergyReaction'
+          description: Reactions.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 2000
+          description: Free-text note.
+          x-phi: clinical
+        entrySource:
+          type: string
+          enum:
+            - clinician
+            - imported
+            - patient-reported
+            - ai-generated
+            - device
+            - interface
+          description: 'Where the record came from: entered by a clinician, imported, reported by the patient, generated by AI and verified, from a device, or from an interface. Read-only.'
+          x-phi: none
+        recordedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was recorded. Read-only.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who recorded it, when known. Read-only.
+          x-phi: none
+    AllergyList:
+      description: 'A patient''s allergies (inventory #94). Entered-in-error ones are left out unless asked for.'
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Allergy'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    AllergyCreate:
+      description: 'Body to add an allergy (inventory #95). MA and RN record allergies while rooming (FRS FR-SCH-02).'
+      type: object
+      additionalProperties: false
+      required:
+        - code
+      properties:
+        clinicalStatus:
+          type: string
+          enum:
+            - active
+            - inactive
+            - resolved
+          description: Defaults to `active`.
+          x-phi: clinical
+        verificationStatus:
+          type: string
+          enum:
+            - unconfirmed
+            - confirmed
+            - refuted
+          description: Defaults to `confirmed`.
+          x-phi: clinical
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter it is recorded in, if any.
+          x-phi: internal-id
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003.'
+          x-phi: clinical
+        type:
+          type: string
+          enum:
+            - allergy
+            - intolerance
+          description: Allergy or intolerance.
+          x-phi: clinical
+        categories:
+          type: array
+          maxItems: 4
+          items:
+            type: string
+            enum:
+              - food
+              - medication
+              - environment
+              - biologic
+          description: Categories.
+          x-phi: clinical
+        criticality:
+          type: string
+          enum:
+            - low
+            - high
+            - unable-to-assess
+          description: Potential for a serious reaction.
+          x-phi: clinical
+        onsetDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it started.
+          x-phi: clinical
+        reactions:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AllergyReaction'
+          description: Reactions.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 2000
+          description: Free-text note.
+          x-phi: clinical
+    AllergyPatch:
+      description: 'JSON Merge Patch for an allergy: status, criticality, reactions and note. The substance does not change; mark a wrong one entered in error and add the right one.'
+      type: object
+      additionalProperties: false
+      properties:
+        clinicalStatus:
+          type: string
+          enum:
+            - active
+            - inactive
+            - resolved
+          description: FHIR clinical status.
+          x-phi: clinical
+        verificationStatus:
+          type: string
+          enum:
+            - unconfirmed
+            - confirmed
+            - refuted
+          description: FHIR verification status.
+          x-phi: clinical
+        criticality:
+          type:
+            - string
+            - 'null'
+          enum:
+            - low
+            - high
+            - unable-to-assess
+            - null
+          description: Potential for a serious reaction. Send `null` to clear it.
+          x-phi: clinical
+        reactions:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AllergyReaction'
+          description: Reactions; replaces the list.
+          x-phi: clinical
+        note:
+          type:
+            - string
+            - 'null'
+          maxLength: 2000
+          description: Free-text note. Send `null` to clear it.
+          x-phi: clinical
+    FamilyCondition:
+      description: A condition a relative had.
+      type: object
+      additionalProperties: false
+      required:
+        - code
+      properties:
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: 'The condition: SNOMED CT or ICD-10-CM, or text.'
+          x-phi: clinical
+        onsetAge:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 130
+          description: Age at onset, in years, if known.
+          x-phi: clinical
+        contributedToDeath:
+          type: boolean
+          description: The condition contributed to the relative's death.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 500
+          description: Free-text note.
+          x-phi: clinical
+    FamilyHistory:
+      description: Family history for one relative (US Core FamilyMemberHistory; FRS FR-PAT-03). Insert-only; a correction is entered-in-error plus a new entry. Relatives are not named.
+      type: object
+      required:
+        - id
+        - patientId
+        - relationship
+        - status
+        - entrySource
+        - recordedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Family history ID.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        status:
+          type: string
+          enum:
+            - completed
+            - partial
+            - health-unknown
+            - entered-in-error
+          description: 'FHIR status: `completed`, `partial` (some conditions unknown), `health-unknown`, `entered-in-error`.'
+          x-phi: clinical
+        relationship:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: Relationship to the patient, HL7 v3 RoleCode (e.g. `MTH` mother, `FTH` father, `SIS` sister).
+          x-phi: clinical
+        sex:
+          type: string
+          enum:
+            - male
+            - female
+            - other
+            - unknown
+          description: The relative's administrative gender, if known.
+          x-phi: clinical
+        deceased:
+          type: boolean
+          description: The relative has died.
+          x-phi: clinical
+        conditions:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/FamilyCondition'
+          description: Conditions the relative had.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 2000
+          description: Free-text note.
+          x-phi: clinical
+        entrySource:
+          type: string
+          enum:
+            - clinician
+            - imported
+            - patient-reported
+            - ai-generated
+            - device
+            - interface
+          description: 'Where the record came from: entered by a clinician, imported, reported by the patient, generated by AI and verified, from a device, or from an interface. Read-only.'
+          x-phi: none
+        recordedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was recorded. Read-only.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who recorded it, when known. Read-only.
+          x-phi: none
+    FamilyHistoryList:
+      description: 'A patient''s family history (inventory #98).'
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/FamilyHistory'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    FamilyHistoryCreate:
+      description: 'Body to add family history for one relative (inventory #99). Give `conditions`, or `status: health-unknown`.'
+      type: object
+      additionalProperties: false
+      required:
+        - relationship
+      properties:
+        status:
+          type: string
+          enum:
+            - completed
+            - partial
+            - health-unknown
+          description: Defaults to `completed`.
+          x-phi: clinical
+        relationship:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: Relationship to the patient, HL7 v3 RoleCode (e.g. `MTH` mother, `FTH` father, `SIS` sister).
+          x-phi: clinical
+        sex:
+          type: string
+          enum:
+            - male
+            - female
+            - other
+            - unknown
+          description: The relative's administrative gender, if known.
+          x-phi: clinical
+        deceased:
+          type: boolean
+          description: The relative has died.
+          x-phi: clinical
+        conditions:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/FamilyCondition'
+          description: Conditions the relative had.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 2000
+          description: Free-text note.
+          x-phi: clinical
+    SocialHistoryValue:
+      description: 'The answer: a code, a quantity or text, exactly one.'
+      type: object
+      additionalProperties: false
+      properties:
+        codeableConcept:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: A coded answer, e.g. smoking status SNOMED CT 8517006 "former smoker".
+          x-phi: clinical
+        quantity:
+          $ref: '#/components/schemas/Quantity'
+          description: A measured answer, e.g. drinks per week.
+          x-phi: clinical
+        text:
+          type: string
+          maxLength: 1000
+          description: A free-text answer.
+          x-phi: clinical
+    SocialHistory:
+      description: 'A social-history observation (category `social-history`; FRS FR-PAT-03): smoking status (LOINC 72166-2, US Core Smoking Status) and others such as alcohol use. Occupation, industry and tribal affiliation are patient demographics (D39), not here. Insert-only.'
+      type: object
+      required:
+        - id
+        - patientId
+        - code
+        - value
+        - status
+        - entrySource
+        - recordedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Social history ID (the Observation).
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: What was asked, LOINC (e.g. 72166-2 tobacco smoking status).
+          x-phi: clinical
+        value:
+          $ref: '#/components/schemas/SocialHistoryValue'
+          description: The answer.
+          x-phi: clinical
+        effectiveDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it applies, as far as known.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - final
+            - entered-in-error
+          description: FHIR observation status.
+          x-phi: clinical
+        entrySource:
+          type: string
+          enum:
+            - clinician
+            - imported
+            - patient-reported
+            - ai-generated
+            - device
+            - interface
+          description: 'Where the record came from: entered by a clinician, imported, reported by the patient, generated by AI and verified, from a device, or from an interface. Read-only.'
+          x-phi: none
+        recordedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was recorded. Read-only.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who recorded it, when known. Read-only.
+          x-phi: none
+    SocialHistoryList:
+      description: 'A patient''s social history (inventory #101).'
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/SocialHistory'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    SocialHistoryCreate:
+      description: 'Body to add a social-history observation (inventory #102).'
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - value
+      properties:
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: What was asked, LOINC.
+          x-phi: clinical
+        value:
+          $ref: '#/components/schemas/SocialHistoryValue'
+          description: The answer.
+          x-phi: clinical
+        effectiveDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it applies. Defaults to today.
+          x-phi: clinical
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter it is recorded in, if any.
+          x-phi: internal-id
+    SurgicalHistory:
+      description: 'A past surgery: a Procedure with category SNOMED CT 387713003 "Surgical procedure", status `completed` (US Core Procedure; FRS FR-PAT-03). Procedures done in the clinic come from the orders batch with their own category. Insert-only.'
+      type: object
+      required:
+        - id
+        - patientId
+        - code
+        - performedDate
+        - status
+        - entrySource
+        - recordedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Surgical history ID (the Procedure).
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        status:
+          type: string
+          enum:
+            - completed
+            - entered-in-error
+          description: FHIR procedure status.
+          x-phi: clinical
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: 'The procedure: SNOMED CT or CPT, or text.'
+          x-phi: clinical
+        performedDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it was done, as far as known (often only the year).
+          x-phi: clinical
+        bodySite:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: Body site, if relevant.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 2000
+          description: Free-text note, e.g. where it was done.
+          x-phi: clinical
+        entrySource:
+          type: string
+          enum:
+            - clinician
+            - imported
+            - patient-reported
+            - ai-generated
+            - device
+            - interface
+          description: 'Where the record came from: entered by a clinician, imported, reported by the patient, generated by AI and verified, from a device, or from an interface. Read-only.'
+          x-phi: none
+        recordedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was recorded. Read-only.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who recorded it, when known. Read-only.
+          x-phi: none
+    SurgicalHistoryList:
+      description: 'A patient''s surgical history (inventory #104).'
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/SurgicalHistory'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    SurgicalHistoryCreate:
+      description: 'Body to add a past surgery (inventory #105). `performedDate` is required: US Core needs a performed date on a completed procedure.'
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - performedDate
+      properties:
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: 'The procedure: SNOMED CT or CPT, or text.'
+          x-phi: clinical
+        performedDate:
+          $ref: '#/components/schemas/PartialDate'
+          description: When it was done, as far as known (often only the year).
+          x-phi: clinical
+        bodySite:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: Body site, if relevant.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 2000
+          description: Free-text note, e.g. where it was done.
+          x-phi: clinical
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter it is recorded in, if any.
+          x-phi: internal-id
     Facility:
       description: A practice site (the admin `facility` row and its FHIR-shaped site `Location`).
       type: object
