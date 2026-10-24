@@ -79,7 +79,7 @@ contracts/
 
 ## 4. Commands (scripted in Stage 3)
 
-All tools run from `contracts/` through npm scripts, with exact versions from the lockfile; see [../README.md](../README.md). `oasdiff` is installed by `scripts/install-oasdiff.sh` from its GitHub release with a pinned SHA-256 (the npm package named `oasdiff` is a security placeholder, not the tool). Redocly runs with `REDOCLY_TELEMETRY=off`. `contracts/.npmrc` sets `ignore-scripts=true` (D63): no package lifecycle script runs on install; the tools need none. `scripts/check-breaking.sh` runs oasdiff with its default severity levels. A response enum that may grow is an `x-extensible-enum` (API_STANDARDS §6.5), which oasdiff reads natively and does not report an added value (CONTRACT_GOVERNANCE §4.1).
+All tools run from `contracts/` through npm scripts, with exact versions from the lockfile; see [../README.md](../README.md). `oasdiff` is installed by `scripts/install-oasdiff.sh` from its GitHub release with a pinned SHA-256 (the npm package named `oasdiff` is a security placeholder, not the tool). Redocly runs with `REDOCLY_TELEMETRY=off`. `contracts/.npmrc` sets `ignore-scripts=true` (D63): no package lifecycle script runs on install; the tools need none. `scripts/check-breaking.sh` runs oasdiff with its default severity levels and fails on warnings as well as errors (`--fail-on WARN`, CONTRACT_GOVERNANCE §4.1). A response enum that may grow is an `x-extensible-enum` (API_STANDARDS §6.5), which oasdiff reads natively and does not report an added value (CONTRACT_GOVERNANCE §4.1).
 
 ### Versions pinned in Stage 3 (7-day rule; cut-off 2026-10-15, checked 2026-10-22)
 

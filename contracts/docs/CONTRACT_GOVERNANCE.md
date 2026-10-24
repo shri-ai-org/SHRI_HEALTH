@@ -87,7 +87,7 @@ Fixed by source documents:
 | Removing a value from any enum, or turning an `x-extensible-enum` back into a strict `enum` | **Breaking** (§4.2). oasdiff reports it for request enums; for an `x-extensible-enum` in a response it is caught in review |
 | Making a strict response enum extensible | Needs Vimal's approval in the PR; oasdiff does not report it as breaking |
 
-There is no severity override for oasdiff: the breaking check runs with its default levels.
+There is no severity override for oasdiff: the breaking check runs with its default levels and fails on warnings as well as errors (`--fail-on WARN`). oasdiff rates some changes that this table calls breaking as warnings, for example removing a request property, because it does not consider `additionalProperties: false`.
 
 **Governed (announce, not blocked):** adding a value to an `x-extensible-enum`; adding a new event type.
 

@@ -40,9 +40,11 @@ git show "${BASE_REF}:contracts/openapi/dist/shri-health.bundled.yaml" > "$BASE_
   || fail "could not read the bundle from ${BASE_REF}"
 
 echo "Comparing ${BASE_REF} → working tree"
-# oasdiff exits 0 when nothing reaches ERR level, 1 when it finds breaking changes, and 100 or more on its own errors.
+# Fails on WARN as well as ERR: oasdiff rates some changes that CONTRACT_GOVERNANCE §4.1 calls breaking (removing a
+# request or response property) as warnings, because it does not consider additionalProperties: false.
+# oasdiff exits 0 when nothing reaches WARN level, 1 when it finds breaking changes, and 100 or more on its own errors.
 set +e
-"$BIN" breaking "$BASE_FILE" openapi/dist/shri-health.bundled.yaml --fail-on ERR
+"$BIN" breaking "$BASE_FILE" openapi/dist/shri-health.bundled.yaml --fail-on WARN
 rc=$?
 set -e
 case "$rc" in
