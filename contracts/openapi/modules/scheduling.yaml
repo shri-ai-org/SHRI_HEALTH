@@ -9,6 +9,9 @@
 # Facility scope (SECURITY_MODEL §5.1): every `facilityId`, `providerId`, `locationId` and `roomLocationId` in a request must
 # belong to a facility the user is assigned to, and the provider and room to that facility; otherwise `404 not-found`
 # (facility) or `422` with field code `invalid-reference`.
+# Batch 1 follow-up (2026-10-24): booking reference lists with `scheduling-reference:read` (D49), undo check-in (D55),
+# facility name, appointment type, reason and encounter on the status board (D60), the reschedule action (D61) and
+# a date range on the appointment list (D62).
 paths:
   /slots:
     get:
@@ -110,8 +113,9 @@ paths:
     get:
       operationId: listAppointments
       summary: List appointments
-      description: 'Day and week views (inventory #52). Give `date` (a day in the facility''s time zone) or `patientId`. Without
-        `facilityId`, only the user''s facilities are listed.'
+      description: 'Day and week views (inventory #52). Give `date` (one day), `dateFrom` and `dateTo` (a range of at most
+        31 days, both in the facility''s time zone; D62), or `patientId`. Without `facilityId`, only the user''s facilities
+        are listed.'
       tags:
       - scheduling
       x-owner: vimal
@@ -128,7 +132,19 @@ paths:
       - name: date
         in: query
         required: false
-        description: The day, in the facility's time zone.
+        description: One day, in the facility's time zone. Give `date`, or `dateFrom` and `dateTo` (D62).
+        schema:
+          $ref: ../components/schemas/Date.yaml
+      - name: dateFrom
+        in: query
+        required: false
+        description: First day of a range, inclusive, in the facility's time zone (D62).
+        schema:
+          $ref: ../components/schemas/Date.yaml
+      - name: dateTo
+        in: query
+        required: false
+        description: Last day of the range, inclusive; at most 31 days after `dateFrom` (D62).
         schema:
           $ref: ../components/schemas/Date.yaml
       - name: facilityId
@@ -211,7 +227,8 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (neither
-            `date` nor `patientId` given).
+            `date`, a `dateFrom`/`dateTo` range nor `patientId` given; `date` together with a range; or a range longer than
+            31 days).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -379,10 +396,11 @@ paths:
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
     patch:
-      operationId: rescheduleAppointment
-      summary: Reschedule an appointment
-      description: 'Changes time, provider, place, type or notes of a `booked` appointment (inventory #54), under the same
-        booking rules. A new date re-queues the eligibility check.'
+      operationId: updateAppointment
+      summary: Edit an appointment
+      description: 'Edits the notes, patient instructions and room of a `booked` appointment (inventory #54). Rescheduling
+        is `POST /appointments/{appointmentId}/reschedule` (D61); the slot fields in this body are deprecated and still accepted
+        meanwhile.'
       tags:
       - scheduling
       x-owner: vimal
@@ -408,10 +426,10 @@ paths:
             schema:
               $ref: '#/components/schemas/AppointmentPatch'
             examples:
-              later:
-                summary: Move it 40 minutes later
+              instructions:
+                summary: Add patient instructions
                 value:
-                  startAt: '2026-11-03T15:40:00Z'
+                  patientInstruction: Arrive 15 minutes early.
       responses:
         '200':
           description: The appointment.
@@ -427,8 +445,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Appointment'
               examples:
-                moved:
-                  summary: Rescheduled
+                edited:
+                  summary: Edited
                   value:
                     id: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
                     patient: *id005
@@ -436,8 +454,8 @@ paths:
                     facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                     appointmentType: *id007
                     status: booked
-                    startAt: '2026-11-03T15:40:00Z'
-                    endAt: '2026-11-03T16:00:00Z'
+                    startAt: '2026-11-03T15:00:00Z'
+                    endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
                     timeZone: America/Chicago
                     reasonForVisit: Follow-up on blood pressure
@@ -445,6 +463,7 @@ paths:
                     overbook: false
                     createdAt: '2026-11-02T16:05:00Z'
                     updatedAt: '2026-11-02T16:05:00Z'
+                    patientInstruction: Arrive 15 minutes early.
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -854,6 +873,7 @@ paths:
                       visitStatus: checked-in
                     date: '2026-11-03'
                     timeZone: America/Chicago
+                    facilityName: Test Clinic Main Street
                 staff:
                   summary: Staff view
                   value:
@@ -866,8 +886,15 @@ paths:
                       status: checked-in
                       visitStatus: checked-in
                       visitStatusAt: '2026-11-03T14:52:00Z'
+                      appointmentType:
+                        id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                        code: FOLLOWUP
+                        name: Follow-up visit
+                      reasonForVisit: Follow-up on blood pressure
+                      encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
                     date: '2026-11-03'
                     timeZone: America/Chicago
+                    facilityName: Test Clinic Main Street
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -880,6 +907,485 @@ paths:
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (the `facilityId` is not one of the user's facilities (SECURITY_MODEL §5.1)).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /booking/facilities:
+    get:
+      operationId: listBookableFacilities
+      summary: List facilities for booking
+      description: 'The facilities a front-desk or clinical user may book at, with their time zones (new inventory row #236).
+        Read-only and active entries only; reference data, so not audited. `practice-setup:read` (ADM, CO) stays the way to
+        see and edit the full records (D49).'
+      tags:
+      - scheduling
+      x-owner: vimal
+      x-permission: scheduling-reference:read
+      x-audit: &id011
+        action: R
+        category: none
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page of facilitys.
+          headers:
+            X-Request-ID: &id012
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control: &id013
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit: &id014
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy: &id015
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookableFacilityList'
+              examples:
+                one:
+                  summary: One facility
+                  value:
+                    items:
+                    - id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                      code: MAIN
+                      name: Test Clinic Main Street
+                      timeZone: America/Chicago
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `scheduling-reference:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /booking/locations:
+    get:
+      operationId: listBookableLocations
+      summary: List rooms and sites for booking
+      description: 'Rooms and sites of a facility, for booking and rooming (new inventory row #237). Read-only and active
+        entries only; reference data, so not audited. `practice-setup:read` (ADM, CO) stays the way to see and edit the full
+        records (D49).'
+      tags:
+      - scheduling
+      x-owner: vimal
+      x-permission: scheduling-reference:read
+      x-audit: *id011
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: facilityId
+        in: query
+        required: false
+        description: Only this facility.
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      responses:
+        '200':
+          description: One page of locations.
+          headers:
+            X-Request-ID: *id012
+            Cache-Control: *id013
+            RateLimit: *id014
+            RateLimit-Policy: *id015
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookableLocationList'
+              examples:
+                one:
+                  summary: One room
+                  value:
+                    items:
+                    - id: 9c0d1e2f-3a4b-4c5d-9e6f-7a8b9c0d1e2f
+                      facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                      name: Exam room 2
+                      physicalType: ro
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `scheduling-reference:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (the `facilityId` is not one of the user's facilities (SECURITY_MODEL §5.1)).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /booking/providers:
+    get:
+      operationId: listBookableProviders
+      summary: List providers for booking
+      description: 'Providers who can be booked, with the facilities they work at; bookable fields only, no NPI, licenses
+        or contact details (new inventory row #238). Read-only and active entries only; reference data, so not audited. `practice-setup:read`
+        (ADM, CO) stays the way to see and edit the full records (D49).'
+      tags:
+      - scheduling
+      x-owner: vimal
+      x-permission: scheduling-reference:read
+      x-audit: *id011
+      x-storage: clinical
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: facilityId
+        in: query
+        required: false
+        description: Only providers working at this facility.
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      responses:
+        '200':
+          description: One page of providers.
+          headers:
+            X-Request-ID: *id012
+            Cache-Control: *id013
+            RateLimit: *id014
+            RateLimit-Policy: *id015
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookableProviderList'
+              examples:
+                one:
+                  summary: One provider
+                  value:
+                    items:
+                    - id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                      facilityIds:
+                      - 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                      specialties:
+                      - Internal Medicine
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `scheduling-reference:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (the `facilityId` is not one of the user's facilities (SECURITY_MODEL §5.1)).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /booking/appointment-types:
+    get:
+      operationId: listBookableAppointmentTypes
+      summary: List appointment types for booking
+      description: 'Appointment types with their durations and booking rules (new inventory row #239). Read-only and active
+        entries only; reference data, so not audited. `practice-setup:read` (ADM, CO) stays the way to see and edit the full
+        records (D49).'
+      tags:
+      - scheduling
+      x-owner: vimal
+      x-permission: scheduling-reference:read
+      x-audit: *id011
+      x-storage: admin
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page of appointment types.
+          headers:
+            X-Request-ID: *id012
+            Cache-Control: *id013
+            RateLimit: *id014
+            RateLimit-Policy: *id015
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookableAppointmentTypeList'
+              examples:
+                one:
+                  summary: One type
+                  value:
+                    items:
+                    - id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      code: FOLLOWUP
+                      name: Follow-up visit
+                      defaultDurationMinutes: 20
+                      color: '#2E7D32'
+                      allowOverlap: false
+                      maxOverbook: 1
+                      requiresEligibilityCheck: true
+                      telehealth: false
+                      newPatient: false
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `scheduling-reference:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /appointments/{appointmentId}/reschedule:
+    parameters:
+    - name: appointmentId
+      in: path
+      required: true
+      description: Appointment ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: rescheduleAppointment
+      summary: Reschedule an appointment
+      description: 'Moves a `booked` or `arrived` appointment (new inventory row #243; D61). In one transaction: the old appointment
+        becomes `cancelled` with the given reason, a new one is booked under the same rules as `POST /appointments` (provider-day
+        lock, overbooking only where the type allows it), and the new one carries `rescheduledFromId`, set by the server.
+        A new date re-queues the eligibility check (D15). Returns the new appointment; the old one keeps its history.'
+      tags:
+      - scheduling
+      x-owner: vimal
+      x-permission: appointments:reschedule
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-storage: clinical
+      x-events:
+      - appointment.rescheduled
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RescheduleRequest'
+            examples:
+              later:
+                summary: Move to the next slot, at the patient's request
+                value:
+                  startAt: '2026-11-03T15:40:00Z'
+                  reasonCode: pat
+      responses:
+        '201':
+          description: Rescheduled. The new appointment, with `rescheduledFromId`.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id012
+            Cache-Control: *id013
+            RateLimit: *id014
+            RateLimit-Policy: *id015
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+              examples:
+                moved:
+                  summary: The new appointment
+                  value:
+                    id: 2e3f4a5b-6c7d-4e8f-8a9b-0c1d2e3f4a5b
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      displayName: Kuhlman72, Ramona980
+                    provider:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    appointmentType:
+                      id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      code: FOLLOWUP
+                      name: Follow-up visit
+                    status: booked
+                    startAt: '2026-11-03T15:40:00Z'
+                    endAt: '2026-11-03T16:00:00Z'
+                    durationMinutes: 20
+                    timeZone: America/Chicago
+                    reasonForVisit: Follow-up on blood pressure
+                    sameDayAddOn: false
+                    overbook: false
+                    rescheduledFromId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    createdAt: '2026-11-02T18:00:00Z'
+                    updatedAt: '2026-11-02T18:00:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `appointments:reschedule`); `csrf-check-failed` (missing or
+            wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `booking-conflict`
+            (the slot is taken or overlaps another appointment); `invalid-state-transition` (the appointment is not `booked`
+            or `arrived`); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same
+            booking rules as `POST /appointments`; or a provider, facility or location outside the user's facilities (field
+            code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /appointments/{appointmentId}/undo-check-in:
+    parameters:
+    - name: appointmentId
+      in: path
+      required: true
+      description: Appointment ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: undoCheckIn
+      summary: Undo a check-in
+      description: 'Reverses a check-in made by mistake (new inventory row #242; D55). Allowed only while the patient has
+        not been roomed and the encounter has no clinical data (no vitals, notes or diagnoses). In one transaction: the appointment
+        returns to `booked`, the encounter created at check-in becomes `entered-in-error` with the reason and its Provenance
+        (D14, D24), and the visit step history keeps the record. The eligibility check already run is kept.'
+      tags:
+      - scheduling
+      x-owner: vimal
+      x-permission: appointments:undo-check-in
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-events:
+      - appointment.status-changed
+      - encounter.entered-in-error
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UndoCheckInRequest'
+            examples:
+              wrong-patient:
+                summary: Wrong patient checked in
+                value:
+                  reason: Checked in the wrong patient of the same name.
+      responses:
+        '200':
+          description: Undone. The appointment, back to `booked`.
+          headers:
+            X-Request-ID: *id012
+            Cache-Control: *id013
+            RateLimit: *id014
+            RateLimit-Policy: *id015
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+              examples:
+                undone:
+                  summary: Back to booked
+                  value:
+                    id: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      displayName: Kuhlman72, Ramona980
+                    provider:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    appointmentType:
+                      id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      code: FOLLOWUP
+                      name: Follow-up visit
+                    status: booked
+                    startAt: '2026-11-03T15:00:00Z'
+                    endAt: '2026-11-03T15:20:00Z'
+                    durationMinutes: 20
+                    timeZone: America/Chicago
+                    reasonForVisit: Follow-up on blood pressure
+                    sameDayAddOn: false
+                    overbook: false
+                    createdAt: '2026-11-02T16:05:00Z'
+                    updatedAt: '2026-11-03T14:55:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `appointments:undo-check-in`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (not `checked-in`, already roomed, or the encounter has vitals, notes
+            or diagnoses).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -1047,19 +1553,19 @@ components:
       - createdAt
       - updatedAt
       properties:
-        id: &id011
+        id: &id016
           $ref: ../components/schemas/Id.yaml
           description: Appointment ID.
           x-phi: internal-id
-        patient: &id012
+        patient: &id017
           $ref: '#/components/schemas/SchedulingPatientRef'
           description: The patient.
           x-phi: identifier
-        provider: &id013
+        provider: &id018
           $ref: '#/components/schemas/SchedulingProviderRef'
           description: The provider.
           x-phi: none
-        facilityId: &id014
+        facilityId: &id019
           $ref: ../components/schemas/Id.yaml
           description: Facility.
           x-phi: internal-id
@@ -1067,23 +1573,23 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: Room or site, if set.
           x-phi: internal-id
-        appointmentType: &id015
+        appointmentType: &id020
           $ref: '#/components/schemas/AppointmentTypeRef'
           description: Appointment type.
           x-phi: none
-        status: &id016
+        status: &id021
           $ref: '#/components/schemas/AppointmentStatus'
           description: Appointment status.
           x-phi: none
-        visitStatus: &id017
+        visitStatus: &id022
           $ref: '#/components/schemas/VisitStatus'
           description: Latest visit step, once the patient has arrived.
           x-phi: none
-        startAt: &id018
+        startAt: &id023
           $ref: ../components/schemas/Timestamp.yaml
           description: Start (UTC).
           x-phi: identifier
-        endAt: &id019
+        endAt: &id024
           $ref: ../components/schemas/Timestamp.yaml
           description: End (UTC).
           x-phi: identifier
@@ -1099,16 +1605,16 @@ components:
           maxLength: 64
           description: The facility's IANA time zone, for display (D40).
           x-phi: none
-        reasonForVisit: &id020
+        reasonForVisit: &id025
           type: string
           maxLength: 1000
           description: Scheduled reason for the visit, as the patient gave it.
           x-phi: clinical
-        sameDayAddOn: &id021
+        sameDayAddOn: &id026
           type: boolean
           description: Booked as a same-day add-on (the U.S. walk-in; FRS FR-SCH-02).
           x-phi: none
-        overbook: &id022
+        overbook: &id027
           type: boolean
           description: Booked over another appointment, as the appointment type allows.
           x-phi: none
@@ -1173,18 +1679,18 @@ components:
       - startAt
       - endAt
       properties:
-        id: *id011
-        patient: *id012
-        provider: *id013
-        facilityId: *id014
-        appointmentType: *id015
-        status: *id016
-        visitStatus: *id017
-        startAt: *id018
-        endAt: *id019
-        reasonForVisit: *id020
-        sameDayAddOn: *id021
-        overbook: *id022
+        id: *id016
+        patient: *id017
+        provider: *id018
+        facilityId: *id019
+        appointmentType: *id020
+        status: *id021
+        visitStatus: *id022
+        startAt: *id023
+        endAt: *id024
+        reasonForVisit: *id025
+        sameDayAddOn: *id026
+        overbook: *id027
     AppointmentList:
       description: One page of appointments, by start time.
       type: object
@@ -1222,33 +1728,43 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: The patient.
           x-phi: internal-id
-        providerId: &id023
+        providerId: &id028
           $ref: ../components/schemas/Id.yaml
-          description: The provider.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`,
+            which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: internal-id
-        facilityId: &id024
+          deprecated: true
+        facilityId: &id029
           $ref: ../components/schemas/Id.yaml
-          description: The facility.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`,
+            which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: internal-id
+          deprecated: true
         locationId:
           $ref: ../components/schemas/Id.yaml
           description: Room or site, optional.
           x-phi: internal-id
-        appointmentTypeId: &id025
+        appointmentTypeId: &id030
           $ref: ../components/schemas/Id.yaml
-          description: Appointment type.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`,
+            which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: internal-id
-        startAt: &id026
+          deprecated: true
+        startAt: &id031
           $ref: ../components/schemas/Timestamp.yaml
-          description: Start. Any offset is accepted; stored in UTC.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`,
+            which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: identifier
-        durationMinutes: &id027
+          deprecated: true
+        durationMinutes: &id032
           type: integer
           format: int32
           minimum: 5
           maximum: 480
-          description: Length; defaults to the appointment type's duration.
+          description: 'Deprecated (D61): change the time, provider, facility, type or length with `POST /appointments/{appointmentId}/reschedule`,
+            which records a reason and keeps the history. Still accepted until the screens have moved.'
           x-phi: none
+          deprecated: true
         reasonForVisit:
           type: string
           maxLength: 1000
@@ -1259,7 +1775,7 @@ components:
           default: false
           description: A same-day add-on (walk-in).
           x-phi: none
-        overbook: &id028
+        overbook: &id033
           type: boolean
           default: false
           description: Book over another appointment. Allowed only when the appointment type allows overbooking, up to its
@@ -1276,21 +1792,23 @@ components:
           description: Instructions for the patient.
           x-phi: clinical
     AppointmentPatch:
-      description: JSON Merge Patch to reschedule or edit a booked appointment. Status never changes here (API_STANDARDS §7.3).
+      description: JSON Merge Patch for notes, instructions and the room of a booked appointment. Time, provider, facility,
+        type and length change through `/reschedule` (D61); those fields here are deprecated. Status never changes here (API_STANDARDS
+        §7.3).
       type: object
       additionalProperties: false
       properties:
-        providerId: *id023
-        facilityId: *id024
+        providerId: *id028
+        facilityId: *id029
         locationId:
           oneOf:
           - $ref: ../components/schemas/Id.yaml
           - type: 'null'
           description: Room or site, optional. Send `null` to clear it.
           x-phi: internal-id
-        appointmentTypeId: *id025
-        startAt: *id026
-        durationMinutes: *id027
+        appointmentTypeId: *id030
+        startAt: *id031
+        durationMinutes: *id032
         reasonForVisit:
           type:
           - string
@@ -1298,7 +1816,7 @@ components:
           maxLength: 1000
           description: Reason for the visit. Send `null` to clear it.
           x-phi: clinical
-        overbook: *id028
+        overbook: *id033
         comment:
           type:
           - string
@@ -1389,6 +1907,7 @@ components:
     StatusBoardItem:
       description: One appointment on today's board. With `view=shared`, the default (hallway and waiting-room displays),
         only `appointmentId`, `initials`, `startAt`, `status` and `visitStatus` are returned (SECURITY_MODEL §8 rule 11).
+        The staff view adds the patient, provider, room, appointment type, reason for visit and encounter (D60).
       type: object
       required:
       - appointmentId
@@ -1434,6 +1953,20 @@ components:
           maxLength: 200
           description: Current room, once roomed.
           x-phi: none
+        appointmentType:
+          $ref: '#/components/schemas/AppointmentTypeRef'
+          description: Appointment type. Staff view only (D60).
+          x-phi: none
+        reasonForVisit:
+          type: string
+          maxLength: 1000
+          description: Scheduled reason for the visit. Staff view only; left out for a restricted patient unless the user
+            holds a break-glass grant or is on the care team (D60).
+          x-phi: clinical
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The encounter, once checked in. Staff view only (D60).
+          x-phi: internal-id
     StatusBoardList:
       description: One page of the status board, by start time.
       type: object
@@ -1460,3 +1993,287 @@ components:
           maxLength: 64
           description: The facility's IANA time zone (D40).
           x-phi: none
+        facilityName:
+          type: string
+          maxLength: 200
+          description: The facility's name, in both views, so a shared display shows where it is (D60).
+          x-phi: none
+    BookableFacility:
+      description: A facility, as the booking screen needs it (D49). Full practice setup stays under `practice-setup:read`.
+      type: object
+      required:
+      - id
+      - code
+      - name
+      - timeZone
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Facility ID.
+          x-phi: internal-id
+        code:
+          type: string
+          maxLength: 40
+          description: Short code.
+          x-phi: none
+        name:
+          type: string
+          maxLength: 200
+          description: Name.
+          x-phi: none
+        timeZone:
+          type: string
+          maxLength: 64
+          description: IANA time zone; appointments at this facility display in it (D40).
+          x-phi: none
+    BookableLocation:
+      description: A room or site inside a facility, for booking and rooming (D49).
+      type: object
+      required:
+      - id
+      - facilityId
+      - name
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Location ID.
+          x-phi: internal-id
+        facilityId:
+          $ref: ../components/schemas/Id.yaml
+          description: Its facility.
+          x-phi: internal-id
+        name:
+          type: string
+          maxLength: 200
+          description: Name, e.g. "Exam room 2".
+          x-phi: none
+        physicalType:
+          type: string
+          enum:
+          - bu
+          - wi
+          - lvl
+          - ro
+          description: FHIR location-physical-type.
+          x-phi: none
+    BookableProvider:
+      description: 'A provider, bookable fields only: no NPI, licenses or contact details (D49).'
+      type: object
+      required:
+      - id
+      - displayName
+      - facilityIds
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Provider ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name for lists, e.g. "Dr. Lowe58".
+          x-phi: none
+        facilityIds:
+          type: array
+          maxItems: 50
+          items:
+            $ref: ../components/schemas/Id.yaml
+          description: Facilities where the provider sees patients.
+          x-phi: internal-id
+        specialties:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 200
+          description: Specialty names, for display.
+          x-phi: none
+    BookableAppointmentType:
+      description: An appointment type with its booking rules (D49).
+      type: object
+      required:
+      - id
+      - code
+      - name
+      - defaultDurationMinutes
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Appointment type ID.
+          x-phi: internal-id
+        code:
+          type: string
+          maxLength: 40
+          description: Code.
+          x-phi: none
+        name:
+          type: string
+          maxLength: 120
+          description: Name.
+          x-phi: none
+        defaultDurationMinutes:
+          type: integer
+          format: int32
+          minimum: 5
+          maximum: 480
+          description: Default length.
+          x-phi: none
+        color:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+          description: Calendar color.
+          x-phi: none
+        allowOverlap:
+          type: boolean
+          description: May overlap other appointments without counting as overbooking.
+          x-phi: none
+        maxOverbook:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 20
+          description: Overbooking limit per provider and time; 0 means none.
+          x-phi: none
+        requiresEligibilityCheck:
+          type: boolean
+          description: Eligibility checks run for this type (D15).
+          x-phi: none
+        telehealth:
+          type: boolean
+          description: A telehealth visit.
+          x-phi: none
+        newPatient:
+          type: boolean
+          description: For new patients.
+          x-phi: none
+    BookableFacilityList:
+      description: One page of active facilitys, by name.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BookableFacility'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    BookableLocationList:
+      description: One page of active locations, by name.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BookableLocation'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    BookableProviderList:
+      description: One page of active providers, by name.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BookableProvider'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    BookableAppointmentTypeList:
+      description: One page of active appointment types, by name.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BookableAppointmentType'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    RescheduleRequest:
+      description: 'Body to reschedule: the new time and, optionally, a new provider, facility, room, type or length, with
+        the reason (D61).'
+      type: object
+      additionalProperties: false
+      required:
+      - startAt
+      - reasonCode
+      properties:
+        startAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: New start. Any offset is accepted; stored in UTC.
+          x-phi: identifier
+        providerId:
+          $ref: ../components/schemas/Id.yaml
+          description: New provider; defaults to the current one.
+          x-phi: internal-id
+        facilityId:
+          $ref: ../components/schemas/Id.yaml
+          description: New facility; defaults to the current one. Must be one of the user's facilities.
+          x-phi: internal-id
+        locationId:
+          $ref: ../components/schemas/Id.yaml
+          description: Room or site, optional.
+          x-phi: internal-id
+        appointmentTypeId:
+          $ref: ../components/schemas/Id.yaml
+          description: New appointment type; defaults to the current one.
+          x-phi: internal-id
+        durationMinutes:
+          type: integer
+          format: int32
+          minimum: 5
+          maximum: 480
+          description: New length; defaults to the current one.
+          x-phi: none
+        reasonCode:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 'Why it moved: an HL7 appointment-cancellation-reason code (e.g. `pat` patient, `prov` provider, `oth-weath`)
+            or a practice picklist code. Required.'
+          x-phi: none
+        reasonText:
+          type: string
+          maxLength: 500
+          description: Free text. May name people, so it is treated as patient data.
+          x-phi: identifier
+    UndoCheckInRequest:
+      description: Body to undo a check-in (D55).
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why the check-in is undone, e.g. checked in the wrong patient. Recorded on the encounter's entered-in-error
+            Provenance. May name people, so it is treated as patient data.
+          x-phi: identifier

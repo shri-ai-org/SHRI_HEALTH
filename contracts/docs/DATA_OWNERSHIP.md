@@ -213,7 +213,9 @@ stateDiagram-v2
 | From → To | Endpoint | Who | Guards | Side effects |
 |---|---|---|---|---|
 | — → `booked` | `POST /appointments` | FD, ADM (`appointments:create`) | Patient active and not merged; slot free under the provider-day lock, unless the appointment type allows overbooking (FRS FR-SCH-01) | Eligibility check queued (VD-G3); reminders scheduled (Minalini); `appointment.booked` |
-| `booked` → `booked` | `PATCH /appointments/{appointmentId}` | FD, ADM (`appointments:update`) | Same as booking | Eligibility re-queued if the date changes (**PROPOSED**); `appointment.rescheduled` |
+| `booked` → `booked` | `PATCH /appointments/{appointmentId}` | FD, ADM (`appointments:update`) | Notes, instructions and room only (D61; the slot fields are deprecated) | — |
+| `booked`/`arrived` → `cancelled`, new `booked` | `POST /appointments/{appointmentId}/reschedule` `{ startAt, reasonCode, … }` | FD, ADM (`appointments:reschedule`, D61) | Reason required; the new slot follows the booking rules | One transaction: old appointment `cancelled` with the reason, new one `booked` with `rescheduledFromId`; eligibility re-queued if the date changes; `appointment.rescheduled` |
+| `checked-in` → `booked` | `POST /appointments/{appointmentId}/undo-check-in` `{ reason }` | FD, ADM (`appointments:undo-check-in`, D55) | Not roomed; the encounter has no vitals, notes or diagnoses | Encounter → `entered-in-error` with Provenance (§5.2); the eligibility check is kept; `appointment.status-changed`, `encounter.entered-in-error` |
 | `booked` → `arrived` | `POST /appointments/{appointmentId}/status` `{ "status": "arrived" }` | FD (`appointments:status`) | Same day | `appointment.status-changed` |
 | `booked`/`arrived` → `checked-in` | `POST /appointments/{appointmentId}/check-in` | FD (`appointments:check-in`) | Same day; insurance or self-pay recorded | Encounter created by the encounter service (VD-G4); real-time eligibility check (VD-G3); copay prompt; `appointment.checked-in` |
 | `checked-in` → `fulfilled` | `POST /appointments/{appointmentId}/status` `{ "status": "checked-out" }` | FD | Encounter at least `in-progress` | `appointment.checked-out`. The encounter may stay open until notes are signed |
@@ -246,6 +248,7 @@ stateDiagram-v2
 | — → `arrived` | Check-in (§5.1) | System (encounter service, triggered by FD) | Appointment checked in | Encounter row written in the check-in transaction (§3.1) |
 | — → `in-progress` | `POST /encounters` `{ patientId, class, type, reason }` | MD, APP (`encounters:create`) | Type is unscheduled (telephone, documentation-only) (VD-G4) | `encounter.opened` |
 | `arrived` → `triaged` | `POST /appointments/{appointmentId}/status` `{ "status": "roomed" }` | MA, RN | — | `encounter.status-changed` |
+| `arrived` → `entered-in-error` | Undo check-in (§5.1, D55) | System (triggered by FD, ADM) | No vitals, notes or diagnoses | Provenance with the reason; `encounter.entered-in-error` |
 | `arrived`/`triaged` → `in-progress` | `…/status` `{ "status": "with-provider" }`, **or** automatically on the first `POST /encounters/{encounterId}/notes` | MD, APP, RN | — | `encounter.status-changed` |
 | `in-progress` → `finished` | `POST /encounters/{encounterId}/close` | MD, APP (`encounters:close`) | At least one note signed; no open drafts; at least one diagnosis for billable encounter types (**pending clinical advisors**, DECISIONS "Still open") | `encounter.closed` → Anand's billing builds the superbill (VG Step 5) |
 | `arrived`/`triaged` → `cancelled` | Appointment cancel with `left-without-being-seen` | FD, ADM | Not `in-progress` | Same transaction as the cancellation |
