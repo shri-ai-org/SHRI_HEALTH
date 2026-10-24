@@ -1,6 +1,6 @@
 # Contract batch 2: encounters, notes and patient history (Stage A plan)
 
-**Status:** PROPOSED, waiting for Vimal's approval (2026-10-24). Nothing in `contracts/openapi/` changes until it is approved.
+**Status:** APPROVED as recommended (Vimal, 2026-10-24; D73). Written in Stage B. One change from the plan: code search is `GET /codes?system=&q=`, not `GET /codes/search`, because the `/search` suffix is POST-only for PHI searches (`shri-search-post`).
 **Branch:** `vimal/contracts-batch2`. **Inventory name:** these rows are batch **B4** in ENDPOINT_INVENTORY (its B2 is patients and insurance); this plan calls the work "batch 2" as asked, and the contract keeps the inventory's B-codes.
 **Schema:** the locked schema (D72, PR #32) as adopted on `anand/schema-adoption` @ `807144c`. That branch is not on `main` yet.
 **Sources:** ENDPOINT_INVENTORY #46, #62–106; SECURITY_MODEL §4.3, §6; DATA_OWNERSHIP §2, §3.2, §5.2, §5.3; EVENTS §4; API_STANDARDS; FRS v1.2 §3.3, §3.4; DECISIONS D8, D14, D16, D24, D37, D55, D67–D70, D72; ADR-0007, ADR-0008. Every row below cites its inventory number.
@@ -44,7 +44,7 @@ Legend. **Audit** as `action/category`: `R/phi-read`, `C/phi-write`, `U/phi-writ
 | 71 | `POST /encounters/{encounterId}/diagnoses` | addEncounterDiagnosis | `diagnoses:create` | C/phi-write, result | S | | | FR-ENC-02 |
 | 72 | `POST /encounters/{encounterId}/diagnoses/{diagnosisId}/remove` | removeEncounterDiagnosis | `diagnoses:remove` | E/phi-write, result | | opt | | FR-ENC-02 |
 | 73 | `POST /encounters/{encounterId}/diagnoses/{diagnosisId}/entered-in-error` | markDiagnosisEnteredInError | `diagnoses:entered-in-error` | E/phi-write, result | | opt | | FR-ENC-02 |
-| 74 | `GET /codes/search?system=&q=` | searchCodes | `codes:read` | R/none | | | | FR-ENC-02 |
+| 74 | `GET /codes?system=&q=` | searchCodes | `codes:read` | R/none | | | | FR-ENC-02 |
 
 Diagnoses are read with the encounter (#63, ranked 1–12) and the problem list (#90); no `diagnoses:read` is added (Q8).
 
@@ -177,7 +177,7 @@ Every history entry carries its source (`entrySource`: `clinician`, `imported`, 
 | Where patient instructions are stored | A note section (LOINC 69730-0), printed by the after-visit summary (section 4) |
 | Timeline filters | `GET /patients/{patientId}/timeline?types=&dateFrom=&dateTo=&cursor=&limit=` (#46); `types` from: encounter, diagnosis, problem, allergy, vital, note, procedure, family-history, social-history, medication, result, document |
 | Personal note templates | `note_template.owner_user_id` (already in the schema); the endpoint is Q3. The inventory row's `user_clinical_preference` is corrected (no such table) |
-| Drug search confirmed as `GET /codes/search?system=rxnorm` | #74, `system` values `icd-10-cm`, `snomed-ct`, `loinc`, `rxnorm`, `cpt`, `hcpcs`, `cvx` (CPT placeholder codes until Q7) |
+| Drug search confirmed as `GET /codes?system=rxnorm` | #74, `system` values `icd-10-cm`, `snomed-ct`, `loinc`, `rxnorm`, `cpt`, `hcpcs`, `cvx` (CPT placeholder codes until Q7) |
 | Vitals in U.S. units (D69) | Section 4 |
 | AI shapes (D70) | Batch 7; this batch only keeps the section markers |
 

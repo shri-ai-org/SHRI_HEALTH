@@ -79,7 +79,7 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 | 71 | POST | `/encounters/{encounterId}/diagnoses` | Add a diagnosis |
 | 72 | POST | `/encounters/{encounterId}/diagnoses/{diagnosisId}/remove` | Remove before signing: sets entered-in-error with a reason and a Provenance record (D14, D24) |
 | 73 | POST | `/encounters/{encounterId}/diagnoses/{diagnosisId}/entered-in-error` | Mark a diagnosis wrong after signing |
-| 74 | GET | `/codes/search?system=&q=` | ICD-10, CPT, RxNorm, LOINC search (reference data, not PHI) |
+| 74 | GET | `/codes?system=&q=` | ICD-10, CPT, RxNorm, LOINC search (reference data, not PHI; was `/codes/search`, batch 2) |
 | 75–76 | POST, GET | `/encounters/{encounterId}/notes` | Start a note from a template; list a visit's notes |
 | 77–78 | GET, PATCH | `/notes/{noteId}` | View; autosave draft (If-Match) |
 | 79 | POST | `/notes/{noteId}/sign` | Sign; locks the note |
@@ -89,7 +89,7 @@ Every endpoint the screens and partners call, grouped by owner. Vimal turns this
 | 83 | POST | `/notes/{noteId}/entered-in-error` | Mark a note wrong |
 | 84–85 | GET, PUT | `/me/favorites` | Favorite templates, diagnoses, orders, phrases |
 | 86 | POST | `/encounters/{encounterId}/after-visit-summary` | Patient handout PDF (`202`; also files) |
-| 87–89 | GET, POST, PATCH | `/cosign-rules`, `/cosign-rules/{cosignRuleId}` | Co-signature rules by state and provider |
+| 87–89, 251 | GET, POST, PATCH, GET | `/cosign-rules`, `/cosign-rules/{cosignRuleId}` | Co-signature rules by state and provider |
 
 ### Patient history (Ours (clinical))
 
@@ -97,8 +97,8 @@ Each history type has its own entered-in-error action with its own permission; t
 
 | # | Method | Path | Purpose |
 |---|---|---|---|
-| 90–93 | GET, POST, PATCH, POST | `/patients/{patientId}/problems`, `/patients/{patientId}/problems/{problemId}`, `/patients/{patientId}/problems/{problemId}/entered-in-error` | Problem list (Condition) |
-| 94–97 | GET, POST, PATCH, POST | `/patients/{patientId}/allergies`, `/patients/{patientId}/allergies/{allergyId}`, `/patients/{patientId}/allergies/{allergyId}/entered-in-error` | AllergyIntolerance |
+| 90–93, 249 | GET, POST, PATCH, POST, GET | `/patients/{patientId}/problems`, `/patients/{patientId}/problems/{problemId}`, `/patients/{patientId}/problems/{problemId}/entered-in-error` | Problem list (Condition) |
+| 94–97, 250 | GET, POST, PATCH, POST, GET | `/patients/{patientId}/allergies`, `/patients/{patientId}/allergies/{allergyId}`, `/patients/{patientId}/allergies/{allergyId}/entered-in-error` | AllergyIntolerance |
 | 98–100 | GET, POST, POST | `/patients/{patientId}/family-history`, `/patients/{patientId}/family-history/{familyHistoryId}/entered-in-error` | FamilyMemberHistory |
 | 101–103 | GET, POST, POST | `/patients/{patientId}/social-history`, `/patients/{patientId}/social-history/{socialHistoryId}/entered-in-error` | Observation, social-history category |
 | 104–106 | GET, POST, POST | `/patients/{patientId}/surgical-history`, `/patients/{patientId}/surgical-history/{surgicalHistoryId}/entered-in-error` | Procedure |

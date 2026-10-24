@@ -85,6 +85,39 @@ curl -s "$B/pharmacies?postalCode=62703" -H 'Cookie: __Host-shri_session=mock'  
 curl -s -X POST $B/patients/summaries "${H[@]}" -d '{"patientIds":["'$P'"]}'      # D54
 ```
 
+## 5b. A clinical flow (batch 2)
+
+Encounters, notes and history (D73): open a telephone encounter → read the workspace → record vitals in U.S. units (D69) → add and remove a diagnosis → start, autosave and sign a note → the co-signer returns it → addendum → co-sign → after-visit summary → add an allergy and a problem → timeline. `If-Match` values are placeholders: the real API compares them with the record's `ETag`.
+
+```bash
+B=http://127.0.0.1:4010
+H=(-H 'Cookie: __Host-shri_session=mock' -H 'X-CSRF-Token: mock' -H 'Content-Type: application/json')
+P=7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d   # the example patient
+E=5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a   # the example encounter
+N=6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b   # the example note
+D=8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d   # the example diagnosis
+
+curl -s -X POST $B/encounters "${H[@]}" -d '{"patientId":"'$P'","unscheduledType":"telephone","facilityId":"8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e"}'
+curl -s $B/encounters/$E -H 'Cookie: __Host-shri_session=mock'                       # workspace: diagnoses, vitals, note summaries
+curl -s -X POST $B/encounters/$E/vitals "${H[@]}" \
+  -d '{"entries":[{"type":"body-weight","value":{"value":182.4,"unit":"[lb_av]"}},{"type":"body-temperature","value":{"value":98.6,"unit":"[degF]"}}]}'   # D69
+curl -s "$B/codes?system=icd-10-cm&q=hypertension" -H 'Cookie: __Host-shri_session=mock'   # code search (reference data)
+curl -s -X POST $B/encounters/$E/diagnoses "${H[@]}" -d '{"code":{"system":"http://hl7.org/fhir/sid/icd-10-cm","code":"I10"}}'
+curl -s -X POST $B/encounters/$E/diagnoses/$D/remove "${H[@]}" -d '{"reason":"Added to the wrong encounter."}'   # D24
+curl -s -X POST $B/encounters/$E/notes "${H[@]}" -d '{"templateId":"1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a"}'
+curl -s -X PATCH $B/notes/$N -H 'Cookie: __Host-shri_session=mock' -H 'X-CSRF-Token: mock' -H 'Content-Type: application/merge-patch+json' -H 'If-Match: "3"' \
+  -d '{"sections":[{"id":"3f4a5b6c-7d8e-4f9a-8b0c-1d2e3f4a5b6c","text":"Continue current medication; recheck in 4 weeks."}]}'   # autosave
+curl -s -X POST $B/notes/$N/sign -H 'Cookie: __Host-shri_session=mock' -H 'X-CSRF-Token: mock' -H 'If-Match: "4"'
+curl -s -X POST $B/notes/$N/cosign "${H[@]}" -H 'If-Match: "5"' -H 'Prefer: example=returned' \
+  -d '{"decision":"return","comment":"Please document the home readings you reviewed."}'   # return to author
+curl -s -X POST $B/notes/$N/addenda "${H[@]}" -H 'If-Match: "6"' -d '{"text":"Reviewed the home blood pressure log."}'
+curl -s -X POST $B/notes/$N/cosign "${H[@]}" -H 'If-Match: "7"' -d '{"decision":"cosign"}'
+curl -s -X POST $B/encounters/$E/after-visit-summary "${H[@]}" -d '{}'               # 202 and an operation
+curl -s -X POST $B/patients/$P/allergies "${H[@]}" -d '{"code":{"codings":[{"system":"http://www.nlm.nih.gov/research/umls/rxnorm","code":"7980"}]},"criticality":"high"}'
+curl -s -X POST $B/patients/$P/problems "${H[@]}" -d '{"code":{"codings":[{"system":"http://hl7.org/fhir/sid/icd-10-cm","code":"E11.9"}]},"onsetDate":"2019"}'
+curl -s "$B/patients/$P/timeline?types=note&types=problem" -H 'Cookie: __Host-shri_session=mock'
+```
+
 ## 6. What the mock cannot do
 
 | Limit | What it means for screens |
@@ -94,7 +127,7 @@ curl -s -X POST $B/patients/summaries "${H[@]}" -d '{"patientIds":["'$P'"]}'    
 | **Request errors are always `422`** | Prism reports any request it rejects (missing header, bad field) as `422` with the first `422` example. The real API returns `400` for a missing `Idempotency-Key` or unparseable JSON, and the right field errors (API_STANDARDS §9). Build the error display from the Problem `code`, not from these examples. |
 | **No idempotency, ETag or state rules** | No replay of a repeated `Idempotency-Key`, no `412` on a stale `If-Match`, no `409` from the state machines unless you ask for it. |
 | **No restricted-chart or facility rules** | The mock never hides fields of a restricted patient or rejects a facility. The real API does (SECURITY_MODEL §5). |
-| **Long-running work never finishes** | `POST /eligibility-checks` and `POST /files/{fileId}/complete` return `202` with an operation, but `/operations/{operationId}` is not in batch 1. Read the result with `GET /eligibility-checks/{eligibilityCheckId}` and `Prefer: example=…`. |
+| **Long-running work never finishes** | `POST /eligibility-checks` and `POST /files/{fileId}/complete` return `202` with an operation, but `/operations/{operationId}` is not in batch 1. The same holds for the after-visit summary (batch 2). Read the result with `GET /eligibility-checks/{eligibilityCheckId}` and `Prefer: example=…`. |
 | **No event stream** | `GET /events/stream` is in the contract (D52) but Prism cannot serve `text/event-stream` (it answers `500 NO_COMPLEX_OBJECT_TEXT`). Build the live-update code against the `EventEnvelope` schema and EVENTS.md §3; test it against the real API. |
 | **Fixed times** | Examples use dates around 3 November 2026. |
 | **Synthetic data only** | Never type real patient details into a screen connected to the mock, and never paste mock traffic containing real data into chats or tickets. |
