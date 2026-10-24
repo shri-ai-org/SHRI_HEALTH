@@ -11,6 +11,195 @@
 #       $ref: modules/patients.yaml#/paths/~1patients~1search
 #
 # Module-specific schemas go under `components.schemas` here; shared ones stay in ../components/.
-paths: {}
+# Batch 1 follow-up (2026-10-24, D50): `GET /pharmacies` (#130) moves into batch 1 so the front desk can record a preferred pharmacy at
+# registration. The rest of the medications module follows in batch 5. Thulasi approves this operation.
+paths:
+  /pharmacies:
+    get:
+      operationId: listPharmacies
+      summary: Search the pharmacy directory
+      description: 'Searches the pharmacy directory by name or ZIP code (inventory #130; D50). Reference data about pharmacies,
+        not patients, so the query string is allowed and nothing is audited. The front desk uses it to set a patient''s preferred
+        pharmacy (`PUT /patients/{patientId}/preferred-pharmacy`); prescribers use it when sending a prescription.'
+      tags:
+      - medications
+      x-owner: thulasi
+      x-permission: pharmacies:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: q
+        in: query
+        required: false
+        description: Pharmacies whose name contains this text.
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 200
+      - name: postalCode
+        in: query
+        required: false
+        description: Pharmacies in this ZIP code (the pharmacy's, not a patient's).
+        schema:
+          type: string
+          pattern: ^\d{5}$
+          maxLength: 5
+      - name: mailOrder
+        in: query
+        required: false
+        description: Only mail-order (true) or local (false) pharmacies.
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: One page of pharmacys.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PharmacyList'
+              examples:
+                one:
+                  summary: One pharmacy
+                  value:
+                    items:
+                    - id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
+                      ncpdpId: '0000012'
+                      name: Test Pharmacy 12
+                      phone: '+12175550130'
+                      fax: '+12175550131'
+                      address:
+                        line: 300 Test Road
+                        city: Springfield
+                        state: IL
+                        postalCode: '62703'
+                      mailOrder: false
+                      active: true
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `pharmacies:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
-  schemas: {}
+  schemas:
+    PharmacyDirectoryAddress:
+      description: A pharmacy's address from the directory.
+      type: object
+      properties:
+        line:
+          type: string
+          maxLength: 200
+          description: Street address.
+          x-phi: none
+        city:
+          type: string
+          maxLength: 100
+          description: City.
+          x-phi: none
+        state:
+          type: string
+          pattern: ^[A-Z]{2}$
+          maxLength: 2
+          description: State.
+          x-phi: none
+        postalCode:
+          type: string
+          pattern: ^\d{5}(-\d{4})?$
+          maxLength: 10
+          description: ZIP code.
+          x-phi: none
+    Pharmacy:
+      description: A pharmacy in the platform directory, synced from the e-prescribing vendor (`pharmacy`). Reference data,
+        not patient data.
+      type: object
+      required:
+      - id
+      - ncpdpId
+      - name
+      - mailOrder
+      - active
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Pharmacy ID.
+          x-phi: internal-id
+        ncpdpId:
+          type: string
+          pattern: ^\d{7}$
+          maxLength: 7
+          description: NCPDP ID.
+          x-phi: none
+        npi:
+          type: string
+          pattern: ^\d{10}$
+          maxLength: 10
+          description: NPI, if known.
+          x-phi: none
+        name:
+          type: string
+          maxLength: 200
+          description: Name.
+          x-phi: none
+        phone:
+          $ref: ../components/schemas/PhoneNumber.yaml
+          description: Phone.
+          x-phi: none
+        fax:
+          $ref: ../components/schemas/PhoneNumber.yaml
+          description: Fax.
+          x-phi: none
+        address:
+          $ref: '#/components/schemas/PharmacyDirectoryAddress'
+          description: Address.
+          x-phi: none
+        mailOrder:
+          type: boolean
+          description: A mail-order pharmacy.
+          x-phi: none
+        active:
+          type: boolean
+          description: False when the pharmacy no longer accepts prescriptions.
+          x-phi: none
+    PharmacyList:
+      description: One page of pharmacies, by name.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Pharmacy'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
