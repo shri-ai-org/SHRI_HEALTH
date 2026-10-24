@@ -8,6 +8,8 @@
 # Payers have two layers (decided by Vimal, 2026-10-23): a read-only platform payer directory (`/payers`) and the practice's
 # own payer setup (`/practice-payers`). Lab providers follow the same pattern (D48): read-only `/lab-providers`, set up by onboarding or
 # the platform; lab accounts stay practice-level (`/lab-accounts`).
+# Batch 1 follow-up (2026-10-24): practice consent requirements (D59); provider schedule writes by FD and ADM under
+# `provider-schedules:create|update` (D66).
 paths:
   /facilities:
     get:
@@ -1290,11 +1292,12 @@ paths:
     post:
       operationId: createProviderSchedule
       summary: Create a provider schedule
-      description: Creates a provider schedule. Facilities in the body must be among the user's facilities.
+      description: Creates a provider schedule. Facilities in the body must be among the user's facilities. Front desk and
+        practice administrators manage schedules and blocks in the MVP; provider self-service is P1 (D66).
       tags:
       - practice-setup
       x-owner: anand
-      x-permission: practice-setup:create
+      x-permission: provider-schedules:create
       x-audit:
         action: C
         category: admin
@@ -1353,8 +1356,8 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `practice-setup:create`); `csrf-check-failed` (missing or
-            wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `provider-schedules:create`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin).
         '409':
           $ref: ../components/responses/Conflict.yaml
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
@@ -1431,11 +1434,12 @@ paths:
       operationId: updateProviderSchedule
       summary: Update a provider schedule
       description: 'Edits a provider schedule with JSON Merge Patch. Set `active: false` to retire it. Facilities in the body
-        must be among the user''s facilities.'
+        must be among the user''s facilities. Front desk and practice administrators manage schedules and blocks in the MVP;
+        provider self-service is P1 (D66).'
       tags:
       - practice-setup
       x-owner: anand
-      x-permission: practice-setup:update
+      x-permission: provider-schedules:update
       x-audit:
         action: U
         category: admin
@@ -1488,8 +1492,8 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `practice-setup:update`); `csrf-check-failed` (missing or
-            wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `provider-schedules:update`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such provider schedule in this clinic or the user's facilities).
@@ -2961,6 +2965,319 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /consent-requirements:
+    get:
+      operationId: listConsentRequirements
+      summary: List consent requirements
+      description: 'The consents the practice asks for, with their current policy versions (new inventory row #244; D59).
+        The front desk reads this at registration and check-in; practice administrators maintain it.'
+      tags:
+      - practice-setup
+      x-owner: anand
+      x-permission: consent-requirements:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: kind
+        in: query
+        required: false
+        description: Only this kind.
+        schema:
+          type: string
+          enum:
+          - treatment
+          - privacy-notice
+          - ambient-recording
+          - telehealth
+          - research
+          - information-sharing
+          - financial
+      - name: active
+        in: query
+        required: false
+        description: Only active (true) or retired (false) versions. Default true.
+        schema:
+          type: boolean
+          default: true
+      responses:
+        '200':
+          description: One page of consent requirements.
+          headers:
+            X-Request-ID: &id026
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control: &id027
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit: &id028
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy: &id029
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRequirementList'
+              examples:
+                one:
+                  summary: The privacy notice
+                  value:
+                    items:
+                    - &id030
+                      id: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+                      kind: privacy-notice
+                      title: Notice of Privacy Practices
+                      policyVersion: 2026-10
+                      required: true
+                      formFileId: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                      effectiveDate: '2026-10-01'
+                      active: true
+                      createdAt: '2026-10-26T13:00:00Z'
+                      updatedAt: '2026-10-26T13:00:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `consent-requirements:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: createConsentRequirement
+      summary: Create a consent requirement
+      description: Adds a consent requirement, or a new policy version of an existing kind; the earlier version stays until
+        retired (D59).
+      tags:
+      - practice-setup
+      x-owner: anand
+      x-permission: practice-setup:create
+      x-audit:
+        action: C
+        category: admin
+      x-idempotency: supported
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentRequirementCreate'
+            examples:
+              create:
+                summary: New privacy notice version
+                value:
+                  kind: privacy-notice
+                  title: Notice of Privacy Practices
+                  policyVersion: 2026-10
+                  required: true
+                  formFileId: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                  effectiveDate: '2026-10-01'
+      responses:
+        '201':
+          description: Created. The new consent requirement.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id026
+            Cache-Control: *id027
+            RateLimit: *id028
+            RateLimit-Policy: *id029
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRequirement'
+              examples:
+                created:
+                  summary: Created
+                  value: *id030
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `practice-setup:create`); `csrf-check-failed` (missing or
+            wrong CSRF header or Origin).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (this
+            kind already has that policy version); `idempotency-key-reused` (the Idempotency-Key was used with a different
+            body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /consent-requirements/{consentRequirementId}:
+    parameters:
+    - name: consentRequirementId
+      in: path
+      required: true
+      description: Consent requirement ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getConsentRequirement
+      summary: Get a consent requirement
+      description: 'Returns one consent requirement (new inventory row #246).'
+      tags:
+      - practice-setup
+      x-owner: anand
+      x-permission: consent-requirements:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The consent requirement.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id026
+            Cache-Control: *id027
+            RateLimit: *id028
+            RateLimit-Policy: *id029
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRequirement'
+              examples:
+                one:
+                  summary: Consent requirement
+                  value: *id030
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `consent-requirements:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such consent requirement in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updateConsentRequirement
+      summary: Update a consent requirement
+      description: 'Edits a consent requirement with JSON Merge Patch; set `active: false` to retire a version (new inventory
+        row #247).'
+      tags:
+      - practice-setup
+      x-owner: anand
+      x-permission: practice-setup:update
+      x-audit:
+        action: U
+        category: admin
+      x-concurrency: if-match-required
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/ConsentRequirementPatch'
+            examples:
+              retire:
+                summary: Retire this version
+                value:
+                  active: false
+      responses:
+        '200':
+          description: The consent requirement.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID: *id026
+            Cache-Control: *id027
+            RateLimit: *id028
+            RateLimit-Policy: *id029
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRequirement'
+              examples:
+                updated:
+                  summary: Updated
+                  value:
+                    id: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+                    kind: privacy-notice
+                    title: Notice of Privacy Practices
+                    policyVersion: 2026-10
+                    required: true
+                    formFileId: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+                    effectiveDate: '2026-10-01'
+                    active: false
+                    createdAt: '2026-10-26T13:00:00Z'
+                    updatedAt: '2026-10-26T13:00:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `practice-setup:update`); `csrf-check-failed` (missing or
+            wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such consent requirement in this clinic or the user's facilities).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     SetupCoding:
@@ -3004,58 +3321,58 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: Facility ID.
           x-phi: internal-id
-        code: &id026
+        code: &id031
           type: string
           minLength: 1
           maxLength: 40
           description: Short code, unique in the practice.
           x-phi: none
-        name: &id027
+        name: &id032
           type: string
           minLength: 1
           maxLength: 200
           description: Name.
           x-phi: none
-        timeZone: &id028
+        timeZone: &id033
           type: string
           maxLength: 64
           pattern: ^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$
           description: IANA time zone, e.g. `America/Chicago`. Appointments display in this zone (D40). Required here although
             the schema column is nullable. **Pending schema lock.**
           x-phi: none
-        address: &id029
+        address: &id034
           $ref: ../components/schemas/Address.yaml
           description: Street address.
           x-phi: none
-        phone: &id030
+        phone: &id035
           $ref: ../components/schemas/PhoneNumber.yaml
           description: Main phone.
           x-phi: none
-        npi: &id031
+        npi: &id036
           type: string
           pattern: ^\d{10}$
           maxLength: 10
           description: Facility (type 2) NPI; checked with the NPI check digit.
           x-phi: none
-        cliaNumber: &id032
+        cliaNumber: &id037
           type: string
           pattern: ^\d{2}D\d{7}$
           maxLength: 10
           description: CLIA number, for in-office testing.
           x-phi: none
-        placeOfServiceCode: &id033
+        placeOfServiceCode: &id038
           type: string
           pattern: ^\d{2}$
           maxLength: 2
           default: '11'
           description: CMS place-of-service code; `11` office.
           x-phi: none
-        billingLocation: &id034
+        billingLocation: &id039
           type: boolean
           default: true
           description: Appears as a billing location on claims.
           x-phi: none
-        active: &id035
+        active: &id040
           type: boolean
           description: False hides it from new work; nothing is ever deleted.
           x-phi: none
@@ -3077,29 +3394,29 @@ components:
       - timeZone
       - address
       properties:
-        code: *id026
-        name: *id027
-        timeZone: *id028
-        address: *id029
-        phone: *id030
-        npi: *id031
-        cliaNumber: *id032
-        placeOfServiceCode: *id033
-        billingLocation: *id034
+        code: *id031
+        name: *id032
+        timeZone: *id033
+        address: *id034
+        phone: *id035
+        npi: *id036
+        cliaNumber: *id037
+        placeOfServiceCode: *id038
+        billingLocation: *id039
     FacilityPatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `code`.'
       type: object
       additionalProperties: false
       properties:
-        name: *id027
-        timeZone: *id028
-        address: *id029
-        phone: *id030
-        npi: *id031
-        cliaNumber: *id032
-        placeOfServiceCode: *id033
-        billingLocation: *id034
-        active: *id035
+        name: *id032
+        timeZone: *id033
+        address: *id034
+        phone: *id035
+        npi: *id036
+        cliaNumber: *id037
+        placeOfServiceCode: *id038
+        billingLocation: *id039
+        active: *id040
     FacilityList:
       description: One page of facilities.
       type: object
@@ -3134,22 +3451,22 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: Location ID.
           x-phi: internal-id
-        facilityId: &id036
+        facilityId: &id041
           $ref: ../components/schemas/Id.yaml
           description: The facility it belongs to.
           x-phi: internal-id
-        name: &id037
+        name: &id042
           type: string
           minLength: 1
           maxLength: 200
           description: Name, e.g. "Exam room 2".
           x-phi: none
-        description: &id038
+        description: &id043
           type: string
           maxLength: 500
           description: Description.
           x-phi: none
-        physicalType: &id039
+        physicalType: &id044
           type: string
           enum:
           - bu
@@ -3158,7 +3475,7 @@ components:
           - ro
           description: 'FHIR location-physical-type: `bu` building, `wi` wing, `lvl` level, `ro` room.'
           x-phi: none
-        active: *id035
+        active: *id040
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3176,19 +3493,19 @@ components:
       - name
       - physicalType
       properties:
-        facilityId: *id036
-        name: *id037
-        description: *id038
-        physicalType: *id039
+        facilityId: *id041
+        name: *id042
+        description: *id043
+        physicalType: *id044
     LocationPatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `facilityId`.'
       type: object
       additionalProperties: false
       properties:
-        name: *id037
-        description: *id038
-        physicalType: *id039
-        active: *id035
+        name: *id042
+        description: *id043
+        physicalType: *id044
+        active: *id040
     LocationList:
       description: One page of locations.
       type: object
@@ -3258,17 +3575,17 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: Provider ID.
           x-phi: internal-id
-        name: &id040
+        name: &id045
           $ref: ../components/schemas/HumanName.yaml
           description: Name (a staff member, not a patient).
           x-phi: none
-        npi: &id041
+        npi: &id046
           type: string
           pattern: ^\d{10}$
           maxLength: 10
           description: Individual (type 1) NPI; checked with the NPI check digit; unique in the practice.
           x-phi: none
-        gender: &id042
+        gender: &id047
           type: string
           enum:
           - male
@@ -3277,21 +3594,21 @@ components:
           - unknown
           description: Administrative gender.
           x-phi: none
-        qualifications: &id043
+        qualifications: &id048
           type: array
           maxItems: 20
           items:
             $ref: '#/components/schemas/ProviderQualification'
           description: Degrees and state licenses.
           x-phi: none
-        specialties: &id044
+        specialties: &id049
           type: array
           maxItems: 10
           items:
             $ref: '#/components/schemas/SetupCoding'
           description: Specialties, NUCC provider taxonomy codes.
           x-phi: none
-        facilityIds: &id045
+        facilityIds: &id050
           type: array
           minItems: 1
           maxItems: 50
@@ -3299,15 +3616,15 @@ components:
             $ref: ../components/schemas/Id.yaml
           description: Facilities where the provider works (one PractitionerRole each).
           x-phi: internal-id
-        phone: &id046
+        phone: &id051
           $ref: ../components/schemas/PhoneNumber.yaml
           description: Work phone.
           x-phi: none
-        email: &id047
+        email: &id052
           $ref: ../components/schemas/EmailAddress.yaml
           description: Work email.
           x-phi: none
-        active: *id035
+        active: *id040
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3325,28 +3642,28 @@ components:
       - npi
       - facilityIds
       properties:
-        name: *id040
-        npi: *id041
-        gender: *id042
-        qualifications: *id043
-        specialties: *id044
-        facilityIds: *id045
-        phone: *id046
-        email: *id047
+        name: *id045
+        npi: *id046
+        gender: *id047
+        qualifications: *id048
+        specialties: *id049
+        facilityIds: *id050
+        phone: *id051
+        email: *id052
     ProviderPatch:
       description: JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole.
       type: object
       additionalProperties: false
       properties:
-        name: *id040
-        npi: *id041
-        gender: *id042
-        qualifications: *id043
-        specialties: *id044
-        facilityIds: *id045
-        phone: *id046
-        email: *id047
-        active: *id035
+        name: *id045
+        npi: *id046
+        gender: *id047
+        qualifications: *id048
+        specialties: *id049
+        facilityIds: *id050
+        phone: *id051
+        email: *id052
+        active: *id040
     ProviderList:
       description: One page of providers.
       type: object
@@ -3380,37 +3697,37 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: AppointmentType ID.
           x-phi: internal-id
-        code: &id048
+        code: &id053
           type: string
           minLength: 1
           maxLength: 40
           description: Code, unique in the practice.
           x-phi: none
-        name: &id049
+        name: &id054
           type: string
           minLength: 1
           maxLength: 120
           description: Name.
           x-phi: none
-        defaultDurationMinutes: &id050
+        defaultDurationMinutes: &id055
           type: integer
           format: int32
           minimum: 5
           maximum: 480
           description: Default length.
           x-phi: none
-        color: &id051
+        color: &id056
           type: string
           pattern: ^#[0-9A-Fa-f]{6}$
           maxLength: 7
           description: Calendar color.
           x-phi: none
-        allowOverlap: &id052
+        allowOverlap: &id057
           type: boolean
           default: false
           description: May overlap other appointments without counting as overbooking (e.g. a nurse visit).
           x-phi: none
-        maxOverbook: &id053
+        maxOverbook: &id058
           type: integer
           format: int32
           minimum: 0
@@ -3419,26 +3736,26 @@ components:
           description: How many overbooked appointments of this type a provider may have at the same time; 0 means none (FRS
             FR-SCH-01; enforced by the scheduling service).
           x-phi: none
-        requiresEligibilityCheck: &id054
+        requiresEligibilityCheck: &id059
           type: boolean
           default: true
           description: Run eligibility checks for this type (D15).
           x-phi: none
-        telehealth: &id055
+        telehealth: &id060
           type: boolean
           default: false
           description: A telehealth visit (encounter class `VR`).
           x-phi: none
-        newPatient: &id056
+        newPatient: &id061
           type: boolean
           default: false
           description: For new patients.
           x-phi: none
-        defaultNoteTemplateId: &id057
+        defaultNoteTemplateId: &id062
           $ref: ../components/schemas/Id.yaml
           description: Note template offered first.
           x-phi: internal-id
-        active: *id035
+        active: *id040
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3456,31 +3773,31 @@ components:
       - name
       - defaultDurationMinutes
       properties:
-        code: *id048
-        name: *id049
-        defaultDurationMinutes: *id050
-        color: *id051
-        allowOverlap: *id052
-        maxOverbook: *id053
-        requiresEligibilityCheck: *id054
-        telehealth: *id055
-        newPatient: *id056
-        defaultNoteTemplateId: *id057
+        code: *id053
+        name: *id054
+        defaultDurationMinutes: *id055
+        color: *id056
+        allowOverlap: *id057
+        maxOverbook: *id058
+        requiresEligibilityCheck: *id059
+        telehealth: *id060
+        newPatient: *id061
+        defaultNoteTemplateId: *id062
     AppointmentTypePatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `code`.'
       type: object
       additionalProperties: false
       properties:
-        name: *id049
-        defaultDurationMinutes: *id050
-        color: *id051
-        allowOverlap: *id052
-        maxOverbook: *id053
-        requiresEligibilityCheck: *id054
-        telehealth: *id055
-        newPatient: *id056
-        defaultNoteTemplateId: *id057
-        active: *id035
+        name: *id054
+        defaultDurationMinutes: *id055
+        color: *id056
+        allowOverlap: *id057
+        maxOverbook: *id058
+        requiresEligibilityCheck: *id059
+        telehealth: *id060
+        newPatient: *id061
+        defaultNoteTemplateId: *id062
+        active: *id040
     AppointmentTypeList:
       description: One page of appointment types.
       type: object
@@ -3610,34 +3927,34 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: ProviderSchedule ID.
           x-phi: internal-id
-        providerId: &id058
+        providerId: &id063
           $ref: ../components/schemas/Id.yaml
           description: The provider.
           x-phi: internal-id
-        facilityId: &id059
+        facilityId: &id064
           $ref: ../components/schemas/Id.yaml
           description: The facility.
           x-phi: internal-id
-        availabilityRules: &id060
+        availabilityRules: &id065
           type: array
           maxItems: 100
           items:
             $ref: '#/components/schemas/AvailabilityRule'
           description: Weekly rules.
           x-phi: none
-        exceptions: &id061
+        exceptions: &id066
           type: array
           maxItems: 500
           items:
             $ref: '#/components/schemas/ScheduleException'
           description: Blocks and extra availability.
           x-phi: none
-        comment: &id062
+        comment: &id067
           type: string
           maxLength: 1000
           description: Note for schedulers.
           x-phi: none
-        active: *id035
+        active: *id040
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3654,21 +3971,21 @@ components:
       - providerId
       - facilityId
       properties:
-        providerId: *id058
-        facilityId: *id059
-        availabilityRules: *id060
-        exceptions: *id061
-        comment: *id062
+        providerId: *id063
+        facilityId: *id064
+        availabilityRules: *id065
+        exceptions: *id066
+        comment: *id067
     ProviderSchedulePatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `providerId`,
         `facilityId`.'
       type: object
       additionalProperties: false
       properties:
-        availabilityRules: *id060
-        exceptions: *id061
-        comment: *id062
-        active: *id035
+        availabilityRules: *id065
+        exceptions: *id066
+        comment: *id067
+        active: *id040
     ProviderScheduleList:
       description: One page of provider schedules.
       type: object
@@ -3735,32 +4052,32 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: FeeSchedule ID.
           x-phi: internal-id
-        name: &id063
+        name: &id068
           type: string
           minLength: 1
           maxLength: 120
           description: Name, unique with `startDate`.
           x-phi: none
-        payerId: &id064
+        payerId: &id069
           $ref: ../components/schemas/Id.yaml
           description: Payer from the directory, when the schedule applies to one payer only.
           x-phi: internal-id
-        startDate: &id065
+        startDate: &id070
           $ref: ../components/schemas/Date.yaml
           description: First day it applies.
           x-phi: none
-        endDate: &id066
+        endDate: &id071
           $ref: ../components/schemas/Date.yaml
           description: Last day, if it ends.
           x-phi: none
-        fees: &id067
+        fees: &id072
           type: array
           maxItems: 20000
           items:
             $ref: '#/components/schemas/FeeScheduleItem'
           description: Fees. One per code system, code and modifier.
           x-phi: none
-        active: *id035
+        active: *id040
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -3777,22 +4094,22 @@ components:
       - name
       - startDate
       properties:
-        name: *id063
-        payerId: *id064
-        startDate: *id065
-        endDate: *id066
-        fees: *id067
+        name: *id068
+        payerId: *id069
+        startDate: *id070
+        endDate: *id071
+        fees: *id072
     FeeSchedulePatch:
       description: JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole.
       type: object
       additionalProperties: false
       properties:
-        name: *id063
-        payerId: *id064
-        startDate: *id065
-        endDate: *id066
-        fees: *id067
-        active: *id035
+        name: *id068
+        payerId: *id069
+        startDate: *id070
+        endDate: *id071
+        fees: *id072
+        active: *id040
     FeeScheduleList:
       description: One page of fee schedules.
       type: object
@@ -3990,11 +4307,11 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: PracticePayer ID.
           x-phi: internal-id
-        payerId: &id068
+        payerId: &id073
           $ref: ../components/schemas/Id.yaml
           description: Payer from the directory (`GET /payers`).
           x-phi: internal-id
-        enrollments: &id069
+        enrollments: &id074
           type: array
           maxItems: 200
           items:
@@ -4023,7 +4340,7 @@ components:
               description: Type.
               x-phi: none
           x-phi: none
-        active: *id035
+        active: *id040
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -4039,15 +4356,15 @@ components:
       required:
       - payerId
       properties:
-        payerId: *id068
-        enrollments: *id069
+        payerId: *id073
+        enrollments: *id074
     PracticePayerPatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `payerId`.'
       type: object
       additionalProperties: false
       properties:
-        enrollments: *id069
-        active: *id035
+        enrollments: *id074
+        active: *id040
     PracticePayerList:
       description: One page of practice payers.
       type: object
@@ -4156,26 +4473,26 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: LabAccount ID.
           x-phi: internal-id
-        labProviderId: &id070
+        labProviderId: &id075
           $ref: ../components/schemas/Id.yaml
           description: The lab, from `GET /lab-providers` (read-only; D48).
           x-phi: internal-id
-        facilityId: &id071
+        facilityId: &id076
           $ref: ../components/schemas/Id.yaml
           description: The facility the account is for.
           x-phi: internal-id
-        accountNumber: &id072
+        accountNumber: &id077
           type: string
           minLength: 1
           maxLength: 40
           description: Client account number at the lab.
           x-phi: none
-        businessUnit: &id073
+        businessUnit: &id078
           type: string
           maxLength: 40
           description: Lab business unit, if the lab uses one.
           x-phi: none
-        billTo: &id074
+        billTo: &id079
           type: array
           minItems: 1
           maxItems: 3
@@ -4187,7 +4504,7 @@ components:
             - client
           description: Who the lab may bill on this account.
           x-phi: none
-        default: &id075
+        default: &id080
           type: boolean
           default: false
           description: Default account for this lab at this facility (one at most).
@@ -4214,7 +4531,7 @@ components:
               description: Name.
               x-phi: none
           x-phi: none
-        active: *id035
+        active: *id040
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -4233,23 +4550,23 @@ components:
       - accountNumber
       - billTo
       properties:
-        labProviderId: *id070
-        facilityId: *id071
-        accountNumber: *id072
-        businessUnit: *id073
-        billTo: *id074
-        default: *id075
+        labProviderId: *id075
+        facilityId: *id076
+        accountNumber: *id077
+        businessUnit: *id078
+        billTo: *id079
+        default: *id080
     LabAccountPatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `labProviderId`,
         `facilityId`.'
       type: object
       additionalProperties: false
       properties:
-        accountNumber: *id072
-        businessUnit: *id073
-        billTo: *id074
-        default: *id075
-        active: *id035
+        accountNumber: *id077
+        businessUnit: *id078
+        billTo: *id079
+        default: *id080
+        active: *id040
     LabAccountList:
       description: One page of lab accounts.
       type: object
@@ -4322,35 +4639,35 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: NoteTemplate ID.
           x-phi: internal-id
-        code: &id076
+        code: &id081
           type: string
           minLength: 1
           maxLength: 60
           description: Code, unique in the practice with `version`.
           x-phi: none
-        name: &id077
+        name: &id082
           type: string
           minLength: 1
           maxLength: 200
           description: Name.
           x-phi: none
-        specialtyCode: &id078
+        specialtyCode: &id083
           type: string
           maxLength: 10
           description: NUCC taxonomy code of the specialty, if specific.
           x-phi: none
-        noteTypeLoinc: &id079
+        noteTypeLoinc: &id084
           type: string
           pattern: ^\d{1,7}-\d$
           maxLength: 20
           description: LOINC document type, e.g. `11506-3` progress note.
           x-phi: none
-        personal: &id080
+        personal: &id085
           type: boolean
           default: false
           description: 'True for the signed-in user''s personal template: the server sets the owner from the session.'
           x-phi: none
-        sections: &id081
+        sections: &id086
           type: array
           minItems: 1
           maxItems: 50
@@ -4369,7 +4686,7 @@ components:
           maximum: 100000
           description: Version, raised by the server when `sections` change.
           x-phi: none
-        active: *id035
+        active: *id040
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
           description: Created.
@@ -4388,22 +4705,22 @@ components:
       - noteTypeLoinc
       - sections
       properties:
-        code: *id076
-        name: *id077
-        specialtyCode: *id078
-        noteTypeLoinc: *id079
-        personal: *id080
-        sections: *id081
+        code: *id081
+        name: *id082
+        specialtyCode: *id083
+        noteTypeLoinc: *id084
+        personal: *id085
+        sections: *id086
     NoteTemplatePatch:
       description: 'JSON Merge Patch. Fields left out stay unchanged; arrays are replaced whole. Not editable: `code`, `personal`.'
       type: object
       additionalProperties: false
       properties:
-        name: *id077
-        specialtyCode: *id078
-        noteTypeLoinc: *id079
-        sections: *id081
-        active: *id035
+        name: *id082
+        specialtyCode: *id083
+        noteTypeLoinc: *id084
+        sections: *id086
+        active: *id040
     NoteTemplateList:
       description: One page of note templates.
       type: object
@@ -4415,6 +4732,128 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/NoteTemplate'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    ConsentRequirement:
+      description: What the practice asks patients to consent to, with the current policy version (D59). One active row per
+        kind and version.
+      type: object
+      required:
+      - id
+      - kind
+      - title
+      - policyVersion
+      - required
+      - effectiveDate
+      - active
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Consent requirement ID.
+          x-phi: internal-id
+        kind: &id087
+          type: string
+          enum:
+          - treatment
+          - privacy-notice
+          - ambient-recording
+          - telehealth
+          - research
+          - information-sharing
+          - financial
+          description: Which consent this is for; the same codes as a patient's `Consent.kind`.
+          x-phi: none
+        title: &id088
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Title shown to staff and patients, e.g. "Notice of Privacy Practices".
+          x-phi: none
+        policyVersion: &id089
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: Version of the form or notice; a patient's consent records the version they saw (`Consent.policyVersion`).
+          x-phi: none
+        required: &id090
+          type: boolean
+          description: True when the practice needs this consent on file before a visit; the front desk is prompted at check-in
+            when it is missing.
+          x-phi: none
+        formFileId: &id091
+          $ref: ../components/schemas/Id.yaml
+          description: The blank form or notice, uploaded through the file service (purpose `document`), for printing or e-signature.
+          x-phi: internal-id
+        effectiveDate: &id092
+          $ref: ../components/schemas/Date.yaml
+          description: First day this version applies.
+          x-phi: none
+        active:
+          type: boolean
+          description: False retires it; nothing is deleted.
+          x-phi: none
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Created.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Last change.
+          x-phi: none
+    ConsentRequirementCreate:
+      description: Body to add a consent requirement or a new version of one.
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - title
+      - policyVersion
+      - required
+      - effectiveDate
+      properties:
+        kind: *id087
+        title: *id088
+        policyVersion: *id089
+        required: *id090
+        formFileId: *id091
+        effectiveDate: *id092
+    ConsentRequirementPatch:
+      description: JSON Merge Patch. `kind` is not editable; a new version is a new row.
+      type: object
+      additionalProperties: false
+      properties:
+        title: *id088
+        policyVersion: *id089
+        required: *id090
+        formFileId:
+          oneOf:
+          - $ref: ../components/schemas/Id.yaml
+          - type: 'null'
+          description: The blank form or notice, uploaded through the file service (purpose `document`), for printing or e-signature.
+            Send `null` to clear it.
+          x-phi: internal-id
+        effectiveDate: *id092
+        active:
+          type: boolean
+          description: False retires this version.
+          x-phi: none
+    ConsentRequirementList:
+      description: One page of consent requirements, by kind then version.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ConsentRequirement'
           description: The items on this page.
           x-phi: none
         nextCursor:
