@@ -3,18 +3,40 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import CheckConstraint, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ClinicalResourceMixin, FhirChildMixin, FhirResourceMixin, enum_type
-from app.db.fhir_types import (boolean, cc, children, code, coding, date_period, date_time,
-                                fdate, identifier, integer, parent, period, ref, ref_display,
-                                string)
+from app.db.fhir_types import (
+    boolean,
+    cc,
+    children,
+    code,
+    coding,
+    date_period,
+    date_time,
+    fdate,
+    identifier,
+    integer,
+    parent,
+    period,
+    ref,
+    ref_display,
+    string,
+)
 from app.db.models import systems
-from app.db.models.enums import (AdministrativeGender, BedStatus, BirthSex, LinkType,
-                               LocationMode, LocationStatus, RaceEthnicityKind,
-                               RaceEthnicityLevel)
+from app.db.models.enums import (
+    AdministrativeGender,
+    BedStatus,
+    BirthSex,
+    LinkType,
+    LocationMode,
+    LocationStatus,
+    RaceEthnicityKind,
+    RaceEthnicityLevel,
+)
 
 US_CORE_BIRTHSEX = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-birthsex"
 OMB_RACE = "'1002-5', '2028-9', '2054-5', '2076-8', '2106-3', 'UNK', 'ASKU'"
@@ -22,7 +44,7 @@ OMB_ETHNICITY = "'2135-2', '2186-5', 'UNK', 'ASKU'"
 
 
 def _shared(owner_fk: str, *, name: bool = True, address: bool = True,
-            identifier_: bool = True) -> dict:
+            identifier_: bool = True) -> dict[str, Any]:
     rels = {"telecom": children("ContactPoint", owner_fk, "telecom", order_by="rank")}
     if identifier_:
         rels["identifier"] = children("Identifier", owner_fk, "identifier")

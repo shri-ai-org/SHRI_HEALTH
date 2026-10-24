@@ -16,16 +16,41 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import (Boolean, CheckConstraint, ForeignKey, Index, SmallInteger, String, Text,
-                        UniqueConstraint, text)
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import (Base, ClinicalResourceMixin, FhirChildMixin, ProvenanceMixin,
-                          enum_type)
-from app.db.fhir_types import (attachment, cc, children, code, coding, date_time, instant,
-                                parent, period, ref, string)
-from app.db.models.enums import (CompositionAttestationMode, CompositionStatus, DocumentOrigin,
-                               DocumentReferenceStatus, DocumentRelationshipType, IndexingStatus)
+from app.db.base import Base, ClinicalResourceMixin, FhirChildMixin, ProvenanceMixin, enum_type
+from app.db.fhir_types import (
+    attachment,
+    cc,
+    children,
+    code,
+    coding,
+    date_time,
+    instant,
+    parent,
+    period,
+    ref,
+    string,
+)
+from app.db.models.enums import (
+    CompositionAttestationMode,
+    CompositionStatus,
+    DocumentOrigin,
+    DocumentReferenceStatus,
+    DocumentRelationshipType,
+    IndexingStatus,
+)
 
 
 # =========================================================================== DocumentReference

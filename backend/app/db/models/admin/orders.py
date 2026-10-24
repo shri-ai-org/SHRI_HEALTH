@@ -10,15 +10,36 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import (Boolean, CheckConstraint, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric,
-                        SmallInteger, String, Text, UniqueConstraint, text)
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import AdminMixin, Base, TenantMixin, VersionedMixin, enum_type
-from app.db.models.enums import (AbnOption, AnswerType, BillTo, CollectionMode,
-                               LabConnectionType, MedicalNecessityOutcome,
-                               OrderFulfillmentStatus, PayerType, ResultAckAction,
-                               UnmatchedReason, UnmatchedResultStatus)
+from app.db.models.enums import (
+    AbnOption,
+    AnswerType,
+    BillTo,
+    CollectionMode,
+    LabConnectionType,
+    MedicalNecessityOutcome,
+    OrderFulfillmentStatus,
+    PayerType,
+    ResultAckAction,
+    UnmatchedReason,
+    UnmatchedResultStatus,
+)
 
 
 class LabProvider(Base, AdminMixin, VersionedMixin):
@@ -32,7 +53,8 @@ class LabProvider(Base, AdminMixin, VersionedMixin):
 
     code: Mapped[str] = mapped_column(String(40), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    organization_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.organization.id"))
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(
+        "clinical.organization.id"))
     connection_type: Mapped[LabConnectionType] = mapped_column(enum_type(LabConnectionType),
                                                                nullable=False)
     integration_endpoint_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -108,7 +130,8 @@ class CompendiumTestCode(Base, AdminMixin):
 
     compendium_test_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("admin.compendium_test.id", ondelete="CASCADE"), nullable=False)
-    code_system: Mapped[str] = mapped_column(ForeignKey("admin.code_system.uri", onupdate="CASCADE"),
+    code_system: Mapped[str] = mapped_column(ForeignKey("admin.code_system.uri",
+                                                        onupdate="CASCADE"),
                                              nullable=False)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     display: Mapped[str | None] = mapped_column(String(500))
@@ -192,7 +215,8 @@ class LabRequisition(Base, AdminMixin):
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"), nullable=False,
                                                   index=True)
     encounter_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.encounter.id"))
-    ordering_practitioner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.practitioner.id"),
+    ordering_practitioner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(
+        "clinical.practitioner.id"),
                                                                 nullable=False)
     facility_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.facility.id"), nullable=False)
     bill_to: Mapped[BillTo] = mapped_column(enum_type(BillTo), nullable=False,
@@ -233,10 +257,12 @@ class ServiceRequestAoeAnswer(Base, AdminMixin):
             "(answer_type = 'boolean' AND value_boolean IS NOT NULL) OR "
             "(answer_type = 'choice' AND value_option_id IS NOT NULL)", name="value_matches_type"),
         ForeignKeyConstraint(["question_id", "answer_type"],
-                             ["admin.compendium_aoe_question.id", "admin.compendium_aoe_question.answer_type"],
+                             ["admin.compendium_aoe_question.id",
+                              "admin.compendium_aoe_question.answer_type"],
                              name="fk_service_request_aoe_answer_question_type"),
         ForeignKeyConstraint(["value_option_id", "question_id"],
-                             ["admin.compendium_aoe_option.id", "admin.compendium_aoe_option.question_id"],
+                             ["admin.compendium_aoe_option.id",
+                              "admin.compendium_aoe_option.question_id"],
                              name="fk_service_request_aoe_answer_option_question"),
     )
 
@@ -312,7 +338,8 @@ class ResultAcknowledgement(Base, AdminMixin):
     """Clinician review of a report (several reviewers allowed; insert-only)."""
     __tablename__ = "result_acknowledgement"
 
-    diagnostic_report_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.diagnostic_report.id"),
+    diagnostic_report_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(
+        "clinical.diagnostic_report.id"),
                                                             nullable=False, index=True)
     report_version_id: Mapped[int] = mapped_column(Integer, nullable=False)  # version reviewed
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.app_user.id"), nullable=False)
@@ -333,7 +360,8 @@ class UnmatchedResult(Base, AdminMixin):
                         name="resolved_by"),
     )
 
-    inbound_message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.integration_message.id"),
+    inbound_message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(
+        "admin.integration_message.id"),
                                                           nullable=False, unique=True)
     lab_provider_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.lab_provider.id"))
     reason: Mapped[UnmatchedReason] = mapped_column(enum_type(UnmatchedReason), nullable=False)

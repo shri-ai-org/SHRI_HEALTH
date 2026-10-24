@@ -10,20 +10,43 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import CheckConstraint, Index, Integer, SmallInteger, String, text
+from sqlalchemy import CheckConstraint, Index, String, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, FhirChildMixin
-from app.db.fhir_types import (boolean, cc, code, date_time, decimal, frange, integer, markdown,
-                                owner, period, prim, quantity, ref, ref_display, string)
+from app.db.fhir_types import (
+    boolean,
+    cc,
+    code,
+    date_time,
+    decimal,
+    frange,
+    integer,
+    markdown,
+    owner,
+    period,
+    prim,
+    quantity,
+    ref,
+    ref_display,
+    string,
+)
 from app.db.models import systems
-from app.db.models.enums import (AddressType, AddressUse, ContactPointSystem, ContactPointUse,
-                               IdentifierUse, NameUse, UnitsOfTime)
+from app.db.models.enums import (
+    AddressType,
+    AddressUse,
+    ContactPointSystem,
+    ContactPointUse,
+    IdentifierUse,
+    NameUse,
+    UnitsOfTime,
+)
 
 
-def _string_list(element: str, length: int = 100):
+def _string_list(element: str, length: int = 100) -> Any:
     return mapped_column(ARRAY(String(length)), nullable=False, default=list,
                          server_default=text("'{}'"),
                          info={"fhir": element, "fhir_type": "string", "many": True})

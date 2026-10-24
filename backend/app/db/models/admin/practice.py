@@ -5,15 +5,42 @@ import uuid
 from datetime import date, datetime, time
 from decimal import Decimal
 
-from sqlalchemy import (Boolean, CheckConstraint, Computed, ForeignKey, ForeignKeyConstraint,
-                        Index, Integer, Numeric, SmallInteger, String, Text, UniqueConstraint,
-                        text)
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Computed,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import (AdminMixin, Base, OptionalTenantMixin, TenantMixin, TimestampMixin,
-                          UUIDPKMixin, VersionedMixin, enum_type)
-from app.db.models.enums import (DaysOfWeek, DetectedIssueSeverity, FavoriteKind, RuleSource,
-                               VisitFlowStep, WorkItemStatus, WorkItemType)
+from app.db.base import (
+    AdminMixin,
+    Base,
+    OptionalTenantMixin,
+    TenantMixin,
+    TimestampMixin,
+    UUIDPKMixin,
+    VersionedMixin,
+    enum_type,
+)
+from app.db.models.enums import (
+    DaysOfWeek,
+    DetectedIssueSeverity,
+    FavoriteKind,
+    RuleSource,
+    VisitFlowStep,
+    WorkItemStatus,
+    WorkItemType,
+)
 
 
 # =========================================================================== scheduling config
@@ -54,7 +81,8 @@ class ScheduleAvailabilityRule(Base, AdminMixin):
         CheckConstraint("effective_to IS NULL OR effective_to >= effective_from", name="period"),
     )
 
-    schedule_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.schedule.id", ondelete="CASCADE"),
+    schedule_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.schedule.id",
+                                                              ondelete="CASCADE"),
                                                    nullable=False, index=True)
     day_of_week: Mapped[DaysOfWeek] = mapped_column(enum_type(DaysOfWeek), nullable=False)
     start_time: Mapped[time] = mapped_column(nullable=False)
@@ -80,7 +108,8 @@ class ScheduleException(Base, AdminMixin):
     __tablename__ = "schedule_exception"
     __table_args__ = (CheckConstraint("end_at > start_at", name="time_order"),)
 
-    schedule_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.schedule.id", ondelete="CASCADE"),
+    schedule_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.schedule.id",
+                                                              ondelete="CASCADE"),
                                                    nullable=False, index=True)
     start_at: Mapped[datetime] = mapped_column(nullable=False)
     end_at: Mapped[datetime] = mapped_column(nullable=False)
@@ -329,7 +358,8 @@ class WorkItem(Base, AdminMixin):
     escalated_at: Mapped[datetime | None]
     completed_at: Mapped[datetime | None]
     completed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
-    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.patient.id"), index=True)
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.patient.id"),
+                                                         index=True)
     encounter_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.encounter.id"))
     diagnostic_report_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("clinical.diagnostic_report.id"))
@@ -355,7 +385,8 @@ class WorkItemEvent(Base, AdminMixin):
         "event IN ('created', 'assigned', 'escalated', 'status-change', 'comment')",
         name="event_code"),)
 
-    work_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.work_item.id"), nullable=False,
+    work_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.work_item.id"),
+                                                    nullable=False,
                                                     index=True)
     event: Mapped[str] = mapped_column(String(20), nullable=False)
     from_status: Mapped[WorkItemStatus | None] = mapped_column(enum_type(WorkItemStatus))

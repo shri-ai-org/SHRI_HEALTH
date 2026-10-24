@@ -8,25 +8,55 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import CheckConstraint, Index, SmallInteger, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ClinicalResourceMixin, FhirChildMixin, code_array_check
-from app.db.fhir_types import (boolean, cc, cc_code, children, code, code_list, date_time,
-                                fdate, frange, instant, integer, parent, period, quantity, ref,
-                                string)
+from app.db.fhir_types import (
+    boolean,
+    cc,
+    cc_code,
+    children,
+    code,
+    code_list,
+    date_time,
+    fdate,
+    frange,
+    instant,
+    integer,
+    parent,
+    period,
+    quantity,
+    ref,
+    string,
+)
 from app.db.models import systems
-from app.db.models.enums import (AllergyCategory, AllergyClinicalStatus, AllergyCriticality,
-                               AllergyType, AllergyVerificationStatus, ConditionClinicalStatus,
-                               ConditionVerificationStatus, EventStatus, FamilyHistoryStatus,
-                               ImmunizationStatus, ObservationStatus, ReactionSeverity)
+from app.db.models.enums import (
+    AllergyCategory,
+    AllergyClinicalStatus,
+    AllergyCriticality,
+    AllergyType,
+    AllergyVerificationStatus,
+    ConditionClinicalStatus,
+    ConditionVerificationStatus,
+    EventStatus,
+    FamilyHistoryStatus,
+    ImmunizationStatus,
+    ObservationStatus,
+    ReactionSeverity,
+)
+
+# FamilyMemberHistory has a field named `date` (the FHIR element), which shadows the type in
+# that class's own annotations; this alias names the type unambiguously.
+DateType = date
 
 FINAL_RESULT = "('final', 'amended', 'corrected')"
 
 
-def _coding_table(name: str, parent_table: str, parent_fk: str, element: str = "code"):
+def _coding_table(name: str, parent_table: str, parent_fk: str,
+                  element: str = "code") -> type[Any]:
     """Additional codings (translations) of a resource's primary CodeableConcept."""
     attrs = {
         "__tablename__": name,
@@ -512,7 +542,7 @@ class FamilyMemberHistory(Base, ClinicalResourceMixin):
         "relationship", required=True)                 # v3 RoleCode: MTH, FTH, SIS ...
     sex_system, sex_code, sex_display, sex_text = cc("sex")
     born_period_start, born_period_end = period("bornPeriod")
-    born_date: Mapped[date | None] = fdate("bornDate")
+    born_date: Mapped[DateType | None] = fdate("bornDate")
     born_string: Mapped[str | None] = string("bornString", 100)
     age_age_value, age_age_comparator, age_age_unit, age_age_system, age_age_code = quantity(
         "ageAge", fhir_type="Age")
@@ -523,7 +553,7 @@ class FamilyMemberHistory(Base, ClinicalResourceMixin):
     deceased_boolean: Mapped[bool | None] = boolean("deceasedBoolean")
     (deceased_age_value, deceased_age_comparator, deceased_age_unit, deceased_age_system,
      deceased_age_code) = quantity("deceasedAge", fhir_type="Age")
-    deceased_date: Mapped[date | None] = fdate("deceasedDate")
+    deceased_date: Mapped[DateType | None] = fdate("deceasedDate")
     deceased_string: Mapped[str | None] = string("deceasedString", 100)
 
     condition = children("FamilyMemberHistoryCondition", "family_member_history_id",

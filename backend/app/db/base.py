@@ -36,8 +36,21 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, ClassVar
 
-from sqlalchemy import (BigInteger, CheckConstraint, Date, DateTime, Enum as SAEnum, ForeignKey,
-                        Integer, MetaData, Numeric, String, Time, func, text)
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    MetaData,
+    Numeric,
+    String,
+    Time,
+    func,
+    text,
+)
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 
@@ -240,11 +253,11 @@ class FhirResourceMixin(UUIDPKMixin, TenantMixin, TimestampMixin, ActorMixin):
         return mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'"))
 
     @declared_attr.directive
-    def __table_args__(cls) -> tuple:
+    def __table_args__(cls) -> tuple[Any, ...]:
         return cls.resource_table_args()
 
     @classmethod
-    def resource_table_args(cls) -> tuple:
+    def resource_table_args(cls) -> tuple[Any, ...]:
         from app.db.models.enums import SecurityLabel
         return (
             code_array_check("meta_security", SecurityLabel, "meta_security_codes"),
@@ -268,5 +281,5 @@ class FhirChildMixin(UUIDPKMixin, TenantMixin, TimestampMixin):
     fhir_parent: ClassVar[tuple[str, ...]]   # FK column(s) pointing at the parent row(s)
 
     @declared_attr.directive
-    def __table_args__(cls) -> tuple:
+    def __table_args__(cls) -> tuple[Any, ...]:
         return (*tuple(getattr(cls, "__extra_args__", ())), {"schema": CLINICAL_SCHEMA})

@@ -35,7 +35,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.constraints import patient_column
@@ -81,7 +82,8 @@ async def machine_token_auth() -> AuthContext:
         "dependency in tests; wire the real check in here once backend/app/core/ lands.")
 
 
-def fhir_response(body: dict, status: int = 200, headers: dict | None = None) -> JSONResponse:
+def fhir_response(body: dict[str, Any], status: int = 200,
+                  headers: dict[str, str] | None = None) -> JSONResponse:
     return JSONResponse(body, status_code=status, media_type=FHIR_JSON, headers=headers)
 
 
@@ -90,7 +92,7 @@ def outcome(status: int, code: str, text: str) -> HTTPException:
         {"severity": "error", "code": code, "diagnostics": text}]})
 
 
-def outcome_from_db_error(exc) -> HTTPException:
+def outcome_from_db_error(exc: DBAPIError) -> HTTPException:
     """Maps a caught DBAPIError (constraint/trigger/RLS violation) to an OperationOutcome,
     using app.db.errors's format-agnostic status/detail mapping."""
     detail = db_error_detail(exc)
@@ -99,18 +101,20 @@ def outcome_from_db_error(exc) -> HTTPException:
     return outcome(detail.status, code, detail.message or "database error")
 
 
-def resource_class(rtype: str) -> type:
+def resource_class(rtype: str) -> type[Any]:
     cls = FHIR_RESOURCES.get(rtype)
     if cls is None:
         raise outcome(404, "not-supported", f"resource type {rtype} is not supported")
     return cls
 
 
-def patient_id_of(cls: type, obj: Any) -> uuid.UUID | None:
+def patient_id_of(cls: type[Any], obj: Any) -> uuid.UUID | None:
     if cls is Patient:
-        return obj.id
+        pid: uuid.UUID | None = obj.id
+        return pid
     col = patient_column(cls.__table__)
-    return getattr(obj, col.key, None) if col is not None else None
+    pid = getattr(obj, col.key, None) if col is not None else None
+    return pid
 
 
 async def fhir_db(ctx: AuthContext = Depends(machine_token_auth)) -> AsyncIterator[AsyncSession]:
@@ -231,7 +235,7 @@ async def vread(rtype: str, rid: uuid.UUID, vid: int, db: AsyncSession = Depends
     return fhir_response(body, headers={"ETag": f'W/"{vid}"'})
 
 
-def _snapshot_patient(cls: type, snap: dict) -> uuid.UUID | None:
+def _snapshot_patient(cls: type[Any], snap: dict[str, Any]) -> uuid.UUID | None:
     col = patient_column(cls.__table__)
     return uuid.UUID(snap[col.name]) if col is not None and snap.get(col.name) else None
 
@@ -283,10 +287,11 @@ async def search(rtype: str, request: Request, params: SearchParams,
                  db: AsyncSession = Depends(fhir_db),
                  ctx: AuthContext = Depends(machine_token_auth)) -> JSONResponse:
     cls = resource_class(rtype)
-    q = select(cls)
+    q: Select[Any] = select(cls)
     pid: uuid.UUID | None = None
-    if params.patient or params.subject:
-        pid = _ref_id(params.patient or params.subject)
+    patient_ref = params.patient or params.subject
+    if patient_ref:
+        pid = _ref_id(patient_ref)
         col = patient_column(cls.__table__)
         if cls is Patient:
             q = q.where(cls.id == pid)

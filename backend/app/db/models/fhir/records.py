@@ -2,24 +2,60 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import (BigInteger, CheckConstraint, ForeignKey, Identity, Index, Integer,
-                        SmallInteger, String, UniqueConstraint, func, text)
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import (Base, ClinicalResourceMixin, FhirChildMixin, FhirResourceMixin,
-                          TenantMixin, enum_type)
-from app.db.fhir_types import (attachment, boolean, cc, children, code, coding, date_period,
-                                date_time, instant, integer, money, parent, period, prim, ref,
-                                string)
+from app.db.base import (
+    Base,
+    ClinicalResourceMixin,
+    FhirChildMixin,
+    FhirResourceMixin,
+    TenantMixin,
+    enum_type,
+)
+from app.db.fhir_types import (
+    attachment,
+    boolean,
+    cc,
+    children,
+    code,
+    date_period,
+    date_time,
+    instant,
+    integer,
+    money,
+    parent,
+    period,
+    prim,
+    ref,
+    string,
+)
 from app.db.models import systems
-from app.db.models.enums import (ConsentKind, ConsentProvisionType, ConsentState,
-                               CoverageClassType, FinancialResourceStatus,
-                               ProvenanceEntityRole, SignatureMethod, SubscriberRelationship)
+from app.db.models.enums import (
+    ConsentKind,
+    ConsentProvisionType,
+    ConsentState,
+    CoverageClassType,
+    FinancialResourceStatus,
+    ProvenanceEntityRole,
+    SignatureMethod,
+    SubscriberRelationship,
+)
 
 
 # =========================================================================== Consent

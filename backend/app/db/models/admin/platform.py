@@ -6,16 +6,45 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import (BigInteger, Boolean, CheckConstraint, ForeignKey, Identity, Index,
-                        Integer, Numeric, SmallInteger, String, Text, UniqueConstraint, func, text)
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import (AdminMixin, Base, OptionalTenantMixin, TimestampMixin, UUIDPKMixin,
-                          enum_type)
-from app.db.models.enums import (ActorType, AuditAction, AuditOutcome, EndpointEnvironment,
-                               IntegrationKind, IntegrationMessageStatus, IssueSeverity,
-                               MessageDirection, MigrationRecordStatus, MigrationRunStatus)
+from app.db.base import (
+    AdminMixin,
+    Base,
+    OptionalTenantMixin,
+    TimestampMixin,
+    UUIDPKMixin,
+    enum_type,
+)
+from app.db.models.enums import (
+    ActorType,
+    AuditAction,
+    AuditOutcome,
+    EndpointEnvironment,
+    IntegrationKind,
+    IntegrationMessageStatus,
+    IssueSeverity,
+    MessageDirection,
+    MigrationRecordStatus,
+    MigrationRunStatus,
+)
 
 
 # =========================================================================== audit
@@ -75,7 +104,8 @@ class BreakGlassAccess(Base, AdminMixin):
     reason: Mapped[str] = mapped_column(String(500), nullable=False)
     granted_at: Mapped[datetime] = mapped_column(nullable=False)
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
-    audit_event_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("audit.audit_event.id"))
+    audit_event_id: Mapped[int | None] = mapped_column(BigInteger,
+                                                       ForeignKey("audit.audit_event.id"))
     reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
     reviewed_at: Mapped[datetime | None]
 
@@ -91,8 +121,10 @@ class DuplicateCandidate(Base, AdminMixin):
         CheckConstraint("(status = 'open') = (reviewed_at IS NULL)", name="reviewed_at"),
     )
 
-    patient_a_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"), nullable=False)
-    patient_b_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"), nullable=False)
+    patient_a_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"),
+                                                    nullable=False)
+    patient_b_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"),
+                                                    nullable=False)
     match_score: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
@@ -210,7 +242,8 @@ class IntegrationMessage(Base, AdminMixin):
     idempotency_key: Mapped[str | None] = mapped_column(String(100))
     correlation_id: Mapped[str | None] = mapped_column(String(64))
     control_id: Mapped[str | None] = mapped_column(String(60))      # MSH-10 / ISA13 / ST02
-    payload_binary_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.binary_object.id"))
+    payload_binary_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(
+        "admin.binary_object.id"))
     response_message_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("admin.integration_message.id"))
     ack_code: Mapped[str | None] = mapped_column(String(10))       # AA/AE/AR, 999 A/R

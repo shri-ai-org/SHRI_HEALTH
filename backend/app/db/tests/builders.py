@@ -2,20 +2,21 @@
 from __future__ import annotations
 
 import datetime as dt
-import random
+import secrets
 import uuid
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.db.models import MAPPERS, systems
 
 M = MAPPERS
-NOW = dt.datetime(2026, 10, 22, 14, 0, tzinfo=dt.timezone.utc)
+NOW = dt.datetime(2026, 10, 22, 14, 0, tzinfo=dt.UTC)
 
 
 def npi() -> str:
     """A random NPI with a valid check digit."""
-    base = "1" + "".join(random.choice("0123456789") for _ in range(8))
+    base = "1" + "".join(secrets.choice("0123456789") for _ in range(8))
     total = 24
     for pos, ch in enumerate(base, start=1):
         d = int(ch)
@@ -27,11 +28,12 @@ def npi() -> str:
     return base + str((10 - total % 10) % 10)
 
 
-def practice(db: Session) -> dict:
+def practice(db: Session) -> dict[str, Any]:
     """Organization, site Location + Facility, a practitioner with a linked user."""
     org = M["organization"](name="Lakeside Neurology", type_system=systems.ORGANIZATION_TYPE,
                             type_code="prov")
-    site = M["location"](name="Lakeside main office", physical_type_system=systems.LOCATION_PHYSICAL_TYPE,
+    site = M["location"](name="Lakeside main office",
+                         physical_type_system=systems.LOCATION_PHYSICAL_TYPE,
                          physical_type_code="si", managing_organization_id=None)
     db.add_all([org, site])
     db.flush()
@@ -45,7 +47,7 @@ def practice(db: Session) -> dict:
     return {"org": org, "site": site, "room": room, "facility": fac, **dr}
 
 
-def practitioner(db: Session, family: str, given: str) -> dict:
+def practitioner(db: Session, family: str, given: str) -> dict[str, Any]:
     p = M["practitioner"]()
     p.identifier = [M["identifier"](system=systems.NPI, value=npi(), use="official")]
     p.name = [M["human_name"](family=family, given=[given], prefix=["Dr."], use="official")]
@@ -59,10 +61,11 @@ def practitioner(db: Session, family: str, given: str) -> dict:
     return {"practitioner": p, "user": user}
 
 
-def patient(db: Session, family: str = "Nguyen", given: str = "Mai", **kw) -> object:
+def patient(db: Session, family: str = "Nguyen", given: str = "Mai", **kw: Any) -> Any:
     p = M["patient"](gender="female", birth_date=dt.date(1984, 3, 9), ext_birthsex="F", **kw)
     p.identifier = [M["identifier"](system="urn:oid:2.16.840.1.113883.3.0000.1",
-                                    value=f"MRN-{uuid.uuid4().hex[:8]}", type_system=systems.V2_0203,
+                                    value=f"MRN-{uuid.uuid4().hex[:8]}",
+                                        type_system=systems.V2_0203,
                                     type_code="MR", use="usual")]
     p.name = [M["human_name"](family=family, given=[given], use="official")]
     p.telecom = [M["contact_point"](system="phone", value="+1 (555) 010-2000", use="mobile",
@@ -78,7 +81,7 @@ def patient(db: Session, family: str = "Nguyen", given: str = "Mai", **kw) -> ob
     return p
 
 
-def encounter(db: Session, pt, ctx: dict, status: str = "in-progress") -> object:
+def encounter(db: Session, pt: Any, ctx: dict[str, Any], status: str = "in-progress") -> Any:
     e = M["encounter"](status=status, class_="AMB", subject_patient_id=pt.id,
                        period_start=NOW, period_end=NOW + dt.timedelta(minutes=20)
                        if status == "finished" else None,
@@ -91,7 +94,8 @@ def encounter(db: Session, pt, ctx: dict, status: str = "in-progress") -> object
     return e
 
 
-def condition(db: Session, pt, enc=None, code: str = "G43.909", display: str = "Migraine") -> object:
+def condition(db: Session, pt: Any, enc: Any = None, code: str = "G43.909",
+              display: str = "Migraine") -> Any:
     c = M["condition"](clinical_status="active", verification_status="confirmed",
                        code_system=systems.ICD10CM, code_code=code, code_display=display,
                        subject_patient_id=pt.id, encounter_id=enc.id if enc else None,
@@ -103,7 +107,7 @@ def condition(db: Session, pt, enc=None, code: str = "G43.909", display: str = "
     return c
 
 
-def blood_pressure(db: Session, pt, enc, status: str = "final") -> object:
+def blood_pressure(db: Session, pt: Any, enc: Any, status: str = "final") -> Any:
     o = M["observation"](status=status, code_system=systems.LOINC, code_code="85354-9",
                          code_display="Blood pressure panel", subject_patient_id=pt.id,
                          encounter_id=enc.id, effective_date_time=NOW, issued=NOW)
@@ -123,10 +127,11 @@ def blood_pressure(db: Session, pt, enc, status: str = "final") -> object:
     return o
 
 
-def prescription(db: Session, pt, enc, ctx: dict, **kw) -> object:
+def prescription(db: Session, pt: Any, enc: Any, ctx: dict[str, Any], **kw: Any) -> Any:
     mr = M["medication_request"](
         status="draft", intent="order", subject_patient_id=pt.id, encounter_id=enc.id,
-        medication_codeable_concept_system=systems.RXNORM, medication_codeable_concept_code="1049630",
+        medication_codeable_concept_system=systems.RXNORM,
+            medication_codeable_concept_code="1049630",
         medication_codeable_concept_display="Sumatriptan 50 MG Oral Tablet",
         requester_practitioner_id=ctx["practitioner"].id, authored_on=NOW, category=["community"],
         dispense_request_number_of_repeats_allowed=2, dispense_request_quantity_value=9,
@@ -140,7 +145,7 @@ def prescription(db: Session, pt, enc, ctx: dict, **kw) -> object:
     return mr
 
 
-def sign_prescription(db: Session, mr, ctx: dict) -> None:
+def sign_prescription(db: Session, mr: Any, ctx: dict[str, Any]) -> None:
     practitioner_id, user_id = ctx["practitioner"].id, ctx["user"].id
     with db.no_autoflush:
         mr.status = "active"
@@ -150,7 +155,7 @@ def sign_prescription(db: Session, mr, ctx: dict) -> None:
     db.flush()
 
 
-def note(db: Session, pt, enc, ctx: dict) -> object:
+def note(db: Session, pt: Any, enc: Any, ctx: dict[str, Any]) -> Any:
     c = M["composition"](status="preliminary", type_system=systems.LOINC, type_code="11506-3",
                          type_display="Progress note", subject_patient_id=pt.id,
                          encounter_id=enc.id, date=NOW, title="Follow-up visit")
@@ -165,7 +170,7 @@ def note(db: Session, pt, enc, ctx: dict) -> object:
     return c
 
 
-def sign_note(db: Session, comp, ctx: dict, mode: str = "legal") -> None:
+def sign_note(db: Session, comp: Any, ctx: dict[str, Any], mode: str = "legal") -> None:
     practitioner_id, user_id, comp_id = ctx["practitioner"].id, ctx["user"].id, comp.id
     db.add(M["composition_attester"](composition_id=comp_id, mode=mode, time=NOW,
                                      party_practitioner_id=practitioner_id,

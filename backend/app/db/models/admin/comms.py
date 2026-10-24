@@ -7,13 +7,29 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import (BigInteger, Boolean, CheckConstraint, ForeignKey, Index, Integer,
-                        SmallInteger, String, Text, UniqueConstraint)
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import AdminMixin, Base, enum_type
-from app.db.models.enums import (CommunicationChannel, CommunicationPurpose, DeliveryStatus,
-                               FaxDirection, FaxStatus, ScanStatus)
+from app.db.models.enums import (
+    CommunicationChannel,
+    CommunicationPurpose,
+    DeliveryStatus,
+    FaxDirection,
+    FaxStatus,
+    ScanStatus,
+)
 
 SHA256 = "{col} ~ '^[0-9a-f]{{64}}$'"
 
@@ -49,7 +65,8 @@ class CommunicationPreference(Base, AdminMixin):
     __tablename__ = "communication_preference"
     __table_args__ = (UniqueConstraint("patient_id", "channel", "purpose"),)
 
-    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id", ondelete="CASCADE"),
+    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id",
+                                                             ondelete="CASCADE"),
                                                   nullable=False)
     channel: Mapped[CommunicationChannel] = mapped_column(enum_type(CommunicationChannel),
                                                           nullable=False)

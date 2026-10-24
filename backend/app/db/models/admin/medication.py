@@ -7,8 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import (Boolean, CheckConstraint, ForeignKey, Index, String, UniqueConstraint,
-                        text)
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import AdminMixin, Base, TimestampMixin, UUIDPKMixin, VersionedMixin, enum_type
@@ -47,7 +46,8 @@ class PharmacyServiceLevel(Base):
         "service_level IN ('new', 'refill', 'change', 'cancel', 'controlled', 'rx-history')",
         name="service_level_code"),)
 
-    pharmacy_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.pharmacy.id", ondelete="CASCADE"),
+    pharmacy_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.pharmacy.id",
+                                                              ondelete="CASCADE"),
                                                    primary_key=True)
     service_level: Mapped[str] = mapped_column(String(20), primary_key=True)
 
@@ -61,7 +61,8 @@ class PatientPharmacy(Base, AdminMixin, VersionedMixin):
               postgresql_where=text("is_default")),
     )
 
-    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id", ondelete="CASCADE"),
+    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id",
+                                                             ondelete="CASCADE"),
                                                   nullable=False)
     pharmacy_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.pharmacy.id"), nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -81,7 +82,8 @@ class ErxTransaction(Base, AdminMixin):
 
     medication_request_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("clinical.medication_request.id"))
-    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.patient.id"), index=True)
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.patient.id"),
+                                                         index=True)
     pharmacy_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.pharmacy.id"))
     message_type: Mapped[ErxMessageType] = mapped_column(enum_type(ErxMessageType),
                                                          nullable=False)

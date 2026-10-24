@@ -4,22 +4,48 @@ alerts with override reasons; AI suggestions are kept apart by ext_rule_source).
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import (Base, ClinicalResourceMixin, FhirChildMixin, FhirResourceMixin,
-                          code_array_check, enum_type)
-from app.db.fhir_types import (boolean, cc, children, code, code_list, date_period, date_time,
-                                integer, parent, period, prim, quantity, ref, string)
+from app.db.base import (
+    Base,
+    ClinicalResourceMixin,
+    FhirChildMixin,
+    FhirResourceMixin,
+    code_array_check,
+    enum_type,
+)
+from app.db.fhir_types import (
+    boolean,
+    cc,
+    children,
+    code,
+    code_list,
+    date_time,
+    integer,
+    parent,
+    period,
+    prim,
+    quantity,
+    ref,
+    string,
+)
 from app.db.models import systems
-from app.db.models.enums import (DeaSchedule, DetectedIssueSeverity, DetectedIssueStatus,
-                               MedicationDispenseStatus, MedicationRequestCategory,
-                               MedicationRequestIntent, MedicationRequestStatus,
-                               MedicationStatementStatus, MedicationStatus, RequestPriority,
-                               RuleSource)
+from app.db.models.enums import (
+    DeaSchedule,
+    DetectedIssueSeverity,
+    DetectedIssueStatus,
+    MedicationDispenseStatus,
+    MedicationRequestCategory,
+    MedicationRequestIntent,
+    MedicationRequestStatus,
+    MedicationStatementStatus,
+    MedicationStatus,
+    RequestPriority,
+    RuleSource,
+)
 
 MED_SYSTEMS = f"('{systems.RXNORM}', '{systems.NDC}')"
 SIGNED_OR_EXEMPT = ("status IN ('draft', 'cancelled', 'entered-in-error') OR "
@@ -183,7 +209,8 @@ class MedicationStatement(Base, ClinicalResourceMixin):
         CheckConstraint(f"medication_codeable_concept_system IS NULL OR "
                         f"medication_codeable_concept_system IN {MED_SYSTEMS}",
                         name="medication_code_binding"),
-        CheckConstraint("status NOT IN ('stopped', 'completed') OR effective_period_end IS NOT NULL "
+        CheckConstraint("status NOT IN ('stopped', 'completed') "
+                        "OR effective_period_end IS NOT NULL "
                         "OR effective_date_time IS NOT NULL OR status_reason_text IS NOT NULL "
                         "OR status_reason_code IS NOT NULL", name="stopped_has_end_or_reason"),
         Index("ix_medication_statement_patient_status", "subject_patient_id", "status"),

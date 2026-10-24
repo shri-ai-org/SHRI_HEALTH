@@ -11,18 +11,44 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import (Boolean, CheckConstraint, ForeignKey, Index, SmallInteger, String,
-                        UniqueConstraint, text)
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ClinicalResourceMixin, FhirChildMixin, FhirResourceMixin
-from app.db.fhir_types import (boolean, cc, children, code, coding, date_time, instant,
-                                integer, parent, period, ref, ref_display, ref_identifier,
-                                string)
+from app.db.fhir_types import (
+    boolean,
+    cc,
+    children,
+    code,
+    coding,
+    date_time,
+    instant,
+    integer,
+    parent,
+    period,
+    ref,
+    ref_display,
+    ref_identifier,
+    string,
+)
 from app.db.models import systems
-from app.db.models.enums import (AppointmentStatus, EncounterClass, EncounterLocationStatus,
-                               EncounterStatus, ParticipantRequired, ParticipationStatus)
+from app.db.models.enums import (
+    AppointmentStatus,
+    EncounterClass,
+    EncounterLocationStatus,
+    EncounterStatus,
+    ParticipantRequired,
+    ParticipationStatus,
+)
 
 ACTIVE_APPOINTMENT = "('booked', 'arrived', 'checked-in', 'pending')"
 

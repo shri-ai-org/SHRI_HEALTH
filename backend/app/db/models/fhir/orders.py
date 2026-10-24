@@ -15,10 +15,29 @@ from sqlalchemy import CheckConstraint, ForeignKey, Index, SmallInteger, String,
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ClinicalResourceMixin, FhirChildMixin, enum_type
-from app.db.fhir_types import (attachment, boolean, cc, children, code, date_time, identifier,
-                                instant, parent, period, quantity, ref, string)
-from app.db.models.enums import (DiagnosticReportStatus, OrderFulfillmentStatus, RequestIntent,
-                               RequestPriority, RequestStatus, SpecimenStatus)
+from app.db.fhir_types import (
+    attachment,
+    boolean,
+    cc,
+    children,
+    code,
+    date_time,
+    identifier,
+    instant,
+    parent,
+    period,
+    quantity,
+    ref,
+    string,
+)
+from app.db.models.enums import (
+    DiagnosticReportStatus,
+    OrderFulfillmentStatus,
+    RequestIntent,
+    RequestPriority,
+    RequestStatus,
+    SpecimenStatus,
+)
 
 SIGNED_OR_EXEMPT = ("status IN ('draft', 'revoked', 'entered-in-error') OR "
                     "entry_source IN ('imported', 'interface') OR "
@@ -184,7 +203,8 @@ class Specimen(Base, ClinicalResourceMixin):
                         name="container_count"),
         CheckConstraint("status IS DISTINCT FROM 'available' OR "
                         "collection_collected_date_time IS NOT NULL OR "
-                        "collection_collected_period_start IS NOT NULL", name="available_collected"),
+                        "collection_collected_period_start IS NOT NULL",
+                            name="available_collected"),
     )
 
     accession_identifier_system, accession_identifier_value = identifier("accessionIdentifier")
@@ -241,10 +261,12 @@ class DiagnosticReport(Base, ClinicalResourceMixin):
     issued: Mapped[datetime | None] = instant("issued")
     conclusion: Mapped[str | None] = string("conclusion", None)
     # Shri extensions
-    ext_lab_provider_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.lab_provider.id"))
+    ext_lab_provider_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(
+        "admin.lab_provider.id"))
     ext_filler_order_number: Mapped[str | None] = mapped_column(String(60))
     ext_released_to_patient_at: Mapped[datetime | None]
-    ext_released_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
+    ext_released_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(
+        "admin.app_user.id"))
     ext_inbound_message_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("admin.integration_message.id"))
 

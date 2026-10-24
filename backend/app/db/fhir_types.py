@@ -45,7 +45,8 @@ UCUM = "http://unitsofmeasure.org"
 DECIMAL = Numeric(18, 6)
 
 
-def _info(element: str, fhir_type: str, part: str | None = None, **extra: Any) -> dict:
+def _info(element: str, fhir_type: str, part: str | None = None,
+          **extra: Any) -> dict[str, Any]:
     info = {"fhir": element, "fhir_type": fhir_type}
     if part:
         info["part"] = part
@@ -292,4 +293,4 @@ def children(target: str, fk: str, element: str | None, *, order_by: str | None 
         info["single"] = True      # 0..1 element stored in a child table
     return relationship(target, foreign_keys=f"{target}.{fk}", lazy="selectin",
                         cascade="all, delete-orphan", passive_deletes=True,
-                        order_by=f"{target}.{order_by}" if order_by else None, info=info)
+                        order_by=f"{target}.{order_by}" if order_by else False, info=info)

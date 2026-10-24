@@ -31,7 +31,7 @@ SKIP_PARTS = {"system", "code", "display", "text"}
 # --------------------------------------------------------------------------- row adapters
 class Row(Protocol):
     def get(self, column: str) -> Any: ...
-    def children(self, rel_key: str, target_table: str, fk: str) -> list["Row"]: ...
+    def children(self, rel_key: str, target_table: str, fk: str) -> list[Row]: ...
 
 
 class OrmRow:
@@ -43,20 +43,20 @@ class OrmRow:
     def get(self, column: str) -> Any:
         return getattr(self.obj, self._cols.get(column, column), None)
 
-    def children(self, rel_key: str, target_table: str, fk: str) -> list["Row"]:
+    def children(self, rel_key: str, target_table: str, fk: str) -> list[Row]:
         return [OrmRow(o) for o in (getattr(self.obj, rel_key) or [])]
 
 
 class SnapshotRow:
     """A row from fhir_resource_history.snapshot (to_jsonb of the row + ``_children``)."""
 
-    def __init__(self, data: dict):
+    def __init__(self, data: dict[str, Any]):
         self.data = data
 
     def get(self, column: str) -> Any:
         return self.data.get(column)
 
-    def children(self, rel_key: str, target_table: str, fk: str) -> list["Row"]:
+    def children(self, rel_key: str, target_table: str, fk: str) -> list[Row]:
         kids = self.data.get("_children", {})
         rows = kids.get(target_table, kids.get(f"{target_table}.{fk}", []))
         return [SnapshotRow(r) for r in rows]
@@ -71,7 +71,7 @@ def _prim(v: Any, ftype: str) -> Any:
             v = dt.datetime.fromisoformat(v)
         if isinstance(v, dt.datetime):
             if v.tzinfo is None:
-                v = v.replace(tzinfo=dt.timezone.utc)
+                v = v.replace(tzinfo=dt.UTC)
             return v.isoformat()
         return v.isoformat()
     if ftype == "date":
@@ -90,20 +90,22 @@ def _num(v: Any) -> Any:
     return int(d) if d == d.to_integral_value() else float(d)
 
 
-def _clean(d: dict) -> dict | None:
+def _clean(d: dict[str, Any]) -> dict[str, Any] | None:
     d = {k: v for k, v in d.items() if v not in (None, [], {}, "")}
     return d or None
 
 
-def _cols_by_part(cols: list) -> dict[str, Any]:
+def _cols_by_part(cols: list[Any]) -> dict[str, Any]:
     return {c.info.get("part", "value"): c for c in cols}
 
 
-def _value(cols: list, row: Row, cls: type) -> Any:
+def _value(cols: list[Any], row: Row, cls: type[Any]) -> Any:
     info = cols[0].info
     ftype = info["fhir_type"]
     parts = _cols_by_part(cols)
-    g = lambda part: row.get(parts[part].name) if part in parts else None  # noqa: E731
+
+    def g(part: str) -> Any:
+        return row.get(parts[part].name) if part in parts else None
 
     if ftype == "CodeableConcept":
         fixed = next((c.info.get("fixed_system") for c in cols if c.info.get("fixed_system")),
@@ -177,7 +179,7 @@ def _value(cols: list, row: Row, cls: type) -> Any:
     return _prim(v, ftype)
 
 
-def _set(out: dict, path: str, value: Any, many: bool, lists: set[str]) -> None:
+def _set(out: dict[str, Any], path: str, value: Any, many: bool, lists: set[str]) -> None:
     keys = path.split(".")
     node = out
     for k in keys[:-1]:
@@ -195,8 +197,8 @@ def _set(out: dict, path: str, value: Any, many: bool, lists: set[str]) -> None:
 
 
 # --------------------------------------------------------------------------- serialize
-def _element_groups(cls: type) -> list[tuple[str, list]]:
-    groups: dict[str, list] = {}
+def _element_groups(cls: type[Any]) -> list[tuple[str, list[Any]]]:
+    groups: dict[str, list[Any]] = {}
     for col in cls.__table__.columns:
         el = col.info.get("fhir")
         if el and el != "meta.security":
@@ -204,7 +206,7 @@ def _element_groups(cls: type) -> list[tuple[str, list]]:
     return list(groups.items())
 
 
-def serialize_row(cls: type, row: Row) -> Any:
+def serialize_row(cls: type[Any], row: Row) -> Any:
     out: dict[str, Any] = {}
     lists = set(getattr(cls, "__fhir_lists__", set()))
     for el, cols in _element_groups(cls):
@@ -216,7 +218,7 @@ def serialize_row(cls: type, row: Row) -> Any:
         many = any(c.info.get("many") for c in cols)
         _set(out, el, value, many, lists)
 
-    exts = []
+    exts: list[dict[str, Any]] = []
     for col in cls.__table__.columns:
         url = col.info.get("fhir_ext")
         if url and row.get(col.name) is not None:
@@ -256,7 +258,7 @@ def serialize_row(cls: type, row: Row) -> Any:
     return out
 
 
-def _meta(cls: type, row: Row) -> dict:
+def _meta(cls: type[Any], row: Row) -> dict[str, Any]:
     meta: dict[str, Any] = {"versionId": str(row.get("meta_version_id")),
                             "lastUpdated": _prim(row.get("meta_last_updated"), "instant")}
     sec = row.get("meta_security") or []
@@ -268,7 +270,7 @@ def _meta(cls: type, row: Row) -> dict:
     return meta
 
 
-def to_fhir(obj_or_cls: Any, row: Row | None = None) -> dict:
+def to_fhir(obj_or_cls: Any, row: Row | None = None) -> dict[str, Any]:
     """``to_fhir(orm_obj)`` or ``to_fhir(Model, SnapshotRow(snapshot))``."""
     if row is None:
         cls, row = type(obj_or_cls), OrmRow(obj_or_cls)
@@ -284,7 +286,7 @@ def to_fhir(obj_or_cls: Any, row: Row | None = None) -> dict:
 
 
 # --------------------------------------------------------------------------- hooks
-def _patient_hook(row: Row, out: dict) -> None:
+def _patient_hook(row: Row, out: dict[str, Any]) -> None:
     """US Core race / ethnicity extensions from patient_race_ethnicity rows."""
     kids = row.children("race_ethnicity", "patient_race_ethnicity", "patient_id")
     for kind, text_col in (("race", "ext_race_text"), ("ethnicity", "ext_ethnicity_text")):
@@ -300,14 +302,14 @@ def _patient_hook(row: Row, out: dict) -> None:
             {"url": f"{US_CORE}/us-core-{kind}", "extension": parts})
 
 
-def _provenance_hook(row: Row, out: dict) -> None:
+def _provenance_hook(row: Row, out: dict[str, Any]) -> None:
     ref = f"{row.get('target_resource_type')}/{row.get('target_id')}"
     if row.get("target_version_id"):
         ref += f"/_history/{row.get('target_version_id')}"
     out["target"] = [{"reference": ref}]
 
 
-def _provenance_entity_hook(row: Row, out: dict) -> None:
+def _provenance_entity_hook(row: Row, out: dict[str, Any]) -> None:
     ref = f"{row.get('what_resource_type')}/{row.get('what_id')}"
     if row.get("what_version_id"):
         ref += f"/_history/{row.get('what_version_id')}"

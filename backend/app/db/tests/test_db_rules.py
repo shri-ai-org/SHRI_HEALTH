@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from typing import Any
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import Engine, text
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import Session
 
 from app.db.models import MAPPERS, systems
 from app.db.tests import builders as b
@@ -17,15 +19,17 @@ pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
 M = MAPPERS
 
 
-def fails(db, sqlstate: str, constraint: str | None = None, message: str | None = None):
+def fails(db: Session, sqlstate: str, constraint: str | None = None,
+          message: str | None = None) -> Any:
     """Context manager: the block must fail with this SQLSTATE (and constraint / message)."""
     class _Ctx:
-        def __enter__(self):
+        def __enter__(self) -> Any:
             self.sp = db.begin_nested()
             return self
 
-        def __exit__(self, et, ev, tb):
-            assert et is not None and issubclass(et, DBAPIError), f"expected {sqlstate}, got success"
+        def __exit__(self, et: Any, ev: Any, tb: Any) -> bool:
+            assert et is not None and issubclass(et,
+                                                 DBAPIError), f"expected {sqlstate}, got success"
             orig = ev.orig
             assert orig.sqlstate == sqlstate, f"{orig.sqlstate}: {orig}"
             if constraint:
@@ -38,7 +42,7 @@ def fails(db, sqlstate: str, constraint: str | None = None, message: str | None 
 
 
 # =========================================================================== datatypes
-def test_npi_check_digit(db):
+def test_npi_check_digit(db: Session) -> None:
     ok, bad = db.execute(text("SELECT shri_npi_valid('1234567893'), "
                               "shri_npi_valid('1234567890')")).one()
     assert ok and not bad
@@ -49,7 +53,7 @@ def test_npi_check_digit(db):
         db.flush()
 
 
-def test_ssn_never_stored_in_clear(db):
+def test_ssn_never_stored_in_clear(db: Session) -> None:
     pt = b.patient(db)
     with fails(db, "23514", "ck_identifier_ssn_not_clear_text"):
         db.add(M["identifier"](patient_id=pt.id, system=systems.SSN, value="123-45-6789"))
@@ -58,7 +62,7 @@ def test_ssn_never_stored_in_clear(db):
     db.flush()
 
 
-def test_identifier_needs_exactly_one_owner(db):
+def test_identifier_needs_exactly_one_owner(db: Session) -> None:
     pt = b.patient(db)
     ctx = b.practitioner(db, "Shah", "Ravi")
     with fails(db, "23514", "ck_identifier_one_owner"):
@@ -67,7 +71,7 @@ def test_identifier_needs_exactly_one_owner(db):
         db.flush()
 
 
-def test_mrn_unique_per_tenant(db):
+def test_mrn_unique_per_tenant(db: Session) -> None:
     p1 = b.patient(db)
     mrn = p1.identifier[0]
     with fails(db, "23505", "uq_identifier_patient_value"):
@@ -76,7 +80,7 @@ def test_mrn_unique_per_tenant(db):
         db.flush()
 
 
-def test_coding_needs_registered_system(db):
+def test_coding_needs_registered_system(db: Session) -> None:
     pt = b.patient(db)
     with fails(db, "23503"):
         db.add(M["condition"](subject_patient_id=pt.id, clinical_status="active",
@@ -87,7 +91,7 @@ def test_coding_needs_registered_system(db):
 
 
 # =========================================================================== FHIR invariants
-def test_condition_con_4_and_con_5(db):
+def test_condition_con_4_and_con_5(db: Session) -> None:
     pt = b.patient(db)
     with fails(db, "23514", "ck_condition_fhir_con_4"):
         db.add(M["condition"](subject_patient_id=pt.id, clinical_status="active",
@@ -101,7 +105,7 @@ def test_condition_con_4_and_con_5(db):
         db.flush()
 
 
-def test_condition_code_binding_and_required_code(db):
+def test_condition_code_binding_and_required_code(db: Session) -> None:
     pt = b.patient(db)
     with fails(db, "23514", "ck_condition_code_system_binding"):
         db.add(M["condition"](subject_patient_id=pt.id, clinical_status="active",
@@ -112,7 +116,7 @@ def test_condition_code_binding_and_required_code(db):
         db.flush()
 
 
-def test_allergy_ait_1(db):
+def test_allergy_ait_1(db: Session) -> None:
     pt = b.patient(db)
     with fails(db, "23514", "ck_allergy_intolerance_fhir_ait_1"):
         db.add(M["allergy_intolerance"](patient_id=pt.id, verification_status="confirmed",
@@ -125,7 +129,7 @@ def test_allergy_ait_1(db):
         db.flush()
 
 
-def test_observation_value_x_and_obs_6(db):
+def test_observation_value_x_and_obs_6(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     enc = b.encounter(db, pt, ctx)
@@ -144,7 +148,7 @@ def test_observation_value_x_and_obs_6(db):
         db.flush()
 
 
-def test_reference_arc_exactly_one(db):
+def test_reference_arc_exactly_one(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     enc = b.encounter(db, pt, ctx)
@@ -159,7 +163,7 @@ def test_reference_arc_exactly_one(db):
         db.flush()
 
 
-def test_appointment_invariants(db):
+def test_appointment_invariants(db: Session) -> None:
     pt = b.patient(db)
     with fails(db, "23514", "ck_appointment_fhir_app_3"):
         db.add(M["appointment"](status="booked", subject_patient_id=pt.id))
@@ -172,7 +176,8 @@ def test_appointment_invariants(db):
 
 
 # =========================================================================== tenancy / patient
-def test_tenant_isolation_and_cross_tenant_reference(app_engine, admin_engine):
+def test_tenant_isolation_and_cross_tenant_reference(app_engine: Engine,
+                                                     admin_engine: Engine) -> None:
     t1, t2 = make_tenant(admin_engine), make_tenant(admin_engine)
     s1 = open_session(app_engine, t1)
     pt = b.patient(s1)
@@ -192,7 +197,7 @@ def test_tenant_isolation_and_cross_tenant_reference(app_engine, admin_engine):
         s2.close()
 
 
-def test_no_tenant_set_sees_nothing(app_engine, admin_engine):
+def test_no_tenant_set_sees_nothing(app_engine: Engine, admin_engine: Engine) -> None:
     t = make_tenant(admin_engine)
     s = open_session(app_engine, t)
     b.patient(s)
@@ -202,7 +207,7 @@ def test_no_tenant_set_sees_nothing(app_engine, admin_engine):
         assert c.execute(text("SELECT count(*) FROM patient")).scalar() == 0
 
 
-def test_same_patient_references(db):
+def test_same_patient_references(db: Session) -> None:
     ctx = b.practice(db)
     p1, p2 = b.patient(db), b.patient(db, "Other", "Person")
     enc_of_p2 = b.encounter(db, p2, ctx)
@@ -213,7 +218,7 @@ def test_same_patient_references(db):
         db.flush()
 
 
-def test_deletes_only_on_child_rows(db):
+def test_deletes_only_on_child_rows(db: Session) -> None:
     pt = b.patient(db)
     db.commit()
     db.delete(pt.telecom[0])          # a child row of an editable resource: allowed
@@ -223,7 +228,7 @@ def test_deletes_only_on_child_rows(db):
 
 
 # =========================================================================== versioning
-def test_version_bumps_once_per_transaction_and_history_has_children(db):
+def test_version_bumps_once_per_transaction_and_history_has_children(db: Session) -> None:
     pt = b.patient(db)
     db.commit()
     assert pt.meta_version_id == 1
@@ -241,7 +246,7 @@ def test_version_bumps_once_per_transaction_and_history_has_children(db):
     assert len(v2["_children"]["contact_point"]) == 2
 
 
-def test_history_is_not_writable_by_the_api_role(db):
+def test_history_is_not_writable_by_the_api_role(db: Session) -> None:
     with fails(db, "42501"):
         db.execute(text("INSERT INTO fhir_resource_history (tenant_id, resource_type, "
                         "resource_id, version_id, snapshot) VALUES (:t, 'Patient', "
@@ -249,7 +254,7 @@ def test_history_is_not_writable_by_the_api_role(db):
 
 
 # =========================================================================== notes
-def test_signed_note_rules(db):
+def test_signed_note_rules(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     enc = b.encounter(db, pt, ctx)
@@ -280,7 +285,7 @@ def test_signed_note_rules(db):
                    {"c": note.id})
 
 
-def test_attester_must_be_the_users_practitioner(db):
+def test_attester_must_be_the_users_practitioner(db: Session) -> None:
     ctx = b.practice(db)
     other = b.practitioner(db, "Lee", "Ann")
     pt = b.patient(db)
@@ -289,7 +294,7 @@ def test_attester_must_be_the_users_practitioner(db):
         b.sign_note(db, note, {"practitioner": other["practitioner"], "user": ctx["user"]})
 
 
-def test_ai_drafted_section_must_be_reviewed_before_signing(db):
+def test_ai_drafted_section_must_be_reviewed_before_signing(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     enc = b.encounter(db, pt, ctx)
@@ -318,7 +323,7 @@ def test_ai_drafted_section_must_be_reviewed_before_signing(db):
         db.flush()
 
 
-def test_provenance_with_agents_and_existing_target(db):
+def test_provenance_with_agents_and_existing_target(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     prov = M["provenance"](target_resource_type="Patient", target_id=pt.id, recorded=b.NOW,
@@ -333,7 +338,7 @@ def test_provenance_with_agents_and_existing_target(db):
 
 
 # =========================================================================== prescriptions
-def test_prescription_rules(db):
+def test_prescription_rules(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     enc = b.encounter(db, pt, ctx)
@@ -353,7 +358,7 @@ def test_prescription_rules(db):
         db.flush()
 
 
-def test_controlled_substance_refill_limits(db):
+def test_controlled_substance_refill_limits(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     enc = b.encounter(db, pt, ctx)
@@ -361,7 +366,7 @@ def test_controlled_substance_refill_limits(db):
         b.prescription(db, pt, enc, ctx, ext_dea_schedule="CII")
 
 
-def test_high_severity_alert_needs_override_reason(db):
+def test_high_severity_alert_needs_override_reason(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     enc = b.encounter(db, pt, ctx)
@@ -381,7 +386,8 @@ def test_high_severity_alert_needs_override_reason(db):
     with pytest.raises(DBAPIError, match="without an override reason"):
         db.commit()
     db.rollback()
-    db.add(M["detected_issue_mitigation"](detected_issue_id=issue.id, action_system=systems.V3_ACT_CODE,
+    db.add(M["detected_issue_mitigation"](detected_issue_id=issue.id,
+                                          action_system=systems.V3_ACT_CODE,
                                           action_code="EMAUTH", date=b.NOW,
                                           author_practitioner_id=ctx["practitioner"].id,
                                           ext_reason="Benefit outweighs risk; counselled"))
@@ -390,7 +396,7 @@ def test_high_severity_alert_needs_override_reason(db):
     db.commit()
 
 
-def test_high_severity_rule_cannot_be_suppressed(db):
+def test_high_severity_rule_cannot_be_suppressed(db: Session) -> None:
     ctx = b.practice(db)
     rule = M["cds_rule"](tenant_id=db.info["tenant_id"], code="dose-max", name="Max dose",
                          alert_type="dose", default_severity="high", is_suppressible=False)
@@ -402,7 +408,7 @@ def test_high_severity_rule_cannot_be_suppressed(db):
 
 
 # =========================================================================== results
-def test_final_result_corrected_not_edited(db):
+def test_final_result_corrected_not_edited(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     enc = b.encounter(db, pt, ctx)
@@ -427,11 +433,11 @@ def test_final_result_corrected_not_edited(db):
 
 
 # =========================================================================== scheduling
-def test_no_double_booking_unless_overbook(db):
+def test_no_double_booking_unless_overbook(db: Session) -> None:
     ctx = b.practice(db)
     p1, p2 = b.patient(db), b.patient(db, "Other", "Person")
 
-    def book(pt, start, **kw):
+    def book(pt: Any, start: dt.datetime, **kw: Any) -> Any:
         a = M["appointment"](status="booked", subject_patient_id=pt.id, start=start,
                              end=start + dt.timedelta(minutes=30), **kw)
         a.participant = [M["appointment_participant"](actor_practitioner_id=ctx["practitioner"].id,
@@ -451,7 +457,7 @@ def test_no_double_booking_unless_overbook(db):
 
 
 # =========================================================================== billing
-def test_charge_pointer_must_be_on_its_own_encounter(db):
+def test_charge_pointer_must_be_on_its_own_encounter(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     enc = b.encounter(db, pt, ctx, status="finished")
@@ -491,7 +497,7 @@ def test_charge_pointer_must_be_on_its_own_encounter(db):
         db.flush()
 
 
-def test_card_numbers_never_stored(db):
+def test_card_numbers_never_stored(db: Session) -> None:
     pt = b.patient(db)
     with fails(db, "23514", "ck_patient_payment_no_card_number"):
         db.add(M["patient_payment"](patient_id=pt.id, amount=25, method="card",
@@ -501,7 +507,7 @@ def test_card_numbers_never_stored(db):
 
 
 # =========================================================================== AI / consent
-def test_audio_requires_ambient_recording_consent(db):
+def test_audio_requires_ambient_recording_consent(db: Session) -> None:
     ctx = b.practice(db)
     pt = b.patient(db)
     enc = b.encounter(db, pt, ctx)
@@ -524,7 +530,7 @@ def test_audio_requires_ambient_recording_consent(db):
     db.flush()
 
 
-def test_ai_generated_rows_need_an_accepted_suggestion(db):
+def test_ai_generated_rows_need_an_accepted_suggestion(db: Session) -> None:
     pt = b.patient(db)
     with fails(db, "P0001", message="needs an accepted or edited ai_suggestion"):
         db.add(M["condition"](subject_patient_id=pt.id, clinical_status="active",
@@ -534,7 +540,7 @@ def test_ai_generated_rows_need_an_accepted_suggestion(db):
 
 
 # =========================================================================== audit
-def test_audit_chain_detects_tampering(app_engine, admin_engine):
+def test_audit_chain_detects_tampering(app_engine: Engine, admin_engine: Engine) -> None:
     t = make_tenant(admin_engine)
     s = open_session(app_engine, t)
     for action in ("read", "read", "export"):
@@ -568,7 +574,7 @@ def test_audit_chain_detects_tampering(app_engine, admin_engine):
 
 
 # =========================================================================== catalog
-def test_every_tenant_table_has_forced_rls(admin_engine):
+def test_every_tenant_table_has_forced_rls(admin_engine: Engine) -> None:
     with admin_engine.connect() as c:
         missing = c.execute(text("""
             SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -579,7 +585,7 @@ def test_every_tenant_table_has_forced_rls(admin_engine):
     assert missing == []
 
 
-def test_every_fk_between_tenant_tables_is_tenant_consistent(admin_engine):
+def test_every_fk_between_tenant_tables_is_tenant_consistent(admin_engine: Engine) -> None:
     with admin_engine.connect() as c:
         missing = c.execute(text("""
             SELECT con.conrelid::regclass || '.' || a.attname
@@ -597,7 +603,7 @@ def test_every_fk_between_tenant_tables_is_tenant_consistent(admin_engine):
     assert missing == []
 
 
-def test_no_virtual_generated_columns(admin_engine):
+def test_no_virtual_generated_columns(admin_engine: Engine) -> None:
     """D34: every computed column is STORED. PostgreSQL 18 makes a generated column VIRTUAL by
     default when STORED/VIRTUAL is omitted, and a VIRTUAL column cannot be indexed (e.g.
     content_tsv and its GIN index) - this is the schema test the decision requires."""

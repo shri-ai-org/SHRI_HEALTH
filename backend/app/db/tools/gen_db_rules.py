@@ -21,9 +21,12 @@ from __future__ import annotations
 
 import pathlib
 import sys
+from typing import Any
 
-from app.db.base import ADMIN_SCHEMA, AUDIT_SCHEMA, AUDIT_TABLES, CLINICAL_SCHEMA
-from app.db.models import FHIR_RESOURCES, GLOBAL_TABLES, MAPPERS, Base, systems
+from sqlalchemy import Table
+
+from app.db.base import ADMIN_SCHEMA, AUDIT_SCHEMA, CLINICAL_SCHEMA, Base
+from app.db.models import FHIR_RESOURCES, GLOBAL_TABLES, MAPPERS, systems
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]   # backend/app/db
 TENANT = "NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"
@@ -147,7 +150,9 @@ def _q(schema: str, table: str) -> str:
     return f"{schema}.{table}"
 
 
-def _schema_of(table) -> str:
+def _schema_of(table: Table) -> str:
+    if table.schema is None:   # never: base.py gives every table a schema (D23)
+        raise ValueError(f"table {table.name} has no schema")
     return table.schema
 
 
@@ -161,7 +166,8 @@ def child_map() -> dict[str, list[tuple[str, str]]]:
     return out
 
 
-def _children_expr(table: str, alias: str, depth: int, cmap) -> str:
+def _children_expr(table: str, alias: str, depth: int,
+                   cmap: dict[str, list[tuple[str, str]]]) -> str:
     kids = cmap.get(table, [])
     if not kids:
         return f"to_jsonb({alias})"
@@ -172,11 +178,14 @@ def _children_expr(table: str, alias: str, depth: int, cmap) -> str:
         a = f"c{depth}"
         inner = _children_expr(child, a, depth + 1, cmap)
         # child is always clinical (FHIR child tables are never in admin/audit).
-        pairs.append(f"'{key}', coalesce((SELECT jsonb_agg({inner} ORDER BY {a}.created_at, "
-                     f"{a}.id) FROM {_q(CLINICAL_SCHEMA, child)} {a} WHERE {a}.{fk} = "
+        # S608: SQL built from model names only; this generator never sees user input.
+        pairs.append(f"'{key}', coalesce((SELECT "  # noqa: S608
+                     f"jsonb_agg({inner} ORDER BY {a}.created_at, {a}.id) "
+                     f"FROM {_q(CLINICAL_SCHEMA, child)} {a} WHERE {a}.{fk} = "
                      f"{alias}.id), '[]'::jsonb)")
     body = ",\n      ".join(pairs)
-    return f"to_jsonb({alias}) || jsonb_build_object('_children', jsonb_build_object(\n      {body}))"
+    return (f"to_jsonb({alias}) || jsonb_build_object('_children', "
+            f"jsonb_build_object(\n      {body}))")
 
 
 def versioning_sql() -> str:
@@ -256,10 +265,10 @@ def guards_sql() -> str:
         qt = _q(_schema_of(MAPPERS[table].__table__), table)
         out.append(f"CREATE TRIGGER trg_{table}_version BEFORE UPDATE ON {qt} "
                    "FOR EACH ROW EXECUTE FUNCTION shri_bump_version();")
-    for table in sorted(Base.metadata.tables.values(), key=lambda t: t.name):
-        if {"entry_source", "ai_suggestion_id"} <= set(table.c.keys()):
-            qt = _q(table.schema, table.name)
-            out.append(f"CREATE TRIGGER trg_{table.name}_ai_provenance BEFORE INSERT OR UPDATE "
+    for tbl in sorted(Base.metadata.tables.values(), key=lambda t: t.name):
+        if {"entry_source", "ai_suggestion_id"} <= set(tbl.c.keys()):
+            qt = _q(_schema_of(tbl), tbl.name)
+            out.append(f"CREATE TRIGGER trg_{tbl.name}_ai_provenance BEFORE INSERT OR UPDATE "
                        f"OF entry_source, ai_suggestion_id ON {qt} FOR EACH ROW EXECUTE "
                        "FUNCTION shri_ai_provenance_guard();")
     return "\n".join(out) + "\n"
@@ -301,7 +310,7 @@ def rls_sql(only: set[str] | None = None) -> str:
         ]
 
     for table in sorted(Base.metadata.tables.values(), key=lambda t: t.name):
-        name, schema = table.name, table.schema
+        name, schema = table.name, _schema_of(table)
         if only is not None and name not in only:
             continue
         qt = _q(schema, name)
@@ -374,21 +383,26 @@ def rls_sql(only: set[str] | None = None) -> str:
 
 
 PERMISSIONS = [
-    ("patient.read", "Read patient charts", True), ("patient.write", "Register and edit patients", True),
+    ("patient.read", "Read patient charts", True), ("patient.write", "Register and edit patients",
+                                                    True),
     ("patient.merge", "Merge and unmerge patients", True),
     ("chart.break_glass", "Open a restricted chart with a stated reason", True),
     ("schedule.manage", "Book, reschedule and cancel appointments", False),
     ("checkin.manage", "Check in, room and check out patients", False),
     ("note.write", "Draft clinical notes", True), ("note.sign", "Sign clinical notes", True),
     ("note.cosign", "Co-sign supervised notes", True),
-    ("order.create", "Create and sign orders", True), ("result.acknowledge", "Acknowledge results", True),
+    ("order.create", "Create and sign orders", True), ("result.acknowledge", "Acknowledge results",
+                                                       True),
     ("result.release", "Release results to the patient", True),
-    ("rx.prescribe", "Sign prescriptions", True), ("rx.override_alert", "Override safety alerts", True),
+    ("rx.prescribe", "Sign prescriptions", True), ("rx.override_alert", "Override safety alerts",
+                                                   True),
     ("billing.manage", "Charges, claims and payments", False),
     ("eligibility.check", "Run eligibility checks", False),
     ("document.index", "File faxes and unindexed documents", False),
-    ("ai.use", "Use AI drafting and summaries", True), ("ai.killswitch", "Disable AI features", False),
-    ("admin.users", "Manage users and roles", False), ("admin.config", "Practice configuration", False),
+    ("ai.use", "Use AI drafting and summaries", True), ("ai.killswitch", "Disable AI features",
+                                                        False),
+    ("admin.users", "Manage users and roles", False), ("admin.config", "Practice configuration",
+                                                       False),
     ("audit.review", "Review audit and break-the-glass reports", False),
     ("export.deidentified", "Run de-identified exports", False),
 ]
@@ -409,7 +423,8 @@ SYSTEM_ROLES = {
 
 
 def seed_sql() -> str:
-    q = lambda s: "'" + s.replace("'", "''") + "'"  # noqa: E731
+    def q(s: str) -> str:
+        return "'" + s.replace("'", "''") + "'"
     cs, perm, role, role_perm = (_q(ADMIN_SCHEMA, t) for t in
                                  ("code_system", "permission", "role", "role_permission"))
     out = ["-- Generated by tools/gen_db_rules.py - reference data.", ""]
@@ -419,10 +434,14 @@ def seed_sql() -> str:
     out.append(f"INSERT INTO {perm} (id, code, description, is_clinical) VALUES")
     out.append(",\n".join(f"  (gen_random_uuid(), {q(c)}, {q(d)}, {str(cl).lower()})"
                           for c, d, cl in PERMISSIONS) + "\nON CONFLICT DO NOTHING;")
+    # S608: seed SQL built from this module's constants (q() quotes them); no user input.
     for code, (name, perms) in SYSTEM_ROLES.items():
-        out.append(f"INSERT INTO {role} (id, tenant_id, code, name, is_system) VALUES "
-                   f"(gen_random_uuid(), NULL, {q(code)}, {q(name)}, true) ON CONFLICT DO NOTHING;")
-        out.append(f"INSERT INTO {role_perm} (role_id, permission_id, tenant_id) "
+        out.append(f"INSERT INTO {role} "  # noqa: S608
+                   "(id, tenant_id, code, name, is_system) VALUES "
+                   f"(gen_random_uuid(), NULL, {q(code)}, {q(name)}, true) "
+                   "ON CONFLICT DO NOTHING;")
+        out.append(f"INSERT INTO {role_perm} "  # noqa: S608
+                   "(role_id, permission_id, tenant_id) "
                    f"SELECT r.id, p.id, NULL FROM {role} r, {perm} p "
                    f"WHERE r.tenant_id IS NULL AND r.code = {q(code)} AND p.code IN "
                    f"({', '.join(q(p) for p in perms)}) ON CONFLICT DO NOTHING;")
@@ -435,7 +454,7 @@ def schema_sql() -> str:
 
     stmts: list[str] = []
 
-    def dump(sql, *args, **kwargs):
+    def dump(sql: Any, *args: Any, **kwargs: Any) -> None:
         stmts.append(str(sql.compile(dialect=engine.dialect)).strip() + ";")
 
     engine = create_mock_engine("postgresql+psycopg://", dump)
@@ -445,7 +464,8 @@ def schema_sql() -> str:
 
 
 def main() -> None:
-    files = {"01_schema.sql": schema_sql(), "20_fhir_versioning.sql": versioning_sql(), "30_guards.sql": guards_sql(),
+    files = {"01_schema.sql": schema_sql(), "20_fhir_versioning.sql": versioning_sql(),
+             "30_guards.sql": guards_sql(),
              "90_rls_grants.sql": rls_sql(), "95_seed.sql": seed_sql()}
     for name, body in files.items():
         (ROOT / "sql" / name).write_text(body)

@@ -8,6 +8,7 @@ with Thulasi, 2026-10-24).
 from __future__ import annotations
 
 from logging.config import fileConfig
+from typing import Any
 
 from alembic import context
 from sqlalchemy import create_engine, pool
@@ -61,18 +62,20 @@ DATA_SCHEMAS = frozenset({CLINICAL_SCHEMA, ADMIN_SCHEMA, AUDIT_SCHEMA})
 SEARCH_PATH = "public"
 
 
-def include_name(name, type_, parent_names):
+def include_name(name: str | None, type_: str, parent_names: Any) -> bool:
     if type_ == "schema":
         return name in DATA_SCHEMAS  # None (the default schema) and anything else: skipped
     return True
 
 
-def include_object(obj, name, type_, reflected, compare_to):
+def include_object(obj: Any, name: str | None, type_: str, reflected: bool,
+                   compare_to: Any) -> bool:
     # pgvector / tsvector index details and expression indexes are not compared reliably.
-    return not (type_ == "index" and name and name.startswith(("ix_knowledge_chunk_",)))
+    return not (type_ == "index" and name is not None
+                and name.startswith(("ix_knowledge_chunk_",)))
 
 
-def _configure(**kwargs) -> None:
+def _configure(**kwargs: Any) -> None:
     context.configure(target_metadata=target_metadata, compare_type=True,
                       include_schemas=True, include_name=include_name,
                       include_object=include_object, version_table_schema=ADMIN_SCHEMA,

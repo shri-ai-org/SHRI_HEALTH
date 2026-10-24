@@ -10,15 +10,41 @@ from decimal import Decimal
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import (Boolean, CheckConstraint, Computed, ForeignKey, ForeignKeyConstraint,
-                        Index, Integer, Numeric, SmallInteger, String, Text, UniqueConstraint, text)
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Computed,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import (AdminMixin, Base, OptionalTenantMixin, TimestampMixin, UUIDPKMixin,
-                          enum_type)
-from app.db.models.enums import (AIConfidence, AIDecision, AIFeature, AIRequestStatus, AudioMode,
-                               AudioStatus, KnowledgeApprovalStatus)
+from app.db.base import (
+    AdminMixin,
+    Base,
+    OptionalTenantMixin,
+    TimestampMixin,
+    UUIDPKMixin,
+    enum_type,
+)
+from app.db.models.enums import (
+    AIConfidence,
+    AIDecision,
+    AIFeature,
+    AIRequestStatus,
+    AudioMode,
+    AudioStatus,
+    KnowledgeApprovalStatus,
+)
 
 EMBEDDING_DIM = 1024   # Qwen3-Embedding-0.6B
 RESOURCE_TYPE = "resource_type ~ '^[A-Z][A-Za-z]{2,63}$'"
@@ -68,7 +94,8 @@ class AIRequest(Base, AdminMixin):
     feature: Mapped[AIFeature] = mapped_column(enum_type(AIFeature), nullable=False)
     status: Mapped[AIRequestStatus] = mapped_column(enum_type(AIRequestStatus), nullable=False)
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
-    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.patient.id"), index=True)
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.patient.id"),
+                                                         index=True)
     encounter_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.encounter.id"))
     pipeline_version: Mapped[str] = mapped_column(String(40), nullable=False)
     model_name: Mapped[str | None] = mapped_column(String(120))
@@ -129,9 +156,11 @@ class AISuggestion(Base, AdminMixin):
         CheckConstraint("jsonb_typeof(content) = 'object'", name="content_is_object"),
     )
 
-    ai_request_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.ai_request.id"), nullable=False)
+    ai_request_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.ai_request.id"),
+                                                     nullable=False)
     feature: Mapped[AIFeature] = mapped_column(enum_type(AIFeature), nullable=False)
-    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.patient.id"), index=True)
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.patient.id"),
+                                                         index=True)
     encounter_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.encounter.id"))
     target_resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
     target_id: Mapped[uuid.UUID | None]
@@ -175,13 +204,15 @@ class AudioRecording(Base, AdminMixin):
     means it can only reference an *ambient-recording* consent of the same patient."""
     __tablename__ = "audio_recording"
     __table_args__ = (
-        ForeignKeyConstraint(["consent_id", "consent_kind"], ["clinical.consent.id", "clinical.consent.ext_kind"],
+        ForeignKeyConstraint(["consent_id", "consent_kind"], ["clinical.consent.id",
+                                                              "clinical.consent.ext_kind"],
                              name="fk_audio_recording_consent_kind"),
         CheckConstraint("duration_seconds IS NULL OR duration_seconds >= 0", name="duration"),
         CheckConstraint("(status = 'purged') = (purged_at IS NOT NULL)", name="purged_at"),
     )
 
-    encounter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.encounter.id"), nullable=False,
+    encounter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.encounter.id"),
+                                                    nullable=False,
                                                     index=True)
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"), nullable=False)
     consent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.consent.id"), nullable=False)
@@ -202,7 +233,8 @@ class Transcript(Base, AdminMixin):
 
     audio_recording_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.audio_recording.id"),
                                                           nullable=False, unique=True)
-    encounter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.encounter.id"), nullable=False)
+    encounter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.encounter.id"),
+                                                    nullable=False)
     ai_request_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.ai_request.id"))
     language: Mapped[str] = mapped_column(String(20), nullable=False, default="en-US")
     binary_object_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.binary_object.id"),
@@ -235,7 +267,8 @@ class KnowledgeSource(Base, UUIDPKMixin, OptionalTenantMixin, TimestampMixin):
     approved_at: Mapped[datetime | None]
     effective_date: Mapped[date | None]
     withdrawn_at: Mapped[datetime | None]
-    superseded_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.knowledge_source.id"))
+    superseded_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(
+        "admin.knowledge_source.id"))
     last_indexed_at: Mapped[datetime | None]
 
 

@@ -4,12 +4,29 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import (Boolean, CheckConstraint, ForeignKey, Index, Integer, SmallInteger, String,
-                        Text, UniqueConstraint, text)
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import (AdminMixin, Base, OptionalTenantMixin, TimestampMixin, UUIDPKMixin,
-                          VersionedMixin, enum_type)
+from app.db.base import (
+    AdminMixin,
+    Base,
+    OptionalTenantMixin,
+    TimestampMixin,
+    UUIDPKMixin,
+    VersionedMixin,
+    enum_type,
+)
 from app.db.models.enums import SettingValueType
 
 NPI_CHECK = "{col} IS NULL OR shri_npi_valid({col})"
@@ -75,7 +92,8 @@ class Facility(Base, AdminMixin, VersionedMixin):
         CheckConstraint("place_of_service_code ~ '^[0-9]{2}$'", name="pos_format"),
     )
 
-    location_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.location.id"), nullable=False,
+    location_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.location.id"),
+                                                   nullable=False,
                                                    unique=True)
     code: Mapped[str] = mapped_column(String(40), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -172,9 +190,11 @@ class CareTeamMember(Base, AdminMixin):
         CheckConstraint("period_end IS NULL OR period_end >= period_start", name="period"),
     )
 
-    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id", ondelete="CASCADE"),
+    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id",
+                                                             ondelete="CASCADE"),
                                                   nullable=False, index=True)
-    practitioner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.practitioner.id"))
+    practitioner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(
+        "clinical.practitioner.id"))
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
     role_code: Mapped[str] = mapped_column(String(40), nullable=False)   # pcp, care-manager
     period_start: Mapped[date] = mapped_column(nullable=False)
@@ -244,7 +264,8 @@ class ConceptProperty(Base, UUIDPKMixin):
     __tablename__ = "concept_property"
     __table_args__ = (UniqueConstraint("concept_id", "property", "value"),)
 
-    concept_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.concept.id", ondelete="CASCADE"),
+    concept_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.concept.id",
+                                                             ondelete="CASCADE"),
                                                   nullable=False)
     property: Mapped[str] = mapped_column(String(60), nullable=False)
     value: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -266,7 +287,8 @@ class PicklistItem(Base, AdminMixin):
         CheckConstraint("(maps_to_system IS NULL) = (maps_to_code IS NULL)", name="map_pair"),
     )
 
-    picklist_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.picklist.id", ondelete="CASCADE"),
+    picklist_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.picklist.id",
+                                                              ondelete="CASCADE"),
                                                    nullable=False)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     display: Mapped[str] = mapped_column(String(500), nullable=False)

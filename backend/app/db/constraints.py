@@ -22,8 +22,16 @@ from __future__ import annotations
 
 import hashlib
 import re
+from typing import Any, cast
 
-from sqlalchemy import CheckConstraint, ForeignKeyConstraint, MetaData, Table, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    ForeignKeyConstraint,
+    MetaData,
+    Table,
+    UniqueConstraint,
+)
 
 MAX_IDENT = 63
 PATIENT_ELEMENTS = {"subject", "patient", "beneficiary"}
@@ -38,7 +46,8 @@ def short_name(name: str) -> str:
     """PostgreSQL identifiers are capped at 63 bytes; keep long names unique with a hash."""
     if len(name) <= MAX_IDENT:
         return name
-    return f"{name[:MAX_IDENT - 9]}_{hashlib.sha1(name.encode()).hexdigest()[:8]}"
+    digest = hashlib.sha1(name.encode(), usedforsecurity=False).hexdigest()  # a name, not a secret
+    return f"{name[:MAX_IDENT - 9]}_{digest[:8]}"
 
 
 def snake(element: str) -> str:
@@ -72,15 +81,15 @@ def _check(table: Table, sql: str, name: str) -> None:
 
 
 # --------------------------------------------------------------------------- 1. FHIR rules
-def _groups(table: Table) -> dict[str, list]:
-    groups: dict[str, list] = {}
+def _groups(table: Table) -> dict[str, list[Any]]:
+    groups: dict[str, list[Any]] = {}
     for col in table.columns:
         if col.info.get("fhir"):
             groups.setdefault(col.info["fhir"], []).append(col)
     return groups
 
 
-def _presence(cols: list) -> str:
+def _presence(cols: list[Any]) -> str:
     keep = [c for c in cols if c.info.get("part") not in NON_PRESENCE_PARTS] or cols
     parts = []
     for c in keep:
@@ -96,7 +105,7 @@ def _q(name: str) -> str:
                                    "text") else name
 
 
-def _part(cols: list, part: str):
+def _part(cols: list[Any], part: str) -> Any:
     return next((c for c in cols if c.info.get("part") == part), None)
 
 
@@ -109,7 +118,8 @@ def apply_fhir_checks(metadata: MetaData, mappers: dict[str, type]) -> None:
             name = snake(el) if el != "." else "value"
             refs = [c for c in cols if ftype == "Reference" and c.foreign_keys]
             if ftype in ("CodeableConcept", "Coding"):
-                sys_, code_, disp = _part(cols, "system"), _part(cols, "code"), _part(cols, "display")
+                sys_, code_, disp = _part(cols, "system"), _part(cols, "code"), _part(cols,
+                                                                                      "display")
                 if sys_ is not None and code_ is not None:
                     _check(table, f"({_q(code_.name)} IS NULL) = ({_q(sys_.name)} IS NULL)",
                            f"fhir_{name}_coding")
@@ -171,7 +181,8 @@ def apply_tenant_foreign_keys(metadata: MetaData) -> None:
             continue
         for fk in sorted(table.foreign_keys, key=lambda f: f.parent.name):
             parent = fk.column.table
-            if (len(fk.constraint.columns) != 1 or fk.parent.name == "tenant_id"
+            if (len(cast(ForeignKeyConstraint, fk.constraint).columns) != 1
+                    or fk.parent.name == "tenant_id"
                     or fk.column.name != "id" or not _tenant_scoped(parent)):
                 continue
             uq = tenant_uq_name(parent.name)
@@ -183,7 +194,7 @@ def apply_tenant_foreign_keys(metadata: MetaData) -> None:
 
 
 # --------------------------------------------------------------------------- 3. patient FKs
-def patient_column(table: Table):
+def patient_column(table: Table) -> Column[Any] | None:
     """The column that says which patient a row belongs to (None if not patient-owned)."""
     for name in PATIENT_COLUMNS:
         col = table.c.get(name)
@@ -203,7 +214,8 @@ def apply_patient_foreign_keys(metadata: MetaData) -> None:
         for fk in sorted(table.foreign_keys, key=lambda f: f.parent.name):
             parent = fk.column.table
             ppcol = patient_column(parent)
-            if (ppcol is None or fk.parent is pcol or len(fk.constraint.columns) != 1
+            if (ppcol is None or fk.parent is pcol
+                    or len(cast(ForeignKeyConstraint, fk.constraint).columns) != 1
                     or fk.column.name != "id" or fk.parent.name == "tenant_id"):
                 continue
             uq = patient_uq_name(parent.name, ppcol.name)

@@ -12,17 +12,52 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import (Boolean, CheckConstraint, ForeignKey, ForeignKeyConstraint, Index,
-                        Integer, Numeric, SmallInteger, String, Text, UniqueConstraint, text)
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import (MONEY, AdminMixin, Base, ProvenanceMixin, TenantMixin, TimestampMixin,
-                          UUIDPKMixin, VersionedMixin, enum_type)
-from app.db.models.enums import (AdjustmentGroup, BenefitTimePeriod, BenefitType, ClaimEventSource,
-                               ClaimFrequency, ClaimStatus, CoverageLevel, EligibilityStatus,
-                               EligibilityTrigger, EnrollmentStatus, EnrollmentTransaction,
-                               NetworkIndicator, PayerSequence, PayerType, PaymentMethod,
-                               PostingStatus, RemittancePaymentMethod, SuperbillStatus)
+from app.db.base import (
+    MONEY,
+    AdminMixin,
+    Base,
+    ProvenanceMixin,
+    TenantMixin,
+    TimestampMixin,
+    UUIDPKMixin,
+    VersionedMixin,
+    enum_type,
+)
+from app.db.models.enums import (
+    AdjustmentGroup,
+    BenefitTimePeriod,
+    BenefitType,
+    ClaimEventSource,
+    ClaimFrequency,
+    ClaimStatus,
+    CoverageLevel,
+    EligibilityStatus,
+    EligibilityTrigger,
+    EnrollmentStatus,
+    EnrollmentTransaction,
+    NetworkIndicator,
+    PayerSequence,
+    PayerType,
+    PaymentMethod,
+    PostingStatus,
+    RemittancePaymentMethod,
+    SuperbillStatus,
+)
 
 CPT_HCPCS = ("'http://www.ama-assn.org/go/cpt'", "'urn:oid:2.16.840.1.113883.6.285'")
 PROC_SYSTEM_CHECK = f"code_system IN ({', '.join(CPT_HCPCS)})"
@@ -71,7 +106,8 @@ class PayerEnrollment(Base, AdminMixin):
     )
 
     payer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.payer.id"), nullable=False)
-    practitioner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.practitioner.id"))
+    practitioner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(
+        "clinical.practitioner.id"))
     clearinghouse: Mapped[str] = mapped_column(String(40), nullable=False)
     transaction: Mapped[EnrollmentTransaction] = mapped_column(enum_type(EnrollmentTransaction),
                                                                nullable=False)
@@ -108,7 +144,8 @@ class EligibilityCheck(Base, AdminMixin):
         CheckConstraint("provider_npi IS NULL OR shri_npi_valid(provider_npi)", name="npi_valid"),
     )
 
-    coverage_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.coverage.id"), nullable=False)
+    coverage_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.coverage.id"),
+                                                   nullable=False)
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"), nullable=False,
                                                   index=True)
     appointment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.appointment.id"),
@@ -175,7 +212,8 @@ class FeeSchedule(Base, AdminMixin, VersionedMixin):
     )
 
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-    payer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.payer.id"))  # NULL = standard
+    payer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(
+        "admin.payer.id"))  # NULL = standard
     effective_from: Mapped[date] = mapped_column(nullable=False)
     effective_to: Mapped[date | None]
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -192,7 +230,8 @@ class FeeScheduleItem(Base, AdminMixin):
 
     fee_schedule_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("admin.fee_schedule.id", ondelete="CASCADE"), nullable=False)
-    code_system: Mapped[str] = mapped_column(ForeignKey("admin.code_system.uri", onupdate="CASCADE"),
+    code_system: Mapped[str] = mapped_column(ForeignKey("admin.code_system.uri",
+                                                        onupdate="CASCADE"),
                                              nullable=False)
     code: Mapped[str] = mapped_column(String(10), nullable=False)
     modifier: Mapped[str] = mapped_column(String(2), nullable=False, default="",
@@ -212,11 +251,13 @@ class Superbill(Base, AdminMixin):
         UniqueConstraint("id", "encounter_id"),
     )
 
-    encounter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.encounter.id"), nullable=False,
+    encounter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.encounter.id"),
+                                                    nullable=False,
                                                     unique=True)
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"), nullable=False,
                                                   index=True)
-    rendering_practitioner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.practitioner.id"),
+    rendering_practitioner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(
+        "clinical.practitioner.id"),
                                                                  nullable=False)
     billing_practitioner_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("clinical.practitioner.id"))
@@ -249,9 +290,11 @@ class Charge(Base, AdminMixin, ProvenanceMixin):
     superbill_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.superbill.id",
                                                                ondelete="CASCADE"),
                                                     nullable=False)
-    encounter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.encounter.id"), nullable=False)
+    encounter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.encounter.id"),
+                                                    nullable=False)
     line_number: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    code_system: Mapped[str] = mapped_column(ForeignKey("admin.code_system.uri", onupdate="CASCADE"),
+    code_system: Mapped[str] = mapped_column(ForeignKey("admin.code_system.uri",
+                                                        onupdate="CASCADE"),
                                              nullable=False)
     code: Mapped[str] = mapped_column(String(10), nullable=False)
     description: Mapped[str | None] = mapped_column(String(300))
@@ -289,10 +332,12 @@ class ChargeDiagnosisPointer(Base, AdminMixin):
         UniqueConstraint("charge_id", "position"),
         UniqueConstraint("charge_id", "diagnosis_rank"),
         CheckConstraint("position BETWEEN 1 AND 4", name="position"),
-        ForeignKeyConstraint(["charge_id", "encounter_id"], ["admin.charge.id", "admin.charge.encounter_id"],
+        ForeignKeyConstraint(["charge_id", "encounter_id"], ["admin.charge.id",
+                                                             "admin.charge.encounter_id"],
                              ondelete="CASCADE", name="fk_charge_dx_pointer_charge_encounter"),
         ForeignKeyConstraint(["encounter_id", "diagnosis_rank"],
-                             ["clinical.encounter_diagnosis.encounter_id", "clinical.encounter_diagnosis.rank"],
+                             ["clinical.encounter_diagnosis.encounter_id",
+                              "clinical.encounter_diagnosis.rank"],
                              name="fk_charge_dx_pointer_encounter_diagnosis"),
     )
 
@@ -318,10 +363,12 @@ class Claim(Base, AdminMixin):
                         name="submitted_has_time"),
     )
 
-    superbill_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.superbill.id"), nullable=False)
+    superbill_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.superbill.id"),
+                                                    nullable=False)
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"), nullable=False,
                                                   index=True)
-    coverage_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.coverage.id"), nullable=False)
+    coverage_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.coverage.id"),
+                                                   nullable=False)
     payer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.payer.id"), nullable=False)
     payer_sequence: Mapped[PayerSequence] = mapped_column(enum_type(PayerSequence, 1),
                                                           nullable=False,
@@ -404,7 +451,8 @@ class ClaimLineDiagnosisPointer(Base, AdminMixin):
     __table_args__ = (
         UniqueConstraint("claim_line_id", "position"),
         CheckConstraint("position BETWEEN 1 AND 4", name="position"),
-        ForeignKeyConstraint(["claim_line_id", "claim_id"], ["admin.claim_line.id", "admin.claim_line.claim_id"],
+        ForeignKeyConstraint(["claim_line_id", "claim_id"], ["admin.claim_line.id",
+                                                             "admin.claim_line.claim_id"],
                              ondelete="CASCADE", name="fk_claim_line_dx_pointer_line_claim"),
         ForeignKeyConstraint(["claim_id", "diagnosis_sequence"],
                              ["admin.claim_diagnosis.claim_id", "admin.claim_diagnosis.sequence"],

@@ -35,7 +35,7 @@ class DbErrorDetail:
 def db_error_detail(exc: DBAPIError) -> DbErrorDetail:
     orig = exc.orig
     state = getattr(orig, "sqlstate", None)
-    status = SQLSTATE_HTTP.get(state, 500)
+    status = SQLSTATE_HTTP.get(state, 500) if isinstance(state, str) else 500
     diag = getattr(orig, "diag", None)
     return DbErrorDetail(
         status=status,

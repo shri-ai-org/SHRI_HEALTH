@@ -5,11 +5,15 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from collections.abc import AsyncIterator, Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from fhir.resources.R4B import get_fhir_model_class
-from sqlalchemy import text
+from sqlalchemy import Engine, text
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.db.models import FHIR_RESOURCES, MAPPERS, systems
 from app.db.tests import builders as b
@@ -21,12 +25,12 @@ pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
 M = MAPPERS
 
 
-def validate(resource: dict) -> None:
+def validate(resource: dict[str, Any]) -> None:
     get_fhir_model_class(resource["resourceType"]).model_validate(resource)
 
 
 @pytest.fixture
-def chart(db):
+def chart(db: Session) -> dict[str, Any]:
     """One chart touching every FHIR resource table."""
     t = db.info["tenant_id"]
     ctx = b.practice(db)
@@ -35,7 +39,8 @@ def chart(db):
     rp.name = [M["human_name"](family="Nguyen", given=["Bao"])]
     rp.relationship = [M["related_person_relationship"](code_system=systems.V3_ROLE_CODE,
                                                         code_code="SPS", code_display="spouse")]
-    role = M["practitioner_role"](practitioner_id=ctx["practitioner"].id, organization_id=ctx["org"].id,
+    role = M["practitioner_role"](practitioner_id=ctx["practitioner"].id,
+                                  organization_id=ctx["org"].id,
                                   code_system=systems.NUCC, code_code="2084N0400X")
     role.specialty = [M["practitioner_role_specialty"](specialty_system=systems.NUCC,
                                                        specialty_code="2084N0400X",
@@ -94,7 +99,8 @@ def chart(db):
                                                           code_display="Migraine")]
     imm = M["immunization"](status="completed", vaccine_code_system=systems.CVX,
                             vaccine_code_code="140", patient_id=pt.id,
-                            occurrence_date_time=b.NOW - dt.timedelta(days=30), primary_source=False)
+                            occurrence_date_time=b.NOW - dt.timedelta(days=30),
+                                primary_source=False)
     med = M["medication"](code_system=systems.RXNORM, code_code="1049630")
     db.add_all([smoking, proc, fmh, imm, med])
     db.flush()
@@ -138,7 +144,8 @@ def chart(db):
     dr.result = [M["diagnostic_report_result"](observation_id=bp.id)]
     dr.category = [M["diagnostic_report_category"](category_system=systems.V2_0074,
                                                    category_code="LAB")]
-    blob = M["binary_object"](bucket="docs", storage_key=f"k/{uuid.uuid4()}.pdf", content_type="application/pdf",
+    blob = M["binary_object"](bucket="docs", storage_key=f"k/{uuid.uuid4()}.pdf",
+                              content_type="application/pdf",
                               size_bytes=10, sha256="a" * 64)
     db.add_all([dr, blob])
     db.flush()
@@ -173,7 +180,7 @@ def chart(db):
     return {"patient": pt, "ctx": ctx, "encounter": enc, "observation": bp, "note": note}
 
 
-def test_every_resource_type_serializes_to_valid_fhir(db, chart):
+def test_every_resource_type_serializes_to_valid_fhir(db: Session, chart: dict[str, Any]) -> None:
     seen, errors = set(), []
     for rtype, cls in sorted(FHIR_RESOURCES.items()):
         for obj in db.query(cls).all():
@@ -186,7 +193,7 @@ def test_every_resource_type_serializes_to_valid_fhir(db, chart):
     assert seen == set(FHIR_RESOURCES), set(FHIR_RESOURCES) - seen
 
 
-def test_patient_shape(db, chart):
+def test_patient_shape(db: Session, chart: dict[str, Any]) -> None:
     r = to_fhir(chart["patient"])
     assert r["name"][0] == {"use": "official", "family": "Nguyen", "given": ["Mai"]}
     assert r["identifier"][0]["type"]["coding"][0]["code"] == "MR"
@@ -198,7 +205,7 @@ def test_patient_shape(db, chart):
     assert r["communication"][0]["language"]["coding"][0]["code"] == "en-US"
 
 
-def test_observation_components_and_condition_codings(db, chart):
+def test_observation_components_and_condition_codings(db: Session, chart: dict[str, Any]) -> None:
     bp = to_fhir(chart["observation"])
     assert [c["valueQuantity"]["value"] for c in bp["component"]] == [128, 82]
     assert bp["category"][0]["coding"][0]["code"] == "vital-signs"
@@ -208,18 +215,19 @@ def test_observation_components_and_condition_codings(db, chart):
     assert cond["clinicalStatus"]["coding"][0]["system"] == systems.CONDITION_CLINICAL
 
 
-def test_history_snapshot_serializes_like_the_live_row(db, chart):
+def test_history_snapshot_serializes_like_the_live_row(db: Session, chart: dict[str, Any]) -> None:
     pt = chart["patient"]
     snap = db.execute(text("SELECT snapshot FROM clinical.fhir_resource_history "
                            "WHERE resource_id = :i "
-                           "AND version_id = :v"), {"i": pt.id, "v": pt.meta_version_id}).scalar()
+                           "AND version_id = :v"),
+                      {"i": pt.id, "v": pt.meta_version_id}).scalar_one()
     live, hist = to_fhir(pt), to_fhir(M["patient"], SnapshotRow(snap))
     assert hist == live
 
 
 # --------------------------------------------------------------------------- HTTP
 @pytest.fixture
-def client(chart, db):
+def client(chart: dict[str, Any], db: Session) -> Iterator[TestClient]:
     """A local app mounting only the FHIR facade router, with both of its seams overridden:
     ``machine_token_auth`` with a fixed AuthContext, and ``fhir_db`` with a session from the
     core's own ``Database.tenant_session`` (the same per-transaction clinic settings
@@ -237,7 +245,7 @@ def client(chart, db):
     app.include_router(router)
 
     @app.exception_handler(DBAPIError)
-    async def _db_error(request, exc):
+    async def _db_error(request: Any, exc: DBAPIError) -> JSONResponse:
         http_exc = outcome_from_db_error(exc)
         return JSONResponse(http_exc.detail, status_code=http_exc.status_code)
 
@@ -245,7 +253,7 @@ def client(chart, db):
     switch_to_app_role(database.engine.sync_engine)
     ctx = AuthContext(db.info["tenant_id"], chart["ctx"]["user"].id, frozenset({"clinician"}))
 
-    async def _fhir_db():
+    async def _fhir_db() -> AsyncIterator[AsyncSession]:
         session = database.tenant_session(ctx.tenant_id, ctx.user_id, ctx.correlation_id)
         async with session:
             yield session
@@ -254,11 +262,15 @@ def client(chart, db):
     app.dependency_overrides[fhir_db] = _fhir_db
     with TestClient(app) as c:
         yield c
+        assert c.portal is not None  # set while the client is open
         c.portal.call(database.dispose)  # on the loop that owns the connections
     app.dependency_overrides.clear()
 
 
-def test_http_read_vread_history_search(client, chart, db, admin_engine):
+def test_http_read_vread_history_search(client: TestClient,
+                                        chart: dict[str, Any],
+                                        db: Session,
+                                        admin_engine: Engine) -> None:
     pt = chart["patient"]
     r = client.get(f"/fhir/r4/Patient/{pt.id}")
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/fhir+json")
@@ -287,11 +299,14 @@ def test_http_read_vread_history_search(client, chart, db, admin_engine):
     # can actually read it, same as every other audit-review access in this test file.
     with admin_engine.connect() as c:
         audited = c.execute(text("SELECT count(*) FROM audit.audit_event WHERE patient_id = :p "
-                                 "AND action = 'read'"), {"p": pt.id}).scalar()
+                                 "AND action = 'read'"), {"p": pt.id}).scalar_one()
     assert audited >= 4
 
 
-def test_http_restricted_chart_needs_break_glass(client, chart, db, admin_engine):
+def test_http_restricted_chart_needs_break_glass(client: TestClient,
+                                                 chart: dict[str, Any],
+                                                 db: Session,
+                                                 admin_engine: Engine) -> None:
     pt = chart["patient"]
     pt.meta_security = ["R"]
     db.commit()
@@ -300,8 +315,8 @@ def test_http_restricted_chart_needs_break_glass(client, chart, db, admin_engine
     assert client.post("/fhir/r4/Patient/_search", json={"family": "Ngu"}).json()["total"] == 0
     db.add(M["break_glass_access"](patient_id=pt.id, user_id=chart["ctx"]["user"].id,
                                    reason="Covering physician, urgent call",
-                                   granted_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=1),
-                                   expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)))
+                                   granted_at=dt.datetime.now(dt.UTC) - dt.timedelta(minutes=1),
+                                   expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)))
     db.commit()
     assert client.get(f"/fhir/r4/Observation/{chart['observation'].id}").status_code == 200
     with admin_engine.connect() as c:
@@ -310,7 +325,7 @@ def test_http_restricted_chart_needs_break_glass(client, chart, db, admin_engine
     assert denied == 1
 
 
-def test_http_capability_statement(client):
+def test_http_capability_statement(client: TestClient) -> None:
     # api/admin.py (generated CRUD) isn't adopted - admin endpoints come from each module
     # owner's own code against contracts/openapi/ instead (D20/ADR-0011 condition 1), so the
     # constraint-error-mapping half of this test (previously exercised via admin CRUD) doesn't
@@ -318,5 +333,5 @@ def test_http_capability_statement(client):
     assert client.get("/fhir/r4/metadata").json()["fhirVersion"] == "4.0.1"
 
 
-def test_unknown_resource_type_is_404(client):
+def test_unknown_resource_type_is_404(client: TestClient) -> None:
     assert client.get(f"/fhir/r4/Basic/{uuid.uuid4()}").status_code == 404
