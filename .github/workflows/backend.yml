@@ -1,14 +1,17 @@
 # Backend checks: ruff, mypy and pytest on Python 3.13, against the same PostgreSQL 18 + pgvector
 # image as local development (infra/compose/postgres; D31). Runs only when the backend, the database
-# image or this workflow changes, to save Free-plan minutes. Every Action is pinned by commit SHA.
+# image, this workflow or the role matrix the permission tests read (SECURITY_MODEL §4.3/§4.4)
+# changes, to save Free-plan minutes. Every Action is pinned by commit SHA.
 name: backend
 
 on:
   pull_request:
-    paths: ["backend/**", "infra/compose/postgres/**", ".github/workflows/backend.yml"]
+    paths: ["backend/**", "infra/compose/postgres/**", ".github/workflows/backend.yml",
+            "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py"]
   push:
     branches: [main]
-    paths: ["backend/**", "infra/compose/postgres/**", ".github/workflows/backend.yml"]
+    paths: ["backend/**", "infra/compose/postgres/**", ".github/workflows/backend.yml",
+            "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py"]
 
 permissions:
   contents: read
