@@ -50,3 +50,9 @@
 /frontend/src/features/documents/         @anandshriai @Minalini-shriai
 /infra/postgres/                          @anandshriai
 /infra/seaweedfs/                         @anandshriai
+
+# Files that mirror another owner's work need that owner's review too (issue #25). Keep these
+# last: the last matching line wins.
+/backend/app/core/permissions.py          @thulasishriai-ui @vimalshriai
+/.github/workflows/contracts.yml          @thulasishriai-ui @vimalshriai
+/.github/workflows/frontend.yml           @thulasishriai-ui @Minalini-shriai
