@@ -128,7 +128,8 @@ paths:
       operationId: getEncounter
       summary: Get an encounter with its workspace data
       description: 'The encounter with its ranked diagnoses, its vitals and a summary of its notes (inventory #63; FRS FR-ENC-01).
-        Problems, allergies, history, medications and results come from their own endpoints.'
+        The note summaries go through the notes service, so the same rules apply: for BIL only signed notes appear (SECURITY_MODEL
+        §4.3). Problems, allergies, history, medications and results come from their own endpoints.'
       tags:
       - encounters
       x-owner: vimal
@@ -1453,7 +1454,8 @@ paths:
       operationId: getNote
       summary: Get a note
       description: 'A note with its sections and addenda (inventory #77). The `ETag` is what autosave, sign, co-sign and addenda
-        send as `If-Match`. BIL sees signed notes only.'
+        send as `If-Match`. BIL sees signed notes only: a draft is `404` for BIL (SECURITY_MODEL §4.3), so its existence is
+        not revealed.'
       tags:
       - encounters
       x-owner: vimal
@@ -1940,7 +1942,9 @@ paths:
     get:
       operationId: listNoteVersions
       summary: List a note's versions
-      description: 'Every saved version of a note, newest first, from `_history` (inventory #82; D8). Read-only.'
+      description: 'Every saved version of a note, newest first, from `_history` (inventory #82; D8). Read-only. The same
+        reading rules as `GET /notes/{noteId}` apply: for BIL only versions from signing on, and a draft note is `404` (SECURITY_MODEL
+        §4.3).'
       tags:
       - encounters
       x-owner: vimal
@@ -3130,7 +3134,8 @@ components:
           maxItems: 50
           items:
             $ref: '#/components/schemas/NoteSummary'
-          description: Notes on this encounter, newest first, including drafts and entered-in-error ones (marked).
+          description: 'Notes on this encounter, newest first, including drafts and entered-in-error ones (marked). For BIL,
+            signed notes only (SECURITY_MODEL §4.3): drafts are left out.'
           x-phi: clinical
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
