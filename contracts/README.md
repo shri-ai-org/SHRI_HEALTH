@@ -15,7 +15,7 @@ This folder is the **single source of truth** for every endpoint of the Shri Hea
 | `openapi/.spectral.yaml`, `openapi/rules/` | Lint ruleset and its custom rule functions (CONTRACT_GOVERNANCE §5) |
 | `openapi/redocly.yaml` | Structural validation against OpenAPI 3.1 |
 | `tests/lint-fixtures/` | One deliberately broken file per lint rule, plus a compliant sample in `valid/` |
-| `scripts/` | Layout check, mock launcher, sample builder, breaking-change check, oasdiff installer |
+| `scripts/` | Layout check, mock launcher, sample builder, breaking-change check, oasdiff installer, role-matrix reader (`role_matrix.py`: SECURITY_MODEL §4.3/§4.4 against core; `python3 contracts/scripts/role_matrix.py`) |
 | `docs/` | The rules: API_STANDARDS, SECURITY_MODEL, DATA_OWNERSHIP, EXTENSIONS, and the rest |
 
 ## First-time setup

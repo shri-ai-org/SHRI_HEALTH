@@ -159,11 +159,11 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `coverages:*`, `eligibility-checks:*` | ✓ | R | R | R | R | ✓ | ✓ | – | – | – |
 | `consents:*` | ✓ | ✓ | ✓ | ✓ | ✓ | R | ✓ | R | – | – |
 | `duplicates:read`, `duplicates:merge`, `duplicates:dismiss`, `patient-merges:read`, `patient-merges:undo` (D64: duplicate review is in the admin portal; FD sees only the `409 possible-duplicate` warning) | – | – | – | – | – | – | ✓ | R | – | – |
-| `scheduling-reference:read` (booking lists, D49; new 2026-10-24, pending core) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – |
-| `pharmacies:read` (pharmacy directory, D50; batch 1, pending core) | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
+| `scheduling-reference:read` (booking lists, D49; in core since #21) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – |
+| `pharmacies:read` (pharmacy directory, D50; batch 1; in core since #21, which added FD) | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `slots:read`, `appointments:read`, `status-board:read` | ✓ | ✓ | ✓ | ✓ | ✓ | R | ✓ | – | – | ✓ (status-board only, shared view; D47) |
 | `appointments:create\|update\|cancel\|check-in` (D67: clinicians are read-only on appointments and request changes through inbox tasks) | ✓ | – | – | – | – | – | ✓ | – | – | – |
-| `appointments:undo-check-in`, `appointments:reschedule` (D55, D61; new 2026-10-24, pending core) | ✓ | – | – | – | – | – | ✓ | – | – | – |
+| `appointments:undo-check-in`, `appointments:reschedule` (D55, D61; in core since #21) | ✓ | – | – | – | – | – | ✓ | – | – | – |
 | `appointments:status` (roomed, with provider, checked out) ‡ | ✓ (checked out) | ✓ (roomed) | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `timeline:read`, `encounters:read`, `notes:read`, `vitals:read`, history `:read` ‡ | – | ✓ | ✓ | ✓ | ✓ | R (signed notes, diagnoses) | – | R (investigations) | – | – |
 | `vitals:create`, `allergies:create\|update` ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
@@ -185,11 +185,11 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | Billing: `superbills:*`, `claims:*`, `remittances:*`, `billing-reports:read` | – | – | – | R (`superbills:read`) | R (`superbills:read`) | ✓ | R | – | – | – |
 | `payments:create\|card-session` (batch 1 since D58) | ✓ | – | – | – | – | ✓ | – | – | – | – |
 | `payers:read` (payer directory; added 2026-10-23, in core since PR #7) | ✓ | – | – | – | – | ✓ | ✓ | – | – | – |
-| `coverages:entered-in-error` (D45; new 2026-10-23, pending core) | ✓ | – | – | – | – | ✓ | ✓ | – | – | – |
-| `duplicates:dismiss` (D46; new 2026-10-23, pending core) | – | – | – | – | – | – | ✓ | – | – | – |
-| `lab-providers:read` (D48; new 2026-10-23, pending core) | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | – | – |
-| `consent-requirements:read` (D59; new 2026-10-24, pending core) | ✓ | – | – | – | – | – | ✓ | R | – | – |
-| `provider-schedules:create\|update` (D66: split from `practice-setup:*`; new 2026-10-24, pending core) | ✓ | – | – | – | – | – | ✓ | – | – | – |
+| `coverages:entered-in-error` (D45; in core since #7) | ✓ | – | – | – | – | ✓ | ✓ | – | – | – |
+| `duplicates:dismiss` (D46; in core since #7) | – | – | – | – | – | – | ✓ | – | – | – |
+| `lab-providers:read` (D48; in core since #7) | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | – | – |
+| `consent-requirements:read` (D59; in core since #21) | ✓ | – | – | – | – | – | ✓ | R | – | – |
+| `provider-schedules:create\|update` (D66: split from `practice-setup:*`; in core since #21) | ✓ | – | – | – | – | – | ✓ | – | – | – |
 | `documents:*`, `fax-inbox:*`, `faxes:create` | ✓ | ✓ | ✓ | ✓ | ✓ | R (`documents:read` only; D71) | – | – | – | – |
 | `ccda:import\|export` | ✓ | – | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `inbox:*`, `messages:create` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – |
