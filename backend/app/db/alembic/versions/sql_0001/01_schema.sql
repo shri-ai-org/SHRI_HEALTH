@@ -119,6 +119,7 @@ CREATE TABLE admin.payer (
 	id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	version INTEGER DEFAULT 1 NOT NULL, 
 	CONSTRAINT pk_payer PRIMARY KEY (id), 
 	CONSTRAINT ck_payer_payer_type_codes CHECK (payer_type IN ('commercial', 'medicare', 'medicare-advantage', 'medicaid', 'tricare', 'workers-comp', 'auto', 'self-pay', 'other'))
 );
@@ -144,9 +145,9 @@ CREATE TABLE admin.prompt_template (
 	CONSTRAINT ck_prompt_template_feature_codes CHECK (feature IN ('ambient-documentation', 'chart-summary', 'decision-support', 'coding-suggestion', 'order-suggestion', 'medication-assistance', 'document-extraction', 'insurance-card-ocr'))
 );
 
-CREATE UNIQUE INDEX uq_prompt_template_one_active ON admin.prompt_template (tenant_id, code) NULLS NOT DISTINCT WHERE is_active;
-
 CREATE INDEX ix_prompt_template_tenant_id ON admin.prompt_template (tenant_id);
+
+CREATE UNIQUE INDEX uq_prompt_template_one_active ON admin.prompt_template (tenant_id, code) NULLS NOT DISTINCT WHERE is_active;
 
 CREATE TABLE admin.app_user (
 	keycloak_subject VARCHAR(100) NOT NULL, 
@@ -560,6 +561,26 @@ CREATE TABLE admin.user_alert_suppression (
 
 CREATE INDEX ix_user_alert_suppression_tenant_id ON admin.user_alert_suppression (tenant_id);
 
+CREATE TABLE admin.practice_payer (
+	payer_id UUID NOT NULL, 
+	is_active BOOLEAN DEFAULT true NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
+	CONSTRAINT pk_practice_payer PRIMARY KEY (id), 
+	CONSTRAINT uq_practice_payer_tenant_id_payer_id UNIQUE (tenant_id, payer_id), 
+	CONSTRAINT fk_practice_payer_payer_id_payer FOREIGN KEY(payer_id) REFERENCES admin.payer (id), 
+	CONSTRAINT fk_practice_payer_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_practice_payer_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_practice_payer_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_practice_payer_tenant_id ON admin.practice_payer (tenant_id);
+
 CREATE TABLE admin.fee_schedule (
 	name VARCHAR(120) NOT NULL, 
 	payer_id UUID, 
@@ -572,6 +593,7 @@ CREATE TABLE admin.fee_schedule (
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
 	CONSTRAINT pk_fee_schedule PRIMARY KEY (id), 
 	CONSTRAINT uq_fee_schedule_tenant_id_name_effective_from UNIQUE (tenant_id, name, effective_from), 
 	CONSTRAINT ck_fee_schedule_period CHECK (effective_to IS NULL OR effective_to >= effective_from), 
@@ -753,6 +775,7 @@ CREATE TABLE admin.lab_provider (
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
 	CONSTRAINT pk_lab_provider PRIMARY KEY (id), 
 	CONSTRAINT uq_lab_provider_tenant_id_code UNIQUE (tenant_id, code), 
 	CONSTRAINT ck_lab_provider_clia_format CHECK (clia_number IS NULL OR clia_number ~ '^[0-9]{2}D[0-9]{7}$'), 
@@ -830,11 +853,11 @@ CREATE TABLE admin.integration_message (
 	CONSTRAINT uq_integration_message_tenant_id_id UNIQUE (tenant_id, id)
 );
 
+CREATE INDEX ix_integration_message_control ON admin.integration_message (endpoint_id, control_id);
+
 CREATE INDEX ix_integration_message_tenant_id ON admin.integration_message (tenant_id);
 
 CREATE INDEX ix_integration_message_dispatch ON admin.integration_message (status, next_attempt_at);
-
-CREATE INDEX ix_integration_message_control ON admin.integration_message (endpoint_id, control_id);
 
 CREATE TABLE admin.appointment_type (
 	code VARCHAR(40) NOT NULL, 
@@ -854,6 +877,7 @@ CREATE TABLE admin.appointment_type (
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
 	CONSTRAINT pk_appointment_type PRIMARY KEY (id), 
 	CONSTRAINT uq_appointment_type_tenant_id_code UNIQUE (tenant_id, code), 
 	CONSTRAINT ck_appointment_type_duration CHECK (default_duration_minutes BETWEEN 5 AND 480), 
@@ -1002,9 +1026,9 @@ CREATE TABLE clinical.patient (
 	CONSTRAINT ck_patient_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_patient_birth_date ON clinical.patient (tenant_id, birth_date);
-
 CREATE INDEX ix_patient_tenant_id ON clinical.patient (tenant_id);
+
+CREATE INDEX ix_patient_birth_date ON clinical.patient (tenant_id, birth_date);
 
 CREATE TABLE clinical.practitioner_qualification (
 	practitioner_id UUID NOT NULL, 
@@ -1074,9 +1098,9 @@ CREATE TABLE clinical.practitioner_role (
 	CONSTRAINT uq_practitioner_role_tenant_id_id UNIQUE (tenant_id, id)
 );
 
-CREATE INDEX ix_practitioner_role_practitioner_id ON clinical.practitioner_role (practitioner_id);
-
 CREATE INDEX ix_practitioner_role_tenant_id ON clinical.practitioner_role (tenant_id);
+
+CREATE INDEX ix_practitioner_role_practitioner_id ON clinical.practitioner_role (practitioner_id);
 
 CREATE TABLE clinical.location (
 	status VARCHAR(40) DEFAULT 'active', 
@@ -1206,9 +1230,9 @@ CREATE TABLE admin.knowledge_chunk (
 
 CREATE INDEX ix_knowledge_chunk_tsv ON admin.knowledge_chunk USING gin (content_tsv);
 
-CREATE INDEX ix_knowledge_chunk_embedding ON admin.knowledge_chunk USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
-
 CREATE INDEX ix_knowledge_chunk_tenant_id ON admin.knowledge_chunk (tenant_id);
+
+CREATE INDEX ix_knowledge_chunk_embedding ON admin.knowledge_chunk USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 CREATE TABLE admin.communication_preference (
 	patient_id UUID NOT NULL, 
@@ -1252,6 +1276,7 @@ CREATE TABLE admin.facility (
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
 	CONSTRAINT pk_facility PRIMARY KEY (id), 
 	CONSTRAINT uq_facility_tenant_id_code UNIQUE (tenant_id, code), 
 	CONSTRAINT ck_facility_npi_valid CHECK (npi IS NULL OR shri_npi_valid(npi)), 
@@ -1291,9 +1316,9 @@ CREATE TABLE admin.care_team_member (
 	CONSTRAINT fk_care_team_member_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
 );
 
-CREATE INDEX ix_care_team_member_patient_id ON admin.care_team_member (patient_id);
-
 CREATE INDEX ix_care_team_member_tenant_id ON admin.care_team_member (tenant_id);
+
+CREATE INDEX ix_care_team_member_patient_id ON admin.care_team_member (patient_id);
 
 CREATE TABLE admin.patient_pharmacy (
 	patient_id UUID NOT NULL, 
@@ -1305,6 +1330,7 @@ CREATE TABLE admin.patient_pharmacy (
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
 	CONSTRAINT pk_patient_pharmacy PRIMARY KEY (id), 
 	CONSTRAINT uq_patient_pharmacy_patient_id_pharmacy_id UNIQUE (patient_id, pharmacy_id), 
 	CONSTRAINT fk_patient_pharmacy_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id) ON DELETE CASCADE, 
@@ -1348,9 +1374,9 @@ CREATE TABLE admin.compendium_test (
 	CONSTRAINT uq_compendium_test_tenant_id_id UNIQUE (tenant_id, id)
 );
 
-CREATE INDEX ix_compendium_test_tenant_id ON admin.compendium_test (tenant_id);
-
 CREATE INDEX ix_compendium_test_name_trgm ON admin.compendium_test USING gin (test_name gin_trgm_ops);
+
+CREATE INDEX ix_compendium_test_tenant_id ON admin.compendium_test (tenant_id);
 
 CREATE TABLE audit.audit_event (
 	id BIGINT GENERATED ALWAYS AS IDENTITY, 
@@ -1388,9 +1414,9 @@ CREATE TABLE audit.audit_event (
 	CONSTRAINT uq_audit_event_patient_id_id UNIQUE (patient_id, id)
 );
 
-CREATE INDEX ix_audit_event_tenant_id ON audit.audit_event (tenant_id);
-
 CREATE INDEX ix_audit_event_patient_time ON audit.audit_event (patient_id, recorded_at);
+
+CREATE INDEX ix_audit_event_tenant_id ON audit.audit_event (tenant_id);
 
 CREATE INDEX ix_audit_event_entity ON audit.audit_event (entity_type, entity_id);
 
@@ -1612,11 +1638,11 @@ CREATE TABLE clinical.patient_communication (
 	CONSTRAINT ck_patient_communication_fhir_language_required CHECK ((language_code IS NOT NULL OR language_text IS NOT NULL))
 );
 
-CREATE INDEX ix_patient_communication_tenant_id ON clinical.patient_communication (tenant_id);
-
 CREATE UNIQUE INDEX uq_patient_communication_one_preferred ON clinical.patient_communication (patient_id) WHERE preferred;
 
 CREATE INDEX ix_patient_communication_patient_id ON clinical.patient_communication (patient_id);
+
+CREATE INDEX ix_patient_communication_tenant_id ON clinical.patient_communication (tenant_id);
 
 CREATE TABLE clinical.patient_general_practitioner (
 	patient_id UUID NOT NULL, 
@@ -1636,9 +1662,9 @@ CREATE TABLE clinical.patient_general_practitioner (
 	CONSTRAINT ck_patient_general_practitioner_fhir_general_practitioner_arc CHECK (num_nonnulls(practitioner_id, organization_id, practitioner_role_id) = 1)
 );
 
-CREATE INDEX ix_patient_general_practitioner_patient_id ON clinical.patient_general_practitioner (patient_id);
-
 CREATE INDEX ix_patient_general_practitioner_tenant_id ON clinical.patient_general_practitioner (tenant_id);
+
+CREATE INDEX ix_patient_general_practitioner_patient_id ON clinical.patient_general_practitioner (patient_id);
 
 CREATE TABLE clinical.patient_race_ethnicity (
 	patient_id UUID NOT NULL, 
@@ -1695,9 +1721,9 @@ CREATE TABLE clinical.related_person (
 	CONSTRAINT uq_related_person_patient_id_id UNIQUE (patient_id, id)
 );
 
-CREATE INDEX ix_related_person_tenant_id ON clinical.related_person (tenant_id);
-
 CREATE INDEX ix_related_person_patient_id ON clinical.related_person (patient_id);
+
+CREATE INDEX ix_related_person_tenant_id ON clinical.related_person (tenant_id);
 
 CREATE TABLE clinical.practitioner_role_specialty (
 	practitioner_role_id UUID NOT NULL, 
@@ -1719,9 +1745,9 @@ CREATE TABLE clinical.practitioner_role_specialty (
 	CONSTRAINT ck_practitioner_role_specialty_fhir_specialty_required CHECK ((specialty_code IS NOT NULL OR specialty_text IS NOT NULL))
 );
 
-CREATE INDEX ix_practitioner_role_specialty_practitioner_role_id ON clinical.practitioner_role_specialty (practitioner_role_id);
-
 CREATE INDEX ix_practitioner_role_specialty_tenant_id ON clinical.practitioner_role_specialty (tenant_id);
+
+CREATE INDEX ix_practitioner_role_specialty_practitioner_role_id ON clinical.practitioner_role_specialty (practitioner_role_id);
 
 CREATE TABLE clinical.practitioner_role_location (
 	practitioner_role_id UUID NOT NULL, 
@@ -1737,9 +1763,9 @@ CREATE TABLE clinical.practitioner_role_location (
 	CONSTRAINT fk_practitioner_role_location_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT
 );
 
-CREATE INDEX ix_practitioner_role_location_tenant_id ON clinical.practitioner_role_location (tenant_id);
-
 CREATE INDEX ix_practitioner_role_location_practitioner_role_id ON clinical.practitioner_role_location (practitioner_role_id);
+
+CREATE INDEX ix_practitioner_role_location_tenant_id ON clinical.practitioner_role_location (tenant_id);
 
 CREATE TABLE clinical.medication_ingredient (
 	medication_id UUID NOT NULL, 
@@ -1773,9 +1799,9 @@ CREATE TABLE clinical.medication_ingredient (
 	CONSTRAINT ck_medication_ingredient_fhir_item_x CHECK (((item_codeable_concept_code IS NOT NULL OR item_codeable_concept_text IS NOT NULL))::int + ((item_medication_id IS NOT NULL))::int = 1)
 );
 
-CREATE INDEX ix_medication_ingredient_tenant_id ON clinical.medication_ingredient (tenant_id);
-
 CREATE INDEX ix_medication_ingredient_medication_id ON clinical.medication_ingredient (medication_id);
+
+CREATE INDEX ix_medication_ingredient_tenant_id ON clinical.medication_ingredient (tenant_id);
 
 CREATE TABLE clinical.detected_issue (
 	status VARCHAR(40) NOT NULL, 
@@ -1832,9 +1858,9 @@ CREATE TABLE clinical.detected_issue (
 	CONSTRAINT ck_detected_issue_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_detected_issue_tenant_id ON clinical.detected_issue (tenant_id);
-
 CREATE INDEX ix_detected_issue_patient_time ON clinical.detected_issue (patient_id, identified_date_time);
+
+CREATE INDEX ix_detected_issue_tenant_id ON clinical.detected_issue (tenant_id);
 
 CREATE TABLE clinical.specimen (
 	accession_identifier_system VARCHAR(300), 
@@ -1947,9 +1973,9 @@ CREATE TABLE admin.user_role (
 	CONSTRAINT fk_user_role_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
 );
 
-CREATE INDEX ix_user_role_user_id ON admin.user_role (user_id);
-
 CREATE INDEX ix_user_role_tenant_id ON admin.user_role (tenant_id);
+
+CREATE INDEX ix_user_role_user_id ON admin.user_role (user_id);
 
 CREATE TABLE admin.lab_account (
 	lab_provider_id UUID NOT NULL, 
@@ -1964,6 +1990,7 @@ CREATE TABLE admin.lab_account (
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
 	CONSTRAINT pk_lab_account PRIMARY KEY (id), 
 	CONSTRAINT uq_lab_account_lab_provider_id_facility_id_account_number UNIQUE (lab_provider_id, facility_id, account_number), 
 	CONSTRAINT fk_lab_account_lab_provider_id_lab_provider FOREIGN KEY(lab_provider_id) REFERENCES admin.lab_provider (id), 
@@ -1974,9 +2001,9 @@ CREATE TABLE admin.lab_account (
 	CONSTRAINT uq_lab_account_tenant_id_id UNIQUE (tenant_id, id)
 );
 
-CREATE INDEX ix_lab_account_tenant_id ON admin.lab_account (tenant_id);
-
 CREATE UNIQUE INDEX uq_lab_account_one_default ON admin.lab_account (lab_provider_id, facility_id) WHERE is_default;
+
+CREATE INDEX ix_lab_account_tenant_id ON admin.lab_account (tenant_id);
 
 CREATE TABLE admin.compendium_test_code (
 	compendium_test_id UUID NOT NULL, 
@@ -2101,9 +2128,9 @@ CREATE TABLE audit.break_glass_access (
 	CONSTRAINT fk_break_glass_access_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
 );
 
-CREATE INDEX ix_break_glass_access_active ON audit.break_glass_access (user_id, patient_id, expires_at);
-
 CREATE INDEX ix_break_glass_access_tenant_id ON audit.break_glass_access (tenant_id);
+
+CREATE INDEX ix_break_glass_access_active ON audit.break_glass_access (user_id, patient_id, expires_at);
 
 CREATE TABLE admin.duplicate_match_evidence (
 	duplicate_candidate_id UUID NOT NULL, 
@@ -2218,9 +2245,9 @@ CREATE TABLE admin.user_favorite (
 	CONSTRAINT ck_user_favorite_kind_codes CHECK (kind IN ('note-template', 'diagnosis', 'order', 'order-set', 'prescription', 'phrase'))
 );
 
-CREATE INDEX ix_user_favorite_user_kind ON admin.user_favorite (user_id, kind, sequence);
-
 CREATE INDEX ix_user_favorite_tenant_id ON admin.user_favorite (tenant_id);
+
+CREATE INDEX ix_user_favorite_user_kind ON admin.user_favorite (user_id, kind, sequence);
 
 CREATE TABLE clinical.family_member_history_condition (
 	family_member_history_id UUID NOT NULL, 
@@ -2269,9 +2296,9 @@ CREATE TABLE clinical.family_member_history_condition (
 	CONSTRAINT ck_family_member_history_condition_fhir_onset_x CHECK (((onset_age_value IS NOT NULL OR onset_age_code IS NOT NULL))::int + ((onset_range_low_value IS NOT NULL OR onset_range_high_value IS NOT NULL))::int + ((onset_period_start IS NOT NULL OR onset_period_end IS NOT NULL))::int + ((onset_string IS NOT NULL))::int <= 1)
 );
 
-CREATE INDEX ix_family_member_history_condition_tenant_id ON clinical.family_member_history_condition (tenant_id);
-
 CREATE INDEX ix_family_member_history_condition_family_member_history_id ON clinical.family_member_history_condition (family_member_history_id);
+
+CREATE INDEX ix_family_member_history_condition_tenant_id ON clinical.family_member_history_condition (tenant_id);
 
 CREATE TABLE clinical.human_name (
 	patient_id UUID, 
@@ -2302,17 +2329,17 @@ CREATE TABLE clinical.human_name (
 	CONSTRAINT ck_human_name_one_owner CHECK (num_nonnulls(patient_id, practitioner_id, related_person_id, patient_contact_id) = 1)
 );
 
+CREATE INDEX ix_human_name_patient_contact_id ON clinical.human_name (patient_contact_id);
+
 CREATE INDEX ix_human_name_related_person_id ON clinical.human_name (related_person_id);
+
+CREATE INDEX ix_human_name_practitioner_id ON clinical.human_name (practitioner_id);
 
 CREATE INDEX ix_human_name_patient_id ON clinical.human_name (patient_id);
 
 CREATE INDEX ix_human_name_tenant_id ON clinical.human_name (tenant_id);
 
 CREATE INDEX ix_human_name_family_lower ON clinical.human_name (tenant_id, lower(family));
-
-CREATE INDEX ix_human_name_patient_contact_id ON clinical.human_name (patient_contact_id);
-
-CREATE INDEX ix_human_name_practitioner_id ON clinical.human_name (practitioner_id);
 
 CREATE INDEX ix_human_name_family_trgm ON clinical.human_name USING gin (family gin_trgm_ops);
 
@@ -2352,23 +2379,23 @@ CREATE TABLE clinical.contact_point (
 	CONSTRAINT ck_contact_point_one_owner CHECK (num_nonnulls(patient_id, practitioner_id, practitioner_role_id, organization_id, location_id, related_person_id, patient_contact_id) = 1)
 );
 
-CREATE INDEX ix_contact_point_phone ON clinical.contact_point (tenant_id, regexp_replace(value, '[^0-9]', '', 'g')) WHERE system IN ('phone', 'sms');
-
-CREATE INDEX ix_contact_point_organization_id ON clinical.contact_point (organization_id);
-
-CREATE INDEX ix_contact_point_practitioner_role_id ON clinical.contact_point (practitioner_role_id);
-
-CREATE INDEX ix_contact_point_patient_contact_id ON clinical.contact_point (patient_contact_id);
-
-CREATE INDEX ix_contact_point_tenant_id ON clinical.contact_point (tenant_id);
-
 CREATE INDEX ix_contact_point_related_person_id ON clinical.contact_point (related_person_id);
+
+CREATE INDEX ix_contact_point_practitioner_id ON clinical.contact_point (practitioner_id);
 
 CREATE INDEX ix_contact_point_location_id ON clinical.contact_point (location_id);
 
+CREATE INDEX ix_contact_point_tenant_id ON clinical.contact_point (tenant_id);
+
+CREATE INDEX ix_contact_point_phone ON clinical.contact_point (tenant_id, regexp_replace(value, '[^0-9]', '', 'g')) WHERE system IN ('phone', 'sms');
+
+CREATE INDEX ix_contact_point_patient_contact_id ON clinical.contact_point (patient_contact_id);
+
 CREATE INDEX ix_contact_point_patient_id ON clinical.contact_point (patient_id);
 
-CREATE INDEX ix_contact_point_practitioner_id ON clinical.contact_point (practitioner_id);
+CREATE INDEX ix_contact_point_practitioner_role_id ON clinical.contact_point (practitioner_role_id);
+
+CREATE INDEX ix_contact_point_organization_id ON clinical.contact_point (organization_id);
 
 CREATE TABLE clinical.address (
 	patient_id UUID, 
@@ -2409,23 +2436,23 @@ CREATE TABLE clinical.address (
 	CONSTRAINT ck_address_one_owner CHECK (num_nonnulls(patient_id, practitioner_id, organization_id, location_id, related_person_id, patient_contact_id) = 1)
 );
 
-CREATE INDEX ix_address_patient_contact_id ON clinical.address (patient_contact_id);
+CREATE INDEX ix_address_patient_id ON clinical.address (patient_id);
+
+CREATE UNIQUE INDEX uq_address_patient_contact ON clinical.address (patient_contact_id) WHERE patient_contact_id IS NOT NULL;
+
+CREATE INDEX ix_address_organization_id ON clinical.address (organization_id);
+
+CREATE INDEX ix_address_related_person_id ON clinical.address (related_person_id);
+
+CREATE INDEX ix_address_tenant_id ON clinical.address (tenant_id);
 
 CREATE INDEX ix_address_practitioner_id ON clinical.address (practitioner_id);
+
+CREATE INDEX ix_address_patient_contact_id ON clinical.address (patient_contact_id);
 
 CREATE INDEX ix_address_location_id ON clinical.address (location_id);
 
 CREATE UNIQUE INDEX uq_address_location ON clinical.address (location_id) WHERE location_id IS NOT NULL;
-
-CREATE INDEX ix_address_patient_id ON clinical.address (patient_id);
-
-CREATE INDEX ix_address_related_person_id ON clinical.address (related_person_id);
-
-CREATE UNIQUE INDEX uq_address_patient_contact ON clinical.address (patient_contact_id) WHERE patient_contact_id IS NOT NULL;
-
-CREATE INDEX ix_address_tenant_id ON clinical.address (tenant_id);
-
-CREATE INDEX ix_address_organization_id ON clinical.address (organization_id);
 
 CREATE TABLE clinical.patient_link (
 	patient_id UUID NOT NULL, 
@@ -2471,9 +2498,9 @@ CREATE TABLE clinical.related_person_relationship (
 	CONSTRAINT ck_related_person_relationship_fhir_value_required CHECK ((code_code IS NOT NULL OR code_text IS NOT NULL))
 );
 
-CREATE INDEX ix_related_person_relationship_tenant_id ON clinical.related_person_relationship (tenant_id);
-
 CREATE INDEX ix_related_person_relationship_related_person_id ON clinical.related_person_relationship (related_person_id);
+
+CREATE INDEX ix_related_person_relationship_tenant_id ON clinical.related_person_relationship (tenant_id);
 
 CREATE TABLE clinical.detected_issue_mitigation (
 	detected_issue_id UUID NOT NULL, 
@@ -2499,9 +2526,9 @@ CREATE TABLE clinical.detected_issue_mitigation (
 	CONSTRAINT ck_detected_issue_mitigation_fhir_action_required CHECK ((action_code IS NOT NULL OR action_text IS NOT NULL))
 );
 
-CREATE INDEX ix_detected_issue_mitigation_detected_issue_id ON clinical.detected_issue_mitigation (detected_issue_id);
-
 CREATE INDEX ix_detected_issue_mitigation_tenant_id ON clinical.detected_issue_mitigation (tenant_id);
+
+CREATE INDEX ix_detected_issue_mitigation_detected_issue_id ON clinical.detected_issue_mitigation (detected_issue_id);
 
 CREATE TABLE clinical.coverage (
 	status VARCHAR(40) NOT NULL, 
@@ -2568,9 +2595,9 @@ CREATE TABLE clinical.coverage (
 	CONSTRAINT ck_coverage_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE UNIQUE INDEX uq_coverage_active_order ON clinical.coverage (beneficiary_patient_id, "order") WHERE status = 'active';
-
 CREATE INDEX ix_coverage_tenant_id ON clinical.coverage (tenant_id);
+
+CREATE UNIQUE INDEX uq_coverage_active_order ON clinical.coverage (beneficiary_patient_id, "order") WHERE status = 'active';
 
 CREATE TABLE clinical.schedule (
 	active BOOLEAN DEFAULT true NOT NULL, 
@@ -2731,9 +2758,9 @@ CREATE TABLE admin.schedule_exception (
 	CONSTRAINT fk_schedule_exception_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
 );
 
-CREATE INDEX ix_schedule_exception_schedule_id ON admin.schedule_exception (schedule_id);
-
 CREATE INDEX ix_schedule_exception_tenant_id ON admin.schedule_exception (tenant_id);
+
+CREATE INDEX ix_schedule_exception_schedule_id ON admin.schedule_exception (schedule_id);
 
 CREATE TABLE clinical.coverage_payor (
 	coverage_id UUID NOT NULL, 
@@ -2821,9 +2848,9 @@ CREATE TABLE clinical.coverage_card_image (
 	CONSTRAINT fk_coverage_card_image_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT
 );
 
-CREATE INDEX ix_coverage_card_image_tenant_id ON clinical.coverage_card_image (tenant_id);
-
 CREATE INDEX ix_coverage_card_image_coverage_id ON clinical.coverage_card_image (coverage_id);
+
+CREATE INDEX ix_coverage_card_image_tenant_id ON clinical.coverage_card_image (tenant_id);
 
 CREATE TABLE clinical.schedule_actor (
 	schedule_id UUID NOT NULL, 
@@ -2843,11 +2870,11 @@ CREATE TABLE clinical.schedule_actor (
 	CONSTRAINT ck_schedule_actor_fhir_actor_arc CHECK (num_nonnulls(practitioner_id, practitioner_role_id, location_id) = 1)
 );
 
-CREATE INDEX ix_schedule_actor_practitioner_id ON clinical.schedule_actor (practitioner_id);
-
 CREATE INDEX ix_schedule_actor_schedule_id ON clinical.schedule_actor (schedule_id);
 
 CREATE INDEX ix_schedule_actor_tenant_id ON clinical.schedule_actor (tenant_id);
+
+CREATE INDEX ix_schedule_actor_practitioner_id ON clinical.schedule_actor (practitioner_id);
 
 CREATE TABLE clinical.appointment (
 	status VARCHAR(40) DEFAULT 'booked' NOT NULL, 
@@ -2931,13 +2958,13 @@ CREATE TABLE clinical.appointment (
 	CONSTRAINT uq_appointment_subject_patient_id_id UNIQUE (subject_patient_id, id)
 );
 
-CREATE INDEX ix_appointment_day ON clinical.appointment (tenant_id, start, status);
+CREATE INDEX ix_appointment_subject_patient_id ON clinical.appointment (subject_patient_id);
 
 CREATE INDEX ix_appointment_tenant_id ON clinical.appointment (tenant_id);
 
-CREATE INDEX ix_appointment_patient_start ON clinical.appointment (subject_patient_id, start);
+CREATE INDEX ix_appointment_day ON clinical.appointment (tenant_id, start, status);
 
-CREATE INDEX ix_appointment_subject_patient_id ON clinical.appointment (subject_patient_id);
+CREATE INDEX ix_appointment_patient_start ON clinical.appointment (subject_patient_id, start);
 
 CREATE TABLE admin.outbound_communication (
 	patient_id UUID, 
@@ -2972,9 +2999,9 @@ CREATE TABLE admin.outbound_communication (
 	CONSTRAINT uq_outbound_communication_tenant_id_id UNIQUE (tenant_id, id)
 );
 
-CREATE INDEX ix_outbound_communication_tenant_id ON admin.outbound_communication (tenant_id);
-
 CREATE INDEX ix_outbound_communication_patient_time ON admin.outbound_communication (patient_id, created_at);
+
+CREATE INDEX ix_outbound_communication_tenant_id ON admin.outbound_communication (tenant_id);
 
 CREATE TABLE admin.availability_rule_appointment_type (
 	rule_id UUID NOT NULL, 
@@ -3001,7 +3028,6 @@ CREATE TABLE admin.visit_flow_event (
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
 	CONSTRAINT pk_visit_flow_event PRIMARY KEY (id), 
-	CONSTRAINT uq_visit_flow_event_appointment_id_step UNIQUE (appointment_id, step), 
 	CONSTRAINT ck_visit_flow_event_roomed_has_room CHECK (step <> 'roomed' OR location_id IS NOT NULL), 
 	CONSTRAINT fk_visit_flow_event_appointment_id_appointment FOREIGN KEY(appointment_id) REFERENCES clinical.appointment (id), 
 	CONSTRAINT fk_visit_flow_event_user_id_app_user FOREIGN KEY(user_id) REFERENCES admin.app_user (id), 
@@ -3012,9 +3038,11 @@ CREATE TABLE admin.visit_flow_event (
 	CONSTRAINT ck_visit_flow_event_step_codes CHECK (step IN ('arrived', 'checked-in', 'roomed', 'with-provider', 'checked-out'))
 );
 
+CREATE INDEX ix_visit_flow_event_tenant_id ON admin.visit_flow_event (tenant_id);
+
 CREATE INDEX ix_visit_flow_event_appointment_id ON admin.visit_flow_event (appointment_id);
 
-CREATE INDEX ix_visit_flow_event_tenant_id ON admin.visit_flow_event (tenant_id);
+CREATE INDEX ix_visit_flow_event_appointment ON admin.visit_flow_event (appointment_id, created_at);
 
 CREATE TABLE clinical.appointment_participant (
 	appointment_id UUID NOT NULL, 
@@ -3128,9 +3156,9 @@ CREATE TABLE clinical.encounter (
 	CONSTRAINT ck_encounter_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_encounter_patient_start ON clinical.encounter (subject_patient_id, period_start);
-
 CREATE INDEX ix_encounter_tenant_id ON clinical.encounter (tenant_id);
+
+CREATE INDEX ix_encounter_patient_start ON clinical.encounter (subject_patient_id, period_start);
 
 CREATE TABLE admin.ai_request (
 	feature VARCHAR(40) NOT NULL, 
@@ -3170,13 +3198,13 @@ CREATE TABLE admin.ai_request (
 	CONSTRAINT uq_ai_request_patient_id_id UNIQUE (patient_id, id)
 );
 
+CREATE INDEX ix_ai_request_correlation_id ON admin.ai_request (correlation_id);
+
 CREATE INDEX ix_ai_request_patient_id ON admin.ai_request (patient_id);
 
 CREATE INDEX ix_ai_request_tenant_id ON admin.ai_request (tenant_id);
 
 CREATE INDEX ix_ai_request_feature_time ON admin.ai_request (tenant_id, feature, created_at);
-
-CREATE INDEX ix_ai_request_correlation_id ON admin.ai_request (correlation_id);
 
 CREATE TABLE admin.outbound_communication_param (
 	communication_id UUID NOT NULL, 
@@ -3241,13 +3269,13 @@ CREATE TABLE admin.eligibility_check (
 	CONSTRAINT uq_eligibility_check_tenant_id_id UNIQUE (tenant_id, id)
 );
 
-CREATE INDEX ix_eligibility_check_appointment_id ON admin.eligibility_check (appointment_id);
-
-CREATE INDEX ix_eligibility_check_tenant_id ON admin.eligibility_check (tenant_id);
+CREATE INDEX ix_eligibility_check_coverage_time ON admin.eligibility_check (coverage_id, requested_at);
 
 CREATE INDEX ix_eligibility_check_patient_id ON admin.eligibility_check (patient_id);
 
-CREATE INDEX ix_eligibility_check_coverage_time ON admin.eligibility_check (coverage_id, requested_at);
+CREATE INDEX ix_eligibility_check_tenant_id ON admin.eligibility_check (tenant_id);
+
+CREATE INDEX ix_eligibility_check_appointment_id ON admin.eligibility_check (appointment_id);
 
 CREATE TABLE admin.superbill (
 	encounter_id UUID NOT NULL, 
@@ -3326,9 +3354,9 @@ CREATE TABLE admin.patient_payment (
 	CONSTRAINT uq_patient_payment_patient_id_id UNIQUE (patient_id, id)
 );
 
-CREATE INDEX ix_patient_payment_patient_id ON admin.patient_payment (patient_id);
-
 CREATE INDEX ix_patient_payment_tenant_id ON admin.patient_payment (tenant_id);
+
+CREATE INDEX ix_patient_payment_patient_id ON admin.patient_payment (patient_id);
 
 CREATE TABLE clinical.condition (
 	clinical_status VARCHAR(40), 
@@ -3429,11 +3457,11 @@ CREATE TABLE clinical.condition (
 	CONSTRAINT ck_condition_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
+CREATE INDEX ix_condition_patient_status ON clinical.condition (subject_patient_id, clinical_status);
+
 CREATE INDEX ix_condition_code ON clinical.condition (tenant_id, code_code);
 
 CREATE INDEX ix_condition_tenant_id ON clinical.condition (tenant_id);
-
-CREATE INDEX ix_condition_patient_status ON clinical.condition (subject_patient_id, clinical_status);
 
 CREATE TABLE clinical.allergy_intolerance (
 	clinical_status VARCHAR(40), 
@@ -3517,9 +3545,9 @@ CREATE TABLE clinical.allergy_intolerance (
 	CONSTRAINT ck_allergy_intolerance_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_allergy_intolerance_tenant_id ON clinical.allergy_intolerance (tenant_id);
-
 CREATE INDEX ix_allergy_intolerance_patient_status ON clinical.allergy_intolerance (patient_id, clinical_status);
+
+CREATE INDEX ix_allergy_intolerance_tenant_id ON clinical.allergy_intolerance (tenant_id);
 
 CREATE TABLE clinical.immunization (
 	status VARCHAR(40) NOT NULL, 
@@ -3611,9 +3639,9 @@ CREATE TABLE clinical.immunization (
 	CONSTRAINT ck_immunization_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_immunization_patient_time ON clinical.immunization (patient_id, occurrence_date_time);
-
 CREATE INDEX ix_immunization_tenant_id ON clinical.immunization (tenant_id);
+
+CREATE INDEX ix_immunization_patient_time ON clinical.immunization (patient_id, occurrence_date_time);
 
 CREATE TABLE clinical.composition (
 	status VARCHAR(40) DEFAULT 'preliminary' NOT NULL, 
@@ -3676,13 +3704,13 @@ CREATE TABLE clinical.composition (
 	CONSTRAINT ck_composition_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_composition_patient_date ON clinical.composition (subject_patient_id, date);
-
-CREATE INDEX ix_composition_unsigned ON clinical.composition (tenant_id, status) WHERE status = 'preliminary';
+CREATE INDEX ix_composition_encounter_id ON clinical.composition (encounter_id);
 
 CREATE INDEX ix_composition_tenant_id ON clinical.composition (tenant_id);
 
-CREATE INDEX ix_composition_encounter_id ON clinical.composition (encounter_id);
+CREATE INDEX ix_composition_patient_date ON clinical.composition (subject_patient_id, date);
+
+CREATE INDEX ix_composition_unsigned ON clinical.composition (tenant_id, status) WHERE status = 'preliminary';
 
 CREATE TABLE clinical.medication_request (
 	status VARCHAR(40) DEFAULT 'draft' NOT NULL, 
@@ -3809,9 +3837,9 @@ CREATE TABLE clinical.medication_request (
 	CONSTRAINT ck_medication_request_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_medication_request_tenant_id ON clinical.medication_request (tenant_id);
-
 CREATE INDEX ix_medication_request_patient_status ON clinical.medication_request (subject_patient_id, status);
+
+CREATE INDEX ix_medication_request_tenant_id ON clinical.medication_request (tenant_id);
 
 CREATE TABLE clinical.diagnostic_report (
 	status VARCHAR(40) NOT NULL, 
@@ -3875,11 +3903,11 @@ CREATE TABLE clinical.diagnostic_report (
 	CONSTRAINT ck_diagnostic_report_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
+CREATE INDEX ix_diagnostic_report_tenant_id ON clinical.diagnostic_report (tenant_id);
+
 CREATE INDEX ix_diagnostic_report_filler ON clinical.diagnostic_report (tenant_id, ext_filler_order_number);
 
 CREATE INDEX ix_diagnostic_report_patient_issued ON clinical.diagnostic_report (subject_patient_id, issued);
-
-CREATE INDEX ix_diagnostic_report_tenant_id ON clinical.diagnostic_report (tenant_id);
 
 CREATE TABLE clinical.encounter_status_history (
 	encounter_id UUID NOT NULL, 
@@ -3899,9 +3927,9 @@ CREATE TABLE clinical.encounter_status_history (
 	CONSTRAINT ck_encounter_status_history_fhir_period_required CHECK ((period_start IS NOT NULL OR period_end IS NOT NULL))
 );
 
-CREATE INDEX ix_encounter_status_history_tenant_id ON clinical.encounter_status_history (tenant_id);
-
 CREATE INDEX ix_encounter_status_history_encounter_id ON clinical.encounter_status_history (encounter_id);
+
+CREATE INDEX ix_encounter_status_history_tenant_id ON clinical.encounter_status_history (tenant_id);
 
 CREATE TABLE clinical.encounter_type (
 	encounter_id UUID NOT NULL, 
@@ -3923,9 +3951,9 @@ CREATE TABLE clinical.encounter_type (
 	CONSTRAINT ck_encounter_type_fhir_type_required CHECK ((type_code IS NOT NULL OR type_text IS NOT NULL))
 );
 
-CREATE INDEX ix_encounter_type_tenant_id ON clinical.encounter_type (tenant_id);
-
 CREATE INDEX ix_encounter_type_encounter_id ON clinical.encounter_type (encounter_id);
+
+CREATE INDEX ix_encounter_type_tenant_id ON clinical.encounter_type (tenant_id);
 
 CREATE TABLE clinical.encounter_participant (
 	encounter_id UUID NOT NULL, 
@@ -3960,11 +3988,11 @@ CREATE TABLE clinical.encounter_participant (
 	CONSTRAINT ck_encounter_participant_fhir_individual_arc CHECK (num_nonnulls(individual_practitioner_id, individual_practitioner_role_id, individual_related_person_id) <= 1)
 );
 
-CREATE INDEX ix_encounter_participant_practitioner ON clinical.encounter_participant (individual_practitioner_id);
-
 CREATE INDEX ix_encounter_participant_encounter_id ON clinical.encounter_participant (encounter_id);
 
 CREATE INDEX ix_encounter_participant_tenant_id ON clinical.encounter_participant (tenant_id);
+
+CREATE INDEX ix_encounter_participant_practitioner ON clinical.encounter_participant (individual_practitioner_id);
 
 CREATE TABLE clinical.encounter_location (
 	encounter_id UUID NOT NULL, 
@@ -4085,11 +4113,11 @@ CREATE TABLE admin.ai_suggestion (
 
 CREATE INDEX ix_ai_suggestion_tenant_id ON admin.ai_suggestion (tenant_id);
 
-CREATE INDEX ix_ai_suggestion_patient_id ON admin.ai_suggestion (patient_id);
+CREATE INDEX ix_ai_suggestion_pending ON admin.ai_suggestion (tenant_id, decision, feature);
 
 CREATE INDEX ix_ai_suggestion_target ON admin.ai_suggestion (target_resource_type, target_id);
 
-CREATE INDEX ix_ai_suggestion_pending ON admin.ai_suggestion (tenant_id, decision, feature);
+CREATE INDEX ix_ai_suggestion_patient_id ON admin.ai_suggestion (patient_id);
 
 CREATE TABLE admin.erx_transaction (
 	medication_request_id UUID, 
@@ -4129,11 +4157,11 @@ CREATE TABLE admin.erx_transaction (
 	CONSTRAINT uq_erx_transaction_patient_id_id UNIQUE (patient_id, id)
 );
 
-CREATE INDEX ix_erx_transaction_request ON admin.erx_transaction (medication_request_id, occurred_at);
+CREATE INDEX ix_erx_transaction_patient_id ON admin.erx_transaction (patient_id);
 
 CREATE INDEX ix_erx_transaction_tenant_id ON admin.erx_transaction (tenant_id);
 
-CREATE INDEX ix_erx_transaction_patient_id ON admin.erx_transaction (patient_id);
+CREATE INDEX ix_erx_transaction_request ON admin.erx_transaction (medication_request_id, occurred_at);
 
 CREATE TABLE admin.result_acknowledgement (
 	diagnostic_report_id UUID NOT NULL, 
@@ -4157,9 +4185,9 @@ CREATE TABLE admin.result_acknowledgement (
 	CONSTRAINT ck_result_acknowledgement_action_codes CHECK (action IN ('reviewed', 'patient-notified', 'follow-up-ordered', 'forwarded'))
 );
 
-CREATE INDEX ix_result_acknowledgement_tenant_id ON admin.result_acknowledgement (tenant_id);
-
 CREATE INDEX ix_result_acknowledgement_diagnostic_report_id ON admin.result_acknowledgement (diagnostic_report_id);
+
+CREATE INDEX ix_result_acknowledgement_tenant_id ON admin.result_acknowledgement (tenant_id);
 
 CREATE TABLE admin.eligibility_service_type (
 	eligibility_check_id UUID NOT NULL, 
@@ -4203,9 +4231,9 @@ CREATE TABLE admin.eligibility_benefit (
 	CONSTRAINT ck_eligibility_benefit_time_period_codes CHECK (time_period IN ('calendar-year', 'plan-year', 'visit', 'remaining', 'lifetime'))
 );
 
-CREATE INDEX ix_eligibility_benefit_eligibility_check_id ON admin.eligibility_benefit (eligibility_check_id);
-
 CREATE INDEX ix_eligibility_benefit_tenant_id ON admin.eligibility_benefit (tenant_id);
+
+CREATE INDEX ix_eligibility_benefit_eligibility_check_id ON admin.eligibility_benefit (eligibility_check_id);
 
 CREATE TABLE admin.claim (
 	superbill_id UUID NOT NULL, 
@@ -4255,11 +4283,11 @@ CREATE TABLE admin.claim (
 	CONSTRAINT uq_claim_patient_id_id UNIQUE (patient_id, id)
 );
 
-CREATE INDEX ix_claim_tenant_id ON admin.claim (tenant_id);
-
 CREATE INDEX ix_claim_status ON admin.claim (tenant_id, status, submitted_at);
 
 CREATE INDEX ix_claim_patient_id ON admin.claim (patient_id);
+
+CREATE INDEX ix_claim_tenant_id ON admin.claim (tenant_id);
 
 CREATE TABLE clinical.condition_category (
 	condition_id UUID NOT NULL, 
@@ -4281,11 +4309,11 @@ CREATE TABLE clinical.condition_category (
 	CONSTRAINT ck_condition_category_fhir_category_required CHECK ((category_code IS NOT NULL OR category_text IS NOT NULL))
 );
 
-CREATE INDEX ix_condition_category_tenant_id ON clinical.condition_category (tenant_id);
+CREATE INDEX ix_condition_category_code ON clinical.condition_category (category_code, condition_id);
 
 CREATE INDEX ix_condition_category_condition_id ON clinical.condition_category (condition_id);
 
-CREATE INDEX ix_condition_category_code ON clinical.condition_category (category_code, condition_id);
+CREATE INDEX ix_condition_category_tenant_id ON clinical.condition_category (tenant_id);
 
 CREATE TABLE clinical.condition_coding (
 	condition_id UUID NOT NULL, 
@@ -4302,9 +4330,9 @@ CREATE TABLE clinical.condition_coding (
 	CONSTRAINT fk_condition_coding_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT
 );
 
-CREATE INDEX ix_condition_coding_tenant_id ON clinical.condition_coding (tenant_id);
-
 CREATE INDEX ix_condition_coding_condition_id ON clinical.condition_coding (condition_id);
+
+CREATE INDEX ix_condition_coding_tenant_id ON clinical.condition_coding (tenant_id);
 
 CREATE TABLE clinical.condition_body_site (
 	condition_id UUID NOT NULL, 
@@ -4344,9 +4372,9 @@ CREATE TABLE clinical.allergy_intolerance_coding (
 	CONSTRAINT fk_allergy_intolerance_coding_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT
 );
 
-CREATE INDEX ix_allergy_intolerance_coding_tenant_id ON clinical.allergy_intolerance_coding (tenant_id);
-
 CREATE INDEX ix_allergy_intolerance_coding_allergy_intolerance_id ON clinical.allergy_intolerance_coding (allergy_intolerance_id);
+
+CREATE INDEX ix_allergy_intolerance_coding_tenant_id ON clinical.allergy_intolerance_coding (tenant_id);
 
 CREATE TABLE clinical.allergy_intolerance_reaction (
 	allergy_intolerance_id UUID NOT NULL, 
@@ -4477,9 +4505,9 @@ CREATE TABLE clinical.composition_author (
 	CONSTRAINT ck_composition_author_fhir_author_arc CHECK (num_nonnulls(practitioner_id, practitioner_role_id, organization_id) = 1)
 );
 
-CREATE INDEX ix_composition_author_composition_id ON clinical.composition_author (composition_id);
-
 CREATE INDEX ix_composition_author_tenant_id ON clinical.composition_author (tenant_id);
+
+CREATE INDEX ix_composition_author_composition_id ON clinical.composition_author (composition_id);
 
 CREATE TABLE clinical.composition_attester (
 	composition_id UUID NOT NULL, 
@@ -4522,11 +4550,11 @@ CREATE TABLE clinical.composition_relates_to (
 	CONSTRAINT ck_composition_relates_to_code_codes CHECK (code IN ('replaces', 'transforms', 'signs', 'appends'))
 );
 
-CREATE INDEX ix_composition_relates_to_composition_id ON clinical.composition_relates_to (composition_id);
+CREATE INDEX ix_composition_relates_to_tenant_id ON clinical.composition_relates_to (tenant_id);
 
 CREATE INDEX ix_composition_relates_to_target ON clinical.composition_relates_to (target_composition_id);
 
-CREATE INDEX ix_composition_relates_to_tenant_id ON clinical.composition_relates_to (tenant_id);
+CREATE INDEX ix_composition_relates_to_composition_id ON clinical.composition_relates_to (composition_id);
 
 CREATE TABLE clinical.composition_section (
 	composition_id UUID NOT NULL, 
@@ -4750,9 +4778,9 @@ CREATE TABLE clinical.diagnostic_report_category (
 	CONSTRAINT ck_diagnostic_report_category_fhir_category_required CHECK ((category_code IS NOT NULL OR category_text IS NOT NULL))
 );
 
-CREATE INDEX ix_diagnostic_report_category_tenant_id ON clinical.diagnostic_report_category (tenant_id);
-
 CREATE INDEX ix_diagnostic_report_category_diagnostic_report_id ON clinical.diagnostic_report_category (diagnostic_report_id);
+
+CREATE INDEX ix_diagnostic_report_category_tenant_id ON clinical.diagnostic_report_category (tenant_id);
 
 CREATE TABLE clinical.diagnostic_report_coding (
 	diagnostic_report_id UUID NOT NULL, 
@@ -4791,9 +4819,9 @@ CREATE TABLE clinical.diagnostic_report_performer (
 	CONSTRAINT ck_diagnostic_report_performer_fhir_performer_arc CHECK (num_nonnulls(organization_id, practitioner_id, practitioner_role_id) = 1)
 );
 
-CREATE INDEX ix_diagnostic_report_performer_tenant_id ON clinical.diagnostic_report_performer (tenant_id);
-
 CREATE INDEX ix_diagnostic_report_performer_diagnostic_report_id ON clinical.diagnostic_report_performer (diagnostic_report_id);
+
+CREATE INDEX ix_diagnostic_report_performer_tenant_id ON clinical.diagnostic_report_performer (tenant_id);
 
 CREATE TABLE clinical.diagnostic_report_specimen (
 	diagnostic_report_id UUID NOT NULL, 
@@ -4830,9 +4858,9 @@ CREATE TABLE clinical.diagnostic_report_presented_form (
 	CONSTRAINT ck_diagnostic_report_presented_form_fhir_value_required CHECK ((binary_object_id IS NOT NULL))
 );
 
-CREATE INDEX ix_diagnostic_report_presented_form_tenant_id ON clinical.diagnostic_report_presented_form (tenant_id);
-
 CREATE INDEX ix_diagnostic_report_presented_form_diagnostic_report_id ON clinical.diagnostic_report_presented_form (diagnostic_report_id);
+
+CREATE INDEX ix_diagnostic_report_presented_form_tenant_id ON clinical.diagnostic_report_presented_form (tenant_id);
 
 CREATE TABLE clinical.encounter_diagnosis (
 	encounter_id UUID NOT NULL, 
@@ -4901,9 +4929,9 @@ CREATE TABLE admin.ai_suggestion_unknown (
 	CONSTRAINT fk_ai_suggestion_unknown_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
 );
 
-CREATE INDEX ix_ai_suggestion_unknown_ai_suggestion_id ON admin.ai_suggestion_unknown (ai_suggestion_id);
-
 CREATE INDEX ix_ai_suggestion_unknown_tenant_id ON admin.ai_suggestion_unknown (tenant_id);
+
+CREATE INDEX ix_ai_suggestion_unknown_ai_suggestion_id ON admin.ai_suggestion_unknown (ai_suggestion_id);
 
 CREATE TABLE admin.fax_transmission (
 	direction VARCHAR(40) NOT NULL, 
@@ -4991,9 +5019,9 @@ CREATE TABLE admin.lab_requisition (
 	CONSTRAINT uq_lab_requisition_patient_id_id UNIQUE (patient_id, id)
 );
 
-CREATE INDEX ix_lab_requisition_patient_id ON admin.lab_requisition (patient_id);
-
 CREATE INDEX ix_lab_requisition_tenant_id ON admin.lab_requisition (tenant_id);
+
+CREATE INDEX ix_lab_requisition_patient_id ON admin.lab_requisition (patient_id);
 
 CREATE TABLE admin.migration_run (
 	source_system VARCHAR(40) NOT NULL, 
@@ -5073,9 +5101,9 @@ CREATE TABLE admin.claim_status_event (
 	CONSTRAINT ck_claim_status_event_source_codes CHECK (source IN ('999', '277CA', '277', '835', 'manual', 'scrubber'))
 );
 
-CREATE INDEX ix_claim_status_event_tenant_id ON admin.claim_status_event (tenant_id);
-
 CREATE INDEX ix_claim_status_event_time ON admin.claim_status_event (claim_id, occurred_at);
+
+CREATE INDEX ix_claim_status_event_tenant_id ON admin.claim_status_event (tenant_id);
 
 CREATE TABLE admin.remittance_claim (
 	remittance_id UUID NOT NULL, 
@@ -5104,9 +5132,9 @@ CREATE TABLE admin.remittance_claim (
 
 CREATE INDEX ix_remittance_claim_claim_id ON admin.remittance_claim (claim_id);
 
-CREATE INDEX ix_remittance_claim_tenant_id ON admin.remittance_claim (tenant_id);
-
 CREATE INDEX ix_remittance_claim_remittance_id ON admin.remittance_claim (remittance_id);
+
+CREATE INDEX ix_remittance_claim_tenant_id ON admin.remittance_claim (tenant_id);
 
 CREATE TABLE clinical.allergy_reaction_manifestation (
 	reaction_id UUID NOT NULL, 
@@ -5174,19 +5202,25 @@ CREATE TABLE clinical.identifier (
 	CONSTRAINT ck_identifier_one_owner CHECK (num_nonnulls(patient_id, practitioner_id, organization_id, location_id, related_person_id, encounter_id, coverage_id, document_reference_id) = 1)
 );
 
+CREATE INDEX ix_identifier_practitioner_id ON clinical.identifier (practitioner_id);
+
+CREATE INDEX ix_identifier_encounter_id ON clinical.identifier (encounter_id);
+
+CREATE UNIQUE INDEX uq_identifier_patient_value ON clinical.identifier (tenant_id, system, value) WHERE patient_id IS NOT NULL AND use IS DISTINCT FROM 'old' AND system IS DISTINCT FROM 'http://hl7.org/fhir/sid/us-ssn';
+
+CREATE INDEX ix_identifier_organization_id ON clinical.identifier (organization_id);
+
 CREATE INDEX ix_identifier_value ON clinical.identifier (tenant_id, value);
 
-CREATE UNIQUE INDEX uq_identifier_practitioner_value ON clinical.identifier (tenant_id, system, value) WHERE practitioner_id IS NOT NULL AND use IS DISTINCT FROM 'old';
+CREATE UNIQUE INDEX uq_identifier_location_value ON clinical.identifier (tenant_id, system, value) WHERE location_id IS NOT NULL AND use IS DISTINCT FROM 'old' AND system IS DISTINCT FROM 'http://hl7.org/fhir/sid/us-ssn';
 
-CREATE UNIQUE INDEX uq_identifier_location_value ON clinical.identifier (tenant_id, system, value) WHERE location_id IS NOT NULL AND use IS DISTINCT FROM 'old';
-
-CREATE INDEX ix_identifier_location_id ON clinical.identifier (location_id);
+CREATE INDEX ix_identifier_patient_id ON clinical.identifier (patient_id);
 
 CREATE INDEX ix_identifier_document_reference_id ON clinical.identifier (document_reference_id);
 
-CREATE INDEX ix_identifier_practitioner_id ON clinical.identifier (practitioner_id);
+CREATE UNIQUE INDEX uq_identifier_practitioner_value ON clinical.identifier (tenant_id, system, value) WHERE practitioner_id IS NOT NULL AND use IS DISTINCT FROM 'old' AND system IS DISTINCT FROM 'http://hl7.org/fhir/sid/us-ssn';
 
-CREATE INDEX ix_identifier_organization_id ON clinical.identifier (organization_id);
+CREATE UNIQUE INDEX uq_identifier_coverage_value ON clinical.identifier (tenant_id, system, value) WHERE coverage_id IS NOT NULL AND use IS DISTINCT FROM 'old' AND system IS DISTINCT FROM 'http://hl7.org/fhir/sid/us-ssn';
 
 CREATE INDEX ix_identifier_related_person_id ON clinical.identifier (related_person_id);
 
@@ -5194,15 +5228,9 @@ CREATE INDEX ix_identifier_tenant_id ON clinical.identifier (tenant_id);
 
 CREATE INDEX ix_identifier_coverage_id ON clinical.identifier (coverage_id);
 
-CREATE UNIQUE INDEX uq_identifier_organization_value ON clinical.identifier (tenant_id, system, value) WHERE organization_id IS NOT NULL AND use IS DISTINCT FROM 'old';
+CREATE UNIQUE INDEX uq_identifier_organization_value ON clinical.identifier (tenant_id, system, value) WHERE organization_id IS NOT NULL AND use IS DISTINCT FROM 'old' AND system IS DISTINCT FROM 'http://hl7.org/fhir/sid/us-ssn';
 
-CREATE UNIQUE INDEX uq_identifier_coverage_value ON clinical.identifier (tenant_id, system, value) WHERE coverage_id IS NOT NULL AND use IS DISTINCT FROM 'old';
-
-CREATE INDEX ix_identifier_patient_id ON clinical.identifier (patient_id);
-
-CREATE UNIQUE INDEX uq_identifier_patient_value ON clinical.identifier (tenant_id, system, value) WHERE patient_id IS NOT NULL AND use IS DISTINCT FROM 'old';
-
-CREATE INDEX ix_identifier_encounter_id ON clinical.identifier (encounter_id);
+CREATE INDEX ix_identifier_location_id ON clinical.identifier (location_id);
 
 CREATE TABLE clinical.dosage (
 	medication_request_id UUID, 
@@ -5287,13 +5315,13 @@ CREATE TABLE clinical.dosage (
 	CONSTRAINT ck_dosage_one_owner CHECK (num_nonnulls(medication_request_id, medication_statement_id, medication_dispense_id) = 1)
 );
 
-CREATE INDEX ix_dosage_medication_statement_id ON clinical.dosage (medication_statement_id);
+CREATE INDEX ix_dosage_medication_request_id ON clinical.dosage (medication_request_id);
 
 CREATE INDEX ix_dosage_tenant_id ON clinical.dosage (tenant_id);
 
-CREATE INDEX ix_dosage_medication_request_id ON clinical.dosage (medication_request_id);
-
 CREATE INDEX ix_dosage_medication_dispense_id ON clinical.dosage (medication_dispense_id);
+
+CREATE INDEX ix_dosage_medication_statement_id ON clinical.dosage (medication_statement_id);
 
 CREATE TABLE clinical.document_reference_category (
 	document_reference_id UUID NOT NULL, 
@@ -5361,9 +5389,9 @@ CREATE TABLE clinical.document_reference_relates_to (
 	CONSTRAINT ck_document_reference_relates_to_code_codes CHECK (code IN ('replaces', 'transforms', 'signs', 'appends'))
 );
 
-CREATE INDEX ix_document_reference_relates_to_tenant_id ON clinical.document_reference_relates_to (tenant_id);
-
 CREATE INDEX ix_document_reference_relates_to_document_reference_id ON clinical.document_reference_relates_to (document_reference_id);
+
+CREATE INDEX ix_document_reference_relates_to_tenant_id ON clinical.document_reference_relates_to (tenant_id);
 
 CREATE TABLE clinical.document_reference_content (
 	document_reference_id UUID NOT NULL, 
@@ -5466,9 +5494,9 @@ CREATE TABLE clinical.consent (
 	CONSTRAINT ck_consent_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_consent_tenant_id ON clinical.consent (tenant_id);
-
 CREATE INDEX ix_consent_patient_kind ON clinical.consent (patient_id, ext_kind, status);
+
+CREATE INDEX ix_consent_tenant_id ON clinical.consent (tenant_id);
 
 CREATE TABLE admin.audio_recording (
 	encounter_id UUID NOT NULL, 
@@ -5503,9 +5531,9 @@ CREATE TABLE admin.audio_recording (
 	CONSTRAINT uq_audio_recording_tenant_id_id UNIQUE (tenant_id, id)
 );
 
-CREATE INDEX ix_audio_recording_encounter_id ON admin.audio_recording (encounter_id);
-
 CREATE INDEX ix_audio_recording_tenant_id ON admin.audio_recording (tenant_id);
+
+CREATE INDEX ix_audio_recording_encounter_id ON admin.audio_recording (encounter_id);
 
 CREATE TABLE admin.migration_reconciliation (
 	migration_run_id UUID NOT NULL, 
@@ -5689,8 +5717,6 @@ CREATE TABLE clinical.service_request (
 	CONSTRAINT ck_service_request_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_service_request_patient_status ON clinical.service_request (subject_patient_id, status);
-
 CREATE INDEX ix_service_request_tenant_id ON clinical.service_request (tenant_id);
 
 CREATE INDEX ix_service_request_requisition ON clinical.service_request (tenant_id, requisition_value);
@@ -5698,6 +5724,8 @@ CREATE INDEX ix_service_request_requisition ON clinical.service_request (tenant_
 CREATE INDEX ix_service_request_pending ON clinical.service_request (tenant_id, ext_fulfillment_status, requester_practitioner_id);
 
 CREATE INDEX ix_service_request_ext_lab_requisition_id ON clinical.service_request (ext_lab_requisition_id);
+
+CREATE INDEX ix_service_request_patient_status ON clinical.service_request (subject_patient_id, status);
 
 CREATE TABLE clinical.consent_category (
 	consent_id UUID NOT NULL, 
@@ -5815,9 +5843,9 @@ CREATE TABLE clinical.provenance (
 	CONSTRAINT uq_provenance_tenant_id_id UNIQUE (tenant_id, id)
 );
 
-CREATE INDEX ix_provenance_target ON clinical.provenance (target_resource_type, target_id);
-
 CREATE INDEX ix_provenance_tenant_id ON clinical.provenance (tenant_id);
+
+CREATE INDEX ix_provenance_target ON clinical.provenance (target_resource_type, target_id);
 
 CREATE TABLE admin.transcript (
 	audio_recording_id UUID NOT NULL, 
@@ -5906,9 +5934,9 @@ CREATE TABLE admin.medical_necessity_check (
 	CONSTRAINT uq_medical_necessity_check_tenant_id_id UNIQUE (tenant_id, id)
 );
 
-CREATE INDEX ix_medical_necessity_check_tenant_id ON admin.medical_necessity_check (tenant_id);
-
 CREATE INDEX ix_medical_necessity_check_service_request_id ON admin.medical_necessity_check (service_request_id);
+
+CREATE INDEX ix_medical_necessity_check_tenant_id ON admin.medical_necessity_check (tenant_id);
 
 CREATE TABLE admin.service_request_status_event (
 	service_request_id UUID NOT NULL, 
@@ -5933,9 +5961,9 @@ CREATE TABLE admin.service_request_status_event (
 	CONSTRAINT ck_service_request_status_event_fulfillment_status_codes CHECK (fulfillment_status IN ('not-sent', 'transmitted', 'acknowledged', 'specimen-collected', 'in-process', 'partial-result', 'completed', 'cancelled', 'error'))
 );
 
-CREATE INDEX ix_sr_status_event_time ON admin.service_request_status_event (service_request_id, occurred_at);
-
 CREATE INDEX ix_service_request_status_event_tenant_id ON admin.service_request_status_event (tenant_id);
+
+CREATE INDEX ix_sr_status_event_time ON admin.service_request_status_event (service_request_id, occurred_at);
 
 CREATE TABLE admin.unmatched_result (
 	inbound_message_id UUID NOT NULL, 
@@ -6089,13 +6117,13 @@ CREATE TABLE clinical.observation (
 	CONSTRAINT ck_observation_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_observation_based_on_service_request_id ON clinical.observation (based_on_service_request_id);
-
 CREATE INDEX ix_observation_patient_code_time ON clinical.observation (subject_patient_id, code_code, effective_date_time);
 
 CREATE INDEX ix_observation_encounter ON clinical.observation (encounter_id);
 
 CREATE INDEX ix_observation_tenant_id ON clinical.observation (tenant_id);
+
+CREATE INDEX ix_observation_based_on_service_request_id ON clinical.observation (based_on_service_request_id);
 
 CREATE TABLE clinical.procedure (
 	status VARCHAR(40) NOT NULL, 
@@ -6191,9 +6219,9 @@ CREATE TABLE clinical.procedure (
 	CONSTRAINT ck_procedure_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
-CREATE INDEX ix_procedure_patient_time ON clinical.procedure (subject_patient_id, performed_date_time);
-
 CREATE INDEX ix_procedure_tenant_id ON clinical.procedure (tenant_id);
+
+CREATE INDEX ix_procedure_patient_time ON clinical.procedure (subject_patient_id, performed_date_time);
 
 CREATE TABLE clinical.service_request_category (
 	service_request_id UUID NOT NULL, 
@@ -6215,9 +6243,9 @@ CREATE TABLE clinical.service_request_category (
 	CONSTRAINT ck_service_request_category_fhir_category_required CHECK ((category_code IS NOT NULL OR category_text IS NOT NULL))
 );
 
-CREATE INDEX ix_service_request_category_service_request_id ON clinical.service_request_category (service_request_id);
-
 CREATE INDEX ix_service_request_category_tenant_id ON clinical.service_request_category (tenant_id);
+
+CREATE INDEX ix_service_request_category_service_request_id ON clinical.service_request_category (service_request_id);
 
 CREATE TABLE clinical.service_request_coding (
 	service_request_id UUID NOT NULL, 
@@ -6256,9 +6284,9 @@ CREATE TABLE clinical.service_request_performer (
 	CONSTRAINT ck_service_request_performer_fhir_performer_arc CHECK (num_nonnulls(organization_id, practitioner_id, practitioner_role_id) = 1)
 );
 
-CREATE INDEX ix_service_request_performer_service_request_id ON clinical.service_request_performer (service_request_id);
-
 CREATE INDEX ix_service_request_performer_tenant_id ON clinical.service_request_performer (tenant_id);
+
+CREATE INDEX ix_service_request_performer_service_request_id ON clinical.service_request_performer (service_request_id);
 
 CREATE TABLE clinical.service_request_insurance (
 	service_request_id UUID NOT NULL, 
@@ -6274,9 +6302,9 @@ CREATE TABLE clinical.service_request_insurance (
 	CONSTRAINT fk_service_request_insurance_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT
 );
 
-CREATE INDEX ix_service_request_insurance_service_request_id ON clinical.service_request_insurance (service_request_id);
-
 CREATE INDEX ix_service_request_insurance_tenant_id ON clinical.service_request_insurance (tenant_id);
+
+CREATE INDEX ix_service_request_insurance_service_request_id ON clinical.service_request_insurance (service_request_id);
 
 CREATE TABLE clinical.service_request_specimen (
 	service_request_id UUID NOT NULL, 
@@ -6349,9 +6377,9 @@ CREATE TABLE clinical.provenance_agent (
 	CONSTRAINT ck_provenance_agent_fhir_who_arc CHECK (num_nonnulls(who_practitioner_id, who_practitioner_role_id, who_organization_id, who_patient_id, who_related_person_id) <= 1)
 );
 
-CREATE INDEX ix_provenance_agent_tenant_id ON clinical.provenance_agent (tenant_id);
-
 CREATE INDEX ix_provenance_agent_provenance_id ON clinical.provenance_agent (provenance_id);
+
+CREATE INDEX ix_provenance_agent_tenant_id ON clinical.provenance_agent (tenant_id);
 
 CREATE TABLE clinical.provenance_entity (
 	provenance_id UUID NOT NULL, 
@@ -6608,9 +6636,9 @@ CREATE TABLE clinical.observation_coding (
 	CONSTRAINT fk_observation_coding_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT
 );
 
-CREATE INDEX ix_observation_coding_tenant_id ON clinical.observation_coding (tenant_id);
-
 CREATE INDEX ix_observation_coding_observation_id ON clinical.observation_coding (observation_id);
+
+CREATE INDEX ix_observation_coding_tenant_id ON clinical.observation_coding (tenant_id);
 
 CREATE TABLE clinical.observation_performer (
 	observation_id UUID NOT NULL, 
@@ -6660,9 +6688,9 @@ CREATE TABLE clinical.observation_interpretation (
 
 CREATE INDEX ix_observation_interpretation_tenant_id ON clinical.observation_interpretation (tenant_id);
 
-CREATE INDEX ix_observation_interpretation_critical ON clinical.observation_interpretation (observation_id) WHERE interpretation_code IN ('LL', 'HH', 'AA');
-
 CREATE INDEX ix_observation_interpretation_observation_id ON clinical.observation_interpretation (observation_id);
+
+CREATE INDEX ix_observation_interpretation_critical ON clinical.observation_interpretation (observation_id) WHERE interpretation_code IN ('LL', 'HH', 'AA');
 
 CREATE TABLE clinical.observation_reference_range (
 	observation_id UUID NOT NULL, 
@@ -6895,9 +6923,9 @@ CREATE TABLE clinical.procedure_body_site (
 	CONSTRAINT ck_procedure_body_site_fhir_body_site_required CHECK ((body_site_code IS NOT NULL OR body_site_text IS NOT NULL))
 );
 
-CREATE INDEX ix_procedure_body_site_tenant_id ON clinical.procedure_body_site (tenant_id);
-
 CREATE INDEX ix_procedure_body_site_procedure_id ON clinical.procedure_body_site (procedure_id);
+
+CREATE INDEX ix_procedure_body_site_tenant_id ON clinical.procedure_body_site (tenant_id);
 
 CREATE TABLE clinical.annotation (
 	condition_id UUID, 
@@ -6940,27 +6968,27 @@ CREATE TABLE clinical.annotation (
 	CONSTRAINT ck_annotation_one_owner CHECK (num_nonnulls(condition_id, allergy_intolerance_id, observation_id, procedure_id, medication_request_id, medication_statement_id, service_request_id, immunization_id, family_member_history_id, specimen_id) = 1)
 );
 
+CREATE INDEX ix_annotation_observation_id ON clinical.annotation (observation_id);
+
+CREATE INDEX ix_annotation_procedure_id ON clinical.annotation (procedure_id);
+
 CREATE INDEX ix_annotation_family_member_history_id ON clinical.annotation (family_member_history_id);
 
 CREATE INDEX ix_annotation_tenant_id ON clinical.annotation (tenant_id);
 
 CREATE INDEX ix_annotation_medication_statement_id ON clinical.annotation (medication_statement_id);
 
-CREATE INDEX ix_annotation_allergy_intolerance_id ON clinical.annotation (allergy_intolerance_id);
-
 CREATE INDEX ix_annotation_immunization_id ON clinical.annotation (immunization_id);
 
 CREATE INDEX ix_annotation_medication_request_id ON clinical.annotation (medication_request_id);
 
-CREATE INDEX ix_annotation_procedure_id ON clinical.annotation (procedure_id);
+CREATE INDEX ix_annotation_allergy_intolerance_id ON clinical.annotation (allergy_intolerance_id);
+
+CREATE INDEX ix_annotation_condition_id ON clinical.annotation (condition_id);
 
 CREATE INDEX ix_annotation_specimen_id ON clinical.annotation (specimen_id);
 
 CREATE INDEX ix_annotation_service_request_id ON clinical.annotation (service_request_id);
-
-CREATE INDEX ix_annotation_condition_id ON clinical.annotation (condition_id);
-
-CREATE INDEX ix_annotation_observation_id ON clinical.annotation (observation_id);
 
 CREATE TABLE clinical.composition_section_entry (
 	section_id UUID NOT NULL, 
@@ -7024,9 +7052,9 @@ CREATE TABLE clinical.medication_request_reason (
 	CONSTRAINT ck_medication_request_reason_fhir_reason_x CHECK (((reason_code_code IS NOT NULL OR reason_code_text IS NOT NULL))::int + ((condition_id IS NOT NULL OR observation_id IS NOT NULL))::int = 1)
 );
 
-CREATE INDEX ix_medication_request_reason_tenant_id ON clinical.medication_request_reason (tenant_id);
-
 CREATE INDEX ix_medication_request_reason_medication_request_id ON clinical.medication_request_reason (medication_request_id);
+
+CREATE INDEX ix_medication_request_reason_tenant_id ON clinical.medication_request_reason (tenant_id);
 
 CREATE TABLE clinical.medication_statement_reason (
 	medication_statement_id UUID NOT NULL, 
@@ -7132,11 +7160,11 @@ CREATE TABLE clinical.diagnostic_report_result (
 	CONSTRAINT fk_diagnostic_report_result_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT
 );
 
-CREATE INDEX ix_diagnostic_report_result_diagnostic_report_id ON clinical.diagnostic_report_result (diagnostic_report_id);
-
 CREATE INDEX ix_diagnostic_report_result_obs ON clinical.diagnostic_report_result (observation_id);
 
 CREATE INDEX ix_diagnostic_report_result_tenant_id ON clinical.diagnostic_report_result (tenant_id);
+
+CREATE INDEX ix_diagnostic_report_result_diagnostic_report_id ON clinical.diagnostic_report_result (diagnostic_report_id);
 
 CREATE TABLE clinical.appointment_reason (
 	appointment_id UUID NOT NULL, 
@@ -7164,9 +7192,9 @@ CREATE TABLE clinical.appointment_reason (
 	CONSTRAINT ck_appointment_reason_fhir_reason_x CHECK (((reason_code_code IS NOT NULL OR reason_code_text IS NOT NULL))::int + ((condition_id IS NOT NULL OR procedure_id IS NOT NULL OR observation_id IS NOT NULL))::int = 1)
 );
 
-CREATE INDEX ix_appointment_reason_tenant_id ON clinical.appointment_reason (tenant_id);
-
 CREATE INDEX ix_appointment_reason_appointment_id ON clinical.appointment_reason (appointment_id);
+
+CREATE INDEX ix_appointment_reason_tenant_id ON clinical.appointment_reason (tenant_id);
 
 CREATE TABLE clinical.encounter_reason (
 	encounter_id UUID NOT NULL, 
@@ -7194,9 +7222,9 @@ CREATE TABLE clinical.encounter_reason (
 	CONSTRAINT ck_encounter_reason_fhir_reason_x CHECK (((reason_code_code IS NOT NULL OR reason_code_text IS NOT NULL))::int + ((condition_id IS NOT NULL OR procedure_id IS NOT NULL OR observation_id IS NOT NULL))::int = 1)
 );
 
-CREATE INDEX ix_encounter_reason_encounter_id ON clinical.encounter_reason (encounter_id);
-
 CREATE INDEX ix_encounter_reason_tenant_id ON clinical.encounter_reason (tenant_id);
+
+CREATE INDEX ix_encounter_reason_encounter_id ON clinical.encounter_reason (encounter_id);
 
 CREATE TABLE admin.work_item_event (
 	work_item_id UUID NOT NULL, 
@@ -7274,9 +7302,9 @@ CREATE TABLE admin.charge_diagnosis_pointer (
 	CONSTRAINT fk_charge_diagnosis_pointer_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
 );
 
-CREATE INDEX ix_charge_diagnosis_pointer_charge_id ON admin.charge_diagnosis_pointer (charge_id);
-
 CREATE INDEX ix_charge_diagnosis_pointer_tenant_id ON admin.charge_diagnosis_pointer (tenant_id);
+
+CREATE INDEX ix_charge_diagnosis_pointer_charge_id ON admin.charge_diagnosis_pointer (charge_id);
 
 CREATE TABLE admin.claim_line (
 	claim_id UUID NOT NULL, 
@@ -7351,9 +7379,9 @@ CREATE TABLE admin.claim_line_diagnosis_pointer (
 	CONSTRAINT fk_claim_line_diagnosis_pointer_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
 );
 
-CREATE INDEX ix_claim_line_diagnosis_pointer_claim_line_id ON admin.claim_line_diagnosis_pointer (claim_line_id);
-
 CREATE INDEX ix_claim_line_diagnosis_pointer_tenant_id ON admin.claim_line_diagnosis_pointer (tenant_id);
+
+CREATE INDEX ix_claim_line_diagnosis_pointer_claim_line_id ON admin.claim_line_diagnosis_pointer (claim_line_id);
 
 CREATE TABLE admin.remittance_service_line (
 	remittance_claim_id UUID NOT NULL, 
@@ -7431,305 +7459,683 @@ CREATE TABLE admin.remittance_remark (
 
 CREATE INDEX ix_remittance_remark_tenant_id ON admin.remittance_remark (tenant_id);
 
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_asserter_practitioner_id_tenant FOREIGN KEY(tenant_id, asserter_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.payer_enrollment ADD CONSTRAINT fk_payer_enrollment_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_asserter_related_person_id_tenant FOREIGN KEY(tenant_id, asserter_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+
+ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
+
+ALTER TABLE admin.picklist_item ADD CONSTRAINT fk_picklist_item_picklist_id_tenant FOREIGN KEY(tenant_id, picklist_id) REFERENCES admin.picklist (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
+ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_unmatched_result_id_tenant FOREIGN KEY(tenant_id, unmatched_result_id) REFERENCES admin.unmatched_result (tenant_id, id);
+
+ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_ext_grantor_related_person_id_tenant FOREIGN KEY(tenant_id, ext_grantor_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.practitioner_role_location ADD CONSTRAINT fk_practitioner_role_location_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_recorder_patient_id_tenant FOREIGN KEY(tenant_id, recorder_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.practitioner_role ADD CONSTRAINT fk_practitioner_role_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_source_attachment_binary_object_id_tenant FOREIGN KEY(tenant_id, source_attachment_binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
+
+ALTER TABLE admin.work_item_event ADD CONSTRAINT fk_work_item_event_work_item_id_tenant FOREIGN KEY(tenant_id, work_item_id) REFERENCES admin.work_item (tenant_id, id);
+
+ALTER TABLE clinical.practitioner_role ADD CONSTRAINT fk_practitioner_role_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_recorder_practitioner_id_tenant FOREIGN KEY(tenant_id, recorder_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_source_document_reference_id_tenant FOREIGN KEY(tenant_id, source_document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
+
+ALTER TABLE admin.ai_request ADD CONSTRAINT fk_ai_request_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.practitioner_role_location ADD CONSTRAINT fk_practitioner_role_location_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
+
+ALTER TABLE clinical.consent_category ADD CONSTRAINT fk_consent_category_consent_id_tenant FOREIGN KEY(tenant_id, consent_id) REFERENCES clinical.consent (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance_coding ADD CONSTRAINT fk_allergy_intolerance_coding_allergy_intolerance_id_tenant FOREIGN KEY(tenant_id, allergy_intolerance_id) REFERENCES clinical.allergy_intolerance (tenant_id, id);
+
+ALTER TABLE clinical.practitioner_role_specialty ADD CONSTRAINT fk_practitioner_role_specialty_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
+
+ALTER TABLE clinical.consent_verification ADD CONSTRAINT fk_consent_verification_consent_id_tenant FOREIGN KEY(tenant_id, consent_id) REFERENCES clinical.consent (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance_reaction ADD CONSTRAINT fk_allergy_intolerance_reaction_allergy_intolerance_id_tenant FOREIGN KEY(tenant_id, allergy_intolerance_id) REFERENCES clinical.allergy_intolerance (tenant_id, id);
+
+ALTER TABLE admin.ai_suggestion ADD CONSTRAINT fk_ai_suggestion_ai_request_id_same_patient FOREIGN KEY(patient_id, ai_request_id) REFERENCES admin.ai_request (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+
+ALTER TABLE clinical.consent_performer ADD CONSTRAINT fk_consent_performer_consent_id_tenant FOREIGN KEY(tenant_id, consent_id) REFERENCES clinical.consent (tenant_id, id);
+
+ALTER TABLE clinical.consent_performer ADD CONSTRAINT fk_consent_performer_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_asserter_patient_id_tenant FOREIGN KEY(tenant_id, asserter_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.consent_performer ADD CONSTRAINT fk_consent_performer_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.allergy_reaction_manifestation ADD CONSTRAINT fk_allergy_reaction_manifestation_reaction_id_tenant FOREIGN KEY(tenant_id, reaction_id) REFERENCES clinical.allergy_intolerance_reaction (tenant_id, id);
+
+ALTER TABLE admin.ai_suggestion ADD CONSTRAINT fk_ai_suggestion_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_asserter_practitioner_id_tenant FOREIGN KEY(tenant_id, asserter_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.consent_performer ADD CONSTRAINT fk_consent_performer_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_allergy_intolerance_id_tenant FOREIGN KEY(tenant_id, allergy_intolerance_id) REFERENCES clinical.allergy_intolerance (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_ai_suggestion_id_same_patient FOREIGN KEY(patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_based_on_service_request_id_tenant FOREIGN KEY(tenant_id, based_on_service_request_id) REFERENCES clinical.service_request (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_author_patient_id_tenant FOREIGN KEY(tenant_id, author_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.consent_performer ADD CONSTRAINT fk_consent_performer_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_asserter_related_person_id_same_patient FOREIGN KEY(patient_id, asserter_related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.consent_verification ADD CONSTRAINT fk_consent_verification_verified_with_patient_id_tenant FOREIGN KEY(tenant_id, verified_with_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_author_practitioner_id_tenant FOREIGN KEY(tenant_id, author_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_author_related_person_id_tenant FOREIGN KEY(tenant_id, author_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_recorder_patient_id_tenant FOREIGN KEY(tenant_id, recorder_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.consent_verification ADD CONSTRAINT fk_consent_verification_verified_with_related_person_id_tenant FOREIGN KEY(tenant_id, verified_with_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_recorder_practitioner_id_tenant FOREIGN KEY(tenant_id, recorder_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
+
+ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_ext_rescheduled_from_appointment_id_same_patient FOREIGN KEY(subject_patient_id, ext_rescheduled_from_appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_consent_id_same_patient FOREIGN KEY(patient_id, consent_id) REFERENCES clinical.consent (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.procedure_body_site ADD CONSTRAINT fk_procedure_body_site_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
+
+ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_patient_contact_id_tenant FOREIGN KEY(tenant_id, patient_contact_id) REFERENCES clinical.patient_contact (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_family_member_history_id_tenant FOREIGN KEY(tenant_id, family_member_history_id) REFERENCES clinical.family_member_history (tenant_id, id);
+
+ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.condition_coding ADD CONSTRAINT fk_condition_coding_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+
+ALTER TABLE clinical.procedure_coding ADD CONSTRAINT fk_procedure_coding_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
+
+ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_actor_organization_id_tenant FOREIGN KEY(tenant_id, actor_organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_immunization_id_tenant FOREIGN KEY(tenant_id, immunization_id) REFERENCES clinical.immunization (tenant_id, id);
+
+ALTER TABLE audit.break_glass_access ADD CONSTRAINT fk_break_glass_access_audit_event_id_same_patient FOREIGN KEY(patient_id, audit_event_id) REFERENCES audit.audit_event (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_actor_patient_id_tenant FOREIGN KEY(tenant_id, actor_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
+
+ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_actor_practitioner_id_tenant FOREIGN KEY(tenant_id, actor_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
+
+ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_coverage_id_same_patient FOREIGN KEY(patient_id, coverage_id) REFERENCES clinical.coverage (beneficiary_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_actor_practitioner_role_id_tenant FOREIGN KEY(tenant_id, actor_practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
+
+ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+
+ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_on_behalf_of_organization_id_tenant FOREIGN KEY(tenant_id, on_behalf_of_organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE admin.cosign_rule ADD CONSTRAINT fk_cosign_rule_supervisee_practitioner_id_tenant FOREIGN KEY(tenant_id, supervisee_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_medication_statement_id_tenant FOREIGN KEY(tenant_id, medication_statement_id) REFERENCES clinical.medication_statement (tenant_id, id);
+
+ALTER TABLE admin.cosign_rule ADD CONSTRAINT fk_cosign_rule_supervising_practitioner_id_tenant FOREIGN KEY(tenant_id, supervising_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_original_claim_id_same_patient FOREIGN KEY(patient_id, original_claim_id) REFERENCES admin.claim (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
+
+ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_beneficiary_patient_id_tenant FOREIGN KEY(tenant_id, beneficiary_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE clinical.provenance ADD CONSTRAINT fk_provenance_ext_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ext_ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+
+ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_superbill_id_same_patient FOREIGN KEY(patient_id, superbill_id) REFERENCES admin.superbill (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.procedure_reason ADD CONSTRAINT fk_procedure_reason_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+
+ALTER TABLE clinical.family_member_history ADD CONSTRAINT fk_family_member_history_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_policy_holder_patient_id_tenant FOREIGN KEY(tenant_id, policy_holder_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.procedure_reason ADD CONSTRAINT fk_procedure_reason_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
+
+ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_policy_holder_related_person_id_tenant FOREIGN KEY(tenant_id, policy_holder_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.procedure_reason ADD CONSTRAINT fk_procedure_reason_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
+
+ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.detected_issue ADD CONSTRAINT fk_detected_issue_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_subscriber_patient_id_tenant FOREIGN KEY(tenant_id, subscriber_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.provenance ADD CONSTRAINT fk_provenance_ext_migration_run_id_tenant FOREIGN KEY(tenant_id, ext_migration_run_id) REFERENCES admin.migration_run (tenant_id, id);
+
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
+
+ALTER TABLE clinical.encounter ADD CONSTRAINT fk_encounter_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_encounter_id_same_patient FOREIGN KEY(subject_patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_subscriber_related_person_id_tenant FOREIGN KEY(tenant_id, subscriber_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.coverage_card_image ADD CONSTRAINT fk_coverage_card_image_binary_object_id_tenant FOREIGN KEY(tenant_id, binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
+
 ALTER TABLE clinical.provenance ADD CONSTRAINT fk_provenance_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
 
-ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_ext_facility_id_tenant FOREIGN KEY(tenant_id, ext_facility_id) REFERENCES admin.facility (tenant_id, id);
+ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_specimen_id_tenant FOREIGN KEY(tenant_id, specimen_id) REFERENCES clinical.specimen (tenant_id, id);
 
 ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_asserter_related_person_id_same_patient FOREIGN KEY(subject_patient_id, asserter_related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_medication_request_id_same_patient FOREIGN KEY(patient_id, medication_request_id) REFERENCES clinical.medication_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+ALTER TABLE clinical.coverage_card_image ADD CONSTRAINT fk_coverage_card_image_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
 
 ALTER TABLE clinical.provenance_agent ADD CONSTRAINT fk_provenance_agent_on_behalf_of_organization_id_tenant FOREIGN KEY(tenant_id, on_behalf_of_organization_id) REFERENCES clinical.organization (tenant_id, id);
 
 ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_encounter_id_same_patient FOREIGN KEY(subject_patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.specimen ADD CONSTRAINT fk_specimen_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+ALTER TABLE clinical.coverage_class ADD CONSTRAINT fk_coverage_class_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
 
-ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_service_request_id_same_patient FOREIGN KEY(patient_id, service_request_id) REFERENCES clinical.service_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_ext_rescheduled_from_appointment_id_tenant FOREIGN KEY(tenant_id, ext_rescheduled_from_appointment_id) REFERENCES clinical.appointment (tenant_id, id);
+ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_ext_appointment_type_id_tenant FOREIGN KEY(tenant_id, ext_appointment_type_id) REFERENCES admin.appointment_type (tenant_id, id);
 
 ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_recorder_related_person_id_same_patient FOREIGN KEY(subject_patient_id, recorder_related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.coverage_cost_to_beneficiary ADD CONSTRAINT fk_coverage_cost_to_beneficiary_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
 
 ALTER TABLE clinical.provenance_agent ADD CONSTRAINT fk_provenance_agent_provenance_id_tenant FOREIGN KEY(tenant_id, provenance_id) REFERENCES clinical.provenance (tenant_id, id);
 
 ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_ai_suggestion_id_same_patient FOREIGN KEY(patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE clinical.detected_issue ADD CONSTRAINT fk_detected_issue_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+
 ALTER TABLE clinical.provenance_agent ADD CONSTRAINT fk_provenance_agent_who_organization_id_tenant FOREIGN KEY(tenant_id, who_organization_id) REFERENCES clinical.organization (tenant_id, id);
 
-ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_ext_schedule_id_tenant FOREIGN KEY(tenant_id, ext_schedule_id) REFERENCES clinical.schedule (tenant_id, id);
+ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_ext_facility_id_tenant FOREIGN KEY(tenant_id, ext_facility_id) REFERENCES admin.facility (tenant_id, id);
 
 ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_ext_grantor_related_person_id_same_patient FOREIGN KEY(patient_id, ext_grantor_related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE clinical.provenance_agent ADD CONSTRAINT fk_provenance_agent_who_patient_id_tenant FOREIGN KEY(tenant_id, who_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
+ALTER TABLE clinical.coverage_payor ADD CONSTRAINT fk_coverage_payor_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
+
 ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_source_document_reference_id_same_patient FOREIGN KEY(patient_id, source_document_reference_id) REFERENCES clinical.document_reference (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE clinical.coverage_payor ADD CONSTRAINT fk_coverage_payor_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
 
 ALTER TABLE clinical.provenance_agent ADD CONSTRAINT fk_provenance_agent_who_practitioner_id_tenant FOREIGN KEY(tenant_id, who_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_actor_location_id_tenant FOREIGN KEY(tenant_id, actor_location_id) REFERENCES clinical.location (tenant_id, id);
+ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_ext_rescheduled_from_appointment_id_tenant FOREIGN KEY(tenant_id, ext_rescheduled_from_appointment_id) REFERENCES clinical.appointment (tenant_id, id);
+
+ALTER TABLE clinical.coverage_payor ADD CONSTRAINT fk_coverage_payor_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.provenance_agent ADD CONSTRAINT fk_provenance_agent_who_practitioner_role_id_tenant FOREIGN KEY(tenant_id, who_practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
 
 ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_ai_suggestion_id_same_patient FOREIGN KEY(beneficiary_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_actor_patient_id_tenant FOREIGN KEY(tenant_id, actor_patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE clinical.coverage_payor ADD CONSTRAINT fk_coverage_payor_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
 ALTER TABLE clinical.provenance_agent ADD CONSTRAINT fk_provenance_agent_who_related_person_id_tenant FOREIGN KEY(tenant_id, who_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
-ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_policy_holder_related_person_id_same_patient FOREIGN KEY(beneficiary_patient_id, policy_holder_related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_ext_schedule_id_tenant FOREIGN KEY(tenant_id, ext_schedule_id) REFERENCES clinical.schedule (tenant_id, id);
 
-ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_actor_practitioner_id_tenant FOREIGN KEY(tenant_id, actor_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+ALTER TABLE clinical.detected_issue ADD CONSTRAINT fk_detected_issue_author_practitioner_id_tenant FOREIGN KEY(tenant_id, author_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_policy_holder_related_person_id_same_patient FOREIGN KEY(beneficiary_patient_id, policy_holder_related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE clinical.provenance_entity ADD CONSTRAINT fk_provenance_entity_provenance_id_tenant FOREIGN KEY(tenant_id, provenance_id) REFERENCES clinical.provenance (tenant_id, id);
 
 ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_subscriber_related_person_id_same_patient FOREIGN KEY(beneficiary_patient_id, subscriber_related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.detected_issue ADD CONSTRAINT fk_detected_issue_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
 ALTER TABLE clinical.provenance_signature ADD CONSTRAINT fk_provenance_signature_provenance_id_tenant FOREIGN KEY(tenant_id, provenance_id) REFERENCES clinical.provenance (tenant_id, id);
+
+ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_actor_location_id_tenant FOREIGN KEY(tenant_id, actor_location_id) REFERENCES clinical.location (tenant_id, id);
 
 ALTER TABLE clinical.detected_issue ADD CONSTRAINT fk_detected_issue_ai_suggestion_id_same_patient FOREIGN KEY(patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_actor_practitioner_role_id_tenant FOREIGN KEY(tenant_id, actor_practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
+ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_allergy_intolerance_id_tenant FOREIGN KEY(tenant_id, allergy_intolerance_id) REFERENCES clinical.allergy_intolerance (tenant_id, id);
 
 ALTER TABLE clinical.provenance_signature ADD CONSTRAINT fk_provenance_signature_who_practitioner_id_tenant FOREIGN KEY(tenant_id, who_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
-ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_actor_related_person_id_tenant FOREIGN KEY(tenant_id, actor_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_actor_patient_id_tenant FOREIGN KEY(tenant_id, actor_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.related_person ADD CONSTRAINT fk_related_person_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
+ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+
 ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_encounter_id_same_patient FOREIGN KEY(subject_patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_appointment_id_tenant FOREIGN KEY(tenant_id, appointment_id) REFERENCES clinical.appointment (tenant_id, id);
+ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_actor_practitioner_id_tenant FOREIGN KEY(tenant_id, actor_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE clinical.related_person_relationship ADD CONSTRAINT fk_related_person_relationship_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
 ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_detected_issue_id_tenant FOREIGN KEY(tenant_id, detected_issue_id) REFERENCES clinical.detected_issue (tenant_id, id);
+
 ALTER TABLE clinical.schedule ADD CONSTRAINT fk_schedule_ext_facility_id_tenant FOREIGN KEY(tenant_id, ext_facility_id) REFERENCES admin.facility (tenant_id, id);
+
+ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE admin.app_user ADD CONSTRAINT fk_app_user_practitioner_id_practitioner FOREIGN KEY(practitioner_id) REFERENCES clinical.practitioner (id);
 
 ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_context_encounter_id_same_patient FOREIGN KEY(subject_patient_id, context_encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.appointment_reason ADD CONSTRAINT fk_appointment_reason_appointment_id_tenant FOREIGN KEY(tenant_id, appointment_id) REFERENCES clinical.appointment (tenant_id, id);
+ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_actor_practitioner_role_id_tenant FOREIGN KEY(tenant_id, actor_practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
 
 ALTER TABLE admin.remittance ADD CONSTRAINT fk_remittance_inbound_message_id_tenant FOREIGN KEY(tenant_id, inbound_message_id) REFERENCES admin.integration_message (tenant_id, id);
 
 ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_ext_composition_id_same_patient FOREIGN KEY(subject_patient_id, ext_composition_id) REFERENCES clinical.composition (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.appointment_reason ADD CONSTRAINT fk_appointment_reason_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
 
-ALTER TABLE clinical.provenance ADD CONSTRAINT fk_provenance_ext_ai_suggestion_id_ai_suggestion FOREIGN KEY(ext_ai_suggestion_id) REFERENCES admin.ai_suggestion (id);
+ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_actor_related_person_id_tenant FOREIGN KEY(tenant_id, actor_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
-ALTER TABLE clinical.appointment_reason ADD CONSTRAINT fk_appointment_reason_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_medication_statement_id_tenant FOREIGN KEY(tenant_id, medication_statement_id) REFERENCES clinical.medication_statement (tenant_id, id);
+
+ALTER TABLE clinical.appointment_participant ADD CONSTRAINT fk_appointment_participant_appointment_id_tenant FOREIGN KEY(tenant_id, appointment_id) REFERENCES clinical.appointment (tenant_id, id);
 
 ALTER TABLE admin.remittance_adjustment ADD CONSTRAINT fk_remittance_adjustment_remittance_claim_id_tenant FOREIGN KEY(tenant_id, remittance_claim_id) REFERENCES admin.remittance_claim (tenant_id, id);
 
 ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_appointment_id_same_patient FOREIGN KEY(patient_id, appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.appointment_reason ADD CONSTRAINT fk_appointment_reason_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
+ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
 
 ALTER TABLE admin.remittance_adjustment ADD CONSTRAINT fk_remittance_adjustment_remittance_service_line_id_tenant FOREIGN KEY(tenant_id, remittance_service_line_id) REFERENCES admin.remittance_service_line (tenant_id, id);
 
-ALTER TABLE clinical.medication_dispense ADD CONSTRAINT fk_medication_dispense_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
 
-ALTER TABLE admin.appointment_type ADD CONSTRAINT fk_appointment_type_default_note_template_id_tenant FOREIGN KEY(tenant_id, default_note_template_id) REFERENCES admin.note_template (tenant_id, id);
+ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
 
 ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_coverage_id_same_patient FOREIGN KEY(patient_id, coverage_id) REFERENCES clinical.coverage (beneficiary_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.appointment_reason ADD CONSTRAINT fk_appointment_reason_appointment_id_tenant FOREIGN KEY(tenant_id, appointment_id) REFERENCES clinical.appointment (tenant_id, id);
+
+ALTER TABLE clinical.appointment_reason ADD CONSTRAINT fk_appointment_reason_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+
+ALTER TABLE clinical.medication_dispense ADD CONSTRAINT fk_medication_dispense_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.detected_issue_mitigation ADD CONSTRAINT fk_detected_issue_mitigation_author_practitioner_id_tenant FOREIGN KEY(tenant_id, author_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE admin.remittance_claim ADD CONSTRAINT fk_remittance_claim_claim_id_tenant FOREIGN KEY(tenant_id, claim_id) REFERENCES admin.claim (tenant_id, id);
 
+ALTER TABLE clinical.appointment_reason ADD CONSTRAINT fk_appointment_reason_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE clinical.detected_issue_mitigation ADD CONSTRAINT fk_detected_issue_mitigation_detected_issue_id_tenant FOREIGN KEY(tenant_id, detected_issue_id) REFERENCES clinical.detected_issue (tenant_id, id);
+
+ALTER TABLE clinical.provenance ADD CONSTRAINT fk_provenance_ext_ai_suggestion_id_ai_suggestion FOREIGN KEY(ext_ai_suggestion_id) REFERENCES admin.ai_suggestion (id);
+
 ALTER TABLE clinical.encounter ADD CONSTRAINT fk_encounter_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_binary_object_id_tenant FOREIGN KEY(tenant_id, binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
+ALTER TABLE clinical.appointment_reason ADD CONSTRAINT fk_appointment_reason_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
+
+ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
 ALTER TABLE admin.remittance_claim ADD CONSTRAINT fk_remittance_claim_remittance_id_tenant FOREIGN KEY(tenant_id, remittance_id) REFERENCES admin.remittance (tenant_id, id);
 
 ALTER TABLE clinical.encounter ADD CONSTRAINT fk_encounter_appointment_id_same_patient FOREIGN KEY(subject_patient_id, appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE admin.appointment_type ADD CONSTRAINT fk_appointment_type_default_note_template_id_tenant FOREIGN KEY(tenant_id, default_note_template_id) REFERENCES admin.note_template (tenant_id, id);
+
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_medication_request_id_same_patient FOREIGN KEY(patient_id, medication_request_id) REFERENCES clinical.medication_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE admin.remittance_remark ADD CONSTRAINT fk_remittance_remark_remittance_claim_id_tenant FOREIGN KEY(tenant_id, remittance_claim_id) REFERENCES admin.remittance_claim (tenant_id, id);
 
-ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_consent_id_tenant FOREIGN KEY(tenant_id, consent_id) REFERENCES clinical.consent (tenant_id, id);
-
 ALTER TABLE admin.remittance_remark ADD CONSTRAINT fk_remittance_remark_remittance_service_line_id_tenant FOREIGN KEY(tenant_id, remittance_service_line_id) REFERENCES admin.remittance_service_line (tenant_id, id);
+
+ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_ext_inbound_message_id_tenant FOREIGN KEY(tenant_id, ext_inbound_message_id) REFERENCES admin.integration_message (tenant_id, id);
 
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_related_transaction_id_same_patient FOREIGN KEY(patient_id, related_transaction_id) REFERENCES admin.erx_transaction (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_binary_object_id_tenant FOREIGN KEY(tenant_id, binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
+
+ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_ext_lab_provider_id_tenant FOREIGN KEY(tenant_id, ext_lab_provider_id) REFERENCES admin.lab_provider (tenant_id, id);
 
 ALTER TABLE admin.remittance_service_line ADD CONSTRAINT fk_remittance_service_line_claim_line_id_tenant FOREIGN KEY(tenant_id, claim_line_id) REFERENCES admin.claim_line (tenant_id, id);
 
-ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.remittance_service_line ADD CONSTRAINT fk_remittance_service_line_remittance_claim_id_tenant FOREIGN KEY(tenant_id, remittance_claim_id) REFERENCES admin.remittance_claim (tenant_id, id);
 
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_recorder_related_person_id_tenant FOREIGN KEY(tenant_id, recorder_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
 ALTER TABLE clinical.family_member_history ADD CONSTRAINT fk_family_member_history_ai_suggestion_id_same_patient FOREIGN KEY(patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_consent_id_tenant FOREIGN KEY(tenant_id, consent_id) REFERENCES clinical.consent (tenant_id, id);
 
-ALTER TABLE admin.availability_rule_appointment_type ADD CONSTRAINT fk_availability_rule_appointment_type_appointment_type_013e30fd FOREIGN KEY(tenant_id, appointment_type_id) REFERENCES admin.appointment_type (tenant_id, id);
+ALTER TABLE clinical.diagnostic_report_based_on ADD CONSTRAINT fk_diagnostic_report_based_on_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
 
 ALTER TABLE admin.result_acknowledgement ADD CONSTRAINT fk_result_acknowledgement_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
 
 ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_ai_suggestion_id_same_patient FOREIGN KEY(patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE clinical.diagnostic_report_based_on ADD CONSTRAINT fk_diagnostic_report_based_on_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
+
 ALTER TABLE admin.schedule_exception ADD CONSTRAINT fk_schedule_exception_schedule_id_tenant FOREIGN KEY(tenant_id, schedule_id) REFERENCES clinical.schedule (tenant_id, id);
+
+ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE admin.availability_rule_appointment_type ADD CONSTRAINT fk_availability_rule_appointment_type_rule_id_tenant FOREIGN KEY(tenant_id, rule_id) REFERENCES admin.schedule_availability_rule (tenant_id, id);
+ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+ALTER TABLE clinical.diagnostic_report_category ADD CONSTRAINT fk_diagnostic_report_category_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
 
 ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_coverage_id_same_patient FOREIGN KEY(patient_id, coverage_id) REFERENCES clinical.coverage (beneficiary_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE audit.break_glass_access ADD CONSTRAINT fk_break_glass_access_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE clinical.diagnostic_report_coding ADD CONSTRAINT fk_diagnostic_report_coding_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
 
 ALTER TABLE clinical.schedule_actor ADD CONSTRAINT fk_schedule_actor_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
 
 ALTER TABLE clinical.schedule_actor ADD CONSTRAINT fk_schedule_actor_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+ALTER TABLE admin.availability_rule_appointment_type ADD CONSTRAINT fk_availability_rule_appointment_type_appointment_type_013e30fd FOREIGN KEY(tenant_id, appointment_type_id) REFERENCES admin.appointment_type (tenant_id, id);
 
 ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.schedule_actor ADD CONSTRAINT fk_schedule_actor_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
+ALTER TABLE clinical.diagnostic_report_presented_form ADD CONSTRAINT fk_diagnostic_report_presented_form_binary_object_id_tenant FOREIGN KEY(tenant_id, binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
 
-ALTER TABLE admin.care_team_member ADD CONSTRAINT fk_care_team_member_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE clinical.schedule_actor ADD CONSTRAINT fk_schedule_actor_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
 
 ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_requisition_document_id_same_patient FOREIGN KEY(patient_id, requisition_document_id) REFERENCES clinical.document_reference (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE admin.care_team_member ADD CONSTRAINT fk_care_team_member_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+ALTER TABLE clinical.diagnostic_report_performer ADD CONSTRAINT fk_diagnostic_report_performer_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
+
+ALTER TABLE clinical.diagnostic_report_performer ADD CONSTRAINT fk_diagnostic_report_performer_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
 
 ALTER TABLE clinical.schedule_actor ADD CONSTRAINT fk_schedule_actor_schedule_id_tenant FOREIGN KEY(tenant_id, schedule_id) REFERENCES clinical.schedule (tenant_id, id);
 
-ALTER TABLE clinical.medication_dispense ADD CONSTRAINT fk_medication_dispense_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+ALTER TABLE admin.availability_rule_appointment_type ADD CONSTRAINT fk_availability_rule_appointment_type_rule_id_tenant FOREIGN KEY(tenant_id, rule_id) REFERENCES admin.schedule_availability_rule (tenant_id, id);
 
-ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+ALTER TABLE clinical.medication_dispense ADD CONSTRAINT fk_medication_dispense_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE admin.schedule_availability_rule ADD CONSTRAINT fk_schedule_availability_rule_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
 
+ALTER TABLE clinical.diagnostic_report_performer ADD CONSTRAINT fk_diagnostic_report_performer_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE audit.break_glass_access ADD CONSTRAINT fk_break_glass_access_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
 ALTER TABLE clinical.medication_dispense ADD CONSTRAINT fk_medication_dispense_authorizing_prescription_id_same_patient FOREIGN KEY(subject_patient_id, authorizing_prescription_id) REFERENCES clinical.medication_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
 ALTER TABLE admin.schedule_availability_rule ADD CONSTRAINT fk_schedule_availability_rule_schedule_id_tenant FOREIGN KEY(tenant_id, schedule_id) REFERENCES clinical.schedule (tenant_id, id);
 
-ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
+ALTER TABLE clinical.diagnostic_report_performer ADD CONSTRAINT fk_diagnostic_report_performer_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
 
 ALTER TABLE clinical.medication_dispense ADD CONSTRAINT fk_medication_dispense_context_encounter_id_same_patient FOREIGN KEY(subject_patient_id, context_encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
 ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
-ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_rendering_practitioner_id_tenant FOREIGN KEY(tenant_id, rendering_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+ALTER TABLE clinical.diagnostic_report_presented_form ADD CONSTRAINT fk_diagnostic_report_presented_form_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
+
+ALTER TABLE admin.care_team_member ADD CONSTRAINT fk_care_team_member_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.care_team_member ADD CONSTRAINT fk_care_team_member_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_encounter_id_same_patient FOREIGN KEY(subject_patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
-ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_superbill_id_tenant FOREIGN KEY(tenant_id, superbill_id) REFERENCES admin.superbill (tenant_id, id);
-
-ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_prior_prescription_id_same_patient FOREIGN KEY(subject_patient_id, prior_prescription_id) REFERENCES clinical.medication_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_ext_compendium_test_id_tenant FOREIGN KEY(tenant_id, ext_compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
+ALTER TABLE clinical.diagnostic_report_result ADD CONSTRAINT fk_diagnostic_report_result_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
 
 ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE admin.charge_modifier ADD CONSTRAINT fk_charge_modifier_charge_id_tenant FOREIGN KEY(tenant_id, charge_id) REFERENCES admin.charge (tenant_id, id);
+ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_prior_prescription_id_same_patient FOREIGN KEY(subject_patient_id, prior_prescription_id) REFERENCES clinical.medication_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
+
+ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_information_source_organizatio_cfb4c219 FOREIGN KEY(tenant_id, information_source_organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_ext_compendium_test_id_tenant FOREIGN KEY(tenant_id, ext_compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
+
+ALTER TABLE clinical.diagnostic_report_result ADD CONSTRAINT fk_diagnostic_report_result_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE clinical.human_name ADD CONSTRAINT fk_human_name_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_information_source_patient_id_tenant FOREIGN KEY(tenant_id, information_source_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.diagnostic_report_specimen ADD CONSTRAINT fk_diagnostic_report_specimen_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
+
+ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_rendering_practitioner_id_tenant FOREIGN KEY(tenant_id, rendering_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_based_on_medication_request_id_bf438781 FOREIGN KEY(subject_patient_id, based_on_medication_request_id) REFERENCES clinical.medication_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_information_source_practitione_98904e07 FOREIGN KEY(tenant_id, information_source_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
 ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_ext_lab_requisition_id_tenant FOREIGN KEY(tenant_id, ext_lab_requisition_id) REFERENCES admin.lab_requisition (tenant_id, id);
+
+ALTER TABLE clinical.diagnostic_report_specimen ADD CONSTRAINT fk_diagnostic_report_specimen_specimen_id_tenant FOREIGN KEY(tenant_id, specimen_id) REFERENCES clinical.specimen (tenant_id, id);
+
+ALTER TABLE clinical.human_name ADD CONSTRAINT fk_human_name_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_context_encounter_id_same_patient FOREIGN KEY(subject_patient_id, context_encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+
+ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_information_source_related_per_e1182d74 FOREIGN KEY(tenant_id, information_source_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
 ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_ext_signed_by_practitioner_id_tenant FOREIGN KEY(tenant_id, ext_signed_by_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE admin.tenant ADD CONSTRAINT fk_tenant_organization_id_organization FOREIGN KEY(organization_id) REFERENCES clinical.organization (id) ON DELETE RESTRICT;
+ALTER TABLE clinical.human_name ADD CONSTRAINT fk_human_name_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
-ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
+ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_superbill_id_tenant FOREIGN KEY(tenant_id, superbill_id) REFERENCES admin.superbill (tenant_id, id);
 
 ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_requester_organization_id_tenant FOREIGN KEY(tenant_id, requester_organization_id) REFERENCES clinical.organization (tenant_id, id);
 
 ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_information_source_related_per_6863e4fb FOREIGN KEY(subject_patient_id, information_source_related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_authenticator_practitioner_id_tenant FOREIGN KEY(tenant_id, authenticator_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_medication_medication_id_tenant FOREIGN KEY(tenant_id, medication_medication_id) REFERENCES clinical.medication (tenant_id, id);
+
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_recorder_practitioner_id_tenant FOREIGN KEY(tenant_id, recorder_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
+
 ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.charge_modifier ADD CONSTRAINT fk_charge_modifier_charge_id_tenant FOREIGN KEY(tenant_id, charge_id) REFERENCES admin.charge (tenant_id, id);
+
+ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_context_encounter_id_tenant FOREIGN KEY(tenant_id, context_encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
+ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_requester_practitioner_id_tenant FOREIGN KEY(tenant_id, requester_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_original_claim_id_tenant FOREIGN KEY(tenant_id, original_claim_id) REFERENCES admin.claim (tenant_id, id);
-
 ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_based_on_service_request_id_same_patient FOREIGN KEY(subject_patient_id, based_on_service_request_id) REFERENCES clinical.service_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+ALTER TABLE admin.migration_reconciliation ADD CONSTRAINT fk_migration_reconciliation_migration_run_id_tenant FOREIGN KEY(tenant_id, migration_run_id) REFERENCES admin.migration_run (tenant_id, id);
+
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
+ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_custodian_organization_id_tenant FOREIGN KEY(tenant_id, custodian_organization_id) REFERENCES clinical.organization (tenant_id, id);
 
 ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_requester_practitioner_role_id_tenant FOREIGN KEY(tenant_id, requester_practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
 
-ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
 
-ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_outbound_message_id_tenant FOREIGN KEY(tenant_id, outbound_message_id) REFERENCES admin.integration_message (tenant_id, id);
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
+
+ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_ext_composition_id_tenant FOREIGN KEY(tenant_id, ext_composition_id) REFERENCES clinical.composition (tenant_id, id);
+
+ALTER TABLE clinical.medication_statement_reason ADD CONSTRAINT fk_medication_statement_reason_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+
+ALTER TABLE clinical.medication_statement_reason ADD CONSTRAINT fk_medication_statement_reason_medication_statement_id_tenant FOREIGN KEY(tenant_id, medication_statement_id) REFERENCES clinical.medication_statement (tenant_id, id);
+
+ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_encounter_id_same_patient FOREIGN KEY(subject_patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
 ALTER TABLE admin.service_request_aoe_answer ADD CONSTRAINT fk_service_request_aoe_answer_question_id_tenant FOREIGN KEY(tenant_id, question_id) REFERENCES admin.compendium_aoe_question (tenant_id, id);
+
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_specimen_id_same_patient FOREIGN KEY(subject_patient_id, specimen_id) REFERENCES clinical.specimen (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE clinical.medication_statement_reason ADD CONSTRAINT fk_medication_statement_reason_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
 
 ALTER TABLE admin.service_request_aoe_answer ADD CONSTRAINT fk_service_request_aoe_answer_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
 
-ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_superbill_id_tenant FOREIGN KEY(tenant_id, superbill_id) REFERENCES admin.superbill (tenant_id, id);
+ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_original_claim_id_tenant FOREIGN KEY(tenant_id, original_claim_id) REFERENCES admin.claim (tenant_id, id);
+
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
+
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
 
 ALTER TABLE admin.outbound_communication ADD CONSTRAINT fk_outbound_communication_appointment_id_same_patient FOREIGN KEY(patient_id, appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
-ALTER TABLE admin.claim_diagnosis ADD CONSTRAINT fk_claim_diagnosis_claim_id_tenant FOREIGN KEY(tenant_id, claim_id) REFERENCES admin.claim (tenant_id, id);
+ALTER TABLE admin.migration_issue ADD CONSTRAINT fk_migration_issue_migration_run_id_tenant FOREIGN KEY(tenant_id, migration_run_id) REFERENCES admin.migration_run (tenant_id, id);
 
 ALTER TABLE admin.service_request_aoe_answer ADD CONSTRAINT fk_service_request_aoe_answer_value_option_id_tenant FOREIGN KEY(tenant_id, value_option_id) REFERENCES admin.compendium_aoe_option (tenant_id, id);
 
+ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_outbound_message_id_tenant FOREIGN KEY(tenant_id, outbound_message_id) REFERENCES admin.integration_message (tenant_id, id);
+
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE admin.migration_record_map ADD CONSTRAINT fk_migration_record_map_migration_run_id_tenant FOREIGN KEY(tenant_id, migration_run_id) REFERENCES admin.migration_run (tenant_id, id);
+
+ALTER TABLE clinical.patient ADD CONSTRAINT fk_patient_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
 ALTER TABLE clinical.patient_link ADD CONSTRAINT fk_patient_link_other_related_person_id_same_patient FOREIGN KEY(patient_id, other_related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+
+ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
 ALTER TABLE clinical.service_request_category ADD CONSTRAINT fk_service_request_category_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
+
+ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_appointment_id_same_patient FOREIGN KEY(patient_id, appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE clinical.service_request_coding ADD CONSTRAINT fk_service_request_coding_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
 
+ALTER TABLE admin.note_template_section ADD CONSTRAINT fk_note_template_section_template_id_tenant FOREIGN KEY(tenant_id, template_id) REFERENCES admin.note_template (tenant_id, id);
+
+ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_superbill_id_tenant FOREIGN KEY(tenant_id, superbill_id) REFERENCES admin.superbill (tenant_id, id);
+
+ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
+ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
+
+ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.migration_run ADD CONSTRAINT fk_migration_run_log_binary_id_tenant FOREIGN KEY(tenant_id, log_binary_id) REFERENCES admin.binary_object (tenant_id, id);
+
+ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_refund_of_payment_id_same_patient FOREIGN KEY(patient_id, refund_of_payment_id) REFERENCES admin.patient_payment (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
+
+ALTER TABLE admin.migration_run ADD CONSTRAINT fk_migration_run_rollback_plan_document_id_tenant FOREIGN KEY(tenant_id, rollback_plan_document_id) REFERENCES clinical.document_reference (tenant_id, id);
+
+ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.service_request_insurance ADD CONSTRAINT fk_service_request_insurance_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
+
+ALTER TABLE admin.claim_diagnosis ADD CONSTRAINT fk_claim_diagnosis_claim_id_tenant FOREIGN KEY(tenant_id, claim_id) REFERENCES admin.claim (tenant_id, id);
+
+ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_manufacturer_organization_id_tenant FOREIGN KEY(tenant_id, manufacturer_organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE clinical.document_reference_category ADD CONSTRAINT fk_document_reference_category_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
+
+ALTER TABLE clinical.service_request_insurance ADD CONSTRAINT fk_service_request_insurance_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
+
+ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.document_reference_content ADD CONSTRAINT fk_document_reference_content_attachment_binary_object_3183b5a4 FOREIGN KEY(tenant_id, attachment_binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
+
+ALTER TABLE clinical.service_request_specimen ADD CONSTRAINT fk_service_request_specimen_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
+
 ALTER TABLE admin.claim_line ADD CONSTRAINT fk_claim_line_charge_id_tenant FOREIGN KEY(tenant_id, charge_id) REFERENCES admin.charge (tenant_id, id);
 
 ALTER TABLE admin.claim_line ADD CONSTRAINT fk_claim_line_claim_id_tenant FOREIGN KEY(tenant_id, claim_id) REFERENCES admin.claim (tenant_id, id);
 
-ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_based_on_service_request_id_tenant FOREIGN KEY(tenant_id, based_on_service_request_id) REFERENCES clinical.service_request (tenant_id, id);
 
-ALTER TABLE admin.claim_line_modifier ADD CONSTRAINT fk_claim_line_modifier_claim_line_id_tenant FOREIGN KEY(tenant_id, claim_line_id) REFERENCES admin.claim_line (tenant_id, id);
-
-ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_refund_of_payment_id_same_patient FOREIGN KEY(patient_id, refund_of_payment_id) REFERENCES admin.patient_payment (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.service_request_insurance ADD CONSTRAINT fk_service_request_insurance_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
-
-ALTER TABLE clinical.service_request_insurance ADD CONSTRAINT fk_service_request_insurance_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
-
-ALTER TABLE admin.communication_preference ADD CONSTRAINT fk_communication_preference_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.service_request_specimen ADD CONSTRAINT fk_service_request_specimen_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
-
-ALTER TABLE clinical.patient ADD CONSTRAINT fk_patient_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
-ALTER TABLE admin.claim_status_event ADD CONSTRAINT fk_claim_status_event_claim_id_tenant FOREIGN KEY(tenant_id, claim_id) REFERENCES admin.claim (tenant_id, id);
+ALTER TABLE clinical.document_reference_content ADD CONSTRAINT fk_document_reference_content_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
 
 ALTER TABLE clinical.service_request_performer ADD CONSTRAINT fk_service_request_performer_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
 
@@ -7737,99 +8143,147 @@ ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_based_on_service_requ
 
 ALTER TABLE clinical.service_request_performer ADD CONSTRAINT fk_service_request_performer_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE admin.claim_status_event ADD CONSTRAINT fk_claim_status_event_integration_message_id_tenant FOREIGN KEY(tenant_id, integration_message_id) REFERENCES admin.integration_message (tenant_id, id);
+ALTER TABLE admin.claim_line_modifier ADD CONSTRAINT fk_claim_line_modifier_claim_line_id_tenant FOREIGN KEY(tenant_id, claim_line_id) REFERENCES admin.claim_line (tenant_id, id);
+
+ALTER TABLE admin.integration_endpoint_setting ADD CONSTRAINT fk_integration_endpoint_setting_endpoint_id_tenant FOREIGN KEY(tenant_id, endpoint_id) REFERENCES admin.integration_endpoint (tenant_id, id);
+
+ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
+ALTER TABLE clinical.document_reference_relates_to ADD CONSTRAINT fk_document_reference_relates_to_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
 
 ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_encounter_id_same_patient FOREIGN KEY(subject_patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE clinical.service_request_performer ADD CONSTRAINT fk_service_request_performer_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_specimen_id_tenant FOREIGN KEY(tenant_id, specimen_id) REFERENCES clinical.specimen (tenant_id, id);
+
+ALTER TABLE clinical.document_reference_relates_to ADD CONSTRAINT fk_document_reference_relates_to_target_document_refer_66cbdf76 FOREIGN KEY(tenant_id, target_document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
 
 ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE clinical.service_request_performer ADD CONSTRAINT fk_service_request_performer_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
 
-ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+ALTER TABLE admin.communication_preference ADD CONSTRAINT fk_communication_preference_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE admin.compendium_aoe_option ADD CONSTRAINT fk_compendium_aoe_option_question_id_tenant FOREIGN KEY(tenant_id, question_id) REFERENCES admin.compendium_aoe_question (tenant_id, id);
+ALTER TABLE admin.integration_message ADD CONSTRAINT fk_integration_message_endpoint_id_tenant FOREIGN KEY(tenant_id, endpoint_id) REFERENCES admin.integration_endpoint (tenant_id, id);
+
+ALTER TABLE admin.claim_status_event ADD CONSTRAINT fk_claim_status_event_claim_id_tenant FOREIGN KEY(tenant_id, claim_id) REFERENCES admin.claim (tenant_id, id);
+
+ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_encounter_id_same_patient FOREIGN KEY(subject_patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE clinical.service_request_reason ADD CONSTRAINT fk_service_request_reason_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
 
+ALTER TABLE admin.integration_message ADD CONSTRAINT fk_integration_message_payload_binary_id_tenant FOREIGN KEY(tenant_id, payload_binary_id) REFERENCES admin.binary_object (tenant_id, id);
+
 ALTER TABLE clinical.service_request ADD CONSTRAINT fk_service_request_ext_lab_requisition_id_same_patient FOREIGN KEY(subject_patient_id, ext_lab_requisition_id) REFERENCES admin.lab_requisition (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.claim_status_event ADD CONSTRAINT fk_claim_status_event_integration_message_id_tenant FOREIGN KEY(tenant_id, integration_message_id) REFERENCES admin.integration_message (tenant_id, id);
+
+ALTER TABLE clinical.observation_category ADD CONSTRAINT fk_observation_category_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE clinical.dosage ADD CONSTRAINT fk_dosage_medication_dispense_id_tenant FOREIGN KEY(tenant_id, medication_dispense_id) REFERENCES clinical.medication_dispense (tenant_id, id);
+
+ALTER TABLE admin.integration_message ADD CONSTRAINT fk_integration_message_response_message_id_tenant FOREIGN KEY(tenant_id, response_message_id) REFERENCES admin.integration_message (tenant_id, id);
 
 ALTER TABLE clinical.service_request_reason ADD CONSTRAINT fk_service_request_reason_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
 
-ALTER TABLE admin.compendium_aoe_question ADD CONSTRAINT fk_compendium_aoe_question_compendium_test_id_tenant FOREIGN KEY(tenant_id, compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
+ALTER TABLE clinical.observation_coding ADD CONSTRAINT fk_observation_coding_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE clinical.dosage ADD CONSTRAINT fk_dosage_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
+
+ALTER TABLE admin.lab_account ADD CONSTRAINT fk_lab_account_facility_id_tenant FOREIGN KEY(tenant_id, facility_id) REFERENCES admin.facility (tenant_id, id);
 
 ALTER TABLE clinical.service_request_reason ADD CONSTRAINT fk_service_request_reason_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
 
-ALTER TABLE admin.compendium_covered_diagnosis ADD CONSTRAINT fk_compendium_covered_diagnosis_compendium_test_id_tenant FOREIGN KEY(tenant_id, compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+ALTER TABLE clinical.dosage ADD CONSTRAINT fk_dosage_medication_statement_id_tenant FOREIGN KEY(tenant_id, medication_statement_id) REFERENCES clinical.medication_statement (tenant_id, id);
 
 ALTER TABLE clinical.specimen ADD CONSTRAINT fk_specimen_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE clinical.observation_has_member ADD CONSTRAINT fk_observation_has_member_member_observation_id_tenant FOREIGN KEY(tenant_id, member_observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE admin.lab_account ADD CONSTRAINT fk_lab_account_lab_provider_id_tenant FOREIGN KEY(tenant_id, lab_provider_id) REFERENCES admin.lab_provider (tenant_id, id);
+
 ALTER TABLE clinical.service_request_specimen ADD CONSTRAINT fk_service_request_specimen_specimen_id_tenant FOREIGN KEY(tenant_id, specimen_id) REFERENCES clinical.specimen (tenant_id, id);
 
+ALTER TABLE admin.compendium_aoe_option ADD CONSTRAINT fk_compendium_aoe_option_question_id_tenant FOREIGN KEY(tenant_id, question_id) REFERENCES admin.compendium_aoe_question (tenant_id, id);
+
 ALTER TABLE admin.superbill ADD CONSTRAINT fk_superbill_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.observation_component ADD CONSTRAINT fk_observation_component_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE admin.lab_account_bill_to ADD CONSTRAINT fk_lab_account_bill_to_lab_account_id_tenant FOREIGN KEY(tenant_id, lab_account_id) REFERENCES admin.lab_account (tenant_id, id);
+
+ALTER TABLE clinical.observation_has_member ADD CONSTRAINT fk_observation_has_member_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE admin.compendium_aoe_question ADD CONSTRAINT fk_compendium_aoe_question_compendium_test_id_tenant FOREIGN KEY(tenant_id, compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
+
+ALTER TABLE admin.duplicate_candidate ADD CONSTRAINT fk_duplicate_candidate_patient_a_id_tenant FOREIGN KEY(tenant_id, patient_a_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_appointment_id_same_patient FOREIGN KEY(patient_id, appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.duplicate_candidate ADD CONSTRAINT fk_duplicate_candidate_patient_b_id_tenant FOREIGN KEY(tenant_id, patient_b_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.specimen ADD CONSTRAINT fk_specimen_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+
+ALTER TABLE clinical.observation_interpretation ADD CONSTRAINT fk_observation_interpretation_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
+
+ALTER TABLE admin.service_request_status_event ADD CONSTRAINT fk_service_request_status_event_integration_message_id_tenant FOREIGN KEY(tenant_id, integration_message_id) REFERENCES admin.integration_message (tenant_id, id);
+
+ALTER TABLE admin.service_request_status_event ADD CONSTRAINT fk_service_request_status_event_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
+
+ALTER TABLE admin.duplicate_match_evidence ADD CONSTRAINT fk_duplicate_match_evidence_duplicate_candidate_id_tenant FOREIGN KEY(tenant_id, duplicate_candidate_id) REFERENCES admin.duplicate_candidate (tenant_id, id);
+
+ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_claim_id_same_patient FOREIGN KEY(patient_id, claim_id) REFERENCES admin.claim (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.compendium_covered_diagnosis ADD CONSTRAINT fk_compendium_covered_diagnosis_compendium_test_id_tenant FOREIGN KEY(tenant_id, compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
+
+ALTER TABLE admin.lab_provider ADD CONSTRAINT fk_lab_provider_integration_endpoint_id_tenant FOREIGN KEY(tenant_id, integration_endpoint_id) REFERENCES admin.integration_endpoint (tenant_id, id);
+
+ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_composition_id_same_patient FOREIGN KEY(patient_id, composition_id) REFERENCES clinical.composition (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.observation_performer ADD CONSTRAINT fk_observation_performer_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+
+ALTER TABLE clinical.specimen ADD CONSTRAINT fk_specimen_collection_collector_practitioner_id_tenant FOREIGN KEY(tenant_id, collection_collector_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+
+ALTER TABLE admin.lab_provider ADD CONSTRAINT fk_lab_provider_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_diagnostic_report_id_same_patient FOREIGN KEY(patient_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.observation_performer ADD CONSTRAINT fk_observation_performer_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE admin.compendium_panel_member ADD CONSTRAINT fk_compendium_panel_member_member_test_id_tenant FOREIGN KEY(tenant_id, member_test_id) REFERENCES admin.compendium_test (tenant_id, id);
 
 ALTER TABLE admin.compendium_panel_member ADD CONSTRAINT fk_compendium_panel_member_panel_test_id_tenant FOREIGN KEY(tenant_id, panel_test_id) REFERENCES admin.compendium_test (tenant_id, id);
 
-ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_appointment_id_same_patient FOREIGN KEY(patient_id, appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+ALTER TABLE admin.eligibility_benefit ADD CONSTRAINT fk_eligibility_benefit_eligibility_check_id_tenant FOREIGN KEY(tenant_id, eligibility_check_id) REFERENCES admin.eligibility_check (tenant_id, id);
 
-ALTER TABLE clinical.specimen ADD CONSTRAINT fk_specimen_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE admin.compendium_test ADD CONSTRAINT fk_compendium_test_lab_provider_id_tenant FOREIGN KEY(tenant_id, lab_provider_id) REFERENCES admin.lab_provider (tenant_id, id);
-
-ALTER TABLE admin.service_request_status_event ADD CONSTRAINT fk_service_request_status_event_integration_message_id_tenant FOREIGN KEY(tenant_id, integration_message_id) REFERENCES admin.integration_message (tenant_id, id);
-
-ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_claim_id_same_patient FOREIGN KEY(patient_id, claim_id) REFERENCES admin.claim (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE admin.service_request_status_event ADD CONSTRAINT fk_service_request_status_event_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
-
-ALTER TABLE clinical.encounter ADD CONSTRAINT fk_encounter_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
-ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_composition_id_same_patient FOREIGN KEY(patient_id, composition_id) REFERENCES clinical.composition (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
-ALTER TABLE clinical.specimen ADD CONSTRAINT fk_specimen_collection_collector_practitioner_id_tenant FOREIGN KEY(tenant_id, collection_collector_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_diagnostic_report_id_same_patient FOREIGN KEY(patient_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE admin.compendium_test_code ADD CONSTRAINT fk_compendium_test_code_compendium_test_id_tenant FOREIGN KEY(tenant_id, compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
-
-ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
-ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_appointment_id_tenant FOREIGN KEY(tenant_id, appointment_id) REFERENCES clinical.appointment (tenant_id, id);
+ALTER TABLE clinical.observation_performer ADD CONSTRAINT fk_observation_performer_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.specimen ADD CONSTRAINT fk_specimen_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.detected_issue ADD CONSTRAINT fk_detected_issue_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
-ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_custodian_organization_id_tenant FOREIGN KEY(tenant_id, custodian_organization_id) REFERENCES clinical.organization (tenant_id, id);
+ALTER TABLE admin.compendium_test ADD CONSTRAINT fk_compendium_test_lab_provider_id_tenant FOREIGN KEY(tenant_id, lab_provider_id) REFERENCES admin.lab_provider (tenant_id, id);
 
 ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_document_reference_id_same_patient FOREIGN KEY(patient_id, document_reference_id) REFERENCES clinical.document_reference (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_facility_id_tenant FOREIGN KEY(tenant_id, facility_id) REFERENCES admin.facility (tenant_id, id);
 
-ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
+ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_appointment_id_tenant FOREIGN KEY(tenant_id, appointment_id) REFERENCES clinical.appointment (tenant_id, id);
 
 ALTER TABLE admin.superbill ADD CONSTRAINT fk_superbill_billing_practitioner_id_tenant FOREIGN KEY(tenant_id, billing_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE clinical.observation_performer ADD CONSTRAINT fk_observation_performer_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
 
-ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_subscriber_related_person_id_tenant FOREIGN KEY(tenant_id, subscriber_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_lab_account_id_tenant FOREIGN KEY(tenant_id, lab_account_id) REFERENCES admin.lab_account (tenant_id, id);
 
@@ -7837,9 +8291,11 @@ ALTER TABLE admin.superbill ADD CONSTRAINT fk_superbill_encounter_id_tenant FORE
 
 ALTER TABLE clinical.observation_performer ADD CONSTRAINT fk_observation_performer_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
 
-ALTER TABLE clinical.coverage_card_image ADD CONSTRAINT fk_coverage_card_image_binary_object_id_tenant FOREIGN KEY(tenant_id, binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
+ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
-ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ext_template_id_tenant FOREIGN KEY(tenant_id, ext_template_id) REFERENCES admin.note_template (tenant_id, id);
+ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_medication_request_id_same_patient FOREIGN KEY(patient_id, medication_request_id) REFERENCES clinical.medication_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.compendium_test_code ADD CONSTRAINT fk_compendium_test_code_compendium_test_id_tenant FOREIGN KEY(tenant_id, compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
 
 ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_lab_provider_id_tenant FOREIGN KEY(tenant_id, lab_provider_id) REFERENCES admin.lab_provider (tenant_id, id);
 
@@ -7849,9 +8305,7 @@ ALTER TABLE admin.superbill ADD CONSTRAINT fk_superbill_facility_id_tenant FOREI
 
 ALTER TABLE clinical.observation_performer ADD CONSTRAINT fk_observation_performer_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
-ALTER TABLE clinical.coverage_card_image ADD CONSTRAINT fk_coverage_card_image_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
-
-ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_service_request_id_same_patient FOREIGN KEY(patient_id, service_request_id) REFERENCES clinical.service_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_ordering_practitioner_id_tenant FOREIGN KEY(tenant_id, ordering_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
@@ -7861,21 +8315,21 @@ ALTER TABLE admin.superbill ADD CONSTRAINT fk_superbill_fee_schedule_id_tenant F
 
 ALTER TABLE clinical.observation_reference_range ADD CONSTRAINT fk_observation_reference_range_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
 
-ALTER TABLE clinical.coverage_class ADD CONSTRAINT fk_coverage_class_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
+ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_custodian_organization_id_tenant FOREIGN KEY(tenant_id, custodian_organization_id) REFERENCES clinical.organization (tenant_id, id);
 
-ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_outbound_message_id_tenant FOREIGN KEY(tenant_id, outbound_message_id) REFERENCES admin.integration_message (tenant_id, id);
-
-ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
 
 ALTER TABLE admin.superbill ADD CONSTRAINT fk_superbill_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE admin.abn_notice ADD CONSTRAINT fk_abn_notice_medical_necessity_check_id_tenant FOREIGN KEY(tenant_id, medical_necessity_check_id) REFERENCES admin.medical_necessity_check (tenant_id, id);
+ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE clinical.coverage_cost_to_beneficiary ADD CONSTRAINT fk_coverage_cost_to_beneficiary_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
+ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_outbound_message_id_tenant FOREIGN KEY(tenant_id, outbound_message_id) REFERENCES admin.integration_message (tenant_id, id);
 
-ALTER TABLE admin.ai_suggestion ADD CONSTRAINT fk_ai_suggestion_ai_request_id_tenant FOREIGN KEY(tenant_id, ai_request_id) REFERENCES admin.ai_request (tenant_id, id);
+ALTER TABLE clinical.specimen ADD CONSTRAINT fk_specimen_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
 
-ALTER TABLE clinical.composition_attester ADD CONSTRAINT fk_composition_attester_composition_id_tenant FOREIGN KEY(tenant_id, composition_id) REFERENCES clinical.composition (tenant_id, id);
+ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
+ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
 
 ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
@@ -7885,25 +8339,17 @@ ALTER TABLE admin.eligibility_service_type ADD CONSTRAINT fk_eligibility_service
 
 ALTER TABLE admin.superbill ADD CONSTRAINT fk_superbill_rendering_practitioner_id_tenant FOREIGN KEY(tenant_id, rendering_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE clinical.detected_issue ADD CONSTRAINT fk_detected_issue_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE admin.abn_notice ADD CONSTRAINT fk_abn_notice_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
-
-ALTER TABLE clinical.composition_attester ADD CONSTRAINT fk_composition_attester_party_practitioner_id_tenant FOREIGN KEY(tenant_id, party_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ext_template_id_tenant FOREIGN KEY(tenant_id, ext_template_id) REFERENCES admin.note_template (tenant_id, id);
 
 ALTER TABLE admin.transcript ADD CONSTRAINT fk_transcript_ai_request_id_tenant FOREIGN KEY(tenant_id, ai_request_id) REFERENCES admin.ai_request (tenant_id, id);
 
 ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_requisition_document_id_tenant FOREIGN KEY(tenant_id, requisition_document_id) REFERENCES clinical.document_reference (tenant_id, id);
 
-ALTER TABLE clinical.coverage_payor ADD CONSTRAINT fk_coverage_payor_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
+ALTER TABLE clinical.encounter ADD CONSTRAINT fk_encounter_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
 ALTER TABLE admin.order_set_item ADD CONSTRAINT fk_order_set_item_order_set_id_tenant FOREIGN KEY(tenant_id, order_set_id) REFERENCES admin.order_set (tenant_id, id);
 
-ALTER TABLE clinical.coverage_payor ADD CONSTRAINT fk_coverage_payor_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.encounter ADD CONSTRAINT fk_encounter_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE clinical.composition_relates_to ADD CONSTRAINT fk_composition_relates_to_composition_id_tenant FOREIGN KEY(tenant_id, composition_id) REFERENCES clinical.composition (tenant_id, id);
+ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.location ADD CONSTRAINT fk_location_managing_organization_id_tenant FOREIGN KEY(tenant_id, managing_organization_id) REFERENCES clinical.organization (tenant_id, id);
 
@@ -7911,43 +8357,37 @@ ALTER TABLE clinical.encounter ADD CONSTRAINT fk_encounter_appointment_id_tenant
 
 ALTER TABLE clinical.organization ADD CONSTRAINT fk_organization_part_of_organization_id_tenant FOREIGN KEY(tenant_id, part_of_organization_id) REFERENCES clinical.organization (tenant_id, id);
 
-ALTER TABLE clinical.coverage_payor ADD CONSTRAINT fk_coverage_payor_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE admin.abn_notice ADD CONSTRAINT fk_abn_notice_signed_document_id_tenant FOREIGN KEY(tenant_id, signed_document_id) REFERENCES clinical.document_reference (tenant_id, id);
-
 ALTER TABLE admin.outbound_communication ADD CONSTRAINT fk_outbound_communication_appointment_id_tenant FOREIGN KEY(tenant_id, appointment_id) REFERENCES clinical.appointment (tenant_id, id);
-
-ALTER TABLE clinical.composition_author ADD CONSTRAINT fk_composition_author_composition_id_tenant FOREIGN KEY(tenant_id, composition_id) REFERENCES clinical.composition (tenant_id, id);
 
 ALTER TABLE admin.transcript ADD CONSTRAINT fk_transcript_audio_recording_id_tenant FOREIGN KEY(tenant_id, audio_recording_id) REFERENCES admin.audio_recording (tenant_id, id);
 
+ALTER TABLE admin.abn_notice ADD CONSTRAINT fk_abn_notice_medical_necessity_check_id_tenant FOREIGN KEY(tenant_id, medical_necessity_check_id) REFERENCES admin.medical_necessity_check (tenant_id, id);
+
 ALTER TABLE clinical.location ADD CONSTRAINT fk_location_part_of_location_id_tenant FOREIGN KEY(tenant_id, part_of_location_id) REFERENCES clinical.location (tenant_id, id);
-
-ALTER TABLE clinical.composition_author ADD CONSTRAINT fk_composition_author_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.coverage_payor ADD CONSTRAINT fk_coverage_payor_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
 ALTER TABLE clinical.encounter ADD CONSTRAINT fk_encounter_ext_facility_id_tenant FOREIGN KEY(tenant_id, ext_facility_id) REFERENCES admin.facility (tenant_id, id);
 
+ALTER TABLE admin.ai_suggestion ADD CONSTRAINT fk_ai_suggestion_ai_request_id_tenant FOREIGN KEY(tenant_id, ai_request_id) REFERENCES admin.ai_request (tenant_id, id);
+
+ALTER TABLE clinical.composition_attester ADD CONSTRAINT fk_composition_attester_composition_id_tenant FOREIGN KEY(tenant_id, composition_id) REFERENCES clinical.composition (tenant_id, id);
+
 ALTER TABLE admin.transcript ADD CONSTRAINT fk_transcript_binary_object_id_tenant FOREIGN KEY(tenant_id, binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
-
-ALTER TABLE clinical.address ADD CONSTRAINT fk_address_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
-
-ALTER TABLE clinical.composition_author ADD CONSTRAINT fk_composition_author_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE admin.outbound_communication ADD CONSTRAINT fk_outbound_communication_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.medication_dispense ADD CONSTRAINT fk_medication_dispense_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
-ALTER TABLE clinical.detected_issue ADD CONSTRAINT fk_detected_issue_author_practitioner_id_tenant FOREIGN KEY(tenant_id, author_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
 ALTER TABLE clinical.encounter ADD CONSTRAINT fk_encounter_service_provider_organization_id_tenant FOREIGN KEY(tenant_id, service_provider_organization_id) REFERENCES clinical.organization (tenant_id, id);
+
+ALTER TABLE admin.outbound_communication ADD CONSTRAINT fk_outbound_communication_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.abn_notice ADD CONSTRAINT fk_abn_notice_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
+
+ALTER TABLE clinical.composition_attester ADD CONSTRAINT fk_composition_attester_party_practitioner_id_tenant FOREIGN KEY(tenant_id, party_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE admin.transcript ADD CONSTRAINT fk_transcript_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE admin.medical_necessity_check ADD CONSTRAINT fk_medical_necessity_check_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
 
-ALTER TABLE clinical.composition_author ADD CONSTRAINT fk_composition_author_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
+ALTER TABLE clinical.composition_relates_to ADD CONSTRAINT fk_composition_relates_to_composition_id_tenant FOREIGN KEY(tenant_id, composition_id) REFERENCES clinical.composition (tenant_id, id);
 
 ALTER TABLE clinical.encounter ADD CONSTRAINT fk_encounter_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
@@ -7955,21 +8395,19 @@ ALTER TABLE admin.medical_necessity_check ADD CONSTRAINT fk_medical_necessity_ch
 
 ALTER TABLE admin.unmatched_result ADD CONSTRAINT fk_unmatched_result_inbound_message_id_tenant FOREIGN KEY(tenant_id, inbound_message_id) REFERENCES admin.integration_message (tenant_id, id);
 
-ALTER TABLE clinical.composition_relates_to ADD CONSTRAINT fk_composition_relates_to_target_composition_id_tenant FOREIGN KEY(tenant_id, target_composition_id) REFERENCES clinical.composition (tenant_id, id);
-
-ALTER TABLE clinical.detected_issue ADD CONSTRAINT fk_detected_issue_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE clinical.encounter_diagnosis ADD CONSTRAINT fk_encounter_diagnosis_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
 
 ALTER TABLE admin.outbound_communication ADD CONSTRAINT fk_outbound_communication_template_id_tenant FOREIGN KEY(tenant_id, template_id) REFERENCES admin.message_template (tenant_id, id);
 
+ALTER TABLE admin.abn_notice ADD CONSTRAINT fk_abn_notice_signed_document_id_tenant FOREIGN KEY(tenant_id, signed_document_id) REFERENCES clinical.document_reference (tenant_id, id);
+
 ALTER TABLE clinical.medication ADD CONSTRAINT fk_medication_manufacturer_organization_id_tenant FOREIGN KEY(tenant_id, manufacturer_organization_id) REFERENCES clinical.organization (tenant_id, id);
 
-ALTER TABLE clinical.encounter_diagnosis ADD CONSTRAINT fk_encounter_diagnosis_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+ALTER TABLE clinical.composition_author ADD CONSTRAINT fk_composition_author_composition_id_tenant FOREIGN KEY(tenant_id, composition_id) REFERENCES clinical.composition (tenant_id, id);
 
-ALTER TABLE clinical.address ADD CONSTRAINT fk_address_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
+ALTER TABLE clinical.composition_author ADD CONSTRAINT fk_composition_author_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
 
 ALTER TABLE admin.unmatched_result ADD CONSTRAINT fk_unmatched_result_lab_provider_id_tenant FOREIGN KEY(tenant_id, lab_provider_id) REFERENCES admin.lab_provider (tenant_id, id);
-
-ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_allergy_intolerance_id_tenant FOREIGN KEY(tenant_id, allergy_intolerance_id) REFERENCES clinical.allergy_intolerance (tenant_id, id);
 
 ALTER TABLE clinical.encounter_diagnosis ADD CONSTRAINT fk_encounter_diagnosis_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
@@ -7977,19 +8415,17 @@ ALTER TABLE admin.outbound_communication_param ADD CONSTRAINT fk_outbound_commun
 
 ALTER TABLE clinical.medication_dispense ADD CONSTRAINT fk_medication_dispense_authorizing_prescription_id_tenant FOREIGN KEY(tenant_id, authorizing_prescription_id) REFERENCES clinical.medication_request (tenant_id, id);
 
-ALTER TABLE clinical.composition_section ADD CONSTRAINT fk_composition_section_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+ALTER TABLE clinical.address ADD CONSTRAINT fk_address_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
+
+ALTER TABLE clinical.composition_author ADD CONSTRAINT fk_composition_author_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE admin.unmatched_result ADD CONSTRAINT fk_unmatched_result_matched_patient_id_tenant FOREIGN KEY(tenant_id, matched_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
-
-ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
 ALTER TABLE clinical.encounter_location ADD CONSTRAINT fk_encounter_location_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
-ALTER TABLE clinical.address ADD CONSTRAINT fk_address_patient_contact_id_tenant FOREIGN KEY(tenant_id, patient_contact_id) REFERENCES clinical.patient_contact (tenant_id, id);
+ALTER TABLE clinical.composition_author ADD CONSTRAINT fk_composition_author_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
 
-ALTER TABLE clinical.composition_section ADD CONSTRAINT fk_composition_section_composition_id_tenant FOREIGN KEY(tenant_id, composition_id) REFERENCES clinical.composition (tenant_id, id);
+ALTER TABLE admin.tenant ADD CONSTRAINT fk_tenant_organization_id_organization FOREIGN KEY(organization_id) REFERENCES clinical.organization (id) ON DELETE RESTRICT;
 
 ALTER TABLE admin.unmatched_result ADD CONSTRAINT fk_unmatched_result_matched_service_request_id_tenant FOREIGN KEY(tenant_id, matched_service_request_id) REFERENCES clinical.service_request (tenant_id, id);
 
@@ -8001,17 +8437,13 @@ ALTER TABLE clinical.encounter_location ADD CONSTRAINT fk_encounter_location_loc
 
 ALTER TABLE clinical.patient ADD CONSTRAINT fk_patient_managing_organization_id_tenant FOREIGN KEY(tenant_id, managing_organization_id) REFERENCES clinical.organization (tenant_id, id);
 
+ALTER TABLE clinical.composition_relates_to ADD CONSTRAINT fk_composition_relates_to_target_composition_id_tenant FOREIGN KEY(tenant_id, target_composition_id) REFERENCES clinical.composition (tenant_id, id);
+
 ALTER TABLE admin.unmatched_result ADD CONSTRAINT fk_unmatched_result_resulting_report_id_tenant FOREIGN KEY(tenant_id, resulting_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
 
-ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_detected_issue_id_tenant FOREIGN KEY(tenant_id, detected_issue_id) REFERENCES clinical.detected_issue (tenant_id, id);
+ALTER TABLE clinical.address ADD CONSTRAINT fk_address_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
 
 ALTER TABLE clinical.encounter_status_history ADD CONSTRAINT fk_encounter_status_history_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
-
-ALTER TABLE clinical.address ADD CONSTRAINT fk_address_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.composition_section ADD CONSTRAINT fk_composition_section_parent_section_id_tenant FOREIGN KEY(tenant_id, parent_section_id) REFERENCES clinical.composition_section (tenant_id, id);
-
-ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
 
 ALTER TABLE admin.user_favorite ADD CONSTRAINT fk_user_favorite_compendium_test_id_tenant FOREIGN KEY(tenant_id, compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
 
@@ -8019,17 +8451,15 @@ ALTER TABLE clinical.patient_communication ADD CONSTRAINT fk_patient_communicati
 
 ALTER TABLE clinical.medication_dispense ADD CONSTRAINT fk_medication_dispense_medication_medication_id_tenant FOREIGN KEY(tenant_id, medication_medication_id) REFERENCES clinical.medication (tenant_id, id);
 
-ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
-
 ALTER TABLE clinical.encounter_participant ADD CONSTRAINT fk_encounter_participant_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE clinical.encounter_participant ADD CONSTRAINT fk_encounter_participant_individual_practitioner_id_tenant FOREIGN KEY(tenant_id, individual_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_medication_statement_id_tenant FOREIGN KEY(tenant_id, medication_statement_id) REFERENCES clinical.medication_statement (tenant_id, id);
-
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_allergy_intolerance_id_tenant FOREIGN KEY(tenant_id, allergy_intolerance_id) REFERENCES clinical.allergy_intolerance (tenant_id, id);
+ALTER TABLE clinical.composition_section ADD CONSTRAINT fk_composition_section_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
 ALTER TABLE admin.unmatched_result_candidate ADD CONSTRAINT fk_unmatched_result_candidate_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.address ADD CONSTRAINT fk_address_patient_contact_id_tenant FOREIGN KEY(tenant_id, patient_contact_id) REFERENCES clinical.patient_contact (tenant_id, id);
 
 ALTER TABLE clinical.patient_contact ADD CONSTRAINT fk_patient_contact_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
 
@@ -8037,105 +8467,87 @@ ALTER TABLE clinical.medication_dispense ADD CONSTRAINT fk_medication_dispense_s
 
 ALTER TABLE clinical.encounter_participant ADD CONSTRAINT fk_encounter_participant_individual_practitioner_role_id_tenant FOREIGN KEY(tenant_id, individual_practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
 
-ALTER TABLE clinical.address ADD CONSTRAINT fk_address_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+ALTER TABLE clinical.composition_section ADD CONSTRAINT fk_composition_section_composition_id_tenant FOREIGN KEY(tenant_id, composition_id) REFERENCES clinical.composition (tenant_id, id);
 
 ALTER TABLE clinical.medication_ingredient ADD CONSTRAINT fk_medication_ingredient_item_medication_id_tenant FOREIGN KEY(tenant_id, item_medication_id) REFERENCES clinical.medication (tenant_id, id);
 
 ALTER TABLE clinical.patient_contact ADD CONSTRAINT fk_patient_contact_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
 ALTER TABLE admin.unmatched_result_candidate ADD CONSTRAINT fk_unmatched_result_candidate_unmatched_result_id_tenant FOREIGN KEY(tenant_id, unmatched_result_id) REFERENCES admin.unmatched_result (tenant_id, id);
 
 ALTER TABLE clinical.encounter_participant ADD CONSTRAINT fk_encounter_participant_individual_related_person_id_tenant FOREIGN KEY(tenant_id, individual_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
+ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE clinical.address ADD CONSTRAINT fk_address_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
 ALTER TABLE clinical.patient_link ADD CONSTRAINT fk_patient_link_other_patient_id_tenant FOREIGN KEY(tenant_id, other_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.medication_ingredient ADD CONSTRAINT fk_medication_ingredient_medication_id_tenant FOREIGN KEY(tenant_id, medication_id) REFERENCES clinical.medication (tenant_id, id);
-
-ALTER TABLE clinical.detected_issue_implicated ADD CONSTRAINT fk_detected_issue_implicated_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
 
 ALTER TABLE admin.user_favorite ADD CONSTRAINT fk_user_favorite_note_template_id_tenant FOREIGN KEY(tenant_id, note_template_id) REFERENCES admin.note_template (tenant_id, id);
 
+ALTER TABLE clinical.medication_ingredient ADD CONSTRAINT fk_medication_ingredient_medication_id_tenant FOREIGN KEY(tenant_id, medication_id) REFERENCES clinical.medication (tenant_id, id);
+
 ALTER TABLE clinical.encounter_reason ADD CONSTRAINT fk_encounter_reason_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
 
-ALTER TABLE clinical.address ADD CONSTRAINT fk_address_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
+ALTER TABLE clinical.composition_section ADD CONSTRAINT fk_composition_section_parent_section_id_tenant FOREIGN KEY(tenant_id, parent_section_id) REFERENCES clinical.composition_section (tenant_id, id);
 
 ALTER TABLE clinical.patient_general_practitioner ADD CONSTRAINT fk_patient_general_practitioner_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
 
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
-ALTER TABLE clinical.detected_issue_mitigation ADD CONSTRAINT fk_detected_issue_mitigation_author_practitioner_id_tenant FOREIGN KEY(tenant_id, author_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
 ALTER TABLE clinical.patient_general_practitioner ADD CONSTRAINT fk_patient_general_practitioner_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.encounter_reason ADD CONSTRAINT fk_encounter_reason_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_family_member_history_id_tenant FOREIGN KEY(tenant_id, family_member_history_id) REFERENCES clinical.family_member_history (tenant_id, id);
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_allergy_intolerance_id_tenant FOREIGN KEY(tenant_id, allergy_intolerance_id) REFERENCES clinical.allergy_intolerance (tenant_id, id);
 
 ALTER TABLE admin.user_favorite ADD CONSTRAINT fk_user_favorite_order_set_id_tenant FOREIGN KEY(tenant_id, order_set_id) REFERENCES admin.order_set (tenant_id, id);
 
-ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+ALTER TABLE clinical.address ADD CONSTRAINT fk_address_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE clinical.detected_issue_mitigation ADD CONSTRAINT fk_detected_issue_mitigation_detected_issue_id_tenant FOREIGN KEY(tenant_id, detected_issue_id) REFERENCES clinical.detected_issue (tenant_id, id);
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
 
 ALTER TABLE clinical.patient_general_practitioner ADD CONSTRAINT fk_patient_general_practitioner_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
+ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
 ALTER TABLE clinical.encounter_reason ADD CONSTRAINT fk_encounter_reason_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
 
-ALTER TABLE admin.ai_request ADD CONSTRAINT fk_ai_request_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
-
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_immunization_id_tenant FOREIGN KEY(tenant_id, immunization_id) REFERENCES clinical.immunization (tenant_id, id);
-
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_ext_signed_by_practitioner_id_tenant FOREIGN KEY(tenant_id, ext_signed_by_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
 ALTER TABLE clinical.patient_general_practitioner ADD CONSTRAINT fk_patient_general_practitioner_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
 
 ALTER TABLE clinical.encounter_reason ADD CONSTRAINT fk_encounter_reason_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
 
-ALTER TABLE admin.ai_request ADD CONSTRAINT fk_ai_request_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
-
 ALTER TABLE admin.user_favorite ADD CONSTRAINT fk_user_favorite_prescription_favorite_id_tenant FOREIGN KEY(tenant_id, prescription_favorite_id) REFERENCES admin.prescription_favorite (tenant_id, id);
 
-ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_medication_medication_id_tenant FOREIGN KEY(tenant_id, medication_medication_id) REFERENCES clinical.medication (tenant_id, id);
+ALTER TABLE clinical.address ADD CONSTRAINT fk_address_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_medication_medication_id_tenant FOREIGN KEY(tenant_id, medication_medication_id) REFERENCES clinical.medication (tenant_id, id);
 
 ALTER TABLE clinical.patient_link ADD CONSTRAINT fk_patient_link_other_related_person_id_tenant FOREIGN KEY(tenant_id, other_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
 ALTER TABLE clinical.encounter_type ADD CONSTRAINT fk_encounter_type_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_medication_statement_id_tenant FOREIGN KEY(tenant_id, medication_statement_id) REFERENCES clinical.medication_statement (tenant_id, id);
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
+
+ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
 
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_prior_prescription_id_tenant FOREIGN KEY(tenant_id, prior_prescription_id) REFERENCES clinical.medication_request (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_ext_inbound_message_id_tenant FOREIGN KEY(tenant_id, ext_inbound_message_id) REFERENCES admin.integration_message (tenant_id, id);
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_family_member_history_id_tenant FOREIGN KEY(tenant_id, family_member_history_id) REFERENCES clinical.family_member_history (tenant_id, id);
 
 ALTER TABLE admin.user_favorite ADD CONSTRAINT fk_user_favorite_smart_phrase_id_tenant FOREIGN KEY(tenant_id, smart_phrase_id) REFERENCES admin.smart_phrase (tenant_id, id);
 
-ALTER TABLE admin.ai_request_input_ref ADD CONSTRAINT fk_ai_request_input_ref_ai_request_id_tenant FOREIGN KEY(tenant_id, ai_request_id) REFERENCES admin.ai_request (tenant_id, id);
-
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
+ALTER TABLE admin.ai_request ADD CONSTRAINT fk_ai_request_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_integration_message_id_tenant FOREIGN KEY(tenant_id, integration_message_id) REFERENCES admin.integration_message (tenant_id, id);
 
 ALTER TABLE clinical.patient_link ADD CONSTRAINT fk_patient_link_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_immunization_id_tenant FOREIGN KEY(tenant_id, immunization_id) REFERENCES clinical.immunization (tenant_id, id);
+
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_recorder_practitioner_id_tenant FOREIGN KEY(tenant_id, recorder_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_ext_lab_provider_id_tenant FOREIGN KEY(tenant_id, ext_lab_provider_id) REFERENCES admin.lab_provider (tenant_id, id);
-
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
 
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
 
@@ -8145,13 +8557,11 @@ ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_appointment_id_tenant FO
 
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_reported_practitioner_id_tenant FOREIGN KEY(tenant_id, reported_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report ADD CONSTRAINT fk_diagnostic_report_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE admin.ai_request ADD CONSTRAINT fk_ai_request_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE admin.ai_request_retrieved_chunk ADD CONSTRAINT fk_ai_request_retrieved_chunk_ai_request_id_tenant FOREIGN KEY(tenant_id, ai_request_id) REFERENCES admin.ai_request (tenant_id, id);
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
 
 ALTER TABLE admin.user_role ADD CONSTRAINT fk_user_role_facility_id_tenant FOREIGN KEY(tenant_id, facility_id) REFERENCES admin.facility (tenant_id, id);
-
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_section_id_tenant FOREIGN KEY(tenant_id, section_id) REFERENCES clinical.composition_section (tenant_id, id);
 
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
@@ -8159,35 +8569,35 @@ ALTER TABLE admin.patient_merge ADD CONSTRAINT fk_patient_merge_merged_patient_i
 
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_requester_organization_id_tenant FOREIGN KEY(tenant_id, requester_organization_id) REFERENCES clinical.organization (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report_based_on ADD CONSTRAINT fk_diagnostic_report_based_on_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
-
-ALTER TABLE admin.ai_suggestion ADD CONSTRAINT fk_ai_suggestion_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_medication_statement_id_tenant FOREIGN KEY(tenant_id, medication_statement_id) REFERENCES clinical.medication_statement (tenant_id, id);
 
 ALTER TABLE admin.visit_flow_event ADD CONSTRAINT fk_visit_flow_event_appointment_id_tenant FOREIGN KEY(tenant_id, appointment_id) REFERENCES clinical.appointment (tenant_id, id);
-
-ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
 
 ALTER TABLE admin.patient_merge ADD CONSTRAINT fk_patient_merge_surviving_patient_id_tenant FOREIGN KEY(tenant_id, surviving_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_requester_patient_id_tenant FOREIGN KEY(tenant_id, requester_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report_based_on ADD CONSTRAINT fk_diagnostic_report_based_on_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
-
 ALTER TABLE admin.visit_flow_event ADD CONSTRAINT fk_visit_flow_event_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
 
-ALTER TABLE admin.ai_suggestion ADD CONSTRAINT fk_ai_suggestion_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE admin.ai_request_input_ref ADD CONSTRAINT fk_ai_request_input_ref_ai_request_id_tenant FOREIGN KEY(tenant_id, ai_request_id) REFERENCES admin.ai_request (tenant_id, id);
 
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
 
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_related_transaction_id_tenant FOREIGN KEY(tenant_id, related_transaction_id) REFERENCES admin.erx_transaction (tenant_id, id);
 
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_requester_practitioner_id_tenant FOREIGN KEY(tenant_id, requester_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report_category ADD CONSTRAINT fk_diagnostic_report_category_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
-
 ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_claim_id_tenant FOREIGN KEY(tenant_id, claim_id) REFERENCES admin.claim (tenant_id, id);
 
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_asserter_patient_id_tenant FOREIGN KEY(tenant_id, asserter_patient_id) REFERENCES clinical.patient (tenant_id, id);
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
+
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
+
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
+
+ALTER TABLE admin.ai_request_retrieved_chunk ADD CONSTRAINT fk_ai_request_retrieved_chunk_ai_request_id_tenant FOREIGN KEY(tenant_id, ai_request_id) REFERENCES admin.ai_request (tenant_id, id);
 
 ALTER TABLE admin.facility ADD CONSTRAINT fk_facility_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
 
@@ -8197,13 +8607,13 @@ ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_req
 
 ALTER TABLE clinical.composition_section ADD CONSTRAINT fk_composition_section_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
 
-ALTER TABLE clinical.diagnostic_report_coding ADD CONSTRAINT fk_diagnostic_report_coding_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_section_id_tenant FOREIGN KEY(tenant_id, section_id) REFERENCES clinical.composition_section (tenant_id, id);
 
 ALTER TABLE clinical.family_member_history ADD CONSTRAINT fk_family_member_history_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
-ALTER TABLE admin.ai_suggestion_evidence ADD CONSTRAINT fk_ai_suggestion_evidence_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
+ALTER TABLE clinical.condition_body_site ADD CONSTRAINT fk_condition_body_site_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
 
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_asserter_practitioner_id_tenant FOREIGN KEY(tenant_id, asserter_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+ALTER TABLE admin.ai_suggestion ADD CONSTRAINT fk_ai_suggestion_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_composition_id_tenant FOREIGN KEY(tenant_id, composition_id) REFERENCES clinical.composition (tenant_id, id);
 
@@ -8211,13 +8621,9 @@ ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_appointment_
 
 ALTER TABLE clinical.medication_request ADD CONSTRAINT fk_medication_request_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report_presented_form ADD CONSTRAINT fk_diagnostic_report_presented_form_binary_object_id_tenant FOREIGN KEY(tenant_id, binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
+ALTER TABLE clinical.composition_section_entry ADD CONSTRAINT fk_composition_section_entry_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
 
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
-
-ALTER TABLE admin.ai_suggestion_unknown ADD CONSTRAINT fk_ai_suggestion_unknown_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_asserter_related_person_id_tenant FOREIGN KEY(tenant_id, asserter_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
 ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
 
@@ -8225,13 +8631,9 @@ ALTER TABLE clinical.family_member_history ADD CONSTRAINT fk_family_member_histo
 
 ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report_performer ADD CONSTRAINT fk_diagnostic_report_performer_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
+ALTER TABLE admin.ai_suggestion ADD CONSTRAINT fk_ai_suggestion_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report_performer ADD CONSTRAINT fk_diagnostic_report_performer_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
 ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
 
@@ -8243,23 +8645,17 @@ ALTER TABLE clinical.medication_request_reason ADD CONSTRAINT fk_medication_requ
 
 ALTER TABLE clinical.medication_request_reason ADD CONSTRAINT fk_medication_request_reason_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report_performer ADD CONSTRAINT fk_diagnostic_report_performer_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_asserter_patient_id_tenant FOREIGN KEY(tenant_id, asserter_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_recorder_patient_id_tenant FOREIGN KEY(tenant_id, recorder_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_asserter_patient_id_tenant FOREIGN KEY(tenant_id, asserter_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
+ALTER TABLE clinical.condition_category ADD CONSTRAINT fk_condition_category_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+
 ALTER TABLE clinical.medication_request_reason ADD CONSTRAINT fk_medication_request_reason_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report_performer ADD CONSTRAINT fk_diagnostic_report_performer_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
+ALTER TABLE admin.ai_suggestion_evidence ADD CONSTRAINT fk_ai_suggestion_evidence_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_recorder_practitioner_id_tenant FOREIGN KEY(tenant_id, recorder_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_asserter_practitioner_id_tenant FOREIGN KEY(tenant_id, asserter_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_asserter_practitioner_id_tenant FOREIGN KEY(tenant_id, asserter_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE admin.fax_transmission ADD CONSTRAINT fk_fax_transmission_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
 
@@ -8271,398 +8667,30 @@ ALTER TABLE admin.fax_transmission ADD CONSTRAINT fk_fax_transmission_integratio
 
 ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_based_on_medication_request_id_tenant FOREIGN KEY(tenant_id, based_on_medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report_presented_form ADD CONSTRAINT fk_diagnostic_report_presented_form_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
+ALTER TABLE admin.ai_suggestion_unknown ADD CONSTRAINT fk_ai_suggestion_unknown_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_recorder_related_person_id_tenant FOREIGN KEY(tenant_id, recorder_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_asserter_related_person_id_tenant FOREIGN KEY(tenant_id, asserter_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_asserter_related_person_id_tenant FOREIGN KEY(tenant_id, asserter_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
 
 ALTER TABLE clinical.patient_race_ethnicity ADD CONSTRAINT fk_patient_race_ethnicity_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
 ALTER TABLE admin.patient_pharmacy ADD CONSTRAINT fk_patient_pharmacy_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_fax_transmission_id_tenant FOREIGN KEY(tenant_id, fax_transmission_id) REFERENCES admin.fax_transmission (tenant_id, id);
 
 ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_context_encounter_id_tenant FOREIGN KEY(tenant_id, context_encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
-ALTER TABLE clinical.diagnostic_report_result ADD CONSTRAINT fk_diagnostic_report_result_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
-
 ALTER TABLE admin.fee_schedule_item ADD CONSTRAINT fk_fee_schedule_item_fee_schedule_id_tenant FOREIGN KEY(tenant_id, fee_schedule_id) REFERENCES admin.fee_schedule (tenant_id, id);
+
+ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_recorder_patient_id_tenant FOREIGN KEY(tenant_id, recorder_patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_asserter_patient_id_tenant FOREIGN KEY(tenant_id, asserter_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE clinical.practitioner_qualification ADD CONSTRAINT fk_practitioner_qualification_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
-ALTER TABLE clinical.condition_body_site ADD CONSTRAINT fk_condition_body_site_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
 ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
 
-ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_information_source_organizatio_cfb4c219 FOREIGN KEY(tenant_id, information_source_organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.diagnostic_report_result ADD CONSTRAINT fk_diagnostic_report_result_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
 ALTER TABLE clinical.human_name ADD CONSTRAINT fk_human_name_patient_contact_id_tenant FOREIGN KEY(tenant_id, patient_contact_id) REFERENCES clinical.patient_contact (tenant_id, id);
-
-ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.condition_category ADD CONSTRAINT fk_condition_category_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_recorder_patient_id_tenant FOREIGN KEY(tenant_id, recorder_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.human_name ADD CONSTRAINT fk_human_name_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE admin.payer_enrollment ADD CONSTRAINT fk_payer_enrollment_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_information_source_patient_id_tenant FOREIGN KEY(tenant_id, information_source_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.diagnostic_report_specimen ADD CONSTRAINT fk_diagnostic_report_specimen_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
-
-ALTER TABLE clinical.condition_coding ADD CONSTRAINT fk_condition_coding_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_recorder_practitioner_id_tenant FOREIGN KEY(tenant_id, recorder_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
-
-ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_information_source_practitione_98904e07 FOREIGN KEY(tenant_id, information_source_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.diagnostic_report_specimen ADD CONSTRAINT fk_diagnostic_report_specimen_specimen_id_tenant FOREIGN KEY(tenant_id, specimen_id) REFERENCES clinical.specimen (tenant_id, id);
-
-ALTER TABLE admin.picklist_item ADD CONSTRAINT fk_picklist_item_picklist_id_tenant FOREIGN KEY(tenant_id, picklist_id) REFERENCES admin.picklist (tenant_id, id);
-
-ALTER TABLE clinical.human_name ADD CONSTRAINT fk_human_name_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_unmatched_result_id_tenant FOREIGN KEY(tenant_id, unmatched_result_id) REFERENCES admin.unmatched_result (tenant_id, id);
-
-ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_information_source_related_per_e1182d74 FOREIGN KEY(tenant_id, information_source_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE clinical.human_name ADD CONSTRAINT fk_human_name_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE clinical.practitioner_role_location ADD CONSTRAINT fk_practitioner_role_location_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance_coding ADD CONSTRAINT fk_allergy_intolerance_coding_allergy_intolerance_id_tenant FOREIGN KEY(tenant_id, allergy_intolerance_id) REFERENCES clinical.allergy_intolerance (tenant_id, id);
-
-ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_authenticator_practitioner_id_tenant FOREIGN KEY(tenant_id, authenticator_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_medication_medication_id_tenant FOREIGN KEY(tenant_id, medication_medication_id) REFERENCES clinical.medication (tenant_id, id);
-
-ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_source_attachment_binary_object_id_tenant FOREIGN KEY(tenant_id, source_attachment_binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
-
-ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance_reaction ADD CONSTRAINT fk_allergy_intolerance_reaction_allergy_intolerance_id_tenant FOREIGN KEY(tenant_id, allergy_intolerance_id) REFERENCES clinical.allergy_intolerance (tenant_id, id);
-
-ALTER TABLE clinical.practitioner_role ADD CONSTRAINT fk_practitioner_role_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_context_encounter_id_tenant FOREIGN KEY(tenant_id, context_encounter_id) REFERENCES clinical.encounter (tenant_id, id);
-
-ALTER TABLE clinical.medication_statement ADD CONSTRAINT fk_medication_statement_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE admin.work_item_event ADD CONSTRAINT fk_work_item_event_work_item_id_tenant FOREIGN KEY(tenant_id, work_item_id) REFERENCES admin.work_item (tenant_id, id);
-
-ALTER TABLE clinical.practitioner_role ADD CONSTRAINT fk_practitioner_role_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE admin.app_user ADD CONSTRAINT fk_app_user_practitioner_id_practitioner FOREIGN KEY(practitioner_id) REFERENCES clinical.practitioner (id);
-
-ALTER TABLE admin.migration_reconciliation ADD CONSTRAINT fk_migration_reconciliation_migration_run_id_tenant FOREIGN KEY(tenant_id, migration_run_id) REFERENCES admin.migration_run (tenant_id, id);
-
-ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
-
-ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_custodian_organization_id_tenant FOREIGN KEY(tenant_id, custodian_organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE admin.ai_request ADD CONSTRAINT fk_ai_request_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.practitioner_role_location ADD CONSTRAINT fk_practitioner_role_location_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
-
-ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_source_document_reference_id_tenant FOREIGN KEY(tenant_id, source_document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
-
-ALTER TABLE clinical.allergy_reaction_manifestation ADD CONSTRAINT fk_allergy_reaction_manifestation_reaction_id_tenant FOREIGN KEY(tenant_id, reaction_id) REFERENCES clinical.allergy_intolerance_reaction (tenant_id, id);
-
-ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
-
-ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_ext_composition_id_tenant FOREIGN KEY(tenant_id, ext_composition_id) REFERENCES clinical.composition (tenant_id, id);
-
-ALTER TABLE clinical.medication_statement_reason ADD CONSTRAINT fk_medication_statement_reason_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
-
-ALTER TABLE clinical.medication_statement_reason ADD CONSTRAINT fk_medication_statement_reason_medication_statement_id_tenant FOREIGN KEY(tenant_id, medication_statement_id) REFERENCES clinical.medication_statement (tenant_id, id);
-
-ALTER TABLE clinical.consent_category ADD CONSTRAINT fk_consent_category_consent_id_tenant FOREIGN KEY(tenant_id, consent_id) REFERENCES clinical.consent (tenant_id, id);
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_allergy_intolerance_id_tenant FOREIGN KEY(tenant_id, allergy_intolerance_id) REFERENCES clinical.allergy_intolerance (tenant_id, id);
-
-ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.practitioner_role_specialty ADD CONSTRAINT fk_practitioner_role_specialty_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
-
-ALTER TABLE clinical.document_reference ADD CONSTRAINT fk_document_reference_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.medication_statement_reason ADD CONSTRAINT fk_medication_statement_reason_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
-ALTER TABLE clinical.consent_verification ADD CONSTRAINT fk_consent_verification_consent_id_tenant FOREIGN KEY(tenant_id, consent_id) REFERENCES clinical.consent (tenant_id, id);
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_author_patient_id_tenant FOREIGN KEY(tenant_id, author_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE admin.ai_suggestion ADD CONSTRAINT fk_ai_suggestion_ai_request_id_same_patient FOREIGN KEY(patient_id, ai_request_id) REFERENCES admin.ai_request (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
-
-ALTER TABLE clinical.consent_performer ADD CONSTRAINT fk_consent_performer_consent_id_tenant FOREIGN KEY(tenant_id, consent_id) REFERENCES clinical.consent (tenant_id, id);
-
-ALTER TABLE clinical.consent_performer ADD CONSTRAINT fk_consent_performer_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_author_practitioner_id_tenant FOREIGN KEY(tenant_id, author_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_asserter_patient_id_tenant FOREIGN KEY(tenant_id, asserter_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE admin.migration_issue ADD CONSTRAINT fk_migration_issue_migration_run_id_tenant FOREIGN KEY(tenant_id, migration_run_id) REFERENCES admin.migration_run (tenant_id, id);
-
-ALTER TABLE clinical.consent_performer ADD CONSTRAINT fk_consent_performer_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE admin.ai_suggestion ADD CONSTRAINT fk_ai_suggestion_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_author_related_person_id_tenant FOREIGN KEY(tenant_id, author_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_asserter_practitioner_id_tenant FOREIGN KEY(tenant_id, asserter_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE admin.migration_record_map ADD CONSTRAINT fk_migration_record_map_migration_run_id_tenant FOREIGN KEY(tenant_id, migration_run_id) REFERENCES admin.migration_run (tenant_id, id);
-
-ALTER TABLE clinical.consent_performer ADD CONSTRAINT fk_consent_performer_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_ai_suggestion_id_same_patient FOREIGN KEY(patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_based_on_service_request_id_tenant FOREIGN KEY(tenant_id, based_on_service_request_id) REFERENCES clinical.service_request (tenant_id, id);
-
-ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.consent_performer ADD CONSTRAINT fk_consent_performer_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
-
-ALTER TABLE admin.note_template_section ADD CONSTRAINT fk_note_template_section_template_id_tenant FOREIGN KEY(tenant_id, template_id) REFERENCES admin.note_template (tenant_id, id);
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
-
-ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_asserter_related_person_id_same_patient FOREIGN KEY(patient_id, asserter_related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
-
-ALTER TABLE clinical.consent_verification ADD CONSTRAINT fk_consent_verification_verified_with_patient_id_tenant FOREIGN KEY(tenant_id, verified_with_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE admin.migration_run ADD CONSTRAINT fk_migration_run_log_binary_id_tenant FOREIGN KEY(tenant_id, log_binary_id) REFERENCES admin.binary_object (tenant_id, id);
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
-
-ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
-
-ALTER TABLE admin.migration_run ADD CONSTRAINT fk_migration_run_rollback_plan_document_id_tenant FOREIGN KEY(tenant_id, rollback_plan_document_id) REFERENCES clinical.document_reference (tenant_id, id);
-
-ALTER TABLE clinical.document_reference_author ADD CONSTRAINT fk_document_reference_author_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_family_member_history_id_tenant FOREIGN KEY(tenant_id, family_member_history_id) REFERENCES clinical.family_member_history (tenant_id, id);
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_recorder_patient_id_tenant FOREIGN KEY(tenant_id, recorder_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_manufacturer_organization_id_tenant FOREIGN KEY(tenant_id, manufacturer_organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.document_reference_category ADD CONSTRAINT fk_document_reference_category_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
-
-ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE clinical.consent_verification ADD CONSTRAINT fk_consent_verification_verified_with_related_person_id_tenant FOREIGN KEY(tenant_id, verified_with_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE clinical.allergy_intolerance ADD CONSTRAINT fk_allergy_intolerance_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_recorder_practitioner_id_tenant FOREIGN KEY(tenant_id, recorder_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
-
-ALTER TABLE clinical.document_reference_content ADD CONSTRAINT fk_document_reference_content_attachment_binary_object_3183b5a4 FOREIGN KEY(tenant_id, attachment_binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
-
-ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_ext_rescheduled_from_appointment_id_same_patient FOREIGN KEY(subject_patient_id, ext_rescheduled_from_appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_immunization_id_tenant FOREIGN KEY(tenant_id, immunization_id) REFERENCES clinical.immunization (tenant_id, id);
-
-ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_based_on_service_request_id_tenant FOREIGN KEY(tenant_id, based_on_service_request_id) REFERENCES clinical.service_request (tenant_id, id);
-
-ALTER TABLE clinical.procedure ADD CONSTRAINT fk_procedure_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.document_reference_content ADD CONSTRAINT fk_document_reference_content_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
-
-ALTER TABLE clinical.consent ADD CONSTRAINT fk_consent_ext_grantor_related_person_id_tenant FOREIGN KEY(tenant_id, ext_grantor_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_consent_id_same_patient FOREIGN KEY(patient_id, consent_id) REFERENCES clinical.consent (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE admin.integration_endpoint_setting ADD CONSTRAINT fk_integration_endpoint_setting_endpoint_id_tenant FOREIGN KEY(tenant_id, endpoint_id) REFERENCES admin.integration_endpoint (tenant_id, id);
-
-ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
-
-ALTER TABLE clinical.procedure_body_site ADD CONSTRAINT fk_procedure_body_site_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
-
-ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_patient_contact_id_tenant FOREIGN KEY(tenant_id, patient_contact_id) REFERENCES clinical.patient_contact (tenant_id, id);
-
-ALTER TABLE clinical.document_reference_relates_to ADD CONSTRAINT fk_document_reference_relates_to_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
-
-ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_specimen_id_tenant FOREIGN KEY(tenant_id, specimen_id) REFERENCES clinical.specimen (tenant_id, id);
-
-ALTER TABLE clinical.procedure_coding ADD CONSTRAINT fk_procedure_coding_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
-
-ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.document_reference_relates_to ADD CONSTRAINT fk_document_reference_relates_to_target_document_refer_66cbdf76 FOREIGN KEY(tenant_id, target_document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
-
-ALTER TABLE admin.integration_message ADD CONSTRAINT fk_integration_message_endpoint_id_tenant FOREIGN KEY(tenant_id, endpoint_id) REFERENCES admin.integration_endpoint (tenant_id, id);
-
-ALTER TABLE admin.charge ADD CONSTRAINT fk_charge_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
-ALTER TABLE admin.audio_recording ADD CONSTRAINT fk_audio_recording_encounter_id_same_patient FOREIGN KEY(patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.observation ADD CONSTRAINT fk_observation_subject_patient_id_tenant FOREIGN KEY(tenant_id, subject_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_actor_organization_id_tenant FOREIGN KEY(tenant_id, actor_organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_medication_statement_id_tenant FOREIGN KEY(tenant_id, medication_statement_id) REFERENCES clinical.medication_statement (tenant_id, id);
-
-ALTER TABLE admin.integration_message ADD CONSTRAINT fk_integration_message_payload_binary_id_tenant FOREIGN KEY(tenant_id, payload_binary_id) REFERENCES admin.binary_object (tenant_id, id);
-
-ALTER TABLE audit.break_glass_access ADD CONSTRAINT fk_break_glass_access_audit_event_id_same_patient FOREIGN KEY(patient_id, audit_event_id) REFERENCES audit.audit_event (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.observation_category ADD CONSTRAINT fk_observation_category_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
-ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_actor_patient_id_tenant FOREIGN KEY(tenant_id, actor_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_practitioner_role_id_tenant FOREIGN KEY(tenant_id, practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
-
-ALTER TABLE admin.integration_message ADD CONSTRAINT fk_integration_message_response_message_id_tenant FOREIGN KEY(tenant_id, response_message_id) REFERENCES admin.integration_message (tenant_id, id);
-
-ALTER TABLE clinical.dosage ADD CONSTRAINT fk_dosage_medication_dispense_id_tenant FOREIGN KEY(tenant_id, medication_dispense_id) REFERENCES clinical.medication_dispense (tenant_id, id);
-
-ALTER TABLE clinical.observation_coding ADD CONSTRAINT fk_observation_coding_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
-ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_actor_practitioner_id_tenant FOREIGN KEY(tenant_id, actor_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.contact_point ADD CONSTRAINT fk_contact_point_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE admin.lab_account ADD CONSTRAINT fk_lab_account_facility_id_tenant FOREIGN KEY(tenant_id, facility_id) REFERENCES admin.facility (tenant_id, id);
-
-ALTER TABLE clinical.dosage ADD CONSTRAINT fk_dosage_medication_request_id_tenant FOREIGN KEY(tenant_id, medication_request_id) REFERENCES clinical.medication_request (tenant_id, id);
-
-ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_coverage_id_same_patient FOREIGN KEY(patient_id, coverage_id) REFERENCES clinical.coverage (beneficiary_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
-ALTER TABLE clinical.dosage ADD CONSTRAINT fk_dosage_medication_statement_id_tenant FOREIGN KEY(tenant_id, medication_statement_id) REFERENCES clinical.medication_statement (tenant_id, id);
-
-ALTER TABLE clinical.observation_has_member ADD CONSTRAINT fk_observation_has_member_member_observation_id_tenant FOREIGN KEY(tenant_id, member_observation_id) REFERENCES clinical.observation (tenant_id, id);
-
-ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_actor_practitioner_role_id_tenant FOREIGN KEY(tenant_id, actor_practitioner_role_id) REFERENCES clinical.practitioner_role (tenant_id, id);
-
-ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE admin.lab_account ADD CONSTRAINT fk_lab_account_lab_provider_id_tenant FOREIGN KEY(tenant_id, lab_provider_id) REFERENCES admin.lab_provider (tenant_id, id);
-
-ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_on_behalf_of_organization_id_tenant FOREIGN KEY(tenant_id, on_behalf_of_organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE admin.cosign_rule ADD CONSTRAINT fk_cosign_rule_supervisee_practitioner_id_tenant FOREIGN KEY(tenant_id, supervisee_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE clinical.observation_component ADD CONSTRAINT fk_observation_component_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
-ALTER TABLE admin.cosign_rule ADD CONSTRAINT fk_cosign_rule_supervising_practitioner_id_tenant FOREIGN KEY(tenant_id, supervising_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
-
-ALTER TABLE admin.lab_account_bill_to ADD CONSTRAINT fk_lab_account_bill_to_lab_account_id_tenant FOREIGN KEY(tenant_id, lab_account_id) REFERENCES admin.lab_account (tenant_id, id);
-
-ALTER TABLE clinical.observation_has_member ADD CONSTRAINT fk_observation_has_member_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
-ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_original_claim_id_same_patient FOREIGN KEY(patient_id, original_claim_id) REFERENCES admin.claim (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
-
-ALTER TABLE admin.duplicate_candidate ADD CONSTRAINT fk_duplicate_candidate_patient_a_id_tenant FOREIGN KEY(tenant_id, patient_a_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.procedure_performer ADD CONSTRAINT fk_procedure_performer_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
-
-ALTER TABLE admin.duplicate_candidate ADD CONSTRAINT fk_duplicate_candidate_patient_b_id_tenant FOREIGN KEY(tenant_id, patient_b_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_beneficiary_patient_id_tenant FOREIGN KEY(tenant_id, beneficiary_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_service_request_id_tenant FOREIGN KEY(tenant_id, service_request_id) REFERENCES clinical.service_request (tenant_id, id);
-
-ALTER TABLE clinical.observation_interpretation ADD CONSTRAINT fk_observation_interpretation_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
-ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_coverage_id_tenant FOREIGN KEY(tenant_id, coverage_id) REFERENCES clinical.coverage (tenant_id, id);
-
-ALTER TABLE clinical.provenance ADD CONSTRAINT fk_provenance_ext_ai_suggestion_id_tenant FOREIGN KEY(tenant_id, ext_ai_suggestion_id) REFERENCES admin.ai_suggestion (tenant_id, id);
-
-ALTER TABLE admin.duplicate_match_evidence ADD CONSTRAINT fk_duplicate_match_evidence_duplicate_candidate_id_tenant FOREIGN KEY(tenant_id, duplicate_candidate_id) REFERENCES admin.duplicate_candidate (tenant_id, id);
-
-ALTER TABLE admin.claim ADD CONSTRAINT fk_claim_superbill_id_same_patient FOREIGN KEY(patient_id, superbill_id) REFERENCES admin.superbill (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE admin.lab_provider ADD CONSTRAINT fk_lab_provider_integration_endpoint_id_tenant FOREIGN KEY(tenant_id, integration_endpoint_id) REFERENCES admin.integration_endpoint (tenant_id, id);
-
-ALTER TABLE clinical.family_member_history ADD CONSTRAINT fk_family_member_history_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
-
-ALTER TABLE clinical.observation_performer ADD CONSTRAINT fk_observation_performer_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
-ALTER TABLE clinical.procedure_reason ADD CONSTRAINT fk_procedure_reason_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
-
-ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_policy_holder_patient_id_tenant FOREIGN KEY(tenant_id, policy_holder_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.procedure_reason ADD CONSTRAINT fk_procedure_reason_observation_id_tenant FOREIGN KEY(tenant_id, observation_id) REFERENCES clinical.observation (tenant_id, id);
-
-ALTER TABLE admin.lab_provider ADD CONSTRAINT fk_lab_provider_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.annotation ADD CONSTRAINT fk_annotation_specimen_id_tenant FOREIGN KEY(tenant_id, specimen_id) REFERENCES clinical.specimen (tenant_id, id);
-
-ALTER TABLE clinical.observation_performer ADD CONSTRAINT fk_observation_performer_organization_id_tenant FOREIGN KEY(tenant_id, organization_id) REFERENCES clinical.organization (tenant_id, id);
-
-ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_policy_holder_related_person_id_tenant FOREIGN KEY(tenant_id, policy_holder_related_person_id) REFERENCES clinical.related_person (tenant_id, id);
-
-ALTER TABLE admin.lab_requisition ADD CONSTRAINT fk_lab_requisition_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
-
-ALTER TABLE clinical.procedure_reason ADD CONSTRAINT fk_procedure_reason_procedure_id_tenant FOREIGN KEY(tenant_id, procedure_id) REFERENCES clinical.procedure (tenant_id, id);
-
-ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE admin.eligibility_benefit ADD CONSTRAINT fk_eligibility_benefit_eligibility_check_id_tenant FOREIGN KEY(tenant_id, eligibility_check_id) REFERENCES admin.eligibility_check (tenant_id, id);
-
-ALTER TABLE clinical.observation_performer ADD CONSTRAINT fk_observation_performer_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.coverage ADD CONSTRAINT fk_coverage_subscriber_patient_id_tenant FOREIGN KEY(tenant_id, subscriber_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE clinical.provenance ADD CONSTRAINT fk_provenance_ext_migration_run_id_tenant FOREIGN KEY(tenant_id, ext_migration_run_id) REFERENCES admin.migration_run (tenant_id, id);
-
-ALTER TABLE clinical.appointment ADD CONSTRAINT fk_appointment_ext_appointment_type_id_tenant FOREIGN KEY(tenant_id, ext_appointment_type_id) REFERENCES admin.appointment_type (tenant_id, id);
-
-ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_encounter_id_same_patient FOREIGN KEY(subject_patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE clinical.condition ADD CONSTRAINT fk_condition_ai_suggestion_id_same_patient FOREIGN KEY(subject_patient_id, ai_suggestion_id) REFERENCES admin.ai_suggestion (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;

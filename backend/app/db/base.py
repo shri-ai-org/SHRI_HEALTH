@@ -151,6 +151,15 @@ class ActorMixin:
         return mapped_column(ForeignKey(f"{ADMIN_SCHEMA}.app_user.id", ondelete="SET NULL"))
 
 
+class VersionedMixin:
+    """A1/If-Match target (ADR-0008): admin tables with no FHIR meta_version_id of their own
+    (A41/issue #13 - practice-setup resources and patient_pharmacy). ``version`` is bumped by
+    the ``shri_bump_version()`` trigger (sql/10_rules.sql) on every UPDATE, server-side only -
+    the column is never written by the application, including on the row that sets it."""
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1,
+                                         server_default=text("1"))
+
+
 class TenantMixin:
     """Row belongs to exactly one tenant (practice). RLS-protected."""
 

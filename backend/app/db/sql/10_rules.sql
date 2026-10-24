@@ -458,3 +458,12 @@ BEGIN
     prev := r.hash; expected := r.chain_seq + 1;
   END LOOP;
 END $$;
+
+-- =============================================================================== ETag (A41)
+-- Server-controlled optimistic-locking counter for admin tables with no FHIR meta_version_id
+-- of their own (ADR-0008). The client's own value of NEW.version (if any) is always ignored.
+CREATE OR REPLACE FUNCTION public.shri_bump_version() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.version := OLD.version + 1;
+  RETURN NEW;
+END $$;

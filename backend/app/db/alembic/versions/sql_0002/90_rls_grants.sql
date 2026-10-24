@@ -907,6 +907,11 @@ ALTER TABLE admin.picklist_item ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.picklist_item FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.picklist_item USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+GRANT SELECT, INSERT, UPDATE ON admin.practice_payer TO shri_app;
+ALTER TABLE admin.practice_payer ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.practice_payer FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.practice_payer USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
 GRANT SELECT ON clinical.practitioner TO shri_fhir_reader;
 GRANT SELECT, INSERT, UPDATE ON clinical.practitioner TO shri_app;
 ALTER TABLE clinical.practitioner ENABLE ROW LEVEL SECURITY;

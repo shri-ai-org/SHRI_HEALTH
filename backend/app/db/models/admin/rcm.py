@@ -17,7 +17,7 @@ from sqlalchemy import (Boolean, CheckConstraint, ForeignKey, ForeignKeyConstrai
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (MONEY, AdminMixin, Base, ProvenanceMixin, TenantMixin, TimestampMixin,
-                          UUIDPKMixin, enum_type)
+                          UUIDPKMixin, VersionedMixin, enum_type)
 from app.db.models.enums import (AdjustmentGroup, BenefitTimePeriod, BenefitType, ClaimEventSource,
                                ClaimFrequency, ClaimStatus, CoverageLevel, EligibilityStatus,
                                EligibilityTrigger, EnrollmentStatus, EnrollmentTransaction,
@@ -30,7 +30,7 @@ MODIFIER_CHECK = "modifier ~ '^[A-Z0-9]{2}$'"
 
 
 # =========================================================================== payers
-class Payer(Base, UUIDPKMixin, TimestampMixin):
+class Payer(Base, UUIDPKMixin, TimestampMixin, VersionedMixin):
     """Payer directory (platform-wide). Exposed in FHIR as Organization (type 'pay')."""
     __tablename__ = "payer"
     __table_args__ = (Index("ix_payer_name_trgm", "name", postgresql_using="gin",
@@ -80,6 +80,19 @@ class PayerEnrollment(Base, AdminMixin):
                                                      default=EnrollmentStatus.PENDING.value)
     submitted_at: Mapped[datetime | None]
     approved_at: Mapped[datetime | None]
+
+
+class PracticePayer(Base, AdminMixin, VersionedMixin):
+    """A payer this practice actually works with, i.e. the `/practice-payers` directory
+    (A39/issue #13) - distinct from `payer`, the platform-wide, read-only payer list. The
+    platform payer is never edited per-practice; this row is where a practice turns one on and
+    tracks whether it's currently active for the practice to bill against."""
+    __tablename__ = "practice_payer"
+    __table_args__ = (UniqueConstraint("tenant_id", "payer_id"),)
+
+    payer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.payer.id"), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True,
+                                            server_default=text("true"))
 
 
 # =========================================================================== eligibility
@@ -154,7 +167,7 @@ class EligibilityBenefit(Base, AdminMixin):
 
 
 # =========================================================================== fee schedules
-class FeeSchedule(Base, AdminMixin):
+class FeeSchedule(Base, AdminMixin, VersionedMixin):
     __tablename__ = "fee_schedule"
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", "effective_from"),

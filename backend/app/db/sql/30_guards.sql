@@ -61,6 +61,15 @@ CREATE TRIGGER trg_result_acknowledgement_insert_only BEFORE UPDATE OR DELETE ON
 CREATE TRIGGER trg_service_request_status_event_insert_only BEFORE UPDATE OR DELETE ON admin.service_request_status_event FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
 CREATE TRIGGER trg_visit_flow_event_insert_only BEFORE UPDATE OR DELETE ON admin.visit_flow_event FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
 CREATE TRIGGER trg_work_item_event_insert_only BEFORE UPDATE OR DELETE ON admin.work_item_event FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
+CREATE TRIGGER trg_appointment_type_version BEFORE UPDATE ON admin.appointment_type FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
+CREATE TRIGGER trg_facility_version BEFORE UPDATE ON admin.facility FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
+CREATE TRIGGER trg_fee_schedule_version BEFORE UPDATE ON admin.fee_schedule FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
+CREATE TRIGGER trg_lab_account_version BEFORE UPDATE ON admin.lab_account FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
+CREATE TRIGGER trg_lab_provider_version BEFORE UPDATE ON admin.lab_provider FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
+CREATE TRIGGER trg_note_template_version BEFORE UPDATE ON admin.note_template FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
+CREATE TRIGGER trg_patient_pharmacy_version BEFORE UPDATE ON admin.patient_pharmacy FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
+CREATE TRIGGER trg_payer_version BEFORE UPDATE ON admin.payer FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
+CREATE TRIGGER trg_practice_payer_version BEFORE UPDATE ON admin.practice_payer FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
 CREATE TRIGGER trg_allergy_intolerance_ai_provenance BEFORE INSERT OR UPDATE OF entry_source, ai_suggestion_id ON clinical.allergy_intolerance FOR EACH ROW EXECUTE FUNCTION shri_ai_provenance_guard();
 CREATE TRIGGER trg_charge_ai_provenance BEFORE INSERT OR UPDATE OF entry_source, ai_suggestion_id ON admin.charge FOR EACH ROW EXECUTE FUNCTION shri_ai_provenance_guard();
 CREATE TRIGGER trg_composition_ai_provenance BEFORE INSERT OR UPDATE OF entry_source, ai_suggestion_id ON clinical.composition FOR EACH ROW EXECUTE FUNCTION shri_ai_provenance_guard();

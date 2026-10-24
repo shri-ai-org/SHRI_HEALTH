@@ -11,7 +11,7 @@ from sqlalchemy import (Boolean, CheckConstraint, ForeignKey, Index, String, Uni
                         text)
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import AdminMixin, Base, TimestampMixin, UUIDPKMixin, enum_type
+from app.db.base import AdminMixin, Base, TimestampMixin, UUIDPKMixin, VersionedMixin, enum_type
 from app.db.models.enums import ErxMessageType, ErxTransactionStatus, MessageDirection
 
 
@@ -52,7 +52,7 @@ class PharmacyServiceLevel(Base):
     service_level: Mapped[str] = mapped_column(String(20), primary_key=True)
 
 
-class PatientPharmacy(Base, AdminMixin):
+class PatientPharmacy(Base, AdminMixin, VersionedMixin):
     """The patient's chosen pharmacies; at most one default."""
     __tablename__ = "patient_pharmacy"
     __table_args__ = (

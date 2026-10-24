@@ -9,7 +9,7 @@ from sqlalchemy import (Boolean, CheckConstraint, ForeignKey, Index, Integer, Sm
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (AdminMixin, Base, OptionalTenantMixin, TimestampMixin, UUIDPKMixin,
-                          enum_type)
+                          VersionedMixin, enum_type)
 from app.db.models.enums import SettingValueType
 
 NPI_CHECK = "{col} IS NULL OR shri_npi_valid({col})"
@@ -63,7 +63,7 @@ class TenantSetting(Base, AdminMixin):
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class Facility(Base, AdminMixin):
+class Facility(Base, AdminMixin, VersionedMixin):
     """Billing / operational attributes of a practice site. The site itself is a FHIR
     Location (``location_id``); rooms are child Locations of it."""
     __tablename__ = "facility"

@@ -117,6 +117,11 @@ DEFERRED = {
     "composition": ("signed", "shri_composition_signed_check()"),
     "medication_request": ("alerts", "shri_medication_request_alert_check()"),
 }
+#: Admin tables with VersionedMixin (A41/issue #13): practice-setup resources and
+#: patient_pharmacy, none of which have a FHIR meta_version_id of their own.
+VERSIONED_TABLES = {"facility", "appointment_type", "note_template", "lab_provider",
+                    "lab_account", "patient_pharmacy", "payer", "fee_schedule",
+                    "practice_payer"}
 # child table -> (fk column, parent table, editable parent statuses)
 FROZEN_CHILDREN = {
     "dosage": ("medication_request_id", "medication_request", "draft"),
@@ -243,6 +248,10 @@ def guards_sql() -> str:
         qt = _q(_schema_of(MAPPERS[table].__table__), table)
         out.append(f"CREATE TRIGGER trg_{table}_insert_only BEFORE UPDATE OR DELETE ON {qt} "
                    "FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();")
+    for table in sorted(VERSIONED_TABLES):
+        qt = _q(_schema_of(MAPPERS[table].__table__), table)
+        out.append(f"CREATE TRIGGER trg_{table}_version BEFORE UPDATE ON {qt} "
+                   "FOR EACH ROW EXECUTE FUNCTION shri_bump_version();")
     for table in sorted(Base.metadata.tables.values(), key=lambda t: t.name):
         if {"entry_source", "ai_suggestion_id"} <= set(table.c.keys()):
             qt = _q(table.schema, table.name)

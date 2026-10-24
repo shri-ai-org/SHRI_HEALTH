@@ -35,8 +35,13 @@ class Identifier(Base, FhirChildMixin):
                    "related_person_id", "encounter_id", "coverage_id", "document_reference_id")
     __extra_args__ = (
         # One live identifier value per system per tenant, per kind of owner (MRN, NPI ...).
+        # SSN is excluded (A39/issue #13): its value is a salted hash or a masked last-four
+        # (ck_identifier_ssn_not_clear_text) - the masked form is *meant* to collide across
+        # patients who happen to share the same last four digits, so uniqueness on it isn't a
+        # real constraint, it's a bug that would wrongly reject a second patient's masked SSN.
         *[Index(f"uq_identifier_{col[:-3]}_value", "tenant_id", "system", "value", unique=True,
-                postgresql_where=text(f"{col} IS NOT NULL AND use IS DISTINCT FROM 'old'"))
+                postgresql_where=text(f"{col} IS NOT NULL AND use IS DISTINCT FROM 'old' AND "
+                                      f"system IS DISTINCT FROM '{systems.SSN}'"))
           for col in ("patient_id", "practitioner_id", "organization_id", "location_id",
                       "coverage_id")],
         Index("ix_identifier_value", "tenant_id", "value"),

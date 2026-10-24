@@ -11,13 +11,13 @@ from sqlalchemy import (Boolean, CheckConstraint, Computed, ForeignKey, ForeignK
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (AdminMixin, Base, OptionalTenantMixin, TenantMixin, TimestampMixin,
-                          UUIDPKMixin, enum_type)
+                          UUIDPKMixin, VersionedMixin, enum_type)
 from app.db.models.enums import (DaysOfWeek, DetectedIssueSeverity, FavoriteKind, RuleSource,
                                VisitFlowStep, WorkItemStatus, WorkItemType)
 
 
 # =========================================================================== scheduling config
-class AppointmentType(Base, AdminMixin):
+class AppointmentType(Base, AdminMixin, VersionedMixin):
     """Exposed in FHIR as Appointment.appointmentType (Shri appointment-type CodeSystem)."""
     __tablename__ = "appointment_type"
     __table_args__ = (
@@ -90,10 +90,12 @@ class ScheduleException(Base, AdminMixin):
 
 class VisitFlowEvent(Base, AdminMixin):
     """FR-SCH-02 status board: arrived -> checked in -> roomed -> with provider -> checked out.
-    One row per step; the board shows the latest step per appointment."""
+    One row per step, insert-only (A42/issue #13: no UNIQUE(appointment_id, step) - a patient
+    moved to a second room must be able to be 'roomed' again); the board reads the latest step
+    per appointment from ``ix_visit_flow_event_appointment``."""
     __tablename__ = "visit_flow_event"
     __table_args__ = (
-        UniqueConstraint("appointment_id", "step"),
+        Index("ix_visit_flow_event_appointment", "appointment_id", "created_at"),
         CheckConstraint("step <> 'roomed' OR location_id IS NOT NULL", name="roomed_has_room"),
     )
 
@@ -106,7 +108,7 @@ class VisitFlowEvent(Base, AdminMixin):
 
 
 # =========================================================================== templates
-class NoteTemplate(Base, AdminMixin):
+class NoteTemplate(Base, AdminMixin, VersionedMixin):
     """FR-ENC-04 specialty note templates; sections in note_template_section."""
     __tablename__ = "note_template"
     __table_args__ = (

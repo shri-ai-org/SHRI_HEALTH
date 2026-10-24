@@ -14,14 +14,14 @@ from sqlalchemy import (Boolean, CheckConstraint, ForeignKey, ForeignKeyConstrai
                         SmallInteger, String, Text, UniqueConstraint, text)
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import AdminMixin, Base, TenantMixin, enum_type
+from app.db.base import AdminMixin, Base, TenantMixin, VersionedMixin, enum_type
 from app.db.models.enums import (AbnOption, AnswerType, BillTo, CollectionMode,
                                LabConnectionType, MedicalNecessityOutcome,
                                OrderFulfillmentStatus, PayerType, ResultAckAction,
                                UnmatchedReason, UnmatchedResultStatus)
 
 
-class LabProvider(Base, AdminMixin):
+class LabProvider(Base, AdminMixin, VersionedMixin):
     """A performing lab connected to this practice (Quest, Labcorp, regional lab)."""
     __tablename__ = "lab_provider"
     __table_args__ = (
@@ -48,7 +48,7 @@ class LabProvider(Base, AdminMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class LabAccount(Base, AdminMixin):
+class LabAccount(Base, AdminMixin, VersionedMixin):
     """Client account number at a lab, per facility."""
     __tablename__ = "lab_account"
     __table_args__ = (UniqueConstraint("lab_provider_id", "facility_id", "account_number"),
