@@ -28,6 +28,27 @@ describe('BreakGlassDialog', () => {
     expect(await axeViolations()).toEqual([])
   })
 
+  it('counts the note against the 500-character limit and refuses a longer one', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(<BreakGlassDialog open onSubmit={onSubmit} onCancel={() => {}} />)
+    const note = screen.getByLabelText(/Note/)
+    expect(note).toHaveAccessibleDescription('500 characters left')
+
+    await user.click(screen.getByRole('radio', { name: /Continuity of care/ }))
+    await user.click(note)
+    await user.paste('x'.repeat(503)) // pasted text is kept whole, never silently cut
+    expect(note).toHaveValue('x'.repeat(503))
+    expect(note).toHaveAccessibleDescription('3 characters too many')
+    await user.click(screen.getByRole('button', { name: 'Open chart' }))
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText('Shorten the note to 500 characters or fewer.')).toBeInTheDocument()
+
+    await user.type(note, '{Backspace}{Backspace}{Backspace}')
+    await user.click(screen.getByRole('button', { name: 'Open chart' }))
+    expect(onSubmit).toHaveBeenCalledWith({ reasonCode: 'continuity-of-care', reasonText: 'x'.repeat(500) })
+  })
+
   it('sends the reason code alone when no note is given', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
@@ -92,6 +113,29 @@ describe('RecordChangedDialog', () => {
 describe('IdleTimeoutWarning', () => {
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('holds the idle dialog back until the session layer confirms it, but still reports expiry', () => {
+    vi.useFakeTimers()
+    const start = Date.parse('2026-11-03T14:14:00Z') // 1 minute left
+    let clock = start
+    const onExpired = vi.fn()
+    render(
+      <IdleTimeoutWarning
+        idleExpiresAt="2026-11-03T14:15:00Z"
+        expiresAt="2026-11-04T02:00:00Z"
+        idleWarningConfirmed={false}
+        onStaySignedIn={async () => {}}
+        onSignOut={() => {}}
+        onExpired={onExpired}
+        now={() => clock}
+      />,
+    )
+    act(() => vi.advanceTimersByTime(1000))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    clock = start + 60_000
+    act(() => vi.advanceTimersByTime(1000))
+    expect(onExpired).toHaveBeenCalledTimes(1)
   })
 
   it('warns 2 minutes before idle logout, counts down and expires', async () => {
