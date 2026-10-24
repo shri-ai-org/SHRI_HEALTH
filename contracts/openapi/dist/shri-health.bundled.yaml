@@ -9621,9 +9621,10 @@ components:
           x-phi: none
     OperationKind:
       title: OperationKind
-      description: What kind of long-running work an operation tracks (API_STANDARDS §13).
+      description: 'What kind of long-running work an operation tracks (API_STANDARDS §13). An extensible enum: the list grows with new batches, so clients must treat a kind they do not know as generic long-running work and show the raw value (API_STANDARDS §6.5).'
       type: string
-      enum:
+      maxLength: 64
+      x-extensible-enum:
         - ai.transcription
         - ai.note-draft
         - ai.chart-summary

@@ -105,7 +105,7 @@ Allowed error statuses are listed in §9.3. `204 No Content` is used only for `P
 
 | Item | Rule |
 |---|---|
-| Every string | Has `maxLength`. Enumerated values use `enum`. Free text is normalized to Unicode NFC and trimmed. |
+| Every string | Has `maxLength`. Enumerated values use `enum`, or `x-extensible-enum` for a response enum that may grow (§6.5). Free text is normalized to Unicode NFC and trimmed. |
 | Phone | E.164: `"+16175550123"`. Optional `extension`. |
 | Email | `format: email`, max 254. |
 | Address | `{ lines: [string] (max 3), city, state (USPS 2-letter), postalCode (ZIP `12345` or ZIP+4 `12345-6789`), country: "US" }` |
@@ -146,7 +146,10 @@ Code system URIs (FHIR canonical):
 - Use the FHIR value set's codes where FHIR defines the concept (appointment status, encounter status, condition clinical status, allergy criticality, gender, …), with FHIR's exact spelling.
 - Our own enums use lowercase kebab-case (`with-provider`, `ai-generated`).
 - Enums are strings, never integers.
-- Clients must handle unknown enum values in responses (show the raw value); adding a response enum value is a governed change (CONTRACT_GOVERNANCE §4).
+- **Strict by default.** Every enum is a strict `enum` unless it is a response enum that is expected to grow.
+- **Extensible response enums.** A response enum that may grow (for example `OperationKind`, which gains a kind with new batches) lists its values under `x-extensible-enum` instead of `enum`, with `type: string` and a `maxLength`. Clients must render an unknown value safely: show the raw value or a generic label, never fail or hide the record. Adding a value is then a governed change, not a breaking one; removing a value is breaking (CONTRACT_GOVERNANCE §4.1).
+- `x-extensible-enum` is never used for a value the client sends: request enums stay strict, so the server rejects a value it does not know.
+- Adding a value to a strict response enum is a breaking change (CONTRACT_GOVERNANCE §4).
 
 ## 7. Request and response bodies
 
@@ -489,6 +492,7 @@ Examples in the contract are what the mock server returns, so they must be safe:
 | `x-storage` | Operation | `clinical`, `admin`, `audit`, `files` (ADR-0011) | Yes (informational) | DATA_OWNERSHIP |
 | `x-events` | Operation | List of event types published | When it publishes | EVENTS.md |
 | `x-release` | Operation | `P0`, `P0-stretch` | Yes | FRS §2 |
+| `x-extensible-enum` | String schema in a response | List of known values, in place of `enum` | Only for response enums that may grow | §6.5; CONTRACT_GOVERNANCE §4.1 |
 
 ## 22. Open items in this document
 

@@ -78,6 +78,7 @@ birthDate:
 | `x-storage` | Operations | `clinical`, `admin`, `audit`, `files` (informational; one database, ADR-0011; DATA_OWNERSHIP) | not linted; reviewed |
 | `x-events` | Operations that publish events | List of event types (EVENTS.md §4) | not linted; reviewed |
 | `x-release` | Operations | `P0`, `P0-stretch` | not linted; reviewed |
+| `x-extensible-enum` | String schemas in responses that may gain values | List of known values, in place of `enum`; clients render unknown values safely (API_STANDARDS §6.5) | not linted; reviewed. oasdiff reads it natively and does not report an added value (CONTRACT_GOVERNANCE §4.1) |
 | `x-internal` | Servers | `false` for our public servers (OWASP API9 inventory rule) | `owasp:api9:2023-inventory-access` |
 
 ## Where they are enforced
