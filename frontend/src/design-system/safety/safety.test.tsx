@@ -94,6 +94,29 @@ describe('IdleTimeoutWarning', () => {
     vi.useRealTimers()
   })
 
+  it('holds the idle dialog back until the session layer confirms it, but still reports expiry', () => {
+    vi.useFakeTimers()
+    const start = Date.parse('2026-11-03T14:14:00Z') // 1 minute left
+    let clock = start
+    const onExpired = vi.fn()
+    render(
+      <IdleTimeoutWarning
+        idleExpiresAt="2026-11-03T14:15:00Z"
+        expiresAt="2026-11-04T02:00:00Z"
+        idleWarningConfirmed={false}
+        onStaySignedIn={async () => {}}
+        onSignOut={() => {}}
+        onExpired={onExpired}
+        now={() => clock}
+      />,
+    )
+    act(() => vi.advanceTimersByTime(1000))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    clock = start + 60_000
+    act(() => vi.advanceTimersByTime(1000))
+    expect(onExpired).toHaveBeenCalledTimes(1)
+  })
+
   it('warns 2 minutes before idle logout, counts down and expires', async () => {
     vi.useFakeTimers()
     const start = Date.parse('2026-11-03T14:00:00Z')
