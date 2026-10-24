@@ -30,7 +30,20 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+      # Until the first frontend lands (#19), a change to this workflow alone has nothing to check.
+      - name: Is there a frontend?
+        id: frontend
+        working-directory: .
+        run: |
+          if [ -f frontend/package-lock.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No frontend/package-lock.json yet, so there is nothing to check."
+          fi
+
+      - if: steps.frontend.outputs.present == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version-file: frontend/.nvmrc  # Node 24 LTS
           cache: npm
@@ -39,13 +52,17 @@ jobs:
       # Exact versions from the lock file. --ignore-scripts: no install scripts run (also set in
       # frontend/.npmrc), so @scarf/scarf and similar never execute.
       - name: Install pinned packages
+        if: steps.frontend.outputs.present == 'true'
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Lint
+        if: steps.frontend.outputs.present == 'true'
         run: npm run lint
 
       - name: Type check
+        if: steps.frontend.outputs.present == 'true'
         run: npm run typecheck
 
       - name: Tests
+        if: steps.frontend.outputs.present == 'true'
         run: npm test
