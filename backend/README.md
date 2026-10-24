@@ -31,6 +31,9 @@ async def get_patient(
   its whole length, including triggers that run at commit. The clinic comes from the server-side
   session, never from request headers or the body. Call `await db.commit()` to save; anything
   not committed is rolled back when the request ends.
+- The session also carries the clinic as `db.info["tenant_id"]` (a UUID; key
+  `app.core.db.TENANT_ID_INFO_KEY`), so data-access helpers can fill `tenant_id` on new rows.
+  Fill it only where it is empty, never overwrite it.
 - Raise `NotFound`, `Conflict`, `Forbidden`, `ValidationFailed` from `app/core/errors.py`,
   with `code=` for a specific code from API_STANDARDS §9.3, e.g.
   `Conflict(code="booking-conflict")`. Responses use the Problem Details shape (§9.1) with
