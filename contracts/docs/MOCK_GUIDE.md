@@ -57,7 +57,7 @@ Example names are listed per operation in the contract (for example `GET /eligib
 
 ## 5. A front-desk flow
 
-These calls work against the mock as written: session → booking lists → search → register → add coverage → book → reschedule → check in → undo check-in → copay → read the eligibility result → pharmacy and summaries.
+These calls work against the mock as written: session → booking lists → search → register → add coverage → book → check in → read the eligibility result → reschedule → undo check-in → copay → pharmacy and summaries.
 
 ```bash
 B=http://127.0.0.1:4010
