@@ -167,7 +167,7 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `appointments:status` (roomed, with provider, checked out) ‡ | ✓ (checked out) | ✓ (roomed) | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `timeline:read`, `encounters:read`, `notes:read`, `vitals:read`, history `:read` ‡ | – | ✓ | ✓ | ✓ | ✓ | R (signed notes, diagnoses) | – | R (investigations) | – | – |
 | `vitals:create`, `allergies:create\|update` ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
-| ‡ `encounters:create\|update\|close`, `diagnoses:*`, `notes:create\|update\|sign`, `note-addenda:create`, `after-visit-summaries:create`, other history writes | – | – | R (`notes:create\|update` for nursing notes) | ✓ | – | ✓ | – | – | – | – |
+| ‡ `encounters:create\|update\|close`, `diagnoses:*`, `notes:create\|update\|sign`, `note-addenda:create`, `after-visit-summaries:create`, other history writes | – | – | R (`notes:create\|update` for nursing notes) | ✓ | ✓ | – | – | – | – | – |
 | `notes:cosign` ‡ | – | – | – | ✓ | – | – | – | – | – | – |
 | `*:entered-in-error` (clinical) ‡ | – | – | ✓ (own entries) | ✓ | ✓ | – | – | – | – | – |
 | `encounters:entered-in-error` ‡ | – | – | – | ✓ | ✓ | – | ✓ (only encounters with no signed note) | – | – | – |
@@ -178,11 +178,11 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `users:*`, `roles:read`, `user-roles:update` | – | – | – | – | – | – | ✓ | R | R | – |
 | Medications and prescriptions: read ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `prescriptions:create\|update\|entered-in-error` (drafts), `medication-reconciliations:create` ‡ | – | ✓ (reconcile) | ✓ | ✓ | ✓ | – | – | – | – | – |
-| `prescriptions:sign-and-send\|cancel\|change`, `alerts:override`, `refill-requests:respond` ‡ | – | – | – | ✓ | ✓ | – | – | – | – | – |
+| `prescriptions:sign-and-send\|cancel\|change`, `alerts:override`, `refill-requests:respond`, `medications:discontinue` ‡ | – | – | – | ✓ | ✓ | – | – | – | – | – |
 | Orders: `orders:create\|entered-in-error` (drafts), `in-office-results:create` ‡ | – | ✓ (point-of-care results) | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `orders:sign-and-send\|cancel`, `results:acknowledge` ‡ | – | – | – | ✓ | ✓ | – | – | – | – | – |
 | `unmatched-results:*` ‡ | – | – | ✓ | ✓ | – | – | – | – | – | – |
-| Billing: `superbills:*`, `claims:*`, `remittances:*`, `billing-reports:read` | – | – | – | R (`superbills:read`) | R | ✓ | R | – | – | – |
+| Billing: `superbills:*`, `claims:*`, `remittances:*`, `billing-reports:read` | – | – | – | R (`superbills:read`) | R (`superbills:read`) | ✓ | R | – | – | – |
 | `payments:create\|card-session` (batch 1 since D58) | ✓ | – | – | – | – | ✓ | – | – | – | – |
 | `payers:read` (payer directory; added 2026-10-23, in core since PR #7) | ✓ | – | – | – | – | ✓ | ✓ | – | – | – |
 | `coverages:entered-in-error` (D45; new 2026-10-23, pending core) | ✓ | – | – | – | – | ✓ | ✓ | – | – | – |
@@ -190,7 +190,7 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `lab-providers:read` (D48; new 2026-10-23, pending core) | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | – | – |
 | `consent-requirements:read` (D59; new 2026-10-24, pending core) | ✓ | – | – | – | – | – | ✓ | R | – | – |
 | `provider-schedules:create\|update` (D66: split from `practice-setup:*`; new 2026-10-24, pending core) | ✓ | – | – | – | – | – | ✓ | – | – | – |
-| `documents:*`, `fax-inbox:*`, `faxes:create` | ✓ | ✓ | ✓ | ✓ | ✓ | R | – | – | – | – |
+| `documents:*`, `fax-inbox:*`, `faxes:create` | ✓ | ✓ | ✓ | ✓ | ✓ | R (`documents:read` only; D71) | – | – | – | – |
 | `ccda:import\|export` | ✓ | – | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `inbox:*`, `messages:create` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | `exports:*` | – | – | – | – | – | – | ✓ | ✓ | – | – |
@@ -208,10 +208,11 @@ Notes on the matrix:
 - "Own entries" (RN entered-in-error) is a rule inside the service, not a permission.
 - Whether MA, RN may prescribe-draft or answer refills follows clinic protocol and state law: **pending clinical advisors**.
 - 2026-10-24 (D49–D67): the `appointments:create|update|cancel|check-in` row had ADM `–` and CO `✓`, the reverse of DATA_OWNERSHIP §5.1 (FD, ADM) and of core; corrected to ADM `✓`, CO `–`. Duplicate review moved to ADM only (D64). Provider self-service on schedules is P1 (D66).
+- 2026-10-24 (post-merge review of core PR #21): the clinician-writes row had APP `–` and BIL `✓`, a column shift from adding the DSP column on 2026-10-23; corrected to APP `✓`, BIL `–`, as in core. `medications:discontinue` (MD, APP) added to the prescribing row. APP's billing cell reads `superbills:read` only, as MD's and as core. BIL reads billing documents through `documents:read` only, with no `fax-inbox:read` (D71).
 
 ### 4.4 Matrix gaps filled in core — gap, pending clinical advisors
 
-The draft matrix in §4.3 has no row for 12 permissions in the catalogue. Thulasi's `backend/app/core/permissions.py` (branch `thulasi/fastapi-skeleton`, commit 35caa92, PR #7) fills them in and marks them `gap`; Vimal accepted them as provisional on PR #7. They are mirrored here so the contract and the code agree. Every row is **gap — pending clinical advisors**.
+The draft matrix in §4.3 has no row for 12 permissions in the catalogue. Thulasi's `backend/app/core/permissions.py` (PR #7, adjusted on PR #10) fills them in and marks them `gap`; Vimal accepted them as provisional on PR #7. They are mirrored here so the contract and the code agree (checked against core on main, 2026-10-24). Every row is **gap — pending clinical advisors**.
 
 | Permission | FD | MA | RN | MD | APP | BIL | ADM | CO | SUP | DSP | Follows (in core) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -223,15 +224,12 @@ The draft matrix in §4.3 has no row for 12 permissions in the catalogue. Thulas
 | `orders:read` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | Order-create row |
 | `results:read` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | Order-create row |
 | `lab-compendium:read` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | Order-create row |
-| `orders:medical-necessity-check` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | Order-create row |
-| `orders:entered-in-error` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | Order-create row (drafts only, #228) |
-| `files:create` | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | Not in the draft matrix |
-| `files:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | Not in the draft matrix |
+| `orders:medical-necessity-check` | – | – | ✓ | ✓ | ✓ | – | – | – | – | – | Order-create row (MA has no order drafts) |
+| `orders:entered-in-error` | – | – | ✓ | ✓ | ✓ | – | – | – | – | – | Order-create row (drafts only, #228; MA has no order drafts) |
+| `files:create` | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | – | – | – | Not in the draft matrix; ADM uploads the onboarding import file |
+| `files:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | Not in the draft matrix; ADM and CO download exports |
 
-Two differences between core and §4.3 to settle with Thulasi and the clinical advisors (not changed here):
-
-- **MA and orders:** core gives MA the whole order-draft group, including `orders:create`; §4.3 grants MA only point-of-care results (`in-office-results:create`).
-- **ADM and onboarding files:** ADM has `onboarding:import`, but no `files:create`, so it cannot upload the import file (API_STANDARDS §15, purpose `onboarding-import`).
+Settled on PR #10 (core tests in `test_permissions.py`): MA has no order drafts, only order and result reads and point-of-care results (`in-office-results:create`), as in §4.3; ADM has `files:create|read` (the onboarding import file, exports) and CO has `files:read` (exports). The file service limits which file purposes each role may use (API_STANDARDS §15).
 
 ## 5. Clinic and facility context, restricted charts, break-glass
 
