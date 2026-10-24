@@ -16,6 +16,11 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30",
     "httpx>=0.28",
+    # Database layer (backend/app/db/, Anand; agreed with Thulasi 2026-10-24):
+    "psycopg[binary]>=3.2",   # sync driver for Alembic migrations and the schema tests
+    "alembic>=1.14",          # migrations
+    "pgvector>=0.3",          # Vector column type (admin.knowledge_chunk embeddings)
+    "fhir.resources>=8.0",    # FHIR R4B models used to validate the read-only /fhir output
 ]
 
 [project.optional-dependencies]
