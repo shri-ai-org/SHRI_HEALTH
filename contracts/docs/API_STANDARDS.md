@@ -406,7 +406,7 @@ Files never pass through module endpoints. Module endpoints only reference a `fi
 
 | Rule | Detail |
 |---|---|
-| `purpose` values | `insurance-card`, `encounter-audio`, `after-visit-summary`, `document`, `fax`, `ccda`, `export`, `onboarding-import` |
+| `purpose` values | `insurance-card`, `identity` (license images, D56), `receipt` (payment receipts, D58; server-generated), `encounter-audio`, `after-visit-summary`, `document`, `fax`, `ccda`, `export`, `onboarding-import`. Each purpose maps to one read permission for the download link (`FilePurpose` in `files.yaml`); a purpose with no mapping is denied |
 | Allowed types and sizes | Declared per purpose. `insurance-card`: **JPEG and PNG for P0**, at most 10 MB (agreed, Minalini M13 and Vimal). HEIC (iPhone photo format) only if Anand's file service converts it for display — **pending Anand** |
 | Long audio | Multipart upload with several part URLs (agreed, A24) |
 | Secrecy | Upload and download URLs are bearer secrets: never logged, never stored by clients, never put in events |

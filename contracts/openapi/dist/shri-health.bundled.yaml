@@ -631,7 +631,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the media type or size is not allowed for this purpose); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the media type or size is not allowed for this purpose, or the purpose is server-generated (`receipt`, `after-visit-summary`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -724,7 +724,7 @@ paths:
     get:
       operationId: createDownloadUrl
       summary: Get a download link
-      description: 'A short-lived, audited link to a clean file (inventory #150; API_STANDARDS §15). Besides `files:read`, the caller needs the read permission of the file''s purpose, for example `coverages:read` for an insurance card, and a break-glass grant or care-team membership for a restricted patient''s files. Audited as an export.'
+      description: 'A short-lived, audited link to a clean file (inventory #150; API_STANDARDS §15). Besides `files:read`, the caller needs the read permission mapped to the file''s purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient''s files need a break-glass grant or care-team membership. A purpose with no mapping is denied. Audited as an export.'
       tags:
         - files
       x-owner: anand
@@ -1432,7 +1432,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged` (the patient was merged into another record).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same value is already a current identifier of another patient in this clinic); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same value is already a current identifier of another patient in this clinic); `idempotency-key-reused` (the Idempotency-Key was used with a different body); `documentId` is not an `identity` document of this patient (field code `invalid-reference`).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -8703,7 +8703,7 @@ paths:
     post:
       operationId: createConsentRequirement
       summary: Create a consent requirement
-      description: Adds a consent requirement, or a new policy version of an existing kind; the earlier version stays until retired (D59).
+      description: Adds a consent requirement, or a new policy version of an existing kind; the earlier version stays until retired (D59). The form file must be scanned clean and not attached elsewhere (`422 file-not-ready`).
       tags:
         - practice-setup
       x-owner: anand
@@ -8783,7 +8783,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (this kind already has that policy version); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (this kind already has that policy version); `idempotency-key-reused` (the Idempotency-Key was used with a different body); `file-not-ready` (`formFileId` is not a clean, unattached `document` file of this clinic uploaded by the caller).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -8864,7 +8864,7 @@ paths:
     patch:
       operationId: updateConsentRequirement
       summary: Update a consent requirement
-      description: 'Edits a consent requirement with JSON Merge Patch; set `active: false` to retire a version (new inventory row #247).'
+      description: 'Edits a consent requirement with JSON Merge Patch; set `active: false` to retire a version (new inventory row #247). The form file must be scanned clean and not attached elsewhere (`422 file-not-ready`).'
       tags:
         - practice-setup
       x-owner: anand
@@ -8940,7 +8940,7 @@ paths:
           description: 412. `precondition-failed` (`If-Match` does not match the current version).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `file-not-ready` (`formFileId` is not a clean, unattached `document` file of this clinic uploaded by the caller).
         '428':
           $ref: '#/components/responses/PreconditionRequired'
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -9051,7 +9051,7 @@ paths:
     post:
       operationId: recordPayment
       summary: Record a patient payment
-      description: 'Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in, so it works for a restricted patient like check-in does (SECURITY_MODEL §5.2).'
+      description: 'Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in, so it works for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`.'
       tags:
         - billing
       x-owner: anand
@@ -9146,7 +9146,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (the card session is not `captured`, or was already used); `patient-merged` (the patient was merged into another record).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`card` without `cardSessionId`, `cardSessionId` with another method, or the appointment belongs to another patient (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`card` without `cardSessionId`, `cardSessionId` with another method, the card session belongs to another patient, its captured amount or currency differs from `amount`, or the appointment belongs to another patient (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -9235,7 +9235,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged` (the patient was merged into another record).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the amount is not positive, or the appointment belongs to another patient); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the amount is not positive, or the appointment belongs to another patient (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -10016,10 +10016,12 @@ components:
           description: 'When it ends: 4 hours after `grantedAt`.'
           x-phi: none
     FilePurpose:
-      description: 'What the file is for (API_STANDARDS §15). Each purpose has its own allowed types and sizes: `insurance-card` is JPEG or PNG up to 10 MB (M13).'
+      description: 'What the file is for (API_STANDARDS §15). Each purpose has its own allowed types and sizes (`insurance-card` and `identity` are JPEG or PNG up to 10 MB, M13) and its own read permission for `GET /files/{fileId}/download-url`: `insurance-card` → `coverages:read`; `identity` → `patients:read`; `receipt` → `payments:create` or `superbills:read`; `encounter-audio` → `transcriptions:read`; `after-visit-summary` → `encounters:read`; `document` → `documents:read`; `fax` → `fax-inbox:read`; `ccda` → `ccda:export`; `export` → `exports:read`; `onboarding-import` → `onboarding:import`. A purpose with no mapping is denied. `receipt` and `after-visit-summary` are generated by the server, never uploaded.'
       type: string
       enum:
         - insurance-card
+        - identity
+        - receipt
         - encounter-audio
         - after-visit-summary
         - document
@@ -10414,7 +10416,7 @@ components:
           x-phi: none
         documentId:
           $ref: '#/components/schemas/Id'
-          description: 'For a driver''s license: the scanned image, stored through `POST /documents` (inventory #206) with category `identity`; the identifier keeps only this reference (D56). Download with `GET /files/{fileId}/download-url` through the document.'
+          description: 'For a driver''s license: the scanned image, stored first through `POST /documents` (inventory #206) with category `identity` **for this patient**; the identifier keeps only this reference (D56). A document of another patient, another category or another clinic is refused (`422`, field code `invalid-reference`). Download it through the document (`GET /files/{fileId}/download-url`, purpose `identity`, `patients:read`).'
           x-phi: internal-id
     PatientCreate:
       description: Body to register a patient. Only `name` and `birthDate` are required (D44); every D39 demographic field is optional.
@@ -10586,7 +10588,7 @@ components:
           x-phi: none
         documentId:
           $ref: '#/components/schemas/Id'
-          description: 'For a driver''s license: the scanned image, stored through `POST /documents` (inventory #206) with category `identity`; the identifier keeps only this reference (D56). Download with `GET /files/{fileId}/download-url` through the document.'
+          description: 'For a driver''s license: the scanned image, stored first through `POST /documents` (inventory #206) with category `identity` **for this patient**; the identifier keeps only this reference (D56). A document of another patient, another category or another clinic is refused (`422`, field code `invalid-reference`). Download it through the document (`GET /files/{fileId}/download-url`, purpose `identity`, `patients:read`).'
           x-phi: internal-id
         use:
           type: string
@@ -15177,7 +15179,7 @@ components:
           x-phi: none
         formFileId:
           $ref: '#/components/schemas/Id'
-          description: The blank form or notice, uploaded through the file service (purpose `document`), for printing or e-signature.
+          description: The blank form or notice, uploaded through the file service with purpose `document`, for printing or e-signature. The file must be `clean`, in this clinic, uploaded by the caller and not yet attached to any record; otherwise `422 file-not-ready` (the same rule as patient file references, API_STANDARDS §15).
           x-phi: internal-id
         effectiveDate:
           $ref: '#/components/schemas/Date'
@@ -15253,7 +15255,7 @@ components:
           x-phi: none
         formFileId:
           $ref: '#/components/schemas/Id'
-          description: The blank form or notice, uploaded through the file service (purpose `document`), for printing or e-signature.
+          description: The blank form or notice, uploaded through the file service with purpose `document`, for printing or e-signature. The file must be `clean`, in this clinic, uploaded by the caller and not yet attached to any record; otherwise `422 file-not-ready` (the same rule as patient file references, API_STANDARDS §15).
           x-phi: internal-id
         effectiveDate:
           $ref: '#/components/schemas/Date'
@@ -15284,7 +15286,7 @@ components:
           oneOf:
             - $ref: '#/components/schemas/Id'
             - type: 'null'
-          description: The blank form or notice, uploaded through the file service (purpose `document`), for printing or e-signature. Send `null` to clear it.
+          description: The blank form or notice, uploaded through the file service with purpose `document`, for printing or e-signature. The file must be `clean`, in this clinic, uploaded by the caller and not yet attached to any record; otherwise `422 file-not-ready` (the same rule as patient file references, API_STANDARDS §15).
           x-phi: internal-id
         effectiveDate:
           $ref: '#/components/schemas/Date'
@@ -15407,7 +15409,7 @@ components:
       properties:
         amount:
           $ref: '#/components/schemas/Money'
-          description: Amount paid. Positive.
+          description: Amount paid. Positive. For `card` it must equal the card session's captured amount.
           x-phi: financial
         method:
           $ref: '#/components/schemas/PaymentMethod'
@@ -15423,7 +15425,7 @@ components:
           x-phi: internal-id
         cardSessionId:
           $ref: '#/components/schemas/Id'
-          description: 'For `card`: the card session from `POST /payments/card-session`, completed in the processor''s hosted fields. Required for `card`, not allowed otherwise.'
+          description: 'For `card`: the card session from `POST /payments/card-session`, completed in the processor''s hosted fields. Required for `card`, not allowed otherwise. The session must belong to this patient and be `captured` for exactly this `amount`; the server takes the processor reference from the session, never from the body.'
           x-phi: internal-id
         checkNumber:
           type: string
@@ -15479,7 +15481,7 @@ components:
           x-phi: financial
         receiptFileId:
           $ref: '#/components/schemas/Id'
-          description: The receipt (PDF), generated at payment and stored through the file service; download it with `GET /files/{fileId}/download-url` (D58).
+          description: The receipt (PDF), generated at payment and stored through the file service with purpose `receipt`; download it with `GET /files/{fileId}/download-url`, which needs `payments:create` or `superbills:read` (D58).
           x-phi: internal-id
         collectedAt:
           $ref: '#/components/schemas/Timestamp'

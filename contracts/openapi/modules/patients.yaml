@@ -565,7 +565,7 @@ paths:
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the same
             value is already a current identifier of another patient in this clinic); `idempotency-key-reused` (the Idempotency-Key
-            was used with a different body).
+            was used with a different body); `documentId` is not an `identity` document of this patient (field code `invalid-reference`).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -2426,9 +2426,10 @@ components:
           x-phi: none
         documentId: &id019
           $ref: ../components/schemas/Id.yaml
-          description: 'For a driver''s license: the scanned image, stored through `POST /documents` (inventory #206) with
-            category `identity`; the identifier keeps only this reference (D56). Download with `GET /files/{fileId}/download-url`
-            through the document.'
+          description: 'For a driver''s license: the scanned image, stored first through `POST /documents` (inventory #206)
+            with category `identity` **for this patient**; the identifier keeps only this reference (D56). A document of another
+            patient, another category or another clinic is refused (`422`, field code `invalid-reference`). Download it through
+            the document (`GET /files/{fileId}/download-url`, purpose `identity`, `patients:read`).'
           x-phi: internal-id
         use:
           type: string

@@ -29,7 +29,8 @@ paths:
       description: 'Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check
         and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card
         numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in, so it works
-        for a restricted patient like check-in does (SECURITY_MODEL §5.2).'
+        for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session
+        is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`.'
       tags:
       - billing
       x-owner: anand
@@ -129,8 +130,9 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`card`
-            without `cardSessionId`, `cardSessionId` with another method, or the appointment belongs to another patient (field
-            code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+            without `cardSessionId`, `cardSessionId` with another method, the card session belongs to another patient, its
+            captured amount or currency differs from `amount`, or the appointment belongs to another patient (field code `invalid-reference`));
+            `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -221,8 +223,8 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the amount
-            is not positive, or the appointment belongs to another patient); `idempotency-key-reused` (the Idempotency-Key
-            was used with a different body).
+            is not positive, or the appointment belongs to another patient (field code `invalid-reference`)); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -250,7 +252,7 @@ components:
       properties:
         amount:
           $ref: ../components/schemas/Money.yaml
-          description: Amount paid. Positive.
+          description: Amount paid. Positive. For `card` it must equal the card session's captured amount.
           x-phi: financial
         method:
           $ref: '#/components/schemas/PaymentMethod'
@@ -267,7 +269,8 @@ components:
         cardSessionId:
           $ref: ../components/schemas/Id.yaml
           description: 'For `card`: the card session from `POST /payments/card-session`, completed in the processor''s hosted
-            fields. Required for `card`, not allowed otherwise.'
+            fields. Required for `card`, not allowed otherwise. The session must belong to this patient and be `captured`
+            for exactly this `amount`; the server takes the processor reference from the session, never from the body.'
           x-phi: internal-id
         checkNumber:
           type: string
@@ -324,8 +327,8 @@ components:
           x-phi: financial
         receiptFileId:
           $ref: ../components/schemas/Id.yaml
-          description: The receipt (PDF), generated at payment and stored through the file service; download it with `GET
-            /files/{fileId}/download-url` (D58).
+          description: The receipt (PDF), generated at payment and stored through the file service with purpose `receipt`;
+            download it with `GET /files/{fileId}/download-url`, which needs `payments:create` or `superbills:read` (D58).
           x-phi: internal-id
         collectedAt:
           $ref: ../components/schemas/Timestamp.yaml

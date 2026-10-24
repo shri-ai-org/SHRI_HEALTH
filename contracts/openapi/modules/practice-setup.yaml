@@ -3058,7 +3058,7 @@ paths:
       operationId: createConsentRequirement
       summary: Create a consent requirement
       description: Adds a consent requirement, or a new policy version of an existing kind; the earlier version stays until
-        retired (D59).
+        retired (D59). The form file must be scanned clean and not attached elsewhere (`422 file-not-ready`).
       tags:
       - practice-setup
       x-owner: anand
@@ -3127,7 +3127,8 @@ paths:
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (this
             kind already has that policy version); `idempotency-key-reused` (the Idempotency-Key was used with a different
-            body).
+            body); `file-not-ready` (`formFileId` is not a clean, unattached `document` file of this clinic uploaded by the
+            caller).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -3195,7 +3196,7 @@ paths:
       operationId: updateConsentRequirement
       summary: Update a consent requirement
       description: 'Edits a consent requirement with JSON Merge Patch; set `active: false` to retire a version (new inventory
-        row #247).'
+        row #247). The form file must be scanned clean and not attached elsewhere (`422 file-not-ready`).'
       tags:
       - practice-setup
       x-owner: anand
@@ -3268,7 +3269,8 @@ paths:
           description: 412. `precondition-failed` (`If-Match` does not match the current version).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a body field or a parameter is invalid).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `file-not-ready` (`formFileId` is
+            not a clean, unattached `document` file of this clinic uploaded by the caller).
         '428':
           $ref: ../components/responses/PreconditionRequired.yaml
           description: 428. `precondition-required` (`If-Match` is missing).
@@ -4788,7 +4790,9 @@ components:
           x-phi: none
         formFileId: &id091
           $ref: ../components/schemas/Id.yaml
-          description: The blank form or notice, uploaded through the file service (purpose `document`), for printing or e-signature.
+          description: The blank form or notice, uploaded through the file service with purpose `document`, for printing or
+            e-signature. The file must be `clean`, in this clinic, uploaded by the caller and not yet attached to any record;
+            otherwise `422 file-not-ready` (the same rule as patient file references, API_STANDARDS §15).
           x-phi: internal-id
         effectiveDate: &id092
           $ref: ../components/schemas/Date.yaml
@@ -4835,8 +4839,9 @@ components:
           oneOf:
           - $ref: ../components/schemas/Id.yaml
           - type: 'null'
-          description: The blank form or notice, uploaded through the file service (purpose `document`), for printing or e-signature.
-            Send `null` to clear it.
+          description: The blank form or notice, uploaded through the file service with purpose `document`, for printing or
+            e-signature. The file must be `clean`, in this clinic, uploaded by the caller and not yet attached to any record;
+            otherwise `422 file-not-ready` (the same rule as patient file references, API_STANDARDS §15).
           x-phi: internal-id
         effectiveDate: *id092
         active:
