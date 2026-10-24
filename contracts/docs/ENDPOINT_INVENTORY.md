@@ -296,7 +296,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 220 | GET | `/message-templates` | M | Ad | `message-templates:read` | – | – | | | §3.9 | B3 | |
 | 221 | POST | `/message-templates` | M | Ad | `message-templates:create` | adm | S | | | §3.9 | B3 | |
-| 222 | PATCH | `/message-templates/{messageTemplateId}` | M | Ad | `message-templates:update` | adm | – | ✓ | | §3.9 | B3 | |
+| 222 | PATCH | `/message-templates/{messageTemplateId}` | M | Ad | `message-templates:update` | adm | – | ✓ | | §3.9 | B3 | Also retires a template: `active: false` (no DELETE, D14); M16 |
+| 248 | GET | `/message-templates/{messageTemplateId}` | M | Ad | `message-templates:read` | – | – | | | §3.9 | B3 | **New** (M16, 2026-10-24): returns the template with its `ETag`, which #222 needs for `If-Match` (list items carry no ETag, API_STANDARDS §11). Templates carry `active` (default `true`); the list returns active templates unless asked for all |
 | 223 | GET | `/patients/{patientId}/communication-preferences` | M | Ad | `communication-preferences:read` | pr | – | | | §3.9 | B3 | |
 | 224 | PUT | `/patients/{patientId}/communication-preferences` | M | Ad | `communication-preferences:update` | pw | – | ✓ | | §3.9 | B3 | |
 | 225 | GET | `/patients/{patientId}/communications` | M | Ad | `communications:read` | pr | – | | | §3.9 | B3 | |
@@ -322,7 +323,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | Batch 1 follow-up: Minalini's screen-mapping gaps (2026-10-24) | New #236–239 booking lists (D49), #240 merge list (D51), #241 summaries (D54), #242 undo check-in (D55), #243 reschedule (D61), #244–247 consent requirements (D59); #1–6, #14, #19, #148–150 written (D52, D53); #130 and #198–199 moved to batch 1 (D50, D58); `provider-schedules:create\|update` (D66) | D49–D70 |
 | Moved outside `/api/v1` | `/hooks/*`, `/health` (public through Nginx); `/ready` internal and **not in the contract** | API_STANDARDS §2; agreed T24 |
 
-**Count:** 246 contract operations: 247 rows (27 platform, 24 patients, 12 scheduling and eligibility, 28 encounters and notes, 17 history, 9 AI, 17 medications, 18 orders, 76 Anand, 7 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24). Recounted when the contract is written.
+**Count:** 247 contract operations: 248 rows (27 platform, 24 patients, 12 scheduling and eligibility, 28 encounters and notes, 17 history, 9 AI, 17 medications, 18 orders, 76 Anand, 8 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24); #248 from Minalini's M16 sign-off (2026-10-24). Recounted when the contract is written.
 
 ## Later batches: items recorded on 2026-10-24 (no contract change now)
 

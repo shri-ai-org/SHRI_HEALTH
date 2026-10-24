@@ -177,7 +177,7 @@ Each history type has its own entered-in-error action with its own permission; t
 
 | # | Method | Path | Purpose |
 |---|---|---|---|
-| 220–222 | GET, POST, PATCH | `/message-templates`, `/message-templates/{messageTemplateId}` | Reminder wording |
+| 220–222, 248 | GET, POST, GET, PATCH | `/message-templates`, `/message-templates/{messageTemplateId}` | Reminder wording; a template is retired with `active: false` |
 | 223–224 | GET, PUT | `/patients/{patientId}/communication-preferences` | SMS, email, voice; opt-outs |
 | 225 | GET | `/patients/{patientId}/communications` | What was sent and delivery status |
 | 226 | GET | `/dashboards/operations` | Today's counts by status (counts only, no PHI) |
