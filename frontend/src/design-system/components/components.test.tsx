@@ -6,7 +6,7 @@ import { Button } from './Button'
 import { DataTable } from './DataTable'
 import { Field } from './Field'
 import { Alert, Badge, ErrorState } from './feedback'
-import { DateInput, PhoneInput, StateSelect } from './inputs'
+import { DateInput, MoneyInput, PhoneInput, StateSelect, Textarea } from './inputs'
 import { ConfirmDialog } from './Modal'
 import { Tabs } from './Tabs'
 
@@ -49,6 +49,79 @@ describe('form fields', () => {
   it('lists states by name with USPS codes as values', () => {
     render(<Form onDate={() => {}} onPhone={() => {}} />)
     expect(screen.getByRole('option', { name: 'Illinois (IL)' })).toHaveValue('IL')
+  })
+})
+
+describe('MoneyInput', () => {
+  it('keeps the amount a decimal string and groups it once valid', async () => {
+    const user = userEvent.setup()
+    const onValue = vi.fn()
+    render(
+      <Field label="Copay amount (USD)">{(p) => <MoneyInput {...p} value="" onValueChange={onValue} />}</Field>,
+    )
+    const input = screen.getByLabelText('Copay amount (USD)')
+    await user.type(input, '1234.5')
+    expect(onValue).toHaveBeenLastCalledWith('1234.50')
+    await user.tab()
+    expect(input).toHaveValue('1,234.50')
+    expect(await axeViolations()).toEqual([])
+  })
+
+  it('reports invalid and negative amounts as null, unless negatives are allowed', async () => {
+    const user = userEvent.setup()
+    const onValue = vi.fn()
+    const onRefund = vi.fn()
+    render(
+      <>
+        <Field label="Copay amount (USD)">{(p) => <MoneyInput {...p} value="" onValueChange={onValue} />}</Field>
+        <Field label="Adjustment (USD)">{(p) => <MoneyInput {...p} value="" allowNegative onValueChange={onRefund} />}</Field>
+      </>,
+    )
+    await user.type(screen.getByLabelText('Copay amount (USD)'), '-5')
+    expect(onValue).toHaveBeenLastCalledWith(null)
+    await user.type(screen.getByLabelText('Adjustment (USD)'), '-5')
+    expect(onRefund).toHaveBeenLastCalledWith('-5.00')
+  })
+
+  it('shows a stored amount without the sign it draws beside the field', () => {
+    render(<Field label="Balance (USD)">{(p) => <MoneyInput {...p} value="25.00" onValueChange={() => {}} />}</Field>)
+    expect(screen.getByLabelText('Balance (USD)')).toHaveValue('25.00')
+  })
+})
+
+describe('Textarea', () => {
+  function Note({ limit }: { limit?: number }) {
+    const [value, setValue] = useState('')
+    return (
+      <Field label="Note" hint="Shown to the privacy officer">
+        {(p) => <Textarea {...p} value={value} {...(limit === undefined ? {} : { limit })} onChange={(e) => setValue(e.target.value)} />}
+      </Field>
+    )
+  }
+
+  it('reads the hint and the remaining count with the field', async () => {
+    const user = userEvent.setup()
+    render(<Note limit={10} />)
+    const note = screen.getByLabelText('Note')
+    expect(note).toHaveAccessibleDescription('Shown to the privacy officer 10 characters left')
+    await user.type(note, 'abcdefghi')
+    expect(note).toHaveAccessibleDescription('Shown to the privacy officer 1 character left')
+    expect(await axeViolations()).toEqual([])
+  })
+
+  it('keeps text past the limit, marks the field invalid and counts the excess', async () => {
+    const user = userEvent.setup()
+    render(<Note limit={5} />)
+    const note = screen.getByLabelText('Note')
+    await user.type(note, 'abcdefg')
+    expect(note).toHaveValue('abcdefg')
+    expect(note).toBeInvalid()
+    expect(note).toHaveAccessibleDescription('Shown to the privacy officer 2 characters too many')
+  })
+
+  it('shows no count without a limit', () => {
+    render(<Note />)
+    expect(screen.getByLabelText('Note')).toHaveAccessibleDescription('Shown to the privacy officer')
   })
 })
 

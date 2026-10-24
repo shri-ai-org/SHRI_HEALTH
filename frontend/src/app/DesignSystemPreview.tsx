@@ -11,15 +11,19 @@ import {
   Field,
   formatDate,
   formatMoney,
+  formatPartialDate,
   formatPhone,
   formatTime,
   IdleTimeoutWarning,
+  MoneyInput,
+  parsePartialDate,
   PhoneInput,
   ProblemAlert,
   RecordChangedDialog,
   SharedStatusBoard,
   StateSelect,
   Tabs,
+  Textarea,
   TextInput,
   toUsDisplay,
   useToast,
@@ -39,6 +43,9 @@ export function DesignSystemPreview() {
   const [tab, setTab] = useState('forms')
   const [birthDate, setBirthDate] = useState<string | null>('')
   const [phone, setPhone] = useState<string | null>('')
+  const [copay, setCopay] = useState<string | null>('')
+  const [surgery, setSurgery] = useState<string | null>('')
+  const [note, setNote] = useState('')
   const [dialog, setDialog] = useState<'none' | 'confirm' | 'break-glass' | 'record-changed' | 'idle'>('none')
   // When the idle demo was opened; captured in the click handler, not during render.
   const [idleDemoStart, setIdleDemoStart] = useState(0)
@@ -93,6 +100,29 @@ export function DesignSystemPreview() {
                     </Field>
                     <p className="text-xs text-ink-subtle">
                       Sent to the API as: birthDate <code>{birthDate || '—'}</code>, phone <code>{phone || '—'}</code>
+                    </p>
+                  </div>
+                </Card>
+                <Card title="Amounts, history dates and notes">
+                  <div className="space-y-4">
+                    <Field label="Copay amount (USD)" error={copay === null ? 'Enter an amount such as 25 or 25.00.' : undefined}>
+                      {(p) => <MoneyInput {...p} value="" onValueChange={setCopay} />}
+                    </Field>
+                    <Field label="Year or date of surgery" hint="YYYY, MM/YYYY or MM/DD/YYYY" error={surgery === null ? 'Enter a year, a month and year, or a full date.' : undefined}>
+                      {(p) => (
+                        <TextInput
+                          {...p}
+                          inputMode="numeric"
+                          onChange={(e) => setSurgery(e.target.value.trim() === '' ? '' : parsePartialDate(e.target.value))}
+                        />
+                      )}
+                    </Field>
+                    <Field label="Front-desk note" hint="Visible to staff only">
+                      {(p) => <Textarea {...p} value={note} limit={500} onChange={(e) => setNote(e.target.value)} />}
+                    </Field>
+                    <p className="text-xs text-ink-subtle">
+                      Sent as: amount <code>{copay || '—'}</code>, performedDate <code>{surgery || '—'}</code> (shown as{' '}
+                      {surgery ? formatPartialDate(surgery) : '—'})
                     </p>
                   </div>
                 </Card>
