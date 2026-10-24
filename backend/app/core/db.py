@@ -37,6 +37,12 @@ CORRELATION_SETTING = "app.correlation_id"
 _CONTEXT_KEY = "shri_tenant_context"
 _GUARD_KEY = "shri_tenant_guard"
 
+# session.info key holding the session's clinic as a UUID. Data-access helpers in
+# backend/app/db/ read it to fill tenant_id on new rows: only where tenant_id is empty, never
+# overwriting one (forced RLS rejects a different clinic anyway). Sessions without a clinic
+# don't have the key.
+TENANT_ID_INFO_KEY = "tenant_id"
+
 
 class Database:
     def __init__(self, settings: Settings) -> None:
@@ -59,6 +65,7 @@ class Database:
         """`guard` runs before each transaction's settings are set and may raise to refuse it."""
         session = self.sessions()
         session.info[_GUARD_KEY] = guard
+        session.info[TENANT_ID_INFO_KEY] = tenant_id
         session.info[_CONTEXT_KEY] = {
             TENANT_SETTING: str(tenant_id),
             USER_SETTING: str(user_id),
