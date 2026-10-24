@@ -130,8 +130,9 @@ These are the 30 questions of **Open Decisions for the MVP, v1.0** (23 October 2
 | Q23 | Who are the clinical advisors, and how many hours a week? | Clinical advisors | *Needs input* | **Now** |  |
 | Q25 | Availability and recovery targets | Thulasi, with Anand | 99.9% monthly uptime; at most 5 minutes of data lost; back online within 4 hours; backup copy in a second U.S. region | Before production setup |  |
 | Q26 | How long to keep records | Thulasi, with Anand | Clinical records at least 10 years after the last visit, longer for minors where the pilot state requires it; audit logs and HIPAA documents 6 years | Before the pilot |  |
+| Q31 | Show the app version and short commit SHA in the footer or About panel, stamped automatically by CI at build time | Thulasi, with Minalini | *Proposal* (Vimal, 2026-10-24): yes, so support and bug reports can name the exact build; the value comes from CI, never typed by hand | Before the first staging release | Added after the Open Decisions document; not one of its 30 questions |
 
-Care-team access is decided (D37), so nothing remains outside the Open Decisions questions.
+Care-team access is decided (D37). Q31 is the one question added since the Open Decisions document (2026-10-24).
 
 ### Scheduled work (decided; owners named)
 
