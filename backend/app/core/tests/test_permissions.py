@@ -127,6 +127,22 @@ def test_matrix_rows(role: str, permission: str, allowed: bool) -> None:
     assert roles_allow({role}, permission) is allowed
 
 
+# Issue #25 item 1: the appointments rows of SECURITY_MODEL §4.3, every role, not samples.
+# Front desk and practice admin run the schedule (D55, D61); clinicians are read-only on
+# appointments and ask for changes through inbox tasks (D67); CO has no scheduling writes.
+SCHEDULE_WRITES = [
+    "appointments:create", "appointments:update", "appointments:cancel",
+    "appointments:check-in", "appointments:undo-check-in", "appointments:reschedule",
+]
+SCHEDULE_WRITERS = {"FD", "ADM"}
+
+
+@pytest.mark.parametrize("permission", SCHEDULE_WRITES)
+@pytest.mark.parametrize("role", sorted(ROLE_PERMISSIONS))
+def test_appointments_rows(role: str, permission: str) -> None:
+    assert roles_allow({role}, permission) is (role in SCHEDULE_WRITERS), (role, permission)
+
+
 def test_permissions_of_several_roles_combine() -> None:
     assert roles_allow({"ADM", "MD"}, "notes:read")
     assert roles_allow({"ADM", "MD"}, "users:create")
