@@ -46,13 +46,13 @@ export interface PatientCreate {
   previousNames?: HumanName[];
   /** Date of birth. Required at registration (D44): matching, eligibility and claims need it. */
   birthDate: Date;
-  /** Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (the schema column is NOT NULL). **Pending schema lock.** */
+  /** Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). */
   gender?: AdministrativeGender;
   /** Sex assigned at birth (D39). */
   birthSex?: BirthSex;
-  /** Gender identity, US Core gender-identity value set (D39). No column yet. **Pending schema lock.** */
+  /** Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration item A45 (Anand). */
   genderIdentity?: CodedValue;
-  /** Sexual orientation, US Core sexual-orientation value set (D39). No column yet. **Pending schema lock.** */
+  /** Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration item A45 (Anand). */
   sexualOrientation?: CodedValue;
   /** Race (D39). */
   race?: RaceEthnicity;
@@ -66,11 +66,11 @@ export interface PatientCreate {
   preferredLanguage?: string;
   /** Marital status, HL7 v3 MaritalStatus codes. */
   maritalStatus?: PatientCreateMaritalStatus;
-  /** Occupation (D39; approved P0 item). No column yet. **Pending schema lock.** */
+  /** Occupation (D39; approved P0 item). Decided (D38/D39); its column is migration item A45 (Anand). */
   occupation?: CodedValue;
-  /** Industry (D39; approved P0 item). No column yet. **Pending schema lock.** */
+  /** Industry (D39; approved P0 item). Decided (D38/D39); its column is migration item A45 (Anand). */
   industry?: CodedValue;
-  /** Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). No column yet. **Pending schema lock.** */
+  /** Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). Decided (D38/D39); its column is migration item A45 (Anand). */
   tribalAffiliation?: CodedValue;
   /**
      * Phone numbers.
@@ -84,7 +84,7 @@ export interface PatientCreate {
   emails?: Email[];
   /** Home address. */
   address?: Address;
-  /** Employer. **Pending schema lock.** */
+  /** Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand). */
   employer?: Employer;
   /**
      * Identifiers to record at registration, e.g. the driver's license number from the scan. Never the MRN.

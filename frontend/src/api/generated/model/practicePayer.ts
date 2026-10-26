@@ -20,7 +20,7 @@ import type { PracticePayerPayer } from './practicePayerPayer';
 import type { Timestamp } from './timestamp';
 
 /**
- * A payer the practice works with: chosen from the payer directory, with its enrollment status per transaction (inventory #175-178). Enrollments map to `payer_enrollment`; there is no practice-level table for the payer itself yet, so the record and its `active` flag need one (item for Anand). **Pending schema lock.**
+ * A payer the practice works with: chosen from the payer directory, with its enrollment status per transaction (inventory #175-178). Stored in `practice_payer` (A39: the directory payer, `is_active` as `active`, `version` for the ETag); enrollments map to `payer_enrollment`.
  */
 export interface PracticePayer {
   /** PracticePayer ID. */

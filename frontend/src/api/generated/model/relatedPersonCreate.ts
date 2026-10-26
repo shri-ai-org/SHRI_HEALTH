@@ -51,6 +51,6 @@ export interface RelatedPersonCreate {
   emails?: Email[];
   /** Address. */
   address?: Address;
-  /** Employer of a subscriber (approved P0 item, D38). **Pending schema lock.** */
+  /** Employer of a subscriber (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand). */
   employer?: Employer;
 }

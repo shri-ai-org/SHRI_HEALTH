@@ -38,7 +38,7 @@ export interface EligibilityBenefit {
   network?: EligibilityBenefitNetwork;
   /** Period the amount applies to. */
   timePeriod?: EligibilityBenefitTimePeriod;
-  /** Amount, when the line has one. The schema has no currency column: always USD. **Pending schema lock.** */
+  /** Amount, when the line has one. Always USD (D40); `eligibility_benefit.amount` is NUMERIC(12,2) and never negative. */
   benefitAmount?: Money;
   /**
      * Percentage, for coinsurance.
