@@ -34,7 +34,7 @@ const patient = {
 }
 
 /** The patient page also lists insurance; these tests don't look at it. */
-const noCoverages = { [`GET /api/v1/patients/${patient.id}/coverages?limit=9`]: [() => json(200, { items: [] })] }
+const noCoverages = { [`GET /api/v1/patients/${patient.id}/coverages?limit=100`]: [() => json(200, { items: [] })] }
 
 function renderAt(path: string) {
   const router = createMemoryRouter(

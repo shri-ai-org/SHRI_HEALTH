@@ -10,7 +10,7 @@ import { InsurancePanel } from './InsurancePanel'
 
 // Synthetic data only.
 const patientId = '00000000-0000-4000-8000-0000000000aa'
-const LIST = `GET /api/v1/patients/${patientId}/coverages?limit=9`
+const LIST = `GET /api/v1/patients/${patientId}/coverages?limit=100`
 const ADD = `POST /api/v1/patients/${patientId}/coverages`
 
 const coverage = (n: number, extra: object = {}) => ({
@@ -157,6 +157,81 @@ describe('InsurancePanel', () => {
     await user.type(screen.getByLabelText(/Member ID/), 'X')
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add insurance' }))
     expect(await screen.findByText('Member ID:')).toBeInTheDocument()
+  })
+})
+
+describe('InsurancePanel edge cases (review on #57)', () => {
+  it('reads every page, names every status and offers priorities past Tertiary', async () => {
+    const user = userEvent.setup()
+    serve({
+      [LIST]: [() => json(200, { items: [coverage(1), coverage(2), coverage(3)], nextCursor: 'c2' })],
+      [`${LIST}&cursor=c2`]: [() => json(200, { items: [coverage(4, { status: 'cancelled' }), coverage(5, { status: 'draft' })] })],
+    })
+    renderPanel()
+    const table = await screen.findByRole('table', { name: 'Insurance coverages' })
+    const rows = within(table).getAllByRole('row')
+    expect(rows).toHaveLength(6)
+    expect(rows[3]).toHaveTextContent('Tertiary')
+    expect(rows[4]).toHaveTextContent('Cancelled')
+    expect(rows[5]).toHaveTextContent('Draft')
+
+    // Three active coverages: the next one is 4th, and the select shows it.
+    await user.click(screen.getByRole('button', { name: 'Add insurance' }))
+    const priority = within(screen.getByRole('dialog')).getByLabelText('Priority')
+    expect(priority).toHaveValue('4')
+    expect(within(priority).getByRole('option', { name: '4th' })).toBeInTheDocument()
+  })
+
+  it('ties "choose the insurance company" to the search field before any search', async () => {
+    const user = userEvent.setup()
+    serve({ [LIST]: [() => json(200, { items: [] })] })
+    renderPanel()
+    await screen.findByText('No insurance on file')
+    await user.click(screen.getByRole('button', { name: 'Add insurance' }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Add insurance' }))
+    const search = within(dialog).getByLabelText(/^Insurance company/)
+    expect(search).toBeInvalid()
+    expect(search).toHaveAccessibleDescription(/Find and choose the insurance company/)
+  })
+
+  it('shows a failed related-person load with Try again instead of a stuck select', async () => {
+    const user = userEvent.setup()
+    const PEOPLE = `GET /api/v1/patients/${patientId}/related-persons?limit=50`
+    serve({
+      [LIST]: [() => json(200, { items: [] })],
+      [PEOPLE]: [() => problem(503, 'service-unavailable', { requestId: 'r-3' }), () => json(200, { items: [] })],
+    })
+    renderPanel()
+    await screen.findByText('No insurance on file')
+    await user.click(screen.getByRole('button', { name: 'Add insurance' }))
+    await user.selectOptions(screen.getByLabelText(/Relationship to subscriber/), 'child')
+    expect(await screen.findByText('Reference: r-3')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('No related persons on file')).toBeInTheDocument()
+  })
+
+  it('clears the previous error on retry, and reloads the list when someone else already marked it', async () => {
+    const user = userEvent.setup()
+    const MARK = `POST /api/v1/patients/${patientId}/coverages/${coverage(1).id}/entered-in-error`
+    const server = serve({
+      [LIST]: [() => json(200, { items: [coverage(1)] }), () => json(200, { items: [coverage(1, { status: 'entered-in-error' })] })],
+      [MARK]: [() => problem(503, 'service-unavailable', { requestId: 'r-4' }), () => problem(409, 'invalid-state-transition', { requestId: 'r-5' })],
+    })
+    renderPanel()
+    await screen.findByRole('table', { name: 'Insurance coverages' })
+    await user.click(screen.getByRole('button', { name: 'Mark Test Health Plan 1 entered in error' }))
+    const dialog = screen.getByRole('dialog')
+    await user.type(within(dialog).getByLabelText(/Reason/), 'Duplicate entry')
+    await user.click(within(dialog).getByRole('button', { name: 'Mark entered in error' }))
+    expect(await within(dialog).findByText('Reference: r-4')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Mark entered in error' }))
+    expect(await within(dialog).findByText('Reference: r-5')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Reference: r-4')).not.toBeInTheDocument()
+    // The list behind the dialog now shows the other person's change.
+    expect(await screen.findByText('Entered in error')).toBeInTheDocument()
+    expect(server.calls().filter((c) => c === LIST)).toHaveLength(2)
   })
 })
 

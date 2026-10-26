@@ -15,11 +15,14 @@ export function EnteredInErrorDialog({
   coverage,
   onClose,
   onMarked,
+  onStale,
 }: {
   patientId: string
   coverage: Coverage
   onClose: () => void
   onMarked: () => void
+  /** The coverage changed elsewhere (`409`): read the list again behind the dialog. */
+  onStale: () => void
 }) {
   const toast = useToast()
   const [reason, setReason] = useState('')
@@ -33,6 +36,7 @@ export function EnteredInErrorDialog({
     if (!text) return setError('Explain what was wrong with this coverage.')
     if (isOverLimit(text, REASON_LIMIT)) return setError(`Shorten the reason to ${REASON_LIMIT} characters or fewer.`)
     setError(null)
+    setProblem(null)
     setBusy(true)
     try {
       const res = await markCoverageEnteredInError(patientId, coverage.id, { reason: text })
@@ -41,8 +45,9 @@ export function EnteredInErrorDialog({
         onMarked()
       }
     } catch (e) {
-      if (e instanceof ApiError) setProblem(e.problem)
-      else throw e
+      if (!(e instanceof ApiError)) throw e
+      setProblem(e.problem)
+      if (e.status === 409) onStale()
     } finally {
       setBusy(false)
     }

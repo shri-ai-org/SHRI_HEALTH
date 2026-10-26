@@ -17,7 +17,7 @@ import {
   useToast,
   type Problem,
 } from '../../../design-system'
-import { RELATIONSHIP } from './labels'
+import { PRIORITIES, priorityLabel, RELATIONSHIP } from './labels'
 
 interface Form {
   payerQuery: string
@@ -111,6 +111,9 @@ export function AddCoverageDialog({
   const [payers, setPayers] = useState<Payer[] | null>(null)
   const [searching, setSearching] = useState(false)
   const [people, setPeople] = useState<RelatedPerson[] | null>(null)
+  const [peopleProblem, setPeopleProblem] = useState<Problem | null>(null)
+  // Bumped by "Try again" after the related persons failed to load.
+  const [peopleTry, setPeopleTry] = useState(0)
   const [problem, setProblem] = useState<Problem | null>(null)
   const [busy, setBusy] = useState(false)
   // One key per user action: kept while the same form is retried, replaced when anything changes.
@@ -125,15 +128,19 @@ export function AddCoverageDialog({
   const needsSubscriber = form.relationship !== 'self'
   useEffect(() => {
     if (!needsSubscriber || people) return
+    let current = true
     listRelatedPersons(patientId, { limit: 50 })
       .then((res) => {
-        if (res.status === 200) setPeople(res.data.items.filter((p) => p.active))
+        if (current && res.status === 200) setPeople(res.data.items.filter((p) => p.active))
       })
       .catch((e: unknown) => {
-        if (e instanceof ApiError) setProblem(e.problem)
-        else throw e
+        if (!(e instanceof ApiError)) throw e
+        if (current) setPeopleProblem(e.problem)
       })
-  }, [needsSubscriber, people, patientId])
+    return () => {
+      current = false
+    }
+  }, [needsSubscriber, people, patientId, peopleTry])
 
   async function findPayers() {
     const name = form.payerQuery.trim()
@@ -198,7 +205,8 @@ export function AddCoverageDialog({
       <form id={formId} onSubmit={(e) => void submit(e)} noValidate className="space-y-4">
         <div className="flex items-end gap-2">
           <div className="flex-1">
-            <Field label="Insurance company" hint="Search the payer directory by name" error={errors.payerQuery}>
+            {/* Until a search has run, "choose the payer" is reported on this field. */}
+            <Field label="Insurance company" hint="Search the payer directory by name" error={errors.payerQuery ?? (payers ? undefined : errors.payerId)}>
               {(p) => (
                 <TextInput
                   {...p}
@@ -239,8 +247,6 @@ export function AddCoverageDialog({
               )}
             </Field>
           )
-        ) : errors.payerId ? (
-          <p className="text-sm text-critical-fg">{errors.payerId}</p>
         ) : null}
 
         <div className="grid gap-4 md:grid-cols-3">
@@ -251,9 +257,11 @@ export function AddCoverageDialog({
           <Field label="Priority" error={errors.order}>
             {(p) => (
               <Select {...p} value={String(form.order)} onChange={(e) => update({ order: Number(e.target.value) })}>
-                <option value="1">Primary</option>
-                <option value="2">Secondary</option>
-                <option value="3">Tertiary</option>
+                {PRIORITIES.map((n) => (
+                  <option key={n} value={n}>
+                    {priorityLabel(n)}
+                  </option>
+                ))}
               </Select>
             )}
           </Field>
@@ -263,7 +271,7 @@ export function AddCoverageDialog({
           <Field label="Relationship to subscriber" hint="Self when the patient holds the policy" error={errors.relationship}>
             {(p) => (
               <Select {...p} value={form.relationship} onChange={(e) => update({ relationship: e.target.value as Form['relationship'], subscriberRelatedPersonId: '' })}>
-                {Object.entries(RELATIONSHIP).map(([value, label]) => (
+                {(Object.entries(RELATIONSHIP) as Array<[Form['relationship'], string]>).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
@@ -272,7 +280,25 @@ export function AddCoverageDialog({
             )}
           </Field>
           {needsSubscriber ? (
-            people && people.length === 0 ? (
+            peopleProblem ? (
+              <div className="md:col-span-2">
+                <ProblemAlert
+                  problem={peopleProblem}
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setPeopleProblem(null)
+                        setPeopleTry((t) => t + 1)
+                      }}
+                    >
+                      Try again
+                    </Button>
+                  }
+                />
+              </div>
+            ) : people && people.length === 0 ? (
               <div className="md:col-span-2">
                 <Alert tone="warning" title="No related persons on file">
                   Add the subscriber as a related person first, then add this insurance.

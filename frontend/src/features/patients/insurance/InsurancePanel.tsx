@@ -2,22 +2,38 @@ import { Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ApiError } from '../../../api/client'
 import { listCoverages } from '../../../api/generated/endpoints/patients/patients'
-import type { Coverage } from '../../../api/generated/model'
+import type { Coverage, CoverageList } from '../../../api/generated/model'
 import { Badge, Button, DataTable, formatDate, ProblemAlert, todayIn, type Column, type Problem } from '../../../design-system'
 import { AddCoverageDialog } from './AddCoverageDialog'
 import { EnteredInErrorDialog } from './EnteredInErrorDialog'
-import { RELATIONSHIP } from './labels'
+import { priorityLabel, RELATIONSHIP } from './labels'
 
-const PRIORITY = ['Primary', 'Secondary', 'Tertiary']
+const PAGE_SIZE = 100
 
 /** The browser's date; the facility's own time zone comes with the facility in C3. */
 const today = () => todayIn(Intl.DateTimeFormat().resolvedOptions().timeZone)
 
 function statusBadge(c: Coverage, on: string) {
   if (c.status === 'entered-in-error') return <Badge tone="neutral">Entered in error</Badge>
+  if (c.status === 'cancelled') return <Badge tone="neutral">Cancelled</Badge>
+  if (c.status === 'draft') return <Badge tone="info">Draft</Badge>
   if (c.endDate && c.endDate < on) return <Badge tone="neutral">Ended</Badge>
   if (c.startDate && c.startDate > on) return <Badge tone="info">Not started</Badge>
   return <Badge tone="success">Active</Badge>
+}
+
+/** Every page of the patient's coverages: entered-in-error rows add up over the years. */
+async function listAllCoverages(patientId: string): Promise<Coverage[]> {
+  const items: Coverage[] = []
+  let cursor: string | undefined
+  do {
+    const res = await listCoverages(patientId, { limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) })
+    if (res.status !== 200) break
+    const page: CoverageList = res.data
+    items.push(...page.items)
+    cursor = page.nextCursor
+  } while (cursor)
+  return items
 }
 
 /**
@@ -36,10 +52,10 @@ export function InsurancePanel({ patientId }: { patientId: string }) {
 
   useEffect(() => {
     let current = true
-    listCoverages(patientId, { limit: 9 })
-      .then((res) => {
-        if (!current || res.status !== 200) return
-        setItems(res.data.items)
+    listAllCoverages(patientId)
+      .then((all) => {
+        if (!current) return
+        setItems(all)
         setProblem(null)
       })
       .catch((error: unknown) => {
@@ -53,15 +69,16 @@ export function InsurancePanel({ patientId }: { patientId: string }) {
   }, [patientId, version])
 
   const on = today()
-  const active = (items ?? []).filter((c) => c.status !== 'entered-in-error' && !(c.endDate && c.endDate < on))
+  // `order` is unique among active coverages only.
+  const active = (items ?? []).filter((c) => c.status === 'active' && !(c.endDate && c.endDate < on))
   const nextOrder = Math.min(9, Math.max(0, ...active.map((c) => c.order)) + 1)
 
   const columns: Column<Coverage>[] = [
-    { key: 'order', header: 'Priority', render: (c) => PRIORITY[c.order - 1] ?? `#${c.order}` },
+    { key: 'order', header: 'Priority', render: (c) => priorityLabel(c.order) },
     { key: 'payer', header: 'Insurance', render: (c) => <span className="font-medium">{c.payerName ?? '—'}</span> },
     { key: 'member', header: 'Member ID', render: (c) => <span className="tabular-nums">{c.memberId}</span> },
     { key: 'group', header: 'Group', render: (c) => c.groupNumber ?? '—' },
-    { key: 'relationship', header: 'Relationship', render: (c) => RELATIONSHIP[c.relationshipToSubscriber] ?? c.relationshipToSubscriber },
+    { key: 'relationship', header: 'Relationship', render: (c) => RELATIONSHIP[c.relationshipToSubscriber] },
     {
       key: 'dates',
       header: 'Dates',
@@ -117,6 +134,7 @@ export function InsurancePanel({ patientId }: { patientId: string }) {
           patientId={patientId}
           coverage={marking}
           onClose={() => setMarking(null)}
+          onStale={reload}
           onMarked={() => {
             setMarking(null)
             reload()
