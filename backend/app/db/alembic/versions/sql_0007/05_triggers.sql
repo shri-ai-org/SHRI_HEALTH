@@ -2,3 +2,4 @@
 CREATE TRIGGER trg_claim_self_pay BEFORE INSERT OR UPDATE OF superbill_id, frequency_code ON admin.claim FOR EACH ROW EXECUTE FUNCTION shri_claim_not_self_pay();
 CREATE TRIGGER trg_employer_touch AFTER INSERT OR UPDATE OR DELETE ON admin.employer FOR EACH ROW EXECUTE FUNCTION shri_fhir_touch_parent('patient_id', 'patient', 'meta_last_updated', 'related_person_id', 'related_person', 'meta_last_updated');
 CREATE TRIGGER trg_mrn_counter_guard BEFORE UPDATE ON admin.mrn_counter FOR EACH ROW EXECUTE FUNCTION shri_mrn_counter_guard();
+CREATE TRIGGER trg_tenant_setting_version BEFORE UPDATE ON admin.tenant_setting FOR EACH ROW EXECUTE FUNCTION shri_bump_version();

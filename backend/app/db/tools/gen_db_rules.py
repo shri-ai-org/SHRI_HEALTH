@@ -140,10 +140,11 @@ DEFERRED = {
     "medication_request": ("alerts", "shri_medication_request_alert_check()"),
 }
 #: Admin tables with VersionedMixin (A41/issue #13): practice-setup resources and
-#: patient_pharmacy, none of which have a FHIR meta_version_id of their own.
+#: patient_pharmacy, none of which have a FHIR meta_version_id of their own; tenant_setting for
+#: PATCH /practice-settings (A49, migration 0007).
 VERSIONED_TABLES = {"facility", "appointment_type", "note_template", "lab_provider",
                     "lab_account", "patient_pharmacy", "payer", "fee_schedule",
-                    "practice_payer"}
+                    "practice_payer", "tenant_setting"}
 # child table -> (fk column, parent table, editable parent statuses)
 FROZEN_CHILDREN = {
     "dosage": ("medication_request_id", "medication_request", "draft"),

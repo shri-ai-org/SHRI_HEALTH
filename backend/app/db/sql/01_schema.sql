@@ -380,6 +380,7 @@ CREATE TABLE admin.tenant_setting (
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
 	CONSTRAINT pk_tenant_setting PRIMARY KEY (id), 
 	CONSTRAINT uq_tenant_setting_tenant_id_setting_key UNIQUE (tenant_id, setting_key), 
 	CONSTRAINT fk_tenant_setting_setting_key_setting_definition FOREIGN KEY(setting_key) REFERENCES admin.setting_definition (key) ON UPDATE CASCADE, 

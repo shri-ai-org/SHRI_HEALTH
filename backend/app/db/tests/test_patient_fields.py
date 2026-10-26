@@ -345,8 +345,24 @@ def test_a_facility_has_a_time_zone(db: Session) -> None:
 def test_the_d39_registration_setting_is_off_by_default(db: Session) -> None:
     row = db.execute(text(
         "SELECT value_type, default_value FROM admin.setting_definition "
-        "WHERE key = 'registration.show_sexual_orientation_and_gender_identity'")).one()
+        "WHERE key = 'registration.show_sogi_fields'")).one()
     assert tuple(row) == ("boolean", "false")
+
+
+def test_a_practice_setting_has_a_server_side_version_for_its_etag(db: Session) -> None:
+    # PATCH /practice-settings needs If-Match (A49): the version goes up on every update, and a
+    # value the client sends for it is ignored (A41).
+    setting = M["tenant_setting"](setting_key="registration.show_sogi_fields", value="false")
+    db.add(setting)
+    db.commit()
+    assert setting.version == 1
+    db.execute(text("UPDATE admin.tenant_setting SET value = 'true' WHERE id = :i"),
+               {"i": setting.id})
+    db.execute(text("UPDATE admin.tenant_setting SET value = 'false', version = 1 WHERE id = :i"),
+               {"i": setting.id})
+    db.commit()
+    db.refresh(setting)
+    assert (setting.value, setting.version) == ("false", 3)
 
 
 def test_tribal_affiliation_codes_are_registered(db: Session) -> None:

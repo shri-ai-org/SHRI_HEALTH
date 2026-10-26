@@ -141,9 +141,12 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
 - **`selfPay` at check-in:** stored as `encounter.ext_self_pay`. The database refuses a claim
   for a self-pay visit, except a void (frequency `8`) of a claim sent before the visit became
   self-pay.
-- **Practice settings:** `setting_definition.key` is lower case. The repository maps the
-  contract's `showSexualOrientationAndGenderIdentity` to
-  `registration.show_sexual_orientation_and_gender_identity`, which defaults to `false` (A49).
+- **Practice settings (A49):** each is a `tenant_setting` row under a `setting_definition`
+  key, which is lower case. The repository maps the contract's
+  `showSexualOrientationAndGenderIdentity` to `registration.show_sogi_fields`, which defaults
+  to `false`. `tenant_setting.version` is the row's `ETag` for `If-Match` on
+  `PATCH /practice-settings`, bumped by the database on every update (as A41); the application
+  never writes it.
 
 ## Rules that never bend
 

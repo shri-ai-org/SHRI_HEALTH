@@ -17,9 +17,12 @@ Changes to existing tables:
                       refuses an insurance claim for a self-pay visit, except the void of one
                       sent before (shri_claim_not_self_pay).
   admin.facility      timezone NOT NULL (D40); a facility without one takes its practice's.
+  admin.tenant_setting
+                      version, the ETag for If-Match on PATCH /practice-settings (A49),
+                      bumped on every update as A41.
 
-Reference data: the TribalEntityUS code system, and the setting
-registration.show_sexual_orientation_and_gender_identity (boolean, default false; A49).
+Reference data: the TribalEntityUS code system, and the setting registration.show_sogi_fields
+(boolean, default false; A49).
 
 Frozen SQL in sql_0007/:
   01_tables.sql          generated from the models: the new tables
@@ -55,7 +58,7 @@ DOWNGRADE = [
     # Refused, rightly, once a practice has set it (tenant_setting refers to the key): a
     # downgrade past 0007 is for development only.
     "DELETE FROM admin.setting_definition "
-    "WHERE key = 'registration.show_sexual_orientation_and_gender_identity'",
+    "WHERE key = 'registration.show_sogi_fields'",
     "DROP FUNCTION admin.next_mrn()",
     "DROP TRIGGER trg_claim_self_pay ON admin.claim",
     "DROP FUNCTION public.shri_claim_not_self_pay()",
@@ -63,6 +66,8 @@ DOWNGRADE = [
     "DROP TABLE admin.employer",
     "DROP TABLE admin.mrn_counter",
     "DROP FUNCTION public.shri_mrn_counter_guard()",
+    "DROP TRIGGER trg_tenant_setting_version ON admin.tenant_setting",
+    "ALTER TABLE admin.tenant_setting DROP COLUMN version",
     # The time zones filled in by the upgrade stay.
     "ALTER TABLE admin.facility ALTER COLUMN timezone DROP NOT NULL",
     "ALTER TABLE clinical.encounter DROP COLUMN ext_self_pay",

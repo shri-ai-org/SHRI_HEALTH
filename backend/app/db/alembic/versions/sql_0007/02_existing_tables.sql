@@ -62,3 +62,9 @@ DROP POLICY migrator_0007_timezone ON admin.facility;
 DROP POLICY migrator_0007_timezone_read ON admin.facility;
 DROP POLICY migrator_0007_timezone ON admin.tenant;
 ALTER TABLE admin.facility ALTER COLUMN timezone SET NOT NULL;
+
+-- ======================================================================== admin.tenant_setting
+-- The ETag for If-Match on PATCH /practice-settings (A49), as A41 for practice setup: bumped by
+-- shri_bump_version() on every UPDATE (05_triggers.sql). Existing rows start at 1; a constant
+-- default adds the column without a rewrite and fires no trigger.
+ALTER TABLE admin.tenant_setting ADD COLUMN version INTEGER DEFAULT 1 NOT NULL;

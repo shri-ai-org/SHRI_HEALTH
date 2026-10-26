@@ -98,13 +98,15 @@ class SettingDefinition(Base, UUIDPKMixin, TimestampMixin):
 #: Platform settings seeded into ``setting_definition`` (key, value type, default, description).
 #: Keys are lower case (``key_format``); the repository maps them to the contract's camelCase.
 SETTINGS: list[tuple[str, SettingValueType, str, str]] = [
-    ("registration.show_sexual_orientation_and_gender_identity", SettingValueType.BOOLEAN,
+    ("registration.show_sogi_fields", SettingValueType.BOOLEAN,
      "false", "Show sexual orientation and gender identity at registration (D39, A49). "
      "Off by default: the practice turns it on."),
 ]
 
 
-class TenantSetting(Base, AdminMixin):
+class TenantSetting(Base, AdminMixin, VersionedMixin):
+    """A practice's value for a ``setting_definition``. ``version`` is the ETag for
+    ``If-Match`` on ``PATCH /practice-settings`` (A49)."""
     __tablename__ = "tenant_setting"
     __table_args__ = (UniqueConstraint("tenant_id", "setting_key"),)
 

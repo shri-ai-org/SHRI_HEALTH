@@ -13,14 +13,14 @@
     columns: [patient.ext_gender_identity_system, patient.ext_gender_identity_code,
               patient.ext_gender_identity_display, patient.ext_gender_identity_text]
     note: >-
-      shown at registration only where the practice's setting
-      registration.show_sexual_orientation_and_gender_identity is true (A49)
+      shown at registration only where the practice's setting registration.show_sogi_fields
+      is true (A49)
   sexualOrientation:
     columns: [patient.ext_sexual_orientation_system, patient.ext_sexual_orientation_code,
               patient.ext_sexual_orientation_display, patient.ext_sexual_orientation_text]
     note: >-
-      shown at registration only where the practice's setting
-      registration.show_sexual_orientation_and_gender_identity is true (A49)
+      shown at registration only where the practice's setting registration.show_sogi_fields
+      is true (A49)
   occupation:
     columns: [patient.ext_occupation_system, patient.ext_occupation_code,
               patient.ext_occupation_display, patient.ext_occupation_text]

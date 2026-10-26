@@ -2804,7 +2804,7 @@ Unique: `uq_tenant_organization_id`, `uq_tenant_slug`
 
 ## `admin.tenant_setting`
 
-Admin (normalized).
+Admin (normalized). A practice's value for a ``setting_definition``. ``version`` is the ETag for ``If-Match`` on ``PATCH /practice-settings`` (A49).
 
 Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
@@ -2818,6 +2818,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `updated_at` | datetime | no |  |  | — |
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `version` | integer | no |  |  | — |
 
 Unique: `uq_tenant_setting_tenant_id_setting_key`
 
@@ -6923,7 +6924,7 @@ Paths: `/patients`, `/patients/{patientId}`
 | `employer` | `employer.name`, `employer.phone`, `employer.address_lines`, `employer.address_city`, `employer.address_state`, `employer.address_postal_code`, `employer.address_country` | mapped: one admin row with patient_id (D38); clearing the employer deletes the row |
 | `ethnicity` | — | not mapped yet |
 | `gender` | `patient.gender` | same name |
-| `genderIdentity` | `patient.ext_gender_identity_system`, `patient.ext_gender_identity_code`, `patient.ext_gender_identity_display`, `patient.ext_gender_identity_text` | mapped: shown at registration only where the practice's setting registration.show_sexual_orientation_and_gender_identity is true (A49) |
+| `genderIdentity` | `patient.ext_gender_identity_system`, `patient.ext_gender_identity_code`, `patient.ext_gender_identity_display`, `patient.ext_gender_identity_text` | mapped: shown at registration only where the practice's setting registration.show_sogi_fields is true (A49) |
 | `id` | `patient.id` | same name |
 | `identifiers` | — | not mapped yet |
 | `industry` | `patient.ext_industry_system`, `patient.ext_industry_code`, `patient.ext_industry_display`, `patient.ext_industry_text` | mapped |
@@ -6939,7 +6940,7 @@ Paths: `/patients`, `/patients/{patientId}`
 | `previousNames` | — | not mapped yet |
 | `race` | — | not mapped yet |
 | `restricted` | — | not mapped yet |
-| `sexualOrientation` | `patient.ext_sexual_orientation_system`, `patient.ext_sexual_orientation_code`, `patient.ext_sexual_orientation_display`, `patient.ext_sexual_orientation_text` | mapped: shown at registration only where the practice's setting registration.show_sexual_orientation_and_gender_identity is true (A49) |
+| `sexualOrientation` | `patient.ext_sexual_orientation_system`, `patient.ext_sexual_orientation_code`, `patient.ext_sexual_orientation_display`, `patient.ext_sexual_orientation_text` | mapped: shown at registration only where the practice's setting registration.show_sogi_fields is true (A49) |
 | `tribalAffiliation` | `patient.ext_tribal_affiliation_system`, `patient.ext_tribal_affiliation_code`, `patient.ext_tribal_affiliation_display`, `patient.ext_tribal_affiliation_text` | mapped |
 | `updatedAt` | `patient.updated_at` | same name |
 
