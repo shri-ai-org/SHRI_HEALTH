@@ -1,0 +1,58 @@
+# Keycloak image check (D75, issue #55): build infra/keycloak/Dockerfile, which verifies the pinned
+# Keycloak and Temurin checksums while it builds, then start it in dev mode and wait for its ready
+# check. Runs only when the image or this workflow changes, to save Free-plan minutes. Every
+# Action is pinned by commit SHA.
+name: keycloak
+
+on:
+  pull_request:
+    paths: ["infra/keycloak/**", ".github/workflows/keycloak.yml"]
+  push:
+    branches: [main]
+    paths: ["infra/keycloak/**", ".github/workflows/keycloak.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keycloak-${{ github.event.pull_request.number || github.ref }}
+  # Cancel superseded PR runs only; every commit on main gets a complete run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build (checksums verified inside)
+        run: docker build -t shri-health/keycloak:ci infra/keycloak
+
+      - name: Runs as an unprivileged user
+        run: |
+          user="$(docker image inspect shri-health/keycloak:ci --format '{{.Config.User}}')"
+          test -n "$user" && test "$user" != "0" && test "$user" != "root" \
+            || { echo "::error::the image runs as '$user'"; exit 1; }
+          docker run --rm shri-health/keycloak:ci --version
+
+      - name: Starts and reports ready
+        run: |
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          docker run -d --name kc -p 127.0.0.1:9000:9000 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD="$password" \
+            -e KC_HTTP_RELATIVE_PATH=/kc -e KC_HEALTH_ENABLED=true \
+            shri-health/keycloak:ci start-dev
+          for _ in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:9000/kc/health/ready >/dev/null; then
+              docker logs kc 2>&1 | grep -E "started in" || true
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs kc
+          echo "::error::Keycloak did not report ready within 3 minutes"
+          exit 1
