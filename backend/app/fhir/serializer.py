@@ -159,6 +159,11 @@ def _value(cols: list[Any], row: Row, cls: type[Any]) -> Any:
                 continue
             target = referenced_table(c).name
             if target in RESOURCE_TABLES:
+                # OPEN (follow-up b, #13 comment 6409874510): a visible record can reference a
+                # restricted patient (a coverage's subscriber, a condition's recorder). Served
+                # as Patient/<id>, a 404 on that ID lets a client infer the chart exists and is
+                # restricted. Kept as is until Thulasi and Vimal choose: keep it, or leave out
+                # references to patients shri_fhir_reader cannot see (checked through RLS).
                 ref["reference"] = f"{c.info['ref_type']}/{v}"
             else:   # admin directory (payer, pharmacy): logical reference
                 ref["type"] = c.info["ref_type"]

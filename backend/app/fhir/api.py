@@ -1,8 +1,10 @@
 """FHIR R4 facade over the application database (ADR-19, ADR-0011 condition 3): read, vread,
 history, POST _search and the CapabilityStatement. Read-only - writes go through the domain
 endpoints (sign, order, ...) under /api/v1, not generic FHIR create/update, so the clinical
-safety rules stay in one place. Every read is audited; restricted charts (meta.security R / V)
-need an active break-the-glass grant.
+safety rules stay in one place. Every read is audited. Restricted charts (meta.security R / V)
+are never served here, grant or not (D22): the database hides them from ``shri_fhir_reader``
+(migration 0006), and a request for one gets the same 404 as a request for an ID that does not
+exist. Break-glass is an /api/v1 concern (D37).
 
 Access is machine-token only (ADR-0011 condition 3 / D22): the clinic comes from the token
 through Thulasi's core, never from client input, and our own screens never call /fhir - they
@@ -28,27 +30,26 @@ from __future__ import annotations
 import datetime as dt
 import os
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from sqlalchemy import Select, func, insert, select
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import Select, func, insert, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.constraints import patient_column
 from app.db.errors import db_error_detail
 from app.db.models import FHIR_RESOURCES, MAPPERS
-from app.db.models.admin.platform import AuditEvent, BreakGlassAccess
+from app.db.models.admin.platform import AuditEvent
 from app.db.models.fhir.records import FhirResourceHistory
 from app.fhir.serializer import SnapshotRow, to_fhir
 
 router = APIRouter(prefix="/fhir/r4", tags=["FHIR R4"])
 FHIR_JSON = "application/fhir+json"
-RESTRICTED = {"R", "V"}
 Patient = FHIR_RESOURCES["Patient"]
 Identifier = MAPPERS["identifier"]
 HumanName = MAPPERS["human_name"]
@@ -141,7 +142,7 @@ async def audit(db: AsyncSession, ctx: AuthContext, action: str, outcome_: str, 
                 patient_id: uuid.UUID | None = None, reason: str | None = None,
                 category: str = "phi-read") -> None:
     """Writes one audit row and commits it. /fhir changes nothing else, so committing here is
-    what makes the audit row outlast the request, including a request that ends in a 403.
+    what makes the audit row outlast the request, including a request that ends in a 404.
 
     An INSERT with no RETURNING: shri_fhir_reader may insert audit rows but not read them (D23
     as amended). ``.inline()`` is what stops SQLAlchemy from adding ``RETURNING`` to fetch the
@@ -157,24 +158,20 @@ async def audit(db: AsyncSession, ctx: AuthContext, action: str, outcome_: str, 
     await db.commit()
 
 
-async def ensure_chart_access(db: AsyncSession, ctx: AuthContext,
-                              patient_id: uuid.UUID | None) -> None:
-    """FR-PAT-01: a restricted chart opens only with an active break-the-glass grant."""
-    if patient_id is None:
-        return
-    security = await db.scalar(select(Patient.meta_security).where(Patient.id == patient_id))
-    if not security or not RESTRICTED & set(security):
-        return
-    granted = await db.scalar(select(func.count()).select_from(BreakGlassAccess).where(
-        BreakGlassAccess.patient_id == patient_id, BreakGlassAccess.user_id == ctx.user_id,
-        BreakGlassAccess.expires_at > func.now(), BreakGlassAccess.granted_at <= func.now()))
-    if not granted:
-        # FRS §6: access denials must be traceable. audit() commits, so the denial is saved
-        # before the 403 ends the request; nothing else was written in this transaction.
-        await audit(db, ctx, "access-denied", "denied", entity_type="Patient",
-                    entity_id=patient_id, patient_id=patient_id, reason="restricted chart",
-                    category="security")
-        raise outcome(403, "forbidden", "restricted chart: break-the-glass access required")
+async def record_lookup_denied(db: AsyncSession, rtype: str, rid: uuid.UUID) -> None:
+    """A resource ID this request asked for is not visible to ``shri_fhir_reader``: either it
+    does not exist in this clinic, or its chart is restricted (D22). The database function
+    (migration 0006) decides which and writes the audit row itself; it returns nothing, so this
+    module never learns which, and neither does the client. Committed like ``audit()``."""
+    await db.execute(text("SELECT audit.record_fhir_lookup_denied(:rtype, :rid)"),
+                     {"rtype": rtype, "rid": rid})
+    await db.commit()
+
+
+async def not_served(db: AsyncSession, rtype: str, rid: uuid.UUID) -> HTTPException:
+    """The one 404 for a resource that is missing or restricted: same status, same body."""
+    await record_lookup_denied(db, rtype, rid)
+    return outcome(404, "not-found", f"{rtype}/{rid} not found")
 
 
 # --------------------------------------------------------------------------- capability
@@ -208,9 +205,8 @@ async def read(rtype: str, rid: uuid.UUID, db: AsyncSession = Depends(fhir_db),
     cls = resource_class(rtype)
     obj = await db.get(cls, rid)
     if obj is None:
-        raise outcome(404, "not-found", f"{rtype}/{rid} not found")
+        raise await not_served(db, rtype, rid)
     pid = patient_id_of(cls, obj)
-    await ensure_chart_access(db, ctx, pid)
     version = obj.meta_version_id
     response = fhir_response(to_fhir(obj), headers={
         "ETag": f'W/"{version}"',
@@ -235,10 +231,13 @@ async def vread(rtype: str, rid: uuid.UUID, vid: int, db: AsyncSession = Depends
     cls = resource_class(rtype)
     rows = await _history_rows(db, rtype, rid, vid)
     if not rows:
-        raise outcome(404, "not-found", f"{rtype}/{rid}/_history/{vid} not found")
+        # A missing version of a resource the client may see is an ordinary 404. Otherwise
+        # the resource itself is missing or restricted (its history is hidden with it).
+        if await db.get(cls, rid) is not None:
+            raise outcome(404, "not-found", f"{rtype}/{rid}/_history/{vid} not found")
+        raise await not_served(db, rtype, rid)
     body = to_fhir(cls, SnapshotRow(rows[0].snapshot))
     pid = rid if cls is Patient else _snapshot_patient(cls, rows[0].snapshot)
-    await ensure_chart_access(db, ctx, pid)
     await audit(db, ctx, "read", "success", entity_type=rtype, entity_id=rid, version=vid,
                 patient_id=pid)
     return fhir_response(body, headers={"ETag": f'W/"{vid}"'})
@@ -255,9 +254,8 @@ async def history(rtype: str, rid: uuid.UUID, db: AsyncSession = Depends(fhir_db
     cls = resource_class(rtype)
     rows = await _history_rows(db, rtype, rid)
     if not rows:
-        raise outcome(404, "not-found", f"{rtype}/{rid} has no history")
+        raise await not_served(db, rtype, rid)
     pid = rid if cls is Patient else _snapshot_patient(cls, rows[0].snapshot)
-    await ensure_chart_access(db, ctx, pid)
     entries = [{"fullUrl": f"{FHIR_BASE_URL}/{rtype}/{rid}/_history/{r.version_id}",
                 "resource": to_fhir(cls, SnapshotRow(r.snapshot)),
                 "request": {"method": "POST" if r.version_id == 1 else "PUT",
@@ -283,6 +281,10 @@ class SearchParams(BaseModel):
     birthdate: dt.date | None = None
     count: int = 50
 
+    # Anything else (_include, _revinclude, _has, chained parameters) is refused with a 400,
+    # never silently ignored: a client must not take a partial answer for a full one.
+    model_config = ConfigDict(extra="allow")
+
 
 def _ref_id(value: str) -> uuid.UUID:
     try:
@@ -296,6 +298,10 @@ async def search(rtype: str, request: Request, params: SearchParams,
                  db: AsyncSession = Depends(fhir_db),
                  ctx: AuthContext = Depends(machine_token_auth)) -> JSONResponse:
     cls = resource_class(rtype)
+    if params.model_extra:
+        # Parameter names only, never values (D13).
+        raise outcome(400, "not-supported", "unsupported search parameter(s): "
+                      + ", ".join(sorted(params.model_extra)))
     q: Select[Any] = select(cls)
     pid: uuid.UUID | None = None
     patient_ref = params.patient or params.subject
@@ -308,7 +314,6 @@ async def search(rtype: str, request: Request, params: SearchParams,
             raise outcome(400, "not-supported", f"{rtype} has no patient search parameter")
         else:
             q = q.where(col == pid)
-        await ensure_chart_access(db, ctx, pid)
     if params.id:
         q = q.where(cls.id == params.id)
     if params.code:
@@ -330,20 +335,29 @@ async def search(rtype: str, request: Request, params: SearchParams,
                 func.lower(HumanName.family).startswith(params.family.lower()))))
         if params.birthdate:
             q = q.where(cls.birth_date == params.birthdate)
-        # Restricted charts are not listed in searches without a grant.
-        if not pid:
-            q = q.where(~cls.meta_security.overlap(list(RESTRICTED)))
+    # Restricted charts never appear: the database hides their rows from shri_fhir_reader, so
+    # they are missing from the results and the total alike (D22, migration 0006).
+    if pid is not None and await db.get(Patient, pid) is None:
+        # The search names a chart this client may not see, or one that does not exist. The
+        # database function audits it as a lookup of that chart (restricted or not-found), and
+        # the answer is the same empty searchset either way.
+        await record_lookup_denied(db, "Patient", pid)
+        return fhir_response(_searchset(request, rtype, []))
     count = min(params.count, FHIR_MAX_PAGE_SIZE)
     rows = (await db.scalars(q.order_by(cls.meta_last_updated.desc()).limit(count))).all()
     # Which parameter *names* were searched, never their values (D13: no PHI in the audit log
     # either, not just the URL - this used to be `f"search {request.url.query}"`, the raw query
     # string, which leaked family/identifier/birthdate values verbatim into audit_event.reason).
     searched = ",".join(k for k, v in params.model_dump(exclude={"count"}).items() if v)
-    body = {
+    body = _searchset(request, rtype, rows)
+    await audit(db, ctx, "read", "success", entity_type=rtype, patient_id=pid,
+                reason=f"search params: {searched or 'none'}")
+    return fhir_response(body)
+
+
+def _searchset(request: Request, rtype: str, rows: Sequence[Any]) -> dict[str, Any]:
+    return {
         "resourceType": "Bundle", "type": "searchset", "total": len(rows),
         "link": [{"relation": "self", "url": str(request.url)}],
         "entry": [{"fullUrl": f"{FHIR_BASE_URL}/{rtype}/{r.id}",
                    "resource": to_fhir(r), "search": {"mode": "match"}} for r in rows]}
-    await audit(db, ctx, "read", "success", entity_type=rtype, patient_id=pid,
-                reason=f"search params: {searched or 'none'}")
-    return fhir_response(body)
