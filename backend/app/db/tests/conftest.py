@@ -31,17 +31,21 @@ import app.db.session  # noqa: F401  (registers the tenant default hook)
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 APP_ROLE = "shri_app"
+SERVICE_ROLES = ("shri_app", "shri_fhir_reader", "shri_integration", "shri_reporting")
 SKIP_WITHOUT_DATABASE = pytest.mark.skipif(not TEST_DATABASE_URL,
                                            reason="TEST_DATABASE_URL not set")
 
-# Applies the role's own configured search_path (ALTER ROLE ... SET search_path, which
-# sql/00_extensions.sql sets), so tests see exactly what a shri_app login sees. Plain SQL with
-# no parameters (APP_ROLE is a constant), so it runs unchanged on psycopg and asyncpg.
-_ROLE_SEARCH_PATH = (
-    "SELECT set_config('search_path', substr(cfg, length('search_path=') + 1), false) "
-    "FROM pg_db_role_setting s, unnest(s.setconfig) AS cfg "
-    f"WHERE s.setrole = '{APP_ROLE}'::regrole AND s.setdatabase = 0 "
-    "AND starts_with(cfg, 'search_path=')")
+
+def _role_search_path_sql(role: str) -> str:
+    """Applies the role's own configured search_path (ALTER ROLE ... SET search_path, which
+    sql/00_extensions.sql sets), so tests see exactly what a login as that role sees. Plain SQL
+    with no parameters (role is one of SERVICE_ROLES), so it runs on psycopg and asyncpg."""
+    if role not in SERVICE_ROLES:
+        raise ValueError(f"not a service role: {role!r}")
+    return ("SELECT set_config('search_path', substr(cfg, length('search_path=') + 1), false) "
+            "FROM pg_db_role_setting s, unnest(s.setconfig) AS cfg "
+            f"WHERE s.setrole = '{role}'::regrole AND s.setdatabase = 0 "
+            "AND starts_with(cfg, 'search_path=')")
 
 
 def sync_url() -> str:
@@ -50,28 +54,37 @@ def sync_url() -> str:
     return url.render_as_string(hide_password=False)
 
 
-def switch_to_app_role(engine: Engine) -> None:
-    """Every new connection of ``engine`` becomes ``shri_app`` before it is used.
+def switch_to_role(engine: Engine, role: str, *, require_search_path: bool = True) -> None:
+    """Every new connection of ``engine`` becomes ``role`` before it is used.
+
+    ``require_search_path``: the role must have its own configured search_path (shri_app,
+    shri_integration and shri_reporting do). shri_fhir_reader has none by design, so its
+    connections keep the login default, exactly as a real login would.
 
     Committed straight away: a SET inside a transaction that later rolls back is undone.
     """
+    search_path_sql = _role_search_path_sql(role)
 
     @event.listens_for(engine, "connect")
-    def _as_app_role(dbapi_connection: Any, _record: Any) -> None:
+    def _as_role(dbapi_connection: Any, _record: Any) -> None:
         cursor = dbapi_connection.cursor()
         try:
-            cursor.execute(_ROLE_SEARCH_PATH)
-            if cursor.fetchone() is None:
-                raise RuntimeError(f"{APP_ROLE} has no search_path setting; run "
+            cursor.execute(search_path_sql)
+            if cursor.fetchone() is None and require_search_path:
+                raise RuntimeError(f"{role} has no search_path setting; run "
                                    "sql/00_extensions.sql on this database first")
-            cursor.execute(f"SET ROLE {APP_ROLE}")
+            cursor.execute(f"SET ROLE {role}")
             cursor.execute("SELECT current_user")
             row = cursor.fetchone()
         finally:
             cursor.close()
         dbapi_connection.commit()
-        if row is None or row[0] != APP_ROLE:
-            raise RuntimeError(f"connection is not running as {APP_ROLE}: {row!r}")
+        if row is None or row[0] != role:
+            raise RuntimeError(f"connection is not running as {role}: {row!r}")
+
+
+def switch_to_app_role(engine: Engine) -> None:
+    switch_to_role(engine, APP_ROLE)
 
 
 @pytest.fixture(scope="session")

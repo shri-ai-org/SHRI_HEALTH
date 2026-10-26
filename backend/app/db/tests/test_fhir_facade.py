@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import FHIR_RESOURCES, MAPPERS, systems
 from app.db.tests import builders as b
-from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, TEST_DATABASE_URL, switch_to_app_role
+from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, TEST_DATABASE_URL, switch_to_role
 from app.fhir.serializer import SnapshotRow, to_fhir
 
 pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
@@ -228,11 +228,23 @@ def test_history_snapshot_serializes_like_the_live_row(db: Session, chart: dict[
 # --------------------------------------------------------------------------- HTTP
 @pytest.fixture
 def client(chart: dict[str, Any], db: Session) -> Iterator[TestClient]:
+    """The facade as ``shri_app``. Kept for the restricted-chart test, which still checks
+    break-glass (``audit.break_glass_access``, which ``shri_fhir_reader`` cannot read) until
+    the restricted-chart design replaces ``ensure_chart_access``."""
+    yield from _facade_client(chart, db, "shri_app")
+
+
+@pytest.fixture
+def reader_client(chart: dict[str, Any], db: Session) -> Iterator[TestClient]:
+    """The facade as ``shri_fhir_reader``, the role /fhir runs as (D22, D23)."""
+    yield from _facade_client(chart, db, "shri_fhir_reader")
+
+
+def _facade_client(chart: dict[str, Any], db: Session, role: str) -> Iterator[TestClient]:
     """A local app mounting only the FHIR facade router, with both of its seams overridden:
     ``machine_token_auth`` with a fixed AuthContext, and ``fhir_db`` with a session from the
     core's own ``Database.tenant_session`` (the same per-transaction clinic settings
-    ``tenant_db`` uses). /fhir will run as ``shri_fhir_reader``; these tests connect as
-    ``shri_app`` until the audit grants for that role are decided (open question in the PR)."""
+    ``tenant_db`` uses), connected as ``role``."""
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
     from sqlalchemy.exc import DBAPIError
@@ -250,7 +262,8 @@ def client(chart: dict[str, Any], db: Session) -> Iterator[TestClient]:
         return JSONResponse(http_exc.detail, status_code=http_exc.status_code)
 
     database = Database(Settings(database_url=TEST_DATABASE_URL))
-    switch_to_app_role(database.engine.sync_engine)
+    switch_to_role(database.engine.sync_engine, role,
+                   require_search_path=role != "shri_fhir_reader")
     ctx = AuthContext(db.info["tenant_id"], chart["ctx"]["user"].id, frozenset({"clinician"}))
 
     async def _fhir_db() -> AsyncIterator[AsyncSession]:
@@ -265,6 +278,25 @@ def client(chart: dict[str, Any], db: Session) -> Iterator[TestClient]:
         assert c.portal is not None  # set while the client is open
         c.portal.call(database.dispose)  # on the loop that owns the connections
     app.dependency_overrides.clear()
+
+
+def test_http_read_as_fhir_reader_is_audited(reader_client: TestClient,
+                                             chart: dict[str, Any],
+                                             admin_engine: Engine) -> None:
+    """As shri_fhir_reader, which may insert audit rows but not read them: the audit insert
+    must work without RETURNING, and the read must still succeed."""
+    pt = chart["patient"]
+    r = reader_client.get(f"/fhir/r4/Patient/{pt.id}")
+    assert r.status_code == 200
+    validate(r.json())
+    found = reader_client.post("/fhir/r4/Observation/_search",
+                               json={"patient": f"Patient/{pt.id}",
+                                     "code": f"{systems.LOINC}|85354-9"}).json()
+    assert found["total"] == 1
+    with admin_engine.connect() as c:
+        audited = c.execute(text("SELECT count(*) FROM audit.audit_event WHERE patient_id = :p "
+                                 "AND action = 'read'"), {"p": pt.id}).scalar_one()
+    assert audited == 2
 
 
 def test_http_read_vread_history_search(client: TestClient,

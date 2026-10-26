@@ -35,7 +35,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, insert, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -127,8 +127,8 @@ async def fhir_db(ctx: AuthContext = Depends(machine_token_auth)) -> AsyncIterat
       (this module commits mid-request: see ``audit``), exactly as ``tenant_db`` does;
     - roll back whatever is not committed when the request ends.
 
-    Open question (PR text): ``shri_fhir_reader`` is granted SELECT on ``clinical`` only, but
-    every /fhir read writes ``audit.audit_event`` and checks ``audit.break_glass_access``.
+    ``shri_fhir_reader`` may read ``clinical`` and insert into ``audit.audit_event`` (migration
+    0003), nothing more: no reading audit rows and no access to ``audit.break_glass_access``.
     """
     raise NotImplementedError(
         "fhir_db is a seam for the /fhir session from Thulasi's core (shri_fhir_reader, clinic "
@@ -140,12 +140,19 @@ async def audit(db: AsyncSession, ctx: AuthContext, action: str, outcome_: str, 
                 entity_type: str | None = None, entity_id: Any = None, version: int | None = None,
                 patient_id: uuid.UUID | None = None, reason: str | None = None) -> None:
     """Writes one audit row and commits it. /fhir changes nothing else, so committing here is
-    what makes the audit row outlast the request, including a request that ends in a 403."""
-    db.add(AuditEvent(tenant_id=ctx.tenant_id, actor_type="user", actor_user_id=ctx.user_id,
-                      action=action, outcome=outcome_, entity_type=entity_type,
-                      entity_id=str(entity_id) if entity_id else None,
-                      entity_version_id=version, patient_id=patient_id, reason=reason,
-                      purpose_of_use="TREAT", correlation_id=ctx.correlation_id))
+    what makes the audit row outlast the request, including a request that ends in a 403.
+
+    An INSERT with no RETURNING: shri_fhir_reader may insert audit rows but not read them (D23
+    as amended). ``.inline()`` is what stops SQLAlchemy from adding ``RETURNING`` to fetch the
+    identity id; an ORM ``add()`` would too. The row's id, event_uuid and recorded_at come from
+    the database and Python defaults, and nothing here needs them. If the insert or the commit
+    fails, the request fails with it (fail closed, T17)."""
+    await db.execute(insert(AuditEvent).inline().values(
+        tenant_id=ctx.tenant_id, actor_type="user", actor_user_id=ctx.user_id,
+        action=action, outcome=outcome_, entity_type=entity_type,
+        entity_id=str(entity_id) if entity_id else None,
+        entity_version_id=version, patient_id=patient_id, reason=reason,
+        purpose_of_use="TREAT", correlation_id=ctx.correlation_id))
     await db.commit()
 
 

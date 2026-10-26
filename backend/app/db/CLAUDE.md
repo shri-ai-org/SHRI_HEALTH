@@ -32,9 +32,9 @@ session from one dependency, `fhir_db`, a seam (like `machine_token_auth`) until
 provides it. The facade commits its own audit rows (`audit()`), including before a 403, so the
 real `fhir_db` must set the three settings again on every new transaction, as `tenant_db` does.
 
-Open question: `shri_fhir_reader` has SELECT on `clinical` only, but every `/fhir` read writes
-`audit.audit_event` and checks `audit.break_glass_access`. Until that is decided, the facade
-tests run as `shri_app`.
+`shri_fhir_reader` may also insert into `audit.audit_event` and nothing else on `audit` (no
+SELECT, so the facade's audit insert never uses RETURNING; no access to `break_glass_access`).
+Restricted charts are not served on `/fhir`; that part of the facade is still being designed.
 
 A role never bypasses RLS: `shri_app`, `shri_fhir_reader`, `shri_integration` and
 `shri_reporting` are all `NOBYPASSRLS`. Only `shri_migrator` has elevated rights, and only for
@@ -45,10 +45,15 @@ schema changes, never for serving a request.
 | Role | Use | Access |
 |---|---|---|
 | `shri_app` | the API | `clinical` + `admin` read/write per table (see `tools/gen_db_rules.py`'s classification); `audit.audit_event` insert-only, `audit.break_glass_access` select+insert |
-| `shri_fhir_reader` | `/fhir` (read-only, machine-token access) | `clinical` schema, `SELECT` only |
+| `shri_fhir_reader` | `/fhir` (read-only, machine-token access) | `clinical` schema, `SELECT` only; `audit.audit_event` `INSERT` only (migration 0003) |
 | `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into, plus the three `integration_*` admin tables |
 | `shri_reporting` | approved reports | nothing yet — no reporting views exist; grants come when they do |
 | `shri_migrator` | migrations only | owns all three schemas |
+
+`shri_app`, `shri_integration` and `shri_fhir_reader` also have `USAGE` (never `CREATE`) on
+schema `public`, where the rule functions that every trigger calls live (migration 0003). The
+database image revokes all access to `public` from PUBLIC, so without it no write could fire
+its triggers.
 
 Role **creation** happens outside this package: locally/CI via
 `infra/compose/postgres/initdb/10-service-roles.sh` (Thulasi); on RDS, by the master role plus
