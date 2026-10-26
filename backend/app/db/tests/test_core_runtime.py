@@ -22,11 +22,13 @@ ROLES = ("shri_app", "shri_fhir_reader", "shri_integration", "shri_reporting")
 DENIED = "42501"
 CHECK_FAILED = "23514"
 UNIQUE_FAILED = "23505"
+# Table-level privileges. No role deletes from these tables: only the purge function does.
+# shri_integration's column-level grants on admin.operation are tested separately.
 NEW_TABLES = {
-    "admin.app_session": {"SELECT", "INSERT", "UPDATE", "DELETE"},
-    "admin.idempotency_record": {"SELECT", "INSERT", "UPDATE", "DELETE"},
-    "admin.operation": {"SELECT", "INSERT", "UPDATE", "DELETE"},
-    "admin.event_log": {"SELECT", "INSERT", "DELETE"},
+    "admin.app_session": {"shri_app": {"SELECT", "INSERT", "UPDATE"}},
+    "admin.idempotency_record": {"shri_app": {"SELECT", "INSERT", "UPDATE"}},
+    "admin.operation": {"shri_app": {"SELECT", "INSERT", "UPDATE"}},
+    "admin.event_log": {"shri_app": {"SELECT", "INSERT"}, "shri_integration": {"INSERT"}},
 }
 PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 
@@ -77,8 +79,8 @@ def token_hash() -> str:
 
 # =============================================================================== the new tables
 @pytest.mark.parametrize("table", sorted(NEW_TABLES))
-def test_new_table_is_clinic_isolated_and_only_the_api_may_use_it(admin_engine: Engine,
-                                                                  table: str) -> None:
+def test_new_table_is_clinic_isolated_and_only_the_named_roles_may_use_it(
+        admin_engine: Engine, table: str) -> None:
     with admin_engine.connect() as c:
         enabled, forced = c.execute(text(
             "SELECT relrowsecurity, relforcerowsecurity FROM pg_class "
@@ -88,7 +90,7 @@ def test_new_table_is_clinic_isolated_and_only_the_api_may_use_it(admin_engine: 
             granted = {p for p in PRIVILEGES if c.execute(
                 text("SELECT has_table_privilege(:r, :t, :p)"),
                 {"r": role, "t": table, "p": p}).scalar_one()}
-            assert granted == (NEW_TABLES[table] if role == "shri_app" else set()), role
+            assert granted == NEW_TABLES[table].get(role, set()), role
 
 
 def _insert_session(conn: Connection, tenant: uuid.UUID, user: uuid.UUID, token: str,
@@ -96,11 +98,11 @@ def _insert_session(conn: Connection, tenant: uuid.UUID, user: uuid.UUID, token:
                     idle: timedelta = timedelta(minutes=15), revoked: bool = False) -> None:
     now = datetime.now(UTC)
     conn.execute(text(
-        "INSERT INTO admin.app_session (id, tenant_id, user_id, token_hash, csrf_token_hash, "
+        "INSERT INTO admin.app_session (id, tenant_id, user_id, token_hash, "
         "keycloak_access_token_enc, keycloak_refresh_token_enc, idle_expires_at, expires_at, "
         "revoked_at, created_at) "
-        "VALUES (:i, :t, :u, :h, :c, 'enc:a', 'enc:r', :idle, :exp, :rev, :created)"),
-        {"i": uuid.uuid4(), "t": tenant, "u": user, "h": token, "c": token_hash(),
+        "VALUES (:i, :t, :u, :h, 'vault:v1:YQ==', 'vault:v1:cg==', :idle, :exp, :rev, :created)"),
+        {"i": uuid.uuid4(), "t": tenant, "u": user, "h": token,
          "idle": now + min(idle, expires), "exp": now + expires,
          "rev": now if revoked else None, "created": now - timedelta(hours=13)})
 
@@ -123,26 +125,35 @@ def test_sessions_are_clinic_isolated(admin_engine: Engine,
         revoke = text("UPDATE admin.app_session SET revoked_at = now() WHERE token_hash = :h")
         assert with_clinic(conn, other).execute(revoke, {"h": token}).rowcount == 0
         assert sqlstate(conn, "INSERT INTO admin.app_session (id, tenant_id, user_id, "
-                        "token_hash, csrf_token_hash, keycloak_access_token_enc, "
+                        "token_hash, keycloak_access_token_enc, "
                         "keycloak_refresh_token_enc, idle_expires_at, expires_at) VALUES "
-                        "(gen_random_uuid(), :t, :u, :h, :h, 'a', 'r', now(), now())",
+                        "(gen_random_uuid(), :t, :u, :h, 'vault:v1:YQ==', 'vault:v1:cg==', "
+                        "now(), now())",
                         {"t": tenant, "u": user, "h": token_hash()}) == DENIED
 
 
-def test_session_token_hashes_must_be_sha256_hex(admin_engine: Engine,
-                                                 role_engine: dict[str, Engine]) -> None:
+def test_session_token_is_a_sha256_hash_and_no_csrf_token_is_stored(
+        admin_engine: Engine, role_engine: dict[str, Engine]) -> None:
     tenant = make_tenant(admin_engine)
     user = make_user(admin_engine, tenant)
     with role_engine["shri_app"].connect() as conn:
         with_clinic(conn, tenant)
         insert = ("INSERT INTO admin.app_session (id, tenant_id, user_id, token_hash, "
-                  "csrf_token_hash, keycloak_access_token_enc, keycloak_refresh_token_enc, "
-                  "idle_expires_at, expires_at) VALUES (gen_random_uuid(), :t, :u, :h, :c, "
-                  "'a', 'r', now() + interval '15 minutes', now() + interval '12 hours')")
-        good = {"t": tenant, "u": user, "h": token_hash(), "c": token_hash()}
+                  "keycloak_access_token_enc, keycloak_refresh_token_enc, "
+                  "idle_expires_at, expires_at) VALUES (gen_random_uuid(), :t, :u, :h, "
+                  ":a, 'vault:v3:cg==', now() + interval '15 minutes', "
+                  "now() + interval '12 hours')")
+        good = {"t": tenant, "u": user, "h": token_hash(), "a": "vault:v12:YQ=="}
         assert sqlstate(conn, insert, good) is None
         assert sqlstate(conn, insert, {**good, "h": "a-raw-token"}) == CHECK_FAILED
-        assert sqlstate(conn, insert, {**good, "c": "A" * 64}) == CHECK_FAILED
+        assert sqlstate(conn, insert, {**good, "h": "A" * 64}) == CHECK_FAILED
+        # Keycloak tokens only as OpenBao Transit ciphertext, never plain text by mistake.
+        for plain in ("eyJhbGciOiJSUzI1NiJ9.x.y", "vault:vX:YQ==", ""):
+            assert sqlstate(conn, insert, {**good, "a": plain}) == CHECK_FAILED, plain
+    with admin_engine.connect() as c:   # core derives the CSRF token from the session (B1)
+        assert c.execute(text("SELECT count(*) FROM information_schema.columns WHERE "
+                              "table_schema = 'admin' AND table_name = 'app_session' AND "
+                              "column_name LIKE 'csrf%'")).scalar_one() == 0
 
 
 # ============================================================================ admin.lookup_session
@@ -171,6 +182,7 @@ def test_lookup_session_finds_live_sessions_of_any_clinic_before_one_is_set(
 @pytest.mark.parametrize(("function", "allowed"), [
     ("admin.lookup_session(text)", "shri_app"),
     ("admin.claim_outbound_messages(integer)", "shri_integration"),
+    ("admin.purge_expired_runtime_rows()", "shri_app"),
 ])
 def test_cross_clinic_functions_are_narrow(admin_engine: Engine, function: str,
                                            allowed: str) -> None:
@@ -202,18 +214,21 @@ def _endpoint(conn: Connection, tenant: uuid.UUID) -> uuid.UUID:
 
 def _message(conn: Connection, tenant: uuid.UUID, endpoint: uuid.UUID, *, key: str | None = None,
              status: str = "queued", direction: str = "outbound", age: int = 0,
-             due_in: timedelta | None = None) -> uuid.UUID:
+             due_in: timedelta | None = None, attempts: int = 0,
+             claimed: timedelta | None = None) -> uuid.UUID:
+    """``claimed``: how long ago a ``sending`` row was claimed."""
     mid = uuid.uuid4()
-    created = datetime.now(UTC) - timedelta(minutes=10 - age)
+    created = datetime.now(UTC) - timedelta(minutes=30 - age)
     conn.execute(text(
         "INSERT INTO admin.integration_message (id, tenant_id, endpoint_id, direction, "
         "message_type, status, ordering_key, payload, attempts, max_attempts, next_attempt_at, "
-        "last_error, received_at, created_at) VALUES (:i, :t, :e, :d, 'NewRx', :s, :k, "
-        "CAST('{\"prescriptionId\": \"x\"}' AS jsonb), 0, 5, :due, :err, :recv, :c)"),
+        "last_error, received_at, created_at, claimed_at) VALUES (:i, :t, :e, :d, 'NewRx', :s, "
+        ":k, CAST('{\"prescriptionId\": \"x\"}' AS jsonb), :a, 5, :due, :err, :recv, :c, :cl)"),
         {"i": mid, "t": tenant, "e": endpoint, "d": direction, "s": status, "k": key,
-         "due": None if due_in is None else datetime.now(UTC) + due_in,
+         "a": attempts, "due": None if due_in is None else datetime.now(UTC) + due_in,
          "err": "partner timeout" if status in ("failed", "dead-letter") else None,
-         "recv": created if direction == "inbound" else None, "c": created})
+         "recv": created if direction == "inbound" else None, "c": created,
+         "cl": None if claimed is None else datetime.now(UTC) - claimed})
     return mid
 
 
@@ -280,6 +295,49 @@ def test_claim_skips_rows_another_worker_holds(admin_engine: Engine,
         with admin_engine.begin() as c:                      # leave nothing claimable behind
             c.execute(text("DELETE FROM admin.integration_message WHERE id = ANY(:i)"),
                       {"i": list(ours)})
+
+
+def test_claim_respects_dead_letters_attempts_and_the_lease(admin_engine: Engine) -> None:
+    """Thulasi's and Vimal's reviews of #52: a dead letter holds its ordering key until someone
+    resolves it; a row with no attempts left is never claimed; a `sending` row whose worker died
+    is claimable again once its 15-minute lease has run out, and not before. One transaction,
+    rolled back."""
+    with admin_engine.connect() as conn:
+        tenant = uuid.uuid4()
+        conn.execute(text("INSERT INTO admin.tenant (id, slug, name) VALUES "
+                          "(:i, :s, 'Test practice')"), {"i": tenant, "s": f"t-{tenant.hex[:12]}"})
+        e = _endpoint(conn, tenant)
+        dead_new_rx = _message(conn, tenant, e, key="rx-1", status="dead-letter", age=0)
+        cancel_rx = _message(conn, tenant, e, key="rx-1", age=1)            # waits behind it
+        spent = _message(conn, tenant, e, status="failed", attempts=5,
+                         due_in=timedelta(seconds=-1))                          # 5 of 5 used
+        stale = _message(conn, tenant, e, status="sending", claimed=timedelta(minutes=16))
+        fresh = _message(conn, tenant, e, status="sending", claimed=timedelta(minutes=5))
+        after_stale = _message(conn, tenant, e, key="rx-2", status="sending", age=2,
+                               claimed=timedelta(minutes=16))
+        conn.execute(text("SET LOCAL ROLE shri_integration"))
+        got = _claim(conn)
+        assert stale in got and after_stale in got
+        assert not {dead_new_rx, cancel_rx, spent, fresh} & got.keys()
+        conn.execute(text("RESET ROLE"))
+        claimed_at = conn.execute(text("SELECT claimed_at > now() - interval '1 minute' FROM "
+                                       "admin.integration_message WHERE id = :i"),
+                                  {"i": stale}).scalar_one()
+        assert claimed_at                                          # a new lease starts
+        conn.rollback()
+
+
+def test_outbox_payload_is_a_small_object(admin_engine: Engine) -> None:
+    with admin_engine.connect() as conn:
+        tenant = make_tenant(admin_engine)
+        e = _endpoint(conn, tenant)
+        mid = _message(conn, tenant, e)
+        update = "UPDATE admin.integration_message SET payload = CAST(:p AS jsonb) WHERE id = :i"
+        assert sqlstate(conn, update, {"p": '{"orderId": "x"}', "i": mid}) is None
+        assert sqlstate(conn, update, {"p": '["x"]', "i": mid}) == CHECK_FAILED
+        assert sqlstate(conn, update, {"p": '{"note": "' + "x" * 9000 + '"}', "i": mid}) \
+            == CHECK_FAILED
+        conn.rollback()
 
 
 @pytest.mark.parametrize("batch", [0, -1, 501])
@@ -409,6 +467,11 @@ def test_idempotency_record_rules(admin_engine: Engine, role_engine: dict[str, E
         for not_stored in (500, 503, 429):
             assert sqlstate(conn, insert, {**good, "rs": not_stored}) == CHECK_FAILED
         assert sqlstate(conn, insert, {**good, "h": "not-a-hash"}) == CHECK_FAILED
+        body = ("UPDATE admin.idempotency_record SET response_body_enc = :b "
+                "WHERE tenant_id = :t AND key = 'k-body'")
+        conn.execute(text(insert), {**good, "k": "k-body"})
+        assert sqlstate(conn, body, {"b": "vault:v2:e30=", "t": tenant}) is None
+        assert sqlstate(conn, body, {"b": '{"patient": "x"}', "t": tenant}) == CHECK_FAILED
         conn.execute(text(insert), good)
         assert sqlstate(conn, insert, good) == UNIQUE_FAILED                  # same key reused
         conn.rollback()
@@ -426,7 +489,7 @@ def test_operation_rules(admin_engine: Engine, role_engine: dict[str, Engine]) -
     with role_engine["shri_app"].connect() as conn:
         with_clinic(conn, tenant)
         assert sqlstate(conn, insert, good) is None
-        assert sqlstate(conn, insert, {**good, "u": None}) == CHECK_FAILED
+        assert sqlstate(conn, insert, {**good, "u": None}) == "23502"          # NOT NULL
         assert sqlstate(conn, insert, {**good, "done": finished}) == CHECK_FAILED
         assert sqlstate(conn, insert, {**good, "s": "succeeded"}) == CHECK_FAILED
         assert sqlstate(conn, insert, {**good, "s": "failed", "done": finished}) == CHECK_FAILED
@@ -437,7 +500,8 @@ def test_operation_rules(admin_engine: Engine, role_engine: dict[str, Engine]) -
         conn.rollback()
 
 
-def test_events_are_written_once(admin_engine: Engine, role_engine: dict[str, Engine]) -> None:
+def test_events_are_written_once_and_never_deleted_by_a_role(
+        admin_engine: Engine, role_engine: dict[str, Engine]) -> None:
     tenant = make_tenant(admin_engine)
     with role_engine["shri_app"].connect() as conn:
         with_clinic(conn, tenant)
@@ -446,6 +510,188 @@ def test_events_are_written_once(admin_engine: Engine, role_engine: dict[str, En
                           "'appointment/x', '{}')"), {"t": tenant})
         assert sqlstate(conn, "UPDATE admin.event_log SET type = 'x' WHERE tenant_id = :t",
                         {"t": tenant}) == DENIED
-        assert sqlstate(conn, "DELETE FROM admin.event_log WHERE tenant_id = :t",
-                        {"t": tenant}) is None
+        for table in ("event_log", "app_session", "idempotency_record", "operation"):
+            assert sqlstate(conn, f"DELETE FROM admin.{table} WHERE tenant_id = :t",  # noqa: S608
+                            {"t": tenant}) == DENIED, table
+        conn.rollback()
+
+
+def test_operation_kind_and_creator(admin_engine: Engine, role_engine: dict[str, Engine]) -> None:
+    """The contract's OperationKind allows 64 characters (D1). The creator is required and kept:
+    an app_user with operations cannot be deleted (Vimal 5). One transaction, rolled back."""
+    tenant = make_tenant(admin_engine)
+    user = make_user(admin_engine, tenant)
+    insert = ("INSERT INTO admin.operation (id, tenant_id, created_by_user_id, kind, status) "
+              "VALUES (gen_random_uuid(), :t, :u, :k, 'queued')")
+    with role_engine["shri_app"].connect() as conn:
+        with_clinic(conn, tenant)
+        assert sqlstate(conn, insert, {"t": tenant, "u": user, "k": "k" * 64}) is None
+        assert sqlstate(conn, insert, {"t": tenant, "u": user, "k": "k" * 65}) == "22001"
+        conn.execute(text(insert), {"t": tenant, "u": user, "k": "export"})
+        conn.commit()
+    with admin_engine.connect() as c:
+        assert sqlstate(c, "DELETE FROM admin.app_user WHERE id = :u", {"u": user}) == "23001"
+        c.rollback()
+
+
+# =========================================================================== retention purge
+def test_purge_removes_only_rows_past_retention_in_every_clinic(
+        admin_engine: Engine, role_engine: dict[str, Engine]) -> None:
+    t1, t2 = make_tenant(admin_engine), make_tenant(admin_engine)
+    u1, u2 = make_user(admin_engine, t1), make_user(admin_engine, t2)
+    hours = timedelta(hours=1)
+    with admin_engine.begin() as c:
+        live, ended, logged_out, recent = (token_hash() for _ in range(4))
+        _insert_session(c, t1, u1, live)
+        _insert_session(c, t2, u2, ended, expires=-25 * hours)        # ended 25 hours ago
+        _insert_session(c, t1, u1, recent, expires=-23 * hours)       # within the 24 hours
+        _insert_session(c, t1, u1, logged_out, revoked=True)          # logged out just now
+        c.execute(text("UPDATE admin.app_session SET revoked_at = now() - interval '25 hours' "
+                       "WHERE token_hash = :h"), {"h": logged_out})
+        for tenant, user, expires in ((t1, u1, "now() - interval '1 minute'"),
+                                      (t2, u2, "now() + interval '1 hour'")):
+            c.execute(text("INSERT INTO admin.idempotency_record (id, tenant_id, user_id, method, "
+                           "path, key, request_hash, state, expires_at) VALUES "
+                           f"(gen_random_uuid(), :t, :u, 'POST', '/x', :k, :h, 'in-progress', "
+                           f"{expires})"), {"t": tenant, "u": user, "k": str(uuid.uuid4()),
+                                             "h": token_hash()})
+        for tenant, age in ((t1, "11 minutes"), (t2, "9 minutes")):
+            c.execute(text("INSERT INTO admin.event_log (id, tenant_id, type, subject, created_at) "
+                           f"VALUES (gen_random_uuid(), :t, 'x.y', 's', now() - interval '{age}')"),
+                      {"t": tenant})
+        for tenant, user, done in ((t2, u2, "now() - interval '8 days'"),
+                                   (t1, u1, "now() - interval '6 days'")):
+            c.execute(text("INSERT INTO admin.operation (id, tenant_id, created_by_user_id, kind, "
+                           "status, completed_at) VALUES (gen_random_uuid(), :t, :u, 'export', "
+                           f"'succeeded', {done})"), {"t": tenant, "u": user})
+        c.execute(text("INSERT INTO admin.operation (id, tenant_id, created_by_user_id, kind, "
+                       "status) VALUES (gen_random_uuid(), :t, :u, 'export', 'running')"),
+                  {"t": t1, "u": u1})
+    count = ("SELECT (SELECT count(*) FROM admin.app_session WHERE tenant_id IN (:a, :b)), "
+             "(SELECT count(*) FROM admin.idempotency_record WHERE tenant_id IN (:a, :b)), "
+             "(SELECT count(*) FROM admin.event_log WHERE tenant_id IN (:a, :b)), "
+             "(SELECT count(*) FROM admin.operation WHERE tenant_id IN (:a, :b))")
+    with admin_engine.connect() as c:
+        assert tuple(c.execute(text(count), {"a": t1, "b": t2}).one()) == (4, 2, 2, 3)
+    with role_engine["shri_app"].connect() as conn:                     # no clinic set
+        deleted: dict[str, int] = {row.table_name: row.deleted for row in conn.execute(text(
+            "SELECT table_name, deleted FROM admin.purge_expired_runtime_rows()"))}
+        conn.commit()
+    # At least ours (other tests' expired rows may go too); only counts come back.
+    assert set(deleted) == {"app_session", "idempotency_record", "event_log", "operation"}
+    assert deleted["app_session"] >= 2 and deleted["idempotency_record"] >= 1
+    assert deleted["event_log"] >= 1 and deleted["operation"] >= 1
+    with admin_engine.connect() as c:
+        assert tuple(c.execute(text(count), {"a": t1, "b": t2}).one()) == (2, 1, 1, 2)
+        kept = set(c.execute(text("SELECT token_hash FROM admin.app_session WHERE tenant_id IN "
+                                  "(:a, :b)"), {"a": t1, "b": t2}).scalars())
+    assert kept == {live, recent}
+
+
+# ============================================================== the partner worker (B5)
+def test_partner_worker_completes_only_the_operations_assigned_to_it(
+        admin_engine: Engine, role_engine: dict[str, Engine]) -> None:
+    tenant = make_tenant(admin_engine)
+    user = make_user(admin_engine, tenant)
+    mine, theirs = uuid.uuid4(), uuid.uuid4()
+    with admin_engine.begin() as c:
+        for oid, assigned in ((mine, True), (theirs, False)):
+            c.execute(text("INSERT INTO admin.operation (id, tenant_id, created_by_user_id, kind, "
+                           "status, assigned_to_integration) VALUES (:i, :t, :u, 'eligibility', "
+                           "'running', :a)"), {"i": oid, "t": tenant, "u": user, "a": assigned})
+    finish = ("UPDATE admin.operation SET status = 'succeeded', completed_at = now(), "
+              "updated_at = now() WHERE id = :i")
+    with role_engine["shri_integration"].connect() as conn:
+        with_clinic(conn, tenant)
+        assert conn.execute(text(finish), {"i": mine}).rowcount == 1
+        assert conn.execute(text(finish), {"i": theirs}).rowcount == 0     # not its operation
+        for column in ("assigned_to_integration = false", "kind = 'x'",
+                       "created_by_user_id = NULL"):
+            assert sqlstate(conn, f"UPDATE admin.operation SET {column} WHERE id = :i",  # noqa: S608
+                            {"i": mine}) == DENIED, column
+        assert sqlstate(conn, "INSERT INTO admin.operation (id, tenant_id, created_by_user_id, "
+                        "kind, status) VALUES (gen_random_uuid(), :t, :u, 'x', 'queued')",
+                        {"t": tenant, "u": user}) == DENIED
+        conn.rollback()
+
+
+def test_partner_worker_publishes_events_in_its_clinic(admin_engine: Engine,
+                                                       role_engine: dict[str, Engine]) -> None:
+    tenant, other = make_tenant(admin_engine), make_tenant(admin_engine)
+    insert = ("INSERT INTO admin.event_log (id, tenant_id, type, subject, patient_id, "
+              "target_user_id, target_role_code) VALUES (gen_random_uuid(), :t, "
+              "'result.received', 'result/x', NULL, NULL, :r)")
+    with role_engine["shri_integration"].connect() as conn:
+        with_clinic(conn, tenant)
+        assert sqlstate(conn, insert, {"t": tenant, "r": "MD"}) is None  # no RETURNING
+        assert sqlstate(conn, insert, {"t": other, "r": "MD"}) == DENIED
+        # A code as core's ROLE_PERMISSIONS spells it, not a name or a UUID.
+        for bad in ("md", "Physician", str(uuid.uuid4()), "M"):
+            assert sqlstate(conn, insert, {"t": tenant, "r": bad}) == CHECK_FAILED, bad
+        conn.rollback()
+
+
+# ======================================================== audit: payload 2, partner, break-glass
+def test_audit_hash_covers_the_category_from_now_on(admin_engine: Engine) -> None:
+    """Thulasi's review of #52. A row written before 0005 keeps payload 1 and still verifies;
+    every new row is payload 2, whatever the insert says, and a change to its category breaks
+    the chain. One transaction, rolled back."""
+    tenant = make_tenant(admin_engine)
+    insert = ("INSERT INTO audit.audit_event (tenant_id, actor_type, action, category, outcome, "
+              "hash_version) VALUES (:t, 'system', 'read', 'phi-read', 'success', :v)")
+    verify = text("SELECT count(*) FROM shri_audit_verify(:t)")
+    with admin_engine.connect() as conn:
+        with_clinic(conn, tenant)
+        conn.execute(text(insert), {"t": tenant, "v": 2})
+        # Make that first row what a pre-0005 row is: payload 1 (triggers off for this only).
+        conn.execute(text("SET LOCAL session_replication_role = replica"))
+        conn.execute(text("UPDATE audit.audit_event SET hash_version = 1 WHERE tenant_id = :t"),
+                     {"t": tenant})
+        conn.execute(text("UPDATE audit.audit_event a SET hash = encode(digest("
+                          "shri_audit_payload(a), 'sha256'), 'hex') WHERE tenant_id = :t"),
+                     {"t": tenant})
+        conn.execute(text("SET LOCAL session_replication_role = origin"))
+        conn.execute(text(insert), {"t": tenant, "v": 1})            # asks for payload 1
+        versions = conn.execute(text("SELECT hash_version FROM audit.audit_event WHERE "
+                                     "tenant_id = :t ORDER BY chain_seq"), {"t": tenant}).scalars()
+        assert list(versions) == [1, 2]                               # ...and gets 2
+        assert conn.execute(verify, {"t": tenant}).scalar_one() == 0
+        conn.execute(text("SET LOCAL session_replication_role = replica"))
+        conn.execute(text("UPDATE audit.audit_event SET category = 'admin' WHERE tenant_id = :t "
+                          "AND hash_version = 2"), {"t": tenant})
+        problems = conn.execute(text("SELECT problem FROM shri_audit_verify(:t)"),
+                                {"t": tenant}).scalars().all()
+        assert problems == ["hash mismatch: event content was altered"]
+        conn.rollback()
+
+
+def test_partner_callbacks_have_their_own_actor(admin_engine: Engine) -> None:
+    tenant = make_tenant(admin_engine)
+    with admin_engine.connect() as conn:
+        with_clinic(conn, tenant)
+        assert sqlstate(conn, "INSERT INTO audit.audit_event (tenant_id, actor_type, action, "
+                        "category, outcome) VALUES (:t, 'partner', 'create', 'phi-write', "
+                        "'success')", {"t": tenant}) is None
+        conn.rollback()
+
+
+@pytest.mark.parametrize(("reason", "refused"), [
+    ("emergency-care", None),                       # a code-only grant: its code is the reason
+    ("other: covering for a colleague", None),
+    (None, CHECK_FAILED),
+])
+def test_break_glass_audit_row_carries_the_grants_reason(admin_engine: Engine,
+                                                         reason: str | None,
+                                                         refused: str | None) -> None:
+    """D5: core copies the grant's reason (the code, plus the text when given) into the audit
+    row in the same transaction; the database refuses a break-glass audit row with none."""
+    tenant = make_tenant(admin_engine)
+    user = make_user(admin_engine, tenant)
+    with admin_engine.connect() as conn:
+        with_clinic(conn, tenant)
+        conn.execute(text("SET LOCAL ROLE shri_app"))
+        assert sqlstate(conn, "INSERT INTO audit.audit_event (tenant_id, actor_type, "
+                        "actor_user_id, action, category, outcome, reason) VALUES (:t, 'user', "
+                        ":u, 'break-glass', 'security', 'success', :r)",
+                        {"t": tenant, "u": user, "r": reason}) == refused
         conn.rollback()

@@ -66,6 +66,8 @@ class AuditEvent(Base, OptionalTenantMixin):
               postgresql_where=text("tenant_id IS NULL")),
         CheckConstraint("action <> 'break-glass' OR reason IS NOT NULL",
                         name="break_glass_reason"),
+        # 1: the original payload; 2 (every new row, set by the chain trigger) adds category.
+        CheckConstraint("hash_version IN (1, 2)", name="hash_version_known"),
         CheckConstraint("actor_type <> 'user' OR actor_user_id IS NOT NULL", name="user_actor"),
     )
 
@@ -92,6 +94,8 @@ class AuditEvent(Base, OptionalTenantMixin):
     chain_seq: Mapped[int | None] = mapped_column(BigInteger)
     prev_hash: Mapped[str | None] = mapped_column(String(64))
     hash: Mapped[str | None] = mapped_column(String(64))
+    hash_version: Mapped[int] = mapped_column(SmallInteger, nullable=False,
+                                              server_default=text("2"))
 
 
 class BreakGlassAccess(Base, AdminMixin):
@@ -240,6 +244,12 @@ class IntegrationMessage(Base, AdminMixin):
         Index("ix_integration_message_outbound_due", "next_attempt_at",
               postgresql_where=text("direction = 'outbound' AND status IN ('queued', 'failed')")),
         Index("ix_integration_message_ordering", "tenant_id", "ordering_key", "created_at"),
+        # A claim whose worker died: claimable again once its lease (15 minutes) has run out.
+        Index("ix_integration_message_lease", "claimed_at",
+              postgresql_where=text("direction = 'outbound' AND status = 'sending'")),
+        # The outbound job is IDs only: a small JSON object, never a document.
+        CheckConstraint("payload IS NULL OR (jsonb_typeof(payload) = 'object' "
+                        "AND octet_length(payload::text) <= 8192)", name="payload_ids_only"),
         Index("ix_integration_message_control", "endpoint_id", "control_id"),
         UniqueConstraint("tenant_id", "idempotency_key"),
         UniqueConstraint("endpoint_id", "direction", "control_id"),   # HL7 MSH-10 dedupe
@@ -260,6 +270,7 @@ class IntegrationMessage(Base, AdminMixin):
     idempotency_key: Mapped[str | None] = mapped_column(String(100))
     ordering_key: Mapped[str | None] = mapped_column(String(100))
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)   # outbound job: IDs only
+    claimed_at: Mapped[datetime | None]          # set by admin.claim_outbound_messages
     correlation_id: Mapped[str | None] = mapped_column(String(64))
     control_id: Mapped[str | None] = mapped_column(String(60))      # MSH-10 / ISA13 / ST02
     payload_binary_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(

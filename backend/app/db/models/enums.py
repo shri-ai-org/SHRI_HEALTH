@@ -991,6 +991,7 @@ class ActorType(StrEnum):
     AI = "ai"
     INTEGRATION = "integration"
     PATIENT = "patient"
+    PARTNER = "partner"                 # a partner callback (/hooks/*), audited as phi-write (T37)
 
 
 class IntegrationKind(StrEnum):

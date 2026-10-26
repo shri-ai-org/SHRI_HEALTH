@@ -92,7 +92,7 @@ ALTER TABLE clinical.annotation ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.annotation FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.annotation USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON admin.app_session TO shri_app;
+GRANT SELECT, INSERT, UPDATE ON admin.app_session TO shri_app;
 ALTER TABLE admin.app_session ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.app_session FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.app_session USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
@@ -553,7 +553,7 @@ ALTER TABLE admin.erx_transaction ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.erx_transaction FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.erx_transaction USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
-GRANT SELECT, INSERT, DELETE ON admin.event_log TO shri_app;
+GRANT SELECT, INSERT ON admin.event_log TO shri_app;
 ALTER TABLE admin.event_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.event_log FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.event_log USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
@@ -602,7 +602,7 @@ ALTER TABLE clinical.human_name ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.human_name FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.human_name USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON admin.idempotency_record TO shri_app;
+GRANT SELECT, INSERT, UPDATE ON admin.idempotency_record TO shri_app;
 ALTER TABLE admin.idempotency_record ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.idempotency_record FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.idempotency_record USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
@@ -820,7 +820,7 @@ ALTER TABLE clinical.observation_reference_range FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.observation_reference_range USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON admin.openemr_column_map TO shri_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON admin.operation TO shri_app;
+GRANT SELECT, INSERT, UPDATE ON admin.operation TO shri_app;
 ALTER TABLE admin.operation ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.operation FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.operation USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);

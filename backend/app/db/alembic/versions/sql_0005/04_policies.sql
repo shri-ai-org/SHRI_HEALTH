@@ -31,3 +31,35 @@ CREATE POLICY migrator_outbox_read ON admin.integration_message FOR SELECT TO sh
   USING (direction = 'outbound');
 CREATE POLICY migrator_outbox_claim ON admin.integration_message FOR UPDATE TO shri_migrator
   USING (direction = 'outbound') WITH CHECK (direction = 'outbound');
+
+-- admin.purge_expired_runtime_rows: the only way rows leave the four runtime tables (no role has
+-- DELETE on them; Thulasi's and Vimal's reviews of #52). The migrator sees and deletes, across
+-- clinics, only rows past retention; a live session or a stored response is never in reach.
+CREATE POLICY migrator_purge_read ON admin.app_session FOR SELECT TO shri_migrator
+  USING (least(coalesce(revoked_at, expires_at), expires_at) < now() - interval '24 hours');
+CREATE POLICY migrator_purge ON admin.app_session FOR DELETE TO shri_migrator
+  USING (least(coalesce(revoked_at, expires_at), expires_at) < now() - interval '24 hours');
+CREATE POLICY migrator_purge_read ON admin.idempotency_record FOR SELECT TO shri_migrator
+  USING (expires_at < now());
+CREATE POLICY migrator_purge ON admin.idempotency_record FOR DELETE TO shri_migrator
+  USING (expires_at < now());
+CREATE POLICY migrator_purge_read ON admin.event_log FOR SELECT TO shri_migrator
+  USING (created_at < now() - interval '10 minutes');
+CREATE POLICY migrator_purge ON admin.event_log FOR DELETE TO shri_migrator
+  USING (created_at < now() - interval '10 minutes');
+CREATE POLICY migrator_purge_read ON admin.operation FOR SELECT TO shri_migrator
+  USING (completed_at < now() - interval '7 days');
+CREATE POLICY migrator_purge ON admin.operation FOR DELETE TO shri_migrator
+  USING (completed_at < now() - interval '7 days');
+
+-- ====================================================== the partner worker (Vimal's review, B5)
+-- It publishes events (result.received and the like), in the clinic of the job it runs.
+GRANT INSERT ON admin.event_log TO shri_integration;
+-- It completes the operations assigned to it (eligibility, medication history) and nothing else:
+-- column grants limit what it may read and set, and the restrictive policy limits which rows.
+GRANT SELECT (id, tenant_id, kind, status, assigned_to_integration) ON admin.operation
+  TO shri_integration;
+GRANT UPDATE (status, result_type, result_id, error, completed_at, updated_at) ON admin.operation
+  TO shri_integration;
+CREATE POLICY integration_assigned_only ON admin.operation AS RESTRICTIVE FOR ALL
+  TO shri_integration USING (assigned_to_integration) WITH CHECK (assigned_to_integration);

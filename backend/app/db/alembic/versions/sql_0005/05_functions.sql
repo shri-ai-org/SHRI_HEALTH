@@ -20,11 +20,14 @@ REVOKE EXECUTE ON FUNCTION admin.lookup_session(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION admin.lookup_session(text) TO shri_app;
 
 -- The outbox worker claims due outbound messages across clinics and runs each job in its own
--- clinic. A message is due when it is queued, or failed and due for retry. Within one
--- ordering key (per clinic) only the oldest unfinished message can be claimed: while an
--- earlier one is queued, sending or failed, the later one waits, so a CancelRx never overtakes
--- its NewRx. FOR UPDATE SKIP LOCKED lets several workers claim without blocking each other.
--- Claimed rows are set to 'sending'; the worker records the outcome under RLS.
+-- clinic. A message is due when it is queued, failed and due for retry, or `sending` with an
+-- expired lease (its worker died after claiming it, so nothing else would ever pick it up), and
+-- it still has attempts left. Within one ordering key (per clinic) only the oldest unfinished
+-- message can be claimed: while an earlier one is queued, sending, failed or dead-lettered, the
+-- later one waits, so a CancelRx never overtakes its NewRx, and a dead letter holds the key until
+-- someone resolves it (Thulasi's review of #52). FOR UPDATE SKIP LOCKED lets several workers
+-- claim without blocking each other. Claimed rows are set to 'sending' with `claimed_at`; the
+-- worker records the outcome, and the attempts, under RLS. The lease is 15 minutes.
 CREATE FUNCTION admin.claim_outbound_messages(p_batch integer)
 RETURNS TABLE (id uuid, tenant_id uuid)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -37,24 +40,85 @@ BEGIN
     SELECT m.id
       FROM admin.integration_message m
      WHERE m.direction = 'outbound'
-       AND m.status IN ('queued', 'failed')
-       AND (m.next_attempt_at IS NULL OR m.next_attempt_at <= now())
+       AND m.attempts < m.max_attempts
+       AND (m.status = 'queued'
+            OR (m.status = 'failed' AND (m.next_attempt_at IS NULL OR m.next_attempt_at <= now()))
+            OR (m.status = 'sending' AND m.claimed_at < now() - interval '15 minutes'))
        AND (m.ordering_key IS NULL OR NOT EXISTS (
              SELECT 1 FROM admin.integration_message e
               WHERE e.tenant_id = m.tenant_id
                 AND e.ordering_key = m.ordering_key
                 AND e.direction = 'outbound'
-                AND e.status IN ('queued', 'sending', 'failed')
+                AND e.status IN ('queued', 'sending', 'failed', 'dead-letter')
                 AND (e.created_at, e.id) < (m.created_at, m.id)))
      ORDER BY m.next_attempt_at NULLS FIRST, m.created_at, m.id
      LIMIT p_batch
      FOR UPDATE OF m SKIP LOCKED
   )
   UPDATE admin.integration_message t
-     SET status = 'sending', updated_at = now()
+     SET status = 'sending', claimed_at = now(), updated_at = now()
     FROM due
    WHERE t.id = due.id
   RETURNING t.id, t.tenant_id;
 END $$;
 REVOKE EXECUTE ON FUNCTION admin.claim_outbound_messages(integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION admin.claim_outbound_messages(integer) TO shri_integration;
+
+-- The retention clean-up (Thulasi's and Vimal's reviews of #52): the only way rows leave the four
+-- runtime tables. It deletes, across clinics, only rows past retention (the shri_migrator
+-- policies in 04_policies.sql decide which): sessions 24 hours after they end, idempotency
+-- records at expires_at, events after 10 minutes, finished operations after 7 days. It returns
+-- only counts. Core's clean-up job calls it as shri_app.
+CREATE FUNCTION admin.purge_expired_runtime_rows()
+RETURNS TABLE (table_name text, deleted bigint)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE n bigint;
+BEGIN
+  DELETE FROM admin.app_session
+   WHERE least(coalesce(revoked_at, expires_at), expires_at) < now() - interval '24 hours';
+  GET DIAGNOSTICS n = ROW_COUNT; table_name := 'app_session'; deleted := n; RETURN NEXT;
+  DELETE FROM admin.idempotency_record WHERE expires_at < now();
+  GET DIAGNOSTICS n = ROW_COUNT; table_name := 'idempotency_record'; deleted := n; RETURN NEXT;
+  DELETE FROM admin.event_log WHERE created_at < now() - interval '10 minutes';
+  GET DIAGNOSTICS n = ROW_COUNT; table_name := 'event_log'; deleted := n; RETURN NEXT;
+  DELETE FROM admin.operation WHERE completed_at < now() - interval '7 days';
+  GET DIAGNOSTICS n = ROW_COUNT; table_name := 'operation'; deleted := n; RETURN NEXT;
+END $$;
+REVOKE EXECUTE ON FUNCTION admin.purge_expired_runtime_rows() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin.purge_expired_runtime_rows() TO shri_app;
+
+-- ======================================================================= the audit hash, v2
+-- Payload 2 adds the category (Thulasi's review of #52); payload 1 is exactly 0002's, so every
+-- existing hash still verifies. shri_audit_verify (0002) hashes each row with this function, so
+-- it checks each row by its own version.
+CREATE OR REPLACE FUNCTION public.shri_audit_payload(e audit.audit_event) RETURNS text LANGUAGE sql STABLE AS $$
+  SELECT CASE e.hash_version
+    WHEN 1 THEN jsonb_build_array('v1', e.chain_seq, e.prev_hash, e.event_uuid, e.tenant_id,
+           to_char(e.recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+           e.actor_type, e.actor_user_id, e.actor_display, e.action, e.outcome, e.entity_type,
+           e.entity_id, e.entity_version_id, e.patient_id, e.purpose_of_use, e.reason,
+           host(e.source_ip), e.user_agent, e.correlation_id)::text
+    ELSE jsonb_build_array('v2', e.chain_seq, e.prev_hash, e.event_uuid, e.tenant_id,
+           to_char(e.recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+           e.actor_type, e.actor_user_id, e.actor_display, e.action, e.category, e.outcome,
+           e.entity_type, e.entity_id, e.entity_version_id, e.patient_id, e.purpose_of_use,
+           e.reason, host(e.source_ip), e.user_agent, e.correlation_id)::text
+  END
+$$;
+
+-- As 0002's, except that every new row is hashed as payload 2, whatever the insert said: a
+-- writer cannot choose payload 1 to leave the category out of its hash.
+CREATE OR REPLACE FUNCTION public.shri_audit_chain() RETURNS trigger LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = clinical, admin, audit, public, pg_temp AS $$
+DECLARE last_seq bigint; last_hash text;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtext('audit:' || coalesce(NEW.tenant_id::text, 'platform')));
+  SELECT chain_seq, hash INTO last_seq, last_hash FROM audit_event
+   WHERE tenant_id IS NOT DISTINCT FROM NEW.tenant_id AND chain_seq IS NOT NULL
+   ORDER BY chain_seq DESC LIMIT 1;
+  NEW.chain_seq := coalesce(last_seq, 0) + 1;
+  NEW.prev_hash := last_hash;
+  NEW.hash_version := 2;
+  NEW.hash := encode(digest(shri_audit_payload(NEW), 'sha256'), 'hex');
+  RETURN NEW;
+END $$;

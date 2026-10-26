@@ -58,11 +58,10 @@ INSERT_ONLY = {
 }
 # Written only by SECURITY DEFINER functions.
 NO_APP_WRITE = {"fhir_resource_history"}
-# Short-lived runtime tables of Thulasi's core (issue #13, migration 0005). shri_app deletes
-# their rows after the retention period (sessions, idempotency records, operations, replay
-# events). None is a clinical record, so D14's no-DELETE does not apply.
-PURGED = {"app_session", "event_log", "idempotency_record", "operation"}
-# Written once and never changed, but purged: no UPDATE (DELETE comes from PURGED).
+# Short-lived runtime tables of Thulasi's core (issue #13, migration 0005). No role deletes from
+# them: only admin.purge_expired_runtime_rows() does, past retention (Thulasi's review of #52).
+RUNTIME = {"app_session", "event_log", "idempotency_record", "operation"}
+# Written once and never changed: no UPDATE.
 WRITE_ONCE = {"event_log"}
 
 #: shri_app on the two audit tables: D23/ADR-0011 condition 4 says "audit insert only" for
@@ -370,7 +369,7 @@ def rls_sql(only: set[str] | None = None) -> str:
             privs.append("INSERT")
             if name not in INSERT_ONLY and name not in WRITE_ONCE:
                 privs.append("UPDATE")
-            if (name in deletable or name in PURGED) and name not in INSERT_ONLY:
+            if name in deletable and name not in INSERT_ONLY:
                 privs.append("DELETE")
         out += [f"GRANT {', '.join(privs)} ON {qt} TO shri_app;",
                 f"ALTER TABLE {qt} ENABLE ROW LEVEL SECURITY;",

@@ -228,7 +228,7 @@ Composite foreign keys: `fk_ai_suggestion_unknown_ai_suggestion_id_tenant`
 
 ## `admin.app_session`
 
-Admin (normalized). One server-side login session (reference-token login, T7, D52). The session and CSRF tokens are stored only as SHA-256 hashes, and Keycloak's tokens only encrypted. The cookie is resolved before the clinic is known through ``admin.lookup_session(token_hash)``, a narrow SECURITY DEFINER function, never by a cross-clinic read.
+Admin (normalized). One server-side login session (reference-token login, T7, D52). The session token is stored only as a SHA-256 hash, and Keycloak's tokens only encrypted. The CSRF token is not stored: core derives it from the session (ADR-0006 §4). The cookie is resolved before the clinic is known through ``admin.lookup_session(token_hash)``, a narrow SECURITY DEFINER function, never by a cross-clinic read.
 
 Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
@@ -236,7 +236,6 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 |---|---|---|---|---|---|
 | `user_id` | uuid | no |  | admin.app_user.id | — |
 | `token_hash` | varchar(64) | no |  |  | — |
-| `csrf_token_hash` | varchar(64) | no |  |  | — |
 | `keycloak_access_token_enc` | text | no |  |  | — |
 | `keycloak_refresh_token_enc` | text | no |  |  | — |
 | `last_activity_at` | datetime | no |  |  | — |
@@ -251,7 +250,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_app_session_csrf_token_hash_format`, `ck_app_session_idle_within_absolute`, `ck_app_session_token_hash_format`
+Checks: `ck_app_session_idle_within_absolute`, `ck_app_session_token_hash_format`, `ck_app_session_tokens_encrypted`
 
 Unique: `uq_app_session_token_hash`
 
@@ -1165,7 +1164,9 @@ Composite foreign keys: `fk_erx_transaction_integration_message_id_tenant`, `fk_
 
 ## `admin.event_log`
 
-Admin (normalized). Thin events for SSE delivery and Last-Event-ID replay (T28), kept 10 minutes. IDs and statuses only (EVENTS §1). ``seq`` orders replay after a given event; ``id`` is the event UUID sent to the browser.
+Admin (normalized). Thin events for SSE delivery and Last-Event-ID replay (T28), kept 10 minutes; replay covers 5 (EVENTS §3). IDs and statuses only (EVENTS §1). ``seq`` orders replay after a given event; ``id`` is the event UUID sent to the browser. ``patient_id``, ``target_user_id`` and ``target_role_code`` say whom the event concerns, so core can re-check access on every replay (T28, D37). The role is a code from core's ROLE_PERMISSIONS (``FD``, ``MD``, ...), not a reference to ``admin.role``, which is not seeded. The partner worker may insert events (``result.received``).
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
 
 Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
@@ -1173,16 +1174,21 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 |---|---|---|---|---|---|
 | `seq` | bigint | no |  |  | — |
 | `facility_id` | uuid | yes |  | admin.facility.id | — |
+| `patient_id` | uuid | yes |  | clinical.patient.id | — |
+| `target_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `target_role_code` | text | yes |  |  | — |
 | `type` | varchar(100) | no |  |  | — |
 | `subject` | varchar(200) | no |  |  | — |
 | `data` | jsonb | no |  |  | — |
 | `created_at` | datetime | no |  |  | — |
 | `id` | uuid | no |  |  | — |
-| `tenant_id` | uuid | no |  | admin.facility.tenant_id, admin.tenant.id | — |
+| `tenant_id` | uuid | no |  | admin.facility.tenant_id, admin.tenant.id, clinical.patient.tenant_id | — |
+
+Checks: `ck_event_log_target_role_code_format`
 
 Unique: `uq_event_log_seq`
 
-Composite foreign keys: `fk_event_log_facility_id_tenant`
+Composite foreign keys: `fk_event_log_facility_id_tenant`, `fk_event_log_patient_id_tenant`
 
 ## `admin.facility`
 
@@ -1323,7 +1329,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_idempotency_record_done_has_response`, `ck_idempotency_record_request_hash_format`, `ck_idempotency_record_state_codes`, `ck_idempotency_record_stored_status`, `ck_idempotency_record_unsafe_method`
+Checks: `ck_idempotency_record_done_has_response`, `ck_idempotency_record_request_hash_format`, `ck_idempotency_record_response_body_encrypted`, `ck_idempotency_record_state_codes`, `ck_idempotency_record_stored_status`, `ck_idempotency_record_unsafe_method`
 
 Unique: `uq_idempotency_record_tenant_id_user_id_method_path_key`
 
@@ -1395,6 +1401,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `idempotency_key` | varchar(100) | yes |  |  | — |
 | `ordering_key` | varchar(100) | yes |  |  | — |
 | `payload` | jsonb | yes |  |  | — |
+| `claimed_at` | datetime | yes |  |  | — |
 | `correlation_id` | varchar(64) | yes |  |  | — |
 | `control_id` | varchar(60) | yes |  |  | — |
 | `payload_binary_id` | uuid | yes |  | admin.binary_object.id | — |
@@ -1414,7 +1421,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_integration_message_attempts`, `ck_integration_message_dead_letter_reason`, `ck_integration_message_direction_codes`, `ck_integration_message_inbound_received_at`, `ck_integration_message_status_codes`
+Checks: `ck_integration_message_attempts`, `ck_integration_message_dead_letter_reason`, `ck_integration_message_direction_codes`, `ck_integration_message_inbound_received_at`, `ck_integration_message_payload_ids_only`, `ck_integration_message_status_codes`
 
 Unique: `uq_integration_message_endpoint_id_direction_control_id`, `uq_integration_message_tenant_id_id`, `uq_integration_message_tenant_id_idempotency_key`
 
@@ -1848,26 +1855,27 @@ Unique: `uq_openemr_column_map_openemr_version_source_table_source_column`
 
 ## `admin.operation`
 
-Admin (normalized). Long-running 202 work (T26, API_STANDARDS §13), kept 7 days. IDs, kinds and statuses only; ``error`` is a Problem without patient data. In the MVP only its creator sees it (core).
+Admin (normalized). Long-running 202 work (T26, API_STANDARDS §13), kept 7 days once finished. IDs, kinds and statuses only; ``error`` is a Problem without patient data. In the MVP only its creator sees it (core). An operation the partner worker completes (eligibility, medication history) is marked ``assigned_to_integration``: shri_integration may then update its status, result and error, and nothing else (migration 0005).
 
 Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 | Column | Type | Null | FHIR | References | Contract name |
 |---|---|---|---|---|---|
-| `kind` | varchar(60) | no |  |  | — |
+| `created_by_user_id` | uuid | no |  | admin.app_user.id | — |
+| `kind` | varchar(64) | no |  |  | — |
 | `status` | varchar(40) | no |  |  | — |
 | `result_type` | varchar(64) | yes |  |  | — |
 | `result_id` | uuid | yes |  |  | — |
 | `error` | jsonb | yes |  |  | — |
 | `completed_at` | datetime | yes |  |  | — |
+| `assigned_to_integration` | boolean | no |  |  | — |
 | `id` | uuid | no |  |  | — |
 | `tenant_id` | uuid | no |  | admin.tenant.id | — |
 | `created_at` | datetime | no |  |  | — |
 | `updated_at` | datetime | no |  |  | — |
-| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_operation_completed_when_final`, `ck_operation_creator_required`, `ck_operation_failure_has_error`, `ck_operation_result_pair`, `ck_operation_status_codes`
+Checks: `ck_operation_completed_when_final`, `ck_operation_failure_has_error`, `ck_operation_result_pair`, `ck_operation_status_codes`
 
 ## `admin.order_set`
 
@@ -3059,9 +3067,10 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `chain_seq` | bigint | yes |  |  | — |
 | `prev_hash` | varchar(64) | yes |  |  | — |
 | `hash` | varchar(64) | yes |  |  | — |
+| `hash_version` | smallint | no |  |  | — |
 | `tenant_id` | uuid | yes |  | admin.tenant.id | — |
 
-Checks: `ck_audit_event_action_codes`, `ck_audit_event_actor_type_codes`, `ck_audit_event_break_glass_reason`, `ck_audit_event_category_codes`, `ck_audit_event_outcome_codes`, `ck_audit_event_user_actor`
+Checks: `ck_audit_event_action_codes`, `ck_audit_event_actor_type_codes`, `ck_audit_event_break_glass_reason`, `ck_audit_event_category_codes`, `ck_audit_event_hash_version_known`, `ck_audit_event_outcome_codes`, `ck_audit_event_user_actor`
 
 Unique: `uq_audit_event_event_uuid`, `uq_audit_event_patient_id_id`, `uq_audit_event_tenant_id_chain_seq`
 

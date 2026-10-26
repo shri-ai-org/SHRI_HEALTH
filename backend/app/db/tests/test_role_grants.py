@@ -263,7 +263,12 @@ def test_integration_reads_and_writes_its_result_tables_but_never_deletes(
             "AND has_table_privilege(:r, format('%I.%I', schemaname, tablename), 'INSERT')"),
             {"r": INTEGRATION}).scalars().all()
         assert {"clinical.observation", "clinical.diagnostic_report"} <= set(tables)
-        for table in tables:
+        # The one exception: it publishes events (0005, Vimal's review of #52), insert only.
+        for privilege, expected in (("INSERT", True), ("SELECT", False), ("UPDATE", False),
+                                    ("DELETE", False)):
+            assert c.execute(text("SELECT has_table_privilege(:r, 'admin.event_log', :p)"),
+                             {"r": INTEGRATION, "p": privilege}).scalar_one() is expected
+        for table in set(tables) - {"admin.event_log"}:
             for privilege, expected in (("SELECT", True), ("UPDATE", True), ("DELETE", False)):
                 granted = c.execute(text("SELECT has_table_privilege(:r, :t, :p)"),
                                     {"r": INTEGRATION, "t": table, "p": privilege}).scalar_one()
