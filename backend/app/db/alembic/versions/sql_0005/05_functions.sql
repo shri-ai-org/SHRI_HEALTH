@@ -79,8 +79,11 @@ GRANT EXECUTE ON FUNCTION admin.claim_outbound_messages(integer) TO shri_integra
 -- runtime tables. It deletes, across clinics, only rows past retention (the shri_migrator
 -- policies in 04_policies.sql decide which): sessions 24 hours after they end (the earliest of
 -- logout, idle timeout and absolute expiry), idempotency records at expires_at, events after
--- 10 minutes, finished operations after 7 days. It returns only counts. Core's clean-up job
--- calls it as shri_app. An operation that never finishes is not purged: open on #52.
+-- 10 minutes, finished operations after 7 days. It returns only counts. The scheduled clean-up
+-- job calls it as shri_maintenance, a role with no table privileges and nothing else to run
+-- (D23 as amended in #64), so the API role never gains a cross-clinic capability. An operation
+-- still queued or running past its kind's time limit is marked failed by core
+-- (operation-timed-out), after which the 7-day purge applies (Thulasi, #52).
 CREATE FUNCTION admin.purge_expired_runtime_rows()
 RETURNS TABLE (table_name text, deleted bigint)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -97,7 +100,9 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT; table_name := 'operation'; deleted := n; RETURN NEXT;
 END $$;
 REVOKE EXECUTE ON FUNCTION admin.purge_expired_runtime_rows() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION admin.purge_expired_runtime_rows() TO shri_app;
+-- USAGE on the schema only to call the function: no table in it is visible to the role.
+GRANT USAGE ON SCHEMA admin TO shri_maintenance;
+GRANT EXECUTE ON FUNCTION admin.purge_expired_runtime_rows() TO shri_maintenance;
 
 -- ======================================================================= the audit hash, v2
 -- Payload 2 adds the category (Thulasi's review of #52); payload 1 is exactly 0002's, so every

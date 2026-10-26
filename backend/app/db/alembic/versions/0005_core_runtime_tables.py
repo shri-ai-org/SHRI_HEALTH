@@ -19,7 +19,7 @@ Changes to existing tables:
 
 Three SECURITY DEFINER functions cross clinics, each for one role: admin.lookup_session
 (cookie to session, shri_app), admin.claim_outbound_messages (the outbox worker,
-shri_integration) and admin.purge_expired_runtime_rows (the retention clean-up, shri_app; no
+shri_integration) and admin.purge_expired_runtime_rows (the retention clean-up, shri_maintenance; no
 role has DELETE on the runtime tables). The partner worker may insert events and complete the
 operations assigned to it. No role gets BYPASSRLS (D23).
 
@@ -58,6 +58,7 @@ FILES = ["01_tables.sql", "02_existing_tables.sql", "03_rls_grants.sql", "04_pol
 
 DOWNGRADE = [
     "DROP FUNCTION admin.purge_expired_runtime_rows()",
+    "REVOKE USAGE ON SCHEMA admin FROM shri_maintenance",
     "DROP FUNCTION admin.claim_outbound_messages(integer)",
     "DROP FUNCTION admin.lookup_session(text)",
     "DROP POLICY migrator_outbox_claim ON admin.integration_message",

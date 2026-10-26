@@ -2,12 +2,12 @@
 idempotency records, long-running operations and the event replay log.
 
 All four are clinic-scoped under forced row-level security. Nothing deletes from them but
-``admin.purge_expired_runtime_rows()`` (migration 0005), which core's clean-up job calls as
-shri_app: it removes, across clinics, only rows past retention: sessions 24 hours after they end
-(the earliest of logout, idle timeout and absolute expiry), idempotency records at
-``expires_at``, events after 10 minutes, finished operations after 7 days. No request path can
-delete a live session or a stored response. A dedicated maintenance role instead of shri_app is
-open on #52; it would be a small follow-up migration.
+``admin.purge_expired_runtime_rows()`` (migration 0005), which the scheduled clean-up job calls
+as shri_maintenance (EXECUTE on that function only; D23 as amended in #64). It removes, across
+clinics, only rows past retention: sessions 24 hours after they end (the earliest of logout,
+idle timeout and absolute expiry), idempotency records at ``expires_at``, events after 10
+minutes, finished operations after 7 days. No request path can delete a live session or a
+stored response, and the API role cannot run the purge.
 
 None of them holds patient data in clear text: tokens are stored as SHA-256 hashes or encrypted
 (encrypt_field, OpenBao transit), and events carry IDs and statuses only (EVENTS §1).
@@ -130,8 +130,8 @@ class Operation(Base, AdminMixin):
     marked ``assigned_to_integration``: shri_integration may then update its status, result and
     error, and nothing else (migration 0005).
 
-    Not purged: an operation that never finishes (stuck in ``queued`` or ``running``). Whether
-    the purge removes it after 7 days or core marks it failed is open on #52."""
+    An operation still queued or running past its kind's time limit is marked failed by core
+    (operation-timed-out), after which the 7-day purge applies (Thulasi, #52)."""
     __tablename__ = "operation"
     __table_args__ = (
         Index("ix_operation_creator", "tenant_id", "created_by_user_id", "created_at"),

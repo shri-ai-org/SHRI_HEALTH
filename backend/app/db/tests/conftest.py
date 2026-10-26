@@ -31,7 +31,8 @@ import app.db.session  # noqa: F401  (registers the tenant default hook)
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 APP_ROLE = "shri_app"
-SERVICE_ROLES = ("shri_app", "shri_fhir_reader", "shri_integration", "shri_reporting")
+SERVICE_ROLES = ("shri_app", "shri_fhir_reader", "shri_integration", "shri_reporting",
+                 "shri_maintenance")
 SKIP_WITHOUT_DATABASE = pytest.mark.skipif(not TEST_DATABASE_URL,
                                            reason="TEST_DATABASE_URL not set")
 
