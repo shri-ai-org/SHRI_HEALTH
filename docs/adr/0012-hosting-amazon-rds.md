@@ -49,6 +49,16 @@ Thulasi provisions it with Terraform (`infra/terraform/`). Anand owns the parame
 
 - pgBackRest in Technical Architecture v1.1 (§1, §2.1, §6, §9, §12.2) and in the Implementation Plan's operations table.
 
+## Licence exception (added 2026-10-26)
+
+The licence policy (DECISIONS.md D75) allows proprietary components only as recorded exceptions. Amazon RDS is one, recorded in the licence exceptions register with three conditions:
+
+- **Standard PostgreSQL features only:** no Aurora, and no AWS-specific extensions such as `aws_s3` or `aws_lambda`.
+- **A portable backup, proven regularly** by restoring a standard PostgreSQL dump into a self-managed PostgreSQL.
+- **Reviewed yearly.**
+
+The decision above is unchanged. The conditions keep the self-managed option considered above open.
+
 ## References
 
 DECISIONS.md D23, D24, D28, D30, D31, D32, D33; ADR-0011; Open Decisions v1.0 Q24 and Q25; Technical Architecture v1.1 ADR-03.
