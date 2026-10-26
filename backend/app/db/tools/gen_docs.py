@@ -1,23 +1,57 @@
-"""Generate docs from the models:
+"""Generate backend/app/db/docs/data_dictionary.md from the models and the contract.
 
-  docs/data_dictionary.md   every table and column, with FHIR element paths and FK targets
-  docs/fhir_mapping.md      FHIR resource -> tables, child tables and invariants enforced
-  docs/openapi.json         the API contract
+One section per table, ordered by schema and then name: what the table is, its columns (type,
+nullability, FHIR element, foreign-key targets, contract name), its constraints, and, for a FHIR
+resource table, its child tables.
 
-Usage:  python -m tools.gen_docs
+Contract names come from two sources and are never guessed:
+- contracts/docs/DATA_OWNERSHIP.md, section 2: which tables store each contract resource. Only rows
+  whose "Tables" cell names tables of this schema in backticks count. Every other resource row
+  (a FHIR resource name instead of tables, "pending schema lock", or a section with no Tables
+  column) is listed at the end as not yet mapped, with what the document says.
+- contracts/openapi/dist/shri-health.bundled.yaml: the property names of those resources'
+  operations (request bodies and 2xx response bodies, top level, list envelopes unwrapped).
+A column's contract name is its camelCase form (D20) when one of those properties has that name.
+
+The output is deterministic (everything sorted, or in declaration order), so regenerating it never
+produces a noisy diff.
+
+Usage:  python -m app.db.tools.gen_docs
 """
 from __future__ import annotations
 
 import pathlib
+import re
+from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint
+import yaml  # type: ignore[import-untyped]
+from sqlalchemy import CheckConstraint, Column, ForeignKeyConstraint, Table, UniqueConstraint
 
-from app.db.base import Base
 from app.db.constraints import patient_column, referenced_table
-from app.db.models import FHIR_RESOURCES, GLOBAL_TABLES, MAPPERS
+from app.db.models import GLOBAL_TABLES, MAPPERS
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[1]          # backend/app/db
+REPO = pathlib.Path(__file__).resolve().parents[4]          # repository root
+OWNERSHIP = REPO / "contracts/docs/DATA_OWNERSHIP.md"
+CONTRACT = REPO / "contracts/openapi/dist/shri-health.bundled.yaml"
+OUTPUT = ROOT / "docs/data_dictionary.md"
+METHODS = ("get", "post", "put", "patch", "delete")
+ENVELOPE = {"items", "nextCursor"}
+
+
+@dataclass(frozen=True)
+class Resource:
+    section: str
+    name: str
+    paths: tuple[str, ...]
+    tables: tuple[str, ...]       # empty when DATA_OWNERSHIP.md does not map it to tables
+    says: str                     # the "Tables" cell, verbatim, or why there is none
+
+
+def camel(name: str) -> str:
+    first, *rest = name.split("_")
+    return first + "".join(part[:1].upper() + part[1:] for part in rest)
 
 
 def _doc(cls: type[Any]) -> str:
@@ -54,93 +88,217 @@ def _fhir(col: Any) -> str:
     return s
 
 
+def _cell(text: str) -> str:
+    return " ".join(text.replace("|", "\\|").split())
+
+
+# --------------------------------------------------------------------------- contract sources
+def ownership() -> list[Resource]:
+    """Section 2 resource rows of DATA_OWNERSHIP.md, in document order."""
+    out: list[Resource] = []
+    section = ""
+    lines = OWNERSHIP.read_text().splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("### 2."):
+            section = line.lstrip("# ").strip()
+        if line.startswith("| Resource |"):
+            header = [c.strip() for c in line.strip().strip("|").split("|")]
+            has_tables = header[-1].startswith("Tables")
+            i += 2                                        # skip the header separator
+            while i < len(lines) and lines[i].startswith("|"):
+                cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                paths = tuple(p for p in re.findall(r"`(/[^`]+)`", cells[1]))
+                if not has_tables:
+                    out.append(Resource(section, cells[0], paths, (),
+                                        "no Tables column in this section"))
+                else:
+                    named = tuple(t for t in re.findall(r"`([a-z_]+)`", cells[-1]) if t in MAPPERS)
+                    pending = "pending schema lock" in cells[-1]
+                    out.append(Resource(section, cells[0], paths, () if pending else named,
+                                        cells[-1]))
+                i += 1
+            continue
+        i += 1
+    return out
+
+
+class Contract:
+    """Top-level property names of each path's request and 2xx response bodies."""
+
+    def __init__(self) -> None:
+        bundle = yaml.safe_load(CONTRACT.read_text())
+        self.paths: dict[str, Any] = bundle.get("paths", {})
+        self.schemas: dict[str, Any] = bundle.get("components", {}).get("schemas", {})
+
+    def _resolve(self, schema: Any) -> dict[str, Any]:
+        while isinstance(schema, dict) and "$ref" in schema:
+            schema = self.schemas.get(schema["$ref"].rsplit("/", 1)[-1], {})
+        return schema if isinstance(schema, dict) else {}
+
+    def _names(self, schema: Any, depth: int = 0) -> set[str]:
+        schema = self._resolve(schema)
+        names: set[str] = set()
+        if depth > 6:
+            return names
+        for key in ("allOf", "oneOf", "anyOf"):
+            for part in schema.get(key, []):
+                names |= self._names(part, depth + 1)
+        if schema.get("type") == "array":
+            names |= self._names(schema.get("items"), depth + 1)
+        props = schema.get("properties", {})
+        items = self._resolve(props.get("items")) if "items" in props else {}
+        if items.get("type") == "array":              # a list envelope: { items, nextCursor }
+            names |= self._names(items.get("items"), depth + 1)
+            names |= set(props) - ENVELOPE
+        else:
+            names |= set(props)
+        return names
+
+    def properties(self, path: str) -> set[str] | None:
+        """None when the path is not in the contract."""
+        item = self.paths.get(path)
+        if not isinstance(item, dict):
+            return None
+        names: set[str] = set()
+        for method in METHODS:
+            op = item.get(method)
+            if not isinstance(op, dict):
+                continue
+            bodies = [op.get("requestBody", {})]
+            bodies += [r for code, r in op.get("responses", {}).items()
+                       if str(code).startswith("2")]
+            for body in bodies:
+                for media, content in self._resolve(body).get("content", {}).items():
+                    if media.endswith("json") and "problem" not in media:
+                        names |= self._names(content.get("schema"))
+        return names
+
+
+# --------------------------------------------------------------------------- rendering
+def _references(col: Column[Any]) -> str:
+    targets = sorted({f"{fk.column.table.schema}.{fk.column.table.name}.{fk.column.name}"
+                      for fk in col.foreign_keys})
+    return ", ".join(targets)
+
+
+def _constraint_names(table: Table, kind: type, composite_fk: bool = False) -> list[str]:
+    return sorted(str(c.name) for c in table.constraints
+                  if isinstance(c, kind) and c.name
+                  and (not composite_fk or len(c.columns) > 1))   # type: ignore[attr-defined]
+
+
+def _table_section(name: str, cls: type[Any], children: dict[str, list[str]],
+                   resources: list[Resource], contract: Contract) -> list[str]:
+    table: Table = cls.__table__
+    out = [f"## `{table.schema}.{name}`", "", f"{_kind(name, cls)}. {_doc(cls)}".rstrip(), ""]
+    pcol = patient_column(table)
+    if pcol is not None:
+        out += [f"Patient-owned via `{pcol.name}` (same-patient foreign keys apply).", ""]
+    kids = sorted(children.get(name, []))
+    if kids:
+        out += ["Child tables: " + ", ".join(f"`{MAPPERS[k].__table__.schema}.{k}`"
+                                             for k in kids), ""]
+
+    mine = [r for r in resources if name in r.tables]
+    props: set[str] = set()
+    missing_paths: list[str] = []
+    if mine:
+        out.append("Contract (from DATA_OWNERSHIP.md):")
+        for r in mine:
+            out.append(f"- {r.name}: " + ", ".join(f"`{p}`" for p in r.paths))
+            for p in r.paths:
+                found = contract.properties(p)
+                if found is None:
+                    missing_paths.append(p)
+                else:
+                    props |= found
+        out.append("")
+        if missing_paths:
+            out += ["Paths named in DATA_OWNERSHIP.md but not in the bundled contract: "
+                    + ", ".join(f"`{p}`" for p in sorted(set(missing_paths))), ""]
+    else:
+        out += ["Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.", ""]
+
+    out += ["| Column | Type | Null | FHIR | References | Contract name |",
+            "|---|---|---|---|---|---|"]
+    matched: set[str] = set()
+    for col in table.columns:
+        if not mine:
+            contract_name = "—"
+        elif camel(col.name) in props:
+            contract_name = f"`{camel(col.name)}`"
+            matched.add(camel(col.name))
+        else:
+            contract_name = "no same-named property"
+        out.append(f"| `{col.name}` | {_cell(str(col.type).lower())} | "
+                   f"{'yes' if col.nullable else 'no'} | {_fhir(col)} | {_references(col)} | "
+                   f"{contract_name} |")
+    if mine:
+        unmatched = sorted(props - matched)
+        out += ["", "Contract properties with no column of the same name: "
+                + (", ".join(f"`{p}`" for p in unmatched) if unmatched else "none")]
+
+    checks = _constraint_names(table, CheckConstraint)
+    uniques = _constraint_names(table, UniqueConstraint)
+    composite = _constraint_names(table, ForeignKeyConstraint, composite_fk=True)
+    if checks:
+        out += ["", "Checks: " + ", ".join(f"`{c}`" for c in checks)]
+    if uniques:
+        out += ["", "Unique: " + ", ".join(f"`{c}`" for c in uniques)]
+    if composite:
+        out += ["", "Composite foreign keys: " + ", ".join(f"`{c}`" for c in composite)]
+    out.append("")
+    return out
+
+
 def data_dictionary() -> str:
-    tables = Base.metadata.tables
-    out = ["# Data dictionary", "",
-           "Generated by `python -m tools.gen_docs` from the SQLAlchemy models. "
-           "`ext_*` columns are Shri extensions; FHIR column groups share a FHIR element.", ""]
-    groups: dict[str, list[Any]] = {"FHIR resources": [], "FHIR child / datatype tables": [],
-                                    "Admin": []}
-    for name, cls in sorted(MAPPERS.items()):
-        key = ("FHIR resources" if getattr(cls, "fhir_type", None) else
-               "FHIR child / datatype tables" if hasattr(cls, "fhir_parent") else "Admin")
-        groups[key].append(name)
-    for title, names in groups.items():
-        out += [f"## {title} ({len(names)})", ""]
-        for name in names:
-            cls, table = MAPPERS[name], tables[name]
-            pcol = patient_column(table)
-            out += [f"### `{name}`", "", f"{_kind(name, cls)}. {_doc(cls)}", ""]
-            if pcol is not None:
-                out += [f"Patient-owned via `{pcol.name}` (same-patient FKs apply).", ""]
-            out += ["| Column | Type | Null | FHIR | References |", "|---|---|---|---|---|"]
-            for col in table.columns:
-                refs = ", ".join(f"{fk.column.table.name}.{fk.column.name}"
-                                 for fk in col.foreign_keys)
-                out.append(f"| `{col.name}` | {str(col.type).lower()} | "
-                           f"{'yes' if col.nullable else 'no'} | {_fhir(col)} | {refs} |")
-            checks = sorted(str(c.name) for c in table.constraints
-                            if isinstance(c, CheckConstraint) and c.name)
-            uniques = sorted(str(c.name) for c in table.constraints
-                             if isinstance(c, UniqueConstraint) and c.name)
-            comp = sorted(str(c.name) for c in table.constraints
-                          if isinstance(c, ForeignKeyConstraint) and len(c.columns) > 1 and c.name)
-            if checks:
-                out += ["", "Checks: " + ", ".join(f"`{c}`" for c in checks)]
-            if uniques:
-                out += ["", "Unique: " + ", ".join(f"`{c}`" for c in uniques)]
-            if comp:
-                out += ["", "Composite FKs: " + ", ".join(f"`{c}`" for c in comp)]
-            out.append("")
-    return "\n".join(out) + "\n"
-
-
-def fhir_mapping() -> str:
-    tables = Base.metadata.tables
+    resources = ownership()
+    contract = Contract()
     children: dict[str, list[str]] = {}
     for name, cls in MAPPERS.items():
         for col in getattr(cls, "fhir_parent", ()):
-            parent = referenced_table(cls.__table__.c[col]).name
-            children.setdefault(parent, []).append(name)
+            children.setdefault(referenced_table(cls.__table__.c[col]).name, []).append(name)
 
-    def tree(t: str, depth: int = 0) -> list[str]:
-        rows = []
-        for c in sorted(children.get(t, [])):
-            if c in ("identifier", "human_name", "contact_point", "address", "annotation",
-                     "dosage") and depth == 0:
-                rows.append(f"{'  ' * depth}- `{c}` (shared datatype table)")
-                continue
-            rows.append(f"{'  ' * depth}- `{c}`")
-            rows += tree(c, depth + 1)
-        return rows
+    out = ["# Data dictionary", "",
+           "Generated by `python -m app.db.tools.gen_docs` from the SQLAlchemy models, "
+           "`contracts/docs/DATA_OWNERSHIP.md` and "
+           "`contracts/openapi/dist/shri-health.bundled.yaml`. "
+           "Do not edit by hand: regenerate it.", "",
+           "- **FHIR**: the FHIR element a column stores. Columns that share an element form one "
+           "value. `ext_*` columns are Shri extensions.",
+           "- **Contract name**: the column's camelCase name (D20) when an operation of a contract "
+           "resource stored in this table has a property of that name. Where a table is not yet "
+           "mapped to a resource in DATA_OWNERSHIP.md, it shows \"—\"; where it is mapped but no "
+           "property has the column's name, the module's repository maps the name itself.",
+           "- Only top-level contract properties are compared: a nested object (a patient's "
+           "`name`, say) counts as one property, so its child table's columns show no "
+           "same-named property.",
+           "- Resources that DATA_OWNERSHIP.md does not yet map to tables are listed in the last "
+           "section, with what the document says.", ""]
+    ordered = sorted(MAPPERS.items(), key=lambda kv: (str(kv[1].__table__.schema), kv[0]))
+    for name, cls in ordered:
+        out += _table_section(name, cls, children, resources, contract)
 
-    out = ["# FHIR resource mapping", "",
-           "One table per FHIR R4 resource; repeating elements are child tables. FHIR invariants "
-           "and datatype rules are CHECK constraints named `ck_<table>_fhir_*`.", "",
-           "| Resource | Table | Child tables | FHIR CHECKs |", "|---|---|---|---|"]
-    for rtype, cls in sorted(FHIR_RESOURCES.items()):
-        t = cls.__tablename__
-        n_checks = sum(1 for c in tables[t].constraints
-                       if isinstance(c, CheckConstraint) and c.name and "fhir" in str(c.name))
-        out.append(f"| {rtype} | `{t}` | {len(children.get(t, []))} | {n_checks} |")
-    out.append("")
-    for rtype, cls in sorted(FHIR_RESOURCES.items()):
-        t = cls.__tablename__
-        out += [f"## {rtype} → `{t}`", "", _doc(cls), ""] + tree(t) + [""]
-        inv = sorted(str(c.name) for c in tables[t].constraints
-                     if isinstance(c, CheckConstraint) and c.name and "fhir" in str(c.name))
-        if inv:
-            out += ["Invariants / datatype rules: " + ", ".join(f"`{i}`" for i in inv), ""]
-    return "\n".join(out) + "\n"
+    out += ["## Contract resources not yet mapped to tables", "",
+            "DATA_OWNERSHIP.md does not name tables for these yet. They are not guessed here.", ""]
+    section = None
+    for r in resources:
+        if r.tables:
+            continue
+        if r.section != section:
+            section = r.section
+            out += ["", f"### {section}", ""]
+        paths = ", ".join(f"`{p}`" for p in r.paths) or "no path"
+        out.append(f"- **{_cell(r.name)}** ({paths}): {_cell(r.says)}")
+    return "\n".join(out).replace("\n\n\n", "\n\n").rstrip("\n") + "\n"
 
 
 def main() -> None:
-    (ROOT / "docs").mkdir(exist_ok=True)
-    (ROOT / "docs/data_dictionary.md").write_text(data_dictionary())
-    (ROOT / "docs/fhir_mapping.md").write_text(fhir_mapping())
-    # openapi.json is not regenerated here: the contract is contract-first from
-    # contracts/openapi/ (ADR-0011 condition 1), not reflected from this module.
-    print("wrote docs/data_dictionary.md, docs/fhir_mapping.md")
+    OUTPUT.parent.mkdir(exist_ok=True)
+    OUTPUT.write_text(data_dictionary())
+    print(f"wrote {OUTPUT.relative_to(REPO)}")
 
 
 if __name__ == "__main__":

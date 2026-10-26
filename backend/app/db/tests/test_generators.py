@@ -125,3 +125,12 @@ def test_no_unordered_foreign_key_pick_in_generators_or_serializer() -> None:
                BACKEND / "app/fhir/serializer.py"]
     for source in sources:
         assert not re.search(r"next\(iter\([^)]*\.foreign_keys\b", source.read_text()), source
+
+
+def test_data_dictionary_is_deterministic_and_covers_every_table() -> None:
+    from app.db.tools import gen_docs
+
+    first, second = gen_docs.data_dictionary(), gen_docs.data_dictionary()
+    assert first == second
+    for name, cls in MAPPERS.items():
+        assert f"\n## `{cls.__table__.schema}.{name}`\n" in first, name
