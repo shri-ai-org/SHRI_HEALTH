@@ -310,19 +310,27 @@ def test_integration_files_a_corrected_lab_result(db: Session, admin_engine: Eng
     assert [float(v) for v in versions] == [99.0, 199.0]
 
 
-def test_app_never_reads_clinic_less_audit_rows(admin_engine: Engine, app_engine: Engine) -> None:
+def test_app_never_reads_clinic_less_audit_rows(admin_engine: Engine) -> None:
     """Thulasi's condition on #13/#44: platform security events with no clinic (a failed
     sign-in before a clinic is known) are not visible to the clinic API, with or without a
-    clinic set. The clinic policy compares tenant_id with the setting, so a null never matches."""
+    clinic set. The clinic policy compares tenant_id with the setting, so a null never matches.
+
+    One transaction, rolled back, so nothing is kept and every run starts the same. The row is
+    written as the superuser with triggers off for this transaction only (the platform hash
+    chain is follow-up (a), with A47's insert policy); then the same transaction switches to
+    shri_app, so the row is there but RLS must hide it."""
     tenant = make_tenant(admin_engine)
-    with admin_engine.begin() as c:  # superuser: the only way to write one until A47's policy
-        row_id = c.execute(text(
+    lookup = text("SELECT count(*) FROM audit.audit_event WHERE id = :i OR tenant_id IS NULL")
+    with admin_engine.connect() as conn:
+        conn.execute(text("SET LOCAL session_replication_role = replica"))
+        row_id = conn.execute(text(
             "INSERT INTO audit.audit_event (tenant_id, actor_type, action, outcome, reason) "
             "VALUES (NULL, 'system', 'login', 'failure', 'unknown user') RETURNING id")
         ).scalar_one()
-    with app_engine.connect() as conn:
-        lookup = text("SELECT count(*) FROM audit.audit_event WHERE id = :i OR tenant_id IS NULL")
-        assert conn.execute(lookup, {"i": row_id}).scalar_one() == 0
-        conn.rollback()
+        conn.execute(text("SET LOCAL session_replication_role = origin"))
+        assert conn.execute(lookup, {"i": row_id}).scalar_one() >= 1   # the superuser sees it
+        conn.execute(text("SET LOCAL ROLE shri_app"))
+        assert conn.execute(lookup, {"i": row_id}).scalar_one() == 0   # no clinic set
         with_clinic(conn, tenant)
-        assert conn.execute(lookup, {"i": row_id}).scalar_one() == 0
+        assert conn.execute(lookup, {"i": row_id}).scalar_one() == 0   # a clinic set
+        conn.rollback()
