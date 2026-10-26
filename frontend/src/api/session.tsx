@@ -55,16 +55,22 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
   const [clockOffsetMs, setClockOffsetMs] = useState(0)
   // The `idleExpiresAt` that a re-read inside the warning window confirmed; the dialog waits for it.
   const [confirmedIdle, setConfirmedIdle] = useState<string | null>(null)
+  // The status as of the last change, for the 401 listener. Set together with the state, not in an
+  // effect: a 401 can arrive after sign-in but before React has run its effects, and must not be
+  // ignored then.
+  const statusRef = useRef<SessionState['status']>('loading')
 
   const signedIn = useCallback((read: SessionRead) => {
     setCsrfToken(read.session.csrfToken)
     if (read.clockOffsetMs !== null) setClockOffsetMs(read.clockOffsetMs)
+    statusRef.current = 'signed-in'
     setState({ status: 'signed-in', session: read.session })
   }, [])
 
   const end = useCallback((reason: SignedOutReason) => {
     setCsrfToken(null)
     setConfirmedIdle(null)
+    statusRef.current = 'signed-out'
     setState({ status: 'signed-out', reason })
   }, [])
 
@@ -102,10 +108,6 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
   }, [reload, reloadDelayMs])
 
   // Any call answered 401 (user or background): the server has ended the session.
-  const statusRef = useRef(state.status)
-  useEffect(() => {
-    statusRef.current = state.status
-  }, [state.status])
   useEffect(
     () =>
       onUnauthenticated(() => {
