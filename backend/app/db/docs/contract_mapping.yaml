@@ -1,0 +1,59 @@
+# Contract property -> column, for the pairs tools/gen_docs.py cannot infer (D20). Hand-written.
+#
+# Keys are resource names exactly as contracts/docs/DATA_OWNERSHIP.md section 2 writes them; under
+# each, a contract property (top level, or nested as `items[].field`). Each entry has:
+#   columns:  [table.column, ...]  the columns that store it (required unless computed)
+#   computed: how it is derived    not stored as such; the repository works it out
+#   note:     anything else the repository must know
+# gen_docs.py stops if a resource, property, table or column named here does not exist, so this
+# file cannot drift silently. Same-named properties (camelCase of a column) need no entry.
+
+"Coverage (insurance)":
+  memberId:
+    columns: [identifier.value, identifier.coverage_id, identifier.type_code]
+    note: an identifier row of the coverage with type_code MB
+  relationshipToSubscriber:
+    columns: [coverage.relationship_code]
+
+"Consents":
+  signedFormFileId:
+    columns: [consent.source_attachment_binary_object_id]
+
+"Duplicates, merges":
+  undoneAt:
+    columns: [patient_merge.unmerged_at]
+
+"Appointment":
+  sameDayAddOn:
+    columns: [appointment.ext_same_day_add_on]
+  visitStatus:
+    computed: >-
+      the latest visit_flow_event step of the appointment recorded after its last undone
+      check-in (the recorded time of the Provenance that set the check-in encounter to
+      entered-in-error, D55); with no step after it, the appointment is booked again and has no
+      visit status
+    columns: [visit_flow_event.step, visit_flow_event.occurred_at]
+
+"Encounter":
+  startedAt:
+    columns: [encounter.period_start]
+  participants[].role:
+    columns: [encounter_participant.type_code]
+
+"Note (draft, versions, signed)":
+  sections[].text:
+    columns: [composition_section.text_div]
+
+"Co-signature rules":
+  superviseeProviderId:
+    columns: [cosign_rule.supervisee_practitioner_id]
+
+"Facilities, locations":
+  facilityId:
+    columns: [location.part_of_location_id, facility.location_id]
+    note: a location's facility is the one whose location_id is this location's parent
+
+"Providers":
+  facilityIds:
+    columns: [practitioner_role_location.location_id, facility.location_id]
+    note: the facilities whose location_id is one of the provider's role locations
