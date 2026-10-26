@@ -121,6 +121,23 @@ def test_support_staff_get_no_phi() -> None:
         ("FD", "provider-schedules:update", True),
         ("ADM", "provider-schedules:create", True),
         ("RN", "provider-schedules:update", False),
+        # T42 (D73, A46): nurses sign nursing notes and write addenda; nobody but MD co-signs.
+        ("RN", "notes:sign", True),
+        ("RN", "note-addenda:create", True),
+        ("RN", "notes:cosign", False),
+        ("MA", "notes:sign", False),
+        ("MA", "note-addenda:create", False),
+        # Note templates: clinicians and ADM/CO read them; clinicians keep personal ones.
+        ("MA", "note-templates:read", True),
+        ("RN", "note-templates:create-personal", True),
+        ("APP", "note-templates:create-personal", True),
+        ("MA", "note-templates:create-personal", False),
+        ("ADM", "note-templates:read", True),
+        ("ADM", "note-templates:create-personal", False),
+        ("CO", "note-templates:read", True),
+        ("FD", "note-templates:read", False),
+        ("BIL", "note-templates:read", False),
+        ("SUP", "note-templates:read", False),
     ],
 )
 def test_matrix_rows(role: str, permission: str, allowed: bool) -> None:
