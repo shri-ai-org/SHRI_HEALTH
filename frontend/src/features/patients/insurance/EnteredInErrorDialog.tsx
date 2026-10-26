@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ApiError } from '../../../api/client'
 import { markCoverageEnteredInError } from '../../../api/generated/endpoints/patients/patients'
 import type { Coverage } from '../../../api/generated/model'
@@ -26,6 +26,7 @@ export function EnteredInErrorDialog({
   const [error, setError] = useState<string | null>(null)
   const [problem, setProblem] = useState<Problem | null>(null)
   const [busy, setBusy] = useState(false)
+  const reasonRef = useRef<HTMLTextAreaElement>(null)
 
   async function confirm() {
     const text = reason.trim()
@@ -52,6 +53,7 @@ export function EnteredInErrorDialog({
       open
       title="Mark this coverage entered in error?"
       onClose={onClose}
+      initialFocus={reasonRef}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
@@ -69,7 +71,7 @@ export function EnteredInErrorDialog({
           ended is not an error.
         </p>
         <Field label="Reason" hint="For example: wrong patient, or duplicate entry" required error={error ?? undefined}>
-          {(p) => <Textarea {...p} value={reason} limit={REASON_LIMIT} onChange={(e) => setReason(e.target.value)} />}
+          {(p) => <Textarea {...p} ref={reasonRef} value={reason} limit={REASON_LIMIT} onChange={(e) => setReason(e.target.value)} />}
         </Field>
         {problem ? <ProblemAlert problem={problem} /> : null}
       </div>

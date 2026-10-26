@@ -61,7 +61,7 @@ export function InsurancePanel({ patientId }: { patientId: string }) {
     { key: 'payer', header: 'Insurance', render: (c) => <span className="font-medium">{c.payerName ?? '—'}</span> },
     { key: 'member', header: 'Member ID', render: (c) => <span className="tabular-nums">{c.memberId}</span> },
     { key: 'group', header: 'Group', render: (c) => c.groupNumber ?? '—' },
-    { key: 'relationship', header: 'Patient is', render: (c) => RELATIONSHIP[c.relationshipToSubscriber] ?? c.relationshipToSubscriber },
+    { key: 'relationship', header: 'Relationship', render: (c) => RELATIONSHIP[c.relationshipToSubscriber] ?? c.relationshipToSubscriber },
     {
       key: 'dates',
       header: 'Dates',

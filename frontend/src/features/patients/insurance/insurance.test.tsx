@@ -114,7 +114,7 @@ describe('InsurancePanel', () => {
     renderPanel()
     await screen.findByText('No insurance on file')
     await user.click(screen.getByRole('button', { name: 'Add insurance' }))
-    await user.selectOptions(screen.getByLabelText('Patient is the subscriber’s'), 'child')
+    await user.selectOptions(screen.getByLabelText(/Relationship to subscriber/), 'child')
     expect(await screen.findByText('No related persons on file')).toBeInTheDocument()
   })
 
@@ -129,6 +129,7 @@ describe('InsurancePanel', () => {
     await screen.findByRole('table', { name: 'Insurance coverages' })
     await user.click(screen.getByRole('button', { name: 'Mark Test Health Plan 1 entered in error' }))
     const dialog = screen.getByRole('dialog', { name: 'Mark this coverage entered in error?' })
+    expect(within(dialog).getByLabelText(/Reason/)).toHaveFocus()
     await user.click(within(dialog).getByRole('button', { name: 'Mark entered in error' }))
     expect(within(dialog).getByText('Explain what was wrong with this coverage.')).toBeInTheDocument()
     expect(server.bodies(MARK)).toHaveLength(0)

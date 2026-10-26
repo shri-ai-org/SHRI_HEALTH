@@ -43,7 +43,7 @@ const FIELD_LABELS: Record<string, string> = {
   '/groupNumber': 'Group number',
   '/groupName': 'Group name',
   '/planName': 'Plan name',
-  '/relationshipToSubscriber': 'Patient is the subscriber’s',
+  '/relationshipToSubscriber': 'Relationship to subscriber',
   '/subscriberRelatedPersonId': 'Subscriber',
   '/subscriberId': 'Subscriber ID',
   '/startDate': 'Start date',
@@ -260,12 +260,12 @@ export function AddCoverageDialog({
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Patient is the subscriber’s" error={errors.relationship}>
+          <Field label="Relationship to subscriber" hint="Self when the patient holds the policy" error={errors.relationship}>
             {(p) => (
               <Select {...p} value={form.relationship} onChange={(e) => update({ relationship: e.target.value as Form['relationship'], subscriberRelatedPersonId: '' })}>
                 {Object.entries(RELATIONSHIP).map(([value, label]) => (
                   <option key={value} value={value}>
-                    {value === 'self' ? 'Self (the patient is the subscriber)' : label}
+                    {label}
                   </option>
                 ))}
               </Select>
