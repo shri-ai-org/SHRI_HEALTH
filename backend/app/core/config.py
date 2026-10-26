@@ -4,11 +4,12 @@ Priority, highest first: values passed to Settings(...), environment variables,
 OpenBao KV secrets, defaults. Secrets never live in source control.
 """
 
+import re
 from functools import lru_cache
 from typing import Any, Literal
 
 import httpx
-from pydantic import SecretStr, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
@@ -18,6 +19,10 @@ from pydantic_settings import (
 
 Environment = Literal["development", "test", "staging", "production"]
 AuthMode = Literal["dev_header", "keycloak"]
+
+# Q31: what CI stamps into the API image (backend/Dockerfile build arguments).
+_BUILD_VERSION = re.compile(r"dev|[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?")
+_BUILD_COMMIT = re.compile(r"unknown|[0-9a-f]{12,40}")
 
 
 class Settings(BaseSettings):
@@ -50,6 +55,31 @@ class Settings(BaseSettings):
     openbao_token: SecretStr | None = None
     openbao_kv_mount: str = "secret"
     openbao_secret_path: str = "shri-health/api"  # noqa: S105 (a path, not a secret)
+
+    # Q31: the build this API runs, stamped by CI as image build arguments, never typed by hand.
+    # Shown to signed-in users only (GET /auth/session), never on /health. Local builds keep the
+    # defaults. A malformed value stops startup instead of being shown.
+    build_version: str = "dev"
+    build_commit: str = "unknown"
+
+    @field_validator("build_version")
+    @classmethod
+    def _valid_build_version(cls, value: str) -> str:
+        if not _BUILD_VERSION.fullmatch(value) or len(value) > 64:
+            raise ValueError("BUILD_VERSION must be 'dev' or a version such as 0.1.0")
+        return value
+
+    @field_validator("build_commit")
+    @classmethod
+    def _valid_build_commit(cls, value: str) -> str:
+        if not _BUILD_COMMIT.fullmatch(value):
+            raise ValueError("BUILD_COMMIT must be 'unknown' or a lowercase git commit SHA")
+        return value
+
+    @property
+    def build_commit_short(self) -> str:
+        """The first 12 characters of the commit, as the contract shows it (Q31)."""
+        return self.build_commit[:12]
 
     @model_validator(mode="after")
     def _dev_auth_only_in_dev(self) -> "Settings":

@@ -81,3 +81,31 @@ jobs:
         run: |
           export TEST_DATABASE_URL="postgresql+asyncpg://postgres:${PG_PASSWORD}@127.0.0.1:5432/shri_health"
           pytest -p no:cacheprovider -rs
+
+      # Q31: the API image carries the release version and the commit it was built from, stamped
+      # here and never typed by hand. The check runs inside the container: the stamp is what CI
+      # passed in, and the public /health still names no build.
+      - name: Build the API image (stamped)
+        working-directory: backend
+        env:
+          BUILD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          BUILD_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          echo "BUILD_VERSION=$BUILD_VERSION" >> "$GITHUB_ENV"
+          docker build --build-arg BUILD_VERSION="$BUILD_VERSION" --build-arg BUILD_COMMIT="$BUILD_COMMIT" \
+            -t shri-health/api:ci .
+
+      - name: Check the stamp and that /health names no build
+        env:
+          BUILD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          stamp="$(docker run --rm shri-health/api:ci python -c \
+            'from app.core.config import Settings; s = Settings(); print(s.build_version, s.build_commit_short)')"
+          test "$stamp" = "$BUILD_VERSION ${BUILD_COMMIT:0:12}" || { echo "::error::stamp is '$stamp'"; exit 1; }
+          docker run -d --name api -p 127.0.0.1:8000:8000 shri-health/api:ci
+          for _ in $(seq 1 30); do
+            body="$(curl -sf http://127.0.0.1:8000/health)" && break
+            sleep 1
+          done
+          docker logs api
+          test "$body" = '{"status":"ok"}' || { echo "::error::/health returned '$body'"; exit 1; }

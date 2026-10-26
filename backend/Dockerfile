@@ -13,6 +13,16 @@ RUN pip install --require-hashes --no-deps -r requirements.lock \
     && useradd --system --uid 10001 --no-create-home api
 COPY app ./app
 
+# Q31: CI stamps the release version and the git commit here (.github/workflows/backend.yml);
+# local builds keep "dev" and "unknown". Core validates both at startup and shows them to
+# signed-in users only. Declared last, so a new commit doesn't invalidate the cached layers above.
+ARG BUILD_VERSION=dev
+ARG BUILD_COMMIT=unknown
+ENV BUILD_VERSION=${BUILD_VERSION} \
+    BUILD_COMMIT=${BUILD_COMMIT}
+LABEL org.opencontainers.image.version=${BUILD_VERSION} \
+      org.opencontainers.image.revision=${BUILD_COMMIT}
+
 USER api
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \

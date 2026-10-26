@@ -5,7 +5,7 @@ Status: **PROPOSED** · Version 0.2 · 2026-10-23 · Author: Vimal (drafted with
 
 **Since ADR-0011 (2026-10-23):** there is one PostgreSQL 18 database. Clinical data lives in FHIR-shaped tables (Sam's schema, PR #9) and administrative data in normalized tables, in three schemas: `clinical`, `admin` and `audit` (D1, D23). There is no HAPI, so there is no mirroring, no HAPI reconciliation, no HAPI-down failure mode and no partitions.
 
-**Schema locked (D72, 2026-10-24); changes by migration.** Exact table and column names come from the locked schema's data dictionary. A remaining "pending schema lock" marker below means the name has not yet been checked against the locked schema; each batch resolves its own markers, and anything the schema lacks becomes a migration item for Anand. Every table name below is marked **pending schema lock** until then.
+**Schema locked (D72, 2026-10-24); changes by migration.** Exact table and column names come from the locked schema's data dictionary. A remaining "pending schema lock" marker below means the name has not yet been checked against the locked schema; each batch resolves its own markers, and anything the schema lacks becomes a migration item for Anand. A table name still marked **pending schema lock** stays so until its batch checks it.
 
 Fixed by source documents:
 
@@ -24,7 +24,7 @@ Fixed by source documents:
 |---|---|---|---|
 | **Cl** | **Clinical**: FHIR-shaped table in schema `clinical` | One transaction; the database keeps every version in `_history` | The 27 P0 FHIR resources: Patient, RelatedPerson, Practitioner, PractitionerRole, Organization, Location, Schedule, Appointment, Encounter, Composition, Condition, AllergyIntolerance, Observation, Procedure, FamilyMemberHistory, Medication, MedicationRequest, MedicationStatement, MedicationDispense, DetectedIssue, ServiceRequest, Specimen, DiagnosticReport, DocumentReference, Consent, Coverage, Provenance (P0_SCHEMA_SCOPE.md) |
 | **Ad** | **Admin**: normalized table in schema `admin` | One transaction | Settings, users and roles, scheduling setup, visit flow, templates and favorites, CDS rules, inbox, compendium, eligibility, billing and claims, communications, AI records, duplicates and merges, integration messages |
-| **Au** | **Audit**: append-only, hash-chained, in schema `audit` | Insert only, in the same transaction as the change it records | Audit events, break-glass |
+| **Au** | **Audit**: append-only, hash-chained, in schema `audit` | Inserted in the same transaction as the change it records; never updated or deleted. `shri_app` has audit read and insert (D23); `/fhir` and the partner worker insert only | Audit events, break-glass |
 | **F** | Files | File service; the database stores the file ID and hash | Card images, audio, PDFs, faxes, raw partner payloads (TA §6) |
 | **C** | Computed | Read-only query over the tables above | Slots, status board, timeline, reports, dashboards |
 
