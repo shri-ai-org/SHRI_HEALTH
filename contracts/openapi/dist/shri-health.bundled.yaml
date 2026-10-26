@@ -14552,6 +14552,1146 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /inbox:
+    get:
+      operationId: listInboxItems
+      summary: List inbox items
+      description: 'The user''s inbox (inventory #214; FRS FR-ENC-05): by default their own items and their roles'' queues at their facilities, open, in progress or on hold. Only kinds the user may read are listed, and items about a restricted chart the user may not open come without the patient (BATCH3_PLAN §5; D37). Filters take kinds, statuses and IDs only, never PHI (D13). Audited with the patient IDs returned.'
+      tags:
+        - inbox
+      x-owner: anand
+      x-permission: inbox:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: view
+          in: query
+          required: false
+          description: '`assigned` (default: mine and my roles'' queues), `mine`, `queue` (my roles only), `sent` (items I created), `facility` (ADM: everything assigned at my facilities, to reassign it; Q5).'
+          schema:
+            type: string
+            enum:
+              - assigned
+              - mine
+              - queue
+              - sent
+              - facility
+            default: assigned
+        - name: itemType
+          in: query
+          required: false
+          style: form
+          explode: true
+          description: Only these kinds; repeat the parameter for several.
+          schema:
+            type: array
+            maxItems: 15
+            items:
+              type: string
+              maxLength: 40
+        - name: status
+          in: query
+          required: false
+          style: form
+          explode: true
+          description: 'Only these statuses; repeat for several. Default: `open`, `in-progress`, `on-hold`.'
+          schema:
+            type: array
+            maxItems: 5
+            items:
+              type: string
+              enum:
+                - open
+                - in-progress
+                - on-hold
+                - completed
+                - cancelled
+        - name: priority
+          in: query
+          required: false
+          style: form
+          explode: true
+          description: Only these priorities; repeat for several.
+          schema:
+            type: array
+            maxItems: 4
+            items:
+              type: string
+              enum:
+                - routine
+                - urgent
+                - asap
+                - stat
+        - name: patientId
+          in: query
+          required: false
+          description: Only items about this patient (an opaque ID).
+          schema:
+            $ref: '#/components/schemas/Id'
+        - name: facilityId
+          in: query
+          required: false
+          description: Only this facility (one of the user's).
+          schema:
+            $ref: '#/components/schemas/Id'
+        - name: dueBefore
+          in: query
+          required: false
+          description: Only items due before this time.
+          schema:
+            $ref: '#/components/schemas/Timestamp'
+      responses:
+        '200':
+          description: One page of inbox items.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItemList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                      - id: 0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d
+                        itemType: task
+                        status: open
+                        priority: routine
+                        title: Please move this follow-up to next week
+                        body: Patient asked for a later follow-up; any day after Tuesday.
+                        assignee:
+                          type: role
+                          id: 4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b
+                          displayName: Front desk
+                        facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                        dueAt: '2026-11-05T22:00:00Z'
+                        overdue: false
+                        escalationLevel: 0
+                        restricted: false
+                        patient:
+                          id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                          name:
+                            given:
+                              - Maria712
+                            family: Ortiz187
+                          birthDate: '1984-07-19'
+                        subject:
+                          type: appointment
+                          id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+                        createdBy:
+                          id: 1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e
+                          displayName: Jordan Reyes (MA)
+                        createdAt: '2026-11-03T15:40:00Z'
+                        updatedAt: '2026-11-03T15:40:00Z'
+                      - id: b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e
+                        itemType: cosign
+                        status: open
+                        priority: routine
+                        title: Note to co-sign
+                        assignee:
+                          type: user
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+                        facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                        dueAt: '2026-11-06T15:35:00Z'
+                        overdue: false
+                        escalationLevel: 0
+                        restricted: false
+                        patient:
+                          id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                          name:
+                            given:
+                              - Maria712
+                            family: Ortiz187
+                          birthDate: '1984-07-19'
+                        subject:
+                          type: note
+                          id: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                        encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                        createdAt: '2026-11-03T15:35:00Z'
+                        updatedAt: '2026-11-03T15:35:00Z'
+                      - id: c3d4e5f6-a7b8-4c9d-8e0f-2a3b4c5d6e7f
+                        itemType: result-review
+                        status: open
+                        priority: urgent
+                        title: Result to review
+                        assignee:
+                          type: user
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+                        facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                        overdue: false
+                        escalationLevel: 0
+                        restricted: true
+                        subject:
+                          type: result
+                          id: d4e5f6a7-b8c9-4d0e-9f1a-3b4c5d6e7f8a
+                        createdAt: '2026-11-03T16:02:00Z'
+                        updatedAt: '2026-11-03T16:02:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `inbox:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (a `facilityId` the user is not assigned to).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`view=facility` without the ADM role; `errors` names `/view` `not-allowed-value`).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /inbox/summary:
+    get:
+      operationId: getInboxSummary
+      summary: Get inbox counts
+      description: 'Badge counts for the user''s `assigned` view, by kind and status (new inventory row #255; Q10). Counts only, no patient data, so it is not audited (SECURITY_MODEL §6 `none`).'
+      tags:
+        - inbox
+      x-owner: anand
+      x-permission: inbox:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The counts.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxSummary'
+              examples:
+                counts:
+                  summary: Counts
+                  value:
+                    total: 7
+                    overdue: 1
+                    byType:
+                      - itemType: result-review
+                        open: 3
+                        inProgress: 0
+                        onHold: 0
+                        overdue: 1
+                      - itemType: cosign
+                        open: 2
+                        inProgress: 0
+                        onHold: 0
+                        overdue: 0
+                      - itemType: message
+                        open: 1
+                        inProgress: 1
+                        onHold: 0
+                        overdue: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `inbox:read`).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /inbox/{inboxItemId}:
+    parameters:
+      - name: inboxItemId
+        in: path
+        required: true
+        description: Inbox item ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getInboxItem
+      summary: Get one inbox item
+      description: 'One item with its thread and the `ETag` that `PATCH` needs (new inventory row #252; list items carry no ETag, API_STANDARDS §11).'
+      tags:
+        - inbox
+      x-owner: anand
+      x-permission: inbox:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The item, with its thread.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+              examples:
+                task:
+                  summary: A task taken from the front-desk queue
+                  value:
+                    id: 0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d
+                    itemType: task
+                    status: open
+                    priority: routine
+                    title: Please move this follow-up to next week
+                    body: Patient asked for a later follow-up; any day after Tuesday.
+                    assignee:
+                      type: user
+                      id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                      displayName: Casey Patel (Front desk)
+                    facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                    dueAt: '2026-11-05T22:00:00Z'
+                    overdue: false
+                    escalationLevel: 0
+                    restricted: false
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                          - Maria712
+                        family: Ortiz187
+                      birthDate: '1984-07-19'
+                    subject:
+                      type: appointment
+                      id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+                    createdBy:
+                      id: 1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e
+                      displayName: Jordan Reyes (MA)
+                    createdAt: '2026-11-03T15:40:00Z'
+                    updatedAt: '2026-11-04T14:05:00Z'
+                    thread:
+                      - event: created
+                        at: '2026-11-03T15:40:00Z'
+                        by:
+                          id: 1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e
+                          displayName: Jordan Reyes (MA)
+                        assignee:
+                          type: role
+                          id: 4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b
+                          displayName: Front desk
+                      - event: assigned
+                        at: '2026-11-04T14:05:00Z'
+                        by:
+                          id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                          displayName: Casey Patel (Front desk)
+                        assignee:
+                          type: user
+                          id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                          displayName: Casey Patel (Front desk)
+                message:
+                  summary: A message with a reply
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    itemType: message
+                    status: open
+                    priority: urgent
+                    title: Recheck blood pressure today
+                    body: Please recheck the blood pressure before discharge and let me know.
+                    assignee:
+                      type: user
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                    overdue: false
+                    escalationLevel: 0
+                    restricted: false
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                          - Maria712
+                        family: Ortiz187
+                      birthDate: '1984-07-19'
+                    createdBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    createdAt: '2026-11-03T16:10:00Z'
+                    updatedAt: '2026-11-03T16:25:00Z'
+                    thread:
+                      - event: created
+                        at: '2026-11-03T16:10:00Z'
+                        by:
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+                        assignee:
+                          type: user
+                          id: 3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a
+                          displayName: Sam Okafor (RN)
+                      - event: comment
+                        at: '2026-11-03T16:25:00Z'
+                        by:
+                          id: 3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a
+                          displayName: Sam Okafor (RN)
+                        comment: 'Rechecked: 128/82 seated, left arm.'
+                      - event: assigned
+                        at: '2026-11-03T16:25:00Z'
+                        by:
+                          id: 3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a
+                          displayName: Sam Okafor (RN)
+                        assignee:
+                          type: user
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `inbox:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: '404. `not-found` (no such inbox item that the user can see: in another clinic, at a facility the user is not assigned to, assigned to someone else, or of a type the user may not read (BATCH3_PLAN §5)).'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updateInboxItem
+      summary: Update an inbox item
+      description: 'Takes an item from a queue (set `assignee` to yourself), reassigns it, changes its status between `open`, `in-progress` and `on-hold`, or changes its priority or due time, with `If-Match` (inventory #215; DATA_OWNERSHIP §5.9). A new assignee gets `inbox.item-assigned`. ADM may reassign items at their facilities (Q5).'
+      tags:
+        - inbox
+      x-owner: anand
+      x-permission: inbox:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: result
+      x-storage: admin
+      x-events:
+        - inbox.item-assigned
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/InboxItemPatch'
+            examples:
+              take:
+                summary: Take from the queue
+                value:
+                  assignee:
+                    type: user
+                    id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+              start:
+                summary: Start work
+                value:
+                  status: in-progress
+      responses:
+        '200':
+          description: The item, with its thread.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+              examples:
+                taken:
+                  summary: Taken
+                  value:
+                    id: 0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d
+                    itemType: task
+                    status: open
+                    priority: routine
+                    title: Please move this follow-up to next week
+                    body: Patient asked for a later follow-up; any day after Tuesday.
+                    assignee:
+                      type: user
+                      id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                      displayName: Casey Patel (Front desk)
+                    facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                    dueAt: '2026-11-05T22:00:00Z'
+                    overdue: false
+                    escalationLevel: 0
+                    restricted: false
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                          - Maria712
+                        family: Ortiz187
+                      birthDate: '1984-07-19'
+                    subject:
+                      type: appointment
+                      id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+                    createdBy:
+                      id: 1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e
+                      displayName: Jordan Reyes (MA)
+                    createdAt: '2026-11-03T15:40:00Z'
+                    updatedAt: '2026-11-04T14:05:00Z'
+                    thread:
+                      - event: created
+                        at: '2026-11-03T15:40:00Z'
+                        by:
+                          id: 1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e
+                          displayName: Jordan Reyes (MA)
+                        assignee:
+                          type: role
+                          id: 4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b
+                          displayName: Front desk
+                      - event: assigned
+                        at: '2026-11-04T14:05:00Z'
+                        by:
+                          id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                          displayName: Casey Patel (Front desk)
+                        assignee:
+                          type: user
+                          id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                          displayName: Casey Patel (Front desk)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `inbox:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin); only the assignee, the creator (priority and due time) or ADM (reassignment) may change an item.
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: '404. `not-found` (no such inbox item that the user can see: in another clinic, at a facility the user is not assigned to, assigned to someone else, or of a type the user may not read (BATCH3_PLAN §5)).'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the item is completed or cancelled; the problem carries `currentState`).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (`If-Match` does not match the current version, for example because a colleague took the item from the queue first).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`errors` names it: `/assignee` `invalid-reference` (the assignee does not work at the item''s facility or may not see this kind of item), `/status` `not-allowed-value` (only the assignee changes the status), `/dueAt` `out-of-range` (in the past)).'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /inbox/{inboxItemId}/complete:
+    parameters:
+      - name: inboxItemId
+        in: path
+        required: true
+        description: Inbox item ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: completeInboxItem
+      summary: Complete an inbox item
+      description: 'Marks the item done (inventory #216). Kinds that wait for an action are completed by that action, not here (Q4): `cosign` by co-signing, `cosign-returned` by the addendum, `unsigned-note` by signing, `fax-indexing` by filing, `result-review` by acknowledging, `refill-request` by responding, `unmatched-result` by matching or rejecting. Raises `inbox.item-completed`.'
+      tags:
+        - inbox
+      x-owner: anand
+      x-permission: inbox:complete
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: admin
+      x-events:
+        - inbox.item-completed
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboxCompleteRequest'
+            examples:
+              done:
+                summary: Done
+                value:
+                  comment: Moved to Thursday 10:30.
+      responses:
+        '200':
+          description: The item, completed, with its thread.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+              examples:
+                completed:
+                  summary: Completed
+                  value:
+                    id: 0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d
+                    itemType: task
+                    status: completed
+                    priority: routine
+                    title: Please move this follow-up to next week
+                    body: Patient asked for a later follow-up; any day after Tuesday.
+                    assignee:
+                      type: user
+                      id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                      displayName: Casey Patel (Front desk)
+                    facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                    dueAt: '2026-11-05T22:00:00Z'
+                    overdue: false
+                    escalationLevel: 0
+                    restricted: false
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                          - Maria712
+                        family: Ortiz187
+                      birthDate: '1984-07-19'
+                    subject:
+                      type: appointment
+                      id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+                    createdBy:
+                      id: 1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e
+                      displayName: Jordan Reyes (MA)
+                    createdAt: '2026-11-03T15:40:00Z'
+                    updatedAt: '2026-11-04T14:20:00Z'
+                    thread:
+                      - event: created
+                        at: '2026-11-03T15:40:00Z'
+                        by:
+                          id: 1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e
+                          displayName: Jordan Reyes (MA)
+                        assignee:
+                          type: role
+                          id: 4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b
+                          displayName: Front desk
+                      - event: assigned
+                        at: '2026-11-04T14:05:00Z'
+                        by:
+                          id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                          displayName: Casey Patel (Front desk)
+                        assignee:
+                          type: user
+                          id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                          displayName: Casey Patel (Front desk)
+                      - event: status-change
+                        at: '2026-11-04T14:20:00Z'
+                        by:
+                          id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                          displayName: Casey Patel (Front desk)
+                        fromStatus: open
+                        toStatus: completed
+                        comment: Moved to Thursday 10:30.
+                    completedAt: '2026-11-04T14:20:00Z'
+                    completedBy:
+                      id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                      displayName: Casey Patel (Front desk)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `inbox:complete`); `csrf-check-failed` (missing or wrong CSRF header or Origin); only the assignee may complete an item.
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: '404. `not-found` (no such inbox item that the user can see: in another clinic, at a facility the user is not assigned to, assigned to someone else, or of a type the user may not read (BATCH3_PLAN §5)).'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (already completed or cancelled; the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (this kind is completed by its action (Q4); `errors` names `/itemType` `not-allowed-value`, and `detail` names the action).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /inbox/{inboxItemId}/cancel:
+    parameters:
+      - name: inboxItemId
+        in: path
+        required: true
+        description: Inbox item ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: cancelInboxItem
+      summary: Cancel a message or task
+      description: 'Closes a message or task sent by mistake, with a reason kept in the thread (new inventory row #253; D14: nothing is deleted). Only its creator may cancel it; items the system created are never cancelled by users. Raises `inbox.item-completed` with `status: cancelled`.'
+      tags:
+        - inbox
+      x-owner: anand
+      x-permission: inbox:update
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: admin
+      x-events:
+        - inbox.item-completed
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboxCancelRequest'
+            examples:
+              wrong:
+                summary: Wrong person
+                value:
+                  reason: Sent to the wrong person.
+      responses:
+        '200':
+          description: The item, cancelled.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+              examples:
+                cancelled:
+                  summary: Cancelled
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    itemType: message
+                    status: cancelled
+                    priority: urgent
+                    title: Recheck blood pressure today
+                    body: Please recheck the blood pressure before discharge and let me know.
+                    assignee:
+                      type: user
+                      id: 3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a
+                      displayName: Sam Okafor (RN)
+                    facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                    overdue: false
+                    escalationLevel: 0
+                    restricted: false
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                          - Maria712
+                        family: Ortiz187
+                      birthDate: '1984-07-19'
+                    createdBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    createdAt: '2026-11-03T16:10:00Z'
+                    updatedAt: '2026-11-03T16:12:00Z'
+                    completedAt: '2026-11-03T16:12:00Z'
+                    completedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `inbox:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin); only the creator may cancel.
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: '404. `not-found` (no such inbox item that the user can see: in another clinic, at a facility the user is not assigned to, assigned to someone else, or of a type the user may not read (BATCH3_PLAN §5)).'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (already completed or cancelled).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (only messages and tasks can be cancelled; `errors` names `/itemType` `not-allowed-value`).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /inbox/{inboxItemId}/replies:
+    parameters:
+      - name: inboxItemId
+        in: path
+        required: true
+        description: Inbox item ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: replyToInboxItem
+      summary: Reply on an inbox item
+      description: 'Adds a reply to the item''s thread (new inventory row #254; D38: the inbox holds message threads). By default it hands the item to the other party (`assignBack`), who gets `inbox.item-assigned`. Anyone who can see the item may reply; replies are insert-only.'
+      tags:
+        - inbox
+      x-owner: anand
+      x-permission: messages:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-storage: admin
+      x-events:
+        - inbox.item-assigned
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboxReplyRequest'
+            examples:
+              reply:
+                summary: Reply
+                value:
+                  text: 'Rechecked: 128/82 seated, left arm.'
+      responses:
+        '200':
+          description: The item, with the reply in its thread.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+              examples:
+                replied:
+                  summary: Replied and handed back
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    itemType: message
+                    status: open
+                    priority: urgent
+                    title: Recheck blood pressure today
+                    body: Please recheck the blood pressure before discharge and let me know.
+                    assignee:
+                      type: user
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                    overdue: false
+                    escalationLevel: 0
+                    restricted: false
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                          - Maria712
+                        family: Ortiz187
+                      birthDate: '1984-07-19'
+                    createdBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    createdAt: '2026-11-03T16:10:00Z'
+                    updatedAt: '2026-11-03T16:25:00Z'
+                    thread:
+                      - event: created
+                        at: '2026-11-03T16:10:00Z'
+                        by:
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+                        assignee:
+                          type: user
+                          id: 3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a
+                          displayName: Sam Okafor (RN)
+                      - event: comment
+                        at: '2026-11-03T16:25:00Z'
+                        by:
+                          id: 3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a
+                          displayName: Sam Okafor (RN)
+                        comment: 'Rechecked: 128/82 seated, left arm.'
+                      - event: assigned
+                        at: '2026-11-03T16:25:00Z'
+                        by:
+                          id: 3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a
+                          displayName: Sam Okafor (RN)
+                        assignee:
+                          type: user
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `messages:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: '404. `not-found` (no such inbox item that the user can see: in another clinic, at a facility the user is not assigned to, assigned to someone else, or of a type the user may not read (BATCH3_PLAN §5)).'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the item is completed or cancelled); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /messages:
+    post:
+      operationId: createMessage
+      summary: Send a message or create a task
+      description: 'Creates a `message` or a `task` for one user or one role at a facility (inventory #217; Q1, Q2; Minalini''s item). Clinicians ask for appointment changes this way (D67): a task linked to the appointment, for the front-desk role. The sender must be able to open the patient and the linked record (D80); a recipient who cannot sees the link but not the record. Raises `inbox.item-assigned`; notifications outside the app say only "You have a new item in Shri Health" (D81).'
+      tags:
+        - inbox
+      x-owner: anand
+      x-permission: messages:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: body:/patientId
+      x-idempotency: supported
+      x-storage: admin
+      x-events:
+        - inbox.item-assigned
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreate'
+            examples:
+              appointmentChange:
+                summary: 'Task: ask the front desk to move an appointment (D67)'
+                value:
+                  kind: task
+                  assignee:
+                    type: role
+                    id: 4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b
+                  facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                  title: Please move this follow-up to next week
+                  body: Patient asked for a later follow-up; any day after Tuesday.
+                  dueAt: '2026-11-05T22:00:00Z'
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  subject:
+                    type: appointment
+                    id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+              message:
+                summary: Message to a nurse about a patient
+                value:
+                  kind: message
+                  assignee:
+                    type: user
+                    id: 3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a
+                  facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                  title: Recheck blood pressure today
+                  body: Please recheck the blood pressure before discharge and let me know.
+                  priority: urgent
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      responses:
+        '201':
+          description: Created. The new item.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+              examples:
+                task:
+                  summary: Task created
+                  value:
+                    id: 0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d
+                    itemType: task
+                    status: open
+                    priority: routine
+                    title: Please move this follow-up to next week
+                    body: Patient asked for a later follow-up; any day after Tuesday.
+                    assignee:
+                      type: role
+                      id: 4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b
+                      displayName: Front desk
+                    facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                    dueAt: '2026-11-05T22:00:00Z'
+                    overdue: false
+                    escalationLevel: 0
+                    restricted: false
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                          - Maria712
+                        family: Ortiz187
+                      birthDate: '1984-07-19'
+                    subject:
+                      type: appointment
+                      id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+                    createdBy:
+                      id: 1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e
+                      displayName: Jordan Reyes (MA)
+                    createdAt: '2026-11-03T15:40:00Z'
+                    updatedAt: '2026-11-03T15:40:00Z'
+                message:
+                  summary: Message sent
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    itemType: message
+                    status: open
+                    priority: urgent
+                    title: Recheck blood pressure today
+                    body: Please recheck the blood pressure before discharge and let me know.
+                    assignee:
+                      type: user
+                      id: 3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a
+                      displayName: Sam Okafor (RN)
+                    facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                    overdue: false
+                    escalationLevel: 0
+                    restricted: false
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                          - Maria712
+                        family: Ortiz187
+                      birthDate: '1984-07-19'
+                    createdBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    createdAt: '2026-11-03T16:10:00Z'
+                    updatedAt: '2026-11-03T16:10:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `messages:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the sender holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient, linked record, facility, user or role that the sender can see; the sender must be able to open the linked record (D80)).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`errors` names it: `/facilityId` `not-allowed-value` (not one of the sender''s facilities), `/assignee` `invalid-reference` (the user does not work at that facility), `/subject` `conflicting-fields` (the record belongs to another patient), `/dueAt` `not-allowed-value` (a due time on a message) or `out-of-range` (in the past)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     Address:
@@ -23201,6 +24341,521 @@ components:
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
           description: When the session stops accepting a card.
+          x-phi: none
+    InboxItemType:
+      description: 'Kind of inbox item (BATCH3_PLAN §3). An extensible enum (API_STANDARDS §6.5): later batches add kinds, so screens show an unknown kind as a generic item. `message` and `task` come from `POST /messages`; every other kind is created and, except where noted, completed by the inbox service from an event: `cosign` and `cosign-returned` (notes), `unsigned-note` (a draft note at check-out), `fax-indexing` (an incoming fax; filing completes it), `document-review` (a filed document routed to a clinician), `result-review` (B5; within 60 seconds, FR-ORD-02), `refill-request` and `prescription-failure` (B5), `unmatched-result` (B5), `break-glass-review` (for the compliance officer, A36), `eligibility`, `claim-rejection` and `rooming`.'
+      type: string
+      maxLength: 40
+      x-extensible-enum:
+        - message
+        - task
+        - cosign
+        - cosign-returned
+        - unsigned-note
+        - fax-indexing
+        - document-review
+        - result-review
+        - refill-request
+        - prescription-failure
+        - unmatched-result
+        - break-glass-review
+        - eligibility
+        - claim-rejection
+        - rooming
+    InboxItemStatus:
+      description: Where the item is (DATA_OWNERSHIP §5.9). `open` (waiting; in a role queue or with one person), `in-progress`, `on-hold` (waiting on someone else), `completed`, `cancelled` (a message or task closed with a reason). Who has it is `assignee`, not the status.
+      type: string
+      enum:
+        - open
+        - in-progress
+        - on-hold
+        - completed
+        - cancelled
+    InboxPriority:
+      description: 'Priority, FHIR request priority (Q3): `routine`, `urgent`, `asap`, `stat`. Lists sort `stat` first.'
+      type: string
+      enum:
+        - routine
+        - urgent
+        - asap
+        - stat
+    InboxAssignee:
+      description: 'Who has the item: one user, or one role (a shared queue at the item''s facility). Never both (`ck_work_item_one_assignee`).'
+      type: object
+      required:
+        - type
+        - id
+        - displayName
+      properties:
+        type:
+          type: string
+          enum:
+            - user
+            - role
+          description: '`user` or `role`.'
+          x-phi: none
+        id:
+          $ref: '#/components/schemas/Id'
+          description: User or role ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: User name or role name, for display.
+          x-phi: none
+    InboxPatient:
+      description: The patient, minimum necessary for the list (name and date of birth). Absent when the item has no patient, or when the patient's chart is restricted and the user has no break-glass grant and is not on the care team (D37); `restricted` on the item says which.
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Patient ID.
+          x-phi: internal-id
+        name:
+          $ref: '#/components/schemas/HumanName'
+          description: Official name.
+          x-phi: identifier
+        birthDate:
+          $ref: '#/components/schemas/Date'
+          description: Date of birth.
+          x-phi: identifier
+    InboxSubject:
+      description: The record the item is about, at most one (`ck_work_item_one_subject`). The link is always shown; opening it goes through the record's own endpoint, with its own permission and the restricted-chart rules (D37, D80).
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - id
+      properties:
+        type:
+          type: string
+          maxLength: 40
+          x-extensible-enum:
+            - result
+            - note
+            - document
+            - prescription
+            - order
+            - appointment
+            - unmatched-result
+            - claim
+            - fax
+          description: Kind of record (an extensible enum).
+          x-phi: none
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Record ID.
+          x-phi: internal-id
+    StaffRef:
+      description: A staff member, for display.
+      type: object
+      required:
+        - id
+        - displayName
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: User ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name as shown on screens (staff, not patient data).
+          x-phi: none
+    InboxThreadEvent:
+      description: 'One step in the item''s history (`work_item_event`), oldest first: created, assigned (including reassignment and taking it from a queue), status change, comment (a reply), escalated. Insert-only.'
+      type: object
+      required:
+        - event
+        - at
+      properties:
+        event:
+          type: string
+          enum:
+            - created
+            - assigned
+            - status-change
+            - comment
+            - escalated
+          description: What happened.
+          x-phi: none
+        at:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it happened.
+          x-phi: none
+        by:
+          $ref: '#/components/schemas/StaffRef'
+          description: Who did it. Absent for the system (events, escalation).
+          x-phi: none
+        fromStatus:
+          $ref: '#/components/schemas/InboxItemStatus'
+          description: Status before (status-change).
+          x-phi: none
+        toStatus:
+          $ref: '#/components/schemas/InboxItemStatus'
+          description: Status after (status-change).
+          x-phi: none
+        assignee:
+          $ref: '#/components/schemas/InboxAssignee'
+          description: The new assignee (assigned, escalated).
+          x-phi: none
+        escalationLevel:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 9
+          description: The level reached (escalated).
+          x-phi: none
+        comment:
+          type: string
+          maxLength: 4000
+          description: The reply, completion comment or cancel reason. May contain PHI.
+          x-phi: clinical
+    InboxItem:
+      description: One inbox item (`work_item`; BATCH3_PLAN §3). Visible only to users at its facility who are its assignee, hold its role, or sent it, and who hold the read permission for its kind (§5).
+      type: object
+      required:
+        - id
+        - itemType
+        - status
+        - priority
+        - title
+        - assignee
+        - facilityId
+        - overdue
+        - escalationLevel
+        - restricted
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Inbox item ID.
+          x-phi: internal-id
+        itemType:
+          $ref: '#/components/schemas/InboxItemType'
+          description: Kind of item.
+          x-phi: none
+        status:
+          $ref: '#/components/schemas/InboxItemStatus'
+          description: Where the item is.
+          x-phi: none
+        priority:
+          $ref: '#/components/schemas/InboxPriority'
+          description: Priority.
+          x-phi: none
+        title:
+          type: string
+          maxLength: 200
+          description: Short title. System items name the kind of work ("Result to review"), never a patient; a sender's free text may contain anything (D81).
+          x-phi: clinical
+        body:
+          type: string
+          maxLength: 4000
+          description: Message or task text. Messages and tasks only. May contain PHI (D81).
+          x-phi: clinical
+        assignee:
+          $ref: '#/components/schemas/InboxAssignee'
+          description: Who has it.
+          x-phi: none
+        facilityId:
+          $ref: '#/components/schemas/Id'
+          description: Facility the item belongs to; only users assigned to it see the item.
+          x-phi: internal-id
+        dueAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: Due time (UTC; shown in facility time, D40). Absent for no due time.
+          x-phi: none
+        overdue:
+          type: boolean
+          description: True when `dueAt` has passed and the item is not closed. Computed.
+          x-phi: none
+        escalationLevel:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 9
+          description: How many times it has been escalated (Q6; critical results D78). Read-only.
+          x-phi: none
+        escalatedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was last escalated. Read-only.
+          x-phi: none
+        restricted:
+          type: boolean
+          description: 'True when the item is about a restricted chart the user may not open (no grant, not on the care team; D37): `patient` is left out.'
+          x-phi: none
+        patient:
+          $ref: '#/components/schemas/InboxPatient'
+          description: The patient, when there is one and the user may see it.
+          x-phi: identifier
+        subject:
+          $ref: '#/components/schemas/InboxSubject'
+          description: The linked record, if any (D80).
+          x-phi: none
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter, if any.
+          x-phi: internal-id
+        corrected:
+          type: boolean
+          description: 'For `result-review`: the result was corrected after it was first reviewed (B5).'
+          x-phi: none
+        createdBy:
+          $ref: '#/components/schemas/StaffRef'
+          description: The sender. Absent for items the system created.
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was created.
+          x-phi: none
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it last changed.
+          x-phi: none
+        completedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was completed or cancelled.
+          x-phi: none
+        completedBy:
+          $ref: '#/components/schemas/StaffRef'
+          description: Who completed or cancelled it. Absent when the system completed it (by the action it was waiting for).
+          x-phi: none
+        thread:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/InboxThreadEvent'
+          description: The item's history and replies, oldest first. Only in the single GET and the action responses, not in lists.
+          x-phi: clinical
+    InboxItemList:
+      description: One page of inbox items, highest priority first, then overdue, then by due time, then oldest.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/InboxItem'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    InboxTypeCount:
+      description: Counts for one kind of item.
+      type: object
+      required:
+        - itemType
+        - open
+        - inProgress
+        - onHold
+        - overdue
+      properties:
+        itemType:
+          $ref: '#/components/schemas/InboxItemType'
+          description: Kind of item.
+          x-phi: none
+        open:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 1000000
+          description: Open items.
+          x-phi: none
+        inProgress:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 1000000
+          description: Items in progress.
+          x-phi: none
+        onHold:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 1000000
+          description: Items on hold.
+          x-phi: none
+        overdue:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 1000000
+          description: Of those, overdue.
+          x-phi: none
+    InboxSummary:
+      description: Badge counts for the user's `assigned` view (their own items and their roles' queues), counts only, no patient data (Q10).
+      type: object
+      required:
+        - total
+        - overdue
+        - byType
+      properties:
+        total:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 1000000
+          description: Items not yet completed or cancelled.
+          x-phi: none
+        overdue:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 1000000
+          description: Of those, overdue.
+          x-phi: none
+        byType:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/InboxTypeCount'
+          description: Counts per kind; kinds with no items are left out.
+          x-phi: none
+    InboxAssigneeInput:
+      description: 'Who should have the item: a user or a role. The server checks that the assignee works at the item''s facility and may see the item (BATCH3_PLAN §5); otherwise `422`.'
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - id
+      properties:
+        type:
+          type: string
+          enum:
+            - user
+            - role
+          description: '`user` or `role`.'
+          x-phi: none
+        id:
+          $ref: '#/components/schemas/Id'
+          description: User or role ID.
+          x-phi: internal-id
+    InboxItemPatch:
+      description: Fields to change (JSON merge patch, with `If-Match`). `status` takes only `open`, `in-progress` and `on-hold`; completing and cancelling are actions. To take an item from a queue, set `assignee` to yourself.
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        assignee:
+          $ref: '#/components/schemas/InboxAssigneeInput'
+          description: New assignee (take, or reassign; ADM for items at their facilities, Q5).
+          x-phi: none
+        status:
+          type: string
+          enum:
+            - open
+            - in-progress
+            - on-hold
+          description: New status (assignee only).
+          x-phi: none
+        priority:
+          $ref: '#/components/schemas/InboxPriority'
+          description: New priority (assignee or creator).
+          x-phi: none
+        dueAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: New due time (assignee or creator).
+          x-phi: none
+    InboxCompleteRequest:
+      description: Body to complete an item. Optional.
+      type: object
+      additionalProperties: false
+      properties:
+        comment:
+          type: string
+          maxLength: 2000
+          description: What was done. May contain PHI.
+          x-phi: clinical
+    InboxCancelRequest:
+      description: Body to cancel a message or task.
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why it is cancelled, e.g. "Sent to the wrong person." Kept in the thread.
+          x-phi: clinical
+    InboxReplyRequest:
+      description: Body to reply on an item (a thread, D38).
+      type: object
+      additionalProperties: false
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: The reply. May contain PHI.
+          x-phi: clinical
+        assignBack:
+          type: boolean
+          default: true
+          description: Hand the item to the other party (the sender when the assignee replies, the assignee when the sender replies). Default true.
+          x-phi: none
+    MessageCreate:
+      description: Body to send a message or create a task (#217; Q1; Minalini's item). The sender must work at `facilityId`, and must be able to open `patientId` and the linked `subject` (D80); a user assignee must work there too.
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - assignee
+        - facilityId
+        - title
+      properties:
+        kind:
+          type: string
+          enum:
+            - message
+            - task
+          description: '`message`, or `task` (a message with an optional due time). Clinicians ask for appointment changes with a task linked to the appointment and assigned to the front-desk role (D67).'
+          x-phi: none
+        assignee:
+          $ref: '#/components/schemas/InboxAssigneeInput'
+          description: One user or one role (Q2).
+          x-phi: none
+        facilityId:
+          $ref: '#/components/schemas/Id'
+          description: Facility the item belongs to.
+          x-phi: internal-id
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Short title. May contain PHI; notifications outside the app never show it (D81).
+          x-phi: clinical
+        body:
+          type: string
+          maxLength: 4000
+          description: Text. May contain PHI.
+          x-phi: clinical
+        priority:
+          $ref: '#/components/schemas/InboxPriority'
+          description: Priority. Default `routine`.
+          x-phi: none
+        dueAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: Due time, tasks only.
+          x-phi: none
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient, if any.
+          x-phi: internal-id
+        subject:
+          $ref: '#/components/schemas/InboxSubject'
+          description: A linked record, if any; its patient must be `patientId`.
           x-phi: none
   parameters:
     Cursor:
