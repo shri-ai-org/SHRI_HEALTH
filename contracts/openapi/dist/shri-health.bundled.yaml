@@ -27016,7 +27016,7 @@ components:
         showSexualOrientationAndGenderIdentity:
           type: boolean
           default: false
-          description: Show the optional sexual-orientation and gender-identity fields on the registration screen (D39). Default false until the practice decides; hiding them never removes stored values.
+          description: Show the optional sexual-orientation and gender-identity fields on the registration screen (D39). Default false; practice onboarding asks this question explicitly, so the setting records the practice's own decision, not a silent default. Hiding the fields never removes stored values.
           x-phi: none
     PracticeSettings:
       description: Practice-wide settings (one per practice; stored as tenant settings, A49).
@@ -27048,7 +27048,7 @@ components:
             showSexualOrientationAndGenderIdentity:
               type: boolean
               default: false
-              description: Show the optional sexual-orientation and gender-identity fields on the registration screen (D39). Default false until the practice decides; hiding them never removes stored values.
+              description: Show the optional sexual-orientation and gender-identity fields on the registration screen (D39). Default false; practice onboarding asks this question explicitly, so the setting records the practice's own decision, not a silent default. Hiding the fields never removes stored values.
               x-phi: none
           x-phi: none
     PharmacyDirectoryAddress:

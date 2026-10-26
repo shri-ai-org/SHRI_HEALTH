@@ -3321,16 +3321,16 @@ paths:
                     registration:
                       showSexualOrientationAndGenderIdentity: false
                     updatedAt: '2026-10-26T13:00:00Z'
-        '401': &a1
+        '401': &id093
           $ref: ../components/responses/Unauthorized.yaml
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `practice-setup:read`).
-        '429': &a2
+        '429': &id094
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
-        '500': &a3
+        '500': &id095
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
     patch:
@@ -3394,7 +3394,7 @@ paths:
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
-        '401': *a1
+        '401': *id093
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `practice-setup:update`); `csrf-check-failed` (missing or
@@ -3408,8 +3408,8 @@ paths:
         '428':
           $ref: ../components/responses/PreconditionRequired.yaml
           description: 428. `precondition-required` (`If-Match` is missing).
-        '429': *a2
-        '500': *a3
+        '429': *id094
+        '500': *id095
 components:
   schemas:
     SetupCoding:
@@ -5006,7 +5006,8 @@ components:
           type: boolean
           default: false
           description: Show the optional sexual-orientation and gender-identity fields on the registration screen (D39). Default
-            false until the practice decides; hiding them never removes stored values.
+            false; practice onboarding asks this question explicitly, so the setting records the practice's own decision,
+            not a silent default. Hiding the fields never removes stored values.
           x-phi: none
     PracticeSettings:
       description: Practice-wide settings (one per practice; stored as tenant settings, A49).
@@ -5039,6 +5040,7 @@ components:
               type: boolean
               default: false
               description: Show the optional sexual-orientation and gender-identity fields on the registration screen (D39).
-                Default false until the practice decides; hiding them never removes stored values.
+                Default false; practice onboarding asks this question explicitly, so the setting records the practice's own
+                decision, not a silent default. Hiding the fields never removes stored values.
               x-phi: none
           x-phi: none
