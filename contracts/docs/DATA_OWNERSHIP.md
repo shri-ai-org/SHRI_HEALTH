@@ -395,7 +395,7 @@ Statuses are the schema's: `open`, `in-progress`, `on-hold`, `completed`, `cance
 | `open` ↔ `in-progress` ↔ `on-hold` | `PATCH` `{ status }` with `If-Match` | The assignee | `status-change` event |
 | any open status → `completed` | `POST …/complete`; or the action the kind waits for (co-sign, addendum, sign, file, acknowledge, respond, match), done by the system | The assignee; system | `status-change` event, `completedAt`, `completedBy` (absent for the system); `inbox.item-completed`. Kinds that wait for an action refuse `complete` (`422`, D77) |
 | any open status → `cancelled` | `POST …/cancel` `{ reason }` | The creator of a message or task | The reason in the thread; `inbox.item-completed` |
-| reply | `POST …/replies` `{ text, assignBack }` | Anyone who can see the item | `comment` event; by default the item goes to the other party (`assigned` event, `inbox.item-assigned`) |
+| reply | `POST …/replies` `{ text, assignBack }` | Anyone who can see the item | `comment` event. For a message or task replied to by its assignee (or a holder of its role) or its sender, by default the item goes to the other party (`assigned` event, `inbox.item-assigned`); checked inside the transaction. Other replies never move the item |
 | escalation | System job: past `dueAt`, past the co-sign rule's days, or a critical result not acknowledged in time (D78) | System | `escalationLevel + 1`, `escalated` event, priority raised one step; normal items notify the assignee, then the facility's ADM role; critical results go to the covering clinician, then the practice lead (D78) |
 
 Nothing is deleted (D14). Notifications outside the app never carry patient data, titles or bodies (D81).

@@ -220,6 +220,12 @@ Same rules as before: shapes from this plan and the locked schema; synthetic exa
 
    Then the breaking check (additions only), gitleaks, and the PR.
 
+## 10a. Tightened after the security review (2026-10-26, on PR #58)
+
+- **Replies:** `assignBack` hands an item back only for messages and tasks, and only when the replier is the assignee (or holds its role) or the sender, checked inside the transaction. The new assignee must pass the same checks as for `PATCH`. A reply by anyone else never moves the item.
+- **Restricted charts (D37):** an item the user may not open leaves out `patient`, `body`, `encounterId`, `corrected` and every reply's text. A message or task title becomes "Item about a restricted chart". `subject` stays, but opening it needs a grant (D80).
+- **`patientId` filter:** for a restricted chart the user may not open, `GET /inbox?patientId=` returns `403 break-glass-required`, audited with the patient ID, so the filter cannot be used to probe charts.
+
 ## 11. Additions on approval (Vimal, 2026-10-26; DECISIONS D77–D81)
 
 1. **Critical results have their own escalation path (D78).** If the ordering clinician does not acknowledge a critical result within a short per-practice time, the item escalates to the **covering clinician**, then to a **practice lead**. Every step is in the item's thread (`escalated` events) and in the audit trail. Q6's overdue job covers normal items only. The timings are per-practice settings; their values are confirmed later by the clinical advisors. The source (`result.received` with `critical: true`) is B5; the item fields (`escalationLevel`, `escalatedAt`, the thread) are written now. Anand's migration adds the settings, who covers whom, and the practice lead (A48).

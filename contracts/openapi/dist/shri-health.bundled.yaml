@@ -14631,7 +14631,7 @@ paths:
         - name: patientId
           in: query
           required: false
-          description: Only items about this patient (an opaque ID).
+          description: Only items about this patient (an opaque ID). For a restricted chart the user may not open, the request is refused with `403 break-glass-required`, and the attempt is audited with the patient ID (D37).
           schema:
             $ref: '#/components/schemas/Id'
         - name: facilityId
@@ -14750,7 +14750,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `inbox:read`).
+          description: 403. `permission-denied` (the role lacks `inbox:read`); `break-glass-required` (`patientId` names a restricted chart and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (a `facilityId` the user is not assigned to).
@@ -15401,7 +15401,7 @@ paths:
     post:
       operationId: replyToInboxItem
       summary: Reply on an inbox item
-      description: 'Adds a reply to the item''s thread (new inventory row #254; D38: the inbox holds message threads). By default it hands the item to the other party (`assignBack`), who gets `inbox.item-assigned`. Anyone who can see the item may reply; replies are insert-only.'
+      description: 'Adds a reply to the item''s thread (new inventory row #254; D38: the inbox holds message threads). Anyone who can see the item may reply; replies are insert-only. Only the assignee (or a holder of its role) and the sender of a message or task hand it to the other party (`assignBack`, default true), who gets `inbox.item-assigned`; a reply never moves an item for anyone else.'
       tags:
         - inbox
       x-owner: anand
@@ -24586,7 +24586,7 @@ components:
           x-phi: none
         restricted:
           type: boolean
-          description: 'True when the item is about a restricted chart the user may not open (no grant, not on the care team; D37): `patient` is left out.'
+          description: 'True when the item is about a restricted chart the user may not open (no grant, not on the care team; D37). Then everything that could identify the patient or describe the chart is left out: `patient`, `body`, `encounterId`, `corrected` and every `thread[].comment`; a message or task title becomes "Item about a restricted chart" (system titles never name a patient and are kept). `subject` stays, but opening it needs a grant (D80). Opening the item with a grant shows it all.'
           x-phi: none
         patient:
           $ref: '#/components/schemas/InboxPatient'
@@ -24803,7 +24803,7 @@ components:
         assignBack:
           type: boolean
           default: true
-          description: Hand the item to the other party (the sender when the assignee replies, the assignee when the sender replies). Default true.
+          description: 'Hand the item to the other party: the sender when the assignee (or a holder of the assignee role) replies, the assignee when the sender replies. Messages and tasks only, and only for those two parties: for anyone else, and for items the system created, the reply is added and the item stays where it is. The hand-back is checked inside the transaction, so it only happens if the replier is still the assignee or the sender at that moment, and the new assignee must work at the facility and be able to see the item (as for PATCH). Default true.'
           x-phi: none
     MessageCreate:
       description: Body to send a message or create a task (#217; Q1; Minalini's item). The sender must work at `facilityId`, and must be able to open `patientId` and the linked `subject` (D80); a user assignee must work there too.
