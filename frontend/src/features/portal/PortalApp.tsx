@@ -6,11 +6,10 @@ import './portal.css'
 import { PortalShell } from './PortalShell'
 import { matchPath, PortalRouter, useRouter } from './router'
 import { SessionContext, type SessionApi } from './session'
-import { ChangePasswordPage, DemographicsPage, ESignaturePage } from './pages/AccountPages'
+import { DemographicsPage, ESignaturePage } from './pages/AccountPages'
 import { AppointmentsPage, UpcomingAppointmentPage, VideoConsultPage, VisitSummaryPage } from './pages/appointments/AppointmentPages'
 import { SchedulePage } from './pages/appointments/SchedulePage'
-import { ForgotPasswordPage, ForgotUsernamePage } from './pages/auth/RecoveryPages'
-import { RegisterPage } from './pages/auth/RegisterPage'
+import { ActivatePage } from './pages/auth/ActivatePage'
 import { SignInPage, type SignedOutReason } from './pages/auth/SignInPage'
 import { BillingPage } from './pages/BillingPage'
 import { HomePage } from './pages/HomePage'
@@ -66,10 +65,9 @@ const ROUTES: Route[] = [
   { pattern: '/patient-education', render: () => <PatientEducationPage /> },
   { pattern: '/demographics', render: () => <DemographicsPage /> },
   { pattern: '/e-signature', render: () => <ESignaturePage /> },
-  { pattern: '/change-password', render: () => <ChangePasswordPage /> },
 ]
 
-const SIGNED_OUT_PATHS = ['/sign-in', '/forgot-username', '/forgot-password', '/register']
+const SIGNED_OUT_PATHS = ['/sign-in']
 
 export function PortalApp({ api }: { api: PortalApi }) {
   return (
@@ -120,9 +118,6 @@ function Gate({ api }: { api: PortalApi }) {
   }
 
   if (state.kind === 'signed-out' || !sessionApi) {
-    if (path === '/forgot-username') return <ForgotUsernamePage />
-    if (path === '/forgot-password') return <ForgotPasswordPage />
-    if (path === '/register') return <RegisterPage />
     return (
       <SignInPage
         {...(state.kind === 'signed-out' && state.reason ? { reason: state.reason } : {})}
@@ -133,6 +128,11 @@ function Gate({ api }: { api: PortalApi }) {
         }}
       />
     )
+  }
+
+  // A realm account not yet linked to a chart sees only activation (D85).
+  if (!sessionApi.session.activated) {
+    return <ActivatePage onActivated={(session) => setState({ kind: 'signed-in', session })} onSignOut={() => signOut('signed-out')} />
   }
 
   if (SIGNED_OUT_PATHS.includes(path)) {

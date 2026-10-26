@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToastProvider } from '../../design-system'
 import { axeViolations } from '../../test/axe'
-import { createMockPortalApi, uid } from './api/mockPortalApi'
+import { createMockPortalApi, MOCK_INVITATION_CODE, uid } from './api/mockPortalApi'
 import type { PortalApi } from './api/portalApi'
 import { PortalApp } from './PortalApp'
 
@@ -18,12 +18,11 @@ function renderPortal(path = '/portal', api: PortalApi = createMockPortalApi({ l
   return api
 }
 
+/** "Sign in" stands for a completed sign-in at the patient realm (D85); no password is typed here. */
 async function signIn(path = '/portal') {
   const user = userEvent.setup()
   renderPortal(path)
-  await user.type(await screen.findByLabelText(/Username/), 'rkuhlman')
-  await user.type(screen.getByLabelText(/^Password/), 'a-good-password-1')
-  await user.click(screen.getByRole('button', { name: 'Sign in' }))
+  await user.click(await screen.findByRole('button', { name: 'Sign in' }))
   return user
 }
 
@@ -32,23 +31,23 @@ async function loaded() {
 }
 
 describe('sign-in', () => {
-  it('lists missing fields and focuses the summary', async () => {
-    const user = userEvent.setup()
+  it('starts sign-in at the patient realm: no password, registration or recovery here (D85)', async () => {
     renderPortal()
-    await user.click(await screen.findByRole('button', { name: 'Sign in' }))
-    const summary = screen.getByRole('alert')
-    expect(summary).toHaveTextContent('There are 2 things to fix')
-    expect(summary).toHaveFocus()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Password|Username/)).toBeNull()
+    expect(screen.queryByRole('link', { name: /Registration|Forgot/ })).toBeNull()
+    expect(screen.getByText(/Ask your clinic's front desk for an invitation code/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Source code' })).toBeInTheDocument()
     expect(await axeViolations()).toEqual([])
   })
 
-  it('does not say which part was wrong', async () => {
-    const user = userEvent.setup()
-    renderPortal()
-    await user.type(await screen.findByLabelText(/Username/), 'someone')
-    await user.type(screen.getByLabelText(/^Password/), 'wrong-password')
-    await user.click(screen.getByRole('button', { name: 'Sign in' }))
-    expect(await screen.findByText(/don't match our records/)).toBeInTheDocument()
+  it('sends the old registration and recovery addresses to sign-in', async () => {
+    for (const path of ['/portal/register', '/portal/forgot-username', '/portal/forgot-password']) {
+      const { unmount } = render(<ToastProvider><PortalApp api={createMockPortalApi({ latencyMs: 0 })} /></ToastProvider>)
+      window.history.replaceState(null, '', path)
+      expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
+      unmount()
+    }
   })
 
   it('lands on the page that was asked for', async () => {
@@ -81,7 +80,9 @@ describe('home and menus', () => {
     await user.click(screen.getByRole('button', { name: /account menu/ }))
     const account = document.getElementById('account-menu')
     if (!account) throw new Error('no account menu')
-    expect(within(account).getAllByRole('link').map((l) => l.textContent)).toEqual(['Demographics', 'E-Signature', 'Change Password'])
+    expect(within(account).getAllByRole('link').map((l) => l.textContent)).toEqual(['Demographics', 'E-Signature', 'Password and security'])
+    // Password, multi-factor and recovery are the patient realm's own pages (D85).
+    expect(within(account).getByRole('link', { name: 'Password and security' })).toHaveAttribute('href', expect.stringContaining('/realms/patients/account'))
     expect(within(account).getByRole('button', { name: 'Log out' })).toBeInTheDocument()
   })
 })
@@ -122,7 +123,7 @@ describe('appointments', () => {
     await user.selectOptions(screen.getByLabelText(/Select appointment type/), 'Office Visit')
     await user.selectOptions(screen.getByLabelText(/Select reason for visit/), 'Annual Physical')
     await waitFor(() => expect(screen.getByLabelText(/Your providers/)).toBeEnabled())
-    await user.selectOptions(screen.getByLabelText(/Your providers/), 'Dr. Alvina Hettinger, MD')
+    await user.selectOptions(screen.getByLabelText(/Your providers/), 'Dr. Alvina56 Hettinger94, MD')
     // A weekday two weeks out, in MM/DD/YYYY.
     const d = new Date(Date.now() + 14 * 86_400_000)
     while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
@@ -154,7 +155,7 @@ describe('appointments', () => {
 describe('messages', () => {
   it('composes and sends a message', async () => {
     const user = await signIn('/portal/messages/compose')
-    await user.selectOptions(await screen.findByLabelText(/^To/), 'Dr. Alvina Hettinger, MD')
+    await user.selectOptions(await screen.findByLabelText(/^To/), 'Dr. Alvina56 Hettinger94, MD')
     await user.selectOptions(screen.getByLabelText(/^Subject/), 'Non Urgent Medical Question')
     await user.type(screen.getByLabelText(/^Message/), 'I felt dizzy this morning.')
     await user.click(screen.getByRole('button', { name: 'Send' }))
@@ -165,7 +166,7 @@ describe('messages', () => {
     const user = await signIn('/portal/messages/inbox')
     await user.click(await screen.findByRole('button', { name: 'Non Urgent Medical Question' }))
     const reader = await screen.findByRole('dialog', { name: 'Inbox' })
-    expect(reader).toHaveTextContent('Dr. Alvina Hettinger, MD')
+    expect(reader).toHaveTextContent('Dr. Alvina56 Hettinger94, MD')
     await user.click(within(reader).getByRole('button', { name: 'Discard' }))
     await user.click(screen.getByRole('checkbox', { name: /Select message: Non Urgent Medical Question/ }))
     await user.click(screen.getByRole('button', { name: /Move to trash/ }))
@@ -199,65 +200,55 @@ describe('billing and documents', () => {
   })
 })
 
-describe('registration', () => {
-  it('goes through all 11 pages and shows the success message', async () => {
+describe('activation by invitation code (D85)', () => {
+  async function toActivation() {
     const user = userEvent.setup()
-    renderPortal('/portal/register')
-    expect(await screen.findByRole('heading', { level: 1, name: 'Registration Form' })).toBeInTheDocument()
-    // The patient's fields come before the emergency contact's fields with the same labels.
-    const type = async (label: RegExp, text: string) => user.type(screen.getAllByLabelText(label)[0] as HTMLElement, text)
-    await type(/^First Name/, 'Lucia')
-    await type(/^Last Name/, 'Rempel')
-    await type(/^Date of Birth/, '03/14/1990')
-    await type(/^Phone Number/, '2175550145')
-    await type(/^Email/, 'lucia.rempel@example.com')
-    await type(/^Address Line/, '12 Sample St')
-    await type(/^City/, 'Springfield')
-    await user.selectOptions(screen.getByLabelText(/^State/), 'IL')
-    await type(/^ZIP Code/, '62701')
-    await user.selectOptions(screen.getByLabelText(/^Marital Status/), 'Single')
-    await user.click(screen.getByRole('radio', { name: 'Female' }))
-    const ec = screen.getByRole('region', { name: 'Emergency Contact' })
-    await user.type(within(ec).getByLabelText(/^First Name/), 'Mateo')
-    await user.type(within(ec).getByLabelText(/^Last Name/), 'Rempel')
-    await user.type(within(ec).getByLabelText(/^Phone Number/), '2175550146')
-    await user.selectOptions(within(ec).getByLabelText(/^Relationship/), 'Sibling')
-    await user.click(screen.getByRole('button', { name: 'Next' }))
+    renderPortal('/portal', createMockPortalApi({ latencyMs: 0, activated: false }))
+    await user.click(await screen.findByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Activate your account' })).toBeInTheDocument()
+    return user
+  }
 
-    expect(await screen.findByRole('heading', { level: 2, name: 'Choices' })).toBeInTheDocument()
-    for (const group of ['Allow Patient Portal', 'Allow SMS', 'Allow Email']) {
-      await user.click(within(screen.getByRole('group', { name: new RegExp(group) })).getByRole('radio', { name: 'Yes' }))
-    }
-    await user.click(screen.getByRole('radio', { name: 'Myself' }))
-    await user.click(screen.getByRole('radio', { name: 'Self pay' }))
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-
-    expect(await screen.findByRole('heading', { level: 2, name: 'Preferred Pharmacy' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(within(screen.getByRole('group', { name: /taking any medications/ })).getByRole('radio', { name: 'No' }))
-    await user.click(within(screen.getByRole('group', { name: /any allergies/ })).getByRole('radio', { name: 'No' }))
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-    for (const page of ['Past Medical History', 'Family History', 'Social History', 'Surgical History', 'Hospitalization/Procedure']) {
-      expect(await screen.findByRole('heading', { level: 2, name: page })).toBeInTheDocument()
-      await user.click(screen.getByRole('button', { name: 'Next' }))
-    }
-    expect(await screen.findByRole('heading', { level: 2, name: 'Consent Forms' })).toBeInTheDocument()
-    await user.click(screen.getByRole('checkbox', { name: 'I agree to the information above.' }))
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-
-    expect(await screen.findByRole('heading', { level: 2, name: 'Review' })).toBeInTheDocument()
-    expect(screen.getByText('Lucia Rempel')).toBeInTheDocument()
+  it('opens nothing else until the code links the account to the chart', async () => {
+    const user = await toActivation()
+    expect(screen.queryByRole('link', { name: /Test Results/ })).toBeNull()
     expect(await axeViolations()).toEqual([])
-    await user.click(screen.getByRole('button', { name: 'Done' }))
-    expect(await screen.findByRole('dialog', { name: 'Registration successful' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Activate' }))
+    expect(screen.getByRole('alert')).toHaveTextContent(/Enter the invitation code/)
+    await user.type(screen.getByLabelText(/Invitation code/), 'WRONG-0000')
+    await user.click(screen.getByRole('button', { name: 'Activate' }))
+    // One message for wrong, used or expired codes, in the summary and on the field.
+    await waitFor(() => expect(screen.getByLabelText(/Invitation code/)).toHaveAccessibleDescription(/That code didn't work/))
+    await user.clear(screen.getByLabelText(/Invitation code/))
+    await user.type(screen.getByLabelText(/Invitation code/), MOCK_INVITATION_CODE.toLowerCase())
+    await user.click(screen.getByRole('button', { name: 'Activate' }))
+    expect(await screen.findByRole('region', { name: 'Alerts and Reminders' })).toBeInTheDocument()
   })
 
-  it('stops on page 1 until the required fields are filled', async () => {
-    const user = userEvent.setup()
-    renderPortal('/portal/register')
-    await user.click(await screen.findByRole('button', { name: 'Next' }))
-    expect(screen.getByRole('heading', { level: 2, name: 'Basic Information' })).toBeInTheDocument()
-    expect(screen.getAllByRole('alert')[0]).toHaveTextContent(/things to fix/)
+  it('can sign out from activation', async () => {
+    const user = await toActivation()
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(await screen.findByText('You have signed out.')).toBeInTheDocument()
+  })
+})
+
+describe('portal shell', () => {
+  it('offers the source code on every signed-in page (D87)', async () => {
+    await signIn()
+    await screen.findByRole('region', { name: 'Alerts and Reminders' })
+    expect(screen.getByRole('contentinfo')).toContainElement(screen.getByRole('link', { name: 'Source code' }))
+  })
+
+  it('shows record dates as MM/DD/YYYY', async () => {
+    await signIn(`/portal/immunizations/${uid(1101)}`)
+    await screen.findByRole('heading', { level: 1, name: 'Vaccine - Influenza, seasonal, injectable' })
+    await loaded()
+    expect(screen.getByText('Date Administered').nextElementSibling?.textContent).toMatch(/^\d{2}\/\d{2}\/\d{4}$/)
+  })
+
+  it('has no Change Password page any more', async () => {
+    await signIn('/portal/change-password')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
   })
 })
 
@@ -291,7 +282,6 @@ describe('accessibility of every page', () => {
     ['/portal/patient-education', 'Patient Education'],
     ['/portal/demographics', 'Demographics and Profile Information'],
     ['/portal/e-signature', 'Patient Electronic Signature'],
-    ['/portal/change-password', 'Change Password'],
     ['/portal/nowhere', 'Page not found'],
   ] as const
 
@@ -302,11 +292,7 @@ describe('accessibility of every page', () => {
     expect(await axeViolations()).toEqual([])
   })
 
-  it.each([
-    ['/portal/register', 'Registration Form'],
-    ['/portal/forgot-username', 'Username Recovery'],
-    ['/portal/forgot-password', 'Need help with your password?'],
-  ])('signed-out page %s has no axe violations', async (path, heading) => {
+  it.each([['/portal/sign-in', 'Sign in']])('signed-out page %s has no axe violations', async (path, heading) => {
     renderPortal(path)
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
     await loaded()

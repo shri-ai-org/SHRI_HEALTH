@@ -168,7 +168,7 @@ function DemographicsForm({ initial, lists }: { initial: Demographics; lists: Re
         <Field id="dm-ec-name" label="Name" required error={err('dm-ec-name')}>
           {(p) => <TextInput {...p} value={d.emergencyContact.name} onChange={(e) => setEc('name', e.target.value)} />}
         </Field>
-        <Field id="dm-ec-rel" label="Guardian Relationship">
+        <Field id="dm-ec-rel" label="Relationship">
           {(p) => <Select {...p} value={d.emergencyContact.relationship} onChange={(e) => setEc('relationship', e.target.value)}>{opts(lists.relationships, 'Select relationship')}</Select>}
         </Field>
         <Field id="dm-ec-phone" label="Contact Number" required error={err('dm-ec-phone')}>
@@ -250,92 +250,6 @@ export function ESignaturePage() {
           </Button>
         </div>
       </div>
-    </>
-  )
-}
-
-/* ---------- Change Password ---------- */
-
-export function ChangePasswordPage() {
-  const api = usePortalApi()
-  const { navigate } = useRouter()
-  const [f, setF] = useState({ email: '', current: '', next: '', confirm: '' })
-  const [errors, setErrors] = useState<Array<{ fieldId: string; message: string }>>([])
-  const [busy, setBusy] = useState(false)
-  const [done, setDone] = useState(false)
-  const [failure, setFailure] = useState<string | null>(null)
-  const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }))
-  const err = (id: string) => errors.find((e) => e.fieldId === id)?.message
-  const rules = [
-    { ok: f.next.length >= 8, text: 'At least 8 characters' },
-    { ok: /[a-z]/.test(f.next) && /[A-Z]/.test(f.next), text: 'Upper and lower case letters' },
-    { ok: /\d/.test(f.next), text: 'At least one number' },
-    { ok: /[@$!%*?&]/.test(f.next), text: 'At least one of @ $ ! % * ? &' },
-  ]
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    const found: typeof errors = []
-    if (!EMAIL.test(f.email.trim())) found.push({ fieldId: 'pw-email', message: 'Enter a valid email address' })
-    if (!f.current) found.push({ fieldId: 'pw-old', message: 'Enter your old password' })
-    if (!rules.every((r) => r.ok)) found.push({ fieldId: 'pw-new', message: 'Your new password must meet all the rules listed' })
-    if (f.confirm !== f.next) found.push({ fieldId: 'pw-confirm', message: 'Please retype the same password' })
-    setErrors(found)
-    setDone(false)
-    if (found.length) return
-    setBusy(true)
-    setFailure(null)
-    try {
-      await api.changePassword({ email: f.email.trim(), currentPassword: f.current, newPassword: f.next })
-      setDone(true)
-      setF({ email: '', current: '', next: '', confirm: '' })
-    } catch (error) {
-      const p = toProblem(error)
-      if (p.errors?.some((x) => x.pointer === '/currentPassword')) setErrors([{ fieldId: 'pw-old', message: 'Old password is wrong' }])
-      else setFailure(problemCopy(p).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <PageHeader title="Change Password" description="Enter your new password. We recommend a unique password that others can't guess." back={{ to: '/', label: 'Home' }} />
-      <form noValidate onSubmit={submit} className="max-w-lg space-y-4 rounded-2xl border border-(--accent-line) bg-surface-1 p-5 shadow-card">
-        {done ? <Alert tone="success" title="Password changed successfully." /> : null}
-        <ErrorSummary errors={errors} />
-        {failure ? <Alert tone="critical" title="Password not changed">{failure}</Alert> : null}
-        <Field id="pw-email" label="Email" required error={err('pw-email')}>
-          {(p) => <TextInput {...p} type="email" autoComplete="email" value={f.email} onChange={(e) => set('email', e.target.value)} />}
-        </Field>
-        <Field id="pw-old" label="Old Password" required error={err('pw-old')}>
-          {(p) => <TextInput {...p} type="password" autoComplete="current-password" value={f.current} onChange={(e) => set('current', e.target.value)} />}
-        </Field>
-        <Field id="pw-new" label="New Password" required error={err('pw-new')}>
-          {(p) => <TextInput {...p} type="password" autoComplete="new-password" value={f.next} onChange={(e) => set('next', e.target.value)} />}
-        </Field>
-        <ul aria-label="Password rules" className="-mt-2 space-y-0.5 text-xs">
-          {rules.map((r) => (
-            <li key={r.text} className={r.ok ? 'text-success-fg' : 'text-ink-subtle'}>
-              <span aria-hidden="true">{r.ok ? '✓' : '○'} </span>
-              {r.text}
-              <span className="sr-only">{r.ok ? ', met' : ', not met yet'}</span>
-            </li>
-          ))}
-        </ul>
-        <Field id="pw-confirm" label="Confirm New Password" required error={err('pw-confirm')}>
-          {(p) => <TextInput {...p} type="password" autoComplete="new-password" value={f.confirm} onChange={(e) => set('confirm', e.target.value)} />}
-        </Field>
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <Button variant="outline" onClick={() => navigate('/')}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={busy}>
-            Submit
-          </Button>
-        </div>
-        <p className="text-xs text-ink-subtle">Having trouble? Call your clinic for help.</p>
-      </form>
     </>
   )
 }

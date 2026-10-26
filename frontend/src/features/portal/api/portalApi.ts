@@ -25,7 +25,6 @@ import type {
   ReferenceLists,
   RefillRequest,
   RefillRequestCreate,
-  RegistrationCreate,
   Signature,
   Slot,
   VisitSummary,
@@ -39,23 +38,27 @@ import type {
  */
 export interface PortalApi {
   // Session. The session is an HttpOnly cookie set by the server; the browser never holds a token.
-  signIn(username: string, password: string): Promise<PortalSession>
+  /**
+   * Signs in at the patient Keycloak realm, with multi-factor (D85). The real client navigates to
+   * the realm, so its promise never settles; the mock signs in its synthetic patient. Passwords,
+   * multi-factor, reset and recovery all stay in the realm: this code never sees a password (D3).
+   */
+  signIn(): Promise<PortalSession>
   signOut(): Promise<void>
   refreshSession(): Promise<PortalSession>
-  /** Both always succeed, so the screens never reveal whether an account exists. */
-  requestUsernameReminder(input: { firstName: string; lastName: string; birthDate: string; email: string; postalCode: string; phone: string }): Promise<void>
-  requestPasswordReset(input: { email: string }): Promise<void>
+  /**
+   * Links the signed-in realm account to the patient's chart, once, with the invitation code the
+   * front desk issued after an ID check (`POST /portal/enrolments`, D85).
+   */
+  activateAccount(invitationCode: string): Promise<PortalSession>
+  /** The patient realm's own account page: password, multi-factor and recovery settings. */
+  readonly accountSecurityUrl: string
   getReferenceLists(): Promise<ReferenceLists>
-  /** A request the practice reviews before the account opens. */
-  register(input: RegistrationCreate): Promise<void>
-  /** The registration summary the old portal offered as "Download PDF". */
-  downloadRegistrationSummary(input: RegistrationCreate): Promise<Blob>
 
   getAlerts(): Promise<AppointmentAlert[]>
 
   getDemographics(): Promise<Demographics>
   updateDemographics(input: Demographics): Promise<Demographics>
-  changePassword(input: { email: string; currentPassword: string; newPassword: string }): Promise<void>
   getSignature(): Promise<Signature | null>
   saveSignature(image: string): Promise<Signature>
 

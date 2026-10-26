@@ -1,5 +1,6 @@
 import { CalendarDays, CreditCard, HeartPulse, Mail, Pill, Video } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
+import { SourceCodeLink } from '../../sourceCode'
 import { PORTAL_NAME } from '../../ui'
 
 const FEATURES = [
@@ -52,7 +53,8 @@ export function AuthLayout({ title, intro, children }: { title: string; intro?: 
         </aside>
       </div>
       <footer className="px-4 pb-6 text-center text-xs text-white">
-        <strong>For a medical emergency, call 911.</strong> Need help signing in? Call your clinic.
+        <strong>For a medical emergency, call 911.</strong> Need help signing in? Call your clinic.{' '}
+        <SourceCodeLink className="text-white underline" />
       </footer>
     </div>
   )

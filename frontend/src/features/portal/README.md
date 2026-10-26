@@ -2,7 +2,9 @@
 
 Owner: Minalini. Guide 04 Step 8, FRS 3.8. React rebuild of the earlier Shri patient portal (Angular 16), using the U.S. design system. **The screens and flows follow the old portal** (menus, pages, fields and steps); the look comes from the design system.
 
-Run `npm run dev` in `frontend/` and open <http://localhost:5173/portal>. It runs on the mock API with synthetic data: any username and password sign in (`wrong-password` shows the failed sign-in). The mock lives in memory, so a full page reload signs you out.
+Run `npm run dev` in `frontend/` and open <http://localhost:5173/portal>. It runs on the mock API with synthetic data, and **only in development builds**: a production build has no portal until the `/portal` contract exists (B8, D88). "Sign in" stands for a completed sign-in at the patient realm (D85). The mock lives in memory, so a full page reload signs you out.
+
+Sign-in and enrolment follow the portal decisions (D83–D88, #66): Keycloak's patient realm handles passwords, multi-factor, reset and recovery, so the portal never asks for a password. New patients activate their account once with an invitation code from the front desk; there is no self-registration.
 
 ## Colours
 
@@ -12,7 +14,8 @@ Each area has its own colour, as the old home cards did: green Test Results, plu
 
 | Old portal | New path |
 |---|---|
-| Login, Forgot Username, Forgot Password, Registration (11 pages) | `/sign-in`, `/forgot-username`, `/forgot-password`, `/register` |
+| Login | `/sign-in`: a button that starts sign-in at the patient realm (D85) |
+| Forgot Username, Forgot Password, Registration (11 pages) | Removed (D85): recovery belongs to the realm; enrolment is an invitation code on "Activate your account", shown after the first sign-in |
 | Home: 8 cards + Alerts and Reminders | `/` |
 | Test Results (list, detail) | `/test-results`, `/test-results/{id}` |
 | Health Summary menu: Health Issues, Health Trends, Allergies, Immunization, Patient Documents, Reports, Document Template | `/health-issues`, `/health-trends`, `/allergies`, `/immunizations`, `/patient-documents`, `/reports`, `/document-templates` (each list has a detail page by ID) |
@@ -21,7 +24,7 @@ Each area has its own colour, as the old home cards did: green Test Results, plu
 | Prescriptions; Prescription Refill Summary | `/prescriptions`, `/prescriptions/requests/{id}` |
 | Pay Bills | `/billing` |
 | Video Consult, Patient Education | `/video-consult`, `/patient-education` |
-| Name menu: Demographics, E-Signature, Change Password, Log out | `/demographics`, `/e-signature`, `/change-password` |
+| Name menu: Demographics, E-Signature, Change Password, Log out | `/demographics`, `/e-signature`; "Password and security" opens the realm's account page; Log out |
 
 ## Same flow, with these fixes
 
@@ -40,15 +43,15 @@ Each area has its own colour, as the old home cards did: green Test Results, plu
 - **Rules:**
   - U.S. phone and ZIP rules (the old phone rule expected an Indian number).
   - Single-answer social-history questions are radio buttons.
-  - Every password rule is shown to the user.
 - **Not carried over:**
   - **SSN:** not collected (D43).
+  - **Passwords, recovery and self-registration:** the patient realm and the invitation code replace them (D85).
   - **Card number fields:** the card section is the processor's hosted form (Q17), so card numbers never touch our code.
   - **Rich-text message editor:** messages are plain text.
 - **Video Consult:** lists real video visits with a Join button. The old page was an empty placeholder.
 
 ## Checks
 
-- `portal.test.tsx` walks the main journeys (sign-in, menus, refill, schedule with the time picker, cancel, compose, trash and delete, payment, document template, the full 11-page registration) and runs axe (WCAG 2.1 A/AA) on every page.
+- `portal.test.tsx` walks the main journeys (sign-in, menus, refill, schedule with the time picker, cancel, compose, trash and delete, payment, document template, activation by invitation code) and runs axe (WCAG 2.1 A/AA) on every page.
 - Checked by hand at 375px: no page scrolls sideways, and the phone menu is the old side panel.
 - Still to do by hand: a screen-reader pass (VoiceOver, NVDA) and a session with a few real patients once there's a pilot practice (Q18).

@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { Badge, EmptyState, ErrorState, Spinner, TextInput, problemCopy, type BadgeTone } from '../../design-system'
+import { Badge, EmptyState, ErrorState, formatDate, Spinner, TextInput, problemCopy, todayIn, type BadgeTone } from '../../design-system'
 import type { Resource } from './api/useResource'
 import type { AppointmentStatus, Occurrence } from './api/types'
 import { accentFor } from './accent'
@@ -144,14 +144,14 @@ export function formatLongDay(instant: string, timeZone: string): string {
   return new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(instant))
 }
 
-/** `Nov 3, 2026` for record dates (calendar dates, no zone shift). */
+/** `11/03/2026` for record dates (calendar dates, no zone shift), as everywhere in the app. */
 export function formatShortDate(isoDate: string): string {
-  const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number) as [number, number, number]
-  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(Date.UTC(y, m - 1, d)))
+  return formatDate(isoDate.slice(0, 10))
 }
 
+/** `11/03/2026`: the calendar date of an instant in the given zone. */
 export function formatInstantShort(instant: string, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-US', { timeZone, month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(instant))
+  return formatDate(todayIn(timeZone, new Date(instant)))
 }
 
 const APPOINTMENT_STATUS: Record<AppointmentStatus, { label: string; tone: BadgeTone }> = {

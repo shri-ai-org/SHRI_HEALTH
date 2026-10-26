@@ -101,9 +101,9 @@ const FACILITIES: Facility[] = [
 ]
 
 const PROVIDERS: Provider[] = [
-  { id: uid(201), displayName: 'Dr. Alvina Hettinger, MD', facilityIds: [uid(101)] },
-  { id: uid(202), displayName: 'Dr. Marcus Okuneva, DO', facilityIds: [uid(101), uid(102)] },
-  { id: uid(203), displayName: 'Jada Rempel, NP', facilityIds: [uid(102)] },
+  { id: uid(201), displayName: 'Dr. Alvina56 Hettinger94, MD', facilityIds: [uid(101)] },
+  { id: uid(202), displayName: 'Dr. Marcus31 Okuneva48, DO', facilityIds: [uid(101), uid(102)] },
+  { id: uid(203), displayName: 'Jada707 Rempel33, NP', facilityIds: [uid(102)] },
 ]
 
 const CATEGORIES: AppointmentCategory[] = [
@@ -138,9 +138,9 @@ function seed() {
   const [office, established, , video] = CATEGORIES as [AppointmentCategory, AppointmentCategory, AppointmentCategory, AppointmentCategory]
 
   const demographics: Demographics = {
-    firstName: 'Ramona',
+    firstName: 'Ramona980',
     middleName: 'Jean',
-    lastName: 'Kuhlman',
+    lastName: 'Kuhlman72',
     address: '48 Placeholder St',
     city: 'Springfield',
     state: 'IL',
@@ -154,7 +154,7 @@ function seed() {
     language: 'English',
     ethnicity: 'Not Hispanic or Latino',
     employer: { name: 'Example Manufacturing', address: '700 Sample Pkwy', city: 'Springfield', state: 'IL', postalCode: '62703', country: 'United States' },
-    emergencyContact: { name: 'Lucas Kuhlman', relationship: 'Spouse', phone: '+12175550177' },
+    emergencyContact: { name: 'Lucas215 Kuhlman72', relationship: 'Spouse', phone: '+12175550177' },
   }
 
   const vitals: Vital[] = [-400, -310, -220, -120, -34].map((d, i) => ({
@@ -272,9 +272,9 @@ function seed() {
   ]
 
   const immunizations: Immunization[] = [
-    { id: uid(1101), vaccine: 'Influenza, seasonal, injectable', administeredDate: dateOffset(-34), administeredBy: 'Jada Rempel, NP', amount: '0.5 mL', route: 'Intramuscular', site: 'Left deltoid', expirationDate: dateOffset(200), manufacturer: 'Example Biologics', completionStatus: 'completed' },
+    { id: uid(1101), vaccine: 'Influenza, seasonal, injectable', administeredDate: dateOffset(-34), administeredBy: 'Jada707 Rempel33, NP', amount: '0.5 mL', route: 'Intramuscular', site: 'Left deltoid', expirationDate: dateOffset(200), manufacturer: 'Example Biologics', completionStatus: 'completed' },
     { id: uid(1102), vaccine: 'COVID-19, updated', administeredDate: dateOffset(-60), administeredBy: 'Sample Pharmacy #12', amount: '0.3 mL', route: 'Intramuscular', site: 'Right deltoid', manufacturer: 'Example Biologics', completionStatus: 'completed' },
-    { id: uid(1103), vaccine: 'Tdap', administeredDate: dateOffset(-1800), administeredBy: 'Dr. Alvina Hettinger, MD', amount: '0.5 mL', route: 'Intramuscular', site: 'Left deltoid', manufacturer: 'Example Biologics', completionStatus: 'completed' },
+    { id: uid(1103), vaccine: 'Tdap', administeredDate: dateOffset(-1800), administeredBy: 'Dr. Alvina56 Hettinger94, MD', amount: '0.5 mL', route: 'Intramuscular', site: 'Left deltoid', manufacturer: 'Example Biologics', completionStatus: 'completed' },
   ]
 
   const prescriptions: Prescription[] = [
@@ -284,7 +284,7 @@ function seed() {
     { id: uid(1204), drug: 'Lorazepam 0.5 mg tablet', provider: ref(drO), refillsRemaining: 0, lastRefilledDate: dateOffset(-200), requestStatus: 'none', note: 'Controlled medicine: call the clinic for refills.', refillable: false },
   ]
 
-  const me = { id: PATIENT_ID, displayName: 'Ramona Kuhlman' }
+  const me = { id: PATIENT_ID, displayName: 'Ramona980 Kuhlman72' }
   const nurses = { id: uid(1301), displayName: 'Care team nurses' }
   const messages: Message[] = [
     { id: uid(1401), folder: 'inbox', subject: 'Non Urgent Medical Question', from: ref(drH), to: me, sentAt: facilityInstant(-31, 16, 12), read: false, body: 'Hi Ramona,\n\nYour lab results are in. Your potassium was slightly high; please avoid salt substitutes and we will recheck it at your follow-up.\n\nDr. Hettinger' },
@@ -371,11 +371,17 @@ function seed() {
 export interface MockOptions {
   /** Milliseconds per call; 0 in tests. */
   latencyMs?: number
+  /** Whether the synthetic patient's account is already linked to the chart. False shows activation. */
+  activated?: boolean
 }
 
-export function createMockPortalApi({ latencyMs = 350 }: MockOptions = {}): PortalApi {
+/** The one invitation code the mock accepts (synthetic). */
+export const MOCK_INVITATION_CODE = 'TEST-CODE-1234'
+
+export function createMockPortalApi({ latencyMs = 350, activated: startActivated = true }: MockOptions = {}): PortalApi {
   const db = seed()
   let signedIn = false
+  let activated = startActivated
   let signature: Signature | null = null
   const refillRequests: RefillRequest[] = []
   let nextId = 5000
@@ -410,8 +416,8 @@ export function createMockPortalApi({ latencyMs = 350 }: MockOptions = {}): Port
 
   function session() {
     return {
-      patientId: PATIENT_ID,
       name: { given: [db.demographics.firstName], family: db.demographics.lastName },
+      activated,
       idleExpiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
       expiresAt: new Date(Date.now() + 12 * 3_600_000).toISOString(),
     }
@@ -478,11 +484,9 @@ export function createMockPortalApi({ latencyMs = 350 }: MockOptions = {}): Port
   }
 
   const api: PortalApi = {
-    signIn: (username, password) =>
+    // Mock rule: "Sign in" stands for a completed realm sign-in, with no password in this code.
+    signIn: () =>
       wait(() => {
-        if (!username.trim() || !password) throw problem(422, 'validation-failed', 'Validation failed')
-        // Mock rule: any username works; the password "wrong-password" shows the failed sign-in state.
-        if (password === 'wrong-password') throw problem(401, 'unauthenticated', 'Unauthenticated')
         signedIn = true
         return session()
       }),
@@ -491,24 +495,17 @@ export function createMockPortalApi({ latencyMs = 350 }: MockOptions = {}): Port
         signedIn = false
       }),
     refreshSession: () => authed(session),
-    requestUsernameReminder: () => wait(() => undefined),
-    requestPasswordReset: () => wait(() => undefined),
-    getReferenceLists: () => wait(() => structuredClone(LISTS)),
-    register: () => wait(() => undefined),
-    downloadRegistrationSummary: (input) =>
-      wait(() => {
-        const b = input.basic
-        const text = [
-          'REGISTRATION SUMMARY (synthetic sample)',
-          `Name: ${b.firstName} ${b.middleName} ${b.lastName}`,
-          `Date of birth: ${b.birthDate}`,
-          `Address: ${b.address}, ${b.city}, ${b.state} ${b.postalCode}`,
-          `Email: ${b.email}`,
-          '',
-          'Your account opens after the practice approves your registration.',
-        ].join('\n')
-        return new Blob([text], { type: 'text/plain' })
+    activateAccount: (invitationCode) =>
+      authed(() => {
+        // Mock rule: one synthetic code works, in any case and with or without dashes.
+        if (invitationCode.replace(/[\s-]/g, '').toUpperCase() !== MOCK_INVITATION_CODE.replace(/-/g, '')) {
+          throw { ...problem(422, 'validation-failed', 'Validation failed'), errors: [{ in: 'body', pointer: '/invitationCode', code: 'not-allowed-value' }] }
+        }
+        activated = true
+        return session()
       }),
+    accountSecurityUrl: 'https://patients.keycloak.invalid/realms/patients/account',
+    getReferenceLists: () => wait(() => structuredClone(LISTS)),
 
     getAlerts: () =>
       authed(() => {
@@ -524,12 +521,6 @@ export function createMockPortalApi({ latencyMs = 350 }: MockOptions = {}): Port
       authed(() => {
         db.demographics = input
         return db.demographics
-      }),
-    changePassword: ({ currentPassword }) =>
-      authed(() => {
-        if (currentPassword === 'wrong-password') {
-          throw { ...problem(422, 'validation-failed', 'Validation failed'), errors: [{ in: 'body', pointer: '/currentPassword', code: 'incorrect' }] }
-        }
       }),
     getSignature: () => authed(() => signature),
     saveSignature: (image) =>

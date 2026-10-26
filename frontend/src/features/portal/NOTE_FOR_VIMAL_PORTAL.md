@@ -4,18 +4,17 @@ From: Minalini (drafted with Claude Code) · 2026-10-24 · for guide 04 Step 8 (
 
 The React patient portal (`frontend/src/features/portal/`) follows the old Shri portal's screens and runs on a mock (`api/mockPortalApi.ts`, synthetic data only). The `/portal` module is not in the contract yet (P1, D19). Below is what the screens call, so you can draft `contracts/openapi/modules/portal.yaml`. Shapes are in `api/types.ts` and follow API_STANDARDS (camelCase, `…At` instants in UTC, Money as decimal strings). The screens depend only on the `PortalApi` interface in `api/portalApi.ts`, so switching to the generated client changes nothing else.
 
+**Superseded (2026-10-26):** the decided paths are in ENDPOINT_INVENTORY "Later batches: patient portal" (#66, D83–D88). Sign-in, recovery and registration rows below are replaced by the patient realm and invitation-code enrolment (D85), and the screens now follow that.
+
 ## Endpoints (proposed paths under `/api/v1/portal`)
 
 | Screen | Call | Notes |
 |---|---|---|
-| Sign-in, session | `POST /portal/auth/login`, `POST /auth/logout`, `GET /auth/session`, `POST /auth/refresh` | Patient identity is separate from staff: Thulasi. Same cookie session and idle rules (Q20). |
-| Forgot username | `POST /portal/auth/username-reminder` `{ firstName, lastName, birthDate, email, postalCode, phone }` | Always `202` (no account enumeration). Rate-limited. |
-| Forgot password | `POST /portal/auth/password-reset` `{ email }` | Always `202`. |
-| Registration (11 pages) | `GET /portal/reference-lists`, `POST /portal/registrations`, `POST /portal/registrations/summary` (file) | The practice approves before the account opens. No SSN (D43). Medical, family, social and surgical history arrive as patient-reported data for clinician review. |
+| Sign-in, session | `GET /portal/auth/login` (to the patient realm), `POST /portal/auth/logout`, `GET /portal/auth/session`, `POST /portal/auth/refresh` | Patient realm with multi-factor (D85, ADR #65). Same cookie session and idle rules (Q20). |
+| Activate your account | `POST /portal/enrolments` `{ invitationCode }` | Once, after the first realm sign-in (D85). A wrong, used or expired code gets one field error on `/invitationCode`. |
 | Alerts and Reminders | `GET /portal/alerts` | Today's and the next appointments. |
 | Demographics | `GET /portal/demographics`, `PUT /portal/demographics` (`If-Match`) | Includes employer and emergency contact. Do name changes need front-desk approval? |
 | E-Signature | `GET /portal/signature`, `PUT /portal/signature` (PNG) | Stored through Anand's file service. |
-| Change password | `POST /portal/me/password` `{ email, currentPassword, newPassword }` | Field error `pointer: /currentPassword`, code `incorrect`. |
 | Appointments | `GET /portal/appointments`, `GET /portal/appointments/{appointmentId}`, `POST /portal/appointments/{appointmentId}/cancel` | No DELETE (D14). |
 | Schedule / reschedule | `GET /portal/facilities`, `GET /portal/appointment-categories`, `GET /portal/providers?facilityId=`, `POST /portal/slots/search` `{ date, facilityId, providerId, durationMinutes }`, `POST /portal/appointments`, `POST /portal/appointments/{appointmentId}/reschedule` | The patient picks a 15/30/45/60-minute duration and a reminder channel, as in the old portal. `409 booking-conflict` when the slot is taken. `Idempotency-Key` on writes. |
 | Visit summary | `GET /portal/visit-summaries/{visitSummaryId}` | After the note is signed and released. |

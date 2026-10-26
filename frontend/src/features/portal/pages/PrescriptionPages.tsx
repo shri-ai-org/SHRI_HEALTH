@@ -215,7 +215,7 @@ export function PatientEducationPage() {
     setErrors(found)
     const r = RESOURCES.find((x) => x.id === resource)
     if (found.length || !r) return
-    window.open(r.url(q.trim()), '_blank', 'noopener')
+    window.open(r.url(q.trim()), '_blank', 'noopener,noreferrer')
   }
 
   return (

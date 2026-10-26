@@ -275,7 +275,7 @@ export function VideoConsultPage() {
     setJoining(a.id)
     try {
       const { joinUrl } = await api.joinVideoVisit(a.id)
-      window.open(joinUrl, '_blank', 'noopener')
+      window.open(joinUrl, '_blank', 'noopener,noreferrer')
     } catch (err) {
       toast.show(problemCopy(toProblem(err)).message, 'critical')
     } finally {

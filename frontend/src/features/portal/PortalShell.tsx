@@ -6,12 +6,13 @@ import { useResource } from './api/useResource'
 import { accentFor } from './accent'
 import { Link, useRouter } from './router'
 import { useSession } from './session'
+import { SourceCodeLink } from './sourceCode'
 
 /*
  * The old portal's menus, with text labels (the old desktop menu was icons with tooltips only):
  * Test Results, a Health Summary dropdown, Appointments, Messages, Prescriptions, Billing, Video
- * Consult and Patient Education; the name menu has Demographics, E-Signature, Change Password and
- * Log out. On phones, a hamburger opens the old side panel with Medical Records and Messages groups.
+ * Consult and Patient Education; the name menu has Demographics, E-Signature, Password and security
+ * (the patient realm's account page, D85) and Log out. On phones, a hamburger opens the old side panel with Medical Records and Messages groups.
  */
 
 const HEALTH_SUMMARY = [
@@ -27,7 +28,6 @@ const HEALTH_SUMMARY = [
 const ACCOUNT = [
   { to: '/demographics', label: 'Demographics' },
   { to: '/e-signature', label: 'E-Signature' },
-  { to: '/change-password', label: 'Change Password' },
 ]
 
 const TOP = [
@@ -145,6 +145,7 @@ export function PortalShell({ children }: { children: ReactNode }) {
                 {ACCOUNT.map((a) => (
                   <MenuLink key={a.to} to={a.to} label={a.label} current={under(path, a.to)} />
                 ))}
+                <SecurityLink href={api.accountSecurityUrl} />
                 <button type="button" onClick={() => signOut('signed-out')} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm text-ink hover:bg-surface-2">
                   <LogOut aria-hidden="true" size={16} /> Log out
                 </button>
@@ -162,7 +163,8 @@ export function PortalShell({ children }: { children: ReactNode }) {
 
       <footer className="border-t-4 border-(--accent) bg-surface-1">
         <div className="mx-auto max-w-7xl px-4 py-4 text-xs text-ink-subtle">
-          <strong className="text-danger">For a medical emergency, call 911.</strong> Messages are not for urgent needs.
+          <strong className="text-danger">For a medical emergency, call 911.</strong> Messages are not for urgent needs.{' '}
+          <SourceCodeLink className="text-ink-muted" />
         </div>
       </footer>
     </div>
@@ -191,6 +193,15 @@ function CountBadge({ count }: { count: number }) {
       {count}
       <span className="sr-only"> unread</span>
     </span>
+  )
+}
+
+/** Password, multi-factor and recovery live in the patient realm's own account page (D85). */
+function SecurityLink({ href }: { href: string }) {
+  return (
+    <a href={href} className="flex min-h-11 items-center rounded-lg px-3 text-sm text-ink hover:bg-surface-2">
+      Password and security
+    </a>
   )
 }
 
@@ -242,6 +253,7 @@ function DropMenu({ id, onClose, align, children }: { id: string; onClose: () =>
 
 /** The old mobile side panel: Medical Records and Messages expand; Messages has Inbox, Sent, Trash. */
 function MobileNav({ path, unread, onClose, onSignOut }: { path: string; unread: number; onClose: () => void; onSignOut: () => void }) {
+  const api = usePortalApi()
   const ref = useDismiss(onClose)
   const [group, setGroup] = useState<'records' | 'messages' | null>(under(path, '/messages') ? 'messages' : null)
   const records = [{ to: '/test-results', label: 'Test Results' }, ...HEALTH_SUMMARY]
@@ -297,6 +309,7 @@ function MobileNav({ path, unread, onClose, onSignOut }: { path: string; unread:
             {ACCOUNT.map((a) => (
               <MenuLink key={a.to} to={a.to} label={a.label} current={under(path, a.to)} />
             ))}
+            <SecurityLink href={api.accountSecurityUrl} />
             <button type="button" onClick={onSignOut} className={cn(row, 'text-ink hover:bg-surface-2')}>
               <LogOut aria-hidden="true" size={20} /> Log out
             </button>

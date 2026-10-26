@@ -28,8 +28,9 @@ export interface Provider extends Ref {
 }
 
 export interface PortalSession {
-  patientId: string
   name: HumanName
+  /** False until an invitation code links this realm account to a chart (D85); only activation is open until then. */
+  activated: boolean
   /** Server-issued; the idle warning is timed from these (SECURITY_MODEL §2.1). */
   idleExpiresAt: string
   expiresAt: string
@@ -338,42 +339,4 @@ export interface AppointmentAlert {
   startAt: string
   timeZone: string
   today: boolean
-}
-
-/** The old registration wizard, minus SSN (D43). */
-export interface RegistrationCreate {
-  basic: {
-    firstName: string
-    middleName: string
-    lastName: string
-    birthDate: string
-    phone: string
-    address: string
-    city: string
-    state: string
-    country: string
-    postalCode: string
-    maritalStatus: string
-    sex: 'female' | 'male'
-    email: string
-    emergencyContact: { firstName: string; lastName: string; phone: string; relationship: string; email: string }
-  }
-  choices: {
-    providerId: string
-    allowPortal: boolean
-    allowSms: boolean
-    allowEmail: boolean
-    language: string
-    responsibleParty: 'self' | 'emergency-contact' | 'other'
-    paymentMethod: 'self-pay' | 'insurance'
-    insurance?: { company: string; plan: string; policyNumber: string; groupNumber: string; city: string; state: string; country: string; postalCode: string; relationship: string }
-  }
-  pharmacy: { name: string; city: string; state: string; country: string; postalCode: string }
-  medicationsAndAllergies: { takingMedications: boolean; medications: string; hasAllergies: boolean; allergies: string }
-  pastMedicalHistory: string[]
-  familyHistory: { conditions: Record<string, string[]>; other: string }
-  socialHistory: { tobacco: string; alcohol: string; drugs: string; cardiovascular: string[]; other: string }
-  surgicalHistory: { surgeries: Record<string, string>; other: string }
-  hospitalizations: Array<{ date: string; notes: string }>
-  financialPolicyAccepted: boolean
 }

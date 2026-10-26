@@ -15,7 +15,7 @@ const AREAS: Array<[prefixes: string[], accent: Accent]> = [
   [['/billing'], { className: 'accent-billing', icon: CreditCard }],
   [['/video-consult'], { className: 'accent-video', icon: Video }],
   [['/patient-education'], { className: 'accent-education', icon: GraduationCap }],
-  [['/demographics', '/e-signature', '/change-password'], { className: 'accent-account', icon: UserRound }],
+  [['/demographics', '/e-signature'], { className: 'accent-account', icon: UserRound }],
 ]
 
 const BRAND: Accent = { className: 'accent-brand', icon: House }
