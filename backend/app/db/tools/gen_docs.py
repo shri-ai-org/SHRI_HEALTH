@@ -13,6 +13,11 @@ Contract names come from two sources and are never guessed:
   operations (request bodies and 2xx response bodies, top level, list envelopes unwrapped).
 A column's contract name is its camelCase form (D20) when one of those properties has that name.
 
+The "Contract to column mapping" section lists, for each resource, every contract property and
+where it is stored: a same-named column, or the hand-written override in
+docs/contract_mapping.yaml (for pairs a generator cannot infer, and computed properties), or
+"not mapped yet". The generator stops if the override names anything that does not exist.
+
 The output is deterministic (everything sorted, or in declaration order), so regenerating it never
 produces a noisy diff.
 
@@ -36,6 +41,7 @@ REPO = pathlib.Path(__file__).resolve().parents[4]          # repository root
 OWNERSHIP = REPO / "contracts/docs/DATA_OWNERSHIP.md"
 CONTRACT = REPO / "contracts/openapi/dist/shri-health.bundled.yaml"
 OUTPUT = ROOT / "docs/data_dictionary.md"
+OVERRIDES = ROOT / "docs/contract_mapping.yaml"
 METHODS = ("get", "post", "put", "patch", "delete")
 ENVELOPE = {"items", "nextCursor"}
 
@@ -114,7 +120,10 @@ def ownership() -> list[Resource]:
                     out.append(Resource(section, cells[0], paths, (),
                                         "no Tables column in this section"))
                 else:
-                    named = tuple(t for t in re.findall(r"`([a-z_]+)`", cells[-1]) if t in MAPPERS)
+                    # Only the first part of the cell: after a ";" come cross-references
+                    # ("payers in Ad (`payer`, `practice_payer`)"), not this resource's tables.
+                    own = cells[-1].split(";", 1)[0]
+                    named = tuple(t for t in re.findall(r"`([a-z_]+)`", own) if t in MAPPERS)
                     pending = "pending schema lock" in cells[-1]
                     out.append(Resource(section, cells[0], paths, () if pending else named,
                                         cells[-1]))
@@ -174,6 +183,74 @@ class Contract:
                     if media.endswith("json") and "problem" not in media:
                         names |= self._names(content.get("schema"))
         return names
+
+
+def overrides(resources: list[Resource], contract: Contract) -> dict[str, dict[str, Any]]:
+    """docs/contract_mapping.yaml, checked: every resource, property, table and column it
+    names must exist, so the file cannot drift from the schema or the contract."""
+    data = yaml.safe_load(OVERRIDES.read_text()) or {}
+    by_name = {r.name: r for r in resources}
+    for rname, props in data.items():
+        if rname not in by_name:
+            raise ValueError(f"{OVERRIDES.name}: {rname!r} is not a DATA_OWNERSHIP.md resource")
+        known = _properties(by_name[rname], contract)
+        for prop, entry in props.items():
+            if prop.split("[]", 1)[0] not in known:
+                raise ValueError(f"{OVERRIDES.name}: {rname}: no contract property {prop!r}")
+            if not entry.get("columns") and not entry.get("computed"):
+                raise ValueError(f"{OVERRIDES.name}: {rname}.{prop} needs columns or computed")
+            for ref in entry.get("columns", []):
+                table, _, column = ref.partition(".")
+                if table not in MAPPERS or column not in MAPPERS[table].__table__.c:
+                    raise ValueError(f"{OVERRIDES.name}: {rname}.{prop}: no column {ref}")
+    return data
+
+
+def _properties(resource: Resource, contract: Contract) -> set[str]:
+    found: set[str] = set()
+    for path in resource.paths:
+        found |= contract.properties(path) or set()
+    return found
+
+
+def _mapping_section(resources: list[Resource], contract: Contract) -> list[str]:
+    table_of = overrides(resources, contract)
+    out = ["## Contract to column mapping", "",
+           "For each resource: every contract property and where it is stored (D20). "
+           "**same name**: the column of the resource's own (first) table with the property's "
+           "name in snake_case. **mapped** and "
+           "**computed**: from `docs/contract_mapping.yaml`, hand-written. **not mapped yet**: "
+           "the module's repository has to decide; add it to the override file.", ""]
+    for r in resources:
+        extra = table_of.get(r.name, {})
+        if not r.tables and not extra:
+            continue
+        props = _properties(r, contract)
+        out += [f"### {_cell(r.name)}", ""]
+        if r.paths:
+            out += ["Paths: " + ", ".join(f"`{p}`" for p in r.paths), ""]
+        out += ["| Property | Stored in | How |", "|---|---|---|"]
+        for prop in sorted(props) + sorted(p for p in extra if p not in props):
+            entry = extra.get(prop)
+            if entry is not None:
+                cols = ", ".join(f"`{c}`" for c in entry.get("columns", [])) or "—"
+                how = (f"computed: {entry['computed']}" if entry.get("computed")
+                       else "mapped" + (f": {entry['note']}" if entry.get("note") else ""))
+                if entry.get("computed") and entry.get("note"):
+                    how += f"; {entry['note']}"
+                out.append(f"| `{prop}` | {cols} | {_cell(how)} |")
+                continue
+            # The resource's own (first) table only: a same-named column of a child table is
+            # often something else (coverage_payor.patient_id is a payor, not the patient).
+            root = r.tables[0] if r.tables else None
+            same = [f"{root}.{c.name}" for c in MAPPERS[root].__table__.columns
+                    if camel(c.name) == prop] if root else []
+            if same:
+                out.append(f"| `{prop}` | `{same[0]}` | same name |")
+            else:
+                out.append(f"| `{prop}` | — | not mapped yet |")
+        out.append("")
+    return out
 
 
 # --------------------------------------------------------------------------- rendering
@@ -281,6 +358,7 @@ def data_dictionary() -> str:
     for name, cls in ordered:
         out += _table_section(name, cls, children, resources, contract)
 
+    out += _mapping_section(resources, contract)
     out += ["## Contract resources not yet mapped to tables", "",
             "DATA_OWNERSHIP.md does not name tables for these yet. They are not guessed here.", ""]
     section = None

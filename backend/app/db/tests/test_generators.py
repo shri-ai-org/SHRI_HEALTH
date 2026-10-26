@@ -134,3 +134,41 @@ def test_data_dictionary_is_deterministic_and_covers_every_table() -> None:
     assert first == second
     for name, cls in MAPPERS.items():
         assert f"\n## `{cls.__table__.schema}.{name}`\n" in first, name
+
+
+def test_tables_cell_cross_references_are_not_the_resources_tables() -> None:
+    """Coverage's Tables cell ends "payers in Ad (`payer`, `practice_payer`)": those belong to
+    /payers and /practice-payers, not to the patient's Coverage (Vimal, #45)."""
+    from app.db.tools import gen_docs
+
+    coverage = next(r for r in gen_docs.ownership() if r.name == "Coverage (insurance)")
+    assert coverage.tables[0] == "coverage"
+    assert not {"payer", "practice_payer"} & set(coverage.tables)
+
+
+def test_contract_mapping_overrides_name_real_things() -> None:
+    from app.db.tools import gen_docs
+
+    resources, contract = gen_docs.ownership(), gen_docs.Contract()
+    mapped = gen_docs.overrides(resources, contract)       # raises on anything unknown
+    assert mapped["Coverage (insurance)"]["memberId"]["columns"][0] == "identifier.value"
+    section = "\n".join(gen_docs._mapping_section(resources, contract))
+    assert "| `undoneAt` | `patient_merge.unmerged_at` | mapped |" in section
+    assert "| `visitStatus` |" in section and "computed:" in section
+
+
+@pytest.mark.parametrize(("entry", "complaint"), [
+    ('"Consents":\n  signedFormFileId:\n    columns: [consent.no_such_column]\n', "no column"),
+    ('"Consents":\n  noSuchProperty:\n    columns: [consent.id]\n', "no contract property"),
+    ('"No such resource":\n  id:\n    columns: [consent.id]\n', "not a DATA_OWNERSHIP"),
+    ('"Consents":\n  signedFormFileId: {note: nothing stored}\n', "needs columns or computed"),
+])
+def test_contract_mapping_overrides_cannot_drift(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                 entry: str, complaint: str) -> None:
+    from app.db.tools import gen_docs
+
+    override = tmp_path / "contract_mapping.yaml"
+    override.write_text(entry)
+    monkeypatch.setattr(gen_docs, "OVERRIDES", override)
+    with pytest.raises(ValueError, match=complaint):
+        gen_docs.overrides(gen_docs.ownership(), gen_docs.Contract())
