@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { ApiError, newIdempotencyKey } from '../../api/client'
 import { checkInAppointment, undoCheckIn } from '../../api/generated/endpoints/scheduling/scheduling'
-import type { ScheduledAppointment } from './reference'
+import type { ZonedAppointment } from './reference'
 import { Button, Field, formatTime, isOverLimit, Modal, ProblemAlert, Textarea, useToast, type Problem } from '../../design-system'
 
 const REASON_LIMIT = 500
@@ -11,7 +11,7 @@ const REASON_LIMIT = 500
  * real-time eligibility check (D15). Same day only. The Idempotency-Key is required and kept for
  * retries of this dialog, so a repeat replays the first result instead of checking in twice.
  */
-export function CheckInDialog({ appointment, onClose, onDone }: { appointment: ScheduledAppointment; onClose: () => void; onDone: () => void }) {
+export function CheckInDialog({ appointment, onClose, onDone, onStale }: { appointment: ZonedAppointment; onClose: () => void; onDone: () => void; onStale: () => void }) {
   const toast = useToast()
   const [selfPay, setSelfPay] = useState(false)
   const [problem, setProblem] = useState<Problem | null>(null)
@@ -31,6 +31,8 @@ export function CheckInDialog({ appointment, onClose, onDone }: { appointment: S
     } catch (error) {
       if (!(error instanceof ApiError)) throw error
       setProblem(error.problem)
+      // Someone else changed it: read the list again so its buttons are current.
+      if (error.status === 409) onStale()
     } finally {
       setBusy(false)
     }
@@ -78,7 +80,7 @@ export function CheckInDialog({ appointment, onClose, onDone }: { appointment: S
  * Reverses a check-in made by mistake (D55): only before rooming and before any clinical data. The
  * encounter becomes entered-in-error with the reason; nothing is deleted.
  */
-export function UndoCheckInDialog({ appointment, onClose, onDone }: { appointment: ScheduledAppointment; onClose: () => void; onDone: () => void }) {
+export function UndoCheckInDialog({ appointment, onClose, onDone, onStale }: { appointment: ZonedAppointment; onClose: () => void; onDone: () => void; onStale: () => void }) {
   const toast = useToast()
   const reasonRef = useRef<HTMLTextAreaElement>(null)
   const [reason, setReason] = useState('')
@@ -102,6 +104,7 @@ export function UndoCheckInDialog({ appointment, onClose, onDone }: { appointmen
     } catch (e) {
       if (!(e instanceof ApiError)) throw e
       setProblem(e.problem)
+      if (e.status === 409) onStale()
     } finally {
       setBusy(false)
     }

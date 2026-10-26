@@ -36,7 +36,7 @@ const patient = {
 /** The patient page also lists appointments and insurance; these tests don't look at them. */
 const noCoverages = {
   [`GET /api/v1/patients/${patient.id}/coverages?limit=100`]: [() => json(200, { items: [] })],
-  [`GET /api/v1/appointments?patientId=${patient.id}&limit=50`]: [() => json(200, { items: [] })],
+  [`GET /api/v1/appointments?patientId=${patient.id}&limit=100`]: [() => json(200, { items: [] })],
   'GET /api/v1/booking/facilities?limit=100': [() => json(200, { items: [] })],
   'GET /api/v1/booking/appointment-types?limit=100': [() => json(200, { items: [] })],
 }

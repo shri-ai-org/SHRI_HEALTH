@@ -199,7 +199,7 @@ describe('PatientAppointmentsPanel', () => {
     const user = userEvent.setup()
     const server = serve({
       ...REFERENCE,
-      [`GET /api/v1/appointments?patientId=${patientId}&limit=50`]: [() => json(200, { items: [] }), () => json(200, { items: [appt(6, { startAt: tomorrowAt })] })],
+      [`GET /api/v1/appointments?patientId=${patientId}&limit=100`]: [() => json(200, { items: [] }), () => json(200, { items: [appt(6, { startAt: tomorrowAt })] })],
       [SLOTS]: [() => json(200, { items: [slot] })],
       'POST /api/v1/appointments': [() => json(201, { ...appt(6, { startAt: tomorrowAt }), durationMinutes: 20, timeZone: TZ, createdAt: later, updatedAt: later })],
     })
@@ -220,7 +220,7 @@ describe('PatientAppointmentsPanel', () => {
     const user = userEvent.setup()
     const server = serve({
       ...REFERENCE,
-      [`GET /api/v1/appointments?patientId=${patientId}&limit=50`]: [() => json(200, { items: [] })],
+      [`GET /api/v1/appointments?patientId=${patientId}&limit=100`]: [() => json(200, { items: [] })],
       [SLOTS]: [() => json(200, { items: [slot] }), () => json(200, { items: [] })],
       'POST /api/v1/appointments': [() => problem(409, 'booking-conflict')],
     })
@@ -231,5 +231,91 @@ describe('PatientAppointmentsPanel', () => {
     expect(await within(dialog).findByText('Time no longer available')).toBeInTheDocument()
     expect(await within(dialog).findByText('No free times that day')).toBeInTheDocument()
     expect(server.calls().filter((c) => c === SLOTS)).toHaveLength(2)
+  })
+
+  it('replaces the booking key when the reason is edited after a refusal', async () => {
+    const user = userEvent.setup()
+    const server = serve({
+      ...REFERENCE,
+      [`GET /api/v1/appointments?patientId=${patientId}&limit=100`]: [() => json(200, { items: [] })],
+      [SLOTS]: [() => json(200, { items: [slot] })],
+      'POST /api/v1/appointments': [() => problem(422, 'validation-failed')],
+    })
+    renderAt(<PatientAppointmentsPanel patientId={patientId} patientName="Ana Testperson" />)
+    await screen.findByText('No appointments')
+    const dialog = await chooseSlot(user)
+    await user.click(within(dialog).getByRole('button', { name: 'Book appointment' }))
+    await within(dialog).findByText('Check the highlighted fields')
+    await user.type(within(dialog).getByLabelText(/Reason for visit/), 'New reason')
+    await user.click(within(dialog).getByRole('button', { name: 'Book appointment' }))
+    await vi.waitFor(() => expect(server.bodies('POST /api/v1/appointments')).toHaveLength(2))
+    const [first, second] = server.bodies('POST /api/v1/appointments')
+    expect(second?.headers.get('Idempotency-Key')).not.toBe(first?.headers.get('Idempotency-Key'))
+  })
+})
+
+describe('review on #68 (Vimal)', () => {
+  it('shows facility time as missing, with no actions, when the booking lists are refused', async () => {
+    serve({
+      'GET /api/v1/booking/facilities?limit=100': [() => problem(403, 'permission-denied', { requestId: 'r-adm' })],
+      'GET /api/v1/booking/appointment-types?limit=100': [() => problem(403, 'permission-denied')],
+      [`GET /api/v1/appointments?patientId=${patientId}&limit=100`]: [() => json(200, { items: [appt(1)] })],
+    })
+    renderAt(<PatientAppointmentsPanel patientId={patientId} patientName="Ana Testperson" />)
+    expect(await screen.findByText('Facility times unavailable')).toBeInTheDocument()
+    const row = within(await screen.findByRole('table', { name: 'Appointments' })).getAllByRole('row')[1]!
+    expect(row).toHaveTextContent('time zone missing')
+    expect(row).toHaveTextContent('Facility time unknown')
+    expect(within(row).queryByRole('button')).toBeNull()
+  })
+
+  it('reads every page of the day, in the zone the list gives', async () => {
+    serve({
+      ...REFERENCE,
+      [DAY]: [() => json(200, { items: [appt(1)], nextCursor: 'p2', timeZone: TZ })],
+      [`${DAY}&cursor=p2`]: [() => json(200, { items: [appt(2)] })],
+    })
+    renderAt(<SchedulePage />)
+    expect(await screen.findByRole('table', { name: /: 2 appointments$/ })).toBeInTheDocument()
+  })
+
+  it('reloads the day after a 409 on check-in, so its buttons are current', async () => {
+    const user = userEvent.setup()
+    const server = serve({
+      ...REFERENCE,
+      [DAY]: [() => json(200, { items: [appt(1)] }), () => json(200, { items: [appt(1, { status: 'checked-in', visitStatus: 'checked-in' })] })],
+      [`POST /api/v1/appointments/${appt(1).id}/check-in`]: [() => problem(409, 'invalid-state-transition')],
+    })
+    renderAt(<SchedulePage />)
+    await user.click(await screen.findByRole('button', { name: 'Check in Testperson1, Ana' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Check in' }))
+    await vi.waitFor(() => expect(server.calls().filter((c) => c === DAY)).toHaveLength(2))
+    expect(await screen.findByRole('button', { name: /Undo check-in of/ })).toBeInTheDocument()
+  })
+
+  it('sends the new type’s length when a reschedule changes the type', async () => {
+    const user = userEvent.setup()
+    const longType = { id: '00000000-0000-4000-8000-0000000003a2', code: 'NP', name: 'New patient', defaultDurationMinutes: 40 }
+    const slotAt = new Date(now.getTime() + 3 * 60 * 60_000).toISOString()
+    const MOVE = `POST /api/v1/appointments/${appt(1).id}/reschedule`
+    const server = serve({
+      ...REFERENCE,
+      'GET /api/v1/booking/appointment-types?limit=100': [() => json(200, { items: [type, longType] })],
+      [DAY]: [() => json(200, { items: [appt(1)] })],
+      [`GET /api/v1/slots?date=${today}&facilityId=${facility.id}&appointmentTypeId=${type.id}&providerId=${provider.id}&limit=100`]: [() => json(200, { items: [] })],
+      [`GET /api/v1/slots?date=${today}&facilityId=${facility.id}&appointmentTypeId=${longType.id}&providerId=${provider.id}&limit=100`]: [
+        () => json(200, { items: [{ startAt: slotAt, endAt: slotAt, providerId: provider.id, facilityId: facility.id, overbook: false }] }),
+      ],
+      [MOVE]: [() => json(201, { ...appt(5, { startAt: slotAt }), durationMinutes: 40, timeZone: TZ, createdAt: later, updatedAt: later })],
+    })
+    renderAt(<SchedulePage />)
+    await user.click(await screen.findByRole('button', { name: 'Reschedule Testperson1, Ana' }))
+    const dialog = screen.getByRole('dialog', { name: 'Reschedule Testperson1, Ana' })
+    await user.selectOptions(await within(dialog).findByLabelText(/^Appointment type/), longType.id)
+    await user.click(await within(dialog).findByRole('radio'))
+    await user.selectOptions(within(dialog).getByLabelText(/^Reason/), 'pat')
+    await user.click(within(dialog).getByRole('button', { name: 'Reschedule' }))
+    expect(await screen.findByText(/^Moved to /)).toBeInTheDocument()
+    expect(server.bodies(MOVE)[0]?.body).toEqual({ startAt: slotAt, reasonCode: 'pat', appointmentTypeId: longType.id, durationMinutes: 40 })
   })
 })

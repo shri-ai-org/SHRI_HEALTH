@@ -2,18 +2,18 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { Badge, Button, DataTable, formatDateTime, formatTime, minutesBetween, statusLabel, todayIn, type BadgeTone, type Column } from '../../design-system'
 import { CheckInDialog, UndoCheckInDialog } from './CheckInDialogs'
-import { dateIn, type ScheduledAppointment } from './reference'
+import { dateIn, isZoned, type ScheduledAppointment, type ZonedAppointment } from './reference'
 import { RescheduleDialog } from './RescheduleDialog'
 
 const TONE: Record<string, BadgeTone> = { booked: 'primary', arrived: 'info', 'checked-in': 'success', fulfilled: 'neutral', cancelled: 'neutral', noshow: 'warning' }
 
 /** Booked or arrived, on the facility's today: check-in is same day only. */
-const canCheckIn = (a: ScheduledAppointment) => (a.status === 'booked' || a.status === 'arrived') && dateIn(a.startAt, a.timeZone) === todayIn(a.timeZone)
+const canCheckIn = (a: ZonedAppointment) => (a.status === 'booked' || a.status === 'arrived') && dateIn(a.startAt, a.timeZone) === todayIn(a.timeZone)
 const canReschedule = (a: ScheduledAppointment) => a.status === 'booked' || a.status === 'arrived'
 /** Only before rooming (D55); the server also refuses once there is clinical data. */
 const canUndoCheckIn = (a: ScheduledAppointment) => a.status === 'checked-in' && (a.visitStatus === undefined || a.visitStatus === 'arrived' || a.visitStatus === 'checked-in')
 
-type Dialog = { kind: 'check-in' | 'undo' | 'reschedule'; appointment: ScheduledAppointment } | null
+type Dialog = { kind: 'check-in' | 'undo' | 'reschedule'; appointment: ZonedAppointment } | null
 
 /**
  * Appointments with the front-desk actions: check in, undo a check-in, reschedule. Used by the day
@@ -70,7 +70,11 @@ export function AppointmentTable({
     {
       key: 'actions',
       header: 'Actions',
-      render: (a) => (
+      render: (a) =>
+        !isZoned(a) ? (
+          // Without the facility's time, "today" and the times can't be trusted, so nothing is offered.
+          <span className="text-xs text-ink-muted">Facility time unknown</span>
+        ) : (
         <span className="flex flex-wrap gap-1">
           {canCheckIn(a) ? (
             <Button size="sm" onClick={() => setDialog({ kind: 'check-in', appointment: a })} aria-label={`Check in ${a.patient.displayName}`}>
@@ -88,15 +92,15 @@ export function AppointmentTable({
             </Button>
           ) : null}
         </span>
-      ),
+        ),
     },
   ]
 
   return (
     <>
       <DataTable caption={caption} columns={columns} rows={appointments} rowKey={(a) => a.id} emptyTitle={emptyTitle} />
-      {dialog?.kind === 'check-in' ? <CheckInDialog appointment={dialog.appointment} onClose={() => setDialog(null)} onDone={done} /> : null}
-      {dialog?.kind === 'undo' ? <UndoCheckInDialog appointment={dialog.appointment} onClose={() => setDialog(null)} onDone={done} /> : null}
+      {dialog?.kind === 'check-in' ? <CheckInDialog appointment={dialog.appointment} onClose={() => setDialog(null)} onDone={done} onStale={onChanged} /> : null}
+      {dialog?.kind === 'undo' ? <UndoCheckInDialog appointment={dialog.appointment} onClose={() => setDialog(null)} onDone={done} onStale={onChanged} /> : null}
       {dialog?.kind === 'reschedule' ? <RescheduleDialog appointment={dialog.appointment} onClose={() => setDialog(null)} onMoved={done} /> : null}
     </>
   )

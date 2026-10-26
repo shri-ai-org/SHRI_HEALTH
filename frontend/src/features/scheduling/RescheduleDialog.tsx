@@ -3,7 +3,7 @@ import { ApiError, newIdempotencyKey } from '../../api/client'
 import { rescheduleAppointment } from '../../api/generated/endpoints/scheduling/scheduling'
 import type { Appointment, RescheduleRequest } from '../../api/generated/model'
 import { Button, Field, formatDateTime, isOverLimit, Modal, ProblemAlert, Select, Textarea, useToast, type Problem } from '../../design-system'
-import { dateIn, RESCHEDULE_REASONS, useBookingReference, type ScheduledAppointment } from './reference'
+import { dateIn, RESCHEDULE_REASONS, useBookingReference, type ZonedAppointment } from './reference'
 import { SlotFields, validateChoice, type SlotChoice, type SlotErrors } from './SlotFields'
 
 const NOTE_LIMIT = 500
@@ -15,7 +15,7 @@ type Errors = SlotErrors & { reasonCode?: string | undefined; reasonText?: strin
  * transaction the old one is cancelled with the reason and a new one is booked, carrying
  * `rescheduledFromId`. Starts from the current facility, type and provider.
  */
-export function RescheduleDialog({ appointment, onClose, onMoved }: { appointment: ScheduledAppointment; onClose: () => void; onMoved: (a: Appointment) => void }) {
+export function RescheduleDialog({ appointment, onClose, onMoved }: { appointment: ZonedAppointment; onClose: () => void; onMoved: (a: Appointment) => void }) {
   const toast = useToast()
   const formId = useId()
   const reference = useBookingReference()
@@ -50,7 +50,12 @@ export function RescheduleDialog({ appointment, onClose, onMoved }: { appointmen
     // Only what changed is sent; the server keeps the rest from the old appointment.
     if (choice.slot.providerId !== appointment.provider.id) body.providerId = choice.slot.providerId
     if (choice.facilityId !== appointment.facilityId) body.facilityId = choice.facilityId
-    if (choice.appointmentTypeId !== appointment.appointmentType.id) body.appointmentTypeId = choice.appointmentTypeId
+    if (choice.appointmentTypeId !== appointment.appointmentType.id) {
+      body.appointmentTypeId = choice.appointmentTypeId
+      // The length otherwise stays the current one; a new type brings its own (Vimal, #68).
+      const type = reference.types?.find((t) => t.id === choice.appointmentTypeId)
+      if (type) body.durationMinutes = type.defaultDurationMinutes
+    }
     if (choice.slot.locationId) body.locationId = choice.slot.locationId
     if (reasonText.trim()) body.reasonText = reasonText.trim()
     idempotencyKey.current ??= newIdempotencyKey()

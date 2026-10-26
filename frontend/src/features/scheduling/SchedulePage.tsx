@@ -4,7 +4,7 @@ import { listAppointments } from '../../api/generated/endpoints/scheduling/sched
 import type { AppointmentSummary } from '../../api/generated/model'
 import { DateInput, Field, formatDate, ProblemAlert, Select, Spinner, todayIn, type Problem } from '../../design-system'
 import { AppointmentTable } from './AppointmentTable'
-import { useBookableProviders, useBookingReference, withTimeZones } from './reference'
+import { allPages, useBookableProviders, useBookingReference, withTimeZones } from './reference'
 
 /**
  * The front desk's day (inventory #52): one facility, one date (today in the facility's time zone
@@ -20,15 +20,22 @@ export function SchedulePage() {
   const [date, setDate] = useState<string | null>('')
   const day = date || (facility ? todayIn(facility.timeZone) : '')
   const [version, setVersion] = useState(0)
-  const [result, setResult] = useState<{ key: string; items: AppointmentSummary[]; problem: Problem | null } | null>(null)
+  const [result, setResult] = useState<{ key: string; items: AppointmentSummary[]; timeZone?: string; problem: Problem | null } | null>(null)
 
   const key = `${facility?.id}|${day}|${providerId}|${version}`
   useEffect(() => {
     if (!facility || !day) return
     let current = true
-    listAppointments({ facilityId: facility.id, date: day, ...(providerId ? { providerId } : {}), limit: 100 })
-      .then((res) => {
-        if (current && res.status === 200) setResult({ key, items: res.data.items, problem: null })
+    // The list for one facility carries that facility's zone (AppointmentList.timeZone).
+    let timeZone: string | undefined
+    allPages(async (cursor) => {
+      const res = await listAppointments({ facilityId: facility.id, date: day, ...(providerId ? { providerId } : {}), limit: 100, ...(cursor ? { cursor } : {}) })
+      if (res.status !== 200) return null
+      timeZone ??= res.data.timeZone
+      return res.data
+    })
+      .then((items) => {
+        if (current) setResult({ key, items, timeZone: timeZone ?? facility.timeZone, problem: null })
       })
       .catch((error: unknown) => {
         if (!current) return
@@ -96,7 +103,7 @@ export function SchedulePage() {
           ) : (
             <AppointmentTable
               caption={`${facility?.name ?? ''}, ${formatDate(day)}: ${shown.items.length} ${shown.items.length === 1 ? 'appointment' : 'appointments'}`}
-              appointments={withTimeZones(shown.items, reference.facilities)}
+              appointments={withTimeZones(shown.items, reference.facilities, shown.timeZone)}
               view="day"
               onChanged={() => setVersion((v) => v + 1)}
               emptyTitle="No appointments this day"

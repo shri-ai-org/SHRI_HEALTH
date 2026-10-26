@@ -3,10 +3,10 @@ import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { listAppointments } from '../../api/generated/endpoints/scheduling/scheduling'
 import type { AppointmentSummary } from '../../api/generated/model'
-import { Button, ProblemAlert, type Problem } from '../../design-system'
+import { Alert, Button, ProblemAlert, type Problem } from '../../design-system'
 import { AppointmentTable } from './AppointmentTable'
 import { BookAppointmentDialog } from './BookAppointmentDialog'
-import { useBookingReference, withTimeZones } from './reference'
+import { allPages, useBookingReference, withTimeZones } from './reference'
 
 /** A patient's appointments, with booking and the same actions as the day schedule. */
 export function PatientAppointmentsPanel({ patientId, patientName }: { patientId: string; patientName: string }) {
@@ -18,10 +18,13 @@ export function PatientAppointmentsPanel({ patientId, patientName }: { patientId
 
   useEffect(() => {
     let current = true
-    listAppointments({ patientId, limit: 50 })
-      .then((res) => {
-        if (!current || res.status !== 200) return
-        setItems(res.data.items)
+    allPages(async (cursor) => {
+      const res = await listAppointments({ patientId, limit: 100, ...(cursor ? { cursor } : {}) })
+      return res.status === 200 ? res.data : null
+    })
+      .then((all) => {
+        if (!current) return
+        setItems(all)
         setProblem(null)
       })
       .catch((error: unknown) => {
@@ -47,6 +50,12 @@ export function PatientAppointmentsPanel({ patientId, patientName }: { patientId
         </Button>
       </div>
       {problem ? <ProblemAlert problem={problem} /> : null}
+      {reference.problem ? (
+        <Alert tone="warning" title="Facility times unavailable">
+          <p>The facility list couldn't be loaded, so times show in UTC and the appointment actions are hidden.</p>
+          {reference.problem.requestId ? <p className="mt-1 text-xs opacity-80">Reference: {reference.problem.requestId}</p> : null}
+        </Alert>
+      ) : null}
       {items && reference.facilities ? <AppointmentTable caption="Appointments" appointments={withTimeZones(items, reference.facilities)} view="patient" onChanged={reload} emptyTitle="No appointments" /> : null}
       {booking ? (
         <BookAppointmentDialog

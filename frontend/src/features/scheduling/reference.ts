@@ -17,14 +17,36 @@ export const RESCHEDULE_REASONS: Array<{ code: string; label: string }> = [
 ]
 
 /**
- * An appointment as the lists return it, plus its facility's time zone (from the booking lists), so
- * times show in facility time (D40).
+ * An appointment as the lists return it, plus its facility's time zone (D40). `null` when the zone
+ * isn't known (the role can't read the booking lists, or the facility is inactive): times then say
+ * "time zone missing" and the row offers no actions, rather than guessing UTC (Vimal, #68).
  */
-export type ScheduledAppointment = AppointmentSummary & { timeZone: string }
+export type ScheduledAppointment = AppointmentSummary & { timeZone: string | null }
 
-export function withTimeZones(items: AppointmentSummary[], facilities: BookableFacility[]): ScheduledAppointment[] {
-  // Lists only return the user's facilities, which are the bookable ones; UTC is a visible fallback.
-  return items.map((a) => ({ ...a, timeZone: facilities.find((f) => f.id === a.facilityId)?.timeZone ?? 'UTC' }))
+/** One whose facility time is known: the only kind the dialogs act on. */
+export type ZonedAppointment = AppointmentSummary & { timeZone: string }
+
+export const isZoned = (a: ScheduledAppointment): a is ZonedAppointment => a.timeZone !== null
+
+/**
+ * Adds each row's zone: the list's own `timeZone` when it is for one facility (the day schedule),
+ * otherwise the facility's from the booking lists, otherwise `null`.
+ */
+export function withTimeZones(items: AppointmentSummary[], facilities: BookableFacility[] | null, listTimeZone?: string): ScheduledAppointment[] {
+  return items.map((a) => ({ ...a, timeZone: listTimeZone ?? facilities?.find((f) => f.id === a.facilityId)?.timeZone ?? null }))
+}
+
+/** Every page of a cursor list (API_STANDARDS §8.1), so nothing past the first page is lost. */
+export async function allPages<T>(page: (cursor?: string) => Promise<{ items: T[]; nextCursor?: string } | null>): Promise<T[]> {
+  const items: T[] = []
+  let cursor: string | undefined
+  do {
+    const next = await page(cursor)
+    if (!next) break
+    items.push(...next.items)
+    cursor = next.nextCursor
+  } while (cursor)
+  return items
 }
 
 /** The calendar date of an instant in a facility's time zone, `YYYY-MM-DD`. */

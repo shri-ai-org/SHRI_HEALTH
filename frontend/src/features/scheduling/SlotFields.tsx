@@ -3,7 +3,7 @@ import { ApiError } from '../../api/client'
 import { listSlots } from '../../api/generated/endpoints/scheduling/scheduling'
 import type { Slot } from '../../api/generated/model'
 import { Alert, DateInput, Field, formatTime, ProblemAlert, Select, Spinner, type Problem } from '../../design-system'
-import { useBookableProviders, type BookingReference } from './reference'
+import { allPages, useBookableProviders, type BookingReference } from './reference'
 
 export interface SlotChoice {
   facilityId: string
@@ -59,15 +59,20 @@ export function SlotFields({
   useEffect(() => {
     if (!ready || !value.date) return
     let current = true
-    listSlots({
-      date: value.date,
-      facilityId: value.facilityId,
-      appointmentTypeId: value.appointmentTypeId,
-      ...(value.providerId ? { providerId: value.providerId } : {}),
-      limit: 100,
+    const date = value.date
+    allPages(async (cursor) => {
+      const res = await listSlots({
+        date,
+        facilityId: value.facilityId,
+        appointmentTypeId: value.appointmentTypeId,
+        ...(value.providerId ? { providerId: value.providerId } : {}),
+        limit: 100,
+        ...(cursor ? { cursor } : {}),
+      })
+      return res.status === 200 ? res.data : null
     })
-      .then((res) => {
-        if (current && res.status === 200) setSlots({ key, items: res.data.items, problem: null })
+      .then((items) => {
+        if (current) setSlots({ key, items, problem: null })
       })
       .catch((error: unknown) => {
         if (!current) return

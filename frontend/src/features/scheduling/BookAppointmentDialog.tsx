@@ -89,7 +89,10 @@ export function BookAppointmentDialog({ patientId, patientName, onClose, onBooke
       <form id={formId} onSubmit={(e) => void submit(e)} noValidate className="space-y-4">
         <SlotFields reference={reference} value={choice} onChange={changeChoice} errors={errors} refreshKey={refreshKey} />
         <Field label="Reason for visit" hint="Optional; shown to the care team" error={errors.reason}>
-          {(p) => <Textarea {...p} value={reason} limit={NOTE_LIMIT} rows={2} onChange={(e) => setReason(e.target.value)} />}
+          {(p) => <Textarea {...p} value={reason} limit={NOTE_LIMIT} rows={2} onChange={(e) => {
+                setReason(e.target.value)
+                idempotencyKey.current = null
+              }} />}
         </Field>
         {problem ? <ProblemAlert problem={problem} /> : null}
       </form>
