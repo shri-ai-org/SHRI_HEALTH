@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { DesignSystemPreview } from './app/DesignSystemPreview'
+import { FrontDeskApp } from './app/FrontDeskApp'
 import { ToastProvider } from './design-system'
 import './index.css'
 
@@ -10,7 +10,7 @@ if (!root) throw new Error('Missing #root element')
 createRoot(root).render(
   <StrictMode>
     <ToastProvider>
-      <DesignSystemPreview />
+      <FrontDeskApp />
     </ToastProvider>
   </StrictMode>,
 )
