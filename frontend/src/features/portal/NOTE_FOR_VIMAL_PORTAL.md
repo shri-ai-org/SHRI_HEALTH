@@ -11,7 +11,7 @@ The React patient portal (`frontend/src/features/portal/`) follows the old Shri 
 | Screen | Call | Notes |
 |---|---|---|
 | Sign-in, session | `GET /portal/auth/login` (to the patient realm), `POST /portal/auth/logout`, `GET /portal/auth/session`, `POST /portal/auth/refresh` | Patient realm with multi-factor (D85, ADR #65). Same cookie session and idle rules (Q20). |
-| Activate your account | `POST /portal/enrolments` `{ invitationCode }` | Once, after the first realm sign-in (D85). A wrong, used or expired code gets one field error on `/invitationCode`. |
+| Set up your account | `POST /portal/enrolments` `{ invitationCode, birthDate, email }` | Signed out, before any sign-in (D85, ADR-0013 §3): the API creates the realm account and Keycloak emails the setup link. Every failure gets the same refusal. |
 | Alerts and Reminders | `GET /portal/alerts` | Today's and the next appointments. |
 | Demographics | `GET /portal/demographics`, `PUT /portal/demographics` (`If-Match`) | Includes employer and emergency contact. Do name changes need front-desk approval? |
 | E-Signature | `GET /portal/signature`, `PUT /portal/signature` (PNG) | Stored through Anand's file service. |

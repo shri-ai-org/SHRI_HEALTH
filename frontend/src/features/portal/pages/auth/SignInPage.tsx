@@ -4,6 +4,7 @@ import { Alert, Button, problemCopy } from '../../../../design-system'
 import { usePortalApi } from '../../api/portalApi'
 import type { PortalSession } from '../../api/types'
 import { toProblem } from '../../api/useResource'
+import { Link } from '../../router'
 import { AuthLayout } from './AuthLayout'
 
 export type SignedOutReason = 'signed-out' | 'expired'
@@ -45,7 +46,10 @@ export function SignInPage({ reason, onSignedIn }: { reason?: SignedOutReason; o
 
       <div className="mt-6 border-t border-border-soft pt-5 text-sm text-ink-muted">
         <p className="font-semibold text-ink">New to the portal?</p>
-        <p className="mt-1">Ask your clinic's front desk for an invitation code. They'll check your ID first. Then sign in here, and you'll enter the code once to open your record.</p>
+        <p className="mt-1">Ask your clinic's front desk for an invitation code. They'll check your ID first.</p>
+        <Link to="/set-up-account" className="mt-1 inline-flex min-h-11 items-center font-semibold text-primary-700 underline-offset-2 hover:underline">
+          Set up your account
+        </Link>
       </div>
 
       {import.meta.env.DEV ? (

@@ -37,7 +37,8 @@ describe('sign-in', () => {
     expect(screen.queryByLabelText(/Password|Username/)).toBeNull()
     expect(screen.queryByRole('link', { name: /Registration|Forgot/ })).toBeNull()
     expect(screen.getByText(/Ask your clinic's front desk for an invitation code/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Source code' })).toBeInTheDocument()
+    // D87: a fixed path on the portal host, with no version or commit in it.
+    expect(screen.getByRole('link', { name: 'Source code' })).toHaveAttribute('href', '/source.tar.gz')
     expect(await axeViolations()).toEqual([])
   })
 
@@ -200,35 +201,52 @@ describe('billing and documents', () => {
   })
 })
 
-describe('activation by invitation code (D85)', () => {
-  async function toActivation() {
+describe('set up your account, before any sign-in (D85, ADR-0013 §3)', () => {
+  async function toSetUp() {
     const user = userEvent.setup()
-    renderPortal('/portal', createMockPortalApi({ latencyMs: 0, activated: false }))
-    await user.click(await screen.findByRole('button', { name: 'Sign in' }))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Activate your account' })).toBeInTheDocument()
+    renderPortal()
+    await user.click(await screen.findByRole('link', { name: 'Set up your account' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Set up your account' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/portal/set-up-account')
     return user
   }
 
-  it('opens nothing else until the code links the account to the chart', async () => {
-    const user = await toActivation()
-    expect(screen.queryByRole('link', { name: /Test Results/ })).toBeNull()
-    expect(await axeViolations()).toEqual([])
-    await user.click(screen.getByRole('button', { name: 'Activate' }))
-    expect(screen.getByRole('alert')).toHaveTextContent(/Enter the invitation code/)
-    await user.type(screen.getByLabelText(/Invitation code/), 'WRONG-0000')
-    await user.click(screen.getByRole('button', { name: 'Activate' }))
-    // One message for wrong, used or expired codes, in the summary and on the field.
-    await waitFor(() => expect(screen.getByLabelText(/Invitation code/)).toHaveAccessibleDescription(/That code didn't work/))
+  async function fill(user: ReturnType<typeof userEvent.setup>, code: string, birthDate: string) {
     await user.clear(screen.getByLabelText(/Invitation code/))
-    await user.type(screen.getByLabelText(/Invitation code/), MOCK_INVITATION_CODE.toLowerCase())
-    await user.click(screen.getByRole('button', { name: 'Activate' }))
-    expect(await screen.findByRole('region', { name: 'Alerts and Reminders' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/Invitation code/), code)
+    await user.clear(screen.getByLabelText(/Date of birth/))
+    await user.type(screen.getByLabelText(/Date of birth/), birthDate)
+    await user.clear(screen.getByLabelText(/Email address/))
+    await user.type(screen.getByLabelText(/Email address/), 'ramona980@example.com')
+    await user.click(screen.getByRole('button', { name: 'Set up my account' }))
+  }
+
+  it('asks for the code, date of birth and email, signed out', async () => {
+    const user = await toSetUp()
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Source code' })).toBeInTheDocument()
+    expect(await axeViolations()).toEqual([])
+    await user.click(screen.getByRole('button', { name: 'Set up my account' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('There are 3 things to fix')
   })
 
-  it('can sign out from activation', async () => {
-    const user = await toActivation()
-    await user.click(screen.getByRole('button', { name: 'Sign out' }))
-    expect(await screen.findByText('You have signed out.')).toBeInTheDocument()
+  it('gives the same answer for a wrong code or a wrong date of birth', async () => {
+    const user = await toSetUp()
+    for (const [code, birthDate] of [['WRONG-0000', '07/19/1984'], [MOCK_INVITATION_CODE, '01/01/1990']] as const) {
+      await fill(user, code, birthDate)
+      await waitFor(() => expect(screen.getByLabelText(/Invitation code/)).toHaveAccessibleDescription(/We couldn't use that code/))
+    }
+  })
+
+  it('sends the patient to their email, then to sign-in', async () => {
+    const user = await toSetUp()
+    await fill(user, MOCK_INVITATION_CODE.toLowerCase(), '07/19/1984')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Check your email' })).toBeInTheDocument()
+    expect(screen.getByText(/within 12 hours/)).toBeInTheDocument()
+    // The email typed is not shown back.
+    expect(screen.queryByText(/ramona980@example\.com/)).toBeNull()
+    await user.click(screen.getByRole('link', { name: 'Go to sign in' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
   })
 })
 

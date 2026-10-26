@@ -47,10 +47,12 @@ export interface PortalApi {
   signOut(): Promise<void>
   refreshSession(): Promise<PortalSession>
   /**
-   * Links the signed-in realm account to the patient's chart, once, with the invitation code the
-   * front desk issued after an ID check (`POST /portal/enrolments`, D85).
+   * Redeems the invitation code the front desk issued after an ID check, with the patient's date of
+   * birth and the email they want to use (`POST /portal/enrolments`; D85, ADR-0013 §3). Signed out:
+   * the API creates the patient-realm account and Keycloak emails the setup link. Every failure is
+   * the same refusal, so nothing can be probed.
    */
-  activateAccount(invitationCode: string): Promise<PortalSession>
+  enrol(input: { invitationCode: string; birthDate: string; email: string }): Promise<void>
   /** The patient realm's own account page: password, multi-factor and recovery settings. */
   readonly accountSecurityUrl: string
   getReferenceLists(): Promise<ReferenceLists>

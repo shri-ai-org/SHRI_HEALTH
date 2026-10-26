@@ -29,8 +29,6 @@ export interface Provider extends Ref {
 
 export interface PortalSession {
   name: HumanName
-  /** False until an invitation code links this realm account to a chart (D85); only activation is open until then. */
-  activated: boolean
   /** Server-issued; the idle warning is timed from these (SECURITY_MODEL §2.1). */
   idleExpiresAt: string
   expiresAt: string

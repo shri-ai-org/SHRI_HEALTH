@@ -4,7 +4,7 @@ Owner: Minalini. Guide 04 Step 8, FRS 3.8. React rebuild of the earlier Shri pat
 
 Run `npm run dev` in `frontend/` and open <http://localhost:5173/portal>. It runs on the mock API with synthetic data, and **only in development builds**: a production build has no portal until the `/portal` contract exists (B8, D88). "Sign in" stands for a completed sign-in at the patient realm (D85). The mock lives in memory, so a full page reload signs you out.
 
-Sign-in and enrolment follow the portal decisions (D83–D88, #66): Keycloak's patient realm handles passwords, multi-factor, reset and recovery, so the portal never asks for a password. New patients activate their account once with an invitation code from the front desk; there is no self-registration.
+Sign-in and enrolment follow the portal decisions (D83–D88, #66): Keycloak's patient realm handles passwords, multi-factor, reset and recovery, so the portal never asks for a password. New patients first use "Set up your account" with the front desk's invitation code, their date of birth and their email (ADR-0013). Keycloak then emails them a link to set a password and a second sign-in step, and only after that do they sign in. There is no self-registration.
 
 ## Colours
 
@@ -15,7 +15,7 @@ Each area has its own colour, as the old home cards did: green Test Results, plu
 | Old portal | New path |
 |---|---|
 | Login | `/sign-in`: a button that starts sign-in at the patient realm (D85) |
-| Forgot Username, Forgot Password, Registration (11 pages) | Removed (D85): recovery belongs to the realm; enrolment is an invitation code on "Activate your account", shown after the first sign-in |
+| Forgot Username, Forgot Password, Registration (11 pages) | Removed (D85): recovery belongs to the realm; enrolment is "Set up your account" (`/set-up-account`): invitation code, date of birth and email, then "Check your email", then sign-in (ADR-0013) |
 | Home: 8 cards + Alerts and Reminders | `/` |
 | Test Results (list, detail) | `/test-results`, `/test-results/{id}` |
 | Health Summary menu: Health Issues, Health Trends, Allergies, Immunization, Patient Documents, Reports, Document Template | `/health-issues`, `/health-trends`, `/allergies`, `/immunizations`, `/patient-documents`, `/reports`, `/document-templates` (each list has a detail page by ID) |
@@ -52,6 +52,6 @@ Each area has its own colour, as the old home cards did: green Test Results, plu
 
 ## Checks
 
-- `portal.test.tsx` walks the main journeys (sign-in, menus, refill, schedule with the time picker, cancel, compose, trash and delete, payment, document template, activation by invitation code) and runs axe (WCAG 2.1 A/AA) on every page.
+- `portal.test.tsx` walks the main journeys (sign-in, menus, refill, schedule with the time picker, cancel, compose, trash and delete, payment, document template, account setup by invitation code) and runs axe (WCAG 2.1 A/AA) on every page.
 - Checked by hand at 375px: no page scrolls sideways, and the phone menu is the old side panel.
 - Still to do by hand: a screen-reader pass (VoiceOver, NVDA) and a session with a few real patients once there's a pilot practice (Q18).

@@ -371,17 +371,15 @@ function seed() {
 export interface MockOptions {
   /** Milliseconds per call; 0 in tests. */
   latencyMs?: number
-  /** Whether the synthetic patient's account is already linked to the chart. False shows activation. */
-  activated?: boolean
 }
 
-/** The one invitation code the mock accepts (synthetic). */
+/** The one invitation code the mock accepts, with the mock patient's date of birth (synthetic). */
 export const MOCK_INVITATION_CODE = 'TEST-CODE-1234'
+export const MOCK_BIRTH_DATE = '1984-07-19'
 
-export function createMockPortalApi({ latencyMs = 350, activated: startActivated = true }: MockOptions = {}): PortalApi {
+export function createMockPortalApi({ latencyMs = 350 }: MockOptions = {}): PortalApi {
   const db = seed()
   let signedIn = false
-  let activated = startActivated
   let signature: Signature | null = null
   const refillRequests: RefillRequest[] = []
   let nextId = 5000
@@ -417,7 +415,6 @@ export function createMockPortalApi({ latencyMs = 350, activated: startActivated
   function session() {
     return {
       name: { given: [db.demographics.firstName], family: db.demographics.lastName },
-      activated,
       idleExpiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
       expiresAt: new Date(Date.now() + 12 * 3_600_000).toISOString(),
     }
@@ -495,14 +492,14 @@ export function createMockPortalApi({ latencyMs = 350, activated: startActivated
         signedIn = false
       }),
     refreshSession: () => authed(session),
-    activateAccount: (invitationCode) =>
-      authed(() => {
-        // Mock rule: one synthetic code works, in any case and with or without dashes.
-        if (invitationCode.replace(/[\s-]/g, '').toUpperCase() !== MOCK_INVITATION_CODE.replace(/-/g, '')) {
-          throw { ...problem(422, 'validation-failed', 'Validation failed'), errors: [{ in: 'body', pointer: '/invitationCode', code: 'not-allowed-value' }] }
+    enrol: ({ invitationCode, birthDate, email }) =>
+      wait(() => {
+        // Mock rule: one synthetic code with the mock patient's date of birth, in any case and with
+        // or without dashes. Every failure is the same refusal, as ADR-0013 §3 requires.
+        const codeOk = invitationCode.replace(/[\s-]/g, '').toUpperCase() === MOCK_INVITATION_CODE.replace(/-/g, '')
+        if (!codeOk || birthDate !== MOCK_BIRTH_DATE || !email.includes('@')) {
+          throw problem(422, 'business-rule-violation', 'Business rule violation')
         }
-        activated = true
-        return session()
       }),
     accountSecurityUrl: 'https://patients.keycloak.invalid/realms/patients/account',
     getReferenceLists: () => wait(() => structuredClone(LISTS)),
@@ -669,7 +666,7 @@ export function createMockPortalApi({ latencyMs = 350, activated: startActivated
         const d = db.demographics
         return {
           generatedAt: new Date().toISOString(),
-          patient: { name: `${d.firstName} ${d.middleName} ${d.lastName}`, birthDate: '1984-07-19', sex: 'Female', address: `${d.address}, ${d.city}, ${d.state} ${d.postalCode}`, phone: d.mobilePhone },
+          patient: { name: `${d.firstName} ${d.middleName} ${d.lastName}`, birthDate: MOCK_BIRTH_DATE, sex: 'Female', address: `${d.address}, ${d.city}, ${d.state} ${d.postalCode}`, phone: d.mobilePhone },
           issues: db.healthIssues,
           allergies: db.allergies,
           prescriptions: db.prescriptions,

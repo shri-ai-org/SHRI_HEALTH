@@ -9,7 +9,7 @@ import { SessionContext, type SessionApi } from './session'
 import { DemographicsPage, ESignaturePage } from './pages/AccountPages'
 import { AppointmentsPage, UpcomingAppointmentPage, VideoConsultPage, VisitSummaryPage } from './pages/appointments/AppointmentPages'
 import { SchedulePage } from './pages/appointments/SchedulePage'
-import { ActivatePage } from './pages/auth/ActivatePage'
+import { SetUpAccountPage } from './pages/auth/SetUpAccountPage'
 import { SignInPage, type SignedOutReason } from './pages/auth/SignInPage'
 import { BillingPage } from './pages/BillingPage'
 import { HomePage } from './pages/HomePage'
@@ -67,7 +67,7 @@ const ROUTES: Route[] = [
   { pattern: '/e-signature', render: () => <ESignaturePage /> },
 ]
 
-const SIGNED_OUT_PATHS = ['/sign-in']
+const SIGNED_OUT_PATHS = ['/sign-in', '/set-up-account']
 
 export function PortalApp({ api }: { api: PortalApi }) {
   return (
@@ -118,6 +118,8 @@ function Gate({ api }: { api: PortalApi }) {
   }
 
   if (state.kind === 'signed-out' || !sessionApi) {
+    // Enrolment comes before any sign-in: the realm account doesn't exist until the code is used.
+    if (path === '/set-up-account') return <SetUpAccountPage />
     return (
       <SignInPage
         {...(state.kind === 'signed-out' && state.reason ? { reason: state.reason } : {})}
@@ -128,11 +130,6 @@ function Gate({ api }: { api: PortalApi }) {
         }}
       />
     )
-  }
-
-  // A realm account not yet linked to a chart sees only activation (D85).
-  if (!sessionApi.session.activated) {
-    return <ActivatePage onActivated={(session) => setState({ kind: 'signed-in', session })} onSignOut={() => signOut('signed-out')} />
   }
 
   if (SIGNED_OUT_PATHS.includes(path)) {
