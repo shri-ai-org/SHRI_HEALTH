@@ -13,8 +13,9 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.core.db import TENANT_ID_INFO_KEY
 from app.db.models import MAPPERS
-from app.db.session import TENANT_INFO_KEY, _default_tenant
+from app.db.session import _default_tenant
 from app.db.tests import builders as b
 from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, make_tenant
 
@@ -25,7 +26,7 @@ Patient = MAPPERS["patient"]
 
 def test_fills_an_empty_tenant_id() -> None:
     session = Session()
-    session.info[TENANT_INFO_KEY] = CLINIC_A
+    session.info[TENANT_ID_INFO_KEY] = CLINIC_A
     row = Patient(gender="female")
     session.add(row)
     _default_tenant(session, None, None)
@@ -34,7 +35,7 @@ def test_fills_an_empty_tenant_id() -> None:
 
 def test_never_overwrites_a_tenant_id() -> None:
     session = Session()
-    session.info[TENANT_INFO_KEY] = CLINIC_A
+    session.info[TENANT_ID_INFO_KEY] = CLINIC_A
     row = Patient(gender="female", tenant_id=CLINIC_B)
     session.add(row)
     _default_tenant(session, None, None)
@@ -52,7 +53,7 @@ def test_does_nothing_without_the_key() -> None:
 def test_reads_the_key_set_on_an_async_session() -> None:
     # The core sets the key on the AsyncSession; before_flush receives the sync Session.
     session = AsyncSession()
-    session.info[TENANT_INFO_KEY] = CLINIC_A
+    session.info[TENANT_ID_INFO_KEY] = CLINIC_A
     row = Patient(gender="female")
     session.add(row)
     _default_tenant(session.sync_session, None, None)
@@ -64,7 +65,7 @@ def test_reads_the_key_set_on_an_async_session() -> None:
 def test_another_clinic_is_kept_and_refused_by_rls(db: Session, admin_engine: Engine) -> None:
     other = make_tenant(admin_engine)
     row = b.patient(db)  # filled by the hook from the session's clinic
-    assert row.tenant_id == db.info[TENANT_INFO_KEY]
+    assert row.tenant_id == db.info[TENANT_ID_INFO_KEY]
     stranger = Patient(gender="male", birth_date=row.birth_date, tenant_id=other)
     savepoint = db.begin_nested()
     db.add(stranger)

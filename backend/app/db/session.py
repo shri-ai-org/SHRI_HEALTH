@@ -20,14 +20,12 @@ from typing import Any
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
-# The literal value of app.core.db.TENANT_ID_INFO_KEY as PR #28 defines it. Switch to importing
-# it once #28 is on main and this branch is rebased onto it.
-TENANT_INFO_KEY = "tenant_id"
+from app.core.db import TENANT_ID_INFO_KEY
 
 
 @event.listens_for(Session, "before_flush")
 def _default_tenant(session: Session, flush_context: Any, instances: Any) -> None:
-    tenant = session.info.get(TENANT_INFO_KEY)
+    tenant = session.info.get(TENANT_ID_INFO_KEY)
     if tenant is None:
         return
     for obj in session.new:
