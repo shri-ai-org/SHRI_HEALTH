@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Connection, Engine, Table, text
+from sqlalchemy import Connection, Engine, Table, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,7 @@ from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, make_tenant, open_sessi
 from app.db.tools.gen_db_rules import FHIR_PATIENTLESS, FHIR_POLYMORPHIC, fhir_visibility_rules
 
 pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
+M = MAPPERS
 chart = facade.chart   # the same one-patient chart fixture, touching every FHIR resource table
 
 FUNCTION = "audit.record_fhir_lookup_denied(text, uuid)"
@@ -129,8 +130,8 @@ def test_search_without_a_patient_leaves_restricted_charts_out(
 def test_unsupported_search_parameters_are_refused(client: TestClient, parameter: str) -> None:
     r = client.post("/fhir/r4/Observation/_search",
                     json={parameter: "Observation:patient-secret-value"})
-    assert r.status_code == 400
-    body = r.json()["detail"]   # this test app has no /fhir exception handler of its own
+    assert r.status_code == 400 and r.headers["content-type"].startswith("application/fhir+json")
+    body = r.json()
     assert body["resourceType"] == "OperationOutcome"
     assert body["issue"][0]["code"] == "not-supported"
     assert parameter in r.text and "secret-value" not in r.text   # names, never values (D13)
@@ -317,3 +318,209 @@ def test_every_clinical_table_with_a_chart_has_the_policy(admin_engine: Engine) 
     # The tables left without one really have no patient below or above them.
     for name in FHIR_PATIENTLESS:
         assert not _parents(name) and name not in FHIR_POLYMORPHIC
+
+
+# ===================================================== errors on the wire (Vimal's review, #45)
+def _is_outcome(r: Any, status: int) -> dict[str, Any]:
+    assert r.status_code == status, r.text
+    assert r.headers["content-type"].startswith("application/fhir+json")
+    body: dict[str, Any] = r.json()
+    assert body["resourceType"] == "OperationOutcome" and body["issue"]
+    return body
+
+
+def test_every_error_is_an_operation_outcome(client: TestClient) -> None:
+    _is_outcome(client.post("/fhir/r4/Observation/_search", json={"_include": "x"}), 400)
+    _is_outcome(client.get(f"/fhir/r4/Patient/{uuid.uuid4()}"), 404)
+    _is_outcome(client.get(f"/fhir/r4/Basic/{uuid.uuid4()}"), 404)
+    _is_outcome(client.get("/fhir/r4/Patient/not-a-uuid"), 422)
+    _is_outcome(client.post("/fhir/r4/Patient/_search", content=b"{not json",
+                            headers={"content-type": "application/json"}), 422)
+
+
+@pytest.mark.parametrize("count", [0, -1])
+def test_count_must_be_at_least_one(client: TestClient, count: int) -> None:
+    body = _is_outcome(client.post("/fhir/r4/Patient/_search", json={"count": count}), 422)
+    assert "count" in body["issue"][0]["diagnostics"]
+
+
+def test_validation_errors_never_echo_what_was_sent(client: TestClient) -> None:
+    r = client.post("/fhir/r4/Patient/_search",
+                    json={"family": "Okafor", "birthdate": "Secret-1984-not-a-date"})
+    body = _is_outcome(r, 422)
+    assert "birthdate" in body["issue"][0]["diagnostics"]
+    assert "Secret" not in r.text and "Okafor" not in r.text
+
+
+# ===================================================== one audit row per patient (as D54)
+def test_a_search_audits_each_patient_it_returns(client: TestClient, chart: dict[str, Any],
+                                                 db: Session, admin_engine: Engine) -> None:
+    second = b.patient(db, given="Linh")
+    db.commit()
+    found = client.post("/fhir/r4/Patient/_search", json={"family": "Ngu"}).json()
+    ids = {e["resource"]["id"] for e in found["entry"]}
+    assert ids == {str(chart["patient"].id), str(second.id)}
+    with admin_engine.connect() as c:
+        audited = c.execute(text(
+            "SELECT patient_id FROM audit.audit_event WHERE tenant_id = :t AND action = 'read' "
+            "AND entity_type = 'Patient' AND reason = 'search params: family'"),
+            {"t": db.info["tenant_id"]}).scalars().all()
+    assert sorted(map(str, audited)) == sorted(ids)
+    # A search that returns no patient data writes one row, without a patient.
+    client.post("/fhir/r4/Practitioner/_search", json={})
+    with admin_engine.connect() as c:
+        rows = c.execute(text("SELECT patient_id FROM audit.audit_event WHERE tenant_id = :t "
+                              "AND entity_type = 'Practitioner'"),
+                         {"t": db.info["tenant_id"]}).scalars().all()
+    assert rows == [None]
+
+
+# ================================ references to a restricted patient (D22 as amended on #13)
+def _coverage(db: Session, chart: dict[str, Any]) -> Any:
+    return db.execute(select(M["coverage"]).where(
+        M["coverage"].beneficiary_patient_id == chart["patient"].id)).scalar_one()
+
+
+def _restricted_other(db: Session) -> Any:
+    other = b.patient(db, family="Okafor", given="Ada")
+    db.flush()
+    return other
+
+
+def _restrict(db: Session, pt: Any) -> None:
+    pt.meta_security = ["R"]
+    db.commit()
+
+
+def _never_hinted(text_: str, other: Any) -> None:
+    """Nothing says something was left out: no ID, no masked marker (Thulasi, Vimal on #13)."""
+    assert str(other.id) not in text_
+    assert "masked" not in text_ and "data-absent-reason" not in text_
+
+
+def test_an_optional_reference_to_a_restricted_patient_is_left_out(
+        client: TestClient, chart: dict[str, Any], db: Session) -> None:
+    """Thulasi's first case: a coverage whose subscriber is restricted is served without
+    `subscriber`, by read and by search."""
+    cov, other = _coverage(db, chart), _restricted_other(db)
+    cov.subscriber_patient_id = other.id
+    db.commit()
+    assert client.get(f"/fhir/r4/Coverage/{cov.id}").json()["subscriber"]["reference"] \
+        == f"Patient/{other.id}"                                     # served while visible
+    _restrict(db, other)
+    r = client.get(f"/fhir/r4/Coverage/{cov.id}")
+    assert r.status_code == 200 and "subscriber" not in r.json()
+    _never_hinted(r.text, other)
+    found = client.post("/fhir/r4/Coverage/_search",
+                        json={"patient": f"Patient/{chart['patient'].id}"})
+    assert found.json()["total"] == 1 and "subscriber" not in found.json()["entry"][0]["resource"]
+    _never_hinted(found.text, other)
+
+
+def test_a_resource_whose_required_reference_is_restricted_is_not_served(
+        client: TestClient, chart: dict[str, Any], db: Session) -> None:
+    """Thulasi's second case: Coverage.payor is required (1..*). When its only payor is a
+    restricted patient, the coverage is a 404 on read and left out of search and its total."""
+    cov, other = _coverage(db, chart), _restricted_other(db)
+    made_up = uuid.uuid4()
+    for payor in cov.payor:                      # the self-pay payor becomes the other patient
+        payor.patient_id = other.id
+    db.commit()
+    assert client.get(f"/fhir/r4/Coverage/{cov.id}").status_code == 200   # served while visible
+    _restrict(db, other)
+    hidden = client.get(f"/fhir/r4/Coverage/{cov.id}")
+    missing = client.get(f"/fhir/r4/Coverage/{made_up}")
+    assert hidden.status_code == missing.status_code == 404
+    assert hidden.text.replace(str(cov.id), "ID") == missing.text.replace(str(made_up), "ID")
+    found = client.post("/fhir/r4/Coverage/_search",
+                        json={"patient": f"Patient/{chart['patient'].id}"}).json()
+    assert found["total"] == 0 and found.get("entry") == []
+
+
+def test_includes_cannot_bring_in_a_restricted_patient(client: TestClient,
+                                                      chart: dict[str, Any], db: Session) -> None:
+    """Thulasi's third case: `_include=Coverage:subscriber` returns no Patient and the total
+    doesn't count one. /fhir refuses includes altogether (400), so nothing comes back."""
+    cov, other = _coverage(db, chart), _restricted_other(db)
+    cov.subscriber_patient_id = other.id
+    _restrict(db, other)
+    r = client.post("/fhir/r4/Coverage/_search",
+                    json={"patient": f"Patient/{chart['patient'].id}",
+                          "_include": "Coverage:subscriber"})
+    assert r.status_code == 400 and "Patient" not in r.text.replace("patient", "")
+    _never_hinted(r.text, other)
+
+
+def test_an_old_version_naming_a_now_restricted_patient_leaves_it_out(
+        client: TestClient, chart: dict[str, Any], db: Session) -> None:
+    """Thulasi's fourth case: today's restriction applies to history, not the one at the time."""
+    cov, other = _coverage(db, chart), _restricted_other(db)
+    cov.subscriber_patient_id = other.id
+    db.commit()
+    named = cov.meta_version_id
+    cov.subscriber_patient_id = None
+    db.commit()
+    _restrict(db, other)
+    old = client.get(f"/fhir/r4/Coverage/{cov.id}/_history/{named}")
+    assert old.status_code == 200 and "subscriber" not in old.json()
+    history = client.get(f"/fhir/r4/Coverage/{cov.id}/_history")
+    assert history.status_code == 200 and history.json()["total"] >= 2
+    _never_hinted(old.text + history.text, other)
+
+
+def test_a_link_to_a_restricted_patient_is_left_out_with_its_entry(
+        client: TestClient, chart: dict[str, Any], db: Session) -> None:
+    """Patient.link.other is required inside a link, so the whole link entry goes."""
+    pt, other = chart["patient"], _restricted_other(db)
+    db.add(M["patient_link"](patient_id=pt.id, other_patient_id=other.id, type="seealso"))
+    db.commit()
+    assert "link" in client.get(f"/fhir/r4/Patient/{pt.id}").json()
+    _restrict(db, other)
+    r = client.get(f"/fhir/r4/Patient/{pt.id}")
+    assert r.status_code == 200 and "link" not in r.json()
+    _never_hinted(r.text, other)
+
+
+# The stripping rules themselves, without a database.
+def _ref(rtype: str, rid: str) -> dict[str, str]:
+    return {"reference": f"{rtype}/{rid}"}
+
+
+HIDDEN_ID, SEEN_ID = str(uuid.UUID(int=1)), str(uuid.UUID(int=2))
+
+
+@pytest.mark.parametrize(("resource", "expected"), [
+    # an optional reference goes, the rest stays
+    ({"resourceType": "Condition", "id": "c", "recorder": _ref("Patient", HIDDEN_ID),
+      "subject": _ref("Patient", SEEN_ID)},
+     {"resourceType": "Condition", "id": "c", "subject": _ref("Patient", SEEN_ID)}),
+    # one of several performers
+    ({"resourceType": "Observation", "id": "o",
+      "performer": [_ref("Patient", HIDDEN_ID), _ref("Practitioner", SEEN_ID)]},
+     {"resourceType": "Observation", "id": "o", "performer": [_ref("Practitioner", SEEN_ID)]}),
+    # inside an annotation: the author goes, the required text stays
+    ({"resourceType": "Condition", "id": "c",
+      "note": [{"authorReference": _ref("Patient", HIDDEN_ID), "text": "t"}]},
+     {"resourceType": "Condition", "id": "c", "note": [{"text": "t"}]}),
+    # a required reference inside a repeating element takes the element with it
+    ({"resourceType": "Provenance", "id": "p", "target": [_ref("Patient", SEEN_ID)],
+      "agent": [{"who": _ref("Patient", HIDDEN_ID)}, {"who": _ref("Practitioner", SEEN_ID)}]},
+     {"resourceType": "Provenance", "id": "p", "target": [_ref("Patient", SEEN_ID)],
+      "agent": [{"who": _ref("Practitioner", SEEN_ID)}]}),
+    # ...and when that leaves a required element empty, the resource is not served
+    ({"resourceType": "Provenance", "id": "p", "target": [_ref("Patient", SEEN_ID)],
+      "agent": [{"who": _ref("Patient", HIDDEN_ID)}]}, None),
+    ({"resourceType": "MedicationRequest", "id": "m", "requester": _ref("Patient", HIDDEN_ID),
+      "subject": _ref("Patient", SEEN_ID)}, None),
+    # a contained resource is checked like any other part
+    ({"resourceType": "Condition", "id": "c",
+      "contained": [{"resourceType": "Provenance", "id": "x", "agent": [
+          {"who": _ref("Patient", HIDDEN_ID)}, {"who": _ref("Practitioner", SEEN_ID)}]}]},
+     {"resourceType": "Condition", "id": "c", "contained": [
+         {"resourceType": "Provenance", "id": "x", "agent": [
+             {"who": _ref("Practitioner", SEEN_ID)}]}]}),
+])
+def test_strip_hidden(resource: dict[str, Any], expected: dict[str, Any] | None) -> None:
+    from app.fhir.api import strip_hidden
+
+    assert strip_hidden(resource, {("Patient", HIDDEN_ID)}) == expected

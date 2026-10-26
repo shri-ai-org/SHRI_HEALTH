@@ -4,7 +4,12 @@ endpoints (sign, order, ...) under /api/v1, not generic FHIR create/update, so t
 safety rules stay in one place. Every read is audited. Restricted charts (meta.security R / V)
 are never served here, grant or not (D22): the database hides them from ``shri_fhir_reader``
 (migration 0006), and a request for one gets the same 404 as a request for an ID that does not
-exist. Break-glass is an /api/v1 concern (D37).
+exist. Break-glass is an /api/v1 concern (D37). A reference from a visible record to something
+the reader cannot see (a restricted patient as a coverage's subscriber, say) is left out; when the
+profile requires that reference, the resource is not served at all (D22 as amended on #13).
+
+Every error leaves as an OperationOutcome with ``application/fhir+json``, including request
+validation (422), whatever application mounts this router (``FhirRoute``).
 
 Access is machine-token only (ADR-0011 condition 3 / D22): the clinic comes from the token
 through Thulasi's core, never from client input, and our own screens never call /fhir - they
@@ -27,16 +32,20 @@ version logs only which parameter *names* were searched, not their values.
 """
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import os
+import re
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from fastapi.routing import APIRoute
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Select, func, insert, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,7 +57,6 @@ from app.db.models.admin.platform import AuditEvent
 from app.db.models.fhir.records import FhirResourceHistory
 from app.fhir.serializer import SnapshotRow, to_fhir
 
-router = APIRouter(prefix="/fhir/r4", tags=["FHIR R4"])
 FHIR_JSON = "application/fhir+json"
 Patient = FHIR_RESOURCES["Patient"]
 Identifier = MAPPERS["identifier"]
@@ -102,6 +110,48 @@ def outcome_from_db_error(exc: DBAPIError) -> HTTPException:
     return outcome(detail.status, code, detail.message or "database error")
 
 
+def _validation_outcome(exc: RequestValidationError) -> dict[str, Any]:
+    """Where and what kind of problem, never the value sent: a search body can hold names,
+    birth dates and identifiers (D13), and pydantic's messages can quote the input."""
+    issues = [{"severity": "error", "code": "invalid",
+               "diagnostics": f"{'.'.join(str(part) for part in err.get('loc', ()))}: "
+                              f"{err.get('type', 'invalid')}"} for err in exc.errors()]
+    return {"resourceType": "OperationOutcome", "issue": issues or [
+        {"severity": "error", "code": "invalid", "diagnostics": "invalid request"}]}
+
+
+def _outcome_response(exc: HTTPException) -> JSONResponse:
+    body: dict[str, Any] = exc.detail if isinstance(exc.detail, dict) else {
+        "resourceType": "OperationOutcome", "issue": [
+            {"severity": "error", "code": "exception", "diagnostics": str(exc.detail)}]}
+    return fhir_response(body, exc.status_code, headers=dict(exc.headers or {}))
+
+
+class FhirRoute(APIRoute):
+    """Every error a /fhir route raises leaves as an OperationOutcome with
+    ``application/fhir+json`` (D22): ``outcome()``'s 4xx, request validation (422, which FastAPI
+    would otherwise send as its own JSON) and database errors. It lives on the router, so it
+    holds whichever application mounts it."""
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        handler = super().get_route_handler()
+
+        async def route(request: Request) -> Response:
+            try:
+                return await handler(request)
+            except RequestValidationError as exc:
+                return fhir_response(_validation_outcome(exc), 422)
+            except DBAPIError as exc:
+                return _outcome_response(outcome_from_db_error(exc))
+            except HTTPException as exc:
+                return _outcome_response(exc)
+
+        return route
+
+
+router = APIRouter(prefix="/fhir/r4", tags=["FHIR R4"], route_class=FhirRoute)
+
+
 def resource_class(rtype: str) -> type[Any]:
     cls = FHIR_RESOURCES.get(rtype)
     if cls is None:
@@ -140,7 +190,8 @@ async def fhir_db(ctx: AuthContext = Depends(machine_token_auth)) -> AsyncIterat
 async def audit(db: AsyncSession, ctx: AuthContext, action: str, outcome_: str, *,
                 entity_type: str | None = None, entity_id: Any = None, version: int | None = None,
                 patient_id: uuid.UUID | None = None, reason: str | None = None,
-                category: str = "phi-read") -> None:
+                category: str = "phi-read",
+                patient_ids: Sequence[uuid.UUID | None] | None = None) -> None:
     """Writes one audit row and commits it. /fhir changes nothing else, so committing here is
     what makes the audit row outlast the request, including a request that ends in a 404.
 
@@ -148,13 +199,17 @@ async def audit(db: AsyncSession, ctx: AuthContext, action: str, outcome_: str, 
     as amended). ``.inline()`` is what stops SQLAlchemy from adding ``RETURNING`` to fetch the
     identity id; an ORM ``add()`` would too. The row's id, event_uuid and recorded_at come from
     the database and Python defaults, and nothing here needs them. If the insert or the commit
-    fails, the request fails with it (fail closed, T17)."""
-    await db.execute(insert(AuditEvent).inline().values(
-        tenant_id=ctx.tenant_id, actor_type="user", actor_user_id=ctx.user_id,
-        action=action, category=category, outcome=outcome_, entity_type=entity_type,
-        entity_id=str(entity_id) if entity_id else None,
-        entity_version_id=version, patient_id=patient_id, reason=reason,
-        purpose_of_use="TREAT", correlation_id=ctx.correlation_id))
+    fails, the request fails with it (fail closed, T17).
+
+    ``patient_ids``: one row per patient, in one insert (a search that returned several charts
+    records each as a chart access, as D54 does)."""
+    rows = [dict(tenant_id=ctx.tenant_id, actor_type="user", actor_user_id=ctx.user_id,
+                 action=action, category=category, outcome=outcome_, entity_type=entity_type,
+                 entity_id=str(entity_id) if entity_id else None,
+                 entity_version_id=version, patient_id=pid, reason=reason,
+                 purpose_of_use="TREAT", correlation_id=ctx.correlation_id)
+            for pid in (patient_ids if patient_ids is not None else [patient_id])]
+    await db.execute(insert(AuditEvent).inline().values(rows))
     await db.commit()
 
 
@@ -166,6 +221,114 @@ async def record_lookup_denied(db: AsyncSession, rtype: str, rid: uuid.UUID) -> 
     await db.execute(text("SELECT audit.record_fhir_lookup_denied(:rtype, :rid)"),
                      {"rtype": rtype, "rid": rid})
     await db.commit()
+
+
+# --------------------------------------------------------------------------- hidden references
+#: ``Type/id`` with an optional ``/_history/n``: what the serializer writes for a reference.
+REFERENCE = re.compile(r"^([A-Z][A-Za-z]+)/([0-9a-f-]{36})(?:/_history/\d+)?$")
+#: References a profile requires (min 1). If stripping leaves one out, the resource is not
+#: served at all: a half-emptied resource that breaks its own profile is worse than none.
+RESOURCE_REQUIRED: dict[str, set[str]] = {
+    "Appointment": {"participant"},            # 1..*
+    "Composition": {"author"},                 # 1..*
+    "Coverage": {"payor", "beneficiary"},      # 1..*, 1..1
+    "MedicationRequest": {"requester"},        # US Core 1..1
+    "Provenance": {"agent", "target"},         # 1..*, 1..*
+}
+#: References required inside a repeating element: that element is left out with them.
+ENTRY_REQUIRED: dict[str, set[str]] = {
+    "Appointment": {"participant.actor"},      # a participant needs its actor or type (app-1)
+    "Immunization": {"performer.actor"},       # 1..1 in performer
+    "MedicationDispense": {"performer.actor"},
+    "Patient": {"link.other"},                 # 1..1 in link
+    "Procedure": {"performer.actor"},
+    "Provenance": {"agent.who", "entity.what"},
+}
+_GONE = object()
+
+
+def _references(node: Any, path: tuple[str | int, ...] = ()
+                ) -> Iterator[tuple[tuple[str | int, ...], tuple[str, str]]]:
+    """Every reference to a /fhir resource type, with where it sits. Walks the whole resource,
+    so nested and contained ones are covered too."""
+    if isinstance(node, dict):
+        match = REFERENCE.match(node.get("reference") or "")
+        if match and match.group(1) in FHIR_RESOURCES:
+            yield path, (match.group(1), match.group(2))
+        for key, value in node.items():
+            yield from _references(value, (*path, key))
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            yield from _references(value, (*path, i))
+
+
+async def _hidden_references(db: AsyncSession,
+                             resources: Sequence[dict[str, Any]]) -> set[tuple[str, str]]:
+    """The referenced resources the reader cannot see. Decided by RLS as shri_fhir_reader (one
+    query per referenced type), today, whatever version the reference comes from; the facade
+    only learns that a row is not visible to it, never why."""
+    wanted: dict[str, set[str]] = {}
+    for resource in resources:
+        own = (resource["resourceType"], resource["id"])
+        for _, ref in _references(resource):
+            if ref != own:
+                wanted.setdefault(ref[0], set()).add(ref[1])
+    hidden: set[tuple[str, str]] = set()
+    for rtype, ids in wanted.items():
+        cls = FHIR_RESOURCES[rtype]
+        seen = {str(i) for i in (await db.scalars(
+            select(cls.id).where(cls.id.in_([uuid.UUID(i) for i in ids])))).all()}
+        hidden |= {(rtype, i) for i in ids - seen}
+    return hidden
+
+
+def _present(node: Any, dotted: str) -> bool:
+    head, _, rest = dotted.partition(".")
+    if isinstance(node, list):
+        return any(_present(item, dotted) for item in node)
+    if not isinstance(node, dict) or node.get(head) in (None, [], {}):
+        return False
+    return _present(node[head], rest) if rest else True
+
+
+def _sweep(node: Any) -> Any:
+    """Drop what was marked gone, and the lists and objects that leaves empty."""
+    if isinstance(node, dict):
+        kept = {k: _sweep(v) for k, v in node.items() if v is not _GONE}
+        return {k: v for k, v in kept.items() if v not in (_GONE, [], {})}
+    if isinstance(node, list):
+        kept_items = [_sweep(v) for v in node if v is not _GONE]
+        return [v for v in kept_items if v not in (_GONE, [], {})]
+    return node
+
+
+def strip_hidden(resource: dict[str, Any], hidden: set[tuple[str, str]]) -> dict[str, Any] | None:
+    """The resource without its references to hidden resources, or None when it must not be
+    served. Nothing marks what was left out (no placeholder, no data-absent-reason): a marker
+    would tell the client the same thing the ID would."""
+    rtype = resource["resourceType"]
+    found = [path for path, ref in _references(resource) if ref in hidden]
+    if not found:
+        return resource
+    required = {p for p in RESOURCE_REQUIRED.get(rtype, set()) if _present(resource, p)}
+    out = copy.deepcopy(resource)
+    for path in found:
+        shape = ".".join(k for k in path if isinstance(k, str))
+        if shape in ENTRY_REQUIRED.get(rtype, set()):
+            path = path[:max(i for i, k in enumerate(path) if isinstance(k, int)) + 1]
+        node: Any = out
+        for key in path[:-1]:
+            node = node[key]
+        node[path[-1]] = _GONE
+    stripped = _sweep(out)
+    return None if any(not _present(stripped, p) for p in required) else stripped
+
+
+async def served(db: AsyncSession,
+                 resources: Sequence[dict[str, Any]]) -> list[dict[str, Any] | None]:
+    """Each resource as /fhir may serve it (references to hidden resources left out), or None."""
+    hidden = await _hidden_references(db, resources)
+    return [strip_hidden(r, hidden) for r in resources]
 
 
 async def not_served(db: AsyncSession, rtype: str, rid: uuid.UUID) -> HTTPException:
@@ -208,7 +371,10 @@ async def read(rtype: str, rid: uuid.UUID, db: AsyncSession = Depends(fhir_db),
         raise await not_served(db, rtype, rid)
     pid = patient_id_of(cls, obj)
     version = obj.meta_version_id
-    response = fhir_response(to_fhir(obj), headers={
+    body = (await served(db, [to_fhir(obj)]))[0]
+    if body is None:            # a reference its profile requires points at a hidden chart
+        raise await not_served(db, rtype, rid)
+    response = fhir_response(body, headers={
         "ETag": f'W/"{version}"',
         "Last-Modified": obj.meta_last_updated.strftime("%a, %d %b %Y %H:%M:%S GMT")})
     await audit(db, ctx, "read", "success", entity_type=rtype, entity_id=rid,
@@ -236,7 +402,9 @@ async def vread(rtype: str, rid: uuid.UUID, vid: int, db: AsyncSession = Depends
         if await db.get(cls, rid) is not None:
             raise outcome(404, "not-found", f"{rtype}/{rid}/_history/{vid} not found")
         raise await not_served(db, rtype, rid)
-    body = to_fhir(cls, SnapshotRow(rows[0].snapshot))
+    body = (await served(db, [to_fhir(cls, SnapshotRow(rows[0].snapshot))]))[0]
+    if body is None:            # that version requires a reference to a now-hidden chart
+        raise await not_served(db, rtype, rid)
     pid = rid if cls is Patient else _snapshot_patient(cls, rows[0].snapshot)
     await audit(db, ctx, "read", "success", entity_type=rtype, entity_id=rid, version=vid,
                 patient_id=pid)
@@ -256,12 +424,16 @@ async def history(rtype: str, rid: uuid.UUID, db: AsyncSession = Depends(fhir_db
     if not rows:
         raise await not_served(db, rtype, rid)
     pid = rid if cls is Patient else _snapshot_patient(cls, rows[0].snapshot)
+    bodies = await served(db, [to_fhir(cls, SnapshotRow(r.snapshot)) for r in rows])
     entries = [{"fullUrl": f"{FHIR_BASE_URL}/{rtype}/{rid}/_history/{r.version_id}",
-                "resource": to_fhir(cls, SnapshotRow(r.snapshot)),
+                "resource": body,
                 "request": {"method": "POST" if r.version_id == 1 else "PUT",
                             "url": f"{rtype}/{rid}"},
                 "response": {"status": "201" if r.version_id == 1 else "200",
-                             "lastModified": r.recorded_at.isoformat()}} for r in rows]
+                             "lastModified": r.recorded_at.isoformat()}}
+               for r, body in zip(rows, bodies, strict=True) if body is not None]
+    if not entries:             # every version requires a reference to a hidden chart
+        raise await not_served(db, rtype, rid)
     await audit(db, ctx, "read", "success", entity_type=rtype, entity_id=rid, patient_id=pid)
     return fhir_response({"resourceType": "Bundle", "type": "history", "total": len(entries),
                           "entry": entries})
@@ -279,7 +451,7 @@ class SearchParams(BaseModel):
     identifier: str | None = None
     family: str | None = None
     birthdate: dt.date | None = None
-    count: int = 50
+    count: int = Field(50, ge=1)
 
     # Anything else (_include, _revinclude, _has, chained parameters) is refused with a 400,
     # never silently ignored: a client must not take a partial answer for a full one.
@@ -345,19 +517,26 @@ async def search(rtype: str, request: Request, params: SearchParams,
         return fhir_response(_searchset(request, rtype, []))
     count = min(params.count, FHIR_MAX_PAGE_SIZE)
     rows = (await db.scalars(q.order_by(cls.meta_last_updated.desc()).limit(count))).all()
+    # Left out, and not counted: a match whose required reference points at a hidden chart.
+    found = [(row, body) for row, body in zip(rows, await served(db, [to_fhir(r) for r in rows]),
+                                               strict=True) if body is not None]
     # Which parameter *names* were searched, never their values (D13: no PHI in the audit log
     # either, not just the URL - this used to be `f"search {request.url.query}"`, the raw query
     # string, which leaked family/identifier/birthdate values verbatim into audit_event.reason).
     searched = ",".join(k for k, v in params.model_dump(exclude={"count"}).items() if v)
-    body = _searchset(request, rtype, rows)
-    await audit(db, ctx, "read", "success", entity_type=rtype, patient_id=pid,
+    body = _searchset(request, rtype, [b for _, b in found])
+    # Each chart in the results is a chart access (as D54): one audit row per patient returned.
+    # A search that names its patient, or returns no patient data, writes one row.
+    returned = sorted({p for p in (patient_id_of(cls, r) for r, _ in found) if p}, key=str)
+    await audit(db, ctx, "read", "success", entity_type=rtype,
+                patient_ids=[pid] if pid else (returned or [None]),
                 reason=f"search params: {searched or 'none'}")
     return fhir_response(body)
 
 
-def _searchset(request: Request, rtype: str, rows: Sequence[Any]) -> dict[str, Any]:
+def _searchset(request: Request, rtype: str, bodies: Sequence[dict[str, Any]]) -> dict[str, Any]:
     return {
-        "resourceType": "Bundle", "type": "searchset", "total": len(rows),
+        "resourceType": "Bundle", "type": "searchset", "total": len(bodies),
         "link": [{"relation": "self", "url": str(request.url)}],
-        "entry": [{"fullUrl": f"{FHIR_BASE_URL}/{rtype}/{r.id}",
-                   "resource": to_fhir(r), "search": {"mode": "match"}} for r in rows]}
+        "entry": [{"fullUrl": f"{FHIR_BASE_URL}/{rtype}/{b['id']}",
+                   "resource": b, "search": {"mode": "match"}} for b in bodies]}
