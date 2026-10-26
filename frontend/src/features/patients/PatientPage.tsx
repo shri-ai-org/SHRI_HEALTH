@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router'
 import { ApiError } from '../../api/client'
 import { getPatient } from '../../api/generated/endpoints/patients/patients'
 import type { Patient } from '../../api/generated/model'
+import { PatientAppointmentsPanel } from '../scheduling/PatientAppointmentsPanel'
 import { InsurancePanel } from './insurance/InsurancePanel'
 import { birthSexLabel, genderIdentityLabel } from './demographics'
 import { Badge, formatAddressLines, formatDate, formatNameGivenFirst, formatPhone, ProblemAlert, Spinner, type Problem } from '../../design-system'
@@ -81,6 +82,7 @@ function PatientDetails({ patientId }: { patientId: string }) {
           </div>
         ))}
       </dl>
+      <PatientAppointmentsPanel patientId={patient.id} patientName={formatNameGivenFirst(patient.name)} />
       <InsurancePanel patientId={patient.id} />
     </section>
   )
