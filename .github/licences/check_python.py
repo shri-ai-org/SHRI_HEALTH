@@ -3,7 +3,8 @@
 Run it after `pip install --require-hashes --no-deps -r <lock>`, in the same environment. It uses
 only the standard library, so it adds no dependency. Each distribution's licence comes from, in
 order: its PEP 639 `License-Expression`, its `License ::` classifiers, its `License` field.
-Allowed licences, aliases and package exceptions are in allowed.json (DECISIONS.md D75).
+allowed.json holds the D75 list, the fonts-and-data licences and the per-package entries; the
+same rules are in check-npm.mjs (keep the two in step).
 
     python .github/licences/check_python.py
 """
@@ -16,13 +17,32 @@ from pathlib import Path
 
 POLICY = json.loads((Path(__file__).parent / "allowed.json").read_text(encoding="utf-8"))
 ALLOWED = set(POLICY["allowed"])
+FONTS_AND_DATA = set(POLICY["fonts_and_data"]["licences"])
 ALIASES = POLICY["aliases"]
 TOKEN = re.compile(r"\(|\)|[^\s()]+")
 
 
-def allowed_expression(expression: str) -> bool:
+def policy_problems() -> list[str]:
+    """Every package entry is a D75 font or data use, or a registered exception (Vimal, #60)."""
+    problems = []
+    for name, entry in POLICY["packages"].items():
+        kind, licence, register = entry.get("kind"), entry.get("licence"), entry.get("register", "")
+        if kind in ("font", "data"):
+            if licence not in FONTS_AND_DATA or "D75" not in register:
+                problems.append(f"{name}: a {kind} entry needs a fonts-and-data licence and a D75 citation")
+        elif kind == "exception":
+            if not licence or "licence exceptions register" not in register:
+                problems.append(f"{name}: an exception must name its line in the licence exceptions register")
+        else:
+            problems.append(f"{name}: kind must be font, data or exception")
+    return problems
+
+
+def allowed_expression(expression: str, extra: frozenset[str] = frozenset()) -> bool:
     """SPDX expression: OR needs one allowed side, AND needs both, `X WITH exception` needs X."""
+    expression = ALIASES.get(expression.strip(), expression)
     tokens = TOKEN.findall(expression)
+    accepted = ALLOWED | extra
     position = 0
 
     def term() -> bool:
@@ -30,9 +50,13 @@ def allowed_expression(expression: str) -> bool:
         if tokens[position] == "(":
             position += 1
             value = either()
-            position += 1  # ")"
+            if tokens[position] != ")":
+                raise IndexError
+            position += 1
+        elif tokens[position] == ")":
+            raise IndexError
         else:
-            value = ALIASES.get(tokens[position], tokens[position]) in ALLOWED
+            value = ALIASES.get(tokens[position], tokens[position]) in accepted
             position += 1
         if position < len(tokens) and tokens[position].upper() == "WITH":
             position += 2  # the exception only narrows the licence
@@ -78,24 +102,22 @@ def licence_of(meta: dict[str, list[str]]) -> str | None:
 
 
 def main() -> int:
-    failures = []
+    failures = policy_problems()
     seen = 0
     for dist in sorted(distributions(), key=lambda d: d.metadata["Name"].lower()):
         name = dist.metadata["Name"].lower().replace("_", "-")
         if name in ("pip", "setuptools", "wheel"):  # the installer itself, not our dependencies
             continue
         seen += 1
-        exception = POLICY["packages"].get(f"pypi:{name}")
+        entry = POLICY["packages"].get(f"pypi:{name}")
+        extra = frozenset([entry["licence"]]) if entry and entry.get("licence") else frozenset()
         meta = {key: dist.metadata.get_all(key) or [] for key in dist.metadata.keys()}
-        licence = exception["licence"] if exception else licence_of(meta)
-        ok = licence is not None and allowed_expression(
-            " ".join(ALIASES.get(t, t) for t in TOKEN.findall(licence))
-        )
-        if not ok:
+        licence = licence_of(meta)
+        if licence is None or not allowed_expression(licence, extra):
             failures.append(f"{name}=={dist.version}: {licence or 'no licence found'}")
     for failure in failures:
         print(f"::error::Licence not allowed by D75: {failure}")
-    print(f"Python licence check: {seen} distribution(s), {len(failures)} not allowed.")
+    print(f"Python licence check: {seen} distribution(s), {len(failures)} problem(s).")
     return 1 if failures else 0
 
 
