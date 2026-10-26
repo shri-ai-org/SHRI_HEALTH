@@ -84,7 +84,7 @@ security:
 | AI gateway → API (AI-02 reads chart data through the clinical APIs, VG Step 7) | **Agreed (Thulasi, T10):** the API **mints a delegated token when the user starts the AI task** and passes it to the gateway with the job. Lifetime: at most 5 minutes or the length of the task. Bound to user, clinic, patient and task; **read permissions only**; every use audited as `ai`. The gateway can read only what that user could read, for that patient. | Never a broad service account: a compromised gateway must not reach every chart |
 | Integration engine workers | Run inside the backend codebase; use `tenant_db` with the tenant taken from the job, not an HTTP token | TA §7.1 |
 | Partners → `/hooks/*` | Partner signature verified by middleware | CAT |
-| Outside FHIR clients → `/fhir` | Client-credentials machine token checked by Thulasi's core; the clinic comes from the token's client registration. Anand's API is read-only, runs as the `shri_fhir_reader` role (clinical read only), offers `POST _search` so search terms need not go in the URL, and strips query strings from every log. Not in our contract | D22, D23, ADR-0011, VD-SCOPE |
+| Outside FHIR clients → `/fhir` | Client-credentials machine token checked by Thulasi's core; the clinic comes from the token's client registration. Anand's API is read-only, runs as the `shri_fhir_reader` role (clinical read only, plus insert-only on `audit_event`; no access to `break_glass_access`; D23), never serves a restricted chart (404, also left out of search results, Bundle totals, `_include`/`_revinclude`, version history and version reads; denied requests are audited; D22), offers `POST _search` so search terms need not go in the URL, and strips query strings from every log. Not in our contract | D22, D23, ADR-0011, VD-SCOPE |
 
 ## 3. What middleware does on each request
 
@@ -258,7 +258,7 @@ One PostgreSQL database holds every clinic's data. Isolation does not depend on 
 1. **Forced row-level security** on every clinic table, read from the settings `tenant_db` sets (`app.current_tenant_id`, `app.current_user_id`, `app.correlation_id`). A session with no clinic set sees nothing.
 2. **Clinic-carrying links.** Composite foreign keys include the clinic ID, so a row can only point at a row of the same clinic (715 such keys in Sam's schema).
 3. **Same-patient links.** Composite foreign keys include the patient, so a patient's record can only point at the same patient's records (77 such keys).
-4. **Roles that never bypass RLS.** One role per service with the minimum grants (D23): `shri_app` (API), `shri_fhir_reader` (`/fhir`, clinical read only), `shri_integration` (partner worker), `shri_reporting` (approved views only), `shri_migrator` (migrations only).
+4. **Roles that never bypass RLS.** One role per service with the minimum grants (D23): `shri_app` (API: clinical and admin read/write with no DELETE on resource tables; `audit_event` read and insert, never update or delete; `break_glass_access` read and insert), `shri_fhir_reader` (`/fhir`: clinical read only, plus insert-only on `audit_event`; no access to `break_glass_access`), `shri_integration` (partner worker: integration tables, result filing with the reads it needs, insert-only on `audit_event`), `shri_reporting` (approved views only), `shri_migrator` (migrations only).
 
 ## 6. Audit (`x-audit`)
 
