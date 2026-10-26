@@ -154,6 +154,9 @@ paths:
                     csrfToken: TEST-csrf-placeholder
                     idleExpiresAt: '2026-11-03T15:00:00Z'
                     expiresAt: '2026-11-04T02:00:00Z'
+                    build:
+                      version: 0.1.0
+                      commit: 7544a31c0d2e
         '401':
           $ref: ../components/responses/Unauthorized.yaml
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
@@ -241,6 +244,9 @@ paths:
                     csrfToken: TEST-csrf-placeholder
                     idleExpiresAt: '2026-11-03T14:45:00Z'
                     expiresAt: '2026-11-04T02:00:00Z'
+                    build:
+                      version: 0.1.0
+                      commit: 7544a31c0d2e
         '401':
           $ref: ../components/responses/Unauthorized.yaml
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
@@ -526,6 +532,7 @@ components:
       - csrfToken
       - idleExpiresAt
       - expiresAt
+      - build
       properties:
         user:
           $ref: '#/components/schemas/SessionUser'
@@ -551,6 +558,11 @@ components:
           $ref: ../components/schemas/Timestamp.yaml
           description: The absolute limit, 12 hours after login. It cannot be extended; screens show a notice before it so
             people can save their work.
+          x-phi: none
+        build:
+          $ref: '#/components/schemas/BuildInfo'
+          description: The API build serving this session (Q31). Shown to signed-in users only, for support and bug reports;
+            never returned by /health or any public operation.
           x-phi: none
     Me:
       description: 'The current user, their clinic and their effective permissions, for building menus (inventory #6). The
@@ -640,3 +652,28 @@ components:
           $ref: ../components/schemas/Timestamp.yaml
           description: 'When it ends: 4 hours after `grantedAt`.'
           x-phi: none
+    BuildInfo:
+      description: 'Which build of the API is running, stamped by CI at image build time (Q31, issue #46). Never typed by
+        hand.'
+      type: object
+      additionalProperties: false
+      required:
+      - version
+      - commit
+      properties:
+        version:
+          type: string
+          maxLength: 64
+          pattern: ^(dev|[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$
+          description: Release version from backend/pyproject.toml, or `dev` for a local build.
+          x-phi: none
+          examples:
+          - 0.1.0
+        commit:
+          type: string
+          maxLength: 12
+          pattern: ^(unknown|[0-9a-f]{12})$
+          description: First 12 characters of the git commit the image was built from, or `unknown` for a local build.
+          x-phi: none
+          examples:
+          - 7544a31c0d2e
