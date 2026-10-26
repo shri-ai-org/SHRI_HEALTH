@@ -35,7 +35,10 @@ services:
       retries: 20
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0.7
+    # Our own image (D75, issue #55): Keycloak's Apache-2.0 release on Debian with Temurin 21,
+    # everything pinned and checksum-verified (infra/keycloak/Dockerfile).
+    build: ../keycloak
+    image: shri-health/keycloak:local
     command: ["start-dev"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
