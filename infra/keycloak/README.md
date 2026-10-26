@@ -25,4 +25,26 @@ The build checks both SHA-256 values again and fails on any difference.
 3. Update the version and SHA-256 arguments in `Dockerfile` and the table above.
 4. Open a reviewed PR. CI (`.github/workflows/keycloak.yml`) builds the image, checks it doesn't run as root, and waits for `/kc/health/ready`.
 
-The realm configuration (login, sessions, SSO idle and maximum; #35, SECURITY_MODEL §2.1) comes with the real-login work.
+## Staff realm (`realms/shri-staff.json`)
+
+The staff realm, imported at startup with `start-dev --import-realm` (compose, CI). It is the Keycloak half of the real login; core's half (sessions, CSRF, keep-alive, back-channel logout) follows once migration 0005 (#52) is on `main`.
+
+| Setting | Value | Why |
+|---|---|---|
+| Sign-up | Off | Staff accounts are created by ADM |
+| Multi-factor | Required: `CONFIGURE_TOTP` is a default action for every new user | SECURITY_MODEL §9 ("MFA in Keycloak") |
+| Passwords | At least 12 characters, not the username or email, last 5 not reused | |
+| Brute force | 5 failures, then waits up to 15 minutes; **no** permanent lockout | Nobody can lock a colleague out |
+| SSO idle / maximum | 20 minutes / 12 hours 5 minutes | Our 15-minute and 12-hour limits plus 5 minutes, so ours always apply first (#35) |
+| Access token | 5 minutes; refresh tokens rotate, no reuse | Keep-alive refreshes server-side (#35) |
+| Remember me | Off | Shared clinic workstations |
+| Events | Logins, failures, refreshes and credential changes kept 90 days; admin events without details | Audit; details can carry user data |
+| Client `shri-web` | Confidential, code flow with PKCE `S256`, exact HTTPS redirect URI, no implicit, password or service-account grants, no full scope | ADR-0006: tokens never reach the browser |
+
+**The client secret is never in the file.** The file has `${SHRI_WEB_CLIENT_SECRET}`, which Keycloak fills from the environment when it imports. Locally that comes from `infra/compose/.env`; in production, from OpenBao. The redirect URI and post-logout URI default to the local stack and are overridden by `SHRI_WEB_REDIRECT_URI` and `SHRI_WEB_POST_LOGOUT_URI`.
+
+`tests/check_realm.py` (standard library only) fails if any setting above is weakened. CI runs it on the file, then again with `--live` against the Keycloak that imported it, so a setting Keycloak drops or renames on import is caught too.
+
+**Two runtime settings this needs:**
+- `KC_HTTP_HOST=0.0.0.0`: Keycloak 26.8 binds `start-dev` to localhost only, which Nginx couldn't reach.
+- `data/` and `data/import/` are created in the image, so mounting the realm folder doesn't leave `data/` owned by root, where Keycloak couldn't write.
