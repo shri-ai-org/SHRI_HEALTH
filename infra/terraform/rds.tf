@@ -149,7 +149,7 @@ resource "aws_db_instance" "postgres" {
 
   # The RDS master role runs only sql/00_extensions.sql and creates shri_migrator (ADR-0012). Its
   # password is generated and rotated by RDS in Secrets Manager, encrypted with our key, so it never
-  # appears in Terraform state, the repository or a terminal.
+  # appears in OpenTofu state, the repository or a terminal.
   username                      = "shri_rds_admin"
   manage_master_user_password   = true
   master_user_secret_kms_key_id = aws_kms_key.database.arn

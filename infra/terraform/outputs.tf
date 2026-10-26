@@ -19,7 +19,8 @@ output "database_ca_cert_identifier" {
 
 output "master_user_secret_arn" {
   description = "Secrets Manager secret holding the RDS master password; read it only to run sql/00_extensions.sql and create shri_migrator."
-  value       = aws_db_instance.postgres.master_user_secret[0].secret_arn
+  # one(): null rather than an error if RDS hasn't reported the secret yet.
+  value = one(aws_db_instance.postgres.master_user_secret[*].secret_arn)
 }
 
 output "database_kms_key_arn" {

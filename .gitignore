@@ -20,7 +20,7 @@ __pycache__/
 *.egg-info/
 build/
 
-# Terraform: providers, state and per-environment values never go in the repository
+# OpenTofu (infra/terraform/): providers, state and per-environment values never go in the repository
 # (state can hold resource details; infra/terraform/README.md). The lock file is committed.
 .terraform/
 *.tfstate
