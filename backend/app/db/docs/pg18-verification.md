@@ -86,7 +86,7 @@ because they blocked the PG18 *build* itself (§Environment).
 | pg_trgm | 1.6 | none |
 | btree_gist | 1.8 | none |
 | pgcrypto | 1.4 | none |
-| pg_textsearch | **not listed / not supported** | Tech Arch pins it for RAG retrieval (AI-02/RAG, P1 scope per Sam's "Open items"); if the production target is RDS, this extension is not available there at all — built-in `tsvector`/`tsquery` would have to substitute, or hosting would need to move to self-managed/EC2/Aurora with a custom extension |
+| pg_textsearch | **not listed / not supported** | **Dropped since (D32):** keyword search uses the built-in full-text search (`content_tsv`, `tsvector` + GIN). At the time: Tech Arch pinned it for RAG retrieval (AI-02/RAG, P1 scope per Sam's "Open items"), and RDS does not offer it |
 
 Source: AWS RDS for PostgreSQL extension support documentation (queried for the 18.6 minor).
 
@@ -204,7 +204,7 @@ transactions (create visit, file result, create claim) on both versions.
 | 1 | psycopg/SQLAlchemy/Alembic resolve to PG18-aware versions | n/a | 3.3.6 / 2.0.55 / 1.20.1 | **PASS** | none; Alembic's NOT ENFORCED support specifically is "not stated" by its docs, resolved empirically in #3 instead |
 | 2 | pgcrypto/pg_trgm/btree_gist build and install | pass | pass | **PASS** | none |
 | 2 | pgvector 0.8.7 matches Tech Arch pin, builds, PG18-safe | pass | pass | **PASS** | none for self-hosted; **RDS only ships 0.8.2 for PG18** — confirm hosting target before relying on 0.8.7-specific fixes |
-| 2 | pg_textsearch (Tech Arch pin 1.5.0) | n/a — unused | n/a — unused | **N/A today** | real extension, PG18-capable, but **not on RDS**; confirm with Sam/Sena whether RAG retrieval (P1) depends on it before picking a hosting target |
+| 2 | pg_textsearch (Tech Arch pin 1.5.0) | n/a — unused | n/a — unused | **Closed (D32)** | dropped from the baseline: not on RDS, and the schema does not use it; keyword search uses the built-in `content_tsv` (`tsvector` + GIN) |
 | 2 | pgBackRest PG18 support | n/a | 2.60.0, fully supported | **PASS** | none |
 | 3 | Migrations up/down/up, `alembic check`, full suite, as `shri_app` | pass | pass, identical | **PASS** | none |
 | 4 | Trigger inventory identical; no role-dependent logic | pass | pass | **PASS** | partial: no live `shri_migrator` functional insert performed (see note) |
@@ -217,8 +217,8 @@ constraints, RLS, triggers, generated columns and the full test suite behave ide
 and the one real PG18 behavior change that could bite (implicit `VIRTUAL` generated columns) is
 already handled correctly everywhere it currently applies. What's **not** resolved by this check,
 and shouldn't be read as resolved: (1) the hosting target — if it's RDS, the pgvector pin needs to
-drop to what RDS actually ships (0.8.2) or the plan needs non-RDS hosting, and `pg_textsearch`
-isn't available on RDS PostgreSQL 18 at all; (2) the `uuidv7()` switch is not yet decided, and now
+drop to what RDS actually ships (0.8.2) or the plan needs non-RDS hosting (`pg_textsearch`, which
+RDS PostgreSQL 18 does not offer, has since been dropped: D32); (2) the `uuidv7()` switch is not yet decided, and now
 has a concretely demonstrated privacy trade-off attached to it, not just a performance one; (3) the
 timing section is still outstanding, pending either a synthetic loader you want built or your
 decision to skip it for now.
