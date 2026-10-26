@@ -81,9 +81,11 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 34 | GET | `/patients/{patientId}/related-persons` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 (emergency contacts) | B2 | **New** (Stage 1 gap) |
 | 35 | POST | `/patients/{patientId}/related-persons` | V | Cl | `patients:update` | pw | S | | | FR-PAT-01 | B2 | **New** |
 | 36 | PATCH | `/patients/{patientId}/related-persons/{relatedPersonId}` | V | Cl | `patients:update` | pw | – | ✓ | | FR-PAT-01 | B2 | **New** |
+| 257 | GET | `/patients/{patientId}/related-persons/{relatedPersonId}` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 | B2 | **New** (contracts follow-up 2, 2026-10-26; Minalini on #48): one related person with the strong `ETag` #36 needs |
 | 37 | GET | `/patients/{patientId}/coverages` | V | Cl | `coverages:read` | pr | – | | | FR-PAT-01, FR-RCM-01 | B2 | |
 | 38 | POST | `/patients/{patientId}/coverages` | V | Cl | `coverages:create` | pw | S | | | FR-RCM-01 | B2 | |
 | 39 | PATCH | `/patients/{patientId}/coverages/{coverageId}` | V | Cl | `coverages:update` | pw | – | ✓ | | FR-RCM-01 | B2 | |
+| 256 | GET | `/patients/{patientId}/coverages/{coverageId}` | V | Cl | `coverages:read` | pr | – | | | FR-RCM-01 | B2 | **New** (contracts follow-up 2, 2026-10-26; Minalini on #48): one coverage with the strong `ETag` #39 needs, so a coverage can be ended (D45) |
 | 40 | POST | `/patients/{patientId}/coverages/{coverageId}/card-images` | V | Cl+F | `coverages:update` | pw | S | | | FR-PAT-01 | B2 | Body `{ fileId, side }` (API_STANDARDS §15) |
 | 232 | POST | `/patients/{patientId}/coverages/{coverageId}/entered-in-error` | V | Cl | `coverages:entered-in-error` | pw | – | | | FR-PAT-01, FR-RCM-01 | B2 | **New** (D45, 2026-10-23): a coverage recorded by mistake; ending one is `PATCH` with `endDate` |
 | 41 | GET | `/patients/{patientId}/consents` | V | Cl | `consents:read` | pr | – | | | FR-PAT-01 | B2 | |
@@ -260,6 +262,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 179–182 | same 4 | `/lab-accounts` | A | Ad | same | adm | S | ✓ | | FR-ORD-01 | B1 | Same |
 | 183–186 | same 4 | `/note-templates` | A | Ad | same | adm | S | ✓ | | FR-ENC-04 | B1 | Same |
 | 244–247 | same 4 | `/consent-requirements` | A | Ad | reads `consent-requirements:read` (FD, ADM); writes `practice-setup:create\|update` | adm | S | ✓ | | FR-PAT-01 | B1 | **New** (D59, 2026-10-24): consent kinds with the current `policyVersion` |
+| 258–259 | GET, PATCH | `/practice-settings` | A | Ad | `practice-setup:read`; `practice-setup:update` (ADM) | adm | – | ✓ (PATCH) | | D39 | B1 | **New** (contracts follow-up 2, 2026-10-26, D39 amended): one setting today, whether registration shows the sexual-orientation and gender-identity fields; every signed-in user reads it through `GET /me` (`practiceSettings`) |
 | 187 | POST | `/onboarding/import` | A | Ad+F | `onboarding:import` | adm | S | | ✓ | §3.10 onboarding | B1 | |
 | 188 | GET | `/encounters/{encounterId}/superbill` | A | Cl | `superbills:read` | pr | – | | | FR-RCM-02 | B6 | |
 | 189 | PATCH | `/encounters/{encounterId}/superbill` | A | Cl | `superbills:update` | pw | – | ✓ | | FR-RCM-02 | B6 | |
@@ -330,6 +333,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | Proposed to owners | Single GETs in practice setup and documents (Anand), #213 async export (Anand) | Pending owners |
 | Batch 1 follow-up: Minalini's screen-mapping gaps (2026-10-24) | New #236–239 booking lists (D49), #240 merge list (D51), #241 summaries (D54), #242 undo check-in (D55), #243 reschedule (D61), #244–247 consent requirements (D59); #1–6, #14, #19, #148–150 written (D52, D53); #130 and #198–199 moved to batch 1 (D50, D58); `provider-schedules:create\|update` (D66) | D49–D70 |
 | Contract batch 3: inbox, tasks and messages (2026-10-26) | #214–217 written; new #252 (single GET), #253 (cancel), #254 (replies), #255 (summary) | D77–D81 |
+| Contracts follow-up 2 (2026-10-26) | New #256 single coverage, #257 single related person, #258–259 practice settings; `GET /me` gains `practiceSettings` | D39 (amended), D82 |
 | Moved outside `/api/v1` | `/hooks/*`, `/health` (public through Nginx); `/ready` internal and **not in the contract** | API_STANDARDS §2; agreed T24 |
 
 **Count:** 254 contract operations: 255 rows (27 platform, 24 patients, 12 scheduling and eligibility, 29 encounters and notes, 19 history, 9 AI, 17 medications, 18 orders, 80 Anand, 8 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24); #248 from Minalini's M16 sign-off (2026-10-24); #249–251 from batch 2 (single GETs for problems, allergies and co-sign rules, 2026-10-24); #252–255 from batch 3 (inbox, 2026-10-26); #260–291 from portal batch B8a (D89, D92, 2026-10-26; P1, so not in the count above). Recounted when the contract is written.

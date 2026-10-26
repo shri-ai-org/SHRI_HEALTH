@@ -103,6 +103,7 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 |---|---|---|---|---|
 | Files | `/files/…` | **F** + **Ad** metadata | — | — |
 | Facilities, locations | `/facilities`, `/locations` | **Cl** | Organization, Location | US Core Organization, US Core Location |
+| Practice settings | `/practice-settings` (read for everyone through `GET /me`) | **Ad**: `tenant_setting` rows with their `setting_definition` (A49); today `registration.show_sogi_fields` (D39) | — | — |
 | Providers | `/providers` | **Cl** | Practitioner, PractitionerRole | US Core Practitioner, US Core PractitionerRole |
 | Appointment types, provider schedules, fee schedules, lab accounts, note templates | `/appointment-types`, `/provider-schedules`, `/fee-schedules`, `/lab-accounts`, `/note-templates` | **Ad** (provider calendars as FHIR Schedule in **Cl**) | Schedule (for provider calendars) | — |
 | Payer directory | `/payers` (read-only) | **Ad**, platform-wide (`payer`, `payer_clearinghouse_id`); maintained by the platform from the clearinghouse payer list (Vimal, 2026-10-23) | Organization | US Core Organization |
