@@ -20,15 +20,9 @@ import {
   type Column,
   type Problem,
 } from '../../design-system'
+import { useRegisterPrefill, type RegisterPrefill } from './registerPrefill'
 
 const PAGE_SIZE = 25
-
-/** What the register form starts with when the search found nobody. Passed in router state, never the URL (D13). */
-export interface RegisterPrefill {
-  family?: string
-  given?: string
-  birthDate?: string
-}
 
 interface Form {
   family: string
@@ -73,6 +67,7 @@ const GENDER: Record<string, string> = { male: 'Male', female: 'Female', other: 
 /** Front-desk patient search (inventory #28). Criteria go in the request body, never the URL (D13). */
 export function PatientSearchPage() {
   const navigate = useNavigate()
+  const handoff = useRegisterPrefill()
   const [form, setForm] = useState<Form>(EMPTY)
   const [formError, setFormError] = useState<string | null>(null)
   const [problem, setProblem] = useState<Problem | null>(null)
@@ -119,7 +114,8 @@ export function PatientSearchPage() {
       ...(form.given.trim() ? { given: form.given.trim() } : {}),
       ...(form.birthDate ? { birthDate: form.birthDate } : {}),
     }
-    void navigate('/patients/new', { state: prefill })
+    handoff.set(prefill)
+    void navigate('/patients/new')
   }
 
   const columns: Column<PatientSummary>[] = [

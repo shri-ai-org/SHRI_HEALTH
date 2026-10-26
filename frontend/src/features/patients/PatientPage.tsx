@@ -53,7 +53,7 @@ function PatientDetails({ patientId }: { patientId: string }) {
   const rows: Array<[string, string]> = [
     ['MRN', patient.mrn],
     ['Date of birth', patient.birthDate ? formatDate(patient.birthDate) : '—'],
-    ['Sex', patient.gender ? (GENDER[patient.gender] ?? patient.gender) : '—'],
+    ['Legal sex', patient.gender ? (GENDER[patient.gender] ?? patient.gender) : '—'],
     ['Phone', patient.phones?.[0] ? formatPhone(patient.phones[0].number) : '—'],
     ['Email', patient.emails?.[0]?.address ?? '—'],
     ['Address', patient.address ? formatAddressLines(patient.address).join(', ') : '—'],

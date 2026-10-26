@@ -5,6 +5,7 @@ import { Button } from '../design-system'
 import { PatientPage } from '../features/patients/PatientPage'
 import { PatientSearchPage } from '../features/patients/PatientSearchPage'
 import { RegisterPatientPage } from '../features/patients/RegisterPatientPage'
+import { RegisterPrefillProvider } from '../features/patients/registerPrefill'
 import { DesignSystemPreview } from './DesignSystemPreview'
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
@@ -37,7 +38,9 @@ function Shell() {
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">
-        <Outlet />
+        <RegisterPrefillProvider>
+          <Outlet />
+        </RegisterPrefillProvider>
       </main>
     </div>
   )

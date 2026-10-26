@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,6 +8,7 @@ import { axeViolations } from '../../test/axe'
 import { PatientPage } from './PatientPage'
 import { criteriaProblem, PatientSearchPage } from './PatientSearchPage'
 import { RegisterPatientPage } from './RegisterPatientPage'
+import { RegisterPrefillProvider } from './registerPrefill'
 
 // Synthetic data only.
 const json = (status: number, body: unknown, type = 'application/json') =>
@@ -51,18 +52,20 @@ function serve(routes: Record<string, Array<() => Response>>) {
   return { bodies }
 }
 
-function renderAt(path: string, state?: unknown) {
+function renderAt(path: string) {
   const router = createMemoryRouter(
     [
       { path: '/patients/search', element: <PatientSearchPage /> },
       { path: '/patients/new', element: <RegisterPatientPage /> },
       { path: '/patients/:patientId', element: <PatientPage /> },
     ],
-    { initialEntries: [{ pathname: path, state }] },
+    { initialEntries: [path] },
   )
   render(
     <ToastProvider>
-      <RouterProvider router={router} />
+      <RegisterPrefillProvider>
+        <RouterProvider router={router} />
+      </RegisterPrefillProvider>
     </ToastProvider>,
   )
   return router
@@ -132,7 +135,7 @@ describe('PatientSearchPage', () => {
     expect(await screen.findByText('Reference: r-1')).toBeInTheDocument()
   })
 
-  it('carries the typed name and date of birth to registration in router state, not the URL', async () => {
+  it('hands the typed name and date of birth to registration in memory, once, never in the URL or history', async () => {
     const user = userEvent.setup()
     serve({})
     const router = renderAt('/patients/search')
@@ -141,8 +144,14 @@ describe('PatientSearchPage', () => {
     await user.click(screen.getByRole('button', { name: 'Register new patient' }))
     expect(router.state.location.pathname).toBe('/patients/new')
     expect(router.state.location.search).toBe('')
+    expect(router.state.location.state).toBeNull()
     expect(screen.getByLabelText(/Last name/)).toHaveValue('Testperson')
     expect(screen.getByLabelText(/Date of birth/)).toHaveValue('07/19/1984')
+
+    // Used once: opening the form again starts empty.
+    await act(() => router.navigate('/patients/search'))
+    await act(() => router.navigate('/patients/new'))
+    expect(screen.getByLabelText(/Last name/)).toHaveValue('')
   })
 })
 
@@ -173,7 +182,8 @@ describe('RegisterPatientPage', () => {
     })
     const router = renderAt('/patients/new')
     await fillRequired(user)
-    await user.type(screen.getByLabelText('Mobile phone'), '6175550123')
+    await user.type(screen.getByLabelText('Phone'), '6175550123')
+    expect(screen.getByLabelText('Phone type')).toHaveValue('mobile')
     await user.click(screen.getByRole('button', { name: 'Register patient' }))
 
     expect(await screen.findByRole('heading', { name: 'Ana Testperson' })).toBeInTheDocument()
@@ -186,6 +196,21 @@ describe('RegisterPatientPage', () => {
       phones: [{ number: '+16175550123', use: 'mobile' }],
     })
     expect(sent?.headers.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it('sends the phone type the front desk chose', async () => {
+    const user = userEvent.setup()
+    const server = serve({
+      'POST /api/v1/patients': [() => json(201, patient)],
+      [`GET /api/v1/patients/${patient.id}`]: [() => json(200, patient)],
+    })
+    renderAt('/patients/new')
+    await fillRequired(user)
+    await user.type(screen.getByLabelText('Phone'), '6175550123')
+    await user.selectOptions(screen.getByLabelText('Phone type'), 'work')
+    await user.click(screen.getByRole('button', { name: 'Register patient' }))
+    await screen.findByRole('heading', { name: 'Ana Testperson' })
+    expect(server.bodies('POST /api/v1/patients')[0]?.body.phones).toEqual([{ number: '+16175550123', use: 'work' }])
   })
 
   it('warns of a possible duplicate and registers anyway only with a reason, under a new key', async () => {

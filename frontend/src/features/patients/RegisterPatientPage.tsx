@@ -1,9 +1,9 @@
 import { UserPlus } from 'lucide-react'
-import { useRef, useState, type FormEvent } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router'
 import { ApiError, newIdempotencyKey } from '../../api/client'
 import { registerPatient } from '../../api/generated/endpoints/patients/patients'
-import type { AdministrativeGender, PatientCreate } from '../../api/generated/model'
+import type { AdministrativeGender, ContactUse, PatientCreate } from '../../api/generated/model'
 import {
   Alert,
   Button,
@@ -22,7 +22,7 @@ import {
   useToast,
   type Problem,
 } from '../../design-system'
-import type { RegisterPrefill } from './PatientSearchPage'
+import { useRegisterPrefill } from './registerPrefill'
 
 const REASON_LIMIT = 500
 
@@ -33,6 +33,8 @@ interface Form {
   birthDate: string | null
   gender: AdministrativeGender | ''
   phone: string | null
+  /** SMS reminders need a mobile number, so mobile is the default. */
+  phoneUse: Extract<ContactUse, 'mobile' | 'home' | 'work'>
   email: string
   line1: string
   city: string
@@ -47,8 +49,9 @@ const FIELD_LABELS: Record<string, string> = {
   '/name/family': 'Last name',
   '/preferredName': 'Preferred name',
   '/birthDate': 'Date of birth',
-  '/gender': 'Sex',
-  '/phones/0/number': 'Mobile phone',
+  '/gender': 'Legal sex',
+  '/phones/0/number': 'Phone',
+  '/phones/0/use': 'Phone type',
   '/emails/0/address': 'Email',
   '/address/lines/0': 'Street address',
   '/address/city': 'City',
@@ -82,7 +85,7 @@ function toBody(form: Form): PatientCreate {
   }
   if (form.preferredName.trim()) body.preferredName = form.preferredName.trim()
   if (form.gender) body.gender = form.gender
-  if (form.phone) body.phones = [{ number: form.phone, use: 'mobile' }]
+  if (form.phone) body.phones = [{ number: form.phone, use: form.phoneUse }]
   if (form.email.trim()) body.emails = [{ address: form.email.trim(), use: 'home' }]
   if (form.line1.trim()) {
     body.address = { lines: [form.line1.trim()], city: form.city.trim(), state: form.state, postalCode: normalizeZip(form.zip), country: 'US' }
@@ -98,20 +101,26 @@ function toBody(form: Form): PatientCreate {
 export function RegisterPatientPage() {
   const navigate = useNavigate()
   const toast = useToast()
-  const prefill = (useLocation().state ?? {}) as RegisterPrefill
-  const [form, setForm] = useState<Form>({
-    given: prefill.given ?? '',
-    family: prefill.family ?? '',
-    preferredName: '',
-    birthDate: prefill.birthDate ?? '',
-    gender: '',
-    phone: '',
-    email: '',
-    line1: '',
-    city: '',
-    state: '',
-    zip: '',
+  const handoff = useRegisterPrefill()
+  const [form, setForm] = useState<Form>(() => {
+    const prefill = handoff.peek()
+    return {
+      given: prefill.given ?? '',
+      family: prefill.family ?? '',
+      preferredName: '',
+      birthDate: prefill.birthDate ?? '',
+      gender: '',
+      phone: '',
+      phoneUse: 'mobile',
+      email: '',
+      line1: '',
+      city: '',
+      state: '',
+      zip: '',
+    }
   })
+  // Used once: a later visit to this page starts empty.
+  useEffect(() => handoff.clear(), [handoff])
   const [errors, setErrors] = useState<Errors>({})
   const [problem, setProblem] = useState<Problem | null>(null)
   const [duplicate, setDuplicate] = useState(false)
@@ -192,7 +201,7 @@ export function RegisterPatientPage() {
           <Field label="Last name" required error={errors.family}>{(p) => <TextInput {...p} autoComplete="off" value={form.family} onChange={set('family')} />}</Field>
           <Field label="Preferred name" hint="If they go by another name" error={errors.preferredName}>{(p) => <TextInput {...p} autoComplete="off" value={form.preferredName} onChange={set('preferredName')} />}</Field>
           <Field label="Date of birth" hint="MM/DD/YYYY" required error={errors.birthDate}>{(p) => <DateInput {...p} value={form.birthDate ?? ''} onValueChange={(v) => update({ birthDate: v })} />}</Field>
-          <Field label="Sex" error={errors.gender}>
+          <Field label="Legal sex" hint="As on ID and insurance" error={errors.gender}>
             {(p) => (
               <Select {...p} value={form.gender} onChange={(e) => update({ gender: e.target.value as AdministrativeGender | '' })}>
                 <option value="">Not given</option>
@@ -206,7 +215,16 @@ export function RegisterPatientPage() {
         </fieldset>
         <fieldset className="grid gap-4 md:grid-cols-3">
           <legend className="mb-2 text-sm font-semibold text-ink">Contact</legend>
-          <Field label="Mobile phone" error={errors.phone}>{(p) => <PhoneInput {...p} value="" onValueChange={(v) => update({ phone: v })} />}</Field>
+          <Field label="Phone" error={errors.phone}>{(p) => <PhoneInput {...p} value="" onValueChange={(v) => update({ phone: v })} />}</Field>
+          <Field label="Phone type">
+            {(p) => (
+              <Select {...p} value={form.phoneUse} onChange={(e) => update({ phoneUse: e.target.value as Form['phoneUse'] })}>
+                <option value="mobile">Mobile</option>
+                <option value="home">Home</option>
+                <option value="work">Work</option>
+              </Select>
+            )}
+          </Field>
           <Field label="Email" error={errors.email}>{(p) => <TextInput {...p} type="email" autoComplete="off" value={form.email} onChange={set('email')} />}</Field>
         </fieldset>
         <fieldset className="grid gap-4 md:grid-cols-4">
