@@ -137,7 +137,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 71 | POST | `/encounters/{encounterId}/diagnoses` | V | Cl | `diagnoses:create` | pw | S | | | FR-ENC-02 | B4 | |
 | 72 | POST | `/encounters/{encounterId}/diagnoses/{diagnosisId}/remove` | V | Cl | `diagnoses:remove` | pw | – | | | FR-ENC-02 | B4 | **Was `DELETE`** (VD-G1); only while unsigned |
 | 73 | POST | `/encounters/{encounterId}/diagnoses/{diagnosisId}/entered-in-error` | V | Cl | `diagnoses:entered-in-error` | pw | – | | | FR-ENC-02 | B4 | **New** (VD-G1, VD-G6); after signing |
-| 74 | GET | `/codes/search` | V | Ad | `codes:read` | – | – | | | FR-ENC-02 | B4 | Query `system`, `q` (reference data, not PHI) |
+| 74 | GET | `/codes` | V | Ad | `codes:read` | – | – | | | FR-ENC-02 | B4 | Query `system`, `q` (reference data, not PHI). **Was `/codes/search`** (batch 2, 2026-10-24): the `/search` suffix is POST-only for PHI searches (`shri-search-post`), so code search is a GET on `/codes`, like `/pharmacies` |
 | 75 | POST | `/encounters/{encounterId}/notes` | V | Cl | `notes:create` | pw | S | | | FR-ENC-01, FR-ENC-04 | B4 | |
 | 76 | GET | `/encounters/{encounterId}/notes` | V | Cl | `notes:read` | pr | – | | | FR-ENC-01 | B4 | **New** (Stage 1 gap) |
 | 77 | GET | `/notes/{noteId}` | V | Cl | `notes:read` | pr | – | | | FR-ENC-01 | B4 | **New** (Stage 1 gap) |
@@ -153,6 +153,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 87 | GET | `/cosign-rules` | V | Ad | `cosign-rules:read` | adm | – | | | FR-ENC-01 (co-signature by state and provider) | B4 | **New** (Stage 1 gap); owner Vimal, agreed by Anand (A28, D28) |
 | 88 | POST | `/cosign-rules` | V | Ad | `cosign-rules:create` | adm | S | | | FR-ENC-01 | B4 | **New** |
 | 89 | PATCH | `/cosign-rules/{cosignRuleId}` | V | Ad | `cosign-rules:update` | adm | – | ✓ | | FR-ENC-01 | B4 | **New** |
+| 251 | GET | `/cosign-rules/{cosignRuleId}` | V | Ad | `cosign-rules:read` | adm | – | | | FR-ENC-01 | B4 | **New** (batch 2, 2026-10-24): the ETag for #89 (list items carry none, API_STANDARDS §11) |
 
 ## 5. Patient history — Vimal
 
@@ -160,10 +161,12 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 90 | GET | `/patients/{patientId}/problems` | V | Cl | `problems:read` | pr | – | | | FR-PAT-03 | B4 | |
 | 91 | POST | `/patients/{patientId}/problems` | V | Cl | `problems:create` | pw | S | | | FR-PAT-03 | B4 | |
+| 249 | GET | `/patients/{patientId}/problems/{problemId}` | V | Cl | `problems:read` | pr | – | | | FR-PAT-03 | B4 | **New** (batch 2, 2026-10-24): the ETag for #92 |
 | 92 | PATCH | `/patients/{patientId}/problems/{problemId}` | V | Cl | `problems:update` | pw | – | ✓ | | FR-PAT-03 | B4 | |
 | 93 | POST | `/patients/{patientId}/problems/{problemId}/entered-in-error` | V | Cl | `problems:entered-in-error` | pw | – | | | FR-PAT-03 | B4 | **Replaces generic `/records/{type}/{rid}/entered-in-error`** (VD-G6) |
 | 94 | GET | `/patients/{patientId}/allergies` | V | Cl | `allergies:read` | pr | – | | | FR-PAT-03, FR-MED-01 | B4 | |
 | 95 | POST | `/patients/{patientId}/allergies` | V | Cl | `allergies:create` | pw | S | | | FR-PAT-03 | B4 | |
+| 250 | GET | `/patients/{patientId}/allergies/{allergyId}` | V | Cl | `allergies:read` | pr | – | | | FR-PAT-03 | B4 | **New** (batch 2, 2026-10-24): the ETag for #96 |
 | 96 | PATCH | `/patients/{patientId}/allergies/{allergyId}` | V | Cl | `allergies:update` | pw | – | ✓ | | FR-PAT-03 | B4 | |
 | 97 | POST | `/patients/{patientId}/allergies/{allergyId}/entered-in-error` | V | Cl | `allergies:entered-in-error` | pw | – | | | FR-PAT-03 | B4 | VD-G6 |
 | 98 | GET | `/patients/{patientId}/family-history` | V | Cl | `family-history:read` | pr | – | | | FR-PAT-03 | B4 | |
@@ -323,7 +326,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | Batch 1 follow-up: Minalini's screen-mapping gaps (2026-10-24) | New #236–239 booking lists (D49), #240 merge list (D51), #241 summaries (D54), #242 undo check-in (D55), #243 reschedule (D61), #244–247 consent requirements (D59); #1–6, #14, #19, #148–150 written (D52, D53); #130 and #198–199 moved to batch 1 (D50, D58); `provider-schedules:create\|update` (D66) | D49–D70 |
 | Moved outside `/api/v1` | `/hooks/*`, `/health` (public through Nginx); `/ready` internal and **not in the contract** | API_STANDARDS §2; agreed T24 |
 
-**Count:** 247 contract operations: 248 rows (27 platform, 24 patients, 12 scheduling and eligibility, 28 encounters and notes, 17 history, 9 AI, 17 medications, 18 orders, 76 Anand, 8 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24); #248 from Minalini's M16 sign-off (2026-10-24). Recounted when the contract is written.
+**Count:** 250 contract operations: 251 rows (27 platform, 24 patients, 12 scheduling and eligibility, 29 encounters and notes, 19 history, 9 AI, 17 medications, 18 orders, 76 Anand, 8 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24); #248 from Minalini's M16 sign-off (2026-10-24); #249–251 from batch 2 (single GETs for problems, allergies and co-sign rules, 2026-10-24). Recounted when the contract is written.
 
 ## Later batches: items recorded on 2026-10-24 (no contract change now)
 
@@ -332,16 +335,16 @@ Minalini's clinical items from the screen mapping, to be written in the batch na
 | Item | Batch | Note |
 |---|---|---|
 | Inbox task creation (`POST /messages`, #217) with assignee, due date and link to a record; clinicians request appointment changes this way (D67) | B3 | Anand |
-| Co-sign "return to author" with a comment (`POST /notes/{noteId}/cosign` with `decision: return`) | B4 | Vimal |
-| Where patient instructions are stored (after-visit summary section vs. note section) | B4 | Vimal; decide with the clinical advisors |
-| Timeline filters (`GET /patients/{patientId}/timeline`: type, date range) | B4 | Vimal |
-| Personal note templates (user-owned templates next to practice templates) | B4 | Vimal, with Anand (`user_clinical_preference`) |
+| Co-sign "return to author" with a comment (`POST /notes/{noteId}/cosign` with `decision: return`) | B4 | **Done in batch 2:** `cosignStatus: returned`; the note stays signed and the author answers with an addendum; event `note.cosign-returned` |
+| Where patient instructions are stored (after-visit summary section vs. note section) | B4 | **Done in batch 2:** a note section, LOINC 69730-0, signed with the note and printed on the after-visit summary |
+| Timeline filters (`GET /patients/{patientId}/timeline`: type, date range) | B4 | **Done in batch 2:** `types`, `dateFrom`, `dateTo` |
+| Personal note templates (user-owned templates next to practice templates) | B4 | Stored with `note_template.owner_user_id` (there is no `user_clinical_preference`); the endpoint and permission are Anand's A46 and Thulasi's T42 (batch 2 plan Q2, Q3) |
 | Results: filters (`unreviewed`, `patientId`, date range, abnormal), result versions, `acknowledge` body (comment, patient notified) | B5 | Thulasi |
 | Orders: filters, cancel reason body, order sets, duplicate-order check at signing | B5 | Thulasi |
 | Medication reconciliation request body (`POST /patients/{patientId}/medication-reconciliation`) | B5 | Thulasi |
 | Whole-list interaction check (not only per prescription) | B5 | Thulasi |
 | Prescription history per patient (`GET /patients/{patientId}/prescriptions`) | B5 | Thulasi |
-| **Confirmed:** drug search is `GET /codes/search?system=rxnorm` (#74), no separate drug endpoint | B4 | — |
+| **Confirmed:** drug search is `GET /codes?system=rxnorm` (#74), no separate drug endpoint | B4 | Done in batch 2 |
 | **Confirmed:** per-user alert suppression is in-product (FRS §3.4), in the medications batch | B5 | Thulasi |
-| Vitals in U.S. customary UCUM units as entered (D69) | B4 | Vimal |
+| Vitals in U.S. customary UCUM units as entered (D69) | B4 | **Done in batch 2** |
 | AI contract shapes from Minalini's Stage 3 design (D70) | B7 | Vimal |

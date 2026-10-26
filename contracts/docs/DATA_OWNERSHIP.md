@@ -53,9 +53,9 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Encounter | `/encounters`, `/encounters/{encounterId}` | **Cl** | Encounter | US Core Encounter | Row version | Encounter |
 | Vitals | `/encounters/{encounterId}/vitals`, `/patients/{patientId}/vitals` | **Cl** | Observation (category `vital-signs`) | US Core Vital Signs, plus the specific profiles (Blood Pressure, Body Height, Body Weight, BMI, Body Temperature, Heart Rate, Respiratory Rate, Pulse Oximetry, Head Circumference) | Insert-only; corrections are entered-in-error + new | Observation |
 | Encounter diagnoses | `/encounters/{encounterId}/diagnoses` | **Cl** | Condition (category `encounter-diagnosis`) | US Core Condition Encounter Diagnosis | Row version; see §2.5 | Condition |
-| Code search | `/codes/search` | **Ad** (terminology) | — | — | Read-only | Terminology tables |
+| Code search | `/codes` | **Ad** (terminology) | — | — | Read-only | Terminology tables |
 | Note (draft, versions, signed) | `/encounters/{encounterId}/notes`, `/notes/{noteId}`, `/notes/{noteId}/versions` | **Cl** | Composition + Provenance (P0_SCHEMA_SCOPE.md: clinical notes, signing, co-signature, addenda) | US Core Provenance. Composition has no US Core profile in 9.0.0; US Core exposes clinical notes through DocumentReference, so how `/fhir` presents notes is part of Anand's facade design (guide v2, Step 5) | Row version; `If-Match` on PATCH and sign (VG Step 5); versions in `_history` | Composition and its sections |
-| Addendum | `/notes/{noteId}/addenda` | **Cl** | Composition (addendum) + Provenance | US Core Provenance | Insert-only | **pending schema lock** |
+| Addendum | `/notes/{noteId}/addenda` | **Cl** | Composition (addendum) + Provenance | US Core Provenance | Insert-only | `composition` with `composition_relates_to` `appends`, signed at once (`composition_attester`) |
 | Co-signature | `/notes/{noteId}/cosign` | **Cl** | Provenance (co-signer as an additional agent) | US Core Provenance | `If-Match` on the note | Composition, Provenance; co-signature rules in **Ad** |
 | Co-signature rules | `/cosign-rules` | **Ad** | — | — | Row version | Co-signature rules by state and provider |
 | Favorites | `/me/favorites` | **Ad** | — | — | Row version, PUT with `If-Match` | Templates and favorites |
@@ -260,7 +260,7 @@ Co-signature still pending does **not** block closing; billing holds the claim u
 
 ### 5.3 Note (clinical `Composition`; FHIR Composition.status) — owner Vimal
 
-The note's `status` uses Composition.status codes: `preliminary` (draft), `final` (signed), `amended` (signed with addenda), `entered-in-error`. A separate `cosignStatus`: `not-required`, `pending`, `cosigned`.
+The note's `status` uses Composition.status codes: `preliminary` (draft), `final` (signed), `amended` (signed with addenda), `entered-in-error`. A separate `cosignStatus`: `not-required`, `pending`, `returned`, `cosigned` (batch 2: `returned` means the co-signer sent it back with a comment; the note stays signed, and the author's addendum makes it `pending` again).
 
 ```mermaid
 stateDiagram-v2
@@ -278,10 +278,11 @@ stateDiagram-v2
 |---|---|---|---|---|
 | — → `preliminary` | `POST /encounters/{encounterId}/notes` `{ templateId }` | MD, APP, RN (`notes:create`) | Encounter not `finished`/`entered-in-error` | Encounter → `in-progress` if earlier |
 | — → `preliminary` (AI) | `POST /ai/note-drafts` → operation; the AI gateway saves the draft **through the notes service** (VD-G11) | MD, APP (`note-drafts:create`) | AI feature on; recording consent present | Note `origin: ai-draft`, author = requesting clinician; each AI section linked to an `ai_suggestion` |
-| `preliminary` → `preliminary` | `PATCH /notes/{noteId}` with `If-Match` | Author only | Version matches | New draft version (**pending schema lock**: every autosave vs periodic snapshots in `_history`) |
-| `preliminary` → `final` | `POST /notes/{noteId}/sign` with `If-Match` | Author with `notes:sign` (MD, APP; RN for nursing notes) | Required sections complete (**pending clinical**); **every AI suggestion in the note has an accept, edit or reject decision** (FRS §3.4, §8) | Row locked; Provenance written in the same transaction (§3.2); version kept in `_history`; `cosignStatus = pending` if a co-signature rule matches; `note.signed`; inbox item for the co-signer |
-| `final`/`amended` (co-sign) | `POST /notes/{noteId}/cosign` with `If-Match` | Supervising MD (`notes:cosign`) | `cosignStatus = pending`; co-signer ≠ author; co-signer allowed by the rule | `cosignStatus = cosigned`; Provenance with the co-signer, same transaction; `note.cosigned` |
-| `final`/`amended` → `amended` | `POST /notes/{noteId}/addenda` `{ text }` | MD, APP, RN (`note-addenda:create`) | — | Addendum stored and locked at once, with its Provenance, in one transaction (form **pending schema lock**); `note.amended` |
+| `preliminary` → `preliminary` | `PATCH /notes/{noteId}` with `If-Match` | Author only | Version matches | New draft version: every committed autosave is a version in `_history` (the schema writes one per transaction); screens autosave at most every 30 seconds (batch 2 plan Q11) |
+| `preliminary` → `final` | `POST /notes/{noteId}/sign` with `If-Match` | Author with `notes:sign` (MD, APP; RN for nursing notes) | Required template sections have text (batch 2 default; DECISIONS Q22 with the clinical advisors); **every AI suggestion in the note has an accept, edit or reject decision** (FRS §3.4, §8) | Row locked; Provenance written in the same transaction (§3.2); version kept in `_history`; `cosignStatus = pending` if a co-signature rule matches; `note.signed`; inbox item for the co-signer |
+| `final`/`amended` (co-sign) | `POST /notes/{noteId}/cosign` `{ decision: "cosign" }` with `If-Match` | Supervising MD (`notes:cosign`) | `cosignStatus = pending`; co-signer ≠ author; co-signer allowed by the rule | `cosignStatus = cosigned`; Provenance with the co-signer, same transaction; `note.cosigned` |
+| `final`/`amended`, `pending` → `returned` | `POST /notes/{noteId}/cosign` `{ decision: "return", comment }` with `If-Match` | Supervising MD (`notes:cosign`) | `cosignStatus = pending` | Note stays signed and frozen; comment stored; `note.cosign-returned` → inbox task for the author |
+| `final`/`amended` → `amended` | `POST /notes/{noteId}/addenda` `{ text }` | MD, APP, RN (`note-addenda:create`) | — | Addendum stored as a Composition that `appends` to the note, signed at once, with its Provenance, in one transaction; `cosignStatus` `returned` → `pending`; `note.amended` |
 | `preliminary` → `entered-in-error` | `POST /notes/{noteId}/entered-in-error` `{ reason }` (new, VD-G6) | Author (`notes:entered-in-error`) | — | Draft kept for audit, hidden from the chart |
 | `final`/`amended` → `entered-in-error` | Same | Author, MD, APP | Reason required | Status `entered-in-error`, with Provenance; `note.entered-in-error`; billing notified if the encounter is closed |
 | `final` → any edit | `PATCH /notes/{noteId}` | — | — | Always `409 record-locked` |

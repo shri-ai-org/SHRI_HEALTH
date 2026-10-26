@@ -106,6 +106,7 @@ data: {"specversion":"1.0","id":"4d6f…","type":"appointment.checked-in",…}
 | `encounter.entered-in-error` | encounter | — | Vimal | Anand (billing) | Internal. Also raised by undo check-in (D55) |
 | `note.signed` | note | `encounterId`, `cosignStatus` | Vimal (notes) | Anand (inbox: remove "unsigned note", add co-sign task) | Internal + browser |
 | `note.cosigned` | note | `encounterId` | Vimal | Anand (inbox, billing hold release) | Internal + browser |
+| `note.cosign-returned` | note | `encounterId` | Vimal | Anand (inbox: task for the author with the co-signer's comment) | Internal + browser |
 | `note.amended` | note | `encounterId` | Vimal | Anand (billing notice if claimed) | Internal |
 | `note.entered-in-error` | note | `encounterId` | Vimal | Anand (billing) | Internal |
 | `operation.completed` | operation | `kind`, `status`, `resultType`, `resultId` | Platform (Thulasi) | The requesting user's screen | Browser (personal) |

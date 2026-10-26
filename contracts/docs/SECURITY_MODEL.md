@@ -206,6 +206,7 @@ Notes on the matrix:
 - A user with several roles gets the union of their permissions (agreed, T14).
 - ADM may use `encounters:entered-in-error` only for an encounter with no signed note; this is a rule inside the service (agreed, T14).
 - "Own entries" (RN entered-in-error) is a rule inside the service, not a permission.
+- BIL's "R (signed notes, diagnoses)": for BIL the notes service returns signed notes only, wherever notes are read: `GET /notes/{noteId}` (a draft is `404`), the note lists, the encounter workspace's note summaries, and note versions (only those from signing on). Diagnoses come with the encounter (D73).
 - Whether MA, RN may prescribe-draft or answer refills follows clinic protocol and state law: **pending clinical advisors**.
 - 2026-10-24 (D49–D67): the `appointments:create|update|cancel|check-in` row had ADM `–` and CO `✓`, the reverse of DATA_OWNERSHIP §5.1 (FD, ADM) and of core; corrected to ADM `✓`, CO `–`. Duplicate review moved to ADM only (D64). Provider self-service on schedules is P1 (D66).
 - 2026-10-24 (post-merge review of core PR #21): the clinician-writes row had APP `–` and BIL `✓`, a column shift from adding the DSP column on 2026-10-23; corrected to APP `✓`, BIL `–`, as in core. `medications:discontinue` (MD, APP) added to the prescribing row. APP's billing cell reads `superbills:read` only, as MD's and as core. BIL reads billing documents through `documents:read` only, with no `fax-inbox:read` (D71).
@@ -282,7 +283,7 @@ x-audit:
 | `security` | Login, logout, failed login, permission and CSRF denials, break-glass, restriction changes, role changes | Yes |
 | `ai` | AI requests (metadata only), and accept, edit, reject decisions | Yes (FRS §3.4) |
 | `admin` | Practice setup, AI settings, templates, co-sign rules | Yes |
-| `none` | Only: health checks, code search, pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49), session reads (`GET /auth/session`, `/me`, the event stream) | No |
+| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49), session reads (`GET /auth/session`, `/me`, the event stream) | No |
 
 Partner callbacks (`/hooks/*`) carry PHI, so they are audited as `phi-write` with the **partner as actor** (agreed, T37).
 

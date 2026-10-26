@@ -395,7 +395,7 @@ Response: `200` with the list envelope of `PatientSummary` items.
 
 ### 14.3 PHI field denylist for URLs (enforced by lint)
 
-Path segments and query parameter names must not include: `name`, `given`, `family`, `firstName`, `lastName`, `birthDate`, `dob`, `phone`, `email`, `address`, `postalCode`, `zip`, `mrn`, `ssn`, `ssnLast4`, `memberId`, `subscriberId`, `licenseNumber`, `driversLicense`, `policyNumber`, `search`, `q` (on patient-scoped collections). Allowed exception: `q` on non-PHI catalogs (`/codes/search`, `/pharmacies`, `/lab-compendium`), and `postalCode` on `/pharmacies` (the pharmacy's ZIP code), because these search reference data, not patients.
+Path segments and query parameter names must not include: `name`, `given`, `family`, `firstName`, `lastName`, `birthDate`, `dob`, `phone`, `email`, `address`, `postalCode`, `zip`, `mrn`, `ssn`, `ssnLast4`, `memberId`, `subscriberId`, `licenseNumber`, `driversLicense`, `policyNumber`, `search`, `q` (on patient-scoped collections). Allowed exception: `q` on non-PHI catalogs (`/codes`, `/pharmacies`, `/lab-compendium`), and `postalCode` on `/pharmacies` (the pharmacy's ZIP code), because these search reference data, not patients.
 
 ## 15. Files (uploads and downloads)
 
