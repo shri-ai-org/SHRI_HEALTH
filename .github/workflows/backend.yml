@@ -7,11 +7,11 @@ name: backend
 on:
   pull_request:
     paths: ["backend/**", "infra/compose/postgres/**", ".github/workflows/backend.yml",
-            "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py"]
+            "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**"]
   push:
     branches: [main]
     paths: ["backend/**", "infra/compose/postgres/**", ".github/workflows/backend.yml",
-            "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py"]
+            "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**"]
 
 permissions:
   contents: read
@@ -65,6 +65,12 @@ jobs:
       - name: Install (hashed lock only)
         working-directory: backend
         run: pip install --require-hashes --no-deps -r requirements-dev.lock
+
+      # D75: every installed distribution's licence must be on the allowlist (issue #55). The dev
+      # lock is a superset of requirements.lock, so this covers the API image too.
+      - name: Licences (D75)
+        working-directory: backend
+        run: python ../.github/licences/check_python.py
 
       - name: Lint
         working-directory: backend
