@@ -17,7 +17,20 @@ paths:
         - sessionCookie: []
       responses:
         '201': { description: Created }
+  /patients/{patientId}:
+    get:
+      operationId: getPatient
+      tags: [patients]
+      x-owner: vimal
+      x-permission: patients:read
+      description: A staff operation that also accepts the patient portal cookie.
+      security:
+        - sessionCookie: []
+        - portalSessionCookie: []
+      responses:
+        '200': { description: OK }
 components:
   securitySchemes:
     sessionCookie: { type: apiKey, in: cookie, name: __Host-shri_session }
     csrfHeader: { type: apiKey, in: header, name: X-CSRF-Token }
+    portalSessionCookie: { type: apiKey, in: cookie, name: __Host-shri_portal }

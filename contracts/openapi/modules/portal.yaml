@@ -1,0 +1,2490 @@
+# Shri Health API — module `portal`
+# x-owner: vimal (the module); each operation keeps its owning module's x-owner (D83): sign-in and session thulasi,
+# patient, scheduling and history data vimal.
+# Scope: The patient portal under /api/v1/portal (P1). Batch B8a, 2026-10-26: sign-in, enrollment, profile and change
+# requests, appointments and booking, visit summaries, problems, allergies and vitals (D83-D89, ADR-0013). Messages
+# follow batch 3 (#58); results, prescriptions, bills and documents follow B5 and B6 (D89).
+# The patient comes from the portal session (`portalSessionCookie`), never the request: no path or body names a patient
+# (D84). A record ID in a path that isn't the session patient's gives 404. Released records only (D86): drafts,
+# entered-in-error records and psychotherapy notes never appear; items a clinician holds are listed as held.
+paths:
+  /portal/auth/login:
+    get:
+      operationId: startPortalLogin
+      summary: Start patient sign-in
+      description: 'Sends the browser to the patient realm (`shri-patients`, authorization code with PKCE `S256`, `state`
+        and `nonce`, `prompt=login`; ADR-0013 §1, §5). Never sends `login_hint`, so no email is in a URL (D13). Public: no
+        session needed.'
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: E
+        category: security
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security: []
+      responses:
+        '302':
+          description: 302. Redirect to the patient realm; sets the login-state cookie.
+          headers:
+            Location: &id001
+              description: Where the browser is sent next.
+              schema:
+                type: string
+                format: uri
+                maxLength: 2000
+            Cache-Control: &id002
+              $ref: ../components/headers/CacheControl.yaml
+        '429': &id003
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500': &id004
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503': &id005
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the patient realm is unavailable).
+  /portal/auth/callback:
+    get:
+      operationId: completePortalLogin
+      summary: Finish patient sign-in
+      description: Checks `state` and `nonce`, exchanges the code, keeps the realm's tokens server-side, creates a new portal
+        session (`__Host-shri_portal`) and sends the browser to the portal (ADR-0013 §5). An account that has not finished
+        its realm setup (password, second factor) cannot reach this. Public.
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: E
+        category: security
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security: []
+      responses:
+        '302':
+          description: 302. Signed in; redirect to the portal. Sets the portal session cookie.
+          headers:
+            Location: *id001
+            Cache-Control: *id002
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (`state`, `nonce` or the code is missing or wrong).
+        '429': *id003
+        '500': *id004
+        '503': *id005
+  /portal/auth/session:
+    get:
+      operationId: getPortalSession
+      summary: Get the portal session
+      description: The signed-in patient, the CSRF token and the session's expiry times. Reading it never extends the session
+        (as for staff, SECURITY_MODEL §2.1).
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit:
+        action: R
+        category: none
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security: &id012
+      - portalSessionCookie: []
+      responses:
+        '200':
+          description: The session.
+          headers:
+            X-Request-ID: &id006
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control: *id002
+            RateLimit: &id007
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy: &id008
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalSession'
+              examples:
+                session:
+                  summary: Signed in
+                  value: &id009
+                    patient:
+                      displayName: Maria712
+                    csrfToken: mock-csrf-token-not-a-secret
+                    idleExpiresAt: '2026-10-26T16:15:00Z'
+                    expiresAt: '2026-10-26T20:00:00Z'
+        '401': &id010
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (not a portal session).
+        '429': *id003
+        '500': *id004
+  /portal/auth/refresh:
+    post:
+      operationId: refreshPortalSession
+      summary: Stay signed in
+      description: Extends the idle timer (a user action, from "Stay signed in") and returns the session. The 4-hour limit
+        cannot be extended.
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit:
+        action: E
+        category: security
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security: &id011
+      - portalSessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          description: The session.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalSession'
+              examples:
+                session:
+                  summary: Extended
+                  value: *id009
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '429': *id003
+        '500': *id004
+  /portal/auth/logout:
+    post:
+      operationId: signOutOfPortal
+      summary: Sign out
+      description: 'Ends the portal session and the patient realm''s session over the back channel (as #35 for staff).'
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit:
+        action: E
+        category: security
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security: *id011
+      responses:
+        '204':
+          description: 204. Signed out.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '429': *id003
+        '500': *id004
+  /portal/enrollments:
+    post:
+      operationId: enrollInPortal
+      summary: Enroll with an invitation code
+      description: 'Redeems a front-desk invitation code (ADR-0013 §3, D85): with the matching date of birth it creates the
+        patient realm account for the email given, links it to the chart once, and the realm sends its "set up your account"
+        email (password and second factor are set in the realm, never here, D3). The chart''s existing contacts are told an
+        account was set up, without naming the clinic. Every failure gives the same answer, so codes, accounts and charts
+        cannot be probed; rate-limited per address and per invitation, and an invitation is revoked after 5 failed tries.
+        Public: there is no session yet. Implemented in core (ADR-0013 Consequences).'
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: C
+        category: security
+        actor: patient
+      x-idempotency: supported
+      x-storage: admin
+      x-release: P1
+      security: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollmentRequest'
+            examples:
+              enroll:
+                summary: Enroll
+                value:
+                  invitationCode: K7Q2-9MZD-4TXH
+                  birthDate: '1984-07-19'
+                  email: maria.ortiz@example.com
+      responses:
+        '204':
+          description: '204. Enrolled: the realm sends its set-up email. Nothing else is returned.'
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+        '400': &id014
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: '422. `validation-failed` (a field is missing or malformed); `business-rule-violation` (`errors` names
+            `/invitationCode` `not-allowed-value` for every reason the code can''t be used: unknown, expired, used, revoked,
+            or the date of birth doesn''t match); `idempotency-key-reused` (the Idempotency-Key was used with a different
+            body).'
+        '429': *id003
+        '500': *id004
+        '503': *id005
+  /portal/me:
+    get:
+      operationId: getPortalProfile
+      summary: Get my details
+      description: The patient's own details from the chart, with pending change requests.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-profile:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security: *id012
+      responses:
+        '200':
+          description: The details.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalProfile'
+              examples:
+                me:
+                  summary: Details
+                  value:
+                    name:
+                      given:
+                      - Maria712
+                      family: Ortiz187
+                    preferredName: Maria712
+                    birthDate: '1984-07-19'
+                    mrn: TEST-000123
+                    phones:
+                    - number: '+12175550123'
+                      use: mobile
+                    email: maria.ortiz@example.com
+                    address:
+                      lines:
+                      - 12 Sample Street
+                      city: Springfield
+                      state: IL
+                      postalCode: '62704'
+                      country: US
+                    emergencyContact:
+                      name: Lucas215 Ortiz187
+                      relationship: Spouse
+                      phone: '+12175550177'
+                    preferredPharmacy:
+                      name: Example Pharmacy
+                      city: Springfield
+                    pendingChangeRequests:
+                    - &id013
+                      id: a2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d
+                      status: pending
+                      changes:
+                        phones:
+                        - number: '+12175550188'
+                          use: mobile
+                      note: New cell phone.
+                      submittedAt: '2026-10-26T16:00:00Z'
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-profile:read`: not a patient session, or the account
+            is not enrolled).'
+        '429': *id003
+        '500': *id004
+  /portal/me/change-requests:
+    get:
+      operationId: listPortalChangeRequests
+      summary: List my change requests
+      description: The patient's change requests, newest first.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-profile:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security: *id012
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalChangeRequestList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - *id013
+        '400': &id018
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-profile:read`: not a patient session, or the account
+            is not enrolled).'
+        '429': *id003
+        '500': *id004
+    post:
+      operationId: requestPortalChange
+      summary: Ask to change my details
+      description: Sends the front desk a request to change details on the chart; it becomes a `task` in the front-desk role's
+        inbox queue at the patient's facility (D77). Nothing on the chart changes until the front desk accepts it; name changes
+        are checked against ID.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-profile:request-change
+      x-audit:
+        action: C
+        category: phi-write
+        patient: session
+        actor: patient
+      x-idempotency: supported
+      x-storage: admin
+      x-events:
+      - inbox.item-assigned
+      x-release: P1
+      security: *id011
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalChangeRequestCreate'
+            examples:
+              phone:
+                summary: New phone number
+                value:
+                  changes:
+                    phones:
+                    - number: '+12175550188'
+                      use: mobile
+                  note: New cell phone.
+      responses:
+        '201':
+          description: Created. The request, pending.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalChangeRequest'
+              examples:
+                sent:
+                  summary: Sent
+                  value: *id013
+        '400': *id014
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-profile:request-change`: not a patient session,
+            or the account is not enrolled); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid); `idempotency-key-reused` (the Idempotency-Key was used
+            with a different body).
+        '429': *id003
+        '500': *id004
+  /portal/me/appointments:
+    get:
+      operationId: listPortalAppointments
+      summary: List my appointments
+      description: The patient's appointments, in facility time (D40).
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-appointments:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security: *id012
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: when
+        in: query
+        required: false
+        description: '`upcoming` (default; soonest first) or `past` (newest first).'
+        schema:
+          type: string
+          enum:
+          - upcoming
+          - past
+          default: upcoming
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAppointmentList'
+              examples:
+                upcoming:
+                  summary: Upcoming
+                  value:
+                    items:
+                    - &id019
+                      id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+                      startAt: '2026-11-05T15:30:00Z'
+                      endAt: '2026-11-05T15:50:00Z'
+                      timeZone: America/Chicago
+                      status: booked
+                      facility: &id015
+                        id: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                        name: Riverside Family Medicine
+                        address: &id022
+                          lines:
+                          - 100 Example Way
+                          city: Springfield
+                          state: IL
+                          postalCode: '62701'
+                          country: US
+                      provider: &id016
+                        id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                        displayName: Dr. Lowe58
+                      appointmentType: &id017
+                        id: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                        name: Follow-up visit
+                      telehealth: false
+                      reasonForVisit: Blood pressure follow-up
+                      patientInstruction: Please arrive 15 minutes early.
+                      canCancel: true
+                      canReschedule: true
+                past:
+                  summary: Past
+                  value:
+                    items:
+                    - id: 0c1d2e3f-4a5b-4c6d-9e7f-8a9b0c1d2e3f
+                      startAt: '2026-10-01T14:00:00Z'
+                      endAt: '2026-10-01T14:20:00Z'
+                      timeZone: America/Chicago
+                      status: fulfilled
+                      facility: *id015
+                      provider: *id016
+                      appointmentType: *id017
+                      telehealth: false
+                      reasonForVisit: Blood pressure follow-up
+                      patientInstruction: Please arrive 15 minutes early.
+                      canCancel: false
+                      canReschedule: false
+        '400': *id018
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-appointments:read`: not a patient session, or
+            the account is not enrolled).'
+        '422': &id020
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429': *id003
+        '500': *id004
+    post:
+      operationId: bookPortalAppointment
+      summary: Book a visit
+      description: Books a free time (`GET /portal/me/slots`) under the same rules as staff booking (no double booking, the
+        provider's day locked while booking); the length comes from the appointment type. Queues eligibility (D15).
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-appointments:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: session
+        actor: patient
+      x-idempotency: supported
+      x-storage: clinical
+      x-events:
+      - appointment.booked
+      x-release: P1
+      security: *id011
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAppointmentCreate'
+            examples:
+              book:
+                summary: Book
+                value:
+                  facilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                  appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                  providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                  startAt: '2026-11-05T15:30:00Z'
+                  reasonForVisit: Blood pressure follow-up
+      responses:
+        '201':
+          description: Created. The appointment.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAppointment'
+              examples:
+                booked:
+                  summary: Booked
+                  value: *id019
+        '400': *id014
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-appointments:create`: not a patient session, or
+            the account is not enrolled); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `booking-conflict` (the time was just taken: read the free times again); `idempotency-request-in-progress`
+            (a request with this Idempotency-Key is still running).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid); `business-rule-violation` (the type is not bookable
+            online, or the time is outside the online booking window); `idempotency-key-reused` (the Idempotency-Key was used
+            with a different body).
+        '429': *id003
+        '500': *id004
+  /portal/me/appointments/{appointmentId}:
+    parameters:
+    - &id021
+      name: appointmentId
+      in: path
+      required: true
+      description: Appointment ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getPortalAppointment
+      summary: Get one appointment
+      description: One of the patient's appointments.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-appointments:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security: *id012
+      responses:
+        '200':
+          description: The appointment.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAppointment'
+              examples:
+                one:
+                  summary: Upcoming visit
+                  value: *id019
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-appointments:read`: not a patient session, or
+            the account is not enrolled).'
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such appointment of the signed-in patient; another patient's record gives the
+            same answer, D84).
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/me/appointments/{appointmentId}/cancel:
+    parameters:
+    - *id021
+    post:
+      operationId: cancelPortalAppointment
+      summary: Cancel an appointment
+      description: Cancels an upcoming appointment while `canCancel` is true (the practice's online cancellation window);
+        no DELETE (D14). Reason code `pat` (the patient), with the patient's reason.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-appointments:cancel
+      x-audit:
+        action: E
+        category: phi-write
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-events:
+      - appointment.cancelled
+      x-release: P1
+      security: *id011
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalCancelRequest'
+            examples:
+              cancel:
+                summary: Cancel
+                value:
+                  reasonText: I have a work conflict.
+      responses:
+        '200':
+          description: The appointment, cancelled.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAppointment'
+              examples:
+                cancelled:
+                  summary: Cancelled
+                  value:
+                    id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+                    startAt: '2026-11-05T15:30:00Z'
+                    endAt: '2026-11-05T15:50:00Z'
+                    timeZone: America/Chicago
+                    status: cancelled
+                    facility: *id015
+                    provider: *id016
+                    appointmentType: *id017
+                    telehealth: false
+                    reasonForVisit: Blood pressure follow-up
+                    patientInstruction: Please arrive 15 minutes early.
+                    canCancel: false
+                    canReschedule: false
+        '400': *id014
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-appointments:cancel`: not a patient session, or
+            the account is not enrolled); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such appointment of the signed-in patient; another patient's record gives the
+            same answer, D84).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (already checked in, fulfilled or cancelled; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: '422. `validation-failed` (a field is invalid); `business-rule-violation` (too late to cancel online:
+            `errors` names `/startAt` `out-of-range`; call the clinic).'
+        '429': *id003
+        '500': *id004
+  /portal/me/appointments/{appointmentId}/reschedule:
+    parameters:
+    - *id021
+    post:
+      operationId: reschedulePortalAppointment
+      summary: Move an appointment
+      description: 'Moves an upcoming appointment to another free time while `canReschedule` is true: the old one is cancelled
+        and the new one booked in one transaction (D61), with reason code `pat`.'
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-appointments:reschedule
+      x-audit:
+        action: E
+        category: phi-write
+        patient: session
+        actor: patient
+      x-idempotency: supported
+      x-storage: clinical
+      x-events:
+      - appointment.rescheduled
+      x-release: P1
+      security: *id011
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalRescheduleRequest'
+            examples:
+              move:
+                summary: Move
+                value:
+                  startAt: '2026-11-06T16:00:00Z'
+      responses:
+        '201':
+          description: Created. The new appointment.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAppointment'
+              examples:
+                moved:
+                  summary: Moved
+                  value:
+                    id: d5e6f7a8-b9c0-4d1e-8f2a-3b4c5d6e7f8a
+                    startAt: '2026-11-06T16:00:00Z'
+                    endAt: '2026-11-06T16:20:00Z'
+                    timeZone: America/Chicago
+                    status: booked
+                    facility: *id015
+                    provider: *id016
+                    appointmentType: *id017
+                    telehealth: false
+                    reasonForVisit: Blood pressure follow-up
+                    patientInstruction: Please arrive 15 minutes early.
+                    canCancel: true
+                    canReschedule: true
+        '400': *id014
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-appointments:reschedule`: not a patient session,
+            or the account is not enrolled); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such appointment of the signed-in patient; another patient's record gives the
+            same answer, D84).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `booking-conflict` (the new time was just taken); `invalid-state-transition` (the appointment
+            can no longer be moved); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid); `business-rule-violation` (too late to move online,
+            or the time is outside the online booking window); `idempotency-key-reused` (the Idempotency-Key was used with
+            a different body).
+        '429': *id003
+        '500': *id004
+  /portal/booking/facilities:
+    get:
+      operationId: listPortalBookingFacilities
+      summary: List facilities for booking
+      description: Facilities open for online booking (bookable fields only, as D49). Practice data, not patient data.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-booking:read
+      x-audit:
+        action: R
+        category: none
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security: *id012
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalBookingFacilityList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - id: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                      name: Riverside Family Medicine
+                      address: *id022
+                      timeZone: America/Chicago
+        '400': *id018
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-booking:read`: not a patient session, or the account
+            is not enrolled).'
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/booking/appointment-types:
+    get:
+      operationId: listPortalBookingAppointmentTypes
+      summary: List visit types for booking
+      description: Appointment types the practice lets patients book online, at a facility.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-booking:read
+      x-audit:
+        action: R
+        category: none
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security: *id012
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: facilityId
+        in: query
+        required: true
+        description: Facility.
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalBookingAppointmentTypeList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - id: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                      name: Follow-up visit
+                      durationMinutes: 20
+                      telehealth: false
+        '400': *id018
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-booking:read`: not a patient session, or the account
+            is not enrolled).'
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/booking/providers:
+    get:
+      operationId: listPortalBookingProviders
+      summary: List providers for booking
+      description: Providers patients can book with online, at a facility, for a visit type.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-booking:read
+      x-audit:
+        action: R
+        category: none
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security: *id012
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: facilityId
+        in: query
+        required: true
+        description: Facility.
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      - name: appointmentTypeId
+        in: query
+        required: false
+        description: Visit type.
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalBookingProviderList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                      specialty: Family medicine
+        '400': *id018
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-booking:read`: not a patient session, or the account
+            is not enrolled).'
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/me/slots:
+    get:
+      operationId: listPortalBookingSlots
+      summary: List free times
+      description: Free times for one facility, visit type and day (facility time), optionally one provider, as the session
+        patient may book them (under `/me` because the practice's online booking rules can depend on the patient). Computed,
+        not stored; no patient data in the query, so `GET` (D13).
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-booking:read
+      x-audit:
+        action: R
+        category: none
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security: *id012
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: facilityId
+        in: query
+        required: true
+        description: Facility.
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      - name: appointmentTypeId
+        in: query
+        required: true
+        description: Visit type.
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      - name: date
+        in: query
+        required: true
+        description: Day, in the facility's time zone.
+        schema:
+          $ref: ../components/schemas/Date.yaml
+      - name: providerId
+        in: query
+        required: false
+        description: One provider only.
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalSlotList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - startAt: '2026-11-05T15:30:00Z'
+                      endAt: '2026-11-05T15:50:00Z'
+                      providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    - startAt: '2026-11-05T16:00:00Z'
+                      endAt: '2026-11-05T16:20:00Z'
+                      providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+        '400': *id018
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-booking:read`: not a patient session, or the account
+            is not enrolled).'
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/me/visit-summaries:
+    get:
+      operationId: listPortalVisitSummaries
+      summary: List my visit summaries
+      description: After-visit summaries from signed notes, newest first. Items a clinician holds are listed as held, without
+        content (D86).
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security: *id012
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalVisitSummaryList'
+              examples:
+                page:
+                  summary: One available, one held
+                  value:
+                    items:
+                    - &id024
+                      id: c4d5e6f7-a8b9-4c0d-9e1f-2a3b4c5d6e7f
+                      visitDate: '2026-10-20'
+                      providerDisplayName: Dr. Lowe58
+                      facilityName: Riverside Family Medicine
+                      releaseStatus: held
+                    - &id023
+                      id: b3c4d5e6-f7a8-4b9c-8d0e-1f2a3b4c5d6e
+                      visitDate: '2026-10-01'
+                      providerDisplayName: Dr. Lowe58
+                      facilityName: Riverside Family Medicine
+                      releaseStatus: available
+                      availableAt: '2026-10-01T18:05:00Z'
+        '400': *id018
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account
+            is not enrolled).'
+        '429': *id003
+        '500': *id004
+  /portal/me/visit-summaries/{visitSummaryId}:
+    parameters:
+    - &id025
+      name: visitSummaryId
+      in: path
+      required: true
+      description: Visit summary ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getPortalVisitSummary
+      summary: Get one visit summary
+      description: One visit summary's details; a held one has no content (D86).
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security: *id012
+      responses:
+        '200':
+          description: The visit summary.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalVisitSummary'
+              examples:
+                one:
+                  summary: Available
+                  value: *id023
+                held:
+                  summary: Held
+                  value: *id024
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account
+            is not enrolled).'
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such visit summary of the signed-in patient; another patient's record gives the
+            same answer, D84).
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/me/visit-summaries/{visitSummaryId}/download-url:
+    parameters:
+    - *id025
+    get:
+      operationId: getPortalVisitSummaryDownloadUrl
+      summary: Get a visit summary's download link
+      description: A short-lived link to the PDF (the file service). A held summary has no link (D86).
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: export
+        patient: session
+        actor: patient
+      x-storage: files
+      x-release: P1
+      security: *id012
+      responses:
+        '200':
+          description: The link.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalDownloadUrl'
+              examples:
+                link:
+                  summary: Link
+                  value:
+                    url: https://portal.company-domain.invalid/files/download/0e1f2a3b-4c5d-4e6f-8a7b-9c0d1e2f3a4b
+                    expiresAt: '2026-10-26T16:05:00Z'
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account
+            is not enrolled).'
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such visit summary of the signed-in patient; another patient's record gives the
+            same answer, D84).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the summary is held by a clinician, D86; the list shows it as held).
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/me/problems:
+    get:
+      operationId: listPortalProblems
+      summary: List my health issues
+      description: The patient's problem list; entered-in-error entries never appear (D24).
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security: *id012
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalProblemList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - &id026
+                      id: 8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b
+                      display: Type 2 diabetes mellitus without complications
+                      clinicalStatus: active
+                      onsetDate: '2019'
+                      recordedAt: '2026-11-03T15:30:00Z'
+        '400': *id018
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account
+            is not enrolled).'
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/me/problems/{problemId}:
+    parameters:
+    - name: problemId
+      in: path
+      required: true
+      description: Problem ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getPortalProblem
+      summary: Get one problem
+      description: One problem from the patient's list.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security: *id012
+      responses:
+        '200':
+          description: The problem.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalProblem'
+              examples:
+                one:
+                  summary: One problem
+                  value: *id026
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account
+            is not enrolled).'
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such problem of the signed-in patient; another patient's record gives the same
+            answer, D84).
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/me/allergies:
+    get:
+      operationId: listPortalAllergies
+      summary: List my allergies
+      description: The patient's allergies; entered-in-error entries never appear.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security: *id012
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAllergyList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - &id027
+                      id: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                      display: Penicillin
+                      clinicalStatus: active
+                      criticality: high
+                      reactions:
+                      - manifestations:
+                        - Hives
+                        severity: moderate
+                      recordedAt: '2026-11-03T15:14:00Z'
+        '400': *id018
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account
+            is not enrolled).'
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/me/allergies/{allergyId}:
+    parameters:
+    - name: allergyId
+      in: path
+      required: true
+      description: Allergy ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getPortalAllergy
+      summary: Get one allergy
+      description: One allergy from the patient's list.
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security: *id012
+      responses:
+        '200':
+          description: The allergy.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAllergy'
+              examples:
+                one:
+                  summary: One allergy
+                  value: *id027
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account
+            is not enrolled).'
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such allergy of the signed-in patient; another patient's record gives the same
+            answer, D84).
+        '422': *id020
+        '429': *id003
+        '500': *id004
+  /portal/me/vitals:
+    get:
+      operationId: listPortalVitals
+      summary: List my vital signs
+      description: Vital signs from every visit, newest first, in the units they were entered (D69).
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security: *id012
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: type
+        in: query
+        required: false
+        description: One vital sign only.
+        schema:
+          type: string
+          enum: &id028
+          - blood-pressure
+          - heart-rate
+          - respiratory-rate
+          - body-temperature
+          - body-weight
+          - body-height
+          - bmi
+          - oxygen-saturation
+          - head-circumference
+      - name: dateFrom
+        in: query
+        required: false
+        description: First day, inclusive.
+        schema:
+          $ref: ../components/schemas/Date.yaml
+      - name: dateTo
+        in: query
+        required: false
+        description: Last day, inclusive.
+        schema:
+          $ref: ../components/schemas/Date.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID: *id006
+            Cache-Control: *id002
+            RateLimit: *id007
+            RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalVitalList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - id: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+                      type: blood-pressure
+                      systolic:
+                        value: 128
+                        unit: mm[Hg]
+                      diastolic:
+                        value: 82
+                        unit: mm[Hg]
+                      effectiveAt: '2026-10-01T14:05:00Z'
+                    - id: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                      type: body-weight
+                      value:
+                        value: 182.4
+                        unit: '[lb_av]'
+                      effectiveAt: '2026-10-01T14:04:00Z'
+        '400': *id018
+        '401': *id010
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account
+            is not enrolled).'
+        '422': *id020
+        '429': *id003
+        '500': *id004
+components:
+  schemas:
+    PortalSession:
+      description: 'The portal session (ADR-0013 §5): who is signed in, the CSRF token for writes, and when the session ends.
+        No build information before or after sign-in (Q31 is for signed-in staff only).'
+      type: object
+      required:
+      - patient
+      - csrfToken
+      - idleExpiresAt
+      - expiresAt
+      properties:
+        patient:
+          type: object
+          required:
+          - displayName
+          description: The signed-in patient, for the header.
+          x-phi: identifier
+          properties:
+            displayName:
+              type: string
+              maxLength: 200
+              description: The name the portal greets the patient by (their preferred name, or given name).
+              x-phi: identifier
+        csrfToken:
+          type: string
+          maxLength: 128
+          description: Send as `X-CSRF-Token` on every write (an HMAC of the portal session, ADR-0013 §5).
+          x-phi: none
+        idleExpiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the session ends if idle (15 minutes; Q20).
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the session ends regardless (4 hours; ADR-0013 §5, Q20).
+          x-phi: none
+    EnrollmentRequest:
+      description: Body to enroll with a front-desk invitation code (ADR-0013 §3, D85). The code was given in person after
+        an ID check; the date of birth is checked with it, never used on its own; the email becomes the sign-in name.
+      type: object
+      additionalProperties: false
+      required:
+      - invitationCode
+      - birthDate
+      - email
+      properties:
+        invitationCode:
+          type: string
+          maxLength: 14
+          description: 'The invitation code, as printed: 12 Crockford base32 characters in three groups.'
+          x-phi: identifier
+          pattern: ^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$
+        birthDate:
+          $ref: ../components/schemas/Date.yaml
+          description: The patient's date of birth, checked with the code.
+          x-phi: identifier
+        email:
+          $ref: ../components/schemas/EmailAddress.yaml
+          description: The email to sign in with; verified by the patient realm before the first sign-in.
+          x-phi: identifier
+    PortalName:
+      description: A name as the patient sees it.
+      type: object
+      required:
+      - family
+      properties:
+        given:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            maxLength: 100
+          description: Given names, in order.
+          x-phi: identifier
+        family:
+          type: string
+          maxLength: 100
+          description: Family name.
+          x-phi: identifier
+    PortalPhone:
+      description: A phone number with its use.
+      type: object
+      additionalProperties: false
+      required:
+      - number
+      properties:
+        number:
+          $ref: ../components/schemas/PhoneNumber.yaml
+          description: In E.164 form.
+          x-phi: identifier
+        use:
+          type: string
+          enum:
+          - home
+          - work
+          - mobile
+          description: How the number is used.
+          x-phi: none
+    PortalEmergencyContact:
+      description: The emergency contact.
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Full name.
+          x-phi: identifier
+        relationship:
+          type: string
+          maxLength: 100
+          description: Relationship to the patient, as the patient words it.
+          x-phi: clinical
+        phone:
+          $ref: ../components/schemas/PhoneNumber.yaml
+          description: Phone, E.164.
+          x-phi: identifier
+    PortalChangeRequestChanges:
+      description: The details the patient asks to change; only what is sent. Name changes are always reviewed by the front
+        desk against ID.
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          $ref: '#/components/schemas/PortalName'
+          description: A new legal name.
+          x-phi: identifier
+        preferredName:
+          type: string
+          maxLength: 200
+          description: The name to be called by.
+          x-phi: identifier
+        phones:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/PortalPhone'
+          description: All phone numbers, replacing the current list.
+          x-phi: identifier
+        email:
+          $ref: ../components/schemas/EmailAddress.yaml
+          description: Contact email (not the sign-in email, which the patient changes in the realm).
+          x-phi: identifier
+        address:
+          $ref: ../components/schemas/Address.yaml
+          description: Home address.
+          x-phi: identifier
+        emergencyContact:
+          $ref: '#/components/schemas/PortalEmergencyContact'
+          description: Emergency contact.
+          x-phi: identifier
+    PortalChangeRequestCreate:
+      description: 'Body to ask the front desk to change details on the chart (D83 map: a request, not a direct write).'
+      type: object
+      additionalProperties: false
+      required:
+      - changes
+      properties:
+        changes:
+          $ref: '#/components/schemas/PortalChangeRequestChanges'
+          description: What to change.
+          x-phi: identifier
+        note:
+          type: string
+          maxLength: 1000
+          description: A note for the front desk.
+          x-phi: clinical
+    PortalChangeRequest:
+      description: A change request and where it is. `pending` until the front desk accepts or declines it.
+      type: object
+      required:
+      - id
+      - status
+      - changes
+      - submittedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Change request ID.
+          x-phi: internal-id
+        status:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - declined
+          description: Where it is.
+          x-phi: none
+        changes:
+          $ref: '#/components/schemas/PortalChangeRequestChanges'
+          description: What was asked.
+          x-phi: identifier
+        note:
+          type: string
+          maxLength: 1000
+          description: The patient's note.
+          x-phi: clinical
+        submittedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was sent.
+          x-phi: none
+        decidedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the front desk decided.
+          x-phi: none
+        decisionNote:
+          type: string
+          maxLength: 1000
+          description: The front desk's note to the patient, if any.
+          x-phi: clinical
+    PortalChangeRequestList:
+      description: The patient's change requests, newest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PortalChangeRequest'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalProfile:
+      description: The patient's own details as the chart holds them, with any change requests still pending (so the screen
+        can say "waiting for the front desk").
+      type: object
+      required:
+      - name
+      - birthDate
+      - pendingChangeRequests
+      properties:
+        name:
+          $ref: '#/components/schemas/PortalName'
+          description: Legal name.
+          x-phi: identifier
+        preferredName:
+          type: string
+          maxLength: 200
+          description: The name the patient is called by.
+          x-phi: identifier
+        birthDate:
+          $ref: ../components/schemas/Date.yaml
+          description: Date of birth.
+          x-phi: identifier
+        mrn:
+          type: string
+          maxLength: 40
+          description: Medical record number, for calls to the clinic.
+          x-phi: identifier
+        phones:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/PortalPhone'
+          description: Phone numbers.
+          x-phi: identifier
+        email:
+          $ref: ../components/schemas/EmailAddress.yaml
+          description: Contact email.
+          x-phi: identifier
+        address:
+          $ref: ../components/schemas/Address.yaml
+          description: Home address.
+          x-phi: identifier
+        emergencyContact:
+          $ref: '#/components/schemas/PortalEmergencyContact'
+          description: Emergency contact.
+          x-phi: identifier
+        preferredPharmacy:
+          type: object
+          required:
+          - name
+          description: Preferred pharmacy.
+          x-phi: clinical
+          properties:
+            name:
+              type: string
+              maxLength: 200
+              description: Pharmacy name.
+              x-phi: none
+            city:
+              type: string
+              maxLength: 60
+              description: City.
+              x-phi: none
+        pendingChangeRequests:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/PortalChangeRequest'
+          description: Change requests not yet decided.
+          x-phi: identifier
+    PortalAppointmentStatus:
+      description: 'Appointment status as the patient sees it: `booked`, `checked-in` (also covers arrived), `fulfilled`,
+        `cancelled`, `noshow`.'
+      type: string
+      enum:
+      - booked
+      - checked-in
+      - fulfilled
+      - cancelled
+      - noshow
+    PortalAppointment:
+      description: One of the patient's appointments, in facility time (D40).
+      type: object
+      required:
+      - id
+      - startAt
+      - endAt
+      - timeZone
+      - status
+      - facility
+      - provider
+      - appointmentType
+      - canCancel
+      - canReschedule
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Appointment ID.
+          x-phi: internal-id
+        startAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Start (UTC).
+          x-phi: identifier
+        endAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: End (UTC).
+          x-phi: identifier
+        timeZone:
+          type: string
+          maxLength: 64
+          description: The facility's IANA time zone; show times in it (D40).
+          x-phi: none
+        status:
+          $ref: '#/components/schemas/PortalAppointmentStatus'
+          description: Status.
+          x-phi: none
+        facility:
+          type: object
+          required:
+          - id
+          - name
+          description: Where.
+          x-phi: none
+          properties:
+            id:
+              $ref: ../components/schemas/Id.yaml
+              description: Facility ID.
+              x-phi: internal-id
+            name:
+              type: string
+              maxLength: 200
+              description: Facility name.
+              x-phi: none
+            address:
+              $ref: ../components/schemas/Address.yaml
+              description: Facility address.
+              x-phi: none
+        provider:
+          type: object
+          required:
+          - id
+          - displayName
+          description: With whom.
+          x-phi: none
+          properties:
+            id:
+              $ref: ../components/schemas/Id.yaml
+              description: Provider ID.
+              x-phi: internal-id
+            displayName:
+              type: string
+              maxLength: 200
+              description: Provider name as shown.
+              x-phi: none
+        appointmentType:
+          type: object
+          required:
+          - id
+          - name
+          description: Kind of visit.
+          x-phi: none
+          properties:
+            id:
+              $ref: ../components/schemas/Id.yaml
+              description: Appointment type ID.
+              x-phi: internal-id
+            name:
+              type: string
+              maxLength: 200
+              description: Name.
+              x-phi: none
+        telehealth:
+          type: boolean
+          description: A video visit.
+          x-phi: none
+        reasonForVisit:
+          type: string
+          maxLength: 1000
+          description: The reason given when booking.
+          x-phi: clinical
+        patientInstruction:
+          type: string
+          maxLength: 1000
+          description: Instructions from the practice ("arrive 15 minutes early").
+          x-phi: clinical
+        canCancel:
+          type: boolean
+          description: True while the practice allows the patient to cancel online.
+          x-phi: none
+        canReschedule:
+          type: boolean
+          description: True while the practice allows the patient to reschedule online.
+          x-phi: none
+    PortalAppointmentList:
+      description: 'The patient''s appointments: upcoming soonest first, past newest first.'
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PortalAppointment'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalAppointmentCreate:
+      description: Body to book a visit from a free time (`GET /portal/me/slots`). The length comes from the appointment type.
+      type: object
+      additionalProperties: false
+      required:
+      - facilityId
+      - appointmentTypeId
+      - providerId
+      - startAt
+      properties:
+        facilityId:
+          $ref: ../components/schemas/Id.yaml
+          description: Facility.
+          x-phi: internal-id
+        appointmentTypeId:
+          $ref: ../components/schemas/Id.yaml
+          description: Kind of visit.
+          x-phi: internal-id
+        providerId:
+          $ref: ../components/schemas/Id.yaml
+          description: Provider.
+          x-phi: internal-id
+        startAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Start (UTC), as the slot gave it.
+          x-phi: identifier
+        reasonForVisit:
+          type: string
+          maxLength: 1000
+          description: Why the visit is needed.
+          x-phi: clinical
+    PortalCancelRequest:
+      description: Body to cancel an appointment; the reason is required, as for staff cancellations.
+      type: object
+      additionalProperties: false
+      required:
+      - reasonText
+      properties:
+        reasonText:
+          type: string
+          maxLength: 500
+          description: Why the patient is cancelling.
+          x-phi: clinical
+          minLength: 1
+    PortalRescheduleRequest:
+      description: Body to move an appointment to another free time; the old one is cancelled in the same transaction (D61).
+      type: object
+      additionalProperties: false
+      required:
+      - startAt
+      properties:
+        startAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: New start (UTC), as the slot gave it.
+          x-phi: identifier
+        providerId:
+          $ref: ../components/schemas/Id.yaml
+          description: New provider, if it changes.
+          x-phi: internal-id
+        reasonText:
+          type: string
+          maxLength: 500
+          description: Why, if the patient wants to say.
+          x-phi: clinical
+    PortalBookingFacility:
+      description: A facility patients can book at.
+      type: object
+      required:
+      - id
+      - name
+      - timeZone
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Facility ID.
+          x-phi: internal-id
+        name:
+          type: string
+          maxLength: 200
+          description: Name.
+          x-phi: none
+        timeZone:
+          type: string
+          maxLength: 64
+          description: IANA time zone (D40).
+          x-phi: none
+        address:
+          $ref: ../components/schemas/Address.yaml
+          description: Address.
+          x-phi: none
+    PortalBookingAppointmentType:
+      description: A kind of visit patients can book online.
+      type: object
+      required:
+      - id
+      - name
+      - durationMinutes
+      - telehealth
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Appointment type ID.
+          x-phi: internal-id
+        name:
+          type: string
+          maxLength: 200
+          description: Name.
+          x-phi: none
+        durationMinutes:
+          type: integer
+          format: int32
+          minimum: 5
+          maximum: 480
+          description: Length.
+          x-phi: none
+        telehealth:
+          type: boolean
+          description: A video visit.
+          x-phi: none
+    PortalBookingProvider:
+      description: A provider patients can book with.
+      type: object
+      required:
+      - id
+      - displayName
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Provider ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name as shown.
+          x-phi: none
+        specialty:
+          type: string
+          maxLength: 200
+          description: Specialty, for display.
+          x-phi: none
+    PortalSlot:
+      description: A free time. Computed, not stored.
+      type: object
+      required:
+      - startAt
+      - endAt
+      - providerId
+      properties:
+        startAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: Start (UTC).
+          x-phi: none
+        endAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: End (UTC).
+          x-phi: none
+        providerId:
+          $ref: ../components/schemas/Id.yaml
+          description: Provider.
+          x-phi: internal-id
+    PortalBookingFacilityList:
+      description: Facilities open for online booking.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalBookingFacility'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalBookingAppointmentTypeList:
+      description: Kinds of visit bookable online.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalBookingAppointmentType'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalBookingProviderList:
+      description: Providers bookable online.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalBookingProvider'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalSlotList:
+      description: Free times, soonest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalSlot'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalReleaseStatus:
+      description: '`available`, or `held` when a clinician holds the item for an individual, audited "preventing harm" decision
+        (D86): it is listed, without its content.'
+      type: string
+      enum:
+      - available
+      - held
+    PortalVisitSummary:
+      description: An after-visit summary from a signed note (FRS FR-ENC-06).
+      type: object
+      required:
+      - id
+      - visitDate
+      - releaseStatus
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Visit summary ID.
+          x-phi: internal-id
+        visitDate:
+          $ref: ../components/schemas/Date.yaml
+          description: Visit date, facility time.
+          x-phi: identifier
+        providerDisplayName:
+          type: string
+          maxLength: 200
+          description: Provider.
+          x-phi: none
+        facilityName:
+          type: string
+          maxLength: 200
+          description: Facility.
+          x-phi: none
+        releaseStatus:
+          $ref: '#/components/schemas/PortalReleaseStatus'
+          description: Available or held.
+          x-phi: none
+        availableAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it became available.
+          x-phi: none
+    PortalVisitSummaryList:
+      description: The patient's visit summaries, newest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalVisitSummary'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalDownloadUrl:
+      description: A short-lived link to the PDF (the file service; no patient data in the link).
+      type: object
+      required:
+      - url
+      - expiresAt
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: Download link, valid until `expiresAt`.
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the link stops working (5 minutes).
+          x-phi: none
+    PortalProblem:
+      description: A health issue on the patient's problem list (entered-in-error entries never appear, D24).
+      type: object
+      required:
+      - id
+      - display
+      - clinicalStatus
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Problem ID.
+          x-phi: internal-id
+        display:
+          type: string
+          maxLength: 500
+          description: The problem, in words.
+          x-phi: clinical
+        clinicalStatus:
+          type: string
+          enum:
+          - active
+          - recurrence
+          - relapse
+          - inactive
+          - remission
+          - resolved
+          description: Status.
+          x-phi: clinical
+        onsetDate:
+          $ref: ../components/schemas/PartialDate.yaml
+          description: When it started, as far as known.
+          x-phi: clinical
+        abatementDate:
+          $ref: ../components/schemas/PartialDate.yaml
+          description: When it resolved.
+          x-phi: clinical
+        recordedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was recorded.
+          x-phi: none
+    PortalProblemList:
+      description: The patient's problem list.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalProblem'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalAllergy:
+      description: An allergy or intolerance (entered-in-error entries never appear).
+      type: object
+      required:
+      - id
+      - display
+      - clinicalStatus
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Allergy ID.
+          x-phi: internal-id
+        display:
+          type: string
+          maxLength: 500
+          description: What the patient reacts to.
+          x-phi: clinical
+        clinicalStatus:
+          type: string
+          enum:
+          - active
+          - inactive
+          - resolved
+          description: Status.
+          x-phi: clinical
+        criticality:
+          type: string
+          enum:
+          - low
+          - high
+          - unable-to-assess
+          description: Risk.
+          x-phi: clinical
+        reactions:
+          type: array
+          maxItems: 10
+          description: Reactions seen.
+          x-phi: clinical
+          items:
+            type: object
+            required:
+            - manifestations
+            properties:
+              manifestations:
+                type: array
+                maxItems: 10
+                items:
+                  type: string
+                  maxLength: 200
+                description: What happened, in words.
+                x-phi: clinical
+              severity:
+                type: string
+                enum:
+                - mild
+                - moderate
+                - severe
+                description: How bad.
+                x-phi: clinical
+        recordedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was recorded.
+          x-phi: none
+    PortalAllergyList:
+      description: The patient's allergies.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalAllergy'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalVital:
+      description: One vital sign measurement, in the units it was entered (D69).
+      type: object
+      required:
+      - id
+      - type
+      - effectiveAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Vital ID.
+          x-phi: internal-id
+        type:
+          type: string
+          enum: *id028
+          description: Which vital sign.
+          x-phi: none
+        value:
+          $ref: ../components/schemas/Quantity.yaml
+          description: The value, as entered (absent for blood pressure, which uses `systolic` and `diastolic`).
+          x-phi: clinical
+        systolic:
+          $ref: ../components/schemas/Quantity.yaml
+          description: Blood pressure, systolic.
+          x-phi: clinical
+        diastolic:
+          $ref: ../components/schemas/Quantity.yaml
+          description: Blood pressure, diastolic.
+          x-phi: clinical
+        effectiveAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was measured.
+          x-phi: identifier
+    PortalVitalList:
+      description: The patient's vital signs, newest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/PortalVital'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none

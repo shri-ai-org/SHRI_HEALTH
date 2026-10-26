@@ -1,7 +1,8 @@
 'use strict';
 // shri-public-allowlist: x-permission "public" only on the allow-listed paths (SECURITY_MODEL §1).
 const { operations } = require('./_lib.js');
-const ALLOWED = new Set(['/auth/login', '/auth/callback', '/health']);
+// The patient portal's sign-in, callback and enrolment come before any session exists (ADR-0013 §3, §5; D85; U.S. spelling, D18).
+const ALLOWED = new Set(['/auth/login', '/auth/callback', '/health', '/portal/auth/login', '/portal/auth/callback', '/portal/enrollments']);
 module.exports = (doc) => {
   const out = [];
   for (const { path, op, at } of operations(doc)) {

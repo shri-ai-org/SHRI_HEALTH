@@ -21,8 +21,8 @@ Every operation's `x-permission` puts it in exactly one class.
 
 | Class | `x-permission` value | Who can call | Examples |
 |---|---|---|---|
-| Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready` |
-| Authenticated | `authenticated` | Any logged-in user, acting on their own data | `GET /me`, `GET /auth/session`, `POST /auth/logout`, `GET /events/stream`, `GET /operations/{operationId}` |
+| Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready`; the portal's `GET /portal/auth/login`, `GET /portal/auth/callback` and `POST /portal/enrollments` (ADR-0013 §3, §5; lint allowlist `shri-public-allowlist`) |
+| Authenticated | `authenticated` | Any logged-in user, acting on their own data | `GET /me`, `GET /auth/session`, `POST /auth/logout`, `GET /events/stream`, `GET /operations/{operationId}`; with the portal cookie, `GET /portal/auth/session`, `POST /portal/auth/refresh`, `POST /portal/auth/logout` |
 | Permission | `<resource>:<action>` | Users whose roles include that permission | Almost every endpoint |
 | Partner | `partner-signed` | A partner whose request signature verifies | `POST /hooks/clearinghouse` |
 
@@ -73,11 +73,15 @@ components:
     sessionCookie: { type: apiKey, in: cookie, name: __Host-shri_session }
     csrfHeader:    { type: apiKey, in: header, name: X-CSRF-Token }
     delegatedToken: { type: http, scheme: bearer }   # AI gateway only, see §2.4
+    portalSessionCookie: { type: apiKey, in: cookie, name: __Host-shri_portal }   # /portal/* only (ADR-0013 §5, D89)
 security:
   - sessionCookie: []          # default for GET
 # POST/PUT/PATCH operations: [{ sessionCookie: [], csrfHeader: [] }]
 # public operations: security: []
+# portal operations: [{ portalSessionCookie: [] }], writes [{ portalSessionCookie: [], csrfHeader: [] }]
 ```
+
+The two cookies never mix: an operation names one or the other, never both (lint rule `shri-security`), staff routes refuse the portal session and portal routes the staff one (core, ADR-0013 §5).
 
 ### 2.4 Service-to-service calls
 
@@ -133,6 +137,7 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | Orders and results (Thulasi) | `lab-compendium:read`, `orders:read`, `orders:create`, `orders:medical-necessity-check`, `orders:sign-and-send`, `orders:cancel`, `orders:entered-in-error` (T13), `results:read`, `results:acknowledge`, `unmatched-results:read`, `unmatched-results:match`, `unmatched-results:reject` (T13/T34), `in-office-results:create` |
 | Files, setup, billing, documents (Anand) | `files:create`, `files:read`, `practice-setup:read\|create\|update`, `payers:read` (payer directory, read-only; added 2026-10-23), `lab-providers:read` (lab providers, read-only; D48), `consent-requirements:read` (D59), `provider-schedules:create\|update` (D66), `note-templates:read\|create-personal` (D73, A46), `onboarding:import`, `superbills:read\|update`, `claims:read\|create\|scrub\|submit\|status-check\|correct\|void`, `payments:create`, `payments:card-session`, `remittances:read\|post`, `billing-reports:read`, `documents:read\|create\|update`, `faxes:create`, `fax-inbox:read`, `fax-inbox:file`, `ccda:import`, `ccda:export`, `inbox:read\|update\|complete`, `messages:create`, `exports:read\|create` |
 | Communications and dashboard (Minalini) | `message-templates:read\|create\|update`, `communication-preferences:read\|update`, `communications:read`, `operations-dashboard:read` |
+| Patient portal, B8a (Vimal; sign-in, enrollment and factor reset Thulasi; D84, D89) | Role `PAT` only: `portal-profile:read`, `portal-profile:request-change`, `portal-appointments:read\|create\|cancel\|reschedule`, `portal-booking:read`, `portal-records:read`. Staff: `portal-accounts:read`, `portal-invitations:create\|revoke`, `portal-accounts:reset-factors`. Proposed grants in NOTE_FOR_THULASI T45; they join §4.3 in the same change as core, as for T42 |
 
 ### 4.3 Draft role-to-permission matrix
 
@@ -280,8 +285,8 @@ Middleware writes audit events (D3; TA §6: append-only, hash-chained). The cont
 x-audit:
   action: R              # FHIR AuditEvent action: C create, R read, U update, E execute (actions, search)
   category: phi-read     # see table
-  patient: patientId     # path parameter holding the patient ID, or "body:/patientId", or "result" (search returns IDs)
-  actor: user            # optional; "partner" for /hooks/* (the partner is the actor), default "user"
+  patient: patientId     # path parameter holding the patient ID, or "body:/patientId", or "result" (search returns IDs), or "session" (portal)
+  actor: user            # optional; "partner" for /hooks/* (the partner is the actor), "patient" for /portal/*, default "user"
 ```
 
 | `category` | Operations | Must audit |
@@ -293,9 +298,11 @@ x-audit:
 | `security` | Login, logout, failed login, permission and CSRF denials, break-glass, restriction changes, role changes | Yes |
 | `ai` | AI requests (metadata only), and accept, edit, reject decisions | Yes (FRS §3.4) |
 | `admin` | Practice setup, AI settings, templates, co-sign rules | Yes |
-| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49), inbox badge counts (`GET /inbox/summary`, counts only; D77), session reads (`GET /auth/session`, `/me`, the event stream) | No |
+| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49) and the portal's (`/portal/booking/*`, `/portal/me/slots`), inbox badge counts (`GET /inbox/summary`, counts only; D77), session reads (`GET /auth/session`, `GET /portal/auth/session`, `/me`, the event stream) | No |
 
 Partner callbacks (`/hooks/*`) carry PHI, so they are audited as `phi-write` with the **partner as actor** (agreed, T37).
+
+Portal operations are audited with the **patient as actor** and the patient from the session (`actor: patient`, `patient: session`; ADR-0013 §6, D84). Enforced by `shri-x-audit`.
 
 Audit records contain who, what, which record, which patient, outcome, time, request ID, and break-glass reason. **Never request or response bodies** (TA §6: "do not log unnecessary clinical payloads").
 
