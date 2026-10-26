@@ -29,7 +29,7 @@ Cross-team architecture decisions are recorded as ADRs in [`docs/adr/`](../../do
 |---|---|
 | **PROPOSED** | My recommendation, with a one-line reason. Not a fact and not approved. |
 | **Pending &lt;name&gt;** | Needs that person's answer. A PROPOSED answer is written in place so work can continue; it is collected in `notes/NOTE_FOR_<NAME>.md`. |
-| **Pending schema lock** | Depends on exact table and column names in the adopted schema (Sam's schema, ADR-0011), fixed at the 30 October lock for P0 tables (`docs/context/P0_SCHEMA_SCOPE.md`). Stage 4 does not start until then. |
+| **Pending schema lock** | Not yet checked against the locked schema (Sam's schema, ADR-0011; schema locked; changes by migration, D72). Each batch resolves its own markers; anything the schema lacks becomes a migration item for Anand, not a marker. |
 | **Pending management** | Needs a decision outside the four of us; raised through Vimal. |
 
 ## Source abbreviations
@@ -57,7 +57,7 @@ These are Vimal's answers in the Stage 1 review. They are binding for the contra
 | VD-G4 | Check-in creates the Encounter through the encounter service. `POST /encounters` is kept only for unscheduled encounters (telephone, documentation-only). Both paths use the same service. |
 | VD-G5 | ~~PROPOSED, pending Anand: Practitioner, PractitionerRole, Organization and Location are mirrored into HAPI from practice setup, using the same pattern as Patient (D7).~~ **Resolved by ADR-0011:** they are FHIR-shaped tables in our database; nothing is mirrored. |
 | VD-G6 | One entered-in-error action per resource type, each with its own `x-permission`, e.g. `POST /patients/{id}/problems/{pid}/entered-in-error`. |
-| VD-G7 | DATA_OWNERSHIP is drafted with "pending schema" markers and finalized when the schema is loaded. Stage 4 does not start until then. |
+| VD-G7 | DATA_OWNERSHIP was drafted with "pending schema" markers; the schema is locked (D72), and each batch resolves its own markers against it. No stage waits for a date. |
 | VD-G8 | One contract file per module plus shared components, bundled into one file for tools. |
 | VD-G9 | U.S. spelling in every API identifier and description (favorites, license). |
 | VD-G10 | Vimal's Claude Code deny list is authoritative, extended with Minalini's and Anand's feature folders (corrected list in NOTE_FOR_VIMAL). |

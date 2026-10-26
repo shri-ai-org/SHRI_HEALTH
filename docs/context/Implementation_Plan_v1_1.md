@@ -23,7 +23,7 @@
 
 | Milestone | Date |
 |---|---|
-| Phase 0 complete: architecture and schema locked | 30 October 2026 |
+| Phase 0 complete: architecture and schema locked | Done 2026-10-24 (D72); schema locked; changes by migration |
 | G1: vertical slice running end to end | 20 November 2026 |
 | Demo checkpoint and conference booth decision | 18 December 2026 |
 | **P0 MVP complete** | **31 December 2026** |
@@ -141,16 +141,16 @@ Read it top down: every request passes Nginx and Keycloak into one FastAPI core,
 | Clinical corrections | No DELETE; entered-in-error with a reason and Provenance | D14, D24 |
 | Data fields | The eight P0 items; standard U.S. demographic fields; times in UTC with facility time zones; money as exact USD decimals; MRN per practice | D38–D41 |
 
-**Phase 0 steps** (owner Anand, with Sam until the lock):
+**Phase 0 steps** (owner Anand, with Sam; schema locked; changes by migration, D72):
 
 - Tag all 218 tables P0, P0 stretch, P1 or P2, following `P0_SCHEMA_SCOPE.md`.
 - Add the eight P0 items, the demographic fields and the MRN counter (D38–D41).
 - Adopt the schema into `backend/app/db/`, split it into the three schemas with the five roles, then rerun migrations, `alembic check`, the full test suite, the trigger and role checks and the `content_tsv` GIN index build (D36).
 - Load test with the Synthea-based loader: 3 clinics × 2,000 patients, 20,000 visits, 200,000 observations and 20,000 claims; median and p95 for create visit, file result and create claim (D35).
-- Lock the P0 tables on 30 October; afterwards they change only through new migrations.
+- ~~Lock the P0 tables.~~ Done 2026-10-24 (D72): every table changes only through a new migration and a reviewed PR.
 - Stand up OpenEMR 8.x with demo data and build the column-level matrix: OpenEMR column → Shri column → FHIR US Core element → release (Sam).
 
-Deliverables: the adopted schema running in CI with every test green, the PostgreSQL 18 verification report (`backend/app/db/docs/pg18-verification.md`), the load-test timings, the data dictionary in the repo, and the column-level mapping matrix. Owner: Anand; Sam until the lock; reviewer: senior architect.
+Deliverables: the adopted schema running in CI with every test green, the PostgreSQL 18 verification report (`backend/app/db/docs/pg18-verification.md`), the load-test timings, the data dictionary in the repo, and the column-level mapping matrix. Owner: Anand, with Sam (schema locked; changes by migration, D72); reviewer: senior architect.
 
 The earlier plan to verify and extend the 89-table shri_health_db, with its gap table, is retired by ADR-0011; it remains in this file's git history.
 
@@ -267,7 +267,7 @@ Five gaps could stop a U.S. practice from going live even if every FRS item ship
 | After-visit summary | Patients expect a printed or portal summary at checkout | Template-driven summary from the signed note |
 | Rooming workflow | Medical assistants capture vitals and reconcile meds before the doctor enters | Rooming screen feeding the encounter workspace |
 | Sensitive records | Substance-use treatment records (42 CFR Part 2) and psychotherapy notes carry stricter rules | Sensitivity labels, restricted access and break-the-glass with audit |
-| Terminology licences | CPT needs an AMA licence; SNOMED CT U.S. edition comes through the UMLS licence | CPT licence before the pilot (Q7; the code-table design is part of the schema lock regardless); UMLS registration before loading terminology (Q8) |
+| Terminology licences | CPT needs an AMA licence; SNOMED CT U.S. edition comes through the UMLS licence | CPT licence before the pilot (Q7; the code-table design is in the locked schema regardless); UMLS registration before loading terminology (Q8) |
 | Card payments | Collecting copays at check-in needs a processor | Hosted payment fields so card data never touches our servers |
 | Practice onboarding | A new clinic needs providers, NPIs, fee schedules, payers and templates loaded before day one | Setup wizard and import templates |
 | Support and training | A pilot practice needs a help channel, release notes and training material | Owned by the PM from Phase 3 |
@@ -347,7 +347,7 @@ The dashed line marks P0 complete. Phase 3 (pilot readiness) and Phase 4 (P1 con
 
 **Week 1 (26–30 Oct) · Phase 0**
 
-- [ ] Adopt Sam's schema: P0 tagging, the eight P0 items, three-schema split, re-checks, load test; lock P0 tables on 30 October — Anand, with Sam
+- [ ] Adopt Sam's schema: P0 tagging, the eight P0 items, three-schema split, re-checks, load test; schema locked 2026-10-24 (D72); remaining items by migration — Anand, with Sam
 - [ ] Review and approve FRS v1.2 and Technical Architecture v1.1 — Kalila, Sam and the senior architect
 - [x] ~~Sign ADR-19 to ADR-24 — Tech lead~~ ADR-19 decided by ADR-0011; hosting by ADR-0012; the rest in DECISIONS.md
 - [ ] Share the older portal code and lab-module data sheet — Executive sponsor
@@ -476,7 +476,7 @@ Engineering work is split between four owners, as in the guides (`docs/context/0
 | Workstream | Owner | First deliverable | Due |
 |---|---|---|---|
 | Product and clinical requirements | Kalila (PM) with clinician advisors | Use-case catalogue for every P0 stream: user stories, acceptance criteria, screen list | 13 Nov 2026 |
-| Data model, read-only FHIR API, files; practice setup, billing, documents, C-CDA, inbox, exports, onboarding | Anand (Sam on the schema until the lock) | Sam's schema adopted (three schemas, PostgreSQL 18), load-tested and P0 tables locked; column mapping by 20 Nov | 30 Oct 2026 |
+| Data model, read-only FHIR API, files; practice setup, billing, documents, C-CDA, inbox, exports, onboarding | Anand (Sam on the schema; schema locked; changes by migration, D72) | Sam's schema adopted (three schemas, PostgreSQL 18), load-tested and P0 tables locked; column mapping by 20 Nov | 30 Oct 2026 |
 | Architecture review | Senior U.S. architect (advisor) | Written review of repo skeleton and ADR set | 6 Nov 2026 |
 | Backend platform, security, integration engine, medications and orders; DevOps | Thulasi | Repo skeleton with auth, tenancy, audit and one module; AWS account under BAA, Terraform baseline with Amazon RDS (ADR-0012), CI pipeline | 6 Nov 2026 |
 | Design system, screens, communications and operations dashboard | Minalini | Clickable clinician workspace prototype for doctor feedback | 6 Nov 2026 |
@@ -543,7 +543,7 @@ The biggest risk is the ten weeks to P0: the date holds only with six parallel s
 | Alert fatigue | Doctors ignore or reject CDS | Tiered severity, override reasons, suppression, advisor review of defaults | Clinical advisor |
 | No in-house U.S. domain expertise | Wrong workflows built | Paid clinician and billing advisors; integration and RCM hires first | Executive sponsor |
 | Real patient data leaks into dev or chat tools | HIPAA breach | Synthetic data only outside production; no PHI in WhatsApp, email or tickets | Thulasi + PM |
-| Schema churn after streams start | Rework across streams | P0 tables locked on 30 October; later changes only through new migrations; schema review at G1 before parallel streams begin | Anand |
+| Schema churn after streams start | Rework across streams | Schema locked 2026-10-24 (D72); later changes only through new migrations and reviewed PRs; schema review at G1 before parallel streams begin | Anand |
 
 ## Open questions for next week
 

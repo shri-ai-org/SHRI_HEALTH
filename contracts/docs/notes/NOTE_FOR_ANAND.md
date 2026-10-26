@@ -10,7 +10,7 @@ HAPI is retired. Clinical data lives in FHIR-shaped tables in our one PostgreSQL
 
 - **Resolved by ADR-0011** (struck below): A1–A6, A8–A18 (A7 stays), A31, A33.
 - **Still with you:**
-  - A7 US Core version (needed before the 30 October lock);
+  - A7 US Core version (still open; schema locked; changes by migration, D72);
   - A19–A30 (social history profiles, documents, money, time zones, HCPCS, files, terminology and CPT, setup endpoints, C-CDA export, co-sign rules owner, claims, events);
   - A32 (sign-off of your inventory rows), A34 (HEIC), A36 (break-glass inbox item), A37 (`enqueue()` core PR review).
 - ~~NEEDS DECISION, with Thulasi: A35 (medication list in MedicationStatement per the P0 scope, or MedicationRequest per T36; DATA_OWNERSHIP §2.2).~~ **Decided (D28):** MedicationRequest.
@@ -33,7 +33,7 @@ You approved Sam's schema, PostgreSQL 18, D13–D19 and your Stage 2 items (DECI
 | A4 | ~~Legal record of a signed note. Vimal's proposal: the signed version in ours (immutable, hash-chained, audited) is the legal record; the HAPI DocumentReference carries the same content hash; reconciliation compares hashes. Also: where the hash goes in FHIR (R4 `Attachment.hash` is SHA-1)~~ **Resolved by ADR-0011:** the signed note row is the legal record; no second copy, no hash. | Your sign-off, plus compliance confirmation (through Vimal) | DATA_OWNERSHIP §3.2 |
 | A5 | ~~Clinical writes (vitals, history) when HAPI is down: Vimal accepted for the MVP that they fail with `503 clinical-store-unavailable`; registration and check-in never block and queue through the outbox (D7). Rooming impact is an accepted risk~~ **Resolved by ADR-0011:** no HAPI, so no such failure mode. | Please agree | DATA_OWNERSHIP §3.3, ARCHITECTURE_CONTEXT §8 |
 | A6 | ~~Tenant isolation inside HAPI (with Thulasi)~~ **Resolved by ADR-0011:** no HAPI partitions; clinic isolation is forced RLS, clinic-carrying and same-patient links (SECURITY_MODEL §5.3). | One HAPI partition per organization | DATA_OWNERSHIP §3.4 |
-| A7 | US Core version to target (9.0.0 is current on hl7.org as of 2026-10-22; certification may need another) | Decide with TA ADR-16 **Agreed (D28);** the version itself is Open Decisions Q6, needed before the lock. | DATA_OWNERSHIP §2 |
+| A7 | US Core version to target (9.0.0 is current on hl7.org as of 2026-10-22; certification may need another) | Decide with TA ADR-16 **Agreed (D28);** the version itself is Open Decisions Q6, still open (schema locked; changes by migration, D72). | DATA_OWNERSHIP §2 |
 
 ## IDs and consistency (mirroring resolved by ADR-0011)
 
@@ -77,7 +77,7 @@ You approved Sam's schema, PostgreSQL 18, D13–D19 and your Stage 2 items (DECI
 | A28 | `/cosign-rules` owned by Vimal (rules evaluated in notes), even though it is setup data | Yes **Agreed (D28).** | #87–89 |
 | A29 | Claims state machine, close rule, co-signature hold, superbill handling when an encounter is entered-in-error (with the RCM analyst) | Please review **Agreed (D28).** | DATA_OWNERSHIP §5.7, §5.2 |
 | A30 | Events billing, inbox and documents consume and publish | As listed **Agreed (D28).** | EVENTS §4 |
-| A31 | ~~Schema change requests: `user_clinical_preference` (favorites; P0 gap), co-signature rule configuration, draft `encounter_diagnosis` (if option B), encounter row (A2), version columns (A13), no full-SSN column (pending management, VD-SSN)~~ **Resolved by ADR-0011:** the adopted schema replaces these change requests; anything missing goes through your P0 review before the lock. | Please confirm | DATA_OWNERSHIP §2.1 |
+| A31 | ~~Schema change requests: `user_clinical_preference` (favorites; P0 gap), co-signature rule configuration, draft `encounter_diagnosis` (if option B), encounter row (A2), version columns (A13), no full-SSN column (pending management, VD-SSN)~~ **Resolved by ADR-0011:** the adopted schema replaces these change requests; anything missing is a new migration (schema locked, D72). | Please confirm | DATA_OWNERSHIP §2.1 |
 | A32 | Sign off your rows (#148–219) | — **Agreed (D28).** | ENDPOINT_INVENTORY |
 
 ## Added after Thulasi's and Minalini's sign-offs (2026-10-22)

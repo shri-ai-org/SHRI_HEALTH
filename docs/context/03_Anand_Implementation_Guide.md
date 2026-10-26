@@ -46,7 +46,7 @@ Read `00_Team_Workflow_and_Claude_Code_Setup.md` for the repo layout, ownership 
 
 ## 3. Build steps, in order
 
-### Step 1 — Schema review and P0 lock (with Sam), before the 30 October lock
+### Step 1 — Schema review and P0 lock (with Sam): done, schema locked; changes by migration (D72)
 
 - Tag every one of the 218 tables P0, P0 stretch, P1 or P2 in the data dictionary, following `docs/context/P0_SCHEMA_SCOPE.md`.
 - Add the missing columns for each of the eight "P0 items to confirm" (all approved, D38):
@@ -64,7 +64,7 @@ Read `00_Team_Workflow_and_Claude_Code_Setup.md` for the repo layout, ownership 
 - ~~Decide PostgreSQL 17 vs 18.~~ Decided: PostgreSQL 18, latest 18.x minor (D24, D28).
 - ~~Write a design note on separate schemas (pending Sena).~~ Decided (D23): three schemas, `clinical`, `admin` and `audit`, with one role per service (`shri_app`, `shri_fhir_reader`, `shri_integration`, `shri_reporting`, `shri_migrator`). You build the split during adoption (Step 2).
 - **Load test (D35)** on the adopted three-schema version: a Synthea-based loader with 3 clinics × 2,000 patients, 20,000 visits, 200,000 observations and 20,000 claims. Record the median and p95 for create visit, file result and create claim. The README warns that the many clinic-carrying links add insert cost.
-- Lock the P0 tables. After the lock they change only through new migrations.
+- ~~Lock the P0 tables.~~ Done (2026-10-24, D72): every table now changes only through a new migration and a reviewed PR.
 
 ### Step 2 — Adopt the schema into `backend/app/db/`
 
@@ -99,7 +99,7 @@ await fhir_store.history(db, ResourceType, id) -> list[Version]
 
 - Import Synthea's synthetic patients into the FHIR-shaped tables. This also proves the serializer round trip.
 - Seed the reference data: roles, code systems, a sample fee schedule, payers.
-- Code systems: ICD-10-CM, LOINC, RxNorm, CVX; SNOMED CT through the UMLS licence (Open Decisions Q8). CPT needs an AMA licence (Q7, before the pilot), so use clearly fake codes until it's settled; the code-table design is part of the schema lock regardless.
+- Code systems: ICD-10-CM, LOINC, RxNorm, CVX; SNOMED CT through the UMLS licence (Open Decisions Q8). CPT needs an AMA licence (Q7, before the pilot), so use clearly fake codes until it's settled; the code-table design is in the locked schema regardless.
 - The Synthea loader from Step 1 (D35) doubles as the dev and test data set.
 
 ### Step 5 — FHIR API for outside systems (read-only)

@@ -151,7 +151,7 @@ Plain-English meanings, so all four of us and every Claude session use the same 
 | **FHIR-shaped table** | A database table laid out like a FHIR resource (one table per resource, columns named after FHIR elements, repeating elements in child tables), so it can be served as FHIR directly. Our clinical data uses them (ADR-0011). |
 | **Read-only FHIR API** (`/fhir`) | Anand's API that lets outside systems read our clinical data as FHIR, with a machine token. Our screens never use it. |
 | **Same-patient link** | A foreign key that includes the patient, so a patient's record can only point at that same patient's records. |
-| **Schema lock** | 30 October: the P0 tables are fixed; afterwards they change only through new migrations (`P0_SCHEMA_SCOPE.md`). |
+| **Schema lock** | Done 2026-10-24 (D72): Sam's schema with D38–D43, A43 and Thulasi's core tables. Every table changes only through a new migration and a reviewed PR; no work waits for a date. |
 | **Problem Details** | The standard JSON shape for every error (RFC 9457). |
 | **Provenance** | A record of who created or changed a clinical record, when, and with what help (including AI). |
 | **Server-Sent Events (SSE)** | A one-way live connection from server to browser used for status board and inbox updates. |
