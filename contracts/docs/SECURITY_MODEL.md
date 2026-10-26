@@ -302,7 +302,7 @@ x-audit:
 
 Partner callbacks (`/hooks/*`) carry PHI, so they are audited as `phi-write` with the **partner as actor** (agreed, T37).
 
-Portal operations are audited with the **patient as actor** and the patient from the session (`actor: patient`, `patient: session`; ADR-0013 §6, D84). Enforced by `shri-x-audit`.
+Portal operations are audited with the **patient as actor** and the patient from the session (`actor: patient`, `patient: session`; ADR-0013 §6, D84). With a portal session, `none` is allowed only on `GET /portal/auth/session`, the three `/portal/booking/*` lists and `GET /portal/me/slots`; every other one, `security` included, names the session patient. Enforced by `shri-x-audit`.
 
 Audit records contain who, what, which record, which patient, outcome, time, request ID, and break-glass reason. **Never request or response bodies** (TA §6: "do not log unnecessary clinical payloads").
 

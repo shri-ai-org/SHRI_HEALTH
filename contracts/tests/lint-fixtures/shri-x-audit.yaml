@@ -27,3 +27,14 @@ paths:
       description: A portal read of patient data with neither actor patient nor the patient from the session.
       responses:
         '200': { description: OK }
+  /portal/me/allergies:
+    get:
+      operationId: listPortalAllergies
+      tags: [portal]
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit: { action: R, category: none, actor: patient }
+      security: [{ portalSessionCookie: [] }]
+      description: A portal read of patient data marked "none", so it would never be audited.
+      responses:
+        '200': { description: OK }

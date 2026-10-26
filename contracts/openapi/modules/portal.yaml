@@ -140,6 +140,7 @@ paths:
       x-audit:
         action: E
         category: security
+        patient: session
         actor: patient
       x-storage: admin
       x-release: P1
@@ -180,6 +181,7 @@ paths:
       x-audit:
         action: E
         category: security
+        patient: session
         actor: patient
       x-storage: admin
       x-release: P1
