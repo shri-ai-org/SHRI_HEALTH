@@ -2,8 +2,8 @@
 # x-owner: vimal  (implements these operations and approves their contract; Vimal approves standards conformance)
 # Scope: Patients, identifiers, related persons, coverage, card images, consents, preferred pharmacy, restricted charts, duplicates and merges (`backend/app/modules/patients/`)
 # Stage 4 batch 1. Shapes follow ENDPOINT_INVENTORY rows #28-49 (the timeline, #46, is batch B4).
-# Fields marked "Pending schema lock" depend on tables still under review or on Anand's adoption changes
-# (three schemas, the eight P0 items, the D39 demographic fields); they may change before 30 October.
+# Aligned with the locked schema (D72). Decided fields whose columns are not in the schema files yet are Anand's
+# migration item A45 (NOTE_FOR_ANAND); they stay in the contract. No date gates any change.
 # No SSN anywhere (D43).
 # Batch 1 follow-up (2026-10-24, D49-D62): preferred pharmacy on the patient (D50), preferred and previous names (D57),
 # the license image as a document (D56), POST /patients/summaries (D54) and GET /patient-merges (D51).
@@ -1474,7 +1474,8 @@ paths:
       summary: Set the preferred pharmacy
       description: 'Sets the patient''s preferred pharmacy from the pharmacy directory (inventory #43). `If-Match` carries
         the patient''s current `ETag`, because the preferred pharmacy is part of the patient record; the response carries
-        the patient''s new `ETag`. Setting it must bump the patient version. **Pending schema lock.**'
+        the patient''s new `ETag`. The service sets the default row in `patient_pharmacy` (one default per patient, `uq_patient_pharmacy_one_default`)
+        and updates the patient row in the same transaction, so the patient''s version and `_history` change.'
       tags:
       - patients
       x-owner: vimal
@@ -2362,8 +2363,8 @@ components:
           description: Free text as the patient stated it.
           x-phi: clinical
     Employer:
-      description: Employer of a patient or subscriber (approved P0 item, D38; workers' compensation claims need it). **Pending
-        schema lock.**
+      description: Employer of a patient or subscriber (approved P0 item, D38; workers' compensation claims need it). Decided
+        (D38/D39); its column is migration item A45 (Anand).
       type: object
       additionalProperties: false
       required:
@@ -2411,8 +2412,8 @@ components:
           type: string
           format: uri
           maxLength: 300
-          description: Namespace of the value, e.g. a state's driver's license OID. The MRN system is per practice. **Pending
-            schema lock.**
+          description: Namespace of the value, e.g. a state's driver's license OID. The MRN system is per practice (D41);
+            `identifier.system` is at most 300 characters.
           x-phi: none
         value:
           type: string
@@ -2515,7 +2516,8 @@ components:
           type: string
           maxLength: 40
           description: 'Medical record number: server-generated, one counter per practice, never reused, practice prefix plus
-            number (D41). Read-only. The counter is not in the schema yet. **Pending schema lock.**'
+            number (D41). Read-only. Stored as an `identifier` row with the practice''s MRN system; the per-practice counter
+            (D41) is migration item A45.'
           x-phi: identifier
         name: &id020
           $ref: ../components/schemas/HumanName.yaml
@@ -2541,8 +2543,8 @@ components:
           x-phi: identifier
         gender: &id024
           $ref: '#/components/schemas/AdministrativeGender'
-          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (the schema
-            column is NOT NULL). **Pending schema lock.**
+          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender`
+            is NOT NULL).
           x-phi: clinical
         birthSex: &id025
           $ref: '#/components/schemas/BirthSex'
@@ -2550,11 +2552,13 @@ components:
           x-phi: clinical
         genderIdentity: &id026
           $ref: '#/components/schemas/CodedValue'
-          description: Gender identity, US Core gender-identity value set (D39). No column yet. **Pending schema lock.**
+          description: Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration
+            item A45 (Anand).
           x-phi: clinical
         sexualOrientation: &id027
           $ref: '#/components/schemas/CodedValue'
-          description: Sexual orientation, US Core sexual-orientation value set (D39). No column yet. **Pending schema lock.**
+          description: Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration
+            item A45 (Anand).
           x-phi: clinical
         race: &id028
           $ref: '#/components/schemas/RaceEthnicity'
@@ -2587,16 +2591,16 @@ components:
           x-phi: clinical
         occupation: &id032
           $ref: '#/components/schemas/CodedValue'
-          description: Occupation (D39; approved P0 item). No column yet. **Pending schema lock.**
+          description: Occupation (D39; approved P0 item). Decided (D38/D39); its column is migration item A45 (Anand).
           x-phi: clinical
         industry: &id033
           $ref: '#/components/schemas/CodedValue'
-          description: Industry (D39; approved P0 item). No column yet. **Pending schema lock.**
+          description: Industry (D39; approved P0 item). Decided (D38/D39); its column is migration item A45 (Anand).
           x-phi: clinical
         tribalAffiliation: &id034
           $ref: '#/components/schemas/CodedValue'
-          description: Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). No column yet. **Pending
-            schema lock.**
+          description: Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). Decided (D38/D39);
+            its column is migration item A45 (Anand).
           x-phi: clinical
         phones: &id035
           type: array
@@ -2618,7 +2622,7 @@ components:
           x-phi: identifier
         employer: &id038
           $ref: '#/components/schemas/Employer'
-          description: Employer. **Pending schema lock.**
+          description: Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand).
           x-phi: identifier
         identifiers:
           type: array
@@ -2734,8 +2738,8 @@ components:
           oneOf:
           - $ref: '#/components/schemas/AdministrativeGender'
           - type: 'null'
-          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (the schema
-            column is NOT NULL). **Pending schema lock.** Send `null` to clear it.
+          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender`
+            is NOT NULL). Send `null` to clear it.
           x-phi: clinical
         birthSex:
           oneOf:
@@ -2747,15 +2751,15 @@ components:
           oneOf:
           - $ref: '#/components/schemas/CodedValue'
           - type: 'null'
-          description: Gender identity, US Core gender-identity value set (D39). No column yet. **Pending schema lock.** Send
-            `null` to clear it.
+          description: Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration
+            item A45 (Anand). Send `null` to clear it.
           x-phi: clinical
         sexualOrientation:
           oneOf:
           - $ref: '#/components/schemas/CodedValue'
           - type: 'null'
-          description: Sexual orientation, US Core sexual-orientation value set (D39). No column yet. **Pending schema lock.**
-            Send `null` to clear it.
+          description: Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration
+            item A45 (Anand). Send `null` to clear it.
           x-phi: clinical
         race:
           oneOf:
@@ -2799,20 +2803,22 @@ components:
           oneOf:
           - $ref: '#/components/schemas/CodedValue'
           - type: 'null'
-          description: Occupation (D39; approved P0 item). No column yet. **Pending schema lock.** Send `null` to clear it.
+          description: Occupation (D39; approved P0 item). Decided (D38/D39); its column is migration item A45 (Anand). Send
+            `null` to clear it.
           x-phi: clinical
         industry:
           oneOf:
           - $ref: '#/components/schemas/CodedValue'
           - type: 'null'
-          description: Industry (D39; approved P0 item). No column yet. **Pending schema lock.** Send `null` to clear it.
+          description: Industry (D39; approved P0 item). Decided (D38/D39); its column is migration item A45 (Anand). Send
+            `null` to clear it.
           x-phi: clinical
         tribalAffiliation:
           oneOf:
           - $ref: '#/components/schemas/CodedValue'
           - type: 'null'
-          description: Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). No column yet. **Pending
-            schema lock.** Send `null` to clear it.
+          description: Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). Decided (D38/D39);
+            its column is migration item A45 (Anand). Send `null` to clear it.
           x-phi: clinical
         phones:
           oneOf:
@@ -2842,7 +2848,8 @@ components:
           oneOf:
           - $ref: '#/components/schemas/Employer'
           - type: 'null'
-          description: Employer. **Pending schema lock.** Send `null` to clear it.
+          description: Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand). Send
+            `null` to clear it.
           x-phi: identifier
     PatientSummary:
       description: 'Patient search result: minimum necessary (SECURITY_MODEL §8 rule 4).'
@@ -3040,7 +3047,8 @@ components:
           x-phi: identifier
         employer: &id046
           $ref: '#/components/schemas/Employer'
-          description: Employer of a subscriber (approved P0 item, D38). **Pending schema lock.**
+          description: Employer of a subscriber (approved P0 item, D38). Decided (D38/D39); its column is migration item A45
+            (Anand).
           x-phi: identifier
         active:
           type: boolean
@@ -3112,7 +3120,8 @@ components:
           oneOf:
           - $ref: '#/components/schemas/Employer'
           - type: 'null'
-          description: Employer of a subscriber (approved P0 item, D38). **Pending schema lock.** Send `null` to clear it.
+          description: Employer of a subscriber (approved P0 item, D38). Decided (D38/D39); its column is migration item A45
+            (Anand). Send `null` to clear it.
           x-phi: identifier
         active:
           type: boolean

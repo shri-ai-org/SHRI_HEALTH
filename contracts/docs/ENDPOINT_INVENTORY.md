@@ -248,7 +248,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 163–166 | same 4 | `/appointment-types` | A | Ad | same | adm | S | ✓ | | FR-SCH-01 | B1 | Same |
 | 167–170 | same 4 | `/provider-schedules` | A | Ad | `practice-setup:read`; writes `provider-schedules:create\|update` (FD, ADM; D66) | adm | S | ✓ | | FR-SCH-01 | B1 | Same. Writes split from `practice-setup:*` (D66, 2026-10-24) |
 | 171–174 | same 4 | `/fee-schedules` | A | Ad | same | adm | S | ✓ | | FR-RCM-02 | B1 | Same |
-| 175–178 | same 4 | `/practice-payers` | A | Ad | same | adm | S | ✓ | | FR-RCM-01, §3.10 onboarding | B1 | **Was `/payers`** (Vimal, 2026-10-23): the practice's own payer setup, a payer chosen from the directory plus its enrollment status per transaction (`payer_enrollment`); practice-level table **pending schema lock** (A39). Needs Anand's review |
+| 175–178 | same 4 | `/practice-payers` | A | Ad | same | adm | S | ✓ | | FR-RCM-01, §3.10 onboarding | B1 | **Was `/payers`** (Vimal, 2026-10-23): the practice's own payer setup, a payer chosen from the directory plus its enrollment status per transaction (`payer_enrollment`); practice-level table `practice_payer` (A39, in the locked schema) |
 | 230 | GET | `/payers` | A | Ad | `payers:read` | – | – | | | FR-RCM-01 | B1 | **New** (Vimal, 2026-10-23): the platform payer directory, read-only; filters `payerName`, `externalPayerId`, `payerType`. Reference data, audit category `none` |
 | 231 | GET | `/payers/{payerId}` | A | Ad | `payers:read` | – | – | | | FR-RCM-01 | B1 | **New**: one directory payer |
 | 234 | GET | `/lab-providers` | A | Ad | `lab-providers:read` | – | – | | | FR-ORD-01, §3.10 onboarding | B1 | **New** (D48, 2026-10-23): read-only, like the payer directory |

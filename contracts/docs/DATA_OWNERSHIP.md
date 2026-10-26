@@ -34,22 +34,22 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 
 ### 2.1 Vimal's resources
 
-| Resource | API (base `/api/v1`) | Record | FHIR resource | US Core profile | Concurrency | Tables (pending schema lock) |
+| Resource | API (base `/api/v1`) | Record | FHIR resource | US Core profile | Concurrency | Tables (locked schema, D72; batch 1 checked 2026-10-24) |
 |---|---|---|---|---|---|---|
-| Patient (demographics, contacts) | `/patients`, `/patients/{patientId}` | **Cl** | Patient | US Core Patient | Row version → ETag; `If-Match` on PATCH | Patient and its child tables |
-| Patient identifiers (MRN, driver's license) | `/patients/{patientId}/identifiers` | **Cl** (child of Patient) | Patient.identifier | (US Core Patient) | Parent's ETag | Patient identifier child table; MRN numbering per practice is an approved P0 item |
-| Related persons, emergency contacts | `/patients/{patientId}/related-persons` | **Cl** | RelatedPerson (emergency contacts, guarantors, subscribers; P0_SCHEMA_SCOPE.md) | US Core RelatedPerson | Row version | RelatedPerson |
-| Coverage (insurance) | `/patients/{patientId}/coverages`; ends by `endDate`, mistakes via `…/{coverageId}/entered-in-error` (D45) | **Cl** | Coverage | US Core Coverage | Row version; `If-Match` on PATCH | Coverage; payers in **Ad** |
-| Card images | `…/coverages/{coverageId}/card-images` | **F** | — | — | Append-only | File IDs on Coverage |
-| Consents | `/patients/{patientId}/consents` | **Cl** | Consent | none in US Core 9.0.0 | Insert-only; revocation is a new version | Consent |
-| Preferred pharmacy | `/patients/{patientId}/preferred-pharmacy` | **Ad** | — | — | Row version | Preferred-pharmacy table |
+| Patient (demographics, contacts) | `/patients`, `/patients/{patientId}` | **Cl** | Patient | US Core Patient | Row version → ETag; `If-Match` on PATCH | `patient`, `human_name`, `contact_point`, `address`, `patient_contact`, `patient_communication`, `patient_race_ethnicity`, `patient_link`; D38/D39 columns not yet in the schema files: A45 |
+| Patient identifiers (MRN, driver's license) | `/patients/{patientId}/identifiers` | **Cl** (child of Patient) | Patient.identifier | (US Core Patient) | Parent's ETag | `identifier`; the per-practice MRN counter (D41) is A45 |
+| Related persons, emergency contacts | `/patients/{patientId}/related-persons` | **Cl** | RelatedPerson (emergency contacts, guarantors, subscribers; P0_SCHEMA_SCOPE.md) | US Core RelatedPerson | Row version | `related_person`, `related_person_relationship` |
+| Coverage (insurance) | `/patients/{patientId}/coverages`; ends by `endDate`, mistakes via `…/{coverageId}/entered-in-error` (D45) | **Cl** | Coverage | US Core Coverage | Row version; `If-Match` on PATCH | `coverage`, `coverage_payor`, `coverage_class`, `coverage_cost_to_beneficiary`; payers in **Ad** (`payer`, `practice_payer`) |
+| Card images | `…/coverages/{coverageId}/card-images` | **F** | — | — | Append-only | `coverage_card_image` (file IDs) |
+| Consents | `/patients/{patientId}/consents` | **Cl** | Consent | none in US Core 9.0.0 | Insert-only; revocation is a new version | `consent`, `consent_category`, `consent_performer`, `consent_verification` |
+| Preferred pharmacy | `/patients/{patientId}/preferred-pharmacy` | **Ad** | — | — | Row version | `patient_pharmacy` (one default per patient) |
 | Restriction flag | `/patients/{patientId}/restrict`, `/unrestrict` | **Cl** | Patient (restricted-chart flag) | — | State action | Patient |
 | Timeline | `/patients/{patientId}/timeline` | **C** | — | — | Read-only | — |
-| Duplicates, merges | `/duplicates`, `/duplicates/{duplicateId}/merge`, `/duplicates/{duplicateId}/dismiss` (D46), `/patient-merges/{mergeId}/undo` | **Ad** + **Cl** | Patient.link (`replaced-by` / `replaces`) | US Core Patient | Lock both patients during merge | Duplicate and merge tables |
-| Slots | `/slots` | **C** | Slot is computed, not stored | — | Read-only | Availability rules, exceptions, Appointment |
-| Appointment | `/appointments`, `/appointments/{appointmentId}` | **Cl** | Appointment | none in US Core 9.0.0 | Row version; no double booking (database exclusion constraint, plus the provider-day lock, VG Step 3) | Appointment; visit flow in **Ad** |
+| Duplicates, merges | `/duplicates`, `/duplicates/{duplicateId}/merge`, `/duplicates/{duplicateId}/dismiss` (D46), `/patient-merges/{mergeId}/undo` | **Ad** + **Cl** | Patient.link (`replaced-by` / `replaces`) | US Core Patient | Lock both patients during merge | `duplicate_candidate`, `duplicate_match_evidence`, `patient_merge`, `patient_merge_record` |
+| Slots | `/slots` | **C** | Slot is computed, not stored | — | Read-only | `schedule`, `schedule_actor`, `schedule_availability_rule`, `availability_rule_appointment_type`, `schedule_exception`, `appointment` |
+| Appointment | `/appointments`, `/appointments/{appointmentId}` | **Cl** | Appointment | none in US Core 9.0.0 | Row version; no double booking (database exclusion constraint, plus the provider-day lock, VG Step 3) | `appointment`, `appointment_participant`, `appointment_reason`; visit flow in **Ad** (`visit_flow_event`) |
 | Status board | `/status-board` | **C** | — | — | Read-only | — |
-| Eligibility check | `/eligibility-checks`, `/appointments/{appointmentId}/eligibility-checks` | **Ad** + **F** (raw X12) | — | — | Insert-only; status by system | Eligibility tables |
+| Eligibility check | `/eligibility-checks`, `/appointments/{appointmentId}/eligibility-checks` | **Ad** + **F** (raw X12) | — | — | Insert-only; status by system | `eligibility_check`, `eligibility_service_type`, `eligibility_benefit` |
 | Encounter | `/encounters`, `/encounters/{encounterId}` | **Cl** | Encounter | US Core Encounter | Row version | Encounter |
 | Vitals | `/encounters/{encounterId}/vitals`, `/patients/{patientId}/vitals` | **Cl** | Observation (category `vital-signs`) | US Core Vital Signs, plus the specific profiles (Blood Pressure, Body Height, Body Weight, BMI, Body Temperature, Heart Rate, Respiratory Rate, Pulse Oximetry, Head Circumference) | Insert-only; corrections are entered-in-error + new | Observation |
 | Encounter diagnoses | `/encounters/{encounterId}/diagnoses` | **Cl** | Condition (category `encounter-diagnosis`) | US Core Condition Encounter Diagnosis | Row version; see §2.5 | Condition |
@@ -107,7 +107,7 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Appointment types, provider schedules, fee schedules, lab accounts, note templates | `/appointment-types`, `/provider-schedules`, `/fee-schedules`, `/lab-accounts`, `/note-templates` | **Ad** (provider calendars as FHIR Schedule in **Cl**) | Schedule (for provider calendars) | — |
 | Payer directory | `/payers` (read-only) | **Ad**, platform-wide (`payer`, `payer_clearinghouse_id`); maintained by the platform from the clearinghouse payer list (Vimal, 2026-10-23) | Organization | US Core Organization |
 | Lab providers | `/lab-providers` (read-only, D48) | **Ad** (`lab_provider`); set up by onboarding or the platform; lab accounts stay practice-level (`/lab-accounts`) | — | — |
-| Practice payers | `/practice-payers` | **Ad**: a directory payer the practice works with, and its enrollments (`payer_enrollment`); practice-level table **pending schema lock** (A39) | — | — |
+| Practice payers | `/practice-payers` | **Ad**: a directory payer the practice works with, and its enrollments: `practice_payer` (A39: `is_active`, `version`) and `payer_enrollment` | — | — |
 | Onboarding import | `/onboarding/import` | **Ad** + **F** | — | — |
 | Superbill, charges | `/encounters/{encounterId}/superbill` | **Ad** | — | — |
 | Claims, claim status events | `/claims` | **Ad** + **F** (X12) | — (FHIR Claim not used) | — |

@@ -323,7 +323,7 @@ Operation failures (§13) reuse the same Problem object inside the operation, wi
 | Other actions | `If-Match` optional; if sent, it is enforced | **PROPOSED** |
 | Missing | `428 precondition-required` | RFC 6585 |
 | Mismatch | `412 precondition-failed`; the response carries the current `ETag` header so the client can re-read | RFC 9110 §13.1.1 |
-| Our database | ETag derived from a row version counter | **Pending schema** |
+| Our database | ETag derived from a row version counter: FHIR `meta_version_id` on clinical tables, `version` on editable admin tables (A41) | Locked schema (D72) |
 | Clinical records | The ETag comes from the row version of the FHIR-shaped record (its `meta.versionId`); the helpers' version check (`if_version`) rejects a stale write (ADR-0011) | Anand's guide v2, Step 3 |
 | Lists | List items do not carry ETags; clients GET the single resource before editing | **PROPOSED** |
 | Autosave | Each successful PATCH returns the new ETag; two tabs editing one draft → the second gets `412` (VG Step 5) |
