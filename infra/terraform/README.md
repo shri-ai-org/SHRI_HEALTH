@@ -1,6 +1,6 @@
 # Production database: Amazon RDS for PostgreSQL 18 (ADR-0012, D30)
 
-Owner: Thulasi (Terraform). Anand owns the parameter group's tuning, the extensions and the restore drills.
+Owner: Thulasi (OpenTofu). Run everything here with **OpenTofu** (`tofu`, MPL-2.0), not Terraform, whose BUSL licence D75 blocks; the files and folder keep their usual names. Anand owns the parameter group's tuning, the extensions and the restore drills.
 
 ## What it creates
 
@@ -18,26 +18,26 @@ Owner: Thulasi (Terraform). Anand owns the parameter group's tuning, the extensi
 
 ## Secrets
 
-- **The master password is generated and rotated by RDS in Secrets Manager** (`manage_master_user_password`), encrypted with our key. It never appears in Terraform state, the repository or a terminal.
+- **The master password is generated and rotated by RDS in Secrets Manager** (`manage_master_user_password`), encrypted with our key. It never appears in OpenTofu state, the repository or a terminal.
 - The master role (`shri_rds_admin`) is used for two things only, during the first run: `sql/00_extensions.sql` and creating `shri_migrator`.
-- The five service roles (D23) and their passwords are created by `shri_migrator` and stored in OpenBao. They are never in Terraform.
+- The five service roles (D23) and their passwords are created by `shri_migrator` and stored in OpenBao. They are never in OpenTofu.
 
 ## First run (once per environment)
 
 1. **State bucket.** Create an S3 bucket for state with versioning, default encryption (SSE-KMS) and Block Public Access on. Then:
 
    ```bash
-   terraform init -backend-config="bucket=<state bucket>" -backend-config="key=database/<environment>.tfstate" -backend-config="region=us-east-1"
+   tofu init -backend-config="bucket=<state bucket>" -backend-config="key=database/<environment>.tfstate" -backend-config="region=us-east-1"
    ```
 
 2. **Values.** Put `environment`, `vpc_id`, `db_subnet_ids` and `app_security_group_ids` in `<environment>.tfvars`, outside the repository (`*.tfvars` is git-ignored). Then:
 
    ```bash
-   terraform plan -var-file=<environment>.tfvars -out=<environment>.tfplan
+   tofu plan -var-file=<environment>.tfvars -out=<environment>.tfplan
    ```
 
-   A second person reviews the plan before `terraform apply <environment>.tfplan`.
-3. **Database with the builtin C.UTF-8 collation (D33).** RDS can't create its initial database with that collation, so Terraform sets no `db_name`. As the master role, over TLS:
+   A second person reviews the plan before `tofu apply <environment>.tfplan`.
+3. **Database with the builtin C.UTF-8 collation (D33).** RDS can't create its initial database with that collation, so OpenTofu sets no `db_name`. As the master role, over TLS:
 
    ```sql
    CREATE DATABASE shri TEMPLATE template0 ENCODING 'UTF8' LOCALE_PROVIDER builtin BUILTIN_LOCALE 'C.UTF-8';
@@ -68,13 +68,16 @@ Clients connect with `sslmode=verify-full` and the [AWS RDS CA bundle](https://t
    - every second drill, in the backup region from the replicated backups (output `backup_replication_arn`).
 2. Time it, from the start of the restore until the database accepts connections.
 3. Run the audit-chain check (`shri_audit_verify`) on the restored copy.
-4. Record the result and delete the drill instance.
+4. **Portability check (the RDS licence exception, D75):** take a standard `pg_dump` of the restored copy and restore
+   it into a self-managed PostgreSQL 18, the development image in `infra/compose/postgres`. Run the migrations' `alembic check`
+   and `shri_audit_verify` there too. This proves the data isn't tied to RDS. Part of every quarterly drill (D30's cadence).
+5. Record the result and delete the drill instance and the self-managed copy.
 
 The drill instance is never connected to the application.
 
 ## Checks
 
-`terraform fmt`, `terraform validate` and `terraform test` (`tests/rds.tftest.hcl`) run in CI (`.github/workflows/terraform.yml`). The tests plan against a mock AWS provider, so they need no account, and they fail if a control above is switched off:
+`tofu fmt`, `tofu validate` and `tofu test` (`tests/rds.tftest.hcl`) run in CI (`.github/workflows/terraform.yml`). The tests plan against a mock AWS provider, so they need no account, and they fail if a control above is switched off:
 - Multi-AZ, encryption and key rotation;
 - not publicly accessible, and only the services' security groups may connect;
 - deletion protection and the final snapshot;
@@ -86,5 +89,5 @@ The drill instance is never connected to the application.
 Locally, with the versions pinned in `versions.tf`:
 
 ```bash
-terraform init -backend=false && terraform fmt -check -recursive && terraform validate && terraform test
+tofu init -backend=false && tofu fmt -check -recursive && tofu validate && tofu test
 ```
