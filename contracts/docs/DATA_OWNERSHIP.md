@@ -24,7 +24,7 @@ Fixed by source documents:
 |---|---|---|---|
 | **Cl** | **Clinical**: FHIR-shaped table in schema `clinical` | One transaction; the database keeps every version in `_history` | The 27 P0 FHIR resources: Patient, RelatedPerson, Practitioner, PractitionerRole, Organization, Location, Schedule, Appointment, Encounter, Composition, Condition, AllergyIntolerance, Observation, Procedure, FamilyMemberHistory, Medication, MedicationRequest, MedicationStatement, MedicationDispense, DetectedIssue, ServiceRequest, Specimen, DiagnosticReport, DocumentReference, Consent, Coverage, Provenance (P0_SCHEMA_SCOPE.md) |
 | **Ad** | **Admin**: normalized table in schema `admin` | One transaction | Settings, users and roles, scheduling setup, visit flow, templates and favorites, CDS rules, inbox, compendium, eligibility, billing and claims, communications, AI records, duplicates and merges, integration messages |
-| **Au** | **Audit**: append-only, hash-chained, in schema `audit` | Insert only, in the same transaction as the change it records | Audit events, break-glass |
+| **Au** | **Audit**: append-only, hash-chained, in schema `audit` | Inserted in the same transaction as the change it records; never updated or deleted. `shri_app` has audit read and insert (D23); `/fhir` and the partner worker insert only | Audit events, break-glass |
 | **F** | Files | File service; the database stores the file ID and hash | Card images, audio, PDFs, faxes, raw partner payloads (TA §6) |
 | **C** | Computed | Read-only query over the tables above | Slots, status board, timeline, reports, dashboards |
 

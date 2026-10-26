@@ -40,6 +40,7 @@ Sam's proposal (PR #9), built to Sena's brief, follows Tech Arch ADR-19 instead.
    - Our screens never call `/fhir`.
 4. **Separate schemas and roles in one database.** **Accepted (decided 2026-10-23):** three schemas, `clinical` (FHIR-shaped), `admin` (normalized) and `audit` (append-only audit chain), and one database role per service, each with the minimum grants:
    - `shri_app` for the API: clinical and admin read/write, audit insert only;
+     *Partly superseded by D23 (amended): shri_app reads and inserts audit_event.*
    - `shri_fhir_reader` for `/fhir`: clinical read only;
    - `shri_integration` for the partner worker: integration tables plus result filing;
    - `shri_reporting`: read-only, approved views only;
