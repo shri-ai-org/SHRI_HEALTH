@@ -573,8 +573,10 @@ def test_purge_removes_only_rows_past_retention_in_every_clinic(
     u1, u2 = make_user(admin_engine, t1), make_user(admin_engine, t2)
     hours = timedelta(hours=1)
     with admin_engine.begin() as c:
-        live, ended, logged_out, recent = (token_hash() for _ in range(4))
+        live, ended, logged_out, recent, idled_out = (token_hash() for _ in range(5))
         _insert_session(c, t1, u1, live)
+        # Idled out 25 hours ago; its absolute expiry was only 13 hours ago (Vimal, #52).
+        _insert_session(c, t1, u1, idled_out, expires=-13 * hours, idle=-25 * hours)
         _insert_session(c, t2, u2, ended, expires=-25 * hours)        # ended 25 hours ago
         _insert_session(c, t1, u1, recent, expires=-23 * hours)       # within the 24 hours
         _insert_session(c, t1, u1, logged_out, revoked=True)          # logged out just now
@@ -604,14 +606,14 @@ def test_purge_removes_only_rows_past_retention_in_every_clinic(
              "(SELECT count(*) FROM admin.event_log WHERE tenant_id IN (:a, :b)), "
              "(SELECT count(*) FROM admin.operation WHERE tenant_id IN (:a, :b))")
     with admin_engine.connect() as c:
-        assert tuple(c.execute(text(count), {"a": t1, "b": t2}).one()) == (4, 2, 2, 3)
+        assert tuple(c.execute(text(count), {"a": t1, "b": t2}).one()) == (5, 2, 2, 3)
     with role_engine["shri_app"].connect() as conn:                     # no clinic set
         deleted: dict[str, int] = {row.table_name: row.deleted for row in conn.execute(text(
             "SELECT table_name, deleted FROM admin.purge_expired_runtime_rows()"))}
         conn.commit()
     # At least ours (other tests' expired rows may go too); only counts come back.
     assert set(deleted) == {"app_session", "idempotency_record", "event_log", "operation"}
-    assert deleted["app_session"] >= 2 and deleted["idempotency_record"] >= 1
+    assert deleted["app_session"] >= 3 and deleted["idempotency_record"] >= 1
     assert deleted["event_log"] >= 1 and deleted["operation"] >= 1
     with admin_engine.connect() as c:
         assert tuple(c.execute(text(count), {"a": t1, "b": t2}).one()) == (2, 1, 1, 2)
@@ -711,6 +713,8 @@ def test_partner_callbacks_have_their_own_actor(admin_engine: Engine) -> None:
     ("emergency-care", None),                       # a code-only grant: its code is the reason
     ("other: covering for a colleague", None),
     (None, CHECK_FAILED),
+    ("", CHECK_FAILED),                             # empty or blank is no reason (Vimal, #52)
+    ("   ", CHECK_FAILED),
 ])
 def test_break_glass_audit_row_carries_the_grants_reason(admin_engine: Engine,
                                                          reason: str | None,

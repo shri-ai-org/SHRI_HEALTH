@@ -77,16 +77,17 @@ GRANT EXECUTE ON FUNCTION admin.claim_outbound_messages(integer) TO shri_integra
 
 -- The retention clean-up (Thulasi's and Vimal's reviews of #52): the only way rows leave the four
 -- runtime tables. It deletes, across clinics, only rows past retention (the shri_migrator
--- policies in 04_policies.sql decide which): sessions 24 hours after they end, idempotency
--- records at expires_at, events after 10 minutes, finished operations after 7 days. It returns
--- only counts. Core's clean-up job calls it as shri_app.
+-- policies in 04_policies.sql decide which): sessions 24 hours after they end (the earliest of
+-- logout, idle timeout and absolute expiry), idempotency records at expires_at, events after
+-- 10 minutes, finished operations after 7 days. It returns only counts. Core's clean-up job
+-- calls it as shri_app. An operation that never finishes is not purged: open on #52.
 CREATE FUNCTION admin.purge_expired_runtime_rows()
 RETURNS TABLE (table_name text, deleted bigint)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE n bigint;
 BEGIN
   DELETE FROM admin.app_session
-   WHERE least(coalesce(revoked_at, expires_at), expires_at) < now() - interval '24 hours';
+   WHERE least(revoked_at, idle_expires_at, expires_at) < now() - interval '24 hours';
   GET DIAGNOSTICS n = ROW_COUNT; table_name := 'app_session'; deleted := n; RETURN NEXT;
   DELETE FROM admin.idempotency_record WHERE expires_at < now();
   GET DIAGNOSTICS n = ROW_COUNT; table_name := 'idempotency_record'; deleted := n; RETURN NEXT;

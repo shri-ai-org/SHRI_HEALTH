@@ -90,6 +90,9 @@ DOWNGRADE = [
     "ALTER TABLE audit.break_glass_access ADD CONSTRAINT ck_break_glass_access_reason_stated "
     "CHECK (length(trim(reason)) >= 10)",
     "ALTER TABLE audit.break_glass_access DROP COLUMN reason_code",
+    "ALTER TABLE audit.audit_event DROP CONSTRAINT ck_audit_event_break_glass_reason",
+    "ALTER TABLE audit.audit_event ADD CONSTRAINT ck_audit_event_break_glass_reason "
+    "CHECK (action <> 'break-glass' OR reason IS NOT NULL)",
     "ALTER TABLE audit.audit_event DROP CONSTRAINT ck_audit_event_actor_type_codes",
     "ALTER TABLE audit.audit_event ADD CONSTRAINT ck_audit_event_actor_type_codes "
     "CHECK (actor_type IN ('user', 'system', 'ai', 'integration', 'patient'))",
