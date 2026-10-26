@@ -355,3 +355,49 @@ Minalini's clinical items from the screen mapping, to be written in the batch na
 | **Confirmed:** per-user alert suppression is in-product (FRS §3.4), in the medications batch | B5 | Thulasi |
 | Vitals in U.S. customary UCUM units as entered (D69) | B4 | **Done in batch 2** |
 | AI contract shapes from Minalini's Stage 3 design (D70) | B7 | Vimal |
+
+## Later batches: patient portal (B8, P1; mapped 2026-10-26)
+
+Minalini's portal screens (#39) and her endpoint note (`frontend/src/features/portal/NOTE_FOR_VIMAL_PORTAL.md`), mapped to the decided shape (D83–D88).
+- **Paths:** one `portal.yaml` under `/api/v1/portal`. Patient data sits under `/portal/me/...` with no patient ID; the patient comes from the session (`PAT`, D84). A record ID in a path must belong to the session's patient, otherwise `404`.
+- **Ownership:** each operation keeps its owning module's `x-owner` (D83).
+- **Release:** everything follows D86: drafts, entered-in-error records and psychotherapy notes are never shown, and items held by a clinician show as held.
+- **Status:** none of this is in the contract yet. It's written after B5 and B6 (D88), which is why there are no inventory numbers yet.
+
+| Screen | Her call | Decided path | x-owner | Staff data it reads | Depends on |
+|---|---|---|---|---|---|
+| Session | `GET /auth/session`, `POST /auth/refresh`, `POST /auth/logout` | `GET /portal/auth/session`, `POST /portal/auth/refresh`, `POST /portal/auth/logout` (patient realm, ADR #65) | thulasi | Portal session (`app_session`, `PAT`) | ADR #65; #52 |
+| Sign-in | `POST /portal/auth/login` | `GET /portal/auth/login`, `GET /portal/auth/callback`: the patient realm's sign-in with multi-factor (code + PKCE), like the staff `#1–2` | thulasi | — | ADR #65 |
+| Enrolment | (replaces registration, below) | `POST /portal/enrolments` `{ invitationCode }`: links the signed-in realm account to the chart once. Staff side: `POST /patients/{patientId}/portal-invitations` (front desk, after an ID check; `patients:update`) | vimal | `patient`, the invitation, `identifier` | B2; ADR #65 |
+| Alerts and reminders | `GET /portal/alerts` | `GET /portal/me/alerts` | vimal | Today's and upcoming appointments | B3 (scheduling) |
+| Demographics | `GET`, `PUT /portal/demographics` | `GET /portal/me`; `POST /portal/me/change-requests` (proposed changes go to the front desk as an inbox task, not a direct write; name changes always reviewed) | vimal | `Patient`, `RelatedPerson` (emergency contact), employer (A45) | B2; B3 (inbox) |
+| E-signature | `GET`, `PUT /portal/signature` | `GET`, `PUT /portal/me/signature` (the PNG through the files flow) | anand | `binary_object` | B1 (files) |
+| Reference lists | `GET /portal/reference-lists` | `GET /portal/reference-lists` (code lists, no patient data) | vimal | Code systems | B2 |
+| Appointments | `GET /portal/appointments[/{appointmentId}]`, `POST …/cancel` | `GET /portal/me/appointments[/{appointmentId}]`, `POST /portal/me/appointments/{appointmentId}/cancel` (reason required) | vimal | `appointment` | B3 |
+| Schedule and reschedule | `GET /portal/facilities`, `/portal/appointment-categories`, `/portal/providers`, `POST /portal/slots/search`, `POST /portal/appointments`, `POST …/reschedule` | `GET /portal/booking/facilities`, `/portal/booking/appointment-types`, `/portal/booking/providers` (bookable fields only, as D49); `GET /portal/me/slots?facilityId=&providerId=&appointmentTypeId=&date=` (no PHI, so `GET`); `POST /portal/me/appointments`, `POST /portal/me/appointments/{appointmentId}/reschedule` (`Idempotency-Key`, `409 booking-conflict`). The length comes from the appointment type, not a free 15–60-minute choice | vimal | Scheduling setup, `appointment` | B3; B1 (practice setup) |
+| Visit summary | `GET /portal/visit-summaries/{visitSummaryId}` | `GET /portal/me/visit-summaries`, `GET /portal/me/visit-summaries/{visitSummaryId}` (signed and released only, D86) | vimal | After-visit summary `document_reference` | B4 |
+| Video consult | `POST /portal/appointments/{appointmentId}/video-join` | `POST /portal/me/appointments/{appointmentId}/video-join` → `{ joinUrl }` | vimal | Telehealth appointment; Jitsi (P1) | B3; telehealth P1 |
+| Messages | `GET /portal/messages?folder=`, `POST …/{messageId}/read`, `POST /portal/messages`, `POST …/trash`, `POST …/remove-from-trash`, `GET /portal/message-recipients` | Same, under `/portal/me/messages` and `/portal/me/message-recipients`. Patient messages arrive as inbox `message` items for a role or user (D77); "trash" only hides a message from the patient | anand | `work_item`, `work_item_event` | B3 (inbox, #58) |
+| Test results | `GET /portal/results[/{resultId}]` | `GET /portal/me/results[/{resultId}]` (released per D86; held ones shown as held) | thulasi | `diagnostic_report`, `observation` | B5 |
+| Health issues, allergies | `GET /portal/health-issues[/{id}]`, `/portal/allergies[/{id}]` | `GET /portal/me/problems[/{problemId}]`, `/portal/me/allergies[/{allergyId}]` (entered-in-error excluded, D24) | vimal | `condition`, `allergy_intolerance` | B4 |
+| Immunizations | `GET /portal/immunizations[/{id}]` | `GET /portal/me/immunizations[/{immunizationId}]` | to be decided (immunizations are P1, not in any batch yet) | `immunization` | Immunizations contract (P1) |
+| Health trends | `GET /portal/vitals` | `GET /portal/me/vitals` | vimal | `observation` (vital signs) | B4 |
+| Prescriptions | `GET /portal/prescriptions`, `POST /portal/refill-requests`, `GET /portal/refill-requests/{id}` | `GET /portal/me/prescriptions`; `POST /portal/me/refill-requests` (lands as a `refill-request` inbox item; controlled substances not refillable); `GET /portal/me/refill-requests/{refillRequestId}` | thulasi | `medication_request`, refill requests | B5 |
+| Pay bills | `GET /portal/bills`, `POST /portal/payments` | `GET /portal/me/statements` (the ledger and statements are P1, D58); `POST /portal/me/payments/card-session` then `POST /portal/me/payments` (hosted fields only, Q17) | anand | Patient balance, `patient_payment` | B6; D58 |
+| Documents | `GET /portal/documents?source=`, `POST /portal/documents` (multipart), `GET …/{documentId}/content` | `GET /portal/me/documents?source=`; uploads through the files flow (`POST /portal/me/files/upload-url`, then `…/complete`, scanned) and `POST /portal/me/documents`; `GET /portal/me/documents/{documentId}/download-url` (short-lived, not the content) | anand | `document_reference`, `binary_object` | B1 (files); B3 (documents) |
+| Reports | `GET /portal/patient-report`, `…/ccr`, `…/ccd`, `…/pdf` | `POST /portal/me/record-exports` `{ format: ccda \| pdf }` → `202` and an operation, then a download URL (as #213) | anand | C-CDA, PDF | B6 (C-CDA) |
+| Forms | `GET /portal/document-templates[/{id}]`, `PUT …/{id}`, `POST …/send-for-review`, `POST …/clear` | `GET /portal/me/forms[/{formId}]`, `PATCH /portal/me/forms/{formId}` (`If-Match`), `POST /portal/me/forms/{formId}/submit` (signature required), `POST /portal/me/forms/{formId}/clear` | anand | Consent requirements (D59), forms, `consent` | B1 (D59); B3 (documents) |
+| Source code | (not in her note) | A "Source code" link in the portal shell, pointing at the running commit (D87); no endpoint beyond the build info | thulasi, with minalini | `BuildInfo` (#50) | — |
+
+**Ruled out by the decisions, with their replacements:**
+
+| Her call | Why not | Instead |
+|---|---|---|
+| `POST /portal/registrations`, `POST /portal/registrations/summary` (11-page self-registration that the practice approves) | D85: no self-registration that links to a chart, and no name and date-of-birth matching | Front-desk invitation code after an ID check, then `POST /portal/enrolments`. The patient's history and details arrive afterwards as patient-reported data through `/portal/me/change-requests` and forms, for clinician review |
+| `POST /portal/auth/username-reminder` `{ firstName, lastName, birthDate, email, postalCode, phone }` | D85: no lookup by name and date of birth; recovery belongs to the patient realm | The realm's own recovery, by verified email or phone, rate-limited, never revealing whether an account exists (ADR #65) |
+| `POST /portal/auth/password-reset`, `POST /portal/me/password` | D3, D85: our API never handles patient passwords | The patient realm's reset and account pages |
+| `POST /portal/auth/login` with a password in our API | D85: the realm signs in, with multi-factor | `GET /portal/auth/login` → the realm, then `/portal/auth/callback` |
+| `GET /portal/patient-report/ccr` | CCR is a legacy format; we export C-CDA (FRS §3.9) | `POST /portal/me/record-exports` with `ccda` or `pdf` |
+| A free 15/30/45/60-minute length when booking | Lengths come from appointment types (practice setup) | Choose an appointment type |
+| Proxy access (switching to a family member) | D85: P2 | Not in the MVP portal |
+

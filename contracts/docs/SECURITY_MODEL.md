@@ -149,6 +149,7 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | ADM | Practice administrator (no clinical access by default, TA §3) |
 | CO | Compliance / privacy officer |
 | SUP | Shri platform support (**no PHI**, TA §6; replaces the `platform-admin` stand-in in Thulasi's skeleton, which had PHI access) |
+| PAT | **Patient, through the portal only** (D84, P1). Own record only: the patient comes from the session, never the request, and portal paths take no patient ID (`/portal/me/...`). Signs in through a separate Keycloak realm with multi-factor, enrolled by a front-desk invitation code (D85). Holds no staff permission, so it is not a column of the staff matrix below; its portal permissions and rows come with the portal contract (B8), together with core. |
 | DSP | Status board display: a shared waiting-room or hallway screen, never a person. Only `status-board:read`, and always the shared view: initials, appointment time and status (D47; in core since PR #7 db013df) |
 
 Legend: ✓ granted · R read part only · – not granted · ‡ pending clinical advisors
