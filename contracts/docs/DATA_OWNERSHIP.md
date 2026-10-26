@@ -117,7 +117,7 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Documents | `/documents`, `/patients/{patientId}/documents` | **Cl** + **F** | DocumentReference | US Core DocumentReference |
 | Faxes, fax inbox | `/faxes`, `/fax-inbox` | **Ad** + **F**; filed faxes become DocumentReference (**Cl**) | DocumentReference | US Core DocumentReference |
 | C-CDA import and export | `/ccda/import`, `/patients/{patientId}/ccda` | **Cl** + **F** | DocumentReference | US Core DocumentReference |
-| Inbox, messages | `/inbox`, `/messages` | **Ad** (staff messages are an approved P0 item) | — | — |
+| Inbox, messages | `/inbox`, `/messages` | **Ad** (`work_item`, `work_item_event`; staff messages and their threads are an approved P0 item, D38, D77); lifecycle §5.9 | — | — |
 | Exports | `/exports` | **Ad** + **F** | — | — |
 
 ### 2.4 Minalini's resources
@@ -383,6 +383,22 @@ stateDiagram-v2
 | — → `pending` | Booking, nightly pre-visit batch for next-day appointments, check-in (VD-G3), or `POST /eligibility-checks` (manual) | System; FD, BIL (`eligibility-checks:create`) | 270 queued via `integration.enqueue("clearinghouse", "270", …)` (VG Step 4); `202` + operation for manual checks |
 | `pending` → `complete` | 271 through Thulasi's webhook receiver | System | Coverage status (`active`, `inactive`, `unknown`), copay, deductible stored; `eligibility.completed` |
 | `pending` → `error` | Partner error or timeout | System | Front desk sees "unable to verify"; can retry manually |
+
+### 5.9 Inbox item (admin `work_item`) — owner Anand; contract batch 3 (D77)
+
+Statuses are the schema's: `open`, `in-progress`, `on-hold`, `completed`, `cancelled`. Who has the item is `assignee` (one user or one role), not the status: "new" is `open` in a role's queue, "assigned" is `open` with one user, and a reassignment is an `assigned` event in the thread (`work_item_event`).
+
+| From → To | Trigger | Who | Side effects |
+|---|---|---|---|
+| — → `open` | `POST /messages` (`message`, `task`), or the inbox service on an event (BATCH3_PLAN §3) | Sender (`messages:create`); system | `created` event; `inbox.item-assigned` to the user, or to the role's users at the facility |
+| assignee change | `PATCH /inbox/{inboxItemId}` `{ assignee }` with `If-Match` | The assignee; a user holding the role (taking from the queue); ADM at their facilities (D77) | `assigned` event; `inbox.item-assigned`. A colleague who took it first makes `If-Match` fail (`412`) |
+| `open` ↔ `in-progress` ↔ `on-hold` | `PATCH` `{ status }` with `If-Match` | The assignee | `status-change` event |
+| any open status → `completed` | `POST …/complete`; or the action the kind waits for (co-sign, addendum, sign, file, acknowledge, respond, match), done by the system | The assignee; system | `status-change` event, `completedAt`, `completedBy` (absent for the system); `inbox.item-completed`. Kinds that wait for an action refuse `complete` (`422`, D77) |
+| any open status → `cancelled` | `POST …/cancel` `{ reason }` | The creator of a message or task | The reason in the thread; `inbox.item-completed` |
+| reply | `POST …/replies` `{ text, assignBack }` | Anyone who can see the item | `comment` event. For a message or task replied to by its assignee (or a holder of its role) or its sender, by default the item goes to the other party (`assigned` event, `inbox.item-assigned`); checked inside the transaction. Other replies never move the item |
+| escalation | System job: past `dueAt`, past the co-sign rule's days, or a critical result not acknowledged in time (D78) | System | `escalationLevel + 1`, `escalated` event, priority raised one step; normal items notify the assignee, then the facility's ADM role; critical results go to the covering clinician, then the practice lead (D78) |
+
+Nothing is deleted (D14). Notifications outside the app never carry patient data, titles or bodies (D81).
 
 ## 6. Open items in this document
 

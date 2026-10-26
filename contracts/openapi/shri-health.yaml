@@ -309,6 +309,20 @@ paths:
     $ref: 'modules/billing.yaml#/paths/~1patients~1{patientId}~1payments'
   /payments/card-session:
     $ref: 'modules/billing.yaml#/paths/~1payments~1card-session'
+  /inbox:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox'
+  /inbox/summary:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox~1summary'
+  /inbox/{inboxItemId}:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox~1{inboxItemId}'
+  /inbox/{inboxItemId}/complete:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox~1{inboxItemId}~1complete'
+  /inbox/{inboxItemId}/cancel:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox~1{inboxItemId}~1cancel'
+  /inbox/{inboxItemId}/replies:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox~1{inboxItemId}~1replies'
+  /messages:
+    $ref: 'modules/inbox.yaml#/paths/~1messages'
 components:
   schemas:
     Address:

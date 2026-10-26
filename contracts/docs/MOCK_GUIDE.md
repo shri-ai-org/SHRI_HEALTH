@@ -118,6 +118,33 @@ curl -s -X POST $B/patients/$P/problems "${H[@]}" -d '{"code":{"codings":[{"syst
 curl -s "$B/patients/$P/timeline?types=note&types=problem" -H 'Cookie: __Host-shri_session=mock'
 ```
 
+## 5c. An inbox flow (batch 3)
+
+Inbox, tasks and messages (D77): a medical assistant asks the front desk to move an appointment (a task for the front-desk role, D67) → the front desk takes it from the queue and completes it → a physician messages a nurse about a patient → the nurse replies, which hands it back → the physician reads the thread and completes it → completing a co-sign item by hand is refused → badge counts. Prism returns the first example unless you name one (`Prefer: example=message`); `If-Match` values are placeholders.
+
+```bash
+B=http://127.0.0.1:4010
+H=(-H 'Cookie: __Host-shri_session=mock' -H 'X-CSRF-Token: mock' -H 'Content-Type: application/json')
+F=5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c   # the example facility
+P=7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d   # the example patient
+T=0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d   # the example task
+M=a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d   # the example message
+K=b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e   # the example co-sign item
+
+curl -s -X POST $B/messages "${H[@]}" -d '{"kind":"task","assignee":{"type":"role","id":"4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b"},"facilityId":"'$F'","title":"Please move this follow-up to next week","dueAt":"2026-11-05T22:00:00Z","patientId":"'$P'","subject":{"type":"appointment","id":"9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e"}}'   # D67
+curl -s "$B/inbox?view=queue&itemType=task" -H 'Cookie: __Host-shri_session=mock'
+curl -s -X PATCH $B/inbox/$T -H 'Cookie: __Host-shri_session=mock' -H 'X-CSRF-Token: mock' -H 'Content-Type: application/merge-patch+json' -H 'If-Match: "1"' \
+  -d '{"assignee":{"type":"user","id":"2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f"}}'   # take it from the queue
+curl -s -X POST $B/inbox/$T/complete "${H[@]}" -d '{"comment":"Moved to Thursday 10:30."}'
+curl -s -X POST $B/messages "${H[@]}" -H 'Prefer: example=message' \
+  -d '{"kind":"message","assignee":{"type":"user","id":"3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a"},"facilityId":"'$F'","title":"Recheck blood pressure today","priority":"urgent","patientId":"'$P'"}'
+curl -s -X POST $B/inbox/$M/replies "${H[@]}" -d '{"text":"Rechecked: 128/82 seated, left arm."}'   # hands it back
+curl -s $B/inbox/$M -H 'Cookie: __Host-shri_session=mock' -H 'Prefer: example=message'   # the thread
+curl -s -X POST $B/inbox/$M/complete "${H[@]}" -d '{}'
+curl -s -X POST $B/inbox/$K/complete "${H[@]}" -H 'Prefer: code=422' -d '{}'   # a co-sign item is completed by co-signing (D77)
+curl -s $B/inbox/summary -H 'Cookie: __Host-shri_session=mock'
+```
+
 ## 6. What the mock cannot do
 
 | Limit | What it means for screens |

@@ -256,6 +256,10 @@ Settled on PR #10 (core tests in `test_permissions.py`): MA has no order drafts,
 4. The grant never widens the user's permissions; it only lifts the restriction.
 5. **Care-team members** of a restricted patient (the patient's care team in the schema) open the chart without break-glass; the access is still audited (D37). Membership is checked in `require()` from the database, never from the request.
 
+### 5.2a Inbox items (batch 3, D77, D80)
+
+An inbox item is visible only to users at its facility who are its assignee, hold its role, or sent it (ADM also sees items assigned at their facilities, to reassign them), **and** who hold the read permission for its kind: `results:read` for results, `refill-requests:read` and `prescriptions:read` for refills and failed prescriptions, `notes:read` for notes to sign or co-sign, `fax-inbox:read` for faxes to file (never BIL, D71), `documents:read` for documents, `claims:read`, `eligibility-checks:read`, `audit-events:read` for break-glass notices (CO), `unmatched-results:read`; messages and tasks need `inbox:read` only. An item about a restricted chart the user may not open (no grant, not on the care team; §5.2, D37) leaves out everything that could identify the patient or describe the chart: the patient, the body, the encounter, the `corrected` flag and every reply's text; a message or task title becomes "Item about a restricted chart" (system titles never name a patient). `GET /inbox?patientId=` for such a chart is refused with `403 break-glass-required` and audited with the patient ID, so the filter cannot be used to probe charts. Replies never move an item except between the assignee and the sender of a message or task (checked in the transaction). A sender must be able to open the patient and the linked record (D80); a recipient who cannot sees the link but not the record. **Pending (T43):** CO has no `inbox:*` today but receives the break-glass notice (A36); the matrix rows land with Thulasi's core change, as T42 did.
+
 ### 5.3 Clinic isolation in the database (ADR-0011)
 
 One PostgreSQL database holds every clinic's data. Isolation does not depend on application code alone; four database rules apply together:
@@ -288,7 +292,7 @@ x-audit:
 | `security` | Login, logout, failed login, permission and CSRF denials, break-glass, restriction changes, role changes | Yes |
 | `ai` | AI requests (metadata only), and accept, edit, reject decisions | Yes (FRS §3.4) |
 | `admin` | Practice setup, AI settings, templates, co-sign rules | Yes |
-| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49), session reads (`GET /auth/session`, `/me`, the event stream) | No |
+| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49), inbox badge counts (`GET /inbox/summary`, counts only; D77), session reads (`GET /auth/session`, `/me`, the event stream) | No |
 
 Partner callbacks (`/hooks/*`) carry PHI, so they are audited as `phi-write` with the **partner as actor** (agreed, T37).
 
@@ -329,6 +333,7 @@ Used for:
 | 9 | Integration message payloads are never shown to `SUP`; metadata only. |
 | 10 | AI requests send only fields declared for the task; AI logs hold metadata, never patient text (VG Step 7). |
 | 11 | Shared screens (status board on a waiting-room or hallway display) show **initials plus appointment time** only (agreed by Minalini and Vimal, M11). Displays sign in with the `DSP` role, which the server always limits to that view (D47). |
+| 12 | Notifications outside the app (email, SMS, push) never contain patient data or an inbox item's title or body: only "You have a new item in Shri Health" (D81). |
 
 ## 9. STRIDE threat model by endpoint group
 

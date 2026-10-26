@@ -286,10 +286,14 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 211 | POST | `/fax-inbox/{faxId}/file` | A | Ad+F | `fax-inbox:file` | pw | – | | | §3.9 | B3 | |
 | 212 | POST | `/ccda/import` | A | Cl+F | `ccda:import` | pw | S | | ✓ | §3.9 | B6 | |
 | 213 | GET | `/patients/{patientId}/ccda` | A | F | `ccda:export` | ex | – | | | §3.9 | B6 | **Anand's call (A27, D28):** if generation is slow, change to `POST /patients/{patientId}/ccda-exports` → 202 (API_STANDARDS §13) |
-| 214 | GET | `/inbox` | A | Ad | `inbox:read` | pr | – | | | FR-ENC-05 | B3 | |
-| 215 | PATCH | `/inbox/{inboxItemId}` | A | Ad | `inbox:update` | pw | – | ✓ | | FR-ENC-05 | B3 | |
-| 216 | POST | `/inbox/{inboxItemId}/complete` | A | Ad | `inbox:complete` | pw | – | | | FR-ENC-05 | B3 | |
-| 217 | POST | `/messages` | A | Ad | `messages:create` | pw | S | | | FR-ENC-05 | B3 | |
+| 214 | GET | `/inbox` | A | Ad | `inbox:read` | pr | – | | | FR-ENC-05 | B3 | **Written in batch 3** (2026-10-26, D77): `view`, `itemType`, `status`, `priority`, `patientId`, `facilityId`, `dueBefore`; only kinds the user may read; restricted charts without access listed without the patient (D37) |
+| 252 | GET | `/inbox/{inboxItemId}` | A | Ad | `inbox:read` | pr | – | | | FR-ENC-05 | B3 | **New** (batch 3, D77): the item with its thread and the `ETag` #215 needs |
+| 255 | GET | `/inbox/summary` | A | Ad | `inbox:read` | – | – | | | FR-ENC-05 | B3 | **New** (batch 3, D77, Q10): badge counts only, no patient data |
+| 215 | PATCH | `/inbox/{inboxItemId}` | A | Ad | `inbox:update` | pw | – | ✓ | | FR-ENC-05 | B3 | Take from a queue, reassign (ADM at their facilities, Q5), status `open`/`in-progress`/`on-hold`, priority, due time |
+| 216 | POST | `/inbox/{inboxItemId}/complete` | A | Ad | `inbox:complete` | pw | – | | | FR-ENC-05 | B3 | Kinds that wait for an action are completed by it, not here (Q4) |
+| 253 | POST | `/inbox/{inboxItemId}/cancel` | A | Ad | `inbox:update` | pw | – | | | FR-ENC-05 | B3 | **New** (batch 3, D77): a message or task closed by its creator, with a reason; nothing is deleted (D14) |
+| 254 | POST | `/inbox/{inboxItemId}/replies` | A | Ad | `messages:create` | pw | S | | | FR-ENC-05 | B3 | **New** (batch 3, D77): message threads (D38); hands the item back to the other party |
+| 217 | POST | `/messages` | A | Ad | `messages:create` | pw | S | | | FR-ENC-05 | B3 | **Written in batch 3** (D77): `kind` `message` or `task`, one user or role, facility, title, body, priority, due time, optional patient and linked record (D67, D80) |
 | 218 | POST | `/exports` | A | Ad+F | `exports:create` | ex | S | | ✓ | §3.10 | B6 | |
 | 219 | GET | `/exports/{exportId}` | A | Ad+F | `exports:read` | ex | – | | | §3.10 | B6 | |
 
@@ -324,9 +328,10 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | Batch 1 review decisions (2026-10-23) | #232 coverage entered-in-error (D45), #233 dismiss a duplicate (D46), #234–235 read-only lab providers (D48) | Decided |
 | Proposed to owners | Single GETs in practice setup and documents (Anand), #213 async export (Anand) | Pending owners |
 | Batch 1 follow-up: Minalini's screen-mapping gaps (2026-10-24) | New #236–239 booking lists (D49), #240 merge list (D51), #241 summaries (D54), #242 undo check-in (D55), #243 reschedule (D61), #244–247 consent requirements (D59); #1–6, #14, #19, #148–150 written (D52, D53); #130 and #198–199 moved to batch 1 (D50, D58); `provider-schedules:create\|update` (D66) | D49–D70 |
+| Contract batch 3: inbox, tasks and messages (2026-10-26) | #214–217 written; new #252 (single GET), #253 (cancel), #254 (replies), #255 (summary) | D77–D81 |
 | Moved outside `/api/v1` | `/hooks/*`, `/health` (public through Nginx); `/ready` internal and **not in the contract** | API_STANDARDS §2; agreed T24 |
 
-**Count:** 250 contract operations: 251 rows (27 platform, 24 patients, 12 scheduling and eligibility, 29 encounters and notes, 19 history, 9 AI, 17 medications, 18 orders, 76 Anand, 8 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24); #248 from Minalini's M16 sign-off (2026-10-24); #249–251 from batch 2 (single GETs for problems, allergies and co-sign rules, 2026-10-24). Recounted when the contract is written.
+**Count:** 254 contract operations: 255 rows (27 platform, 24 patients, 12 scheduling and eligibility, 29 encounters and notes, 19 history, 9 AI, 17 medications, 18 orders, 80 Anand, 8 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24); #248 from Minalini's M16 sign-off (2026-10-24); #249–251 from batch 2 (single GETs for problems, allergies and co-sign rules, 2026-10-24); #252–255 from batch 3 (inbox, 2026-10-26). Recounted when the contract is written.
 
 ## Later batches: items recorded on 2026-10-24 (no contract change now)
 
@@ -334,7 +339,9 @@ Minalini's clinical items from the screen mapping, to be written in the batch na
 
 | Item | Batch | Note |
 |---|---|---|
-| Inbox task creation (`POST /messages`, #217) with assignee, due date and link to a record; clinicians request appointment changes this way (D67) | B3 | Anand |
+| Inbox task creation (`POST /messages`, #217) with assignee, due date and link to a record; clinicians request appointment changes this way (D67) | B3 | **Done in batch 3** (D77): `kind: task` |
+| **Not in the MVP:** a self-service out-of-office forward for clinicians who are away. Until then, ADM reassigns their items and overdue items escalate (D79) | P1 | Anand |
+| **Not in the MVP:** read / unread marks on inbox items (batch 3 plan Q11) | P1 | Anand, Minalini |
 | Co-sign "return to author" with a comment (`POST /notes/{noteId}/cosign` with `decision: return`) | B4 | **Done in batch 2:** `cosignStatus: returned`; the note stays signed and the author answers with an addendum; event `note.cosign-returned` |
 | Where patient instructions are stored (after-visit summary section vs. note section) | B4 | **Done in batch 2:** a note section, LOINC 69730-0, signed with the note and printed on the after-visit summary |
 | Timeline filters (`GET /patients/{patientId}/timeline`: type, date range) | B4 | **Done in batch 2:** `types`, `dateFrom`, `dateTo` |
