@@ -133,3 +133,7 @@ Environment variables (or an OpenBao KV secret when `OPENBAO_ADDR` and `OPENBAO_
 `DATABASE_URL` (`shri_app`), `FHIR_DATABASE_URL` (`shri_fhir_reader`), `INTEGRATION_DATABASE_URL`
 (`shri_integration`), `REPORTING_DATABASE_URL` (`shri_reporting`), `MIGRATION_DATABASE_URL`
 (`shri_migrator`, migrations only, never given to the API). See `app/core/config.py`.
+
+`BUILD_VERSION` and `BUILD_COMMIT` are not set by hand: CI passes them as image build arguments
+(`backend/Dockerfile`), and local builds show `dev` and `unknown` (Q31). They are shown to signed-in
+users only, never on `/health`, and a malformed value stops startup.
