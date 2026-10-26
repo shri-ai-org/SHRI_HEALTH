@@ -27,6 +27,7 @@ Staff sign-in (ADR-0006) is the model, but patients differ in four ways:
 
   A staff cookie is never sent to the portal host, and the reverse, so neither can be used on the other's routes even by mistake.
 - **Self-registration in the realm is off.** A realm account is created only by enrolment (§3). The username is the email address, verified before first sign-in.
+- **No email address in any URL (D13).** Our login never sends `login_hint`, and the realm's emailed action links carry only the action token. A test fails if a login redirect or an emailed link has the email address in its query string.
 
 ### 2. Multi-factor for every patient, every sign-in
 
@@ -36,7 +37,7 @@ Staff sign-in (ADR-0006) is the model, but patients differ in four ways:
   - **SMS and email one-time codes are not second factors.** SIM swap and mailbox takeover are the commonest ways in.
 - **Every sign-in needs the second factor.** There's no "remember this device" in P1, because shared home computers are common.
 - **Recovery codes:** 10 single-use codes, shown once when multi-factor is set up (Keycloak's recovery authentication codes). Using one prompts the patient to set up a new factor.
-- **Lost every factor:** the patient comes back to the front desk with ID. ADM or FD, after the ID check, uses "Reset sign-in factors" (a staff action, audited, §6), and the patient sets up new factors at the next sign-in. Factors are never reset by email, phone or a support call.
+- **Lost every factor:** the patient comes back to the front desk with ID. ADM or FD, after the ID check, uses "Reset sign-in factors" (`portal-accounts:reset-factors`; a staff action, audited, §6), and the patient sets up new factors at the next sign-in. Factors are never reset by email, phone or a support call.
 - **Password:**
   - at least 12 characters;
   - not the email address;
@@ -61,7 +62,7 @@ Staff sign-in (ADR-0006) is the model, but patients differ in four ways:
    - it asks Keycloak to send its "set up your account" email (link valid 12 hours).
 
    The patient sets their password and second factor **in Keycloak, never in our API** (D3). Until the required actions are done, the account can't sign in.
-4. **Notice to the chart's contacts:** when enrolment completes, the email and phone already on the chart (not the ones just typed) get "A portal account was set up for you at <clinic>. If this wasn't you, call the clinic." A hijacked invitation then can't go unnoticed.
+4. **Notice to the chart's contacts:** when enrolment completes, the email and phone already on the chart (not the ones just typed) get "A Shri Health portal account was set up with this email address. If this wasn't you, call your clinic." A hijacked invitation then can't go unnoticed. The notice names no clinic and no patient data (D81): a clinic's name alone can reveal someone's care. The clinic's name and number appear only after sign-in.
 5. **One account, one chart, in P1.** A patient with charts at two clinics enrols at each with a different email. Proxy access (parents, caregivers) and one account linking several charts are P2 (D85). The link table (§5) is many-to-one now, so P2 can add links without changing it.
 
 ### 4. Password reset and username recovery
@@ -85,7 +86,7 @@ Staff sign-in (ADR-0006) is the model, but patients differ in four ways:
   - `app.current_tenant_id` is set as for staff, with `app.current_patient_id` added;
   - role `PAT`, with only portal permissions (B8).
   - **Staff routes refuse portal sessions** and portal routes refuse staff sessions, checked in core, not in each endpoint.
-- **Own record only:** a shared core dependency checks that any record ID in a portal path belongs to the session's patient, before the endpoint runs. Otherwise it returns `404` (not `403`), so a patient can't learn that someone else's record exists (D84). Restricted charts (D37) don't apply to the patient's own chart, but a record held by a clinician (D86) isn't shown.
+- **Own record only:** a shared core dependency checks that any record ID in a portal path belongs to the session's patient, before the endpoint runs. Otherwise it returns `404` (not `403`), so a patient can't learn that someone else's record exists (D84). Restricted charts (D37) don't apply to the patient's own chart. A record held by a clinician (D86) is listed as held, without its content, so the patient sees a neutral "held by your clinician" marker and never mistakes silence for "no results".
 - **Timeouts (proposed; final values with Q20):**
   - idle 15 minutes, with the same warning and "Stay signed in" as staff;
   - absolute **4 hours** (portal visits are short, and a longer limit only helps an attacker on a shared home computer).
@@ -141,7 +142,7 @@ Keycloak's own event log for the patient realm (login failures, password resets,
   - rate limits;
   - the B8 permissions and SECURITY_MODEL rows, landed together.
 - **Vimal:**
-  - in the staff contract: `POST /patients/{patientId}/portal-invitations` and `…/revoke` (`portal-invitations:create`; FD, ADM), and `POST /patients/{patientId}/portal-account/reset-factors` (ADM, FD after ID check);
+  - in the staff contract (patients module, with B8): `POST /patients/{patientId}/portal-invitations` and `…/revoke` (`portal-invitations:create|revoke`; FD, ADM), and `POST /patients/{patientId}/portal-account/reset-factors` (`portal-accounts:reset-factors`; ADM, and FD after the ID check);
   - in `portal.yaml`: the portal auth routes and `POST /portal/enrolments`.
 - **Anand:** `portal_invitation`, `portal_account` and `portal_session`, their lookup function, and purge coverage, in one migration.
 - **Minalini:**
