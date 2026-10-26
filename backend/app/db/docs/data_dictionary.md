@@ -1993,28 +1993,25 @@ Composite foreign keys: `fk_patient_pharmacy_patient_id_tenant`
 
 Admin, platform-wide. Payer directory (platform-wide). Exposed in FHIR as Organization (type 'pay').
 
-Contract (from DATA_OWNERSHIP.md):
-- Coverage (insurance): `/patients/{patientId}/coverages`
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 | Column | Type | Null | FHIR | References | Contract name |
 |---|---|---|---|---|---|
-| `name` | varchar(200) | no |  |  | no same-named property |
-| `payer_type` | varchar(40) | no |  |  | no same-named property |
-| `phone` | varchar(30) | yes |  |  | no same-named property |
-| `address_line` | varchar(200) | yes |  |  | no same-named property |
-| `city` | varchar(100) | yes |  |  | no same-named property |
-| `state` | varchar(2) | yes |  |  | no same-named property |
-| `postal_code` | varchar(10) | yes |  |  | no same-named property |
-| `supports_eligibility` | boolean | no |  |  | no same-named property |
-| `supports_claim_status` | boolean | no |  |  | no same-named property |
-| `supports_era` | boolean | no |  |  | no same-named property |
-| `is_active` | boolean | no |  |  | no same-named property |
-| `id` | uuid | no |  |  | `id` |
-| `created_at` | datetime | no |  |  | `createdAt` |
-| `updated_at` | datetime | no |  |  | `updatedAt` |
-| `version` | integer | no |  |  | no same-named property |
-
-Contract properties with no column of the same name: `cardImages`, `endDate`, `groupName`, `groupNumber`, `memberId`, `order`, `patientId`, `payerId`, `payerName`, `planName`, `relationshipToSubscriber`, `startDate`, `status`, `subscriberId`, `subscriberRelatedPersonId`
+| `name` | varchar(200) | no |  |  | — |
+| `payer_type` | varchar(40) | no |  |  | — |
+| `phone` | varchar(30) | yes |  |  | — |
+| `address_line` | varchar(200) | yes |  |  | — |
+| `city` | varchar(100) | yes |  |  | — |
+| `state` | varchar(2) | yes |  |  | — |
+| `postal_code` | varchar(10) | yes |  |  | — |
+| `supports_eligibility` | boolean | no |  |  | — |
+| `supports_claim_status` | boolean | no |  |  | — |
+| `supports_era` | boolean | no |  |  | — |
+| `is_active` | boolean | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `version` | integer | no |  |  | — |
 
 Checks: `ck_payer_payer_type_codes`
 
@@ -2169,22 +2166,19 @@ Composite foreign keys: `fk_picklist_item_picklist_id_tenant`
 
 Admin (normalized). A payer this practice actually works with, i.e. the `/practice-payers` directory (A39/issue #13) - distinct from `payer`, the platform-wide, read-only payer list. The platform payer is never edited per-practice; this row is where a practice turns one on and tracks whether it's currently active for the practice to bill against.
 
-Contract (from DATA_OWNERSHIP.md):
-- Coverage (insurance): `/patients/{patientId}/coverages`
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 | Column | Type | Null | FHIR | References | Contract name |
 |---|---|---|---|---|---|
-| `payer_id` | uuid | no |  | admin.payer.id | `payerId` |
-| `is_active` | boolean | no |  |  | no same-named property |
-| `id` | uuid | no |  |  | `id` |
-| `tenant_id` | uuid | no |  | admin.tenant.id | no same-named property |
-| `created_at` | datetime | no |  |  | `createdAt` |
-| `updated_at` | datetime | no |  |  | `updatedAt` |
-| `created_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
-| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
-| `version` | integer | no |  |  | no same-named property |
-
-Contract properties with no column of the same name: `cardImages`, `endDate`, `groupName`, `groupNumber`, `memberId`, `order`, `patientId`, `payerName`, `planName`, `relationshipToSubscriber`, `startDate`, `status`, `subscriberId`, `subscriberRelatedPersonId`
+| `payer_id` | uuid | no |  | admin.payer.id | — |
+| `is_active` | boolean | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `version` | integer | no |  |  | — |
 
 Unique: `uq_practice_payer_tenant_id_payer_id`
 
@@ -2836,24 +2830,21 @@ Composite foreign keys: `fk_user_role_facility_id_tenant`
 
 Admin (normalized). FR-SCH-02 status board: arrived -> checked in -> roomed -> with provider -> checked out. One row per step, insert-only (A42/issue #13: no UNIQUE(appointment_id, step) - a patient moved to a second room must be able to be 'roomed' again); the board reads the latest step per appointment from ``ix_visit_flow_event_appointment``.
 
-Contract (from DATA_OWNERSHIP.md):
-- Appointment: `/appointments`, `/appointments/{appointmentId}`
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 | Column | Type | Null | FHIR | References | Contract name |
 |---|---|---|---|---|---|
-| `appointment_id` | uuid | no |  | clinical.appointment.id | no same-named property |
-| `step` | varchar(40) | no |  |  | no same-named property |
-| `occurred_at` | datetime | no |  |  | no same-named property |
-| `user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
-| `location_id` | uuid | yes |  | clinical.location.id | `locationId` |
-| `id` | uuid | no |  |  | `id` |
-| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.appointment.tenant_id, clinical.location.tenant_id | no same-named property |
-| `created_at` | datetime | no |  |  | `createdAt` |
-| `updated_at` | datetime | no |  |  | `updatedAt` |
-| `created_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
-| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
-
-Contract properties with no column of the same name: `appointmentType`, `appointmentTypeId`, `cancellation`, `comment`, `durationMinutes`, `encounterId`, `endAt`, `facilityId`, `overbook`, `patient`, `patientId`, `patientInstruction`, `provider`, `providerId`, `reasonForVisit`, `rescheduledFromId`, `sameDayAddOn`, `startAt`, `status`, `timeZone`, `visitStatus`
+| `appointment_id` | uuid | no |  | clinical.appointment.id | — |
+| `step` | varchar(40) | no |  |  | — |
+| `occurred_at` | datetime | no |  |  | — |
+| `user_id` | uuid | yes |  | admin.app_user.id | — |
+| `location_id` | uuid | yes |  | clinical.location.id | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.appointment.tenant_id, clinical.location.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
 Checks: `ck_visit_flow_event_roomed_has_room`, `ck_visit_flow_event_step_codes`
 
@@ -3346,44 +3337,47 @@ Patient-owned via `subject_patient_id` (same-patient foreign keys apply).
 
 Child tables: `clinical.composition_attester`, `clinical.composition_author`, `clinical.composition_relates_to`, `clinical.composition_section`
 
-Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+Contract (from DATA_OWNERSHIP.md):
+- Addendum: `/notes/{noteId}/addenda`
 
 | Column | Type | Null | FHIR | References | Contract name |
 |---|---|---|---|---|---|
-| `status` | varchar(40) | no | `status` |  | — |
-| `type_system` | varchar(300) | yes | `type`.system | admin.code_system.uri | — |
-| `type_code` | varchar(64) | yes | `type`.code |  | — |
-| `type_display` | varchar(500) | yes | `type`.display |  | — |
-| `type_text` | varchar(1000) | yes | `type`.text |  | — |
-| `category_system` | varchar(300) | yes | `category`.system [0..*] | admin.code_system.uri | — |
-| `category_code` | varchar(64) | yes | `category`.code |  | — |
-| `category_display` | varchar(500) | yes | `category`.display |  | — |
-| `category_text` | varchar(1000) | yes | `category`.text |  | — |
-| `subject_patient_id` | uuid | no | `subject` | admin.ai_suggestion.patient_id, clinical.encounter.subject_patient_id, clinical.patient.id | — |
-| `encounter_id` | uuid | yes | `encounter` | clinical.encounter.id | — |
-| `date` | datetime | no | `date` |  | — |
-| `title` | varchar(300) | no | `title` |  | — |
-| `confidentiality` | varchar(1) | yes | `confidentiality` |  | — |
-| `custodian_organization_id` | uuid | yes | `custodian` | clinical.organization.id | — |
-| `ext_template_id` | uuid | yes |  | admin.note_template.id | — |
-| `ext_is_ai_assisted` | boolean | no |  |  | — |
-| `meta_version_id` | integer | no |  |  | — |
-| `meta_last_updated` | datetime | no |  |  | — |
-| `meta_txid` | bigint | yes |  |  | — |
-| `meta_security` | array | no | `meta.security` |  | — |
-| `extension` | jsonb | no |  |  | — |
-| `id` | uuid | no |  |  | — |
-| `tenant_id` | uuid | no |  | admin.ai_suggestion.tenant_id, admin.note_template.tenant_id, admin.tenant.id, clinical.encounter.tenant_id, clinical.organization.tenant_id, clinical.patient.tenant_id | — |
-| `created_at` | datetime | no |  |  | — |
-| `updated_at` | datetime | no |  |  | — |
-| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
-| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
-| `source_system` | varchar(100) | yes |  |  | — |
-| `source_record_id` | varchar(200) | yes |  |  | — |
-| `verified_at` | datetime | yes |  |  | — |
-| `entry_source` | varchar(40) | no |  |  | — |
-| `verified_by_user_id` | uuid | yes |  | admin.app_user.id | — |
-| `ai_suggestion_id` | uuid | yes |  | admin.ai_suggestion.id | — |
+| `status` | varchar(40) | no | `status` |  | `status` |
+| `type_system` | varchar(300) | yes | `type`.system | admin.code_system.uri | no same-named property |
+| `type_code` | varchar(64) | yes | `type`.code |  | no same-named property |
+| `type_display` | varchar(500) | yes | `type`.display |  | no same-named property |
+| `type_text` | varchar(1000) | yes | `type`.text |  | no same-named property |
+| `category_system` | varchar(300) | yes | `category`.system [0..*] | admin.code_system.uri | no same-named property |
+| `category_code` | varchar(64) | yes | `category`.code |  | no same-named property |
+| `category_display` | varchar(500) | yes | `category`.display |  | no same-named property |
+| `category_text` | varchar(1000) | yes | `category`.text |  | no same-named property |
+| `subject_patient_id` | uuid | no | `subject` | admin.ai_suggestion.patient_id, clinical.encounter.subject_patient_id, clinical.patient.id | no same-named property |
+| `encounter_id` | uuid | yes | `encounter` | clinical.encounter.id | `encounterId` |
+| `date` | datetime | no | `date` |  | no same-named property |
+| `title` | varchar(300) | no | `title` |  | `title` |
+| `confidentiality` | varchar(1) | yes | `confidentiality` |  | no same-named property |
+| `custodian_organization_id` | uuid | yes | `custodian` | clinical.organization.id | no same-named property |
+| `ext_template_id` | uuid | yes |  | admin.note_template.id | no same-named property |
+| `ext_is_ai_assisted` | boolean | no |  |  | no same-named property |
+| `meta_version_id` | integer | no |  |  | no same-named property |
+| `meta_last_updated` | datetime | no |  |  | no same-named property |
+| `meta_txid` | bigint | yes |  |  | no same-named property |
+| `meta_security` | array | no | `meta.security` |  | no same-named property |
+| `extension` | jsonb | no |  |  | no same-named property |
+| `id` | uuid | no |  |  | `id` |
+| `tenant_id` | uuid | no |  | admin.ai_suggestion.tenant_id, admin.note_template.tenant_id, admin.tenant.id, clinical.encounter.tenant_id, clinical.organization.tenant_id, clinical.patient.tenant_id | no same-named property |
+| `created_at` | datetime | no |  |  | `createdAt` |
+| `updated_at` | datetime | no |  |  | `updatedAt` |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
+| `source_system` | varchar(100) | yes |  |  | no same-named property |
+| `source_record_id` | varchar(200) | yes |  |  | no same-named property |
+| `verified_at` | datetime | yes |  |  | no same-named property |
+| `entry_source` | varchar(40) | no |  |  | no same-named property |
+| `verified_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
+| `ai_suggestion_id` | uuid | yes |  | admin.ai_suggestion.id | no same-named property |
+
+Contract properties with no column of the same name: `addenda`, `aiAssisted`, `author`, `cosignReturn`, `cosignStatus`, `cosignedAt`, `cosignedBy`, `cosigner`, `noteType`, `patientId`, `sections`, `signedAt`, `signedBy`, `templateId`, `text`
 
 Checks: `ck_composition_ai_entry_verified`, `ck_composition_entry_source_codes`, `ck_composition_extension_is_array`, `ck_composition_fhir_category_coding`, `ck_composition_fhir_category_display`, `ck_composition_fhir_type_coding`, `ck_composition_fhir_type_display`, `ck_composition_fhir_type_required`, `ck_composition_meta_security_codes`, `ck_composition_status_codes`
 
@@ -3395,20 +3389,23 @@ Composite foreign keys: `fk_composition_ai_suggestion_id_same_patient`, `fk_comp
 
 FHIR child / datatype table. Signature (legal) and co-signature (professional / legal by the supervisor). Insert-only; one attestation per mode and party.
 
-Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+Contract (from DATA_OWNERSHIP.md):
+- Addendum: `/notes/{noteId}/addenda`
 
 | Column | Type | Null | FHIR | References | Contract name |
 |---|---|---|---|---|---|
-| `composition_id` | uuid | no | parent | clinical.composition.id | — |
-| `mode` | varchar(40) | no | `mode` |  | — |
-| `time` | datetime | no | `time` |  | — |
-| `party_practitioner_id` | uuid | no | `party` | clinical.practitioner.id | — |
-| `ext_user_id` | uuid | no |  | admin.app_user.id | — |
-| `ext_content_sha256` | varchar(64) | no |  |  | — |
-| `id` | uuid | no |  |  | — |
-| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.composition.tenant_id, clinical.practitioner.tenant_id | — |
-| `created_at` | datetime | no |  |  | — |
-| `updated_at` | datetime | no |  |  | — |
+| `composition_id` | uuid | no | parent | clinical.composition.id | no same-named property |
+| `mode` | varchar(40) | no | `mode` |  | no same-named property |
+| `time` | datetime | no | `time` |  | no same-named property |
+| `party_practitioner_id` | uuid | no | `party` | clinical.practitioner.id | no same-named property |
+| `ext_user_id` | uuid | no |  | admin.app_user.id | no same-named property |
+| `ext_content_sha256` | varchar(64) | no |  |  | no same-named property |
+| `id` | uuid | no |  |  | `id` |
+| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.composition.tenant_id, clinical.practitioner.tenant_id | no same-named property |
+| `created_at` | datetime | no |  |  | `createdAt` |
+| `updated_at` | datetime | no |  |  | `updatedAt` |
+
+Contract properties with no column of the same name: `addenda`, `aiAssisted`, `author`, `cosignReturn`, `cosignStatus`, `cosignedAt`, `cosignedBy`, `cosigner`, `encounterId`, `noteType`, `patientId`, `sections`, `signedAt`, `signedBy`, `status`, `templateId`, `text`, `title`
 
 Checks: `ck_composition_attester_mode_codes`
 
@@ -3441,17 +3438,20 @@ Composite foreign keys: `fk_composition_author_composition_id_tenant`, `fk_compo
 
 FHIR child / datatype table.
 
-Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+Contract (from DATA_OWNERSHIP.md):
+- Addendum: `/notes/{noteId}/addenda`
 
 | Column | Type | Null | FHIR | References | Contract name |
 |---|---|---|---|---|---|
-| `composition_id` | uuid | no | parent | clinical.composition.id | — |
-| `code` | varchar(40) | no | `code` |  | — |
-| `target_composition_id` | uuid | no | `targetReference` | clinical.composition.id | — |
-| `id` | uuid | no |  |  | — |
-| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.composition.tenant_id | — |
-| `created_at` | datetime | no |  |  | — |
-| `updated_at` | datetime | no |  |  | — |
+| `composition_id` | uuid | no | parent | clinical.composition.id | no same-named property |
+| `code` | varchar(40) | no | `code` |  | no same-named property |
+| `target_composition_id` | uuid | no | `targetReference` | clinical.composition.id | no same-named property |
+| `id` | uuid | no |  |  | `id` |
+| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.composition.tenant_id | no same-named property |
+| `created_at` | datetime | no |  |  | `createdAt` |
+| `updated_at` | datetime | no |  |  | `updatedAt` |
+
+Contract properties with no column of the same name: `addenda`, `aiAssisted`, `author`, `cosignReturn`, `cosignStatus`, `cosignedAt`, `cosignedBy`, `cosigner`, `encounterId`, `noteType`, `patientId`, `sections`, `signedAt`, `signedBy`, `status`, `templateId`, `text`, `title`
 
 Checks: `ck_composition_relates_to_code_codes`, `ck_composition_relates_to_not_self`
 
@@ -4560,7 +4560,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 Checks: `ck_encounter_ai_entry_verified`, `ck_encounter_class_codes`, `ck_encounter_entry_source_codes`, `ck_encounter_extension_is_array`, `ck_encounter_fhir_period_per_1`, `ck_encounter_fhir_priority_coding`, `ck_encounter_fhir_priority_display`, `ck_encounter_fhir_service_type_coding`, `ck_encounter_fhir_service_type_display`, `ck_encounter_finished_has_period`, `ck_encounter_meta_security_codes`, `ck_encounter_period_order`, `ck_encounter_pos_format`, `ck_encounter_started_has_start`, `ck_encounter_status_codes`
 
-Unique: `uq_encounter_appointment_id`, `uq_encounter_subject_patient_id_id`, `uq_encounter_tenant_id_id`
+Unique: `uq_encounter_subject_patient_id_id`, `uq_encounter_tenant_id_id`
 
 Composite foreign keys: `fk_encounter_ai_suggestion_id_same_patient`, `fk_encounter_ai_suggestion_id_tenant`, `fk_encounter_appointment_id_same_patient`, `fk_encounter_appointment_id_tenant`, `fk_encounter_ext_facility_id_tenant`, `fk_encounter_service_provider_organization_id_tenant`, `fk_encounter_subject_patient_id_tenant`
 
@@ -6712,6 +6712,395 @@ Unique: `uq_specimen_subject_patient_id_id`, `uq_specimen_tenant_id_ext_label_ba
 
 Composite foreign keys: `fk_specimen_ai_suggestion_id_same_patient`, `fk_specimen_ai_suggestion_id_tenant`, `fk_specimen_collection_collector_practitioner_id_tenant`, `fk_specimen_subject_patient_id_tenant`
 
+## Contract to column mapping
+
+For each resource: every contract property and where it is stored (D20). **same name**: the column of the resource's own (first) table with the property's name in snake_case. **mapped** and **computed**: from `docs/contract_mapping.yaml`, hand-written. **not mapped yet**: the module's repository has to decide; add it to the override file.
+
+### Patient (demographics, contacts)
+
+Paths: `/patients`, `/patients/{patientId}`
+
+| Property | Stored in | How |
+|---|---|---|
+| `active` | `patient.active` | same name |
+| `address` | — | not mapped yet |
+| `birthDate` | `patient.birth_date` | same name |
+| `birthSex` | — | not mapped yet |
+| `createdAt` | `patient.created_at` | same name |
+| `duplicateCheck` | — | not mapped yet |
+| `duplicateOverrideReason` | — | not mapped yet |
+| `emails` | — | not mapped yet |
+| `employer` | — | not mapped yet |
+| `ethnicity` | — | not mapped yet |
+| `gender` | `patient.gender` | same name |
+| `genderIdentity` | — | not mapped yet |
+| `id` | `patient.id` | same name |
+| `identifiers` | — | not mapped yet |
+| `industry` | — | not mapped yet |
+| `maritalStatus` | — | not mapped yet |
+| `mergedIntoId` | — | not mapped yet |
+| `mrn` | — | not mapped yet |
+| `name` | — | not mapped yet |
+| `occupation` | — | not mapped yet |
+| `phones` | — | not mapped yet |
+| `preferredLanguage` | — | not mapped yet |
+| `preferredName` | — | not mapped yet |
+| `preferredPharmacy` | — | not mapped yet |
+| `previousNames` | — | not mapped yet |
+| `race` | — | not mapped yet |
+| `restricted` | — | not mapped yet |
+| `sexualOrientation` | — | not mapped yet |
+| `tribalAffiliation` | — | not mapped yet |
+| `updatedAt` | `patient.updated_at` | same name |
+
+### Patient identifiers (MRN, driver's license)
+
+Paths: `/patients/{patientId}/identifiers`
+
+| Property | Stored in | How |
+|---|---|---|
+| `assigner` | — | not mapped yet |
+| `createdAt` | `identifier.created_at` | same name |
+| `documentId` | — | not mapped yet |
+| `id` | `identifier.id` | same name |
+| `system` | `identifier.system` | same name |
+| `type` | — | not mapped yet |
+| `use` | `identifier.use` | same name |
+| `value` | `identifier.value` | same name |
+
+### Related persons, emergency contacts
+
+Paths: `/patients/{patientId}/related-persons`
+
+| Property | Stored in | How |
+|---|---|---|
+| `active` | `related_person.active` | same name |
+| `address` | — | not mapped yet |
+| `birthDate` | `related_person.birth_date` | same name |
+| `createdAt` | `related_person.created_at` | same name |
+| `emails` | — | not mapped yet |
+| `employer` | — | not mapped yet |
+| `gender` | `related_person.gender` | same name |
+| `id` | `related_person.id` | same name |
+| `name` | — | not mapped yet |
+| `patientId` | `related_person.patient_id` | same name |
+| `phones` | — | not mapped yet |
+| `relationships` | — | not mapped yet |
+| `updatedAt` | `related_person.updated_at` | same name |
+
+### Coverage (insurance)
+
+Paths: `/patients/{patientId}/coverages`
+
+| Property | Stored in | How |
+|---|---|---|
+| `cardImages` | — | not mapped yet |
+| `createdAt` | `coverage.created_at` | same name |
+| `endDate` | — | not mapped yet |
+| `groupName` | — | not mapped yet |
+| `groupNumber` | — | not mapped yet |
+| `id` | `coverage.id` | same name |
+| `memberId` | `identifier.value`, `identifier.coverage_id`, `identifier.type_code` | mapped: an identifier row of the coverage with type_code MB |
+| `order` | `coverage.order` | same name |
+| `patientId` | — | not mapped yet |
+| `payerId` | — | not mapped yet |
+| `payerName` | — | not mapped yet |
+| `planName` | — | not mapped yet |
+| `relationshipToSubscriber` | `coverage.relationship_code` | mapped |
+| `startDate` | — | not mapped yet |
+| `status` | `coverage.status` | same name |
+| `subscriberId` | `coverage.subscriber_id` | same name |
+| `subscriberRelatedPersonId` | `coverage.subscriber_related_person_id` | same name |
+| `updatedAt` | `coverage.updated_at` | same name |
+
+### Card images
+
+| Property | Stored in | How |
+|---|---|---|
+
+### Consents
+
+Paths: `/patients/{patientId}/consents`
+
+| Property | Stored in | How |
+|---|---|---|
+| `createdAt` | `consent.created_at` | same name |
+| `decision` | — | not mapped yet |
+| `grantorRelatedPersonId` | — | not mapped yet |
+| `id` | `consent.id` | same name |
+| `kind` | — | not mapped yet |
+| `patientId` | `consent.patient_id` | same name |
+| `policyVersion` | — | not mapped yet |
+| `signatureMethod` | — | not mapped yet |
+| `signedAt` | — | not mapped yet |
+| `signedFormFileId` | `consent.source_attachment_binary_object_id` | mapped |
+| `status` | `consent.status` | same name |
+
+### Preferred pharmacy
+
+Paths: `/patients/{patientId}/preferred-pharmacy`
+
+| Property | Stored in | How |
+|---|---|---|
+| `city` | — | not mapped yet |
+| `name` | — | not mapped yet |
+| `ncpdpId` | — | not mapped yet |
+| `patientId` | `patient_pharmacy.patient_id` | same name |
+| `pharmacyId` | `patient_pharmacy.pharmacy_id` | same name |
+| `phone` | — | not mapped yet |
+| `state` | — | not mapped yet |
+| `updatedAt` | `patient_pharmacy.updated_at` | same name |
+
+### Duplicates, merges
+
+Paths: `/duplicates`, `/duplicates/{duplicateId}/merge`, `/duplicates/{duplicateId}/dismiss`, `/patient-merges/{mergeId}/undo`
+
+| Property | Stored in | How |
+|---|---|---|
+| `createdAt` | `duplicate_candidate.created_at` | same name |
+| `duplicateId` | — | not mapped yet |
+| `id` | `duplicate_candidate.id` | same name |
+| `matchScore` | `duplicate_candidate.match_score` | same name |
+| `matchedOn` | — | not mapped yet |
+| `mergedPatientId` | — | not mapped yet |
+| `patientAId` | `duplicate_candidate.patient_a_id` | same name |
+| `patientBId` | `duplicate_candidate.patient_b_id` | same name |
+| `performedAt` | — | not mapped yet |
+| `performedByUserId` | — | not mapped yet |
+| `reason` | — | not mapped yet |
+| `reviewedAt` | `duplicate_candidate.reviewed_at` | same name |
+| `reviewedByUserId` | `duplicate_candidate.reviewed_by_user_id` | same name |
+| `status` | `duplicate_candidate.status` | same name |
+| `survivingPatientId` | — | not mapped yet |
+| `undoneAt` | `patient_merge.unmerged_at` | mapped |
+| `undoneByUserId` | — | not mapped yet |
+
+### Slots
+
+Paths: `/slots`
+
+| Property | Stored in | How |
+|---|---|---|
+| `endAt` | — | not mapped yet |
+| `facilityId` | — | not mapped yet |
+| `locationId` | — | not mapped yet |
+| `overbook` | — | not mapped yet |
+| `providerId` | — | not mapped yet |
+| `startAt` | — | not mapped yet |
+| `timeZone` | — | not mapped yet |
+
+### Appointment
+
+Paths: `/appointments`, `/appointments/{appointmentId}`
+
+| Property | Stored in | How |
+|---|---|---|
+| `appointmentType` | — | not mapped yet |
+| `appointmentTypeId` | — | not mapped yet |
+| `cancellation` | — | not mapped yet |
+| `comment` | `appointment.comment` | same name |
+| `createdAt` | `appointment.created_at` | same name |
+| `durationMinutes` | — | not mapped yet |
+| `encounterId` | — | not mapped yet |
+| `endAt` | — | not mapped yet |
+| `facilityId` | — | not mapped yet |
+| `id` | `appointment.id` | same name |
+| `locationId` | — | not mapped yet |
+| `overbook` | — | not mapped yet |
+| `patient` | — | not mapped yet |
+| `patientId` | — | not mapped yet |
+| `patientInstruction` | `appointment.patient_instruction` | same name |
+| `provider` | — | not mapped yet |
+| `providerId` | — | not mapped yet |
+| `reasonForVisit` | — | not mapped yet |
+| `rescheduledFromId` | — | not mapped yet |
+| `sameDayAddOn` | `appointment.ext_same_day_add_on` | mapped |
+| `startAt` | — | not mapped yet |
+| `status` | `appointment.status` | same name |
+| `timeZone` | — | not mapped yet |
+| `updatedAt` | `appointment.updated_at` | same name |
+| `visitStatus` | `visit_flow_event.step`, `visit_flow_event.occurred_at` | computed: the latest visit_flow_event step of the appointment recorded after its last undone check-in (the recorded time of the Provenance that set the check-in encounter to entered-in-error, D55); with no step after it, the appointment is booked again and has no visit status |
+
+### Eligibility check
+
+Paths: `/eligibility-checks`, `/appointments/{appointmentId}/eligibility-checks`
+
+| Property | Stored in | How |
+|---|---|---|
+| `appointmentId` | `eligibility_check.appointment_id` | same name |
+| `benefits` | — | not mapped yet |
+| `completedAt` | — | not mapped yet |
+| `copay` | — | not mapped yet |
+| `coverageEndDate` | — | not mapped yet |
+| `coverageId` | `eligibility_check.coverage_id` | same name |
+| `coverageStartDate` | — | not mapped yet |
+| `coverageStatus` | — | not mapped yet |
+| `createdAt` | `eligibility_check.created_at` | same name |
+| `deductible` | — | not mapped yet |
+| `deductibleRemainingAmount` | — | not mapped yet |
+| `error` | — | not mapped yet |
+| `errorCode` | `eligibility_check.error_code` | same name |
+| `errorMessage` | `eligibility_check.error_message` | same name |
+| `expiresAt` | `eligibility_check.expires_at` | same name |
+| `id` | `eligibility_check.id` | same name |
+| `kind` | — | not mapped yet |
+| `patientId` | `eligibility_check.patient_id` | same name |
+| `planName` | `eligibility_check.plan_name` | same name |
+| `requestedAt` | `eligibility_check.requested_at` | same name |
+| `respondedAt` | `eligibility_check.responded_at` | same name |
+| `result` | — | not mapped yet |
+| `serviceTypeCodes` | — | not mapped yet |
+| `status` | `eligibility_check.status` | same name |
+| `trigger` | `eligibility_check.trigger` | same name |
+| `updatedAt` | `eligibility_check.updated_at` | same name |
+
+### Encounter
+
+Paths: `/encounters`, `/encounters/{encounterId}`
+
+| Property | Stored in | How |
+|---|---|---|
+| `appointmentId` | — | not mapped yet |
+| `class` | — | not mapped yet |
+| `createdAt` | — | not mapped yet |
+| `diagnoses` | — | not mapped yet |
+| `endedAt` | — | not mapped yet |
+| `facilityId` | — | not mapped yet |
+| `id` | — | not mapped yet |
+| `locationId` | — | not mapped yet |
+| `notes` | — | not mapped yet |
+| `participants` | — | not mapped yet |
+| `patientId` | — | not mapped yet |
+| `reasons` | — | not mapped yet |
+| `startedAt` | `encounter.period_start` | mapped |
+| `status` | — | not mapped yet |
+| `timeZone` | — | not mapped yet |
+| `types` | — | not mapped yet |
+| `unscheduledType` | — | not mapped yet |
+| `updatedAt` | — | not mapped yet |
+| `vitals` | — | not mapped yet |
+| `participants[].role` | `encounter_participant.type_code` | mapped |
+
+### Note (draft, versions, signed)
+
+Paths: `/encounters/{encounterId}/notes`, `/notes/{noteId}`, `/notes/{noteId}/versions`
+
+| Property | Stored in | How |
+|---|---|---|
+| `addenda` | — | not mapped yet |
+| `aiAssisted` | — | not mapped yet |
+| `author` | — | not mapped yet |
+| `cosignReturn` | — | not mapped yet |
+| `cosignStatus` | — | not mapped yet |
+| `cosignedAt` | — | not mapped yet |
+| `cosignedBy` | — | not mapped yet |
+| `cosigner` | — | not mapped yet |
+| `createdAt` | — | not mapped yet |
+| `encounterId` | — | not mapped yet |
+| `id` | — | not mapped yet |
+| `noteType` | — | not mapped yet |
+| `patientId` | — | not mapped yet |
+| `recordedAt` | — | not mapped yet |
+| `recordedBy` | — | not mapped yet |
+| `sections` | — | not mapped yet |
+| `signedAt` | — | not mapped yet |
+| `signedBy` | — | not mapped yet |
+| `status` | — | not mapped yet |
+| `templateId` | — | not mapped yet |
+| `title` | — | not mapped yet |
+| `updatedAt` | — | not mapped yet |
+| `versionId` | — | not mapped yet |
+| `sections[].text` | `composition_section.text_div` | mapped |
+
+### Addendum
+
+Paths: `/notes/{noteId}/addenda`
+
+| Property | Stored in | How |
+|---|---|---|
+| `addenda` | — | not mapped yet |
+| `aiAssisted` | — | not mapped yet |
+| `author` | — | not mapped yet |
+| `cosignReturn` | — | not mapped yet |
+| `cosignStatus` | — | not mapped yet |
+| `cosignedAt` | — | not mapped yet |
+| `cosignedBy` | — | not mapped yet |
+| `cosigner` | — | not mapped yet |
+| `createdAt` | `composition.created_at` | same name |
+| `encounterId` | `composition.encounter_id` | same name |
+| `id` | `composition.id` | same name |
+| `noteType` | — | not mapped yet |
+| `patientId` | — | not mapped yet |
+| `sections` | — | not mapped yet |
+| `signedAt` | — | not mapped yet |
+| `signedBy` | — | not mapped yet |
+| `status` | `composition.status` | same name |
+| `templateId` | — | not mapped yet |
+| `text` | — | not mapped yet |
+| `title` | `composition.title` | same name |
+| `updatedAt` | `composition.updated_at` | same name |
+
+### Co-signature rules
+
+Paths: `/cosign-rules`
+
+| Property | Stored in | How |
+|---|---|---|
+| `appliesToNotes` | — | not mapped yet |
+| `appliesToOrders` | — | not mapped yet |
+| `appliesToPrescriptions` | — | not mapped yet |
+| `cosignWithinDays` | — | not mapped yet |
+| `createdAt` | — | not mapped yet |
+| `effectiveFrom` | — | not mapped yet |
+| `effectiveTo` | — | not mapped yet |
+| `id` | — | not mapped yet |
+| `state` | — | not mapped yet |
+| `superviseeProviderId` | `cosign_rule.supervisee_practitioner_id` | mapped |
+| `supervisingProviderId` | — | not mapped yet |
+| `updatedAt` | — | not mapped yet |
+
+### Facilities, locations
+
+Paths: `/facilities`, `/locations`
+
+| Property | Stored in | How |
+|---|---|---|
+| `active` | — | not mapped yet |
+| `address` | — | not mapped yet |
+| `billingLocation` | — | not mapped yet |
+| `cliaNumber` | — | not mapped yet |
+| `code` | — | not mapped yet |
+| `createdAt` | — | not mapped yet |
+| `description` | — | not mapped yet |
+| `facilityId` | `location.part_of_location_id`, `facility.location_id` | mapped: a location's facility is the one whose location_id is this location's parent |
+| `id` | — | not mapped yet |
+| `name` | — | not mapped yet |
+| `npi` | — | not mapped yet |
+| `phone` | — | not mapped yet |
+| `physicalType` | — | not mapped yet |
+| `placeOfServiceCode` | — | not mapped yet |
+| `timeZone` | — | not mapped yet |
+| `updatedAt` | — | not mapped yet |
+
+### Providers
+
+Paths: `/providers`
+
+| Property | Stored in | How |
+|---|---|---|
+| `active` | — | not mapped yet |
+| `createdAt` | — | not mapped yet |
+| `email` | — | not mapped yet |
+| `facilityIds` | `practitioner_role_location.location_id`, `facility.location_id` | mapped: the facilities whose location_id is one of the provider's role locations |
+| `gender` | — | not mapped yet |
+| `id` | — | not mapped yet |
+| `name` | — | not mapped yet |
+| `npi` | — | not mapped yet |
+| `phone` | — | not mapped yet |
+| `qualifications` | — | not mapped yet |
+| `specialties` | — | not mapped yet |
+| `updatedAt` | — | not mapped yet |
+
 ## Contract resources not yet mapped to tables
 
 DATA_OWNERSHIP.md does not name tables for these yet. They are not guessed here.
@@ -6724,9 +7113,8 @@ DATA_OWNERSHIP.md does not name tables for these yet. They are not guessed here.
 - **Encounter** (`/encounters`, `/encounters/{encounterId}`): Encounter
 - **Vitals** (`/encounters/{encounterId}/vitals`, `/patients/{patientId}/vitals`): Observation
 - **Encounter diagnoses** (`/encounters/{encounterId}/diagnoses`): Condition
-- **Code search** (`/codes/search`): Terminology tables
+- **Code search** (`/codes`): Terminology tables
 - **Note (draft, versions, signed)** (`/encounters/{encounterId}/notes`, `/notes/{noteId}`, `/notes/{noteId}/versions`): Composition and its sections
-- **Addendum** (`/notes/{noteId}/addenda`): **pending schema lock**
 - **Co-signature** (`/notes/{noteId}/cosign`): Composition, Provenance; co-signature rules in **Ad**
 - **Co-signature rules** (`/cosign-rules`): Co-signature rules by state and provider
 - **Favorites** (`/me/favorites`): Templates and favorites
