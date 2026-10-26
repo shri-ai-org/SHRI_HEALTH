@@ -10,7 +10,7 @@ ARG DEBIAN_IMAGE=debian:trixie-20261005-slim@sha256:a29215f6a35e51e22adffa17f89e
 
 FROM ${DEBIAN_IMAGE} AS fetch
 ARG KEYCLOAK_VERSION=26.8.1
-ARG KEYCLOAK_SHA256=4e2740b181faa2ea623a1c2ecf00855935311e546046e2f857615a47ed24cbe8
+ARG KC_DIST_SHA256=4e2740b181faa2ea623a1c2ecf00855935311e546046e2f857615a47ed24cbe8
 ARG JRE_RELEASE=jdk-21.0.12.1+1
 ARG JRE_FILE_VERSION=21.0.12.1_1
 ARG JRE_SHA256_AMD64=2413149700df0f7d440500a84a8f764c535f21e5a5e87d38328b64eec2c5b500
@@ -32,7 +32,7 @@ RUN set -eu; \
     mkdir -p /opt/java && tar -xzf /tmp/jre.tar.gz -C /opt/java --strip-components=1; \
     curl -fsSL -o /tmp/keycloak.tar.gz \
       "https://github.com/keycloak/keycloak/releases/download/${KEYCLOAK_VERSION}/keycloak-${KEYCLOAK_VERSION}.tar.gz"; \
-    echo "${KEYCLOAK_SHA256}  /tmp/keycloak.tar.gz" | sha256sum -c -; \
+    echo "${KC_DIST_SHA256}  /tmp/keycloak.tar.gz" | sha256sum -c -; \
     mkdir -p /opt/keycloak && tar -xzf /tmp/keycloak.tar.gz -C /opt/keycloak --strip-components=1; \
     chmod -R g=u /opt/keycloak; \
     rm /tmp/jre.tar.gz /tmp/keycloak.tar.gz

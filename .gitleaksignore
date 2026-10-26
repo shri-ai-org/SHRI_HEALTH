@@ -3,3 +3,7 @@
 
 # A synthetic UUID used as a test Idempotency-Key (not a secret); renamed in the next commit.
 a81fad2902498c0d31378d8ea66e84bb663a032d:backend/app/core/tests/test_errors.py:generic-api-key:285
+
+# The published SHA-256 of keycloak-26.8.1.tar.gz in an ARG named KEYCLOAK_SHA256 (PR #61). It's a
+# public checksum, not a secret; "KEY" in the name trips generic-api-key. Renamed on #61's branch.
+ac6db91bbdfc85dd8ef4dc2f635cd22c17b34cb5:infra/keycloak/Dockerfile:generic-api-key:13
