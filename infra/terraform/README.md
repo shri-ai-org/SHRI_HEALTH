@@ -43,12 +43,21 @@ Owner: Thulasi (Terraform). Anand owns the parameter group's tuning, the extensi
    CREATE DATABASE shri TEMPLATE template0 ENCODING 'UTF8' LOCALE_PROVIDER builtin BUILTIN_LOCALE 'C.UTF-8';
    ```
 
-4. **Anand's checks (ADR-0012):**
-   - run `sql/00_extensions.sql` as the master role;
-   - create `shri_migrator`;
-   - confirm `SELECT extversion FROM pg_extension WHERE extname = 'vector'` matches development and CI (D31);
-   - confirm `SHOW data_checksums` is `on`;
-   - then run the migrations.
+   Then, connected to `shri`, take away what PostgreSQL gives every role by default, exactly as the development image does (`infra/compose/postgres/initdb/10-service-roles.sh`):
+
+   ```sql
+   REVOKE ALL ON DATABASE shri FROM PUBLIC;  -- no CONNECT or TEMP for roles that aren't granted it
+   REVOKE ALL ON SCHEMA public FROM PUBLIC;  -- no CREATE in public
+   ```
+
+   **Why `TEMP` matters:** most rule functions in `public` run with the caller's `search_path`, and temporary tables are searched first. A role allowed to create temporary tables could shadow a clinical table inside a trigger (review of #45). The five service roles get `CONNECT` only, in step 4.
+
+4. **Roles, extensions and migrations (Anand, ADR-0012), in this order:**
+   - create the five roles as `10-service-roles.sh` does (`NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`; the four service roles also `NOINHERIT`), with passwords from OpenBao, and make `shri_migrator` the owner of `shri` and of schema `public`;
+   - `GRANT CONNECT ON DATABASE shri` to the five roles, and nothing else at database level;
+   - run `backend/app/db/sql/00_extensions.sql` as the master role (it expects the roles to exist);
+   - confirm `SELECT extversion FROM pg_extension WHERE extname = 'vector'` matches development and CI (D31), and that `SHOW data_checksums` is `on`;
+   - run the migrations as `shri_migrator` (`MIGRATION_DATABASE_URL`), never as the master role.
 
 Clients connect with `sslmode=verify-full` and the [AWS RDS CA bundle](https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem) for `rds-ca-rsa2048-g1` (output `database_ca_cert_identifier`).
 
