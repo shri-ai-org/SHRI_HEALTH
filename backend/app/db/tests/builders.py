@@ -40,7 +40,8 @@ def practice(db: Session) -> dict[str, Any]:
     site.managing_organization_id = org.id
     room = M["location"](name="Exam 1", physical_type_system=systems.LOCATION_PHYSICAL_TYPE,
                          physical_type_code="ro", part_of_location_id=site.id)
-    fac = M["facility"](location_id=site.id, code="MAIN", name="Main office")
+    fac = M["facility"](location_id=site.id, code="MAIN", name="Main office",
+                        timezone="America/New_York")
     dr = practitioner(db, "Rivera", "Elena")
     db.add_all([room, fac])
     db.flush()

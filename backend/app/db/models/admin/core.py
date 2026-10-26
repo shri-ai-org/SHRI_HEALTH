@@ -5,6 +5,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     ForeignKey,
@@ -59,6 +60,29 @@ class Tenant(Base, UUIDPKMixin, TimestampMixin):
                                             server_default=text("true"))
 
 
+class MrnCounter(Base, AdminMixin):
+    """One medical record number counter per practice (D41): the practice prefix plus a number,
+    never reused, e.g. ``TEST-000123``. ``admin.next_mrn()`` returns the practice's MRN system
+    and the next value inside the registration transaction: the row lock serializes
+    registrations, so no two patients get the same number, and a registration that rolls back
+    gives its number back. The MRN itself is an ``identifier`` row (type MR) with that system.
+    The database lets the number only grow, and the prefix and system change only until the
+    first MRN is issued (``shri_mrn_counter_guard``). No role may delete the row."""
+    __tablename__ = "mrn_counter"
+    __table_args__ = (
+        UniqueConstraint("tenant_id"),
+        CheckConstraint("prefix ~ '^[A-Z0-9]{1,10}$'", name="prefix_format"),
+        CheckConstraint("system ~ '^(urn:|https?://)'", name="system_uri"),
+        CheckConstraint("next_value >= 1", name="next_value_positive"),
+    )
+
+    prefix: Mapped[str] = mapped_column(String(10), nullable=False)
+    #: The practice's MRN identifier system (D41).
+    system: Mapped[str] = mapped_column(String(300), nullable=False)
+    next_value: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1,
+                                            server_default=text("1"))
+
+
 class SettingDefinition(Base, UUIDPKMixin, TimestampMixin):
     """Platform catalogue of tenant settings (replaces free-form settings JSON)."""
     __tablename__ = "setting_definition"
@@ -69,6 +93,15 @@ class SettingDefinition(Base, UUIDPKMixin, TimestampMixin):
                                                          nullable=False)
     default_value: Mapped[str | None] = mapped_column(Text)
     description: Mapped[str] = mapped_column(String(500), nullable=False)
+
+
+#: Platform settings seeded into ``setting_definition`` (key, value type, default, description).
+#: Keys are lower case (``key_format``); the repository maps them to the contract's camelCase.
+SETTINGS: list[tuple[str, SettingValueType, str, str]] = [
+    ("registration.show_sexual_orientation_and_gender_identity", SettingValueType.BOOLEAN,
+     "false", "Show sexual orientation and gender identity at registration (D39, A49). "
+     "Off by default: the practice turns it on."),
+]
 
 
 class TenantSetting(Base, AdminMixin):
@@ -102,7 +135,8 @@ class Facility(Base, AdminMixin, VersionedMixin):
     tax_id_ref: Mapped[str | None] = mapped_column(String(200))     # OpenBao reference, not TIN
     place_of_service_code: Mapped[str] = mapped_column(String(2), nullable=False, default="11",
                                                        server_default="11")
-    timezone: Mapped[str | None] = mapped_column(String(64))
+    # IANA time zone; appointments display in facility time (D40). Required (A45).
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False)
     is_billing_location: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True,
                                                       server_default=text("true"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True,

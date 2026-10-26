@@ -25,6 +25,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (
@@ -65,6 +66,45 @@ MODIFIER_CHECK = "modifier ~ '^[A-Z0-9]{2}$'"
 
 
 # =========================================================================== payers
+class Employer(Base, AdminMixin):
+    """Employer of a patient, or of a related person such as a coverage subscriber (D38;
+    workers' compensation claims need it). One per person. The contract's Employer: a name, an
+    optional E.164 phone and an optional U.S. address (all of it or none). A change touches the
+    patient or related person, so its version and ETag change too."""
+    __tablename__ = "employer"
+    __table_args__ = (
+        CheckConstraint("num_nonnulls(patient_id, related_person_id) = 1", name="one_person"),
+        UniqueConstraint("patient_id"),
+        UniqueConstraint("related_person_id"),
+        CheckConstraint("length(trim(name)) >= 1", name="name_given"),
+        CheckConstraint("phone IS NULL OR phone ~ '^\\+[1-9][0-9]{6,14}$'", name="phone_e164"),
+        CheckConstraint("num_nonnulls(address_lines, address_city, address_state, "
+                        "address_postal_code, address_country) IN (0, 5)",
+                        name="address_whole"),
+        CheckConstraint("address_lines IS NULL OR cardinality(address_lines) BETWEEN 1 AND 3",
+                        name="address_lines_count"),
+        CheckConstraint("address_state IS NULL OR address_state ~ '^[A-Z]{2}$'",
+                        name="address_state_format"),
+        CheckConstraint("address_postal_code IS NULL OR "
+                        "address_postal_code ~ '^[0-9]{5}(-[0-9]{4})?$'",
+                        name="address_postal_code_format"),
+        CheckConstraint("address_country IS NULL OR address_country = 'US'",
+                        name="address_country_us"),
+    )
+
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clinical.patient.id", ondelete="CASCADE"))
+    related_person_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clinical.related_person.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(16))
+    address_lines: Mapped[list[str] | None] = mapped_column(ARRAY(String(100)))
+    address_city: Mapped[str | None] = mapped_column(String(60))
+    address_state: Mapped[str | None] = mapped_column(String(2))
+    address_postal_code: Mapped[str | None] = mapped_column(String(10))
+    address_country: Mapped[str | None] = mapped_column(String(2))
+
+
 class Payer(Base, UUIDPKMixin, TimestampMixin, VersionedMixin):
     """Payer directory (platform-wide). Exposed in FHIR as Organization (type 'pay')."""
     __tablename__ = "payer"

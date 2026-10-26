@@ -8,6 +8,44 @@
 # gen_docs.py stops if a resource, property, table or column named here does not exist, so this
 # file cannot drift silently. Same-named properties (camelCase of a column) need no entry.
 
+"Patient (demographics, contacts)":
+  genderIdentity:
+    columns: [patient.ext_gender_identity_system, patient.ext_gender_identity_code,
+              patient.ext_gender_identity_display, patient.ext_gender_identity_text]
+    note: >-
+      shown at registration only where the practice's setting
+      registration.show_sexual_orientation_and_gender_identity is true (A49)
+  sexualOrientation:
+    columns: [patient.ext_sexual_orientation_system, patient.ext_sexual_orientation_code,
+              patient.ext_sexual_orientation_display, patient.ext_sexual_orientation_text]
+    note: >-
+      shown at registration only where the practice's setting
+      registration.show_sexual_orientation_and_gender_identity is true (A49)
+  occupation:
+    columns: [patient.ext_occupation_system, patient.ext_occupation_code,
+              patient.ext_occupation_display, patient.ext_occupation_text]
+  industry:
+    columns: [patient.ext_industry_system, patient.ext_industry_code,
+              patient.ext_industry_display, patient.ext_industry_text]
+  tribalAffiliation:
+    columns: [patient.ext_tribal_affiliation_system, patient.ext_tribal_affiliation_code,
+              patient.ext_tribal_affiliation_display, patient.ext_tribal_affiliation_text]
+  employer:
+    columns: [employer.name, employer.phone, employer.address_lines, employer.address_city,
+              employer.address_state, employer.address_postal_code, employer.address_country]
+    note: one admin row with patient_id (D38); clearing the employer deletes the row
+  mrn:
+    columns: [identifier.value, identifier.system, identifier.patient_id, identifier.type_code]
+    note: >-
+      an identifier row with type_code MR, its system and value from admin.next_mrn() (the
+      practice's mrn_counter, D41), written in the registration transaction
+
+"Related persons, emergency contacts":
+  employer:
+    columns: [employer.name, employer.phone, employer.address_lines, employer.address_city,
+              employer.address_state, employer.address_postal_code, employer.address_country]
+    note: one admin row with related_person_id (D38); clearing the employer deletes the row
+
 "Coverage (insurance)":
   memberId:
     columns: [identifier.value, identifier.coverage_id, identifier.type_code]
@@ -49,6 +87,8 @@
     columns: [cosign_rule.supervisee_practitioner_id]
 
 "Facilities, locations":
+  timeZone:
+    columns: [facility.timezone]
   facilityId:
     columns: [location.part_of_location_id, facility.location_id]
     note: a location's facility is the one whose location_id is this location's parent
