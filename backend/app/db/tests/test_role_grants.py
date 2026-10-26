@@ -308,3 +308,21 @@ def test_integration_files_a_corrected_lab_result(db: Session, admin_engine: Eng
             "WHERE resource_id = :i ORDER BY version_id"), {"i": obs.id}).scalars().all()
     assert status == "corrected"
     assert [float(v) for v in versions] == [99.0, 199.0]
+
+
+def test_app_never_reads_clinic_less_audit_rows(admin_engine: Engine, app_engine: Engine) -> None:
+    """Thulasi's condition on #13/#44: platform security events with no clinic (a failed
+    sign-in before a clinic is known) are not visible to the clinic API, with or without a
+    clinic set. The clinic policy compares tenant_id with the setting, so a null never matches."""
+    tenant = make_tenant(admin_engine)
+    with admin_engine.begin() as c:  # superuser: the only way to write one until A47's policy
+        row_id = c.execute(text(
+            "INSERT INTO audit.audit_event (tenant_id, actor_type, action, outcome, reason) "
+            "VALUES (NULL, 'system', 'login', 'failure', 'unknown user') RETURNING id")
+        ).scalar_one()
+    with app_engine.connect() as conn:
+        lookup = text("SELECT count(*) FROM audit.audit_event WHERE id = :i OR tenant_id IS NULL")
+        assert conn.execute(lookup, {"i": row_id}).scalar_one() == 0
+        conn.rollback()
+        with_clinic(conn, tenant)
+        assert conn.execute(lookup, {"i": row_id}).scalar_one() == 0
