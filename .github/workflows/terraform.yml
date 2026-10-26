@@ -1,0 +1,60 @@
+# Terraform checks: fmt, validate and the mock-provider tests in infra/terraform/tests/. No cloud
+# credentials: nothing here plans against or changes a real account. Runs only when infra/terraform/
+# or this workflow changes, to save Free-plan minutes. Every Action is pinned by commit SHA, and
+# Terraform itself by version and SHA-256 (checked against HashiCorp's signed SHA256SUMS).
+name: terraform
+
+on:
+  pull_request:
+    paths: ["infra/terraform/**", ".github/workflows/terraform.yml"]
+  push:
+    branches: [main]
+    paths: ["infra/terraform/**", ".github/workflows/terraform.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-${{ github.event.pull_request.number || github.ref }}
+  # Cancel superseded PR runs only; every commit on main gets a complete run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TERRAFORM_VERSION: "1.16.6"
+  TERRAFORM_SHA256: "38034b38d03096399a7a1264a14561a8029b2b496fd1f169452656e53968f1b7"
+  TF_IN_AUTOMATION: "1"
+  TF_INPUT: "0"
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Terraform (checksum-verified)
+        working-directory: ${{ runner.temp }}
+        run: |
+          zip="terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+          curl -sSfLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/${zip}"
+          echo "${TERRAFORM_SHA256}  ${zip}" | sha256sum -c -
+          unzip -q "${zip}" terraform
+          echo "${RUNNER_TEMP}" >> "$GITHUB_PATH"
+
+      - name: Format
+        run: terraform fmt -check -recursive -diff
+
+      # Providers only from the committed lock file's hashes; no backend, so no state is read.
+      - name: Init
+        run: terraform init -backend=false -lockfile=readonly
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Tests (mock AWS provider)
+        run: terraform test
