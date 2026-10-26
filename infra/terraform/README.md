@@ -70,7 +70,7 @@ Clients connect with `sslmode=verify-full` and the [AWS RDS CA bundle](https://t
 3. Run the audit-chain check (`shri_audit_verify`) on the restored copy.
 4. **Portability check (the RDS licence exception, D75):** take a standard `pg_dump` of the restored copy and restore
    it into a self-managed PostgreSQL 18, the development image in `infra/compose/postgres`. Run the migrations' `alembic check`
-   and `shri_audit_verify` there too. This proves the data isn't tied to RDS. At least once a year; every drill if cheap.
+   and `shri_audit_verify` there too. This proves the data isn't tied to RDS. Part of every quarterly drill (D30's cadence).
 5. Record the result and delete the drill instance and the self-managed copy.
 
 The drill instance is never connected to the application.
