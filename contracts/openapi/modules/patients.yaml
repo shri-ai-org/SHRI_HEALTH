@@ -2044,6 +2044,178 @@ paths:
           description: 503. `service-unavailable` (the patient realm is unavailable).
       tags:
       - patients
+  /patients/{patientId}/portal-account/disable:
+    parameters: *id006
+    post:
+      operationId: disablePortalAccount
+      summary: Disable the patient's portal account
+      description: Stops the patient from signing in to the portal, for example when the account is misused or the patient
+        asks to close it. Every portal session of the patient ends at once, with its realm session (back channel), and the
+        realm account is disabled; nothing is deleted. A reason is required and audited. Amends ADR-0013 (D92). Implemented
+        in core. Batch B8a (D89).
+      tags:
+      - patients
+      x-owner: thulasi
+      x-permission: portal-accounts:disable
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAccountStatusChange'
+            examples:
+              disable:
+                summary: Disable
+                value:
+                  reason: Patient asked to close their portal account.
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                done:
+                  summary: Disabled
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: disabled
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+                    disabledAt: '2026-12-02T16:40:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-accounts:disable`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the account is not `active` or `pending-setup`; the problem carries
+            `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the patient realm is unavailable).
+  /patients/{patientId}/portal-account/enable:
+    parameters: *id006
+    post:
+      operationId: enablePortalAccount
+      summary: Enable the patient's portal account
+      description: Lets a disabled account sign in again; its password and second factors are unchanged. A reason is required
+        and audited. Amends ADR-0013 (D92). Implemented in core. Batch B8a (D89).
+      tags:
+      - patients
+      x-owner: thulasi
+      x-permission: portal-accounts:enable
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAccountStatusChange'
+            examples:
+              enable:
+                summary: Enable
+                value:
+                  reason: Patient confirmed their identity at the desk and asked to reopen it.
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                done:
+                  summary: Enabled
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: active
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-accounts:enable`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the account is not `disabled`; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the patient realm is unavailable).
   /duplicates:
     get:
       operationId: listDuplicates
@@ -4340,7 +4512,8 @@ components:
     PortalAccountStatus:
       description: 'The patient''s portal account as the front desk sees it: never a password, factor or code. `none`: no
         account and no active invitation; `invited`: an invitation is active; `pending-setup`: enrolled, but the patient hasn''t
-        finished the realm''s set-up (verify email, password, second factor); `active`; `disabled`.'
+        finished the realm''s set-up (verify email, password, second factor); `active`; `disabled`: ADM disabled it (D92),
+        and `enable` reopens it.'
       type: object
       required:
       - patientId
@@ -4377,6 +4550,10 @@ components:
           $ref: ../components/schemas/Timestamp.yaml
           description: When the second factors were last reset by staff.
           x-phi: none
+        disabledAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the account was disabled; present only while `disabled`.
+          x-phi: none
     PortalFactorResetRequest:
       description: Body to reset a patient's sign-in factors after an ID check at the desk (ADR-0013 §2).
       type: object
@@ -4393,4 +4570,17 @@ components:
           type: string
           maxLength: 500
           description: Anything worth recording (never the ID number).
+          x-phi: clinical
+    PortalAccountStatusChange:
+      description: Body to disable or enable a portal account (D92).
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why; audited, never shown to the patient.
           x-phi: clinical

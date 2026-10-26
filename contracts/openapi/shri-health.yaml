@@ -150,6 +150,10 @@ paths:
     $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-invitations~1{invitationId}~1revoke'
   /patients/{patientId}/portal-account/reset-factors:
     $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account~1reset-factors'
+  /patients/{patientId}/portal-account/disable:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account~1disable'
+  /patients/{patientId}/portal-account/enable:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account~1enable'
   /duplicates:
     $ref: 'modules/patients.yaml#/paths/~1duplicates'
   /duplicates/{duplicateId}/merge:

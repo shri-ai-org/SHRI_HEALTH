@@ -3062,6 +3062,181 @@ paths:
           description: 503. `service-unavailable` (the patient realm is unavailable).
       tags:
         - patients
+  /patients/{patientId}/portal-account/disable:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: disablePortalAccount
+      summary: Disable the patient's portal account
+      description: Stops the patient from signing in to the portal, for example when the account is misused or the patient asks to close it. Every portal session of the patient ends at once, with its realm session (back channel), and the realm account is disabled; nothing is deleted. A reason is required and audited. Amends ADR-0013 (D92). Implemented in core. Batch B8a (D89).
+      tags:
+        - patients
+      x-owner: thulasi
+      x-permission: portal-accounts:disable
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAccountStatusChange'
+            examples:
+              disable:
+                summary: Disable
+                value:
+                  reason: Patient asked to close their portal account.
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                done:
+                  summary: Disabled
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: disabled
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+                    disabledAt: '2026-12-02T16:40:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `portal-accounts:disable`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the account is not `active` or `pending-setup`; the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (the patient realm is unavailable).
+  /patients/{patientId}/portal-account/enable:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: enablePortalAccount
+      summary: Enable the patient's portal account
+      description: Lets a disabled account sign in again; its password and second factors are unchanged. A reason is required and audited. Amends ADR-0013 (D92). Implemented in core. Batch B8a (D89).
+      tags:
+        - patients
+      x-owner: thulasi
+      x-permission: portal-accounts:enable
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAccountStatusChange'
+            examples:
+              enable:
+                summary: Enable
+                value:
+                  reason: Patient confirmed their identity at the desk and asked to reopen it.
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                done:
+                  summary: Enabled
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: active
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `portal-accounts:enable`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the account is not `disabled`; the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (the patient realm is unavailable).
   /duplicates:
     get:
       operationId: listDuplicates
@@ -16264,7 +16439,7 @@ paths:
     post:
       operationId: enrollInPortal
       summary: Enroll with an invitation code
-      description: 'Redeems a front-desk invitation code (ADR-0013 §3, D85): with the matching date of birth it creates the patient realm account for the email given, links it to the chart once, and the realm sends its "set up your account" email (password and second factor are set in the realm, never here, D3). The chart''s existing contacts are told an account was set up, without naming the clinic. Every failure gives the same answer, so codes, accounts and charts cannot be probed; rate-limited per address and per invitation, and an invitation is revoked after 5 failed tries. Public: there is no session yet. Implemented in core (ADR-0013 Consequences).'
+      description: 'Redeems a front-desk invitation code (ADR-0013 §3, D85): with the matching date of birth it creates the patient realm account for the email given, links it to the chart once, and the realm sends its "set up your account" email (password and second factor are set in the realm, never here, D3). The chart''s existing contacts are told an account was set up, without naming the clinic. Every failure gives the same answer, so codes, accounts and charts cannot be probed; rate-limited per address and per invitation, and an invitation is revoked after 5 failed tries. Public: there is no session yet, so there is no CSRF token either; instead the `Origin` header must be the portal host (ADR-0013 §5), which stops another site from posting the form. Implemented in core (ADR-0013 Consequences).'
       tags:
         - portal
       x-owner: thulasi
@@ -16307,6 +16482,9 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the portal host).
         '409':
           $ref: '#/components/responses/Conflict'
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
@@ -16385,6 +16563,14 @@ paths:
                     preferredPharmacy:
                       name: Example Pharmacy
                       city: Springfield
+                    preferredLanguage: en
+                    race:
+                      ombCategories:
+                        - 2106-3
+                    ethnicity:
+                      ombCategories:
+                        - 2135-2
+                    maritalStatus: M
                     pendingChangeRequests:
                       - id: a2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d
                         status: pending
@@ -16509,6 +16695,11 @@ paths:
                       - number: '+12175550188'
                         use: mobile
                   note: New cell phone.
+              language:
+                summary: Preferred language
+                value:
+                  changes:
+                    preferredLanguage: es
       responses:
         '201':
           description: Created. The request, pending.
@@ -16553,7 +16744,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a field is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a field is invalid); `business-rule-violation` (`errors` names `/changes/genderIdentity` or `/changes/sexualOrientation` `not-allowed-value` where the practice does not show these fields, D39); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -16668,6 +16859,7 @@ paths:
                         patientInstruction: Please arrive 15 minutes early.
                         canCancel: false
                         canReschedule: false
+                        visitSummaryId: b3c4d5e6-f7a8-4b9c-8d0e-1f2a3b4c5d6e
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -17623,7 +17815,7 @@ paths:
     get:
       operationId: listPortalProblems
       summary: List my health issues
-      description: The patient's problem list; entered-in-error entries never appear (D24).
+      description: The patient's problem list; entered-in-error entries never appear (D24), and a held one is listed as held, without content (D90).
       tags:
         - portal
       x-owner: vimal
@@ -17662,10 +17854,13 @@ paths:
                   value:
                     items:
                       - id: 8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b
+                        releaseStatus: available
                         display: Type 2 diabetes mellitus without complications
                         clinicalStatus: active
                         onsetDate: '2019'
                         recordedAt: '2026-11-03T15:30:00Z'
+                      - id: 9f0a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c
+                        releaseStatus: held
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -17730,6 +17925,7 @@ paths:
                   summary: One problem
                   value:
                     id: 8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b
+                    releaseStatus: available
                     display: Type 2 diabetes mellitus without complications
                     clinicalStatus: active
                     onsetDate: '2019'
@@ -20576,7 +20772,7 @@ components:
           description: When it stops working (72 hours after issue).
           x-phi: none
     PortalAccountStatus:
-      description: 'The patient''s portal account as the front desk sees it: never a password, factor or code. `none`: no account and no active invitation; `invited`: an invitation is active; `pending-setup`: enrolled, but the patient hasn''t finished the realm''s set-up (verify email, password, second factor); `active`; `disabled`.'
+      description: 'The patient''s portal account as the front desk sees it: never a password, factor or code. `none`: no account and no active invitation; `invited`: an invitation is active; `pending-setup`: enrolled, but the patient hasn''t finished the realm''s set-up (verify email, password, second factor); `active`; `disabled`: ADM disabled it (D92), and `enable` reopens it.'
       type: object
       required:
         - patientId
@@ -20611,6 +20807,10 @@ components:
         factorsResetAt:
           $ref: '#/components/schemas/Timestamp'
           description: When the second factors were last reset by staff.
+          x-phi: none
+        disabledAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the account was disabled; present only while `disabled`.
           x-phi: none
     PortalInvitation:
       description: 'A new invitation with its code. The code is in this response only: it is stored as an HMAC, never logged, and can''t be read again. Print it or read it out at the desk; never email or text it (ADR-0013 §3).'
@@ -20655,6 +20855,19 @@ components:
           type: string
           maxLength: 500
           description: Anything worth recording (never the ID number).
+          x-phi: clinical
+    PortalAccountStatusChange:
+      description: Body to disable or enable a portal account (D92).
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why; audited, never shown to the patient.
           x-phi: clinical
     DuplicateCandidate:
       description: 'A pair of patients that may be the same person. Names are not embedded: the screen fetches the patients the user may see (SECURITY_MODEL §8 rule 7).'
@@ -27318,9 +27531,10 @@ components:
         invitationCode:
           type: string
           maxLength: 14
-          description: 'The invitation code, as printed: 12 Crockford base32 characters in three groups.'
+          description: 'The invitation code as printed (`K7Q2-9MZD-4TXH`), in any case and with or without the dashes. The server normalizes it before checking: upper case, dashes removed, and Crockford''s look-alikes read as digits (`I` and `L` as `1`, `O` as `0`). A code that is still not valid gets the same answer as any other failure.'
           x-phi: identifier
-          pattern: ^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$
+          minLength: 12
+          pattern: ^[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}$
         birthDate:
           $ref: '#/components/schemas/Date'
           description: The patient's date of birth, checked with the code.
@@ -27389,7 +27603,7 @@ components:
           description: Phone, E.164.
           x-phi: identifier
     PortalChangeRequestChanges:
-      description: The details the patient asks to change; only what is sent. Name changes are always reviewed by the front desk against ID.
+      description: The details the patient asks to change; only what is sent. The front desk approves every change before it reaches the chart (D91); name changes are checked against ID.
       type: object
       additionalProperties: false
       minProperties: 1
@@ -27422,6 +27636,43 @@ components:
           $ref: '#/components/schemas/PortalEmergencyContact'
           description: Emergency contact.
           x-phi: identifier
+        preferredLanguage:
+          type: string
+          maxLength: 35
+          description: Preferred language as a BCP 47 tag, e.g. `en`, `es`, `zh-Hant`, as on the chart (D39).
+          x-phi: clinical
+          pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
+        race:
+          $ref: '#/components/schemas/RaceEthnicity'
+          description: Race, as the chart records it (D39).
+          x-phi: clinical
+        ethnicity:
+          $ref: '#/components/schemas/RaceEthnicity'
+          description: Ethnicity, as the chart records it (D39).
+          x-phi: clinical
+        maritalStatus:
+          type: string
+          enum:
+            - A
+            - D
+            - I
+            - L
+            - M
+            - P
+            - S
+            - T
+            - U
+            - W
+          description: Marital status, HL7 v3 MaritalStatus codes, as on the chart.
+          x-phi: clinical
+        genderIdentity:
+          $ref: '#/components/schemas/CodedValue'
+          description: Gender identity (D39). Only where the practice shows sexual orientation and gender identity (`registration.showSexualOrientationAndGenderIdentity`, D39); otherwise refused with `422`.
+          x-phi: clinical
+        sexualOrientation:
+          $ref: '#/components/schemas/CodedValue'
+          description: Sexual orientation (D39). Only where the practice shows sexual orientation and gender identity (`registration.showSexualOrientationAndGenderIdentity`, D39); otherwise refused with `422`.
+          x-phi: clinical
     PortalChangeRequest:
       description: A change request and where it is. `pending` until the front desk accepts or declines it.
       type: object
@@ -27527,6 +27778,43 @@ components:
               maxLength: 60
               description: City.
               x-phi: none
+        preferredLanguage:
+          type: string
+          maxLength: 35
+          description: Preferred language as a BCP 47 tag, e.g. `en`, `es`, `zh-Hant`, as on the chart (D39).
+          x-phi: clinical
+          pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
+        race:
+          $ref: '#/components/schemas/RaceEthnicity'
+          description: Race, as the chart records it (D39).
+          x-phi: clinical
+        ethnicity:
+          $ref: '#/components/schemas/RaceEthnicity'
+          description: Ethnicity, as the chart records it (D39).
+          x-phi: clinical
+        maritalStatus:
+          type: string
+          enum:
+            - A
+            - D
+            - I
+            - L
+            - M
+            - P
+            - S
+            - T
+            - U
+            - W
+          description: Marital status, HL7 v3 MaritalStatus codes, as on the chart.
+          x-phi: clinical
+        genderIdentity:
+          $ref: '#/components/schemas/CodedValue'
+          description: Gender identity (D39). Only where the practice shows sexual orientation and gender identity (`registration.showSexualOrientationAndGenderIdentity`, D39); otherwise never returned.
+          x-phi: clinical
+        sexualOrientation:
+          $ref: '#/components/schemas/CodedValue'
+          description: Sexual orientation (D39). Only where the practice shows sexual orientation and gender identity (`registration.showSexualOrientationAndGenderIdentity`, D39); otherwise never returned.
+          x-phi: clinical
         pendingChangeRequests:
           type: array
           maxItems: 10
@@ -27689,6 +27977,10 @@ components:
           type: boolean
           description: True while the practice allows the patient to reschedule online.
           x-phi: none
+        visitSummaryId:
+          $ref: '#/components/schemas/Id'
+          description: 'Past visits only: the visit summary, once there is one, available or held (D86). Open it with `GET /portal/me/visit-summaries/{visitSummaryId}`.'
+          x-phi: internal-id
     PortalAppointmentList:
       description: 'The patient''s appointments: upcoming soonest first, past newest first.'
       type: object
@@ -28009,21 +28301,24 @@ components:
           description: When the link stops working (5 minutes).
           x-phi: none
     PortalProblem:
-      description: A health issue on the patient's problem list (entered-in-error entries never appear, D24).
+      description: 'A health issue on the patient''s problem list (entered-in-error entries never appear, D24). A clinician may hold a problem from the portal for one of two reasons only (D90): a risk of harm to the life or physical safety of the patient or another person, or the patient''s own request to wait. A held problem is listed with `releaseStatus: held` and its `id` only: no content, and never the reason. Allergies and vitals are never held.'
       type: object
       required:
         - id
-        - display
-        - clinicalStatus
+        - releaseStatus
       properties:
         id:
           $ref: '#/components/schemas/Id'
           description: Problem ID.
           x-phi: internal-id
+        releaseStatus:
+          $ref: '#/components/schemas/PortalReleaseStatus'
+          description: Available or held (D90).
+          x-phi: none
         display:
           type: string
           maxLength: 500
-          description: The problem, in words.
+          description: The problem, in words. Absent while held.
           x-phi: clinical
         clinicalStatus:
           type: string
@@ -28034,7 +28329,7 @@ components:
             - inactive
             - remission
             - resolved
-          description: Status.
+          description: Status. Absent while held.
           x-phi: clinical
         onsetDate:
           $ref: '#/components/schemas/PartialDate'

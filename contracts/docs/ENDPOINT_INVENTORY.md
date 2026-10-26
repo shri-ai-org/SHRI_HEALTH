@@ -332,7 +332,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | Contract batch 3: inbox, tasks and messages (2026-10-26) | #214–217 written; new #252 (single GET), #253 (cancel), #254 (replies), #255 (summary) | D77–D81 |
 | Moved outside `/api/v1` | `/hooks/*`, `/health` (public through Nginx); `/ready` internal and **not in the contract** | API_STANDARDS §2; agreed T24 |
 
-**Count:** 254 contract operations: 255 rows (27 platform, 24 patients, 12 scheduling and eligibility, 29 encounters and notes, 19 history, 9 AI, 17 medications, 18 orders, 80 Anand, 8 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24); #248 from Minalini's M16 sign-off (2026-10-24); #249–251 from batch 2 (single GETs for problems, allergies and co-sign rules, 2026-10-24); #252–255 from batch 3 (inbox, 2026-10-26); #260–289 from portal batch B8a (D89, 2026-10-26; P1, so not in the count above). Recounted when the contract is written.
+**Count:** 254 contract operations: 255 rows (27 platform, 24 patients, 12 scheduling and eligibility, 29 encounters and notes, 19 history, 9 AI, 17 medications, 18 orders, 80 Anand, 8 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24); #248 from Minalini's M16 sign-off (2026-10-24); #249–251 from batch 2 (single GETs for problems, allergies and co-sign rules, 2026-10-24); #252–255 from batch 3 (inbox, 2026-10-26); #260–291 from portal batch B8a (D89, D92, 2026-10-26; P1, so not in the count above). Recounted when the contract is written.
 
 ## Later batches: items recorded on 2026-10-24 (no contract change now)
 
@@ -363,14 +363,14 @@ Minalini's portal screens (#39) and her endpoint note (`frontend/src/features/po
 - **Paths:** one `portal.yaml` under `/api/v1/portal`. Patient data sits under `/portal/me/...` with no patient ID; the patient comes from the session (`PAT`, D84). A record ID in a path must belong to the session's patient, otherwise `404`.
 - **Ownership:** each operation keeps its owning module's `x-owner` (D83).
 - **Release:** everything follows D86: drafts, entered-in-error records and psychotherapy notes are never shown, and items held by a clinician show as held.
-- **Status (D89):** **B8a is in the contract** (#260–289 below, `x-release: P1`, served by the mock). The rows marked B8b are still only mapped; they follow their batches (D88).
+- **Status (D89):** **B8a is in the contract** (#260–291 below, `x-release: P1`, served by the mock). The rows marked B8b are still only mapped; they follow their batches (D88).
 - **Sign-in and enrollment** follow ADR-0013 (#67, proposed): the patient redeems the code with their date of birth and email **before** any account exists, and only then signs in.
 
 | Screen | Her call | Decided path | x-owner | Staff data it reads | Batch (B8b: what it waits for) |
 |---|---|---|---|---|---|
 | Session | `GET /auth/session`, `POST /auth/refresh`, `POST /auth/logout` | `GET /portal/auth/session`, `POST /portal/auth/refresh`, `POST /portal/auth/logout` (patient realm, ADR-0013 §5) | thulasi | `admin.portal_session` (ADR-0013 §5) | **B8a** #262–264 |
 | Sign-in | `POST /portal/auth/login` | `GET /portal/auth/login`, `GET /portal/auth/callback`: the patient realm's sign-in with multi-factor (code + PKCE), like the staff `#1–2` | thulasi | — | **B8a** #260–261 |
-| Enrollment | (replaces registration, below) | `POST /portal/enrollments` `{ invitationCode, birthDate, email }`, public: redeems the code before any account exists, then the realm emails the set-up link (ADR-0013 §3); one answer for every failure. Staff side: `GET /patients/{patientId}/portal-account`, `POST /patients/{patientId}/portal-invitations` (code shown once), `POST …/portal-invitations/{invitationId}/revoke`, `POST /patients/{patientId}/portal-account/reset-factors` | thulasi (enrollment, factor reset); vimal (invitations, account) | `admin.portal_invitation`, `admin.portal_account` | **B8a** #265, #286–289 |
+| Enrollment | (replaces registration, below) | `POST /portal/enrollments` `{ invitationCode, birthDate, email }`, public: redeems the code before any account exists, then the realm emails the set-up link (ADR-0013 §3); one answer for every failure. Staff side: `GET /patients/{patientId}/portal-account`, `POST /patients/{patientId}/portal-invitations` (code shown once), `POST …/portal-invitations/{invitationId}/revoke`, `POST /patients/{patientId}/portal-account/reset-factors`, `…/disable` and `…/enable` (ADM, D92) | thulasi (enrollment, factor reset, disable and enable); vimal (invitations, account) | `admin.portal_invitation`, `admin.portal_account` | **B8a** #265, #286–291 |
 | Alerts and reminders | `GET /portal/alerts` | No separate endpoint: today's and upcoming appointments are `GET /portal/me/appointments?when=upcoming` | vimal | `appointment` | **B8a** #269 |
 | Demographics | `GET`, `PUT /portal/demographics` | `GET /portal/me`; `POST /portal/me/change-requests` (proposed changes go to the front desk as an inbox task, not a direct write; name changes always reviewed) | vimal | `Patient`, `RelatedPerson` (emergency contact), employer (A45) | **B8a** #266–268 |
 | E-signature | `GET`, `PUT /portal/signature` | `GET`, `PUT /portal/me/signature` (the PNG through the files flow) | anand | `binary_object` | B8b; B1 (files) |
@@ -400,11 +400,11 @@ Minalini's portal screens (#39) and her endpoint note (`frontend/src/features/po
 | 262 | GET | `/portal/auth/session` | T | Ad | `authenticated` | – | – | | | §3.8 | B8a | **New**: patient display name, CSRF token, idle and absolute expiry (15 minutes, 4 hours) |
 | 263 | POST | `/portal/auth/refresh` | T | Ad | `authenticated` | sec | – | | | §3.8 | B8a | **New**: "Stay signed in" |
 | 264 | POST | `/portal/auth/logout` | T | Ad | `authenticated` | sec | – | | | §3.8 | B8a | **New**: also ends the realm session (back channel) |
-| 265 | POST | `/portal/enrollments` | T | Ad | `public` | sec | S | | | §3.8 | B8a | **New**: invitation code + date of birth + email; `204`; one `422` for every failure (ADR-0013 §3) |
-| 266 | GET | `/portal/me` | V | Cl | `portal-profile:read` | pr | – | | | §3.8 | B8a | **New**: own details, with pending change requests |
+| 265 | POST | `/portal/enrollments` | T | Ad | `public` | sec | S | | | §3.8 | B8a | **New**: invitation code (any case, dashes optional, normalized on the server) + date of birth + email; `Origin` must be the portal host; `204`; one `422` for every failure (ADR-0013 §3, §5) |
+| 266 | GET | `/portal/me` | V | Cl | `portal-profile:read` | pr | – | | | §3.8 | B8a | **New**: own details with pending change requests; preferred language, race, ethnicity, marital status, and sexual orientation and gender identity where the practice shows them (D91) |
 | 267 | GET | `/portal/me/change-requests` | V | Ad | `portal-profile:read` | pr | – | | | §3.8 | B8a | **New** |
-| 268 | POST | `/portal/me/change-requests` | V | Ad | `portal-profile:request-change` | pw | S | | | §3.8 | B8a | **New**: a front-desk inbox task (D77); nothing on the chart changes until accepted |
-| 269 | GET | `/portal/me/appointments` | V | Cl | `portal-appointments:read` | pr | – | | | §3.8 | B8a | **New**: `when` = `upcoming` or `past`; also feeds the alerts screen |
+| 268 | POST | `/portal/me/change-requests` | V | Ad | `portal-profile:request-change` | pw | S | | | §3.8 | B8a | **New**: a front-desk inbox task (D77); nothing on the chart changes until accepted (D91) |
+| 269 | GET | `/portal/me/appointments` | V | Cl | `portal-appointments:read` | pr | – | | | §3.8 | B8a | **New**: `when` = `upcoming` or `past`; also feeds the alerts screen; a past visit carries `visitSummaryId` |
 | 270 | POST | `/portal/me/appointments` | V | Cl | `portal-appointments:create` | pw | S | | | §3.8 | B8a | **New**: same rules as #51; length from the appointment type; `409 booking-conflict` |
 | 271 | GET | `/portal/me/appointments/{appointmentId}` | V | Cl | `portal-appointments:read` | pr | – | | | §3.8 | B8a | **New** |
 | 272 | POST | `/portal/me/appointments/{appointmentId}/cancel` | V | Cl | `portal-appointments:cancel` | pw | – | | | §3.8 | B8a | **New**: reason required; inside the practice's online window (`canCancel`) |
@@ -416,8 +416,8 @@ Minalini's portal screens (#39) and her endpoint note (`frontend/src/features/po
 | 278 | GET | `/portal/me/visit-summaries` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New**: held ones listed as held (D86) |
 | 279 | GET | `/portal/me/visit-summaries/{visitSummaryId}` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New** |
 | 280 | GET | `/portal/me/visit-summaries/{visitSummaryId}/download-url` | V | F | `portal-records:read` | ex | – | | | §3.8 | B8a | **New**: short-lived link; `409` while held |
-| 281 | GET | `/portal/me/problems` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New**: entered-in-error never shown (D24) |
-| 282 | GET | `/portal/me/problems/{problemId}` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New** |
+| 281 | GET | `/portal/me/problems` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New**: entered-in-error never shown (D24); a held problem listed as held, without content (D90) |
+| 282 | GET | `/portal/me/problems/{problemId}` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New**: a held problem returns only its `id` and `releaseStatus: held` (D90) |
 | 283 | GET | `/portal/me/allergies` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New** |
 | 284 | GET | `/portal/me/allergies/{allergyId}` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New** |
 | 285 | GET | `/portal/me/vitals` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New**: `type`, `dateFrom`, `dateTo`; units as entered (D69) |
@@ -425,6 +425,8 @@ Minalini's portal screens (#39) and her endpoint note (`frontend/src/features/po
 | 287 | POST | `/patients/{patientId}/portal-invitations` | V | Ad | `portal-invitations:create` | sec | – | | | §3.8 | B8a | **New** (staff): after an ID check; the code is in this response only (ADR-0013 §3) |
 | 288 | POST | `/patients/{patientId}/portal-invitations/{invitationId}/revoke` | V | Ad | `portal-invitations:revoke` | sec | – | | | §3.8 | B8a | **New** (staff) |
 | 289 | POST | `/patients/{patientId}/portal-account/reset-factors` | T | Ad | `portal-accounts:reset-factors` | sec | – | | | §3.8 | B8a | **New** (staff): after an ID check, never on a call or email (ADR-0013 §2) |
+| 290 | POST | `/patients/{patientId}/portal-account/disable` | T | Ad | `portal-accounts:disable` | sec | – | | | §3.8 | B8a | **New** (staff, ADM; D92): reason required; ends every portal session at once |
+| 291 | POST | `/patients/{patientId}/portal-account/enable` | T | Ad | `portal-accounts:enable` | sec | – | | | §3.8 | B8a | **New** (staff, ADM; D92): reason required |
 
 **Ruled out by the decisions, with their replacements:**
 

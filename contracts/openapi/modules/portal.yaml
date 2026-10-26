@@ -209,7 +209,8 @@ paths:
         email (password and second factor are set in the realm, never here, D3). The chart''s existing contacts are told an
         account was set up, without naming the clinic. Every failure gives the same answer, so codes, accounts and charts
         cannot be probed; rate-limited per address and per invitation, and an invitation is revoked after 5 failed tries.
-        Public: there is no session yet. Implemented in core (ADR-0013 Consequences).'
+        Public: there is no session yet, so there is no CSRF token either; instead the `Origin` header must be the portal
+        host (ADR-0013 §5), which stops another site from posting the form. Implemented in core (ADR-0013 Consequences).'
       tags:
       - portal
       x-owner: thulasi
@@ -248,6 +249,9 @@ paths:
         '400': &id014
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the portal host).
         '409':
           $ref: ../components/responses/Conflict.yaml
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
@@ -318,6 +322,14 @@ paths:
                     preferredPharmacy:
                       name: Example Pharmacy
                       city: Springfield
+                    preferredLanguage: en
+                    race:
+                      ombCategories:
+                      - 2106-3
+                    ethnicity:
+                      ombCategories:
+                      - 2135-2
+                    maritalStatus: M
                     pendingChangeRequests:
                     - &id013
                       id: a2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d
@@ -421,6 +433,11 @@ paths:
                     - number: '+12175550188'
                       use: mobile
                   note: New cell phone.
+              language:
+                summary: Preferred language
+                value:
+                  changes:
+                    preferredLanguage: es
       responses:
         '201':
           description: Created. The request, pending.
@@ -450,8 +467,9 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a field is invalid); `idempotency-key-reused` (the Idempotency-Key was used
-            with a different body).
+          description: 422. `validation-failed` (a field is invalid); `business-rule-violation` (`errors` names `/changes/genderIdentity`
+            or `/changes/sexualOrientation` `not-allowed-value` where the practice does not show these fields, D39); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
         '429': *id003
         '500': *id004
   /portal/me/appointments:
@@ -545,6 +563,7 @@ paths:
                       patientInstruction: Please arrive 15 minutes early.
                       canCancel: false
                       canReschedule: false
+                      visitSummaryId: b3c4d5e6-f7a8-4b9c-8d0e-1f2a3b4c5d6e
         '400': *id018
         '401': *id010
         '403':
@@ -1262,7 +1281,8 @@ paths:
     get:
       operationId: listPortalProblems
       summary: List my health issues
-      description: The patient's problem list; entered-in-error entries never appear (D24).
+      description: The patient's problem list; entered-in-error entries never appear (D24), and a held one is listed as held,
+        without content (D90).
       tags:
       - portal
       x-owner: vimal
@@ -1297,10 +1317,13 @@ paths:
                     items:
                     - &id026
                       id: 8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b
+                      releaseStatus: available
                       display: Type 2 diabetes mellitus without complications
                       clinicalStatus: active
                       onsetDate: '2019'
                       recordedAt: '2026-11-03T15:30:00Z'
+                    - id: 9f0a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c
+                      releaseStatus: held
         '400': *id018
         '401': *id010
         '403':
@@ -1609,9 +1632,12 @@ components:
         invitationCode:
           type: string
           maxLength: 14
-          description: 'The invitation code, as printed: 12 Crockford base32 characters in three groups.'
+          description: 'The invitation code as printed (`K7Q2-9MZD-4TXH`), in any case and with or without the dashes. The
+            server normalizes it before checking: upper case, dashes removed, and Crockford''s look-alikes read as digits
+            (`I` and `L` as `1`, `O` as `0`). A code that is still not valid gets the same answer as any other failure.'
           x-phi: identifier
-          pattern: ^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$
+          minLength: 12
+          pattern: ^[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}$
         birthDate:
           $ref: ../components/schemas/Date.yaml
           description: The patient's date of birth, checked with the code.
@@ -1680,8 +1706,8 @@ components:
           description: Phone, E.164.
           x-phi: identifier
     PortalChangeRequestChanges:
-      description: The details the patient asks to change; only what is sent. Name changes are always reviewed by the front
-        desk against ID.
+      description: The details the patient asks to change; only what is sent. The front desk approves every change before
+        it reaches the chart (D91); name changes are checked against ID.
       type: object
       additionalProperties: false
       minProperties: 1
@@ -1714,6 +1740,45 @@ components:
           $ref: '#/components/schemas/PortalEmergencyContact'
           description: Emergency contact.
           x-phi: identifier
+        preferredLanguage:
+          type: string
+          maxLength: 35
+          description: Preferred language as a BCP 47 tag, e.g. `en`, `es`, `zh-Hant`, as on the chart (D39).
+          x-phi: clinical
+          pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
+        race:
+          $ref: patients.yaml#/components/schemas/RaceEthnicity
+          description: Race, as the chart records it (D39).
+          x-phi: clinical
+        ethnicity:
+          $ref: patients.yaml#/components/schemas/RaceEthnicity
+          description: Ethnicity, as the chart records it (D39).
+          x-phi: clinical
+        maritalStatus:
+          type: string
+          enum:
+          - A
+          - D
+          - I
+          - L
+          - M
+          - P
+          - S
+          - T
+          - U
+          - W
+          description: Marital status, HL7 v3 MaritalStatus codes, as on the chart.
+          x-phi: clinical
+        genderIdentity:
+          $ref: patients.yaml#/components/schemas/CodedValue
+          description: Gender identity (D39). Only where the practice shows sexual orientation and gender identity (`registration.showSexualOrientationAndGenderIdentity`,
+            D39); otherwise refused with `422`.
+          x-phi: clinical
+        sexualOrientation:
+          $ref: patients.yaml#/components/schemas/CodedValue
+          description: Sexual orientation (D39). Only where the practice shows sexual orientation and gender identity (`registration.showSexualOrientationAndGenderIdentity`,
+            D39); otherwise refused with `422`.
+          x-phi: clinical
     PortalChangeRequestCreate:
       description: 'Body to ask the front desk to change details on the chart (D83 map: a request, not a direct write).'
       type: object
@@ -1853,6 +1918,45 @@ components:
               maxLength: 60
               description: City.
               x-phi: none
+        preferredLanguage:
+          type: string
+          maxLength: 35
+          description: Preferred language as a BCP 47 tag, e.g. `en`, `es`, `zh-Hant`, as on the chart (D39).
+          x-phi: clinical
+          pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
+        race:
+          $ref: patients.yaml#/components/schemas/RaceEthnicity
+          description: Race, as the chart records it (D39).
+          x-phi: clinical
+        ethnicity:
+          $ref: patients.yaml#/components/schemas/RaceEthnicity
+          description: Ethnicity, as the chart records it (D39).
+          x-phi: clinical
+        maritalStatus:
+          type: string
+          enum:
+          - A
+          - D
+          - I
+          - L
+          - M
+          - P
+          - S
+          - T
+          - U
+          - W
+          description: Marital status, HL7 v3 MaritalStatus codes, as on the chart.
+          x-phi: clinical
+        genderIdentity:
+          $ref: patients.yaml#/components/schemas/CodedValue
+          description: Gender identity (D39). Only where the practice shows sexual orientation and gender identity (`registration.showSexualOrientationAndGenderIdentity`,
+            D39); otherwise never returned.
+          x-phi: clinical
+        sexualOrientation:
+          $ref: patients.yaml#/components/schemas/CodedValue
+          description: Sexual orientation (D39). Only where the practice shows sexual orientation and gender identity (`registration.showSexualOrientationAndGenderIdentity`,
+            D39); otherwise never returned.
+          x-phi: clinical
         pendingChangeRequests:
           type: array
           maxItems: 10
@@ -1983,6 +2087,11 @@ components:
           type: boolean
           description: True while the practice allows the patient to reschedule online.
           x-phi: none
+        visitSummaryId:
+          $ref: ../components/schemas/Id.yaml
+          description: 'Past visits only: the visit summary, once there is one, available or held (D86). Open it with `GET
+            /portal/me/visit-summaries/{visitSummaryId}`.'
+          x-phi: internal-id
     PortalAppointmentList:
       description: 'The patient''s appointments: upcoming soonest first, past newest first.'
       type: object
@@ -2304,21 +2413,27 @@ components:
           description: When the link stops working (5 minutes).
           x-phi: none
     PortalProblem:
-      description: A health issue on the patient's problem list (entered-in-error entries never appear, D24).
+      description: 'A health issue on the patient''s problem list (entered-in-error entries never appear, D24). A clinician
+        may hold a problem from the portal for one of two reasons only (D90): a risk of harm to the life or physical safety
+        of the patient or another person, or the patient''s own request to wait. A held problem is listed with `releaseStatus:
+        held` and its `id` only: no content, and never the reason. Allergies and vitals are never held.'
       type: object
       required:
       - id
-      - display
-      - clinicalStatus
+      - releaseStatus
       properties:
         id:
           $ref: ../components/schemas/Id.yaml
           description: Problem ID.
           x-phi: internal-id
+        releaseStatus:
+          $ref: '#/components/schemas/PortalReleaseStatus'
+          description: Available or held (D90).
+          x-phi: none
         display:
           type: string
           maxLength: 500
-          description: The problem, in words.
+          description: The problem, in words. Absent while held.
           x-phi: clinical
         clinicalStatus:
           type: string
@@ -2329,7 +2444,7 @@ components:
           - inactive
           - remission
           - resolved
-          description: Status.
+          description: Status. Absent while held.
           x-phi: clinical
         onsetDate:
           $ref: ../components/schemas/PartialDate.yaml
