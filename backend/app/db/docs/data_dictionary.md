@@ -226,6 +226,35 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 Composite foreign keys: `fk_ai_suggestion_unknown_ai_suggestion_id_tenant`
 
+## `admin.app_session`
+
+Admin (normalized). One server-side login session (reference-token login, T7, D52). The session and CSRF tokens are stored only as SHA-256 hashes, and Keycloak's tokens only encrypted. The cookie is resolved before the clinic is known through ``admin.lookup_session(token_hash)``, a narrow SECURITY DEFINER function, never by a cross-clinic read.
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `user_id` | uuid | no |  | admin.app_user.id | — |
+| `token_hash` | varchar(64) | no |  |  | — |
+| `csrf_token_hash` | varchar(64) | no |  |  | — |
+| `keycloak_access_token_enc` | text | no |  |  | — |
+| `keycloak_refresh_token_enc` | text | no |  |  | — |
+| `last_activity_at` | datetime | no |  |  | — |
+| `tokens_refreshed_at` | datetime | no |  |  | — |
+| `idle_expires_at` | datetime | no |  |  | — |
+| `expires_at` | datetime | no |  |  | — |
+| `revoked_at` | datetime | yes |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_app_session_csrf_token_hash_format`, `ck_app_session_idle_within_absolute`, `ck_app_session_token_hash_format`
+
+Unique: `uq_app_session_token_hash`
+
 ## `admin.app_user`
 
 Admin (normalized). Application profile of a Keycloak identity. tenant_id NULL = Shri platform staff, who get no clinical access by default.
@@ -1134,6 +1163,27 @@ Unique: `uq_erx_transaction_patient_id_id`, `uq_erx_transaction_tenant_id_id`, `
 
 Composite foreign keys: `fk_erx_transaction_integration_message_id_tenant`, `fk_erx_transaction_medication_request_id_same_patient`, `fk_erx_transaction_medication_request_id_tenant`, `fk_erx_transaction_patient_id_tenant`, `fk_erx_transaction_related_transaction_id_same_patient`, `fk_erx_transaction_related_transaction_id_tenant`
 
+## `admin.event_log`
+
+Admin (normalized). Thin events for SSE delivery and Last-Event-ID replay (T28), kept 10 minutes. IDs and statuses only (EVENTS §1). ``seq`` orders replay after a given event; ``id`` is the event UUID sent to the browser.
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `seq` | bigint | no |  |  | — |
+| `facility_id` | uuid | yes |  | admin.facility.id | — |
+| `type` | varchar(100) | no |  |  | — |
+| `subject` | varchar(200) | no |  |  | — |
+| `data` | jsonb | no |  |  | — |
+| `created_at` | datetime | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.facility.tenant_id, admin.tenant.id | — |
+
+Unique: `uq_event_log_seq`
+
+Composite foreign keys: `fk_event_log_facility_id_tenant`
+
 ## `admin.facility`
 
 Admin (normalized). Billing / operational attributes of a practice site. The site itself is a FHIR Location (``location_id``); rooms are child Locations of it.
@@ -1248,6 +1298,35 @@ Unique: `uq_fee_schedule_item_fee_schedule_id_code_system_code_modifier`
 
 Composite foreign keys: `fk_fee_schedule_item_fee_schedule_id_tenant`
 
+## `admin.idempotency_record`
+
+Admin (normalized). One use of an Idempotency-Key (T21, ADR-0007), kept 24 hours. The request body is never stored, only its hash; the response body only encrypted (it may hold patient data). 5xx and 429 responses are not stored.
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `user_id` | uuid | no |  | admin.app_user.id | — |
+| `method` | varchar(10) | no |  |  | — |
+| `path` | varchar(500) | no |  |  | — |
+| `key` | varchar(255) | no |  |  | — |
+| `request_hash` | varchar(64) | no |  |  | — |
+| `state` | varchar(40) | no |  |  | — |
+| `response_status` | smallint | yes |  |  | — |
+| `response_headers` | jsonb | yes |  |  | — |
+| `response_body_enc` | text | yes |  |  | — |
+| `expires_at` | datetime | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_idempotency_record_done_has_response`, `ck_idempotency_record_request_hash_format`, `ck_idempotency_record_state_codes`, `ck_idempotency_record_stored_status`, `ck_idempotency_record_unsafe_method`
+
+Unique: `uq_idempotency_record_tenant_id_user_id_method_path_key`
+
 ## `admin.integration_endpoint`
 
 Admin (normalized). A configured connection: quest-hl7, waystar, erx vendor, sms, fax, payment processor. Credentials are OpenBao references only.
@@ -1314,6 +1393,8 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `message_type` | varchar(30) | no |  |  | — |
 | `status` | varchar(40) | no |  |  | — |
 | `idempotency_key` | varchar(100) | yes |  |  | — |
+| `ordering_key` | varchar(100) | yes |  |  | — |
+| `payload` | jsonb | yes |  |  | — |
 | `correlation_id` | varchar(64) | yes |  |  | — |
 | `control_id` | varchar(60) | yes |  |  | — |
 | `payload_binary_id` | uuid | yes |  | admin.binary_object.id | — |
@@ -1764,6 +1845,29 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 Checks: `ck_openemr_column_map_action_code`, `ck_openemr_column_map_drop_has_reason`, `ck_openemr_column_map_kept_has_target`
 
 Unique: `uq_openemr_column_map_openemr_version_source_table_source_column`
+
+## `admin.operation`
+
+Admin (normalized). Long-running 202 work (T26, API_STANDARDS §13), kept 7 days. IDs, kinds and statuses only; ``error`` is a Problem without patient data. In the MVP only its creator sees it (core).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `kind` | varchar(60) | no |  |  | — |
+| `status` | varchar(40) | no |  |  | — |
+| `result_type` | varchar(64) | yes |  |  | — |
+| `result_id` | uuid | yes |  |  | — |
+| `error` | jsonb | yes |  |  | — |
+| `completed_at` | datetime | yes |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_operation_completed_when_final`, `ck_operation_creator_required`, `ck_operation_failure_has_error`, `ck_operation_result_pair`, `ck_operation_status_codes`
 
 ## `admin.order_set`
 
@@ -2941,6 +3045,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `actor_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `actor_display` | varchar(200) | yes |  |  | — |
 | `action` | varchar(40) | no |  |  | — |
+| `category` | varchar(40) | no |  |  | — |
 | `outcome` | varchar(40) | no |  |  | — |
 | `entity_type` | varchar(64) | yes |  |  | — |
 | `entity_id` | varchar(64) | yes |  |  | — |
@@ -2956,7 +3061,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `hash` | varchar(64) | yes |  |  | — |
 | `tenant_id` | uuid | yes |  | admin.tenant.id | — |
 
-Checks: `ck_audit_event_action_codes`, `ck_audit_event_actor_type_codes`, `ck_audit_event_break_glass_reason`, `ck_audit_event_outcome_codes`, `ck_audit_event_user_actor`
+Checks: `ck_audit_event_action_codes`, `ck_audit_event_actor_type_codes`, `ck_audit_event_break_glass_reason`, `ck_audit_event_category_codes`, `ck_audit_event_outcome_codes`, `ck_audit_event_user_actor`
 
 Unique: `uq_audit_event_event_uuid`, `uq_audit_event_patient_id_id`, `uq_audit_event_tenant_id_chain_seq`
 
@@ -2972,7 +3077,8 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 |---|---|---|---|---|---|
 | `patient_id` | uuid | no |  | audit.audit_event.patient_id, clinical.patient.id | — |
 | `user_id` | uuid | no |  | admin.app_user.id | — |
-| `reason` | varchar(500) | no |  |  | — |
+| `reason_code` | varchar(40) | no |  |  | — |
+| `reason_text` | varchar(500) | yes |  |  | — |
 | `granted_at` | datetime | no |  |  | — |
 | `expires_at` | datetime | no |  |  | — |
 | `audit_event_id` | bigint | yes |  | audit.audit_event.id | — |
@@ -2985,7 +3091,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_break_glass_access_expiry_after_grant`, `ck_break_glass_access_max_24h`, `ck_break_glass_access_reason_stated`, `ck_break_glass_access_review_pair`
+Checks: `ck_break_glass_access_expiry_after_grant`, `ck_break_glass_access_max_24h`, `ck_break_glass_access_other_needs_text`, `ck_break_glass_access_reason_code_codes`, `ck_break_glass_access_review_pair`
 
 Composite foreign keys: `fk_break_glass_access_audit_event_id_same_patient`, `fk_break_glass_access_patient_id_tenant`
 

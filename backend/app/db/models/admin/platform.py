@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -22,7 +23,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import INET
+from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (
@@ -36,7 +37,9 @@ from app.db.base import (
 from app.db.models.enums import (
     ActorType,
     AuditAction,
+    AuditCategory,
     AuditOutcome,
+    BreakGlassReason,
     EndpointEnvironment,
     IntegrationKind,
     IntegrationMessageStatus,
@@ -58,6 +61,9 @@ class AuditEvent(Base, OptionalTenantMixin):
         Index("ix_audit_event_patient_time", "patient_id", "recorded_at"),
         Index("ix_audit_event_actor_time", "actor_user_id", "recorded_at"),
         Index("ix_audit_event_entity", "entity_type", "entity_id"),
+        # Platform security events with no clinic (A47), for the later platform reviewer role.
+        Index("ix_audit_event_platform_time", "recorded_at",
+              postgresql_where=text("tenant_id IS NULL")),
         CheckConstraint("action <> 'break-glass' OR reason IS NOT NULL",
                         name="break_glass_reason"),
         CheckConstraint("actor_type <> 'user' OR actor_user_id IS NOT NULL", name="user_actor"),
@@ -71,6 +77,8 @@ class AuditEvent(Base, OptionalTenantMixin):
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
     actor_display: Mapped[str | None] = mapped_column(String(200))
     action: Mapped[AuditAction] = mapped_column(enum_type(AuditAction), nullable=False)
+    # SECURITY_MODEL §6 category. Clinic-less rows are allowed only for security events (A47).
+    category: Mapped[AuditCategory] = mapped_column(enum_type(AuditCategory), nullable=False)
     outcome: Mapped[AuditOutcome] = mapped_column(enum_type(AuditOutcome), nullable=False)
     entity_type: Mapped[str | None] = mapped_column(String(64))     # FHIR type or table name
     entity_id: Mapped[str | None] = mapped_column(String(64))
@@ -93,7 +101,10 @@ class BreakGlassAccess(Base, AdminMixin):
     __table_args__ = (
         CheckConstraint("expires_at > granted_at", name="expiry_after_grant"),
         CheckConstraint("expires_at <= granted_at + interval '24 hours'", name="max_24h"),
-        CheckConstraint("length(trim(reason)) >= 10", name="reason_stated"),
+        # D53: a reason code; free text is required only for "other". coalesce, because a
+        # CHECK that evaluates to NULL passes: without it, "other" with no text would too.
+        CheckConstraint("reason_code <> 'other' OR coalesce(length(trim(reason_text)), 0) >= 1",
+                        name="other_needs_text"),
         CheckConstraint("(reviewed_at IS NULL) = (reviewed_by_user_id IS NULL)",
                         name="review_pair"),
         Index("ix_break_glass_access_active", "user_id", "patient_id", "expires_at"),
@@ -101,7 +112,9 @@ class BreakGlassAccess(Base, AdminMixin):
 
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.app_user.id"), nullable=False)
-    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    reason_code: Mapped[BreakGlassReason] = mapped_column(enum_type(BreakGlassReason),
+                                                          nullable=False)
+    reason_text: Mapped[str | None] = mapped_column(String(500))
     granted_at: Mapped[datetime] = mapped_column(nullable=False)
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     audit_event_id: Mapped[int | None] = mapped_column(BigInteger,
@@ -222,6 +235,11 @@ class IntegrationMessage(Base, AdminMixin):
     __tablename__ = "integration_message"
     __table_args__ = (
         Index("ix_integration_message_dispatch", "status", "next_attempt_at"),
+        # The outbox (T29, D25): due outbound work, and per-key order (a CancelRx never
+        # overtakes its NewRx). Claimed through admin.claim_outbound_messages().
+        Index("ix_integration_message_outbound_due", "next_attempt_at",
+              postgresql_where=text("direction = 'outbound' AND status IN ('queued', 'failed')")),
+        Index("ix_integration_message_ordering", "tenant_id", "ordering_key", "created_at"),
         Index("ix_integration_message_control", "endpoint_id", "control_id"),
         UniqueConstraint("tenant_id", "idempotency_key"),
         UniqueConstraint("endpoint_id", "direction", "control_id"),   # HL7 MSH-10 dedupe
@@ -240,6 +258,8 @@ class IntegrationMessage(Base, AdminMixin):
     status: Mapped[IntegrationMessageStatus] = mapped_column(enum_type(IntegrationMessageStatus),
                                                              nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(100))
+    ordering_key: Mapped[str | None] = mapped_column(String(100))
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)   # outbound job: IDs only
     correlation_id: Mapped[str | None] = mapped_column(String(64))
     control_id: Mapped[str | None] = mapped_column(String(60))      # MSH-10 / ISA13 / ST02
     payload_binary_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(

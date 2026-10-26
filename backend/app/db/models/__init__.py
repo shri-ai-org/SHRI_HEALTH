@@ -13,7 +13,17 @@ from app.db.base import Base
 from app.db.constraints import apply_all as _apply_constraints
 
 from . import enums, systems  # noqa: F401
-from .admin import ai, comms, core, medication, orders, platform, practice, rcm  # noqa: F401
+from .admin import (  # noqa: F401
+    ai,
+    comms,
+    core,
+    medication,
+    orders,
+    platform,
+    practice,
+    rcm,
+    runtime,  # noqa: F401  (imported to register its tables)
+)
 from .fhir import clinical, datatypes, directory, documents, records, workflow  # noqa: F401
 from .fhir import medication as fhir_medication  # noqa: F401  (imported to register its tables)
 from .fhir import orders as fhir_orders  # noqa: F401  (imported to register its tables)
