@@ -42,13 +42,13 @@ export interface PatientPatch {
   previousNames?: HumanName[] | null;
   /** Date of birth. Required at registration (D44): matching, eligibility and claims need it. */
   birthDate?: Date;
-  /** Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (the schema column is NOT NULL). **Pending schema lock.** Send `null` to clear it. */
+  /** Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). Send `null` to clear it. */
   gender?: AdministrativeGender | null;
   /** Sex assigned at birth (D39). Send `null` to clear it. */
   birthSex?: BirthSex | null;
-  /** Gender identity, US Core gender-identity value set (D39). No column yet. **Pending schema lock.** Send `null` to clear it. */
+  /** Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it. */
   genderIdentity?: CodedValue | null;
-  /** Sexual orientation, US Core sexual-orientation value set (D39). No column yet. **Pending schema lock.** Send `null` to clear it. */
+  /** Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it. */
   sexualOrientation?: CodedValue | null;
   /** Race (D39). Send `null` to clear it. */
   race?: RaceEthnicity | null;
@@ -66,11 +66,11 @@ export interface PatientPatch {
      * @nullable
      */
   maritalStatus?: PatientPatchMaritalStatus;
-  /** Occupation (D39; approved P0 item). No column yet. **Pending schema lock.** Send `null` to clear it. */
+  /** Occupation (D39; approved P0 item). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it. */
   occupation?: CodedValue | null;
-  /** Industry (D39; approved P0 item). No column yet. **Pending schema lock.** Send `null` to clear it. */
+  /** Industry (D39; approved P0 item). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it. */
   industry?: CodedValue | null;
-  /** Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). No column yet. **Pending schema lock.** Send `null` to clear it. */
+  /** Tribal affiliation, US Core tribal-affiliation value set (D39; approved P0 item). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it. */
   tribalAffiliation?: CodedValue | null;
   /** Phone numbers. Send `null` to clear it. */
   phones?: Phone[] | null;
@@ -78,6 +78,6 @@ export interface PatientPatch {
   emails?: Email[] | null;
   /** Home address. Send `null` to clear it. */
   address?: Address | null;
-  /** Employer. **Pending schema lock.** Send `null` to clear it. */
+  /** Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it. */
   employer?: Employer | null;
 }

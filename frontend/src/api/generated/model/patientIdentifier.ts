@@ -28,7 +28,7 @@ export interface PatientIdentifier {
   /** Identifier type. */
   type: PatientIdentifierType;
   /**
-     * Namespace of the value, e.g. a state's driver's license OID. The MRN system is per practice. **Pending schema lock.**
+     * Namespace of the value, e.g. a state's driver's license OID. The MRN system is per practice (D41); `identifier.system` is at most 300 characters.
      * @maxLength 300
      */
   system?: string;

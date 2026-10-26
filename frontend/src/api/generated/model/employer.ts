@@ -18,7 +18,7 @@ import type { Address } from './address';
 import type { PhoneNumber } from './phoneNumber';
 
 /**
- * Employer of a patient or subscriber (approved P0 item, D38; workers' compensation claims need it). **Pending schema lock.**
+ * Employer of a patient or subscriber (approved P0 item, D38; workers' compensation claims need it). Decided (D38/D39); its column is migration item A45 (Anand).
  */
 export interface Employer {
   /**

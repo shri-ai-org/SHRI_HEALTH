@@ -1606,7 +1606,7 @@ export const getSetPreferredPharmacyUrl = (patientId: Id,) => {
 }
 
 /**
- * Sets the patient's preferred pharmacy from the pharmacy directory (inventory #43). `If-Match` carries the patient's current `ETag`, because the preferred pharmacy is part of the patient record; the response carries the patient's new `ETag`. Setting it must bump the patient version. **Pending schema lock.**
+ * Sets the patient's preferred pharmacy from the pharmacy directory (inventory #43). `If-Match` carries the patient's current `ETag`, because the preferred pharmacy is part of the patient record; the response carries the patient's new `ETag`. The service sets the default row in `patient_pharmacy` (one default per patient, `uq_patient_pharmacy_one_default`) and updates the patient row in the same transaction, so the patient's version and `_history` change.
  * @summary Set the preferred pharmacy
  */
 export const setPreferredPharmacy = async (patientId: Id,

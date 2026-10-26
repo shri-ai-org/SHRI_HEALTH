@@ -740,7 +740,7 @@ export const getRecordVisitStatusUrl = (appointmentId: Id,) => {
 }
 
 /**
- * Records `arrived`, `roomed`, `with-provider`, `checked-out` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. Each step is kept with its time (visit status history, an approved P0 item). **Pending schema lock.**
+ * Records `arrived`, `roomed`, `with-provider`, `checked-out` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment's `_history`.
  * @summary Record a visit step
  */
 export const recordVisitStatus = async (appointmentId: Id,

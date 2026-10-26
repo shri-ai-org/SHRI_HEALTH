@@ -45,7 +45,7 @@ export interface RelatedPersonPatch {
   emails?: Email[] | null;
   /** Address. Send `null` to clear it. */
   address?: Address | null;
-  /** Employer of a subscriber (approved P0 item, D38). **Pending schema lock.** Send `null` to clear it. */
+  /** Employer of a subscriber (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it. */
   employer?: Employer | null;
   /** Set to false when the relationship ends. */
   active?: boolean;

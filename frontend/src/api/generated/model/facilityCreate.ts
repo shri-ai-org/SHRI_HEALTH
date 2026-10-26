@@ -34,7 +34,7 @@ export interface FacilityCreate {
      */
   name: string;
   /**
-     * IANA time zone, e.g. `America/Chicago`. Appointments display in this zone (D40). Required here although the schema column is nullable. **Pending schema lock.**
+     * IANA time zone, e.g. `America/Chicago`. Appointments display in this zone (D40). Required by the API; `facility.timezone` is still nullable in the schema, so NOT NULL is migration item A45.
      * @maxLength 64
      * @pattern ^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$
      */
