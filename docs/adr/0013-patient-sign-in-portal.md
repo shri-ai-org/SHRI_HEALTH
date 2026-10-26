@@ -54,6 +54,7 @@ Staff sign-in (ADR-0006) is the model, but patients differ in four ways:
 2. **Redeem (patient, at home):** the portal's "Set up your account" page sends the code, the patient's date of birth and the email address they want to use to `POST /api/v1/portal/enrolments`.
    - The date of birth isn't a secret. It only stops a code that someone saw over a shoulder from being used by anyone else.
    - The API checks all three in one constant-time path and answers the same "We couldn't use that code" for every failure: unknown, expired, used, revoked, or date of birth doesn't match.
+   - **The check runs in the database:** `admin.redeem_portal_invitation(code_hmac, birth_date)` (`SECURITY DEFINER`, pinned `search_path`, EXECUTE for `shri_app` only). The API therefore never reads a chart's date of birth before the patient is known. On success it marks the invitation used and returns the clinic, patient and invitation ID. On any failure it returns nothing and adds one failed try. The API commits that transaction even when it answers "We couldn't use that code", so failed tries count.
    - It's rate-limited per IP and per invitation, and an invitation is revoked after 5 failed tries.
 3. **Account creation:** on success, in one transaction:
    - the invitation is marked used;
@@ -70,7 +71,7 @@ Staff sign-in (ADR-0006) is the model, but patients differ in four ways:
 - **Done by the patient realm, not our API** (D3). "Forgot password" sends a reset link to the verified email.
 - **The page always says the same thing,** "If that address has an account, we've sent a link", whether or not it does, with the same timing. It's rate-limited per IP and per address.
 - **A reset never removes the second factor.** The next sign-in still asks for it.
-- **The username is the email address,** so there's no separate username recovery. A patient who doesn't remember which email they used comes to the front desk, which can see the email on the portal link without seeing the password.
+- **The username is the email address,** so there's no separate username recovery. A patient who doesn't remember which email they used comes to the front desk, which can see the sign-in email without seeing the password. Core reads the email from Keycloak through the service account when the front desk opens the portal-account panel (audited), so it isn't stored a second time in our database where it could drift.
 
 ### 5. How the API knows a patient session
 
@@ -80,13 +81,22 @@ Staff sign-in (ADR-0006) is the model, but patients differ in four ways:
   - `admin.portal_account`: the Keycloak user ID (unique), patient, clinic, status;
   - `admin.portal_session`: the `app_session` columns for patients, with `patient_id` instead of `user_id`.
 
-  A staff session lookup can never return a patient session, and the reverse: each has its own `SECURITY DEFINER` lookup, granted to `shri_app` only. The retention purge covers `portal_session` and used or expired invitations.
+  A staff session lookup can never return a patient session, and the reverse: each has its own `SECURITY DEFINER` lookup. Three steps happen before a clinic is known, and each has its own narrow function (IDs only, active or live rows only, EXECUTE for `shri_app` only):
+  - `admin.lookup_portal_session(token_hash)`: cookie to session;
+  - `admin.lookup_portal_account(keycloak_user_id)`: at `/callback`, the account's clinic and patient;
+  - `admin.redeem_portal_invitation(code_hmac, birth_date)`: §3.
+
+  The retention purge covers `portal_session` and used, revoked or expired invitations.
 - **Core** adds `current_patient` and `tenant_db` for portal sessions:
   - the clinic and the patient come from the session row only (D84);
   - `app.current_tenant_id` is set as for staff, with `app.current_patient_id` added;
   - role `PAT`, with only portal permissions (B8).
   - **Staff routes refuse portal sessions** and portal routes refuse staff sessions, checked in core, not in each endpoint.
-- **Own record only:** a shared core dependency checks that any record ID in a portal path belongs to the session's patient, before the endpoint runs. Otherwise it returns `404` (not `403`), so a patient can't learn that someone else's record exists (D84). Restricted charts (D37) don't apply to the patient's own chart. A record held by a clinician (D86) is listed as held, without its content, so the patient sees a neutral "held by your clinician" marker and never mistakes silence for "no results".
+- **Own record only, in core and in the database (Anand, #67):**
+  - **In core:** a shared dependency checks that any record ID in a portal path belongs to the session's patient, before the endpoint runs. Otherwise it returns `404` (not `403`), so a patient can't learn that someone else's record exists (D84).
+  - **In the database:** portal requests run as their own role, **`shri_portal`** (`PORTAL_DATABASE_URL`), never as `shri_app`. Restrictive SELECT policies, generated from the models with #69's rules, show it only rows of the chart in `app.current_patient_id`. Its write grants cover only what a patient may create (messages, change requests, appointment requests and payments, as B8 defines them).
+
+    A bug in the core check then shows a patient nothing beyond their own chart, as `/fhir` is safe in the database (#69). This is a D23 amendment (Vimal) and a role in the database image and the RDS first run (Thulasi). Restricted charts (D37) don't apply to the patient's own chart. A record held by a clinician (D86) is listed as held, without its content, so the patient sees a neutral "held by your clinician" marker and never mistakes silence for "no results".
 - **Timeouts (proposed; final values with Q20):**
   - idle 15 minutes, with the same warning and "Stay signed in" as staff;
   - absolute **4 hours** (portal visits are short, and a longer limit only helps an attacker on a shared home computer).
@@ -105,7 +115,11 @@ Staff sign-in (ADR-0006) is the model, but patients differ in four ways:
 | Every portal read of patient data | `phi-read` | `patient` | Patient, resource, as staff reads are |
 | Patient-initiated writes (messages, requests, payments) | `phi-write` | `patient` | As above |
 
-Keycloak's own event log for the patient realm (login failures, password resets, factor changes) is on and kept for 90 days. A failed patient sign-in that never reaches our API is recorded there.
+Keycloak's own event log for the patient realm (login failures, password resets, factor changes) is on, and so are the staff realm's. **Core copies those events into `audit_event`** every few minutes as `security` rows: a job reads them through the service account with `view-events`, and resumes from the last event it copied. Our audit trail therefore keeps them for the full retention (Q26: 6 years). Keycloak's own 90 days are only a buffer, which covers a failed sign-in that never reaches our API.
+
+**Patient authorship:** history and provenance rows written in a portal session record the patient (`app.current_patient_id`), since there is no `app_user` (Anand, follow-up (n)). Most patient writes are requests (change requests, appointment requests), so a chart change is still made, and authored, by the staff member who applies the request.
+
+**Chart merges (D51):** when a chart with a portal account is merged into another, the account is **suspended**, not moved, and its sessions end. A wrong merge must never show one person the other's chart. The front desk issues a new invitation for the surviving chart after checking ID, and undoing the merge restores the suspended account. This is for the merge service.
 
 ### 7. Threat model
 
@@ -116,8 +130,8 @@ Keycloak's own event log for the patient realm (login failures, password resets,
 | **Enrolment by a stranger** (knows name and date of birth) | Enrolment needs an invitation code issued in person; name and date of birth alone never link an account (D85) |
 | **Invitation interception or reuse** | Given only in person; 72 hours; single use; one active per patient; revoked after 5 failed tries; date of birth checked with it; stored only as HMAC; notice sent to the chart's existing contacts |
 | **Enumeration** (does this person have an account, or a chart here?) | The same answer and timing for every enrolment and reset failure; rate limits; record IDs owned by someone else give `404` |
-| **One patient reading another's records** | No patient ID in any portal request (D84); the shared ownership check before every endpoint; RLS by clinic underneath |
-| **A patient session reaching staff data, or a staff session the portal** | Separate realm, host, cookie, session table and lookup function; route guards in core |
+| **One patient reading another's records** | No patient ID in any portal request (D84); the shared ownership check before every endpoint; and underneath, the `shri_portal` role's policies, which show only the session patient's chart |
+| **A patient session reaching staff data, or a staff session the portal** | Separate realm, host, cookie, session table, lookup functions and database role; route guards in core |
 | **Session theft** | `__Host-` cookie, `HttpOnly`, `Secure`, `SameSite=Strict`; host-only on the portal host; 15 minutes idle and 4 hours absolute; new session ID at every login; tokens never in the browser |
 | **CSRF and clickjacking** | `X-CSRF-Token` with `Origin` checked; CSP `frame-ancestors 'none'` |
 | **Login flooding** | Nginx and app rate limits; Keycloak's temporary lockouts, never permanent |
@@ -139,12 +153,20 @@ Keycloak's own event log for the patient realm (login failures, password resets,
   - realm export and client in `infra/keycloak/` (the patient realm next to the staff realm);
   - the portal Nginx server block;
   - core's portal session, `current_patient`, route guards, the ownership check, the enrolment endpoint and the multi-factor reset;
+  - the `shri_portal` role in the database image and the RDS first run, and its `PORTAL_DATABASE_URL`;
+  - the job that copies Keycloak events into `audit_event`;
   - rate limits;
   - the B8 permissions and SECURITY_MODEL rows, landed together.
 - **Vimal:**
   - in the staff contract (patients module, with B8): `POST /patients/{patientId}/portal-invitations` and `…/revoke` (`portal-invitations:create|revoke`; FD, ADM), and `POST /patients/{patientId}/portal-account/reset-factors` (`portal-accounts:reset-factors`; ADM, and FD after the ID check);
   - in `portal.yaml`: the portal auth routes and `POST /portal/enrolments`.
-- **Anand:** `portal_invitation`, `portal_account` and `portal_session`, their lookup function, and purge coverage, in one migration.
+- **Anand** (follow-up (n), one migration):
+  - `portal_invitation`, `portal_account` and `portal_session`;
+  - the three lookup and redeem functions;
+  - the `shri_portal` grants and its own-chart policies;
+  - patient authorship in history;
+  - purge coverage.
+- **Vimal:** the D23 amendment for `shri_portal`.
 - **Minalini:**
   - the enrolment page (code, date of birth, email);
   - the factor setup and sign-in pages (served by Keycloak with our theme);
