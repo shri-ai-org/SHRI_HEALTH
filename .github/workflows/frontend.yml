@@ -30,6 +30,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0  # the client check compares the PR with its base
 
       # The frontend is on main (#19), so a missing lock file is an error, never a green skip:
       # without it, npm ci cannot install the reviewed, pinned versions (issue #25).
@@ -62,10 +63,17 @@ jobs:
         run: npm test
 
       # The client in src/api/generated/ is never edited by hand (CLAUDE.md): regenerating it from
-      # the committed contract bundle must give exactly the committed files, so a hand edit or a
-      # contract change without a regenerated client fails here. Skipped only while there is no
-      # orval config and no generated code (before #29); generated code without the config fails.
+      # the committed contract bundle must give exactly the committed files.
+      # - A PR that changes frontend/ fails on any difference (a hand edit, or a stale client).
+      # - A contract-only PR, and main, only warn: contract PRs can't edit frontend/, so the client
+      #   is regenerated in Minalini's follow-up PR after the contract merges (Vimal, #36).
+      # Skipped only while there is no orval config and no generated code (before #29); generated
+      # code without the config always fails.
       - name: Generated client matches the contract
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ ! -f orval.config.ts ]; then
             if [ -n "$(find src/api/generated -name '*.ts' 2>/dev/null)" ]; then
@@ -77,11 +85,15 @@ jobs:
           fi
           npm run generate
           changes="$(git status --porcelain --untracked-files=all -- src/api/generated)"
-          if [ -n "$changes" ]; then
-            echo "$changes"
+          if [ -z "$changes" ]; then
+            exit 0
+          fi
+          echo "$changes"
+          if [ "$EVENT" = "pull_request" ] && [ -n "$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- .)" ]; then
             echo "::error::src/api/generated/ differs from what the contract generates. Run 'npm run generate' in frontend/ and commit the result; never edit it by hand."
             exit 1
           fi
+          echo "::warning::The contract changed and src/api/generated/ is not regenerated yet. Minalini regenerates it in a follow-up PR ('npm run generate' in frontend/)."
 
       - name: Build
         run: npm run build
