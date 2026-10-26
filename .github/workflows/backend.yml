@@ -74,6 +74,15 @@ jobs:
         working-directory: backend
         run: mypy app
 
+      - name: Migrate
+        working-directory: backend
+        run: |
+          docker exec db psql -U postgres -d shri_health -c "CREATE EXTENSION IF NOT EXISTS vector"
+          docker exec -i db psql -v ON_ERROR_STOP=1 -U postgres -d shri_health < app/db/sql/00_extensions.sql
+          export MIGRATION_DATABASE_URL="postgresql+psycopg://shri_migrator:${SHRI_MIGRATOR_PASSWORD}@127.0.0.1:5432/shri_health"
+          alembic -c app/db/alembic.ini upgrade head
+          alembic -c app/db/alembic.ini check
+
       - name: Tests
         working-directory: backend
         env:
