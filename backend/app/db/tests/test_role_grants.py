@@ -1,4 +1,5 @@
-"""Migration 0003: what each service role may do on the public and audit schemas.
+"""Migrations 0003 and 0004: what each service role may do on the public and audit schemas,
+and on the result tables the partner worker files into.
 
 Every test runs as the real role (SET ROLE from the superuser URL, see conftest.py), with forced
 row-level security in force, and checks the database's own answer: a refused statement must
@@ -14,7 +15,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
-from app.db.models import systems
+from app.db.models import MAPPERS, systems
 from app.db.tests import builders as b
 from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, make_tenant, switch_to_role, sync_url
 
@@ -192,3 +193,118 @@ def test_chain_verifies_with_rows_from_app_and_fhir_reader(
                              {"t": tenant}).scalar_one()
     assert seqs == [1, 2, 3, 4]
     assert problems == 0
+
+
+# --------------------------------------------------------------------------- migration 0004
+ALL_ROLES = (*WRITERS, "shri_reporting")
+INTEGRATION = "shri_integration"
+
+
+def test_app_reads_the_audit_trail_of_its_clinic_only(admin_engine: Engine, app_engine: Engine,
+                                                       role_engine: dict[str, Engine]) -> None:
+    mine, theirs = make_tenant(admin_engine), make_tenant(admin_engine)
+    for tenant in (mine, theirs):
+        with app_engine.connect() as conn:
+            with_clinic(conn, tenant)
+            conn.execute(AUDIT_INSERT, {"t": tenant})
+            conn.commit()
+    with role_engine["shri_app"].connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM audit.audit_event")).scalar_one() == 0
+        conn.rollback()
+        with_clinic(conn, mine)
+        rows = conn.execute(text("SELECT tenant_id, action, hash FROM audit.audit_event "
+                                 "WHERE tenant_id IN (:a, :b)"), {"a": mine, "b": theirs}).all()
+    assert [r.tenant_id for r in rows] == [mine] and rows[0].hash
+
+
+@pytest.mark.parametrize("role", ALL_ROLES)
+def test_no_role_can_change_or_remove_audit_rows(admin_engine: Engine, app_engine: Engine,
+                                                 role_engine: dict[str, Engine],
+                                                 role: str) -> None:
+    tenant = make_tenant(admin_engine)
+    with app_engine.connect() as conn:
+        with_clinic(conn, tenant)
+        conn.execute(AUDIT_INSERT, {"t": tenant})
+        conn.commit()
+    with admin_engine.connect() as c:
+        for privilege in ("UPDATE", "DELETE", "TRUNCATE"):
+            assert not c.execute(text("SELECT has_table_privilege(:r, 'audit.audit_event', :p)"),
+                                 {"r": role, "p": privilege}).scalar_one(), (role, privilege)
+    with role_engine[role].connect() as conn:
+        with_clinic(conn, tenant)
+        assert_refused(conn, "UPDATE audit.audit_event SET reason = 'changed'")
+        assert_refused(conn, "DELETE FROM audit.audit_event")
+
+
+def test_integration_is_insert_only_on_audit(admin_engine: Engine,
+                                             role_engine: dict[str, Engine]) -> None:
+    tenant, other = make_tenant(admin_engine), make_tenant(admin_engine)
+    with role_engine[INTEGRATION].connect() as conn:
+        with_clinic(conn, tenant)
+        conn.execute(AUDIT_INSERT, {"t": tenant})          # allowed, no RETURNING
+        assert_refused(conn, "SELECT id FROM audit.audit_event")
+        assert_refused(conn, AUDIT_INSERT.text, {"t": other})  # RLS: another clinic
+        assert_refused(conn, "SELECT * FROM audit.break_glass_access")
+        assert_refused(conn, "INSERT INTO audit.break_glass_access (tenant_id) VALUES (:t)",
+                       {"t": tenant})
+        conn.commit()
+    with admin_engine.connect() as c:
+        row = c.execute(text("SELECT chain_seq, hash FROM audit.audit_event "
+                             "WHERE tenant_id = :t"), {"t": tenant}).one()
+    assert row.chain_seq == 1 and row.hash
+
+
+def test_integration_reads_and_writes_its_result_tables_but_never_deletes(
+        admin_engine: Engine) -> None:
+    with admin_engine.connect() as c:
+        tables = c.execute(text(
+            "SELECT format('%I.%I', schemaname, tablename) FROM pg_tables "
+            "WHERE schemaname IN ('clinical', 'admin') "
+            "AND has_table_privilege(:r, format('%I.%I', schemaname, tablename), 'INSERT')"),
+            {"r": INTEGRATION}).scalars().all()
+        assert {"clinical.observation", "clinical.diagnostic_report"} <= set(tables)
+        for table in tables:
+            for privilege, expected in (("SELECT", True), ("UPDATE", True), ("DELETE", False)):
+                granted = c.execute(text("SELECT has_table_privilege(:r, :t, :p)"),
+                                    {"r": INTEGRATION, "t": table, "p": privilege}).scalar_one()
+                assert granted is expected, (table, privilege)
+
+
+def test_integration_reads_nothing_else(role_engine: dict[str, Engine],
+                                        tenant: uuid.UUID) -> None:
+    with role_engine[INTEGRATION].connect() as conn:
+        with_clinic(conn, tenant)
+        assert_refused(conn, "SELECT * FROM clinical.patient")
+        assert_refused(conn, "SELECT * FROM clinical.condition")
+        assert_refused(conn, "SELECT * FROM clinical.medication_request")
+
+
+def test_integration_files_a_corrected_lab_result(db: Session, admin_engine: Engine,
+                                                  role_engine: dict[str, Engine]) -> None:
+    ctx = b.practice(db)
+    pt = b.patient(db)
+    enc = b.encounter(db, pt, ctx)
+    obs = MAPPERS["observation"](status="final", code_system=systems.LOINC, code_code="2345-7",
+                                 subject_patient_id=pt.id, encounter_id=enc.id,
+                                 effective_date_time=b.NOW, value_quantity_value=99)
+    db.add(obs)
+    db.commit()
+    correct = text("UPDATE clinical.observation SET value_quantity_value = 199, "
+                   "status = 'corrected' WHERE id = :i")
+    other = make_tenant(admin_engine)
+    with role_engine[INTEGRATION].connect() as conn:
+        with_clinic(conn, other)                      # another clinic cannot see the row
+        assert conn.execute(correct, {"i": obs.id}).rowcount == 0
+        conn.rollback()
+        with_clinic(conn, db.info["tenant_id"])
+        assert conn.execute(correct, {"i": obs.id}).rowcount == 1
+        assert_refused(conn, "DELETE FROM clinical.observation WHERE id = :i", {"i": obs.id})
+        conn.commit()
+    with admin_engine.connect() as c:
+        status = c.execute(text("SELECT status FROM clinical.observation WHERE id = :i"),
+                           {"i": obs.id}).scalar_one()
+        versions = c.execute(text(
+            "SELECT snapshot->>'value_quantity_value' FROM clinical.fhir_resource_history "
+            "WHERE resource_id = :i ORDER BY version_id"), {"i": obs.id}).scalars().all()
+    assert status == "corrected"
+    assert [float(v) for v in versions] == [99.0, 199.0]

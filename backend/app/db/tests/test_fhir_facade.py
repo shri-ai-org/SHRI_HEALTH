@@ -327,8 +327,8 @@ def test_http_read_vread_history_search(client: TestClient,
                             "code": f"{systems.LOINC}|85354-9"}).json()
     validate(obs)
     assert obs["total"] == 1
-    # shri_app is insert-only on audit_event (D23) - verifying entries exist needs a role that
-    # can actually read it, same as every other audit-review access in this test file.
+    # Audit rows are checked as the superuser, the same as every other audit-review access in
+    # this test file, so the check does not depend on the role under test.
     with admin_engine.connect() as c:
         audited = c.execute(text("SELECT count(*) FROM audit.audit_event WHERE patient_id = :p "
                                  "AND action = 'read'"), {"p": pt.id}).scalar_one()

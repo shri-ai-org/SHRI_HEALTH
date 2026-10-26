@@ -44,9 +44,9 @@ schema changes, never for serving a request.
 
 | Role | Use | Access |
 |---|---|---|
-| `shri_app` | the API | `clinical` + `admin` read/write per table (see `tools/gen_db_rules.py`'s classification); `audit.audit_event` insert-only, `audit.break_glass_access` select+insert |
+| `shri_app` | the API | `clinical` + `admin` read/write per table (see `tools/gen_db_rules.py`'s classification); `audit.audit_event` select+insert, never update or delete (0004), `audit.break_glass_access` select+insert |
 | `shri_fhir_reader` | `/fhir` (read-only, machine-token access) | `clinical` schema, `SELECT` only; `audit.audit_event` `INSERT` only (migration 0003) |
-| `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into, plus the three `integration_*` admin tables |
+| `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into (select, insert, update; never delete; 0004), the three `integration_*` admin tables, and `audit.audit_event` `INSERT` only (0004) |
 | `shri_reporting` | approved reports | nothing yet — no reporting views exist; grants come when they do |
 | `shri_migrator` | migrations only | owns all three schemas |
 

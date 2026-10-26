@@ -548,8 +548,8 @@ def test_audit_chain_detects_tampering(app_engine: Engine, admin_engine: Engine)
                                outcome="success"))
         s.flush()
     s.commit()
-    # shri_audit_verify is reviewed with admin_engine throughout, not the app role: shri_app is
-    # insert-only on audit_event (D23) and the function isn't SECURITY DEFINER (deliberately -
+    # shri_audit_verify is reviewed with admin_engine throughout, not the app role: shri_app
+    # reads only its own clinic's rows and the function isn't SECURITY DEFINER (deliberately -
     # it must see the real stored hash under whatever RLS bypass its *caller* has, not the
     # function owner's, since its whole purpose is checking a specific tenant on request,
     # independent of whatever tenant context the caller's own session happens to be in).
