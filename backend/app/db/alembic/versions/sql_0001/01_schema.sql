@@ -3135,7 +3135,6 @@ CREATE TABLE clinical.encounter (
 	CONSTRAINT fk_encounter_service_type_system_code_system FOREIGN KEY(service_type_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
 	CONSTRAINT fk_encounter_priority_system_code_system FOREIGN KEY(priority_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
 	CONSTRAINT fk_encounter_subject_patient_id_patient FOREIGN KEY(subject_patient_id) REFERENCES clinical.patient (id) ON DELETE RESTRICT, 
-	CONSTRAINT uq_encounter_appointment_id UNIQUE (appointment_id), 
 	CONSTRAINT fk_encounter_appointment_id_appointment FOREIGN KEY(appointment_id) REFERENCES clinical.appointment (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_encounter_service_provider_organization_id_organization FOREIGN KEY(service_provider_organization_id) REFERENCES clinical.organization (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_encounter_ext_facility_id_facility FOREIGN KEY(ext_facility_id) REFERENCES admin.facility (id), 
@@ -3159,6 +3158,8 @@ CREATE TABLE clinical.encounter (
 CREATE INDEX ix_encounter_tenant_id ON clinical.encounter (tenant_id);
 
 CREATE INDEX ix_encounter_patient_start ON clinical.encounter (subject_patient_id, period_start);
+
+CREATE UNIQUE INDEX uq_encounter_appointment_id ON clinical.encounter (appointment_id) WHERE status <> 'entered-in-error';
 
 CREATE TABLE admin.ai_request (
 	feature VARCHAR(40) NOT NULL, 

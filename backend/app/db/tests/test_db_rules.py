@@ -175,6 +175,34 @@ def test_appointment_invariants(db: Session) -> None:
         db.flush()
 
 
+def test_undo_check_in_then_check_in_again(db: Session) -> None:
+    """D55: undo check-in marks the check-in encounter entered-in-error. The appointment can
+    then be checked in again with a new encounter, while a second live encounter for the same
+    appointment is still refused, so check-in stays idempotent (A42)."""
+    ctx = b.practice(db)
+    pt = b.patient(db)
+    appt = M["appointment"](status="arrived", subject_patient_id=pt.id, start=b.NOW,
+                            end=b.NOW + dt.timedelta(minutes=30))
+    db.add(appt)
+    db.flush()
+    first = b.encounter(db, pt, ctx, status="arrived")
+    first.appointment_id = appt.id
+    db.flush()
+    with fails(db, "23505", "uq_encounter_appointment_id"):
+        second = b.encounter(db, pt, ctx, status="arrived")
+        second.appointment_id = appt.id
+        db.flush()
+
+    first.status = "entered-in-error"                  # the undo
+    db.flush()
+    again = b.encounter(db, pt, ctx, status="arrived")   # the new check-in
+    again.appointment_id = appt.id
+    db.flush()
+    live = db.execute(text("SELECT count(*) FROM clinical.encounter WHERE appointment_id = :a "
+                           "AND status <> 'entered-in-error'"), {"a": appt.id}).scalar_one()
+    assert live == 1
+
+
 # =========================================================================== tenancy / patient
 def test_tenant_isolation_and_cross_tenant_reference(app_engine: Engine,
                                                      admin_engine: Engine) -> None:

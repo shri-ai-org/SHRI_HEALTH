@@ -211,6 +211,11 @@ class Encounter(Base, ClinicalResourceMixin):
         CheckConstraint("ext_place_of_service_code IS NULL OR "
                         "ext_place_of_service_code ~ '^[0-9]{2}$'", name="pos_format"),
         Index("ix_encounter_patient_start", "subject_patient_id", "period_start"),
+        # One live encounter per appointment, so check-in stays idempotent (A42). An encounter
+        # set to entered-in-error by an undone check-in (D55) no longer counts, so the same
+        # appointment can be checked in again.
+        Index("uq_encounter_appointment_id", "appointment_id", unique=True,
+              postgresql_where=text("status <> 'entered-in-error'")),
     )
 
     status: Mapped[str] = code("status", EncounterStatus, required=True,
@@ -222,7 +227,7 @@ class Encounter(Base, ClinicalResourceMixin):
     priority_system, priority_code, priority_display, priority_text = cc("priority")
     subject_patient_id: Mapped[uuid.UUID] = ref("subject", "patient", "Patient", required=True)
     appointment_id: Mapped[uuid.UUID | None] = ref("appointment", "appointment", "Appointment",
-                                                   unique=True, many=True)
+                                                   many=True)
     period_start, period_end = period("period")
     service_provider_organization_id: Mapped[uuid.UUID | None] = ref(
         "serviceProvider", "organization", "Organization")
