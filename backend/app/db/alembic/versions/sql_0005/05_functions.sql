@@ -26,8 +26,12 @@ GRANT EXECUTE ON FUNCTION admin.lookup_session(text) TO shri_app;
 -- message can be claimed: while an earlier one is queued, sending, failed or dead-lettered, the
 -- later one waits, so a CancelRx never overtakes its NewRx, and a dead letter holds the key until
 -- someone resolves it (Thulasi's review of #52). FOR UPDATE SKIP LOCKED lets several workers
--- claim without blocking each other. Claimed rows are set to 'sending' with `claimed_at`; the
--- worker records the outcome, and the attempts, under RLS. The lease is 15 minutes.
+-- claim without blocking each other. The claim counts the attempt itself (attempts + 1, with
+-- `claimed_at`), so a worker that crashes mid-send still uses one up; the worker records only
+-- the outcome, under RLS. Before claiming, every outbound row that is out of attempts (failed,
+-- or sending with an expired lease) becomes a dead letter: it then holds its ordering key
+-- visibly, and its inbox item reaches a person, instead of being retried forever. The lease is
+-- 15 minutes.
 CREATE FUNCTION admin.claim_outbound_messages(p_batch integer)
 RETURNS TABLE (id uuid, tenant_id uuid)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -35,6 +39,13 @@ BEGIN
   IF p_batch IS NULL OR p_batch < 1 OR p_batch > 500 THEN
     RAISE EXCEPTION 'batch must be between 1 and 500' USING ERRCODE = '22023';
   END IF;
+  UPDATE admin.integration_message x
+     SET status = 'dead-letter', updated_at = now(),
+         last_error = coalesce(x.last_error, 'no outcome reported after the last attempt')
+   WHERE x.direction = 'outbound'
+     AND x.attempts >= x.max_attempts
+     AND (x.status = 'failed'
+          OR (x.status = 'sending' AND x.claimed_at < now() - interval '15 minutes'));
   RETURN QUERY
   WITH due AS (
     SELECT m.id
@@ -56,7 +67,7 @@ BEGIN
      FOR UPDATE OF m SKIP LOCKED
   )
   UPDATE admin.integration_message t
-     SET status = 'sending', claimed_at = now(), updated_at = now()
+     SET status = 'sending', claimed_at = now(), attempts = t.attempts + 1, updated_at = now()
     FROM due
    WHERE t.id = due.id
   RETURNING t.id, t.tenant_id;

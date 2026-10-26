@@ -327,6 +327,38 @@ def test_claim_respects_dead_letters_attempts_and_the_lease(admin_engine: Engine
         conn.rollback()
 
 
+def test_a_message_whose_worker_never_reports_back_becomes_a_dead_letter(
+        admin_engine: Engine) -> None:
+    """Thulasi's last review of #52: the claim counts each attempt, so a message whose worker
+    crashes every time is claimed at most max_attempts times; then it becomes a dead letter,
+    holds its ordering key and stops being retried. One transaction, rolled back."""
+    with admin_engine.connect() as conn:
+        tenant = uuid.uuid4()
+        conn.execute(text("INSERT INTO admin.tenant (id, slug, name) VALUES "
+                          "(:i, :s, 'Test practice')"), {"i": tenant, "s": f"t-{tenant.hex[:12]}"})
+        e = _endpoint(conn, tenant)
+        new_rx = _message(conn, tenant, e, key="rx-1", age=0)
+        cancel_rx = _message(conn, tenant, e, key="rx-1", age=1)
+        expire = text("UPDATE admin.integration_message SET claimed_at = now() - "
+                      "interval '16 minutes' WHERE id = :i")     # the worker died, again
+        row = text("SELECT status, attempts, last_error FROM admin.integration_message "
+                   "WHERE id = :i")
+        for attempt in range(1, 6):                              # max_attempts is 5
+            conn.execute(text("SET LOCAL ROLE shri_integration"))
+            got = _claim(conn)
+            conn.execute(text("RESET ROLE"))
+            assert new_rx in got and cancel_rx not in got
+            assert conn.execute(row, {"i": new_rx}).one()[:2] == ("sending", attempt)
+            conn.execute(expire, {"i": new_rx})
+        conn.execute(text("SET LOCAL ROLE shri_integration"))
+        got = _claim(conn)
+        conn.execute(text("RESET ROLE"))
+        assert new_rx not in got and cancel_rx not in got         # the key stays held
+        assert conn.execute(row, {"i": new_rx}).one() == (
+            "dead-letter", 5, "no outcome reported after the last attempt")
+        conn.rollback()
+
+
 def test_outbox_payload_is_a_small_object(admin_engine: Engine) -> None:
     with admin_engine.connect() as conn:
         tenant = make_tenant(admin_engine)
