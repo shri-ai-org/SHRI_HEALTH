@@ -38,6 +38,7 @@ export function SlotFields({
   onChange,
   errors,
   refreshKey = 0,
+  current,
 }: {
   reference: BookingReference
   value: SlotChoice
@@ -45,6 +46,8 @@ export function SlotFields({
   errors: SlotErrors
   /** Bump to read the free times again, e.g. after a `409 booking-conflict`. */
   refreshKey?: number
+  /** When rescheduling: the appointment's own time, shown as current and not offered. */
+  current?: { startAt: string; providerId: string }
 }) {
   const groupId = useId()
   const providers = useBookableProviders(value.facilityId)
@@ -145,12 +148,14 @@ export function SlotFields({
               {shown.items.map((s) => {
                 const id = `${s.startAt}|${s.providerId}`
                 const checked = value.slot?.startAt === s.startAt && value.slot.providerId === s.providerId
+                const isCurrent = current !== undefined && Date.parse(current.startAt) === Date.parse(s.startAt) && current.providerId === s.providerId
                 return (
                   <label key={id} className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm has-[:checked]:border-primary-600 has-[:checked]:bg-primary-50">
-                    <input type="radio" name={groupId} checked={checked} onChange={() => onChange({ ...value, slot: s })} />
+                    <input type="radio" name={groupId} checked={checked} disabled={isCurrent} onChange={() => onChange({ ...value, slot: s })} />
                     <span className="tabular-nums">{formatTime(s.startAt, facility?.timeZone ?? null, { withZone: false })}</span>
                     <span className="text-ink-muted">{providerName(s.providerId)}</span>
                     {s.overbook ? <span className="text-xs text-warning-fg">overbook</span> : null}
+                    {isCurrent ? <span className="text-xs text-ink-muted">(current time)</span> : null}
                   </label>
                 )
               })}

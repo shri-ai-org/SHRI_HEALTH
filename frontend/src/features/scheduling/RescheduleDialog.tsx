@@ -105,6 +105,7 @@ export function RescheduleDialog({ appointment, onClose, onMoved }: { appointmen
           }}
           errors={errors}
           refreshKey={refreshKey}
+          current={{ startAt: appointment.startAt, providerId: appointment.provider.id }}
         />
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Reason" required error={errors.reasonCode}>

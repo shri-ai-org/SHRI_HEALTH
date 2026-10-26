@@ -80,6 +80,7 @@ export function CheckInDialog({ appointment, onClose, onDone }: { appointment: S
  */
 export function UndoCheckInDialog({ appointment, onClose, onDone }: { appointment: ScheduledAppointment; onClose: () => void; onDone: () => void }) {
   const toast = useToast()
+  const reasonRef = useRef<HTMLTextAreaElement>(null)
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [problem, setProblem] = useState<Problem | null>(null)
@@ -111,6 +112,7 @@ export function UndoCheckInDialog({ appointment, onClose, onDone }: { appointmen
       open
       title={`Undo the check-in of ${appointment.patient.displayName}?`}
       onClose={onClose}
+      initialFocus={reasonRef}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
@@ -125,7 +127,7 @@ export function UndoCheckInDialog({ appointment, onClose, onDone }: { appointmen
       <div className="space-y-3">
         <p>The appointment goes back to booked, and the visit opened at check-in is marked entered in error. Not possible once the patient is roomed.</p>
         <Field label="Reason" hint="For example: wrong patient checked in" required error={error ?? undefined}>
-          {(p) => <Textarea {...p} value={reason} limit={REASON_LIMIT} onChange={(e) => setReason(e.target.value)} />}
+          {(p) => <Textarea {...p} ref={reasonRef} value={reason} limit={REASON_LIMIT} onChange={(e) => setReason(e.target.value)} />}
         </Field>
         {problem ? <ProblemAlert problem={problem} /> : null}
       </div>

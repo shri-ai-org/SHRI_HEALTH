@@ -127,6 +127,7 @@ describe('SchedulePage', () => {
     renderAt(<SchedulePage />)
     await user.click(await screen.findByRole('button', { name: /Undo check-in of/ }))
     const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByLabelText(/Reason/)).toHaveFocus()
     await user.click(within(dialog).getByRole('button', { name: 'Undo check-in' }))
     expect(within(dialog).getByText('Explain why the check-in was a mistake.')).toBeInTheDocument()
     expect(server.bodies(UNDO)).toHaveLength(0)
@@ -144,7 +145,13 @@ describe('SchedulePage', () => {
       ...REFERENCE,
       [DAY]: [() => json(200, { items: [appt(1)] })],
       [`GET /api/v1/slots?date=${today}&facilityId=${facility.id}&appointmentTypeId=${type.id}&providerId=${provider.id}&limit=100`]: [
-        () => json(200, { items: [{ startAt: slotAt, endAt: slotAt, providerId: provider.id, facilityId: facility.id, overbook: false }] }),
+        () =>
+          json(200, {
+            items: [
+              { startAt: later, endAt: later, providerId: provider.id, facilityId: facility.id, overbook: false },
+              { startAt: slotAt, endAt: slotAt, providerId: provider.id, facilityId: facility.id, overbook: false },
+            ],
+          }),
       ],
       [MOVE]: [() => json(201, { ...appt(5, { startAt: slotAt }), durationMinutes: 20, timeZone: TZ, rescheduledFromId: appt(1).id, createdAt: later, updatedAt: later })],
     })
@@ -153,7 +160,11 @@ describe('SchedulePage', () => {
     const dialog = screen.getByRole('dialog', { name: 'Reschedule Testperson1, Ana' })
     // Starts from the current facility, type, provider and day.
     expect(within(dialog).getByLabelText(/^Facility/)).toHaveValue(facility.id)
-    await user.click(await within(dialog).findByRole('radio'))
+    // The appointment's own time is shown as current and can't be chosen.
+    const [own, other] = await within(dialog).findAllByRole('radio')
+    expect(own).toBeDisabled()
+    expect(within(dialog).getByText('(current time)')).toBeInTheDocument()
+    await user.click(other!)
     await user.click(within(dialog).getByRole('button', { name: 'Reschedule' }))
     expect(within(dialog).getByText('Choose why the appointment is moving.')).toBeInTheDocument()
 
