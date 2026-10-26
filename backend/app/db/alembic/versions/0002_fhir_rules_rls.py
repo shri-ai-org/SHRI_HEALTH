@@ -8,7 +8,7 @@ Frozen SQL in sql_0002/:
                           via search_path (set on each role by sql/00_extensions.sql)
   20_fhir_versioning.sql  per-resource snapshot functions and version / history / touch triggers
   30_guards.sql           attaches the rule functions to tables
-  95_seed.sql             code systems, permission catalogue, system roles
+  95_seed.sql             code systems (roles and permissions live in core's catalogue)
   90_rls_grants.sql       forced RLS policies and privileges for all 5 roles (applied last, so
                           the seed above runs before tenant policies exist)
 
@@ -51,7 +51,7 @@ def downgrade() -> None:
     for schema in ("clinical", "admin", "audit"):
         op.execute(f"REVOKE ALL ON ALL TABLES IN SCHEMA {schema} FROM "
                    "shri_app, shri_fhir_reader, shri_integration, shri_reporting")
-    # Reference data (code systems, permissions, system roles) is kept: clinical rows reference
+    # Reference data (code systems) is kept: clinical rows reference
     # it, and the seed is idempotent on re-upgrade.
     # Dropping the functions drops every trigger that uses them. The hand-written rule functions
     # live in public (D23's note: shared rule functions are schema-agnostic utilities, not tied

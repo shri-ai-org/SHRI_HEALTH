@@ -63,38 +63,3 @@ INSERT INTO admin.code_system (id, code, uri, name) VALUES
   (gen_random_uuid(), 'SHRI-LOCAL', 'https://shri.health/fhir/CodeSystem/local', 'Shri tenant picklists'),
   (gen_random_uuid(), 'SHRI-CDS', 'https://shri.health/fhir/CodeSystem/cds-rule', 'Shri CDS rules')
 ON CONFLICT DO NOTHING;
-INSERT INTO admin.permission (id, code, description, is_clinical) VALUES
-  (gen_random_uuid(), 'patient.read', 'Read patient charts', true),
-  (gen_random_uuid(), 'patient.write', 'Register and edit patients', true),
-  (gen_random_uuid(), 'patient.merge', 'Merge and unmerge patients', true),
-  (gen_random_uuid(), 'chart.break_glass', 'Open a restricted chart with a stated reason', true),
-  (gen_random_uuid(), 'schedule.manage', 'Book, reschedule and cancel appointments', false),
-  (gen_random_uuid(), 'checkin.manage', 'Check in, room and check out patients', false),
-  (gen_random_uuid(), 'note.write', 'Draft clinical notes', true),
-  (gen_random_uuid(), 'note.sign', 'Sign clinical notes', true),
-  (gen_random_uuid(), 'note.cosign', 'Co-sign supervised notes', true),
-  (gen_random_uuid(), 'order.create', 'Create and sign orders', true),
-  (gen_random_uuid(), 'result.acknowledge', 'Acknowledge results', true),
-  (gen_random_uuid(), 'result.release', 'Release results to the patient', true),
-  (gen_random_uuid(), 'rx.prescribe', 'Sign prescriptions', true),
-  (gen_random_uuid(), 'rx.override_alert', 'Override safety alerts', true),
-  (gen_random_uuid(), 'billing.manage', 'Charges, claims and payments', false),
-  (gen_random_uuid(), 'eligibility.check', 'Run eligibility checks', false),
-  (gen_random_uuid(), 'document.index', 'File faxes and unindexed documents', false),
-  (gen_random_uuid(), 'ai.use', 'Use AI drafting and summaries', true),
-  (gen_random_uuid(), 'ai.killswitch', 'Disable AI features', false),
-  (gen_random_uuid(), 'admin.users', 'Manage users and roles', false),
-  (gen_random_uuid(), 'admin.config', 'Practice configuration', false),
-  (gen_random_uuid(), 'audit.review', 'Review audit and break-the-glass reports', false),
-  (gen_random_uuid(), 'export.deidentified', 'Run de-identified exports', false)
-ON CONFLICT DO NOTHING;
-INSERT INTO admin.role (id, tenant_id, code, name, is_system) VALUES (gen_random_uuid(), NULL, 'clinician', 'Clinician', true) ON CONFLICT DO NOTHING;
-INSERT INTO admin.role_permission (role_id, permission_id, tenant_id) SELECT r.id, p.id, NULL FROM admin.role r, admin.permission p WHERE r.tenant_id IS NULL AND r.code = 'clinician' AND p.code IN ('patient.read', 'patient.write', 'note.write', 'note.sign', 'note.cosign', 'order.create', 'result.acknowledge', 'result.release', 'rx.prescribe', 'rx.override_alert', 'ai.use', 'chart.break_glass') ON CONFLICT DO NOTHING;
-INSERT INTO admin.role (id, tenant_id, code, name, is_system) VALUES (gen_random_uuid(), NULL, 'medical-assistant', 'Medical assistant', true) ON CONFLICT DO NOTHING;
-INSERT INTO admin.role_permission (role_id, permission_id, tenant_id) SELECT r.id, p.id, NULL FROM admin.role r, admin.permission p WHERE r.tenant_id IS NULL AND r.code = 'medical-assistant' AND p.code IN ('patient.read', 'checkin.manage', 'note.write', 'ai.use') ON CONFLICT DO NOTHING;
-INSERT INTO admin.role (id, tenant_id, code, name, is_system) VALUES (gen_random_uuid(), NULL, 'front-desk', 'Front desk', true) ON CONFLICT DO NOTHING;
-INSERT INTO admin.role_permission (role_id, permission_id, tenant_id) SELECT r.id, p.id, NULL FROM admin.role r, admin.permission p WHERE r.tenant_id IS NULL AND r.code = 'front-desk' AND p.code IN ('schedule.manage', 'checkin.manage', 'eligibility.check', 'document.index') ON CONFLICT DO NOTHING;
-INSERT INTO admin.role (id, tenant_id, code, name, is_system) VALUES (gen_random_uuid(), NULL, 'biller', 'Biller', true) ON CONFLICT DO NOTHING;
-INSERT INTO admin.role_permission (role_id, permission_id, tenant_id) SELECT r.id, p.id, NULL FROM admin.role r, admin.permission p WHERE r.tenant_id IS NULL AND r.code = 'biller' AND p.code IN ('billing.manage', 'eligibility.check') ON CONFLICT DO NOTHING;
-INSERT INTO admin.role (id, tenant_id, code, name, is_system) VALUES (gen_random_uuid(), NULL, 'practice-admin', 'Practice administrator', true) ON CONFLICT DO NOTHING;
-INSERT INTO admin.role_permission (role_id, permission_id, tenant_id) SELECT r.id, p.id, NULL FROM admin.role r, admin.permission p WHERE r.tenant_id IS NULL AND r.code = 'practice-admin' AND p.code IN ('admin.users', 'admin.config', 'ai.killswitch', 'audit.review', 'export.deidentified') ON CONFLICT DO NOTHING;
