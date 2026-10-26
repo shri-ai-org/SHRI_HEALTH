@@ -20,6 +20,7 @@ from typing import Any, Protocol
 
 from sqlalchemy import inspect
 
+from app.db.constraints import referenced_table
 from app.db.models import FHIR_RESOURCES, MAPPERS, systems
 
 CONFIDENTIALITY = {"L", "M", "N", "R", "V"}
@@ -156,7 +157,7 @@ def _value(cols: list[Any], row: Row, cls: type[Any]) -> Any:
             v = row.get(c.name)
             if v is None or not c.foreign_keys:
                 continue
-            target = next(iter(c.foreign_keys)).column.table.name
+            target = referenced_table(c).name
             if target in RESOURCE_TABLES:
                 ref["reference"] = f"{c.info['ref_type']}/{v}"
             else:   # admin directory (payer, pharmacy): logical reference

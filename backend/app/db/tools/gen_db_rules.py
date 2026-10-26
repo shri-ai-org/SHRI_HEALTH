@@ -26,6 +26,7 @@ from typing import Any
 from sqlalchemy import Table
 
 from app.db.base import ADMIN_SCHEMA, AUDIT_SCHEMA, CLINICAL_SCHEMA, Base
+from app.db.constraints import referenced_table
 from app.db.models import FHIR_RESOURCES, GLOBAL_TABLES, MAPPERS, systems
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]   # backend/app/db
@@ -161,8 +162,8 @@ def child_map() -> dict[str, list[tuple[str, str]]]:
     out: dict[str, list[tuple[str, str]]] = {}
     for name, cls in sorted(MAPPERS.items()):
         for col in getattr(cls, "fhir_parent", ()):
-            fk = next(iter(cls.__table__.c[col].foreign_keys))
-            out.setdefault(fk.column.table.name, []).append((name, col))
+            parent = referenced_table(cls.__table__.c[col])
+            out.setdefault(parent.name, []).append((name, col))
     return out
 
 
@@ -213,8 +214,7 @@ def versioning_sql() -> str:
             continue
         args = []
         for col in parents:
-            fk = next(iter(cls.__table__.c[col].foreign_keys))
-            ptable = fk.column.table
+            ptable = referenced_table(cls.__table__.c[col])
             if ptable.name in INSERT_ONLY:     # written once with its children; nothing to bump
                 continue
             touch = "meta_last_updated" if "meta_version_id" in ptable.c else "updated_at"

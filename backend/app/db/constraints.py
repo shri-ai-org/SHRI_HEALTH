@@ -206,6 +206,24 @@ def patient_column(table: Table) -> Column[Any] | None:
     return None
 
 
+def referenced_table(column: Column[Any]) -> Table:
+    """The table a parent or reference column points at.
+
+    A column can belong to several foreign keys: its own, the clinic-carrying composite key
+    (tenant_id, x_id) and same-patient composite keys (patient_id, x_id) that
+    apply_tenant_foreign_keys and apply_patient_foreign_keys add. ``column.foreign_keys`` is a
+    set, so taking any one of its members depends on hash order and can name the wrong table.
+    The table the column refers to is the target of the key whose referenced column is ``id``;
+    there is exactly one (tests/test_generators.py checks every parent and reference column).
+    """
+    targets = {fk.column.table for fk in column.foreign_keys if fk.column.name == "id"}
+    if len(targets) != 1:
+        found = sorted(target.name for target in targets)
+        raise ValueError(f"{column.table.name}.{column.name}: expected one referenced table, "
+                         f"found {found}")
+    return next(iter(targets))
+
+
 def apply_patient_foreign_keys(metadata: MetaData) -> None:
     for table in sorted(metadata.tables.values(), key=lambda t: t.name):
         pcol = patient_column(table)

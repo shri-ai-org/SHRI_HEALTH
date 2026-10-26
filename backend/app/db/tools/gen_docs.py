@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint
 
 from app.db.base import Base
-from app.db.constraints import patient_column
+from app.db.constraints import patient_column, referenced_table
 from app.db.models import FHIR_RESOURCES, GLOBAL_TABLES, MAPPERS
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -100,7 +100,7 @@ def fhir_mapping() -> str:
     children: dict[str, list[str]] = {}
     for name, cls in MAPPERS.items():
         for col in getattr(cls, "fhir_parent", ()):
-            parent = next(iter(cls.__table__.c[col].foreign_keys)).column.table.name
+            parent = referenced_table(cls.__table__.c[col]).name
             children.setdefault(parent, []).append(name)
 
     def tree(t: str, depth: int = 0) -> list[str]:
