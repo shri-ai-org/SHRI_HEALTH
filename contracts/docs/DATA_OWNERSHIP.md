@@ -5,7 +5,7 @@ Status: **PROPOSED** · Version 0.2 · 2026-10-23 · Author: Vimal (drafted with
 
 **Since ADR-0011 (2026-10-23):** there is one PostgreSQL 18 database. Clinical data lives in FHIR-shaped tables (Sam's schema, PR #9) and administrative data in normalized tables, in three schemas: `clinical`, `admin` and `audit` (D1, D23). There is no HAPI, so there is no mirroring, no HAPI reconciliation, no HAPI-down failure mode and no partitions.
 
-**Schema locked (D72, 2026-10-24); changes by migration.** Exact table and column names come from the locked schema's data dictionary. A remaining "pending schema lock" marker below means the name has not yet been checked against the locked schema; each batch resolves its own markers, and anything the schema lacks becomes a migration item for Anand. Every table name below is marked **pending schema lock** until then.
+**Schema locked (D72, 2026-10-24); changes by migration.** Exact table and column names come from the locked schema's data dictionary. A remaining "pending schema lock" marker below means the name has not yet been checked against the locked schema; each batch resolves its own markers, and anything the schema lacks becomes a migration item for Anand. A table name still marked **pending schema lock** stays so until its batch checks it.
 
 Fixed by source documents:
 
