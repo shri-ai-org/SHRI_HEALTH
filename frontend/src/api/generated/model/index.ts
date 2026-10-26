@@ -82,6 +82,7 @@ export * from './breakGlassGrant';
 export * from './breakGlassHeaders';
 export * from './breakGlassReasonCode';
 export * from './breakGlassRequest';
+export * from './buildInfo';
 export * from './cancelRequest';
 export * from './cardImageAttach';
 export * from './cardImageAttachSide';
