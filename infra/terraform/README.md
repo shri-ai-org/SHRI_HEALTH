@@ -20,7 +20,7 @@ Owner: Thulasi (OpenTofu). Run everything here with **OpenTofu** (`tofu`, MPL-2.
 
 - **The master password is generated and rotated by RDS in Secrets Manager** (`manage_master_user_password`), encrypted with our key. It never appears in OpenTofu state, the repository or a terminal.
 - The master role (`shri_rds_admin`) is used for two things only, during the first run: `sql/00_extensions.sql` and creating `shri_migrator`.
-- The service roles (D23: `shri_migrator`, `shri_app`, `shri_fhir_reader`, `shri_integration`, `shri_reporting` and `shri_maintenance`) and their passwords are created by the master role and stored in OpenBao. They are never in OpenTofu.
+- The service roles (D23: `shri_migrator`, `shri_app`, `shri_fhir_reader`, `shri_integration`, `shri_reporting`, `shri_maintenance`, `shri_portal` and `shri_public`) and their passwords are created by the master role and stored in OpenBao. They are never in OpenTofu.
 
 ## First run (once per environment)
 
@@ -53,8 +53,8 @@ Owner: Thulasi (OpenTofu). Run everything here with **OpenTofu** (`tofu`, MPL-2.
    **Why `TEMP` matters:** most rule functions in `public` run with the caller's `search_path`, and temporary tables are searched first. A role allowed to create temporary tables could shadow a clinical table inside a trigger (review of #45). The service roles get `CONNECT` only, in step 4.
 
 4. **Roles, extensions and migrations (Anand, ADR-0012), in this order:**
-   - create the six roles as `10-service-roles.sh` does (`NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`; every role but `shri_migrator` also `NOINHERIT`), with passwords from OpenBao, and make `shri_migrator` the owner of `shri` and of schema `public`;
-   - `GRANT CONNECT ON DATABASE shri` to the six roles, and nothing else at database level. `shri_maintenance` gets only what the migrations grant it: `USAGE` on `admin` and `EXECUTE` on the purge functions, never table access;
+   - create the eight roles as `10-service-roles.sh` does (`NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`; every role but `shri_migrator` also `NOINHERIT`), with passwords from OpenBao, and make `shri_migrator` the owner of `shri` and of schema `public`;
+   - `GRANT CONNECT ON DATABASE shri` to the eight roles, and nothing else at database level. `shri_maintenance` gets only what the migrations grant it: `USAGE` on `admin` and `EXECUTE` on the purge functions, never table access. `shri_portal` (D93) and `shri_public` (D96) likewise get only what the migrations grant them;
    - run `backend/app/db/sql/00_extensions.sql` as the master role (it expects the roles to exist);
    - confirm `SELECT extversion FROM pg_extension WHERE extname = 'vector'` matches development and CI (D31), and that `SHOW data_checksums` is `on`;
    - run the migrations as `shri_migrator` (`MIGRATION_DATABASE_URL`), never as the master role.
