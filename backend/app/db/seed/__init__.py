@@ -7,8 +7,9 @@ Layers, each building on the one before, through the same insert-if-missing buil
 - ``starter`` (this package today): the practices the dev users of core's ``X-Dev-User`` sign in
   to (``CLINIC_A``, ``CLINIC_B``), facilities, providers, schedules, visit types, a payer, note
   templates, the MRN counter (as onboarding creates it) and an ``app_user`` row per dev user;
-- ``demo`` (later): a pharmacy, more payers, the consent requirements, the demo users linked to
-  Keycloak, and synthetic patients;
+- ``demo``: the starter layer plus a pharmacy, more payers, the consent requirements, and
+  synthetic patients with coverage, a preferred pharmacy and appointments on the demo day
+  (Fri 20 Nov). The demo users linked to Keycloak come with Thulasi's demo realm;
 - reset (later): drop and recreate the demo database, migrate, then seed ``demo``. The audit
   protections are never disabled or bypassed.
 
@@ -19,5 +20,5 @@ login that bypasses row-level security. This is for development and test databas
 production onboarding must not copy it, since D23 keeps ``shri_migrator`` for migrations; it
 needs its own design.
 
-Usage:  python -m app.db.seed starter    (ENVIRONMENT must be development or test)
+Usage:  python -m app.db.seed {starter|demo}    (ENVIRONMENT must be development or test)
 """

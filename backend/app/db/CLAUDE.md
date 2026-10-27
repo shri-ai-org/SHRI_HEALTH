@@ -194,6 +194,21 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     visit) isn't seen by the rule; `finish` refuses that undo with `records-changed` instead
     of a key error. An undo that skips `finish` is refused at commit.
 
+## Terminology (`app.db.terminology`)
+
+`python -m app.db.terminology rxnorm <RxNorm_full_prescribe_MMDDYYYY.zip>` loads NLM's RxNorm
+Current Prescribable Content (no licence needed) into `admin.concept` and
+`admin.concept_property`, as `shri_migrator`. It loads the products a prescriber can pick (SCD,
+SBD, GPCK, BPCK) and the ingredients (IN, PIN, MIN). A product's properties:
+- `tty`, `name`, `strength`, `dose_form` and `route`;
+- `ingredient` (each IN's RxCUI) and `precise_ingredient`;
+- `brand_name` for a branded product;
+- `dea_schedule` (CII to CV, from the subset's DCSA label attribute).
+
+The drug search and the safety checks read these. The allergy and duplicate checks match on
+`ingredient`. A re-run of the same release changes nothing. A concept a later release drops
+is made inactive, never deleted.
+
 ## Rules that never bend
 
 - Every computed column is `STORED` (`persisted=True` on `Computed(...)`); a schema test
