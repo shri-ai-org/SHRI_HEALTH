@@ -138,7 +138,8 @@ async def fhir_db(ctx: AuthContext = Depends(machine_token_auth)) -> AsyncIterat
 
 async def audit(db: AsyncSession, ctx: AuthContext, action: str, outcome_: str, *,
                 entity_type: str | None = None, entity_id: Any = None, version: int | None = None,
-                patient_id: uuid.UUID | None = None, reason: str | None = None) -> None:
+                patient_id: uuid.UUID | None = None, reason: str | None = None,
+                category: str = "phi-read") -> None:
     """Writes one audit row and commits it. /fhir changes nothing else, so committing here is
     what makes the audit row outlast the request, including a request that ends in a 403.
 
@@ -149,7 +150,7 @@ async def audit(db: AsyncSession, ctx: AuthContext, action: str, outcome_: str, 
     fails, the request fails with it (fail closed, T17)."""
     await db.execute(insert(AuditEvent).inline().values(
         tenant_id=ctx.tenant_id, actor_type="user", actor_user_id=ctx.user_id,
-        action=action, outcome=outcome_, entity_type=entity_type,
+        action=action, category=category, outcome=outcome_, entity_type=entity_type,
         entity_id=str(entity_id) if entity_id else None,
         entity_version_id=version, patient_id=patient_id, reason=reason,
         purpose_of_use="TREAT", correlation_id=ctx.correlation_id))
@@ -171,7 +172,8 @@ async def ensure_chart_access(db: AsyncSession, ctx: AuthContext,
         # FRS §6: access denials must be traceable. audit() commits, so the denial is saved
         # before the 403 ends the request; nothing else was written in this transaction.
         await audit(db, ctx, "access-denied", "denied", entity_type="Patient",
-                    entity_id=patient_id, patient_id=patient_id, reason="restricted chart")
+                    entity_id=patient_id, patient_id=patient_id, reason="restricted chart",
+                    category="security")
         raise outcome(403, "forbidden", "restricted chart: break-the-glass access required")
 
 

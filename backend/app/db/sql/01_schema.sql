@@ -606,6 +606,107 @@ CREATE TABLE admin.fee_schedule (
 
 CREATE INDEX ix_fee_schedule_tenant_id ON admin.fee_schedule (tenant_id);
 
+CREATE TABLE admin.app_session (
+	user_id UUID NOT NULL, 
+	token_hash VARCHAR(64) NOT NULL, 
+	keycloak_access_token_enc TEXT NOT NULL, 
+	keycloak_refresh_token_enc TEXT NOT NULL, 
+	keycloak_sid VARCHAR(100), 
+	last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	tokens_refreshed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	idle_expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	revoked_at TIMESTAMP WITH TIME ZONE, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_app_session PRIMARY KEY (id), 
+	CONSTRAINT uq_app_session_token_hash UNIQUE (token_hash), 
+	CONSTRAINT ck_app_session_token_hash_format CHECK (token_hash ~ '^[0-9a-f]{64}$'), 
+	CONSTRAINT ck_app_session_idle_within_absolute CHECK (idle_expires_at <= expires_at), 
+	CONSTRAINT ck_app_session_tokens_encrypted CHECK (keycloak_access_token_enc ~ '^vault:v[0-9]+:' AND keycloak_refresh_token_enc ~ '^vault:v[0-9]+:'), 
+	CONSTRAINT fk_app_session_user_id_app_user FOREIGN KEY(user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_app_session_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_app_session_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_app_session_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_app_session_expires ON admin.app_session (expires_at);
+
+CREATE INDEX ix_app_session_keycloak_sid ON admin.app_session (keycloak_sid);
+
+CREATE INDEX ix_app_session_tenant_id ON admin.app_session (tenant_id);
+
+CREATE INDEX ix_app_session_user ON admin.app_session (tenant_id, user_id);
+
+CREATE TABLE admin.idempotency_record (
+	user_id UUID NOT NULL, 
+	method VARCHAR(10) NOT NULL, 
+	path VARCHAR(500) NOT NULL, 
+	key VARCHAR(255) NOT NULL, 
+	request_hash VARCHAR(64) NOT NULL, 
+	state VARCHAR(40) NOT NULL, 
+	response_status SMALLINT, 
+	response_headers JSONB, 
+	response_body_enc TEXT, 
+	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_idempotency_record PRIMARY KEY (id), 
+	CONSTRAINT uq_idempotency_record_tenant_id_user_id_method_path_key UNIQUE (tenant_id, user_id, method, path, key), 
+	CONSTRAINT ck_idempotency_record_request_hash_format CHECK (request_hash ~ '^[0-9a-f]{64}$'), 
+	CONSTRAINT ck_idempotency_record_unsafe_method CHECK (method IN ('POST', 'PUT', 'PATCH')), 
+	CONSTRAINT ck_idempotency_record_done_has_response CHECK (state <> 'done' OR response_status IS NOT NULL), 
+	CONSTRAINT ck_idempotency_record_stored_status CHECK (response_status IS NULL OR (response_status BETWEEN 200 AND 499 AND response_status <> 429)), 
+	CONSTRAINT ck_idempotency_record_response_body_encrypted CHECK (response_body_enc IS NULL OR response_body_enc ~ '^vault:v[0-9]+:'), 
+	CONSTRAINT fk_idempotency_record_user_id_app_user FOREIGN KEY(user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_idempotency_record_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_idempotency_record_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_idempotency_record_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_idempotency_record_state_codes CHECK (state IN ('in-progress', 'done'))
+);
+
+CREATE INDEX ix_idempotency_record_expires ON admin.idempotency_record (expires_at);
+
+CREATE INDEX ix_idempotency_record_tenant_id ON admin.idempotency_record (tenant_id);
+
+CREATE TABLE admin.operation (
+	created_by_user_id UUID NOT NULL, 
+	kind VARCHAR(64) NOT NULL, 
+	status VARCHAR(40) NOT NULL, 
+	result_type VARCHAR(64), 
+	result_id UUID, 
+	error JSONB, 
+	completed_at TIMESTAMP WITH TIME ZONE, 
+	assigned_to_integration BOOLEAN DEFAULT false NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_operation PRIMARY KEY (id), 
+	CONSTRAINT ck_operation_completed_when_final CHECK ((completed_at IS NOT NULL) = (status IN ('succeeded', 'failed', 'cancelled'))), 
+	CONSTRAINT ck_operation_failure_has_error CHECK (status <> 'failed' OR error IS NOT NULL), 
+	CONSTRAINT ck_operation_result_pair CHECK ((result_type IS NULL) = (result_id IS NULL)), 
+	CONSTRAINT fk_operation_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_operation_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_operation_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_operation_status_codes CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled'))
+);
+
+CREATE INDEX ix_operation_created ON admin.operation (created_at);
+
+CREATE INDEX ix_operation_creator ON admin.operation (tenant_id, created_by_user_id, created_at);
+
+CREATE INDEX ix_operation_tenant_id ON admin.operation (tenant_id);
+
 CREATE TABLE clinical.practitioner (
 	active BOOLEAN DEFAULT true NOT NULL, 
 	gender VARCHAR(40), 
@@ -818,6 +919,9 @@ CREATE TABLE admin.integration_message (
 	message_type VARCHAR(30) NOT NULL, 
 	status VARCHAR(40) NOT NULL, 
 	idempotency_key VARCHAR(100), 
+	ordering_key VARCHAR(100), 
+	payload JSONB, 
+	claimed_at TIMESTAMP WITH TIME ZONE, 
 	correlation_id VARCHAR(64), 
 	control_id VARCHAR(60), 
 	payload_binary_id UUID, 
@@ -837,6 +941,7 @@ CREATE TABLE admin.integration_message (
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
 	CONSTRAINT pk_integration_message PRIMARY KEY (id), 
+	CONSTRAINT ck_integration_message_payload_ids_only CHECK (payload IS NULL OR (jsonb_typeof(payload) = 'object' AND octet_length(payload::text) <= 8192)), 
 	CONSTRAINT uq_integration_message_tenant_id_idempotency_key UNIQUE (tenant_id, idempotency_key), 
 	CONSTRAINT uq_integration_message_endpoint_id_direction_control_id UNIQUE (endpoint_id, direction, control_id), 
 	CONSTRAINT ck_integration_message_attempts CHECK (attempts >= 0 AND attempts <= max_attempts), 
@@ -856,6 +961,12 @@ CREATE TABLE admin.integration_message (
 CREATE INDEX ix_integration_message_control ON admin.integration_message (endpoint_id, control_id);
 
 CREATE INDEX ix_integration_message_dispatch ON admin.integration_message (status, next_attempt_at);
+
+CREATE INDEX ix_integration_message_lease ON admin.integration_message (claimed_at) WHERE direction = 'outbound' AND status = 'sending';
+
+CREATE INDEX ix_integration_message_ordering ON admin.integration_message (tenant_id, ordering_key, created_at);
+
+CREATE INDEX ix_integration_message_outbound_due ON admin.integration_message (next_attempt_at) WHERE direction = 'outbound' AND status IN ('queued', 'failed');
 
 CREATE INDEX ix_integration_message_tenant_id ON admin.integration_message (tenant_id);
 
@@ -1386,6 +1497,7 @@ CREATE TABLE audit.audit_event (
 	actor_user_id UUID, 
 	actor_display VARCHAR(200), 
 	action VARCHAR(40) NOT NULL, 
+	category VARCHAR(40) NOT NULL, 
 	outcome VARCHAR(40) NOT NULL, 
 	entity_type VARCHAR(64), 
 	entity_id VARCHAR(64), 
@@ -1399,17 +1511,20 @@ CREATE TABLE audit.audit_event (
 	chain_seq BIGINT, 
 	prev_hash VARCHAR(64), 
 	hash VARCHAR(64), 
+	hash_version SMALLINT DEFAULT 2 NOT NULL, 
 	tenant_id UUID, 
 	CONSTRAINT pk_audit_event PRIMARY KEY (id), 
 	CONSTRAINT uq_audit_event_tenant_id_chain_seq UNIQUE NULLS NOT DISTINCT (tenant_id, chain_seq), 
-	CONSTRAINT ck_audit_event_break_glass_reason CHECK (action <> 'break-glass' OR reason IS NOT NULL), 
+	CONSTRAINT ck_audit_event_break_glass_reason CHECK (action <> 'break-glass' OR (reason IS NOT NULL AND length(trim(reason)) > 0)), 
+	CONSTRAINT ck_audit_event_hash_version_known CHECK (hash_version IN (1, 2)), 
 	CONSTRAINT ck_audit_event_user_actor CHECK (actor_type <> 'user' OR actor_user_id IS NOT NULL), 
 	CONSTRAINT uq_audit_event_event_uuid UNIQUE (event_uuid), 
 	CONSTRAINT fk_audit_event_actor_user_id_app_user FOREIGN KEY(actor_user_id) REFERENCES admin.app_user (id), 
 	CONSTRAINT fk_audit_event_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
 	CONSTRAINT fk_audit_event_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
-	CONSTRAINT ck_audit_event_actor_type_codes CHECK (actor_type IN ('user', 'system', 'ai', 'integration', 'patient')), 
+	CONSTRAINT ck_audit_event_actor_type_codes CHECK (actor_type IN ('user', 'system', 'ai', 'integration', 'patient', 'partner')), 
 	CONSTRAINT ck_audit_event_action_codes CHECK (action IN ('read', 'create', 'update', 'delete', 'sign', 'export', 'print', 'login', 'logout', 'access-denied', 'ai-request', 'ai-review', 'merge', 'break-glass', 'config-change')), 
+	CONSTRAINT ck_audit_event_category_codes CHECK (category IN ('phi-read', 'phi-write', 'sign', 'export', 'security', 'ai', 'admin')), 
 	CONSTRAINT ck_audit_event_outcome_codes CHECK (outcome IN ('success', 'failure', 'denied')), 
 	CONSTRAINT uq_audit_event_patient_id_id UNIQUE (patient_id, id)
 );
@@ -1419,6 +1534,8 @@ CREATE INDEX ix_audit_event_actor_time ON audit.audit_event (actor_user_id, reco
 CREATE INDEX ix_audit_event_entity ON audit.audit_event (entity_type, entity_id);
 
 CREATE INDEX ix_audit_event_patient_time ON audit.audit_event (patient_id, recorded_at);
+
+CREATE INDEX ix_audit_event_platform_time ON audit.audit_event (recorded_at) WHERE tenant_id IS NULL;
 
 CREATE INDEX ix_audit_event_tenant_id ON audit.audit_event (tenant_id);
 
@@ -2102,7 +2219,8 @@ CREATE INDEX ix_compendium_covered_diagnosis_tenant_id ON admin.compendium_cover
 CREATE TABLE audit.break_glass_access (
 	patient_id UUID NOT NULL, 
 	user_id UUID NOT NULL, 
-	reason VARCHAR(500) NOT NULL, 
+	reason_code VARCHAR(40) NOT NULL, 
+	reason_text VARCHAR(500), 
 	granted_at TIMESTAMP WITH TIME ZONE NOT NULL, 
 	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
 	audit_event_id BIGINT, 
@@ -2117,7 +2235,7 @@ CREATE TABLE audit.break_glass_access (
 	CONSTRAINT pk_break_glass_access PRIMARY KEY (id), 
 	CONSTRAINT ck_break_glass_access_expiry_after_grant CHECK (expires_at > granted_at), 
 	CONSTRAINT ck_break_glass_access_max_24h CHECK (expires_at <= granted_at + interval '24 hours'), 
-	CONSTRAINT ck_break_glass_access_reason_stated CHECK (length(trim(reason)) >= 10), 
+	CONSTRAINT ck_break_glass_access_other_needs_text CHECK (reason_code <> 'other' OR coalesce(length(trim(reason_text)), 0) >= 1), 
 	CONSTRAINT ck_break_glass_access_review_pair CHECK ((reviewed_at IS NULL) = (reviewed_by_user_id IS NULL)), 
 	CONSTRAINT fk_break_glass_access_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
 	CONSTRAINT fk_break_glass_access_user_id_app_user FOREIGN KEY(user_id) REFERENCES admin.app_user (id), 
@@ -2125,7 +2243,8 @@ CREATE TABLE audit.break_glass_access (
 	CONSTRAINT fk_break_glass_access_reviewed_by_user_id_app_user FOREIGN KEY(reviewed_by_user_id) REFERENCES admin.app_user (id), 
 	CONSTRAINT fk_break_glass_access_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_break_glass_access_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
-	CONSTRAINT fk_break_glass_access_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+	CONSTRAINT fk_break_glass_access_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_break_glass_access_reason_code_codes CHECK (reason_code IN ('emergency-care', 'continuity-of-care', 'patient-request', 'other'))
 );
 
 CREATE INDEX ix_break_glass_access_active ON audit.break_glass_access (user_id, patient_id, expires_at);
@@ -2248,6 +2367,33 @@ CREATE TABLE admin.user_favorite (
 CREATE INDEX ix_user_favorite_tenant_id ON admin.user_favorite (tenant_id);
 
 CREATE INDEX ix_user_favorite_user_kind ON admin.user_favorite (user_id, kind, sequence);
+
+CREATE TABLE admin.event_log (
+	seq BIGINT GENERATED ALWAYS AS IDENTITY, 
+	facility_id UUID, 
+	patient_id UUID, 
+	target_user_id UUID, 
+	target_role_code TEXT, 
+	type VARCHAR(100) NOT NULL, 
+	subject VARCHAR(200) NOT NULL, 
+	data JSONB DEFAULT '{}'::jsonb NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	CONSTRAINT pk_event_log PRIMARY KEY (id), 
+	CONSTRAINT ck_event_log_target_role_code_format CHECK (target_role_code ~ '^[A-Z]{2,10}$'), 
+	CONSTRAINT uq_event_log_seq UNIQUE (seq), 
+	CONSTRAINT fk_event_log_facility_id_facility FOREIGN KEY(facility_id) REFERENCES admin.facility (id), 
+	CONSTRAINT fk_event_log_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
+	CONSTRAINT fk_event_log_target_user_id_app_user FOREIGN KEY(target_user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_event_log_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX ix_event_log_created ON admin.event_log (created_at);
+
+CREATE INDEX ix_event_log_replay ON admin.event_log (tenant_id, seq);
+
+CREATE INDEX ix_event_log_tenant_id ON admin.event_log (tenant_id);
 
 CREATE TABLE clinical.family_member_history_condition (
 	family_member_history_id UUID NOT NULL, 
@@ -7613,6 +7759,10 @@ ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_patient_id_t
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_related_transaction_id_same_patient FOREIGN KEY(patient_id, related_transaction_id) REFERENCES admin.erx_transaction (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_related_transaction_id_tenant FOREIGN KEY(tenant_id, related_transaction_id) REFERENCES admin.erx_transaction (tenant_id, id);
+
+ALTER TABLE admin.event_log ADD CONSTRAINT fk_event_log_facility_id_tenant FOREIGN KEY(tenant_id, facility_id) REFERENCES admin.facility (tenant_id, id);
+
+ALTER TABLE admin.event_log ADD CONSTRAINT fk_event_log_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.facility ADD CONSTRAINT fk_facility_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
 

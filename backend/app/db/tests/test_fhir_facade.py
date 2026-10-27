@@ -346,7 +346,7 @@ def test_http_restricted_chart_needs_break_glass(client: TestClient,
     assert r.status_code == 403
     assert client.post("/fhir/r4/Patient/_search", json={"family": "Ngu"}).json()["total"] == 0
     db.add(M["break_glass_access"](patient_id=pt.id, user_id=chart["ctx"]["user"].id,
-                                   reason="Covering physician, urgent call",
+                                   reason_code="continuity-of-care",
                                    granted_at=dt.datetime.now(dt.UTC) - dt.timedelta(minutes=1),
                                    expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)))
     db.commit()

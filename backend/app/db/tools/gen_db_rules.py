@@ -58,6 +58,11 @@ INSERT_ONLY = {
 }
 # Written only by SECURITY DEFINER functions.
 NO_APP_WRITE = {"fhir_resource_history"}
+# Short-lived runtime tables of Thulasi's core (issue #13, migration 0005). No role deletes from
+# them: only admin.purge_expired_runtime_rows() does, past retention (Thulasi's review of #52).
+RUNTIME = {"app_session", "event_log", "idempotency_record", "operation"}
+# Written once and never changed: no UPDATE.
+WRITE_ONCE = {"event_log"}
 
 #: shri_app on the two audit tables: D23/ADR-0011 condition 4 says "audit insert only" for
 #: shri_app overall. audit_event: insert only, no read-back (matches INSERT_ONLY's no-UPDATE
@@ -362,7 +367,7 @@ def rls_sql(only: set[str] | None = None) -> str:
         privs = ["SELECT"]
         if name not in NO_APP_WRITE:
             privs.append("INSERT")
-            if name not in INSERT_ONLY:
+            if name not in INSERT_ONLY and name not in WRITE_ONCE:
                 privs.append("UPDATE")
             if name in deletable and name not in INSERT_ONLY:
                 privs.append("DELETE")
