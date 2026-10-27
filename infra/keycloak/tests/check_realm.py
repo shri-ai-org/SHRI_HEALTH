@@ -31,6 +31,9 @@ BACKSTOP_SECONDS = 5 * 60
 REALM_RULES: dict[str, Any] = {
     "enabled": True,
     "registrationAllowed": False,  # staff accounts are created by ADM, never by sign-up
+    # No "Forgot password": Keycloak's reset flow asks for the code only if one is set, so a user
+    # without one could reset and be signed in. ADM resets staff passwords instead (#72).
+    "resetPasswordAllowed": False,
     "duplicateEmailsAllowed": False,
     "verifyEmail": True,
     "rememberMe": False,  # shared clinic workstations
@@ -107,7 +110,10 @@ def problems_in(realm: dict[str, Any], client: dict[str, Any], actions: list[dic
 
 
 def from_file() -> list[str]:
-    realm = json.loads(REALM_FILE.read_text(encoding="utf-8"))
+    return file_problems(json.loads(REALM_FILE.read_text(encoding="utf-8")))
+
+
+def file_problems(realm: dict[str, Any]) -> list[str]:
     client = next(c for c in realm["clients"] if c["clientId"] == "shri-web")
     found = problems_in(realm, client, realm.get("requiredActions", []), live=False)
     flows = {f["alias"]: f for f in realm.get("authenticationFlows", [])}
@@ -123,6 +129,34 @@ def from_file() -> list[str]:
 
     found += flow_problems(steps(STAFF_FLOW))
     found += scope_problems(client.get("defaultClientScopes", []), client.get("optionalClientScopes", []))
+    return found
+
+
+def _set_otp(realm: dict[str, Any], requirement: str) -> None:
+    for flow in realm.get("authenticationFlows", []):
+        for e in flow.get("authenticationExecutions", []):
+            if e.get("authenticator") == "auth-otp-form":
+                e["requirement"] = requirement
+
+
+# Each weakens the realm one way; the check must catch every one, or it has stopped working.
+MUTATIONS: dict[str, Any] = {
+    "self-service password reset on": lambda r: r.update(resetPasswordAllowed=True),
+    "one-time code CONDITIONAL": lambda r: _set_otp(r, "CONDITIONAL"),
+    "Keycloak's default browser flow": lambda r: r.update(browserFlow="browser"),
+    "offline_access offered": lambda r: next(
+        c for c in r["clients"] if c["clientId"] == "shri-web")["defaultClientScopes"].append(
+        "offline_access"),
+}
+
+
+def uncaught_mutations() -> list[str]:
+    found = []
+    for name, mutate in MUTATIONS.items():
+        realm = json.loads(REALM_FILE.read_text(encoding="utf-8"))
+        mutate(realm)
+        if not file_problems(realm):
+            found.append(f"the check does not catch a realm with {name}")
     return found
 
 
@@ -155,6 +189,8 @@ def from_keycloak() -> list[str]:
         [s["name"] for s in _get(f"{admin}/clients/{client['id']}/default-client-scopes", token)],
         [s["name"] for s in _get(f"{admin}/clients/{client['id']}/optional-client-scopes", token)])
     found += signs_in_without_code(base, admin, token)
+    found += offers_password_reset(base)
+    found += reset_check_catches_reset(base, admin, token)
     secret = _get(f"{admin}/clients/{client['id']}/client-secret", token).get("value")
     if secret != os.environ["SHRI_WEB_CLIENT_SECRET"]:
         found.append("the imported client secret is not the one from SHRI_WEB_CLIENT_SECRET")
@@ -213,8 +249,78 @@ def signs_in_without_code(base: str, admin: str, token: str) -> list[str]:
         call("DELETE", f"/users/{user_id}")
 
 
+def _browser() -> urllib.request.OpenerDirector:
+    """A cookie-keeping client that does not follow redirects (we read where they point)."""
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+            return None
+
+    return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_PlainCookies()), NoRedirect)
+
+
+class _PlainCookies(http.cookiejar.CookieJar):
+    """Keycloak marks its cookies Secure; the throwaway Keycloak is plain http."""
+
+    def extract_cookies(self, response: Any, request: Any) -> None:
+        super().extract_cookies(response, request)
+        for cookie in self:
+            cookie.secure = False
+
+
+def _open(browser: urllib.request.OpenerDirector, url: str) -> str:
+    try:
+        with browser.open(url, timeout=10) as response:
+            return str(response.read().decode())
+    except urllib.error.HTTPError as error:  # Keycloak's error pages are 4xx
+        return str(error.read().decode())
+
+
+def offers_password_reset(base: str) -> list[str]:
+    """The sign-in page links to no password reset, and the reset page itself refuses: Keycloak
+    serves it to anyone who knows the URL, not only from the link (#72)."""
+    browser = _browser()
+    query = urllib.parse.urlencode({
+        "client_id": "shri-web", "response_type": "code", "scope": "openid", "state": "check",
+        "nonce": "check", "redirect_uri": "https://localhost:8443/api/v1/auth/callback",
+        "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", "code_challenge_method": "S256"})
+    page = _open(browser, f"{base}/realms/shri-staff/protocol/openid-connect/auth?{query}")
+    tab = re.search(r"tab_id=([\w-]+)", page)
+    if not tab:
+        return ["the staff sign-in page has no tab_id to start a reset from"]
+    found = []
+    if "login-actions/reset-credentials" in page:
+        found.append("the staff sign-in page offers a password reset (#72)")
+    reset = _open(browser, f"{base}/realms/shri-staff/login-actions/reset-credentials?"
+                           + urllib.parse.urlencode({"client_id": "shri-web", "tab_id": tab.group(1)}))
+    if 'id="kc-reset-password-form"' in reset:
+        found.append("the password-reset page accepts a request (#72)")
+    return found
+
+
+def reset_check_catches_reset(base: str, admin: str, token: str) -> list[str]:
+    """The live mutation case: switch self-service reset on, expect offers_password_reset to
+    fail, and switch it off again. Only against a throwaway Keycloak (CI, local)."""
+
+    def set_reset(allowed: bool) -> None:
+        request = urllib.request.Request(
+            admin, method="PUT", data=json.dumps({"resetPasswordAllowed": allowed}).encode(),
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+        urllib.request.urlopen(request, timeout=10).close()  # noqa: S310 (local Keycloak)
+
+    set_reset(True)
+    try:
+        caught = offers_password_reset(base)
+    finally:
+        set_reset(False)
+    if len(caught) < 2:
+        return [f"with password reset on, the live check found only {caught} (it must find both)"]
+    return []
+
+
 def main() -> int:
     found = [f"file: {p}" for p in from_file()]
+    found += [f"self-check: {p}" for p in uncaught_mutations()]
     if "--live" in sys.argv:
         found += [f"live: {p}" for p in from_keycloak()]
     for problem in found:

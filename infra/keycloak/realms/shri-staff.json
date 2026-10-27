@@ -8,7 +8,7 @@
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "verifyEmail": true,
-  "resetPasswordAllowed": true,
+  "resetPasswordAllowed": false,
   "rememberMe": false,
   "editUsernameAllowed": false,
   "passwordPolicy": "length(12) and notUsername and notEmail and passwordHistory(5)",
