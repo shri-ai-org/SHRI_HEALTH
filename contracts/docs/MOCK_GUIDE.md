@@ -192,6 +192,20 @@ curl -s -X POST $B/portal/me/change-requests "${P[@]}" -H "Idempotency-Key: $(uu
 
 **Hidden behind feature switches until their contracts exist (all P1):** Pay bills (payments and the ledger), Video (telehealth) and Immunizations. Hide them, don't delete them. Messages, results, prescriptions, documents, forms and record exports come with B8b (D88, D89); until then they stay on the portal's own in-memory mock.
 
+## 5h. Note templates for clinicians and the portal's medication list (demo steps 8 and 12)
+
+`tests/flows/templates-and-portal-medications.mjs` runs both on the sample-data server:
+
+```bash
+cd contracts
+npm run mock                                                # in one terminal
+node tests/flows/templates-and-portal-medications.mjs       # in another; BASE_URL=http://127.0.0.1:4020 for another port
+```
+
+- **Note templates:** `GET /note-templates` and `GET /note-templates/{noteTemplateId}` need `note-templates:read` (MA, RN, MD, APP, ADM, CO). `Prefer: code=403` gives the front desk's refusal.
+- **The portal's medication list:** `GET /portal/me/medications` with the mock **portal** cookie (§5d). It returns prescriptions with their transmission status, and reported medications. The staff cookie alone gets `401`.
+- **Today's result:** 6 of 6 calls pass.
+
 ## 6. What the mock cannot do
 
 | Limit | What it means for screens |

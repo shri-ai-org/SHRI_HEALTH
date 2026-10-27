@@ -392,6 +392,8 @@ paths:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1allergies'
   /portal/me/allergies/{allergyId}:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1allergies~1{allergyId}'
+  /portal/me/medications:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1medications'
   /portal/me/vitals:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1vitals'
 components:
