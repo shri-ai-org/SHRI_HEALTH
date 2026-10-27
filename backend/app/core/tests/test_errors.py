@@ -121,6 +121,14 @@ def test_the_new_errors_accept_only_codes_of_their_status(
         error(code="not-found")  # ...a code of another status is not
 
 
+@pytest.mark.parametrize(("pointer", "code"), [
+    ("/alerts", "safety-check-stale"), ("/alerts/0", "override-required"),
+])
+def test_the_prescription_signing_field_codes_are_accepted(pointer: str, code: str) -> None:
+    """T51 (#93): sign-and-send names each refusal with these codes."""
+    assert field_error("body", pointer, code) == {"in": "body", "pointer": pointer, "code": code}
+
+
 def test_extensions_are_included(make_app: Callable[..., FastAPI]) -> None:
     body = _client(make_app).get("/raise/merged").json()
     assert body["mergedIntoId"] == "m-1"

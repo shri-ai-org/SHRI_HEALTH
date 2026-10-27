@@ -75,6 +75,9 @@ CATALOGUE: dict[str, ProblemType] = {
 FIELD_CODES = frozenset({
     "required", "unknown-field", "invalid-format", "invalid-type", "too-short", "too-long",
     "out-of-range", "not-allowed-value", "invalid-reference", "conflicting-fields", "not-editable",
+    # Signing a prescription (#93, D97; T51): no safety check on this version of the draft, and
+    # a high alert without an override.
+    "safety-check-stale", "override-required",
 })
 
 
