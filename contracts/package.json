@@ -16,9 +16,10 @@
     "mock": "npm run -s bundle && node scripts/mock.mjs",
     "breaking": "bash scripts/check-breaking.sh",
     "links": "node scripts/check-links.mjs",
+    "test:links": "node --test tests/check-links.test.mjs",
     "test:yaml": "node scripts/yaml-io.mjs",
     "matrix": "python3 scripts/role_matrix.py",
-    "test": "npm run lint && npm run lint:fixtures && npm run test:yaml && npm run links",
+    "test": "npm run lint && npm run lint:fixtures && npm run test:yaml && npm run test:links && npm run links",
     "mock:sample": "node scripts/build-sample.mjs && node scripts/mock.mjs tests/.tmp/sample.bundled.yaml"
   },
   "devDependencies": {
