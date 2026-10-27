@@ -3981,7 +3981,7 @@ paths:
     get:
       operationId: listPreRegistrations
       summary: List pre-registrations
-      description: The front desk's queue of pre-registrations (D96), oldest first; pending by default.
+      description: 'The front desk''s queue of pre-registrations (D96), oldest first; pending by default. Facility scope (a work list; batch 1 plan decision 2): a request naming a `preferredFacilityId` is visible only to users assigned to that facility; one naming none is visible to every FD and ADM user in the clinic. Without `facilityId`, the list is limited the same way.'
       tags:
         - patients
       x-owner: vimal
@@ -4096,7 +4096,7 @@ paths:
     get:
       operationId: getPreRegistration
       summary: Get a pre-registration
-      description: One pre-registration (D96).
+      description: 'One pre-registration (D96). Facility scope (a work list; batch 1 plan decision 2): a request naming a `preferredFacilityId` is visible only to users assigned to that facility; one naming none is visible to every FD and ADM user in the clinic.'
       tags:
         - patients
       x-owner: vimal
@@ -4166,7 +4166,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic).
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -4187,7 +4187,7 @@ paths:
     post:
       operationId: acceptPreRegistration
       summary: Accept a pre-registration
-      description: Creates the patient through the registration rules (duplicate check with `409 possible-duplicate` and the override; the MRN from the practice counter, D41), or links to an existing `patientId` chosen in duplicate review; insurance as typed becomes a note for the front desk, not a coverage, until the card is checked. The request is linked to the patient, all in one transaction (D96). Fields stay patient-reported until verified against ID.
+      description: 'Creates the patient through the registration rules (duplicate check with `409 possible-duplicate` and the override; the MRN from the practice counter, D41), or links to an existing `patientId` chosen in duplicate review; insurance as typed becomes a note for the front desk, not a coverage, until the card is checked. The request is linked to the patient, all in one transaction (D96). Fields stay patient-reported until verified against ID. Facility scope (a work list; batch 1 plan decision 2): a request naming a `preferredFacilityId` is visible only to users assigned to that facility; one naming none is visible to every FD and ADM user in the clinic.'
       tags:
         - patients
       x-owner: vimal
@@ -4283,7 +4283,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `pre-registrations:accept`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic).
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
         '409':
           $ref: '#/components/responses/Conflict'
           description: '409. `possible-duplicate` (similar patients exist: review them, then link or override); `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`); `patient-merged` (the patient to link was merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
@@ -4307,7 +4307,7 @@ paths:
     post:
       operationId: rejectPreRegistration
       summary: Reject a pre-registration
-      description: Rejects it with a reason (D96). It is deleted 30 days later. Nothing is sent to the person.
+      description: 'Rejects it with a reason (D96). It is deleted 30 days later. Nothing is sent to the person. Facility scope (a work list; batch 1 plan decision 2): a request naming a `preferredFacilityId` is visible only to users assigned to that facility; one naming none is visible to every FD and ADM user in the clinic.'
       tags:
         - patients
       x-owner: vimal
@@ -4401,7 +4401,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `pre-registrations:reject`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic).
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
         '409':
           $ref: '#/components/responses/Conflict'
           description: 409. `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`).
@@ -23158,7 +23158,7 @@ components:
               x-phi: identifier
         preferredFacilityId:
           $ref: '#/components/schemas/Id'
-          description: The facility the person would like to visit.
+          description: The facility the person would like to visit. It decides which front-desk users see the request (facility scope).
           x-phi: none
         reasonForVisit:
           type: string
