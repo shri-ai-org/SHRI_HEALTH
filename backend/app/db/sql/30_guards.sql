@@ -17,6 +17,8 @@ CREATE TRIGGER trg_composition_section_entry_content BEFORE INSERT OR UPDATE OR 
 CREATE TRIGGER trg_consent_requirement_kind BEFORE UPDATE OF kind ON admin.consent_requirement FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('kind');
 CREATE TRIGGER trg_diagnostic_report_guard BEFORE UPDATE ON clinical.diagnostic_report FOR EACH ROW EXECUTE FUNCTION shri_final_result_guard('ext_released_to_patient_at', 'ext_released_by_user_id');
 CREATE TRIGGER trg_employer_touch AFTER INSERT OR UPDATE OR DELETE ON admin.employer FOR EACH ROW EXECUTE FUNCTION shri_fhir_touch_parent('patient_id', 'patient', 'meta_last_updated', 'related_person_id', 'related_person', 'meta_last_updated');
+CREATE TRIGGER trg_encounter_follow_up_fixed BEFORE UPDATE ON clinical.encounter_follow_up FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('encounter_id', 'patient_id');
+CREATE TRIGGER trg_encounter_follow_up_guard BEFORE UPDATE ON clinical.encounter_follow_up FOR EACH ROW EXECUTE FUNCTION shri_follow_up_guard();
 CREATE TRIGGER trg_facility_timezone BEFORE INSERT OR UPDATE OF timezone ON admin.facility FOR EACH ROW EXECUTE FUNCTION shri_timezone_check();
 CREATE TRIGGER trg_medication_request_guard BEFORE UPDATE ON clinical.medication_request FOR EACH ROW EXECUTE FUNCTION shri_medication_request_guard();
 CREATE TRIGGER trg_mrn_counter_guard BEFORE UPDATE ON admin.mrn_counter FOR EACH ROW EXECUTE FUNCTION shri_mrn_counter_guard();

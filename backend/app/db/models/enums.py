@@ -1106,3 +1106,16 @@ class IdDocumentType(StrEnum):          # D96: the kind of ID checked at accept
     PASSPORT = "passport"
     MILITARY_ID = "military-id"
     OTHER = "other"
+
+
+class FollowUpStatus(StrEnum):          # D98: the clinician's request for a revisit
+    OPEN = "open"
+    BOOKED = "booked"
+    DECLINED = "declined"               # the front desk, with the patient's reason
+    WITHDRAWN = "withdrawn"             # the clinician who asked, with a reason
+
+
+class FollowUpUnit(StrEnum):
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"

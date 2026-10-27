@@ -74,6 +74,9 @@ APP_PRIVS = {
     "pre_registration": ["SELECT", "UPDATE (status, decided_at, decided_by_user_id, patient_id, "
                          "id_document_type, rejection_reason_code, rejection_reason_text, "
                          "updated_at, updated_by_user_id)"],
+    # encounter_follow_up (D98, migration 0010): a child row, but never deleted; it changes
+    # status instead.
+    "encounter_follow_up": ["SELECT", "INSERT", "UPDATE"],
 }
 
 #: shri_app on the two audit tables: D23/ADR-0011 condition 4 says "audit insert only" for
@@ -143,6 +146,11 @@ GUARDS = {
     "pre_registration": [("fixed", "BEFORE UPDATE", "shri_fixed_columns('idempotency_key', "
                           "'request_hash', 'details', 'contact_consent', 'entry_source')"),
                          ("decided", "BEFORE UPDATE", "shri_pre_registration_guard()")],
+    # Migration 0010 (D98): a follow-up request changes only while open, and a declined or
+    # withdrawn one is final.
+    "encounter_follow_up": [("fixed", "BEFORE UPDATE",
+                             "shri_fixed_columns('encounter_id', 'patient_id')"),
+                            ("guard", "BEFORE UPDATE", "shri_follow_up_guard()")],
     "patient_merge": [("versions", "BEFORE INSERT", "shri_patient_merge_versions()"),
                       ("guard", "BEFORE UPDATE", "shri_patient_merge_guard()")],
     "patient_merge_record": [("version", "BEFORE INSERT", "shri_patient_merge_record_version()")],

@@ -528,6 +528,12 @@ ALTER TABLE clinical.encounter_diagnosis ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.encounter_diagnosis FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.encounter_diagnosis USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+GRANT SELECT ON clinical.encounter_follow_up TO shri_fhir_reader;
+GRANT SELECT, INSERT, UPDATE ON clinical.encounter_follow_up TO shri_app;
+ALTER TABLE clinical.encounter_follow_up ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clinical.encounter_follow_up FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON clinical.encounter_follow_up USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
 GRANT SELECT ON clinical.encounter_location TO shri_fhir_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON clinical.encounter_location TO shri_app;
 ALTER TABLE clinical.encounter_location ENABLE ROW LEVEL SECURITY;

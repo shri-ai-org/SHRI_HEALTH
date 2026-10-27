@@ -173,6 +173,16 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   is 30 days after `created_at` while pending, or after `decided_at` once rejected, and absent
   once accepted. The practice's link is `tenant.pre_registration_code` and
   `pre_registration_enabled`.
+- **Follow-up requests (D98, A52, migration 0010):** `clinical.encounter_follow_up`, one per
+  visit, a child of the encounter: every change moves the encounter's version, so decline's
+  `If-Match` is the encounter's ETag, and the encounter's history keeps each state. /fhir never
+  serves it. The contract's `interval` is `interval_value` and `interval_unit`; `providerId` is
+  `practitioner_id`; `requestedBy` is `requested_by_user_id`; `declinedReason` and
+  `withdrawnReason` are both `status_reason`, by status. Booking sets `status` `booked` and
+  `booked_appointment_id` in the appointment's transaction; cancelling the revisit sets `open`
+  and clears it; rescheduling moves it to the new appointment. The request changes only while
+  open, and a declined or withdrawn one is final (`shri_follow_up_guard`). Nothing is deleted.
+  That only the requesting clinician withdraws is the service's check.
 - **Merge undo (D51):** `undoAllowed` and `undoBlockedReason` come from
   `SELECT admin.patient_merge_undo_blocked_reason(:merge_id)`: `already-undone`,
   `records-changed`, or NULL when the merge can still be undone. The rule compares versions,

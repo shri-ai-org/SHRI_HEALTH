@@ -4757,7 +4757,7 @@ FHIR resource `Encounter`. US Core Encounter. Rooming = an active encounter_loca
 
 Patient-owned via `subject_patient_id` (same-patient foreign keys apply).
 
-Child tables: `clinical.encounter_diagnosis`, `clinical.encounter_location`, `clinical.encounter_participant`, `clinical.encounter_reason`, `clinical.encounter_status_history`, `clinical.encounter_type`, `clinical.identifier`
+Child tables: `clinical.encounter_diagnosis`, `clinical.encounter_follow_up`, `clinical.encounter_location`, `clinical.encounter_participant`, `clinical.encounter_reason`, `clinical.encounter_status_history`, `clinical.encounter_type`, `clinical.identifier`
 
 Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
@@ -4830,6 +4830,39 @@ Checks: `ck_encounter_diagnosis_fhir_use_coding`, `ck_encounter_diagnosis_fhir_u
 Unique: `uq_encounter_diagnosis_encounter_id_condition_id`, `uq_encounter_diagnosis_encounter_id_rank`
 
 Composite foreign keys: `fk_encounter_diagnosis_condition_id_tenant`, `fk_encounter_diagnosis_encounter_id_tenant`
+
+## `clinical.encounter_follow_up`
+
+FHIR child / datatype table. The clinician's request for a revisit, one per visit (D98, A52; migration 0010). A child of the encounter, so every change moves the encounter's version, the ETag that decline's If-Match carries, and is kept in its history. Not part of the FHIR Encounter: /fhir never serves it.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `encounter_id` | uuid | no | parent | clinical.encounter.id | — |
+| `patient_id` | uuid | no |  | clinical.appointment.subject_patient_id, clinical.encounter.subject_patient_id, clinical.patient.id | — |
+| `interval_value` | integer | no |  |  | — |
+| `interval_unit` | varchar(40) | no |  |  | — |
+| `appointment_type_id` | uuid | yes |  | admin.appointment_type.id | — |
+| `practitioner_id` | uuid | yes |  | clinical.practitioner.id | — |
+| `note` | varchar(500) | yes |  |  | — |
+| `status` | varchar(40) | no |  |  | — |
+| `requested_by_user_id` | uuid | no |  | admin.app_user.id | — |
+| `requested_at` | datetime | no |  |  | — |
+| `booked_appointment_id` | uuid | yes |  | clinical.appointment.id | — |
+| `status_reason` | varchar(500) | yes |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.appointment_type.tenant_id, admin.tenant.id, clinical.appointment.tenant_id, clinical.encounter.tenant_id, clinical.patient.tenant_id, clinical.practitioner.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+
+Checks: `ck_encounter_follow_up_booked_has_appointment`, `ck_encounter_follow_up_interval_range`, `ck_encounter_follow_up_interval_unit_codes`, `ck_encounter_follow_up_reason_matches_status`, `ck_encounter_follow_up_status_codes`
+
+Unique: `uq_encounter_follow_up_booked_appointment_id`, `uq_encounter_follow_up_encounter_id`
+
+Composite foreign keys: `fk_encounter_follow_up_appointment_type_id_tenant`, `fk_encounter_follow_up_booked_appointment_id_same_patient`, `fk_encounter_follow_up_booked_appointment_id_tenant`, `fk_encounter_follow_up_encounter_id_same_patient`, `fk_encounter_follow_up_encounter_id_tenant`, `fk_encounter_follow_up_patient_id_tenant`, `fk_encounter_follow_up_practitioner_id_tenant`
 
 ## `clinical.encounter_location`
 
