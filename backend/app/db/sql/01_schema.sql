@@ -1050,6 +1050,34 @@ CREATE TABLE admin.note_template_section (
 
 CREATE INDEX ix_note_template_section_tenant_id ON admin.note_template_section (tenant_id);
 
+CREATE TABLE admin.consent_requirement (
+	kind VARCHAR(40) NOT NULL, 
+	title VARCHAR(200) NOT NULL, 
+	policy_version VARCHAR(40) NOT NULL, 
+	is_required BOOLEAN NOT NULL, 
+	form_file_id UUID, 
+	effective_date DATE NOT NULL, 
+	is_active BOOLEAN DEFAULT true NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
+	CONSTRAINT pk_consent_requirement PRIMARY KEY (id), 
+	CONSTRAINT uq_consent_requirement_tenant_id_kind_policy_version UNIQUE (tenant_id, kind, policy_version), 
+	CONSTRAINT ck_consent_requirement_title_given CHECK (length(trim(title)) >= 1), 
+	CONSTRAINT ck_consent_requirement_policy_version_given CHECK (length(trim(policy_version)) >= 1), 
+	CONSTRAINT fk_consent_requirement_form_file_id_binary_object FOREIGN KEY(form_file_id) REFERENCES admin.binary_object (id), 
+	CONSTRAINT fk_consent_requirement_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_consent_requirement_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_consent_requirement_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_consent_requirement_kind_codes CHECK (kind IN ('treatment', 'privacy-notice', 'ambient-recording', 'telehealth', 'research', 'information-sharing', 'financial'))
+);
+
+CREATE INDEX ix_consent_requirement_tenant_id ON admin.consent_requirement (tenant_id);
+
 CREATE TABLE admin.payer_enrollment (
 	payer_id UUID NOT NULL, 
 	practitioner_id UUID, 
@@ -2333,6 +2361,8 @@ CREATE TABLE admin.patient_merge (
 	performed_by_user_id UUID NOT NULL, 
 	unmerged_at TIMESTAMP WITH TIME ZONE, 
 	unmerged_by_user_id UUID, 
+	surviving_patient_version INTEGER, 
+	merged_patient_version INTEGER, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -3567,6 +3597,7 @@ CREATE TABLE admin.patient_payment (
 	collected_by_user_id UUID, 
 	is_refund BOOLEAN NOT NULL, 
 	refund_of_payment_id UUID, 
+	receipt_file_id UUID, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -3583,6 +3614,7 @@ CREATE TABLE admin.patient_payment (
 	CONSTRAINT fk_patient_payment_appointment_id_appointment FOREIGN KEY(appointment_id) REFERENCES clinical.appointment (id), 
 	CONSTRAINT fk_patient_payment_collected_by_user_id_app_user FOREIGN KEY(collected_by_user_id) REFERENCES admin.app_user (id), 
 	CONSTRAINT fk_patient_payment_refund_of_payment_id_patient_payment FOREIGN KEY(refund_of_payment_id) REFERENCES admin.patient_payment (id), 
+	CONSTRAINT fk_patient_payment_receipt_file_id_binary_object FOREIGN KEY(receipt_file_id) REFERENCES admin.binary_object (id), 
 	CONSTRAINT fk_patient_payment_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_patient_payment_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_patient_payment_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
@@ -5415,6 +5447,7 @@ CREATE TABLE clinical.identifier (
 	period_start TIMESTAMP WITH TIME ZONE, 
 	period_end TIMESTAMP WITH TIME ZONE, 
 	assigner_display VARCHAR(300), 
+	supporting_document_id UUID, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -5422,6 +5455,7 @@ CREATE TABLE clinical.identifier (
 	CONSTRAINT pk_identifier PRIMARY KEY (id), 
 	CONSTRAINT ck_identifier_ssn_not_clear_text CHECK (system IS DISTINCT FROM 'http://hl7.org/fhir/sid/us-ssn' OR value ~ '^(sha256:[0-9a-f]{64}|\*\*\*-\*\*-[0-9]{4})$'), 
 	CONSTRAINT ck_identifier_npi_valid CHECK (system IS DISTINCT FROM 'http://hl7.org/fhir/sid/us-npi' OR shri_npi_valid(value)), 
+	CONSTRAINT ck_identifier_supporting_document_patient_only CHECK (supporting_document_id IS NULL OR patient_id IS NOT NULL), 
 	CONSTRAINT fk_identifier_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_identifier_practitioner_id_practitioner FOREIGN KEY(practitioner_id) REFERENCES clinical.practitioner (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_identifier_organization_id_organization FOREIGN KEY(organization_id) REFERENCES clinical.organization (id) ON DELETE CASCADE, 
@@ -5431,6 +5465,7 @@ CREATE TABLE clinical.identifier (
 	CONSTRAINT fk_identifier_coverage_id_coverage FOREIGN KEY(coverage_id) REFERENCES clinical.coverage (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_identifier_document_reference_id_document_reference FOREIGN KEY(document_reference_id) REFERENCES clinical.document_reference (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_identifier_type_system_code_system FOREIGN KEY(type_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
+	CONSTRAINT fk_identifier_supporting_document_id_document_reference FOREIGN KEY(supporting_document_id) REFERENCES clinical.document_reference (id), 
 	CONSTRAINT fk_identifier_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT ck_identifier_use_codes CHECK (use IN ('usual', 'official', 'temp', 'secondary', 'old')), 
 	CONSTRAINT ck_identifier_fhir_type_coding CHECK ((type_code IS NULL) = (type_system IS NULL)), 
@@ -7808,6 +7843,8 @@ ALTER TABLE admin.compendium_test ADD CONSTRAINT fk_compendium_test_lab_provider
 
 ALTER TABLE admin.compendium_test_code ADD CONSTRAINT fk_compendium_test_code_compendium_test_id_tenant FOREIGN KEY(tenant_id, compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
 
+ALTER TABLE admin.consent_requirement ADD CONSTRAINT fk_consent_requirement_form_file_id_tenant FOREIGN KEY(tenant_id, form_file_id) REFERENCES admin.binary_object (tenant_id, id);
+
 ALTER TABLE admin.cosign_rule ADD CONSTRAINT fk_cosign_rule_supervisee_practitioner_id_tenant FOREIGN KEY(tenant_id, supervisee_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE admin.cosign_rule ADD CONSTRAINT fk_cosign_rule_supervising_practitioner_id_tenant FOREIGN KEY(tenant_id, supervising_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
@@ -7957,6 +7994,8 @@ ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_encounter_id
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_receipt_file_id_tenant FOREIGN KEY(tenant_id, receipt_file_id) REFERENCES admin.binary_object (tenant_id, id);
 
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_refund_of_payment_id_same_patient FOREIGN KEY(patient_id, refund_of_payment_id) REFERENCES admin.patient_payment (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
@@ -8583,6 +8622,10 @@ ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_patient_id_tenant F
 ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_supporting_document_id_same_patient FOREIGN KEY(patient_id, supporting_document_id) REFERENCES clinical.document_reference (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_supporting_document_id_tenant FOREIGN KEY(tenant_id, supporting_document_id) REFERENCES clinical.document_reference (tenant_id, id);
 
 ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
 

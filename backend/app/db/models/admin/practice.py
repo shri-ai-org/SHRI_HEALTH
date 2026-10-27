@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Computed,
+    Date,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -33,6 +34,7 @@ from app.db.base import (
     enum_type,
 )
 from app.db.models.enums import (
+    ConsentKind,
     DaysOfWeek,
     DetectedIssueSeverity,
     FavoriteKind,
@@ -168,6 +170,30 @@ class NoteTemplateSection(Base, AdminMixin):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     default_text: Mapped[str | None] = mapped_column(Text)
     is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class ConsentRequirement(Base, AdminMixin, VersionedMixin):
+    """A consent the practice asks patients for, one row per kind and policy version (D59). A
+    new version is a new row; the earlier one stays until it is retired (``is_active``
+    false). Nothing is deleted. The kind is fixed once created (``shri_fixed_columns``).
+    A patient's consent records the version they saw (``consent.ext_policy_version``)."""
+    __tablename__ = "consent_requirement"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "kind", "policy_version"),
+        CheckConstraint("length(trim(title)) >= 1", name="title_given"),
+        CheckConstraint("length(trim(policy_version)) >= 1", name="policy_version_given"),
+    )
+
+    kind: Mapped[ConsentKind] = mapped_column(enum_type(ConsentKind), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    #: The front desk is prompted at check-in when it is missing.
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    #: The blank form or notice, for printing or e-signature.
+    form_file_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.binary_object.id"))
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True,
+                                            server_default=text("true"))
 
 
 class SmartPhrase(Base, AdminMixin):

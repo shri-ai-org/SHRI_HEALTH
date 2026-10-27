@@ -43,6 +43,13 @@
       an identifier row with type_code MR, its system and value from admin.next_mrn() (the
       practice's mrn_counter, D41), written in the registration transaction
 
+"Patient identifiers (MRN, driver's license)":
+  documentId:
+    columns: [identifier.supporting_document_id]
+    note: >-
+      the scanned document behind the identifier, e.g. a driver's license image filed with
+      category identity (D56); the same patient's document
+
 "Related persons, emergency contacts":
   employer:
     columns: [employer.name, employer.phone, employer.address_lines, employer.address_city,

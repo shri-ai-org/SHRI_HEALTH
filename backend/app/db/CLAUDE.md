@@ -147,6 +147,30 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   to `false`. `tenant_setting.version` is the row's `ETag` for `If-Match` on
   `PATCH /practice-settings`, bumped by the database on every update (as A41); the application
   never writes it.
+- **An identifier's `documentId` (D56, migration 0008):** `identifier.supporting_document_id`,
+  the scanned document (a `document_reference` filed with category `identity`). Only a
+  patient's identifier has one, and only one of the same patient's documents.
+- **Consent requirements (D59):** `admin.consent_requirement`, one row per kind and policy
+  version. A new version is a new row (`422` when the kind already has it: unique
+  `(tenant_id, kind, policy_version)`). The kind never changes; retiring sets `is_active`
+  false; nothing is deleted. The contract's `required` and `active` are `is_required` and
+  `is_active`; `version` is the ETag.
+- **Payment receipts (D58):** `patient_payment.receipt_file_id`, the receipt PDF, a file in the
+  same clinic, written in the payment transaction.
+- **Merge undo (D51):** `undoAllowed` and `undoBlockedReason` come from
+  `SELECT admin.patient_merge_undo_blocked_reason(:merge_id)`: `already-undone`,
+  `records-changed`, or NULL when the merge can still be undone. The rule compares versions,
+  so each service follows a fixed order in one transaction:
+  - **merge:** lock both patients; insert `patient_merge` with both patients' current versions
+    (`surviving_patient_version`, `merged_patient_version`) and one `patient_merge_record` per
+    resource it will move, at its current version (`version_before_merge`); the database
+    refuses a version that isn't current. Then move the records and add both patients' links,
+    so every one of them moves by exactly one version;
+  - **undo:** set `unmerged_at` (refused with `records-changed` when the rule says no), move
+    the records back, then `SELECT admin.finish_patient_merge_undo(:merge_id)`. A record
+    created or linked since the merge that points at a moved record (a new result on a moved
+    visit) isn't seen by the rule; `finish` refuses that undo with `records-changed` instead
+    of a key error. An undo that skips `finish` is refused at commit.
 
 ## Rules that never bend
 
