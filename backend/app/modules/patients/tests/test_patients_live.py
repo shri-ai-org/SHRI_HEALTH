@@ -30,8 +30,8 @@ from app.db.tests.conftest import (
     TEST_DATABASE_URL,
     make_tenant,
     open_session,
-    sync_url,
     switch_to_role,
+    sync_url,
 )
 from app.main import create_app
 
