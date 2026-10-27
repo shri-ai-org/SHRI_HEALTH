@@ -608,7 +608,8 @@ class RemittanceRemark(Base, AdminMixin):
 
 class PatientPayment(Base, AdminMixin):
     """Copays and patient payments. Card payments go through a processor: only its
-    reference is stored, and a CHECK rejects anything that looks like a card number."""
+    reference is stored, and a CHECK rejects anything that looks like a card number. The
+    receipt PDF is a file (``receipt_file_id``, D58), generated in the payment transaction."""
     __tablename__ = "patient_payment"
     __table_args__ = (
         CheckConstraint("amount > 0", name="amount_positive"),
@@ -632,3 +633,4 @@ class PatientPayment(Base, AdminMixin):
     is_refund: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     refund_of_payment_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("admin.patient_payment.id"))
+    receipt_file_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.binary_object.id"))

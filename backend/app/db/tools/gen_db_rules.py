@@ -127,6 +127,12 @@ GUARDS = {
     "employer": [("touch", "AFTER INSERT OR UPDATE OR DELETE",
                   "shri_fhir_touch_parent('patient_id', 'patient', 'meta_last_updated', "
                   "'related_person_id', 'related_person', 'meta_last_updated')")],
+    # Migration 0008 (A43): a consent requirement keeps its kind (D59); a merge records the
+    # versions it starts from, and is undone only while nothing it touched has changed (D51).
+    "consent_requirement": [("kind", "BEFORE UPDATE OF kind", "shri_fixed_columns('kind')")],
+    "patient_merge": [("versions", "BEFORE INSERT", "shri_patient_merge_versions()"),
+                      ("guard", "BEFORE UPDATE", "shri_patient_merge_guard()")],
+    "patient_merge_record": [("version", "BEFORE INSERT", "shri_patient_merge_record_version()")],
     "break_glass_access": [("guard", "BEFORE UPDATE",
                             "shri_freeze_except('reviewed_by_user_id', 'reviewed_at')")],
     "composition_section": [("content", "BEFORE INSERT OR UPDATE OR DELETE",
@@ -141,13 +147,15 @@ GUARDS = {
 DEFERRED = {
     "composition": ("signed", "shri_composition_signed_check()"),
     "medication_request": ("alerts", "shri_medication_request_alert_check()"),
+    # An undo that would leave a record pointing at another patient's (0008, D51).
+    "patient_merge": ("undo", "shri_patient_merge_undo_check()"),
 }
 #: Admin tables with VersionedMixin (A41/issue #13): practice-setup resources and
 #: patient_pharmacy, none of which have a FHIR meta_version_id of their own; tenant_setting for
-#: PATCH /practice-settings (A49, migration 0007).
+#: PATCH /practice-settings (A49, migration 0007); consent_requirement (D59, migration 0008).
 VERSIONED_TABLES = {"facility", "appointment_type", "note_template", "lab_provider",
                     "lab_account", "patient_pharmacy", "payer", "fee_schedule",
-                    "practice_payer", "tenant_setting"}
+                    "practice_payer", "tenant_setting", "consent_requirement"}
 # child table -> (fk column, parent table, editable parent statuses)
 FROZEN_CHILDREN = {
     "dosage": ("medication_request_id", "medication_request", "draft"),

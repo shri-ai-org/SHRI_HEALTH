@@ -324,6 +324,11 @@ ALTER TABLE clinical.consent_performer ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.consent_performer FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.consent_performer USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+GRANT SELECT, INSERT, UPDATE ON admin.consent_requirement TO shri_app;
+ALTER TABLE admin.consent_requirement ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.consent_requirement FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.consent_requirement USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
 GRANT SELECT ON clinical.consent_verification TO shri_fhir_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON clinical.consent_verification TO shri_app;
 ALTER TABLE clinical.consent_verification ENABLE ROW LEVEL SECURITY;

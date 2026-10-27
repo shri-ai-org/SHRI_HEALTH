@@ -948,6 +948,35 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 Unique: `uq_concept_property_concept_id_property_value`
 
+## `admin.consent_requirement`
+
+Admin (normalized). A consent the practice asks patients for, one row per kind and policy version (D59). A new version is a new row; the earlier one stays until it is retired (``is_active`` false). Nothing is deleted. The kind is fixed once created (``shri_fixed_columns``). A patient's consent records the version they saw (``consent.ext_policy_version``).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `kind` | varchar(40) | no |  |  | — |
+| `title` | varchar(200) | no |  |  | — |
+| `policy_version` | varchar(40) | no |  |  | — |
+| `is_required` | boolean | no |  |  | — |
+| `form_file_id` | uuid | yes |  | admin.binary_object.id | — |
+| `effective_date` | date | no |  |  | — |
+| `is_active` | boolean | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.binary_object.tenant_id, admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `version` | integer | no |  |  | — |
+
+Checks: `ck_consent_requirement_kind_codes`, `ck_consent_requirement_policy_version_given`, `ck_consent_requirement_title_given`
+
+Unique: `uq_consent_requirement_tenant_id_kind_policy_version`
+
+Composite foreign keys: `fk_consent_requirement_form_file_id_tenant`
+
 ## `admin.cosign_rule`
 
 Admin (normalized). FR-ENC-01: supervising-physician co-signature for NPs / PAs, configurable by state.
@@ -2053,6 +2082,8 @@ Contract (from DATA_OWNERSHIP.md):
 | `performed_by_user_id` | uuid | no |  | admin.app_user.id | `performedByUserId` |
 | `unmerged_at` | datetime | yes |  |  | no same-named property |
 | `unmerged_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
+| `surviving_patient_version` | integer | yes |  |  | no same-named property |
+| `merged_patient_version` | integer | yes |  |  | no same-named property |
 | `id` | uuid | no |  |  | `id` |
 | `tenant_id` | uuid | no |  | admin.duplicate_candidate.tenant_id, admin.tenant.id, clinical.patient.tenant_id | no same-named property |
 | `created_at` | datetime | no |  |  | `createdAt` |
@@ -2096,7 +2127,7 @@ Composite foreign keys: `fk_patient_merge_record_patient_merge_id_tenant`
 
 ## `admin.patient_payment`
 
-Admin (normalized). Copays and patient payments. Card payments go through a processor: only its reference is stored, and a CHECK rejects anything that looks like a card number.
+Admin (normalized). Copays and patient payments. Card payments go through a processor: only its reference is stored, and a CHECK rejects anything that looks like a card number. The receipt PDF is a file (``receipt_file_id``, D58), generated in the payment transaction.
 
 Patient-owned via `patient_id` (same-patient foreign keys apply).
 
@@ -2114,8 +2145,9 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `collected_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `is_refund` | boolean | no |  |  | — |
 | `refund_of_payment_id` | uuid | yes |  | admin.patient_payment.id | — |
+| `receipt_file_id` | uuid | yes |  | admin.binary_object.id | — |
 | `id` | uuid | no |  |  | — |
-| `tenant_id` | uuid | no |  | admin.patient_payment.tenant_id, admin.tenant.id, clinical.appointment.tenant_id, clinical.encounter.tenant_id, clinical.patient.tenant_id | — |
+| `tenant_id` | uuid | no |  | admin.binary_object.tenant_id, admin.patient_payment.tenant_id, admin.tenant.id, clinical.appointment.tenant_id, clinical.encounter.tenant_id, clinical.patient.tenant_id | — |
 | `created_at` | datetime | no |  |  | — |
 | `updated_at` | datetime | no |  |  | — |
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
@@ -2125,7 +2157,7 @@ Checks: `ck_patient_payment_amount_positive`, `ck_patient_payment_card_has_proce
 
 Unique: `uq_patient_payment_patient_id_id`, `uq_patient_payment_tenant_id_id`
 
-Composite foreign keys: `fk_patient_payment_appointment_id_same_patient`, `fk_patient_payment_appointment_id_tenant`, `fk_patient_payment_encounter_id_same_patient`, `fk_patient_payment_encounter_id_tenant`, `fk_patient_payment_patient_id_tenant`, `fk_patient_payment_refund_of_payment_id_same_patient`, `fk_patient_payment_refund_of_payment_id_tenant`
+Composite foreign keys: `fk_patient_payment_appointment_id_same_patient`, `fk_patient_payment_appointment_id_tenant`, `fk_patient_payment_encounter_id_same_patient`, `fk_patient_payment_encounter_id_tenant`, `fk_patient_payment_patient_id_tenant`, `fk_patient_payment_receipt_file_id_tenant`, `fk_patient_payment_refund_of_payment_id_same_patient`, `fk_patient_payment_refund_of_payment_id_tenant`
 
 ## `admin.patient_pharmacy`
 
@@ -5067,7 +5099,7 @@ Contract (from DATA_OWNERSHIP.md):
 
 | Column | Type | Null | FHIR | References | Contract name |
 |---|---|---|---|---|---|
-| `patient_id` | uuid | yes | owner → Patient | clinical.patient.id | no same-named property |
+| `patient_id` | uuid | yes | owner → Patient | clinical.document_reference.subject_patient_id, clinical.patient.id | no same-named property |
 | `practitioner_id` | uuid | yes | owner → Practitioner | clinical.practitioner.id | no same-named property |
 | `organization_id` | uuid | yes | owner → Organization | clinical.organization.id | no same-named property |
 | `location_id` | uuid | yes | owner → Location | clinical.location.id | no same-named property |
@@ -5085,6 +5117,7 @@ Contract (from DATA_OWNERSHIP.md):
 | `period_start` | datetime | yes | `period`.start |  | no same-named property |
 | `period_end` | datetime | yes | `period`.end |  | no same-named property |
 | `assigner_display` | varchar(300) | yes | `assigner`.display |  | no same-named property |
+| `supporting_document_id` | uuid | yes |  | clinical.document_reference.id | no same-named property |
 | `id` | uuid | no |  |  | `id` |
 | `tenant_id` | uuid | no |  | admin.tenant.id, clinical.coverage.tenant_id, clinical.document_reference.tenant_id, clinical.encounter.tenant_id, clinical.location.tenant_id, clinical.organization.tenant_id, clinical.patient.tenant_id, clinical.practitioner.tenant_id, clinical.related_person.tenant_id | no same-named property |
 | `created_at` | datetime | no |  |  | `createdAt` |
@@ -5092,9 +5125,9 @@ Contract (from DATA_OWNERSHIP.md):
 
 Contract properties with no column of the same name: `assigner`, `documentId`, `type`
 
-Checks: `ck_identifier_fhir_period_per_1`, `ck_identifier_fhir_type_coding`, `ck_identifier_fhir_type_display`, `ck_identifier_npi_valid`, `ck_identifier_one_owner`, `ck_identifier_ssn_not_clear_text`, `ck_identifier_use_codes`
+Checks: `ck_identifier_fhir_period_per_1`, `ck_identifier_fhir_type_coding`, `ck_identifier_fhir_type_display`, `ck_identifier_npi_valid`, `ck_identifier_one_owner`, `ck_identifier_ssn_not_clear_text`, `ck_identifier_supporting_document_patient_only`, `ck_identifier_use_codes`
 
-Composite foreign keys: `fk_identifier_coverage_id_tenant`, `fk_identifier_document_reference_id_tenant`, `fk_identifier_encounter_id_tenant`, `fk_identifier_location_id_tenant`, `fk_identifier_organization_id_tenant`, `fk_identifier_patient_id_tenant`, `fk_identifier_practitioner_id_tenant`, `fk_identifier_related_person_id_tenant`
+Composite foreign keys: `fk_identifier_coverage_id_tenant`, `fk_identifier_document_reference_id_tenant`, `fk_identifier_encounter_id_tenant`, `fk_identifier_location_id_tenant`, `fk_identifier_organization_id_tenant`, `fk_identifier_patient_id_tenant`, `fk_identifier_practitioner_id_tenant`, `fk_identifier_related_person_id_tenant`, `fk_identifier_supporting_document_id_same_patient`, `fk_identifier_supporting_document_id_tenant`
 
 ## `clinical.immunization`
 
@@ -6952,7 +6985,7 @@ Paths: `/patients/{patientId}/identifiers`
 |---|---|---|
 | `assigner` | — | not mapped yet |
 | `createdAt` | `identifier.created_at` | same name |
-| `documentId` | — | not mapped yet |
+| `documentId` | `identifier.supporting_document_id` | mapped: the scanned document behind the identifier, e.g. a driver's license image filed with category identity (D56); the same patient's document |
 | `id` | `identifier.id` | same name |
 | `system` | `identifier.system` | same name |
 | `type` | — | not mapped yet |
