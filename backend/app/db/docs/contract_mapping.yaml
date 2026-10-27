@@ -54,7 +54,8 @@
               human_name.use]
     note: >-
       human_name rows with use old or maiden (D57). The contract has no use, so new ones are
-      written as old; both are read back and searched
+      written as old; both are read back and searched. A PATCH resends the whole list: a name
+      sent back unchanged keeps its stored use, so a maiden name stays maiden
   phones:
     columns: [contact_point.value, contact_point.system, contact_point.use]
     note: >-
@@ -90,7 +91,10 @@
   identifiers:
     columns: [identifier.type_code, identifier.system, identifier.value,
               identifier.assigner_display, identifier.supporting_document_id]
-    note: the patient's identifier rows, as "Patient identifiers"; never the MRN (D41)
+    note: >-
+      the patient's current identifier rows (use not old), as "Patient identifiers", including
+      the MR row. PatientCreate.identifiers never carries an MR: the MRN comes only from
+      admin.next_mrn() (D41)
   restricted:
     computed: true when patient.meta_security holds R or V (SECURITY_MODEL 5.2)
     columns: [patient.meta_security]
@@ -107,7 +111,14 @@
       duplicate check finds similar patients; override registers anyway
   duplicateOverrideReason:
     columns: [audit_event.reason]
-    note: not stored on the patient; written as the reason of the registration's audit row
+    note: >-
+      not stored on the patient; written as the reason of the registration's audit row, by
+      core's audit writer (not on main yet)
+  updatedAt:
+    columns: [patient.meta_last_updated]
+    note: >-
+      moves with every change, child rows included (the touch triggers), as the ETag does;
+      updated_at moves only when the ORM updates the patient row itself
 
 "Patient identifiers (MRN, driver's license)":
   type:
@@ -146,6 +157,9 @@
     columns: [employer.name, employer.phone, employer.address_lines, employer.address_city,
               employer.address_state, employer.address_postal_code, employer.address_country]
     note: one admin row with related_person_id (D38); clearing the employer deletes the row
+  updatedAt:
+    columns: [related_person.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
 
 "Preferred pharmacy":
   name:
@@ -165,7 +179,10 @@
     columns: [identifier.value, identifier.coverage_id, identifier.type_code]
     note: an identifier row of the coverage with type_code MB
   relationshipToSubscriber:
-    columns: [coverage.relationship_code]
+    columns: [coverage.relationship_code, coverage.subscriber_patient_id]
+    note: >-
+      when it is self, coverage.subscriber_patient_id is the beneficiary and there is no
+      subscriber related person (self_has_no_related_subscriber)
   patientId:
     columns: [coverage.beneficiary_patient_id]
   payerId:
@@ -179,7 +196,9 @@
     note: the coverage_class row with type group
   groupName:
     columns: [coverage_class.name, coverage_class.type]
-    note: the name of the same group row; a group needs its number, so a name alone isn't stored
+    note: >-
+      the name of the same group row; a group needs its number, so groupName without
+      groupNumber is refused with 422 (the contract rule Vimal adds)
   planName:
     columns: [coverage_class.value, coverage_class.name, coverage_class.type]
     note: >-
@@ -194,6 +213,9 @@
     columns: [coverage_card_image.side, coverage_card_image.binary_object_id,
               coverage_card_image.created_at]
     note: one row per side; fileId is binary_object_id, addedAt is created_at
+  updatedAt:
+    columns: [coverage.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
 
 "Consents":
   signedFormFileId:
@@ -220,6 +242,9 @@
 "Appointment":
   sameDayAddOn:
     columns: [appointment.ext_same_day_add_on]
+  updatedAt:
+    columns: [appointment.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
   visitStatus:
     computed: >-
       the latest visit_flow_event step of the appointment recorded after its last undone
@@ -257,3 +282,8 @@
   facilityIds:
     columns: [practitioner_role_location.location_id, facility.location_id]
     note: the facilities whose location_id is one of the provider's role locations
+
+"Addendum":
+  updatedAt:
+    columns: [composition.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
