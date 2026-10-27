@@ -349,6 +349,28 @@ CREATE TABLE admin.message_template (
 
 CREATE INDEX ix_message_template_tenant_id ON admin.message_template (tenant_id);
 
+CREATE TABLE admin.mrn_counter (
+	prefix VARCHAR(10) NOT NULL, 
+	system VARCHAR(300) NOT NULL, 
+	next_value BIGINT DEFAULT 1 NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_mrn_counter PRIMARY KEY (id), 
+	CONSTRAINT uq_mrn_counter_tenant_id UNIQUE (tenant_id), 
+	CONSTRAINT ck_mrn_counter_prefix_format CHECK (prefix ~ '^[A-Z0-9]{1,10}$'), 
+	CONSTRAINT ck_mrn_counter_system_uri CHECK (system ~ '^(urn:|https?://)'), 
+	CONSTRAINT ck_mrn_counter_next_value_positive CHECK (next_value >= 1), 
+	CONSTRAINT fk_mrn_counter_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_mrn_counter_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_mrn_counter_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_mrn_counter_tenant_id ON admin.mrn_counter (tenant_id);
+
 CREATE TABLE admin.tenant_setting (
 	setting_key VARCHAR(100) NOT NULL, 
 	value TEXT NOT NULL, 
@@ -358,6 +380,7 @@ CREATE TABLE admin.tenant_setting (
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
 	CONSTRAINT pk_tenant_setting PRIMARY KEY (id), 
 	CONSTRAINT uq_tenant_setting_tenant_id_setting_key UNIQUE (tenant_id, setting_key), 
 	CONSTRAINT fk_tenant_setting_setting_key_setting_definition FOREIGN KEY(setting_key) REFERENCES admin.setting_definition (key) ON UPDATE CASCADE, 
@@ -606,6 +629,107 @@ CREATE TABLE admin.fee_schedule (
 
 CREATE INDEX ix_fee_schedule_tenant_id ON admin.fee_schedule (tenant_id);
 
+CREATE TABLE admin.app_session (
+	user_id UUID NOT NULL, 
+	token_hash VARCHAR(64) NOT NULL, 
+	keycloak_access_token_enc TEXT NOT NULL, 
+	keycloak_refresh_token_enc TEXT NOT NULL, 
+	keycloak_sid VARCHAR(100), 
+	last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	tokens_refreshed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	idle_expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	revoked_at TIMESTAMP WITH TIME ZONE, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_app_session PRIMARY KEY (id), 
+	CONSTRAINT uq_app_session_token_hash UNIQUE (token_hash), 
+	CONSTRAINT ck_app_session_token_hash_format CHECK (token_hash ~ '^[0-9a-f]{64}$'), 
+	CONSTRAINT ck_app_session_idle_within_absolute CHECK (idle_expires_at <= expires_at), 
+	CONSTRAINT ck_app_session_tokens_encrypted CHECK (keycloak_access_token_enc ~ '^vault:v[0-9]+:' AND keycloak_refresh_token_enc ~ '^vault:v[0-9]+:'), 
+	CONSTRAINT fk_app_session_user_id_app_user FOREIGN KEY(user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_app_session_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_app_session_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_app_session_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_app_session_expires ON admin.app_session (expires_at);
+
+CREATE INDEX ix_app_session_keycloak_sid ON admin.app_session (keycloak_sid);
+
+CREATE INDEX ix_app_session_tenant_id ON admin.app_session (tenant_id);
+
+CREATE INDEX ix_app_session_user ON admin.app_session (tenant_id, user_id);
+
+CREATE TABLE admin.idempotency_record (
+	user_id UUID NOT NULL, 
+	method VARCHAR(10) NOT NULL, 
+	path VARCHAR(500) NOT NULL, 
+	key VARCHAR(255) NOT NULL, 
+	request_hash VARCHAR(64) NOT NULL, 
+	state VARCHAR(40) NOT NULL, 
+	response_status SMALLINT, 
+	response_headers JSONB, 
+	response_body_enc TEXT, 
+	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_idempotency_record PRIMARY KEY (id), 
+	CONSTRAINT uq_idempotency_record_tenant_id_user_id_method_path_key UNIQUE (tenant_id, user_id, method, path, key), 
+	CONSTRAINT ck_idempotency_record_request_hash_format CHECK (request_hash ~ '^[0-9a-f]{64}$'), 
+	CONSTRAINT ck_idempotency_record_unsafe_method CHECK (method IN ('POST', 'PUT', 'PATCH')), 
+	CONSTRAINT ck_idempotency_record_done_has_response CHECK (state <> 'done' OR response_status IS NOT NULL), 
+	CONSTRAINT ck_idempotency_record_stored_status CHECK (response_status IS NULL OR (response_status BETWEEN 200 AND 499 AND response_status <> 429)), 
+	CONSTRAINT ck_idempotency_record_response_body_encrypted CHECK (response_body_enc IS NULL OR response_body_enc ~ '^vault:v[0-9]+:'), 
+	CONSTRAINT fk_idempotency_record_user_id_app_user FOREIGN KEY(user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_idempotency_record_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_idempotency_record_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_idempotency_record_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_idempotency_record_state_codes CHECK (state IN ('in-progress', 'done'))
+);
+
+CREATE INDEX ix_idempotency_record_expires ON admin.idempotency_record (expires_at);
+
+CREATE INDEX ix_idempotency_record_tenant_id ON admin.idempotency_record (tenant_id);
+
+CREATE TABLE admin.operation (
+	created_by_user_id UUID NOT NULL, 
+	kind VARCHAR(64) NOT NULL, 
+	status VARCHAR(40) NOT NULL, 
+	result_type VARCHAR(64), 
+	result_id UUID, 
+	error JSONB, 
+	completed_at TIMESTAMP WITH TIME ZONE, 
+	assigned_to_integration BOOLEAN DEFAULT false NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_operation PRIMARY KEY (id), 
+	CONSTRAINT ck_operation_completed_when_final CHECK ((completed_at IS NOT NULL) = (status IN ('succeeded', 'failed', 'cancelled'))), 
+	CONSTRAINT ck_operation_failure_has_error CHECK (status <> 'failed' OR error IS NOT NULL), 
+	CONSTRAINT ck_operation_result_pair CHECK ((result_type IS NULL) = (result_id IS NULL)), 
+	CONSTRAINT fk_operation_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_operation_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_operation_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_operation_status_codes CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled'))
+);
+
+CREATE INDEX ix_operation_created ON admin.operation (created_at);
+
+CREATE INDEX ix_operation_creator ON admin.operation (tenant_id, created_by_user_id, created_at);
+
+CREATE INDEX ix_operation_tenant_id ON admin.operation (tenant_id);
+
 CREATE TABLE clinical.practitioner (
 	active BOOLEAN DEFAULT true NOT NULL, 
 	gender VARCHAR(40), 
@@ -818,6 +942,9 @@ CREATE TABLE admin.integration_message (
 	message_type VARCHAR(30) NOT NULL, 
 	status VARCHAR(40) NOT NULL, 
 	idempotency_key VARCHAR(100), 
+	ordering_key VARCHAR(100), 
+	payload JSONB, 
+	claimed_at TIMESTAMP WITH TIME ZONE, 
 	correlation_id VARCHAR(64), 
 	control_id VARCHAR(60), 
 	payload_binary_id UUID, 
@@ -837,6 +964,7 @@ CREATE TABLE admin.integration_message (
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
 	CONSTRAINT pk_integration_message PRIMARY KEY (id), 
+	CONSTRAINT ck_integration_message_payload_ids_only CHECK (payload IS NULL OR (jsonb_typeof(payload) = 'object' AND octet_length(payload::text) <= 8192)), 
 	CONSTRAINT uq_integration_message_tenant_id_idempotency_key UNIQUE (tenant_id, idempotency_key), 
 	CONSTRAINT uq_integration_message_endpoint_id_direction_control_id UNIQUE (endpoint_id, direction, control_id), 
 	CONSTRAINT ck_integration_message_attempts CHECK (attempts >= 0 AND attempts <= max_attempts), 
@@ -856,6 +984,12 @@ CREATE TABLE admin.integration_message (
 CREATE INDEX ix_integration_message_control ON admin.integration_message (endpoint_id, control_id);
 
 CREATE INDEX ix_integration_message_dispatch ON admin.integration_message (status, next_attempt_at);
+
+CREATE INDEX ix_integration_message_lease ON admin.integration_message (claimed_at) WHERE direction = 'outbound' AND status = 'sending';
+
+CREATE INDEX ix_integration_message_ordering ON admin.integration_message (tenant_id, ordering_key, created_at);
+
+CREATE INDEX ix_integration_message_outbound_due ON admin.integration_message (next_attempt_at) WHERE direction = 'outbound' AND status IN ('queued', 'failed');
 
 CREATE INDEX ix_integration_message_tenant_id ON admin.integration_message (tenant_id);
 
@@ -915,6 +1049,34 @@ CREATE TABLE admin.note_template_section (
 );
 
 CREATE INDEX ix_note_template_section_tenant_id ON admin.note_template_section (tenant_id);
+
+CREATE TABLE admin.consent_requirement (
+	kind VARCHAR(40) NOT NULL, 
+	title VARCHAR(200) NOT NULL, 
+	policy_version VARCHAR(40) NOT NULL, 
+	is_required BOOLEAN NOT NULL, 
+	form_file_id UUID, 
+	effective_date DATE NOT NULL, 
+	is_active BOOLEAN DEFAULT true NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
+	CONSTRAINT pk_consent_requirement PRIMARY KEY (id), 
+	CONSTRAINT uq_consent_requirement_tenant_id_kind_policy_version UNIQUE (tenant_id, kind, policy_version), 
+	CONSTRAINT ck_consent_requirement_title_given CHECK (length(trim(title)) >= 1), 
+	CONSTRAINT ck_consent_requirement_policy_version_given CHECK (length(trim(policy_version)) >= 1), 
+	CONSTRAINT fk_consent_requirement_form_file_id_binary_object FOREIGN KEY(form_file_id) REFERENCES admin.binary_object (id), 
+	CONSTRAINT fk_consent_requirement_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_consent_requirement_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_consent_requirement_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_consent_requirement_kind_codes CHECK (kind IN ('treatment', 'privacy-notice', 'ambient-recording', 'telehealth', 'research', 'information-sharing', 'financial'))
+);
+
+CREATE INDEX ix_consent_requirement_tenant_id ON admin.consent_requirement (tenant_id);
 
 CREATE TABLE admin.payer_enrollment (
 	payer_id UUID NOT NULL, 
@@ -986,6 +1148,26 @@ CREATE TABLE clinical.patient (
 	ext_birthsex VARCHAR(40), 
 	ext_race_text VARCHAR(200), 
 	ext_ethnicity_text VARCHAR(200), 
+	ext_gender_identity_system VARCHAR(300), 
+	ext_gender_identity_code VARCHAR(64), 
+	ext_gender_identity_display VARCHAR(500), 
+	ext_gender_identity_text VARCHAR(1000), 
+	ext_sexual_orientation_system VARCHAR(300), 
+	ext_sexual_orientation_code VARCHAR(64), 
+	ext_sexual_orientation_display VARCHAR(500), 
+	ext_sexual_orientation_text VARCHAR(1000), 
+	ext_occupation_system VARCHAR(300), 
+	ext_occupation_code VARCHAR(64), 
+	ext_occupation_display VARCHAR(500), 
+	ext_occupation_text VARCHAR(1000), 
+	ext_industry_system VARCHAR(300), 
+	ext_industry_code VARCHAR(64), 
+	ext_industry_display VARCHAR(500), 
+	ext_industry_text VARCHAR(1000), 
+	ext_tribal_affiliation_system VARCHAR(300), 
+	ext_tribal_affiliation_code VARCHAR(64), 
+	ext_tribal_affiliation_display VARCHAR(500), 
+	ext_tribal_affiliation_text VARCHAR(1000), 
 	meta_version_id INTEGER DEFAULT 1 NOT NULL, 
 	meta_last_updated TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	meta_txid BIGINT, 
@@ -1007,10 +1189,20 @@ CREATE TABLE clinical.patient (
 	CONSTRAINT ck_patient_birth_date_not_future CHECK (birth_date IS NULL OR birth_date <= CURRENT_DATE + 1), 
 	CONSTRAINT ck_patient_deceased_after_birth CHECK (deceased_date_time IS NULL OR birth_date IS NULL OR deceased_date_time::date >= birth_date), 
 	CONSTRAINT ck_patient_birth_order CHECK (multiple_birth_integer IS NULL OR multiple_birth_integer >= 1), 
+	CONSTRAINT ck_patient_gender_identity_code_has_system CHECK ((ext_gender_identity_code IS NULL) = (ext_gender_identity_system IS NULL)), 
+	CONSTRAINT ck_patient_sexual_orientation_code_has_system CHECK ((ext_sexual_orientation_code IS NULL) = (ext_sexual_orientation_system IS NULL)), 
+	CONSTRAINT ck_patient_occupation_code_has_system CHECK ((ext_occupation_code IS NULL) = (ext_occupation_system IS NULL)), 
+	CONSTRAINT ck_patient_industry_code_has_system CHECK ((ext_industry_code IS NULL) = (ext_industry_system IS NULL)), 
+	CONSTRAINT ck_patient_tribal_affiliation_code_has_system CHECK ((ext_tribal_affiliation_code IS NULL) = (ext_tribal_affiliation_system IS NULL)), 
 	CONSTRAINT ck_patient_meta_security_codes CHECK (meta_security <@ ARRAY['L', 'M', 'N', 'R', 'V', 'PSY', 'SUD', 'ETH', 'HIV', 'SEX', 'SOC', 'CEL']::varchar[]), 
 	CONSTRAINT ck_patient_extension_is_array CHECK (jsonb_typeof(extension) = 'array'), 
 	CONSTRAINT fk_patient_marital_status_system_code_system FOREIGN KEY(marital_status_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
 	CONSTRAINT fk_patient_managing_organization_id_organization FOREIGN KEY(managing_organization_id) REFERENCES clinical.organization (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_patient_ext_gender_identity_system_code_system FOREIGN KEY(ext_gender_identity_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
+	CONSTRAINT fk_patient_ext_sexual_orientation_system_code_system FOREIGN KEY(ext_sexual_orientation_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
+	CONSTRAINT fk_patient_ext_occupation_system_code_system FOREIGN KEY(ext_occupation_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
+	CONSTRAINT fk_patient_ext_industry_system_code_system FOREIGN KEY(ext_industry_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
+	CONSTRAINT fk_patient_ext_tribal_affiliation_system_code_system FOREIGN KEY(ext_tribal_affiliation_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
 	CONSTRAINT fk_patient_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_patient_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_patient_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
@@ -1267,7 +1459,7 @@ CREATE TABLE admin.facility (
 	clia_number VARCHAR(10), 
 	tax_id_ref VARCHAR(200), 
 	place_of_service_code VARCHAR(2) DEFAULT '11' NOT NULL, 
-	timezone VARCHAR(64), 
+	timezone VARCHAR(64) NOT NULL, 
 	is_billing_location BOOLEAN DEFAULT true NOT NULL, 
 	is_active BOOLEAN DEFAULT true NOT NULL, 
 	id UUID NOT NULL, 
@@ -1386,6 +1578,7 @@ CREATE TABLE audit.audit_event (
 	actor_user_id UUID, 
 	actor_display VARCHAR(200), 
 	action VARCHAR(40) NOT NULL, 
+	category VARCHAR(40) NOT NULL, 
 	outcome VARCHAR(40) NOT NULL, 
 	entity_type VARCHAR(64), 
 	entity_id VARCHAR(64), 
@@ -1399,17 +1592,20 @@ CREATE TABLE audit.audit_event (
 	chain_seq BIGINT, 
 	prev_hash VARCHAR(64), 
 	hash VARCHAR(64), 
+	hash_version SMALLINT DEFAULT 2 NOT NULL, 
 	tenant_id UUID, 
 	CONSTRAINT pk_audit_event PRIMARY KEY (id), 
 	CONSTRAINT uq_audit_event_tenant_id_chain_seq UNIQUE NULLS NOT DISTINCT (tenant_id, chain_seq), 
-	CONSTRAINT ck_audit_event_break_glass_reason CHECK (action <> 'break-glass' OR reason IS NOT NULL), 
+	CONSTRAINT ck_audit_event_break_glass_reason CHECK (action <> 'break-glass' OR (reason IS NOT NULL AND length(trim(reason)) > 0)), 
+	CONSTRAINT ck_audit_event_hash_version_known CHECK (hash_version IN (1, 2)), 
 	CONSTRAINT ck_audit_event_user_actor CHECK (actor_type <> 'user' OR actor_user_id IS NOT NULL), 
 	CONSTRAINT uq_audit_event_event_uuid UNIQUE (event_uuid), 
 	CONSTRAINT fk_audit_event_actor_user_id_app_user FOREIGN KEY(actor_user_id) REFERENCES admin.app_user (id), 
 	CONSTRAINT fk_audit_event_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
 	CONSTRAINT fk_audit_event_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
-	CONSTRAINT ck_audit_event_actor_type_codes CHECK (actor_type IN ('user', 'system', 'ai', 'integration', 'patient')), 
+	CONSTRAINT ck_audit_event_actor_type_codes CHECK (actor_type IN ('user', 'system', 'ai', 'integration', 'patient', 'partner')), 
 	CONSTRAINT ck_audit_event_action_codes CHECK (action IN ('read', 'create', 'update', 'delete', 'sign', 'export', 'print', 'login', 'logout', 'access-denied', 'ai-request', 'ai-review', 'merge', 'break-glass', 'config-change')), 
+	CONSTRAINT ck_audit_event_category_codes CHECK (category IN ('phi-read', 'phi-write', 'sign', 'export', 'security', 'ai', 'admin')), 
 	CONSTRAINT ck_audit_event_outcome_codes CHECK (outcome IN ('success', 'failure', 'denied')), 
 	CONSTRAINT uq_audit_event_patient_id_id UNIQUE (patient_id, id)
 );
@@ -1419,6 +1615,8 @@ CREATE INDEX ix_audit_event_actor_time ON audit.audit_event (actor_user_id, reco
 CREATE INDEX ix_audit_event_entity ON audit.audit_event (entity_type, entity_id);
 
 CREATE INDEX ix_audit_event_patient_time ON audit.audit_event (patient_id, recorded_at);
+
+CREATE INDEX ix_audit_event_platform_time ON audit.audit_event (recorded_at) WHERE tenant_id IS NULL;
 
 CREATE INDEX ix_audit_event_tenant_id ON audit.audit_event (tenant_id);
 
@@ -2102,7 +2300,8 @@ CREATE INDEX ix_compendium_covered_diagnosis_tenant_id ON admin.compendium_cover
 CREATE TABLE audit.break_glass_access (
 	patient_id UUID NOT NULL, 
 	user_id UUID NOT NULL, 
-	reason VARCHAR(500) NOT NULL, 
+	reason_code VARCHAR(40) NOT NULL, 
+	reason_text VARCHAR(500), 
 	granted_at TIMESTAMP WITH TIME ZONE NOT NULL, 
 	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
 	audit_event_id BIGINT, 
@@ -2117,7 +2316,7 @@ CREATE TABLE audit.break_glass_access (
 	CONSTRAINT pk_break_glass_access PRIMARY KEY (id), 
 	CONSTRAINT ck_break_glass_access_expiry_after_grant CHECK (expires_at > granted_at), 
 	CONSTRAINT ck_break_glass_access_max_24h CHECK (expires_at <= granted_at + interval '24 hours'), 
-	CONSTRAINT ck_break_glass_access_reason_stated CHECK (length(trim(reason)) >= 10), 
+	CONSTRAINT ck_break_glass_access_other_needs_text CHECK (reason_code <> 'other' OR coalesce(length(trim(reason_text)), 0) >= 1), 
 	CONSTRAINT ck_break_glass_access_review_pair CHECK ((reviewed_at IS NULL) = (reviewed_by_user_id IS NULL)), 
 	CONSTRAINT fk_break_glass_access_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
 	CONSTRAINT fk_break_glass_access_user_id_app_user FOREIGN KEY(user_id) REFERENCES admin.app_user (id), 
@@ -2125,7 +2324,8 @@ CREATE TABLE audit.break_glass_access (
 	CONSTRAINT fk_break_glass_access_reviewed_by_user_id_app_user FOREIGN KEY(reviewed_by_user_id) REFERENCES admin.app_user (id), 
 	CONSTRAINT fk_break_glass_access_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_break_glass_access_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
-	CONSTRAINT fk_break_glass_access_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+	CONSTRAINT fk_break_glass_access_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_break_glass_access_reason_code_codes CHECK (reason_code IN ('emergency-care', 'continuity-of-care', 'patient-request', 'other'))
 );
 
 CREATE INDEX ix_break_glass_access_active ON audit.break_glass_access (user_id, patient_id, expires_at);
@@ -2161,6 +2361,8 @@ CREATE TABLE admin.patient_merge (
 	performed_by_user_id UUID NOT NULL, 
 	unmerged_at TIMESTAMP WITH TIME ZONE, 
 	unmerged_by_user_id UUID, 
+	surviving_patient_version INTEGER, 
+	merged_patient_version INTEGER, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -2248,6 +2450,69 @@ CREATE TABLE admin.user_favorite (
 CREATE INDEX ix_user_favorite_tenant_id ON admin.user_favorite (tenant_id);
 
 CREATE INDEX ix_user_favorite_user_kind ON admin.user_favorite (user_id, kind, sequence);
+
+CREATE TABLE admin.employer (
+	patient_id UUID, 
+	related_person_id UUID, 
+	name VARCHAR(200) NOT NULL, 
+	phone VARCHAR(16), 
+	address_lines VARCHAR(100)[], 
+	address_city VARCHAR(60), 
+	address_state VARCHAR(2), 
+	address_postal_code VARCHAR(10), 
+	address_country VARCHAR(2), 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_employer PRIMARY KEY (id), 
+	CONSTRAINT ck_employer_one_person CHECK (num_nonnulls(patient_id, related_person_id) = 1), 
+	CONSTRAINT uq_employer_patient_id UNIQUE (patient_id), 
+	CONSTRAINT uq_employer_related_person_id UNIQUE (related_person_id), 
+	CONSTRAINT ck_employer_name_given CHECK (length(trim(name)) >= 1), 
+	CONSTRAINT ck_employer_phone_e164 CHECK (phone IS NULL OR phone ~ '^\+[1-9][0-9]{6,14}$'), 
+	CONSTRAINT ck_employer_address_whole CHECK (num_nonnulls(address_lines, address_city, address_state, address_postal_code, address_country) IN (0, 5)), 
+	CONSTRAINT ck_employer_address_lines_count CHECK (address_lines IS NULL OR cardinality(address_lines) BETWEEN 1 AND 3), 
+	CONSTRAINT ck_employer_address_state_format CHECK (address_state IS NULL OR address_state ~ '^[A-Z]{2}$'), 
+	CONSTRAINT ck_employer_address_postal_code_format CHECK (address_postal_code IS NULL OR address_postal_code ~ '^[0-9]{5}(-[0-9]{4})?$'), 
+	CONSTRAINT ck_employer_address_country_us CHECK (address_country IS NULL OR address_country = 'US'), 
+	CONSTRAINT fk_employer_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id) ON DELETE CASCADE, 
+	CONSTRAINT fk_employer_related_person_id_related_person FOREIGN KEY(related_person_id) REFERENCES clinical.related_person (id) ON DELETE CASCADE, 
+	CONSTRAINT fk_employer_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_employer_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_employer_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_employer_tenant_id ON admin.employer (tenant_id);
+
+CREATE TABLE admin.event_log (
+	seq BIGINT GENERATED ALWAYS AS IDENTITY, 
+	facility_id UUID, 
+	patient_id UUID, 
+	target_user_id UUID, 
+	target_role_code TEXT, 
+	type VARCHAR(100) NOT NULL, 
+	subject VARCHAR(200) NOT NULL, 
+	data JSONB DEFAULT '{}'::jsonb NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	CONSTRAINT pk_event_log PRIMARY KEY (id), 
+	CONSTRAINT ck_event_log_target_role_code_format CHECK (target_role_code ~ '^[A-Z]{2,10}$'), 
+	CONSTRAINT uq_event_log_seq UNIQUE (seq), 
+	CONSTRAINT fk_event_log_facility_id_facility FOREIGN KEY(facility_id) REFERENCES admin.facility (id), 
+	CONSTRAINT fk_event_log_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
+	CONSTRAINT fk_event_log_target_user_id_app_user FOREIGN KEY(target_user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_event_log_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX ix_event_log_created ON admin.event_log (created_at);
+
+CREATE INDEX ix_event_log_replay ON admin.event_log (tenant_id, seq);
+
+CREATE INDEX ix_event_log_tenant_id ON admin.event_log (tenant_id);
 
 CREATE TABLE clinical.family_member_history_condition (
 	family_member_history_id UUID NOT NULL, 
@@ -3108,6 +3373,7 @@ CREATE TABLE clinical.encounter (
 	service_provider_organization_id UUID, 
 	ext_facility_id UUID, 
 	ext_place_of_service_code VARCHAR(2), 
+	ext_self_pay BOOLEAN DEFAULT false NOT NULL, 
 	meta_version_id INTEGER DEFAULT 1 NOT NULL, 
 	meta_last_updated TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	meta_txid BIGINT, 
@@ -3331,6 +3597,7 @@ CREATE TABLE admin.patient_payment (
 	collected_by_user_id UUID, 
 	is_refund BOOLEAN NOT NULL, 
 	refund_of_payment_id UUID, 
+	receipt_file_id UUID, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -3347,6 +3614,7 @@ CREATE TABLE admin.patient_payment (
 	CONSTRAINT fk_patient_payment_appointment_id_appointment FOREIGN KEY(appointment_id) REFERENCES clinical.appointment (id), 
 	CONSTRAINT fk_patient_payment_collected_by_user_id_app_user FOREIGN KEY(collected_by_user_id) REFERENCES admin.app_user (id), 
 	CONSTRAINT fk_patient_payment_refund_of_payment_id_patient_payment FOREIGN KEY(refund_of_payment_id) REFERENCES admin.patient_payment (id), 
+	CONSTRAINT fk_patient_payment_receipt_file_id_binary_object FOREIGN KEY(receipt_file_id) REFERENCES admin.binary_object (id), 
 	CONSTRAINT fk_patient_payment_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_patient_payment_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_patient_payment_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
@@ -5179,6 +5447,7 @@ CREATE TABLE clinical.identifier (
 	period_start TIMESTAMP WITH TIME ZONE, 
 	period_end TIMESTAMP WITH TIME ZONE, 
 	assigner_display VARCHAR(300), 
+	supporting_document_id UUID, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -5186,6 +5455,7 @@ CREATE TABLE clinical.identifier (
 	CONSTRAINT pk_identifier PRIMARY KEY (id), 
 	CONSTRAINT ck_identifier_ssn_not_clear_text CHECK (system IS DISTINCT FROM 'http://hl7.org/fhir/sid/us-ssn' OR value ~ '^(sha256:[0-9a-f]{64}|\*\*\*-\*\*-[0-9]{4})$'), 
 	CONSTRAINT ck_identifier_npi_valid CHECK (system IS DISTINCT FROM 'http://hl7.org/fhir/sid/us-npi' OR shri_npi_valid(value)), 
+	CONSTRAINT ck_identifier_supporting_document_patient_only CHECK (supporting_document_id IS NULL OR patient_id IS NOT NULL), 
 	CONSTRAINT fk_identifier_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_identifier_practitioner_id_practitioner FOREIGN KEY(practitioner_id) REFERENCES clinical.practitioner (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_identifier_organization_id_organization FOREIGN KEY(organization_id) REFERENCES clinical.organization (id) ON DELETE CASCADE, 
@@ -5195,6 +5465,7 @@ CREATE TABLE clinical.identifier (
 	CONSTRAINT fk_identifier_coverage_id_coverage FOREIGN KEY(coverage_id) REFERENCES clinical.coverage (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_identifier_document_reference_id_document_reference FOREIGN KEY(document_reference_id) REFERENCES clinical.document_reference (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_identifier_type_system_code_system FOREIGN KEY(type_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
+	CONSTRAINT fk_identifier_supporting_document_id_document_reference FOREIGN KEY(supporting_document_id) REFERENCES clinical.document_reference (id), 
 	CONSTRAINT fk_identifier_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT ck_identifier_use_codes CHECK (use IN ('usual', 'official', 'temp', 'secondary', 'old')), 
 	CONSTRAINT ck_identifier_fhir_type_coding CHECK ((type_code IS NULL) = (type_system IS NULL)), 
@@ -7572,6 +7843,8 @@ ALTER TABLE admin.compendium_test ADD CONSTRAINT fk_compendium_test_lab_provider
 
 ALTER TABLE admin.compendium_test_code ADD CONSTRAINT fk_compendium_test_code_compendium_test_id_tenant FOREIGN KEY(tenant_id, compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
 
+ALTER TABLE admin.consent_requirement ADD CONSTRAINT fk_consent_requirement_form_file_id_tenant FOREIGN KEY(tenant_id, form_file_id) REFERENCES admin.binary_object (tenant_id, id);
+
 ALTER TABLE admin.cosign_rule ADD CONSTRAINT fk_cosign_rule_supervisee_practitioner_id_tenant FOREIGN KEY(tenant_id, supervisee_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE admin.cosign_rule ADD CONSTRAINT fk_cosign_rule_supervising_practitioner_id_tenant FOREIGN KEY(tenant_id, supervising_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
@@ -7602,6 +7875,12 @@ ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_patient_
 
 ALTER TABLE admin.eligibility_service_type ADD CONSTRAINT fk_eligibility_service_type_eligibility_check_id_tenant FOREIGN KEY(tenant_id, eligibility_check_id) REFERENCES admin.eligibility_check (tenant_id, id);
 
+ALTER TABLE admin.employer ADD CONSTRAINT fk_employer_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.employer ADD CONSTRAINT fk_employer_related_person_id_same_patient FOREIGN KEY(patient_id, related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.employer ADD CONSTRAINT fk_employer_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_integration_message_id_tenant FOREIGN KEY(tenant_id, integration_message_id) REFERENCES admin.integration_message (tenant_id, id);
 
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_medication_request_id_same_patient FOREIGN KEY(patient_id, medication_request_id) REFERENCES clinical.medication_request (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
@@ -7613,6 +7892,10 @@ ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_patient_id_t
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_related_transaction_id_same_patient FOREIGN KEY(patient_id, related_transaction_id) REFERENCES admin.erx_transaction (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_related_transaction_id_tenant FOREIGN KEY(tenant_id, related_transaction_id) REFERENCES admin.erx_transaction (tenant_id, id);
+
+ALTER TABLE admin.event_log ADD CONSTRAINT fk_event_log_facility_id_tenant FOREIGN KEY(tenant_id, facility_id) REFERENCES admin.facility (tenant_id, id);
+
+ALTER TABLE admin.event_log ADD CONSTRAINT fk_event_log_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.facility ADD CONSTRAINT fk_facility_location_id_tenant FOREIGN KEY(tenant_id, location_id) REFERENCES clinical.location (tenant_id, id);
 
@@ -7711,6 +7994,8 @@ ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_encounter_id
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
 
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_receipt_file_id_tenant FOREIGN KEY(tenant_id, receipt_file_id) REFERENCES admin.binary_object (tenant_id, id);
 
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_refund_of_payment_id_same_patient FOREIGN KEY(patient_id, refund_of_payment_id) REFERENCES admin.patient_payment (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
@@ -8337,6 +8622,10 @@ ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_patient_id_tenant F
 ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
+
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_supporting_document_id_same_patient FOREIGN KEY(patient_id, supporting_document_id) REFERENCES clinical.document_reference (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE clinical.identifier ADD CONSTRAINT fk_identifier_supporting_document_id_tenant FOREIGN KEY(tenant_id, supporting_document_id) REFERENCES clinical.document_reference (tenant_id, id);
 
 ALTER TABLE clinical.immunization ADD CONSTRAINT fk_immunization_ai_suggestion_id_ai_suggestion FOREIGN KEY(ai_suggestion_id) REFERENCES admin.ai_suggestion (id) ON DELETE RESTRICT;
 

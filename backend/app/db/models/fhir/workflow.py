@@ -233,6 +233,10 @@ class Encounter(Base, ClinicalResourceMixin):
         "serviceProvider", "organization", "Organization")
     ext_facility_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.facility.id"))
     ext_place_of_service_code: Mapped[str | None] = mapped_column(String(2))
+    # Self-pay, from check-in (CheckInRequest.selfPay; A45). The database refuses an insurance
+    # claim for a self-pay visit; the superbill and statements show it.
+    ext_self_pay: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
+                                               server_default=text("false"))
 
     identifier = children("Identifier", "encounter_id", "identifier")
     status_history = children("EncounterStatusHistory", "encounter_id", "statusHistory",

@@ -1,6 +1,7 @@
 """The FHIR facade emits valid FHIR: every resource built here is serialized from the tables and
 parsed by an independent FHIR model library (fhir.resources, R4B), then served through the
-FastAPI endpoints with read / vread / history / search, audit and break-the-glass."""
+FastAPI endpoints with read / vread / history / search and audit, as ``shri_fhir_reader``.
+Restricted charts on /fhir (D22, migration 0006) are tested in test_fhir_restricted.py."""
 from __future__ import annotations
 
 import datetime as dt
@@ -228,23 +229,15 @@ def test_history_snapshot_serializes_like_the_live_row(db: Session, chart: dict[
 # --------------------------------------------------------------------------- HTTP
 @pytest.fixture
 def client(chart: dict[str, Any], db: Session) -> Iterator[TestClient]:
-    """The facade as ``shri_app``. Kept for the restricted-chart test, which still checks
-    break-glass (``audit.break_glass_access``, which ``shri_fhir_reader`` cannot read) until
-    the restricted-chart design replaces ``ensure_chart_access``."""
-    yield from _facade_client(chart, db, "shri_app")
-
-
-@pytest.fixture
-def reader_client(chart: dict[str, Any], db: Session) -> Iterator[TestClient]:
     """The facade as ``shri_fhir_reader``, the role /fhir runs as (D22, D23)."""
-    yield from _facade_client(chart, db, "shri_fhir_reader")
+    yield from facade_client(chart, db)
 
 
-def _facade_client(chart: dict[str, Any], db: Session, role: str) -> Iterator[TestClient]:
+def facade_client(chart: dict[str, Any], db: Session) -> Iterator[TestClient]:
     """A local app mounting only the FHIR facade router, with both of its seams overridden:
     ``machine_token_auth`` with a fixed AuthContext, and ``fhir_db`` with a session from the
     core's own ``Database.tenant_session`` (the same per-transaction clinic settings
-    ``tenant_db`` uses), connected as ``role``."""
+    ``tenant_db`` uses), connected as ``shri_fhir_reader``."""
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
     from sqlalchemy.exc import DBAPIError
@@ -262,8 +255,7 @@ def _facade_client(chart: dict[str, Any], db: Session, role: str) -> Iterator[Te
         return JSONResponse(http_exc.detail, status_code=http_exc.status_code)
 
     database = Database(Settings(database_url=TEST_DATABASE_URL))
-    switch_to_role(database.engine.sync_engine, role,
-                   require_search_path=role != "shri_fhir_reader")
+    switch_to_role(database.engine.sync_engine, "shri_fhir_reader", require_search_path=False)
     ctx = AuthContext(db.info["tenant_id"], chart["ctx"]["user"].id, frozenset({"clinician"}))
 
     async def _fhir_db() -> AsyncIterator[AsyncSession]:
@@ -280,16 +272,16 @@ def _facade_client(chart: dict[str, Any], db: Session, role: str) -> Iterator[Te
     app.dependency_overrides.clear()
 
 
-def test_http_read_as_fhir_reader_is_audited(reader_client: TestClient,
+def test_http_read_as_fhir_reader_is_audited(client: TestClient,
                                              chart: dict[str, Any],
                                              admin_engine: Engine) -> None:
     """As shri_fhir_reader, which may insert audit rows but not read them: the audit insert
     must work without RETURNING, and the read must still succeed."""
     pt = chart["patient"]
-    r = reader_client.get(f"/fhir/r4/Patient/{pt.id}")
+    r = client.get(f"/fhir/r4/Patient/{pt.id}")
     assert r.status_code == 200
     validate(r.json())
-    found = reader_client.post("/fhir/r4/Observation/_search",
+    found = client.post("/fhir/r4/Observation/_search",
                                json={"patient": f"Patient/{pt.id}",
                                      "code": f"{systems.LOINC}|85354-9"}).json()
     assert found["total"] == 1
@@ -333,28 +325,6 @@ def test_http_read_vread_history_search(client: TestClient,
         audited = c.execute(text("SELECT count(*) FROM audit.audit_event WHERE patient_id = :p "
                                  "AND action = 'read'"), {"p": pt.id}).scalar_one()
     assert audited >= 4
-
-
-def test_http_restricted_chart_needs_break_glass(client: TestClient,
-                                                 chart: dict[str, Any],
-                                                 db: Session,
-                                                 admin_engine: Engine) -> None:
-    pt = chart["patient"]
-    pt.meta_security = ["R"]
-    db.commit()
-    r = client.get(f"/fhir/r4/Observation/{chart['observation'].id}")
-    assert r.status_code == 403
-    assert client.post("/fhir/r4/Patient/_search", json={"family": "Ngu"}).json()["total"] == 0
-    db.add(M["break_glass_access"](patient_id=pt.id, user_id=chart["ctx"]["user"].id,
-                                   reason="Covering physician, urgent call",
-                                   granted_at=dt.datetime.now(dt.UTC) - dt.timedelta(minutes=1),
-                                   expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)))
-    db.commit()
-    assert client.get(f"/fhir/r4/Observation/{chart['observation'].id}").status_code == 200
-    with admin_engine.connect() as c:
-        denied = c.execute(text("SELECT count(*) FROM audit.audit_event WHERE patient_id = :p "
-                                "AND action = 'access-denied'"), {"p": pt.id}).scalar()
-    assert denied == 1
 
 
 def test_http_capability_statement(client: TestClient) -> None:

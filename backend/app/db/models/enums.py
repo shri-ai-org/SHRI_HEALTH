@@ -991,6 +991,7 @@ class ActorType(StrEnum):
     AI = "ai"
     INTEGRATION = "integration"
     PATIENT = "patient"
+    PARTNER = "partner"                 # a partner callback (/hooks/*), audited as phi-write (T37)
 
 
 class IntegrationKind(StrEnum):
@@ -1051,3 +1052,34 @@ class IssueSeverity(StrEnum):
     WARNING = "warning"
     ERROR = "error"
     BLOCKER = "blocker"
+
+
+# =========================================================================== core runtime
+class AuditCategory(StrEnum):           # SECURITY_MODEL §6, the x-audit category of each operation
+    PHI_READ = "phi-read"
+    PHI_WRITE = "phi-write"
+    SIGN = "sign"
+    EXPORT = "export"
+    SECURITY = "security"
+    AI = "ai"
+    ADMIN = "admin"
+
+
+class BreakGlassReason(StrEnum):        # D53: reasonCode; reasonText is required only for OTHER
+    EMERGENCY_CARE = "emergency-care"
+    CONTINUITY_OF_CARE = "continuity-of-care"
+    PATIENT_REQUEST = "patient-request"
+    OTHER = "other"
+
+
+class IdempotencyState(StrEnum):        # T21, ADR-0007
+    IN_PROGRESS = "in-progress"
+    DONE = "done"
+
+
+class OperationStatus(StrEnum):         # contract OperationStatus; the last three are final
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"

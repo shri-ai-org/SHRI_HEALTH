@@ -297,6 +297,9 @@ paths:
                     - appointments:create
                     - appointments:check-in
                     - scheduling-reference:read
+                    practiceSettings:
+                      registration:
+                        showSexualOrientationAndGenderIdentity: false
         '401':
           $ref: ../components/responses/Unauthorized.yaml
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
@@ -810,6 +813,11 @@ components:
             maxLength: 80
           description: Effective permission names from the user's roles (`resource:action`, SECURITY_MODEL §4.2).
           x-phi: none
+        practiceSettings:
+          $ref: '#/components/schemas/MePracticeSettings'
+          description: The practice settings screens need (D39), the same values as `GET /practice-settings`, so no extra
+            permission is needed to read them.
+          x-phi: none
     BreakGlassReasonCode:
       description: Why a restricted chart is opened (SECURITY_MODEL §5.2). `other` needs `reasonText`.
       type: string
@@ -898,3 +906,20 @@ components:
           x-phi: none
           examples:
           - 7544a31c0d2e
+    MePracticeSettings:
+      description: Practice settings every signed-in user may read (D39).
+      type: object
+      required:
+      - registration
+      properties:
+        registration:
+          type: object
+          required:
+          - showSexualOrientationAndGenderIdentity
+          description: Registration settings.
+          x-phi: none
+          properties:
+            showSexualOrientationAndGenderIdentity:
+              type: boolean
+              description: Show the sexual-orientation and gender-identity fields on the registration screen (D39).
+              x-phi: none

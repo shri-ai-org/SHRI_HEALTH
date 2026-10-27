@@ -195,7 +195,13 @@ def overrides(resources: list[Resource], contract: Contract) -> dict[str, dict[s
             raise ValueError(f"{OVERRIDES.name}: {rname!r} is not a DATA_OWNERSHIP.md resource")
         known = _properties(by_name[rname], contract)
         for prop, entry in props.items():
-            if prop.split("[]", 1)[0] not in known:
+            source: set[str] | None = known
+            if entry.get("path"):              # a property of another operation, e.g. check-in
+                source = contract.properties(entry["path"])
+            if source is None:
+                raise ValueError(f"{OVERRIDES.name}: {rname}.{prop}: no contract path "
+                                 f"{entry['path']!r}")
+            if prop.split("[]", 1)[0] not in source:
                 raise ValueError(f"{OVERRIDES.name}: {rname}: no contract property {prop!r}")
             if not entry.get("columns") and not entry.get("computed"):
                 raise ValueError(f"{OVERRIDES.name}: {rname}.{prop} needs columns or computed")
@@ -238,6 +244,8 @@ def _mapping_section(resources: list[Resource], contract: Contract) -> list[str]
                        else "mapped" + (f": {entry['note']}" if entry.get("note") else ""))
                 if entry.get("computed") and entry.get("note"):
                     how += f"; {entry['note']}"
+                if entry.get("path"):
+                    how += f" (from `{entry['path']}`)"
                 out.append(f"| `{prop}` | {cols} | {_cell(how)} |")
                 continue
             # The resource's own (first) table only: a same-named column of a child table is

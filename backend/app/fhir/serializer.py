@@ -159,6 +159,8 @@ def _value(cols: list[Any], row: Row, cls: type[Any]) -> Any:
                 continue
             target = referenced_table(c).name
             if target in RESOURCE_TABLES:
+                # A reference to a chart the reader can't see is left out by the facade, after
+                # serializing (app.fhir.api.strip_hidden; D22 as amended on #13).
                 ref["reference"] = f"{c.info['ref_type']}/{v}"
             else:   # admin directory (payer, pharmacy): logical reference
                 ref["type"] = c.info["ref_type"]
