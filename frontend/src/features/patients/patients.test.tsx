@@ -33,8 +33,13 @@ const patient = {
   updatedAt: '2026-10-24T12:00:00Z',
 }
 
-/** The patient page also lists insurance; these tests don't look at it. */
-const noCoverages = { [`GET /api/v1/patients/${patient.id}/coverages?limit=100`]: [() => json(200, { items: [] })] }
+/** The patient page also lists appointments and insurance; these tests don't look at them. */
+const noCoverages = {
+  [`GET /api/v1/patients/${patient.id}/coverages?limit=100`]: [() => json(200, { items: [] })],
+  [`GET /api/v1/appointments?patientId=${patient.id}&limit=100`]: [() => json(200, { items: [] })],
+  'GET /api/v1/booking/facilities?limit=100': [() => json(200, { items: [] })],
+  'GET /api/v1/booking/appointment-types?limit=100': [() => json(200, { items: [] })],
+}
 
 function renderAt(path: string) {
   const router = createMemoryRouter(
