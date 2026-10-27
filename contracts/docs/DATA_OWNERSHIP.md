@@ -34,7 +34,7 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 
 ### 2.1 Vimal's resources
 
-| Resource | API (base `/api/v1`) | Record | FHIR resource | US Core profile | Concurrency | Tables (locked schema, D72; batch 1 checked 2026-10-24) |
+| Resource | API (base `/api/v1`) | Record | FHIR resource | US Core profile | Concurrency | Tables (locked schema, D72; batch 1 checked 2026-10-24, batch 2 named 2026-10-26) |
 |---|---|---|---|---|---|---|
 | Patient (demographics, contacts) | `/patients`, `/patients/{patientId}` | **Cl** | Patient | US Core Patient | Row version → ETag; `If-Match` on PATCH | `patient`, `human_name`, `contact_point`, `address`, `patient_contact`, `patient_communication`, `patient_race_ethnicity`, `patient_link`; D38/D39 columns not yet in the schema files: A45 |
 | Patient identifiers (MRN, driver's license) | `/patients/{patientId}/identifiers` | **Cl** (child of Patient) | Patient.identifier | (US Core Patient) | Parent's ETag | `identifier`; the per-practice MRN counter (D41) is A45 |
@@ -43,28 +43,28 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Card images | `…/coverages/{coverageId}/card-images` | **F** | — | — | Append-only | `coverage_card_image` (file IDs) |
 | Consents | `/patients/{patientId}/consents` | **Cl** | Consent | none in US Core 9.0.0 | Insert-only; revocation is a new version | `consent`, `consent_category`, `consent_performer`, `consent_verification` |
 | Preferred pharmacy | `/patients/{patientId}/preferred-pharmacy` | **Ad** | — | — | Row version | `patient_pharmacy` (one default per patient) |
-| Restriction flag | `/patients/{patientId}/restrict`, `/unrestrict` | **Cl** | Patient (restricted-chart flag) | — | State action | Patient |
+| Restriction flag | `/patients/{patientId}/restrict`, `/unrestrict` | **Cl** | Patient (restricted-chart flag) | — | State action | `patient` (`meta_security` R or V) |
 | Timeline | `/patients/{patientId}/timeline` | **C** | — | — | Read-only | — |
 | Duplicates, merges | `/duplicates`, `/duplicates/{duplicateId}/merge`, `/duplicates/{duplicateId}/dismiss` (D46), `/patient-merges/{mergeId}/undo` | **Ad** + **Cl** | Patient.link (`replaced-by` / `replaces`) | US Core Patient | Lock both patients during merge | `duplicate_candidate`, `duplicate_match_evidence`, `patient_merge`, `patient_merge_record` |
 | Slots | `/slots` | **C** | Slot is computed, not stored | — | Read-only | `schedule`, `schedule_actor`, `schedule_availability_rule`, `availability_rule_appointment_type`, `schedule_exception`, `appointment` |
 | Appointment | `/appointments`, `/appointments/{appointmentId}` | **Cl** | Appointment | none in US Core 9.0.0 | Row version; no double booking (database exclusion constraint, plus the provider-day lock, VG Step 3) | `appointment`, `appointment_participant`, `appointment_reason`; visit flow in **Ad** (`visit_flow_event`) |
 | Status board | `/status-board` | **C** | — | — | Read-only | — |
 | Eligibility check | `/eligibility-checks`, `/appointments/{appointmentId}/eligibility-checks` | **Ad** + **F** (raw X12) | — | — | Insert-only; status by system | `eligibility_check`, `eligibility_service_type`, `eligibility_benefit` |
-| Encounter | `/encounters`, `/encounters/{encounterId}` | **Cl** | Encounter | US Core Encounter | Row version | Encounter |
-| Vitals | `/encounters/{encounterId}/vitals`, `/patients/{patientId}/vitals` | **Cl** | Observation (category `vital-signs`) | US Core Vital Signs, plus the specific profiles (Blood Pressure, Body Height, Body Weight, BMI, Body Temperature, Heart Rate, Respiratory Rate, Pulse Oximetry, Head Circumference) | Insert-only; corrections are entered-in-error + new | Observation |
-| Encounter diagnoses | `/encounters/{encounterId}/diagnoses` | **Cl** | Condition (category `encounter-diagnosis`) | US Core Condition Encounter Diagnosis | Row version; see §2.5 | Condition |
-| Code search | `/codes` | **Ad** (terminology) | — | — | Read-only | Terminology tables |
-| Note (draft, versions, signed) | `/encounters/{encounterId}/notes`, `/notes/{noteId}`, `/notes/{noteId}/versions` | **Cl** | Composition + Provenance (P0_SCHEMA_SCOPE.md: clinical notes, signing, co-signature, addenda) | US Core Provenance. Composition has no US Core profile in 9.0.0; US Core exposes clinical notes through DocumentReference, so how `/fhir` presents notes is part of Anand's facade design (guide v2, Step 5) | Row version; `If-Match` on PATCH and sign (VG Step 5); versions in `_history` | Composition and its sections |
+| Encounter | `/encounters`, `/encounters/{encounterId}` | **Cl** | Encounter | US Core Encounter | Row version | `encounter`, `encounter_participant`, `encounter_location`, `encounter_reason`, `encounter_type`, `encounter_status_history`; entered-in-error with `provenance`, `provenance_agent` |
+| Vitals | `/encounters/{encounterId}/vitals`, `/patients/{patientId}/vitals` | **Cl** | Observation (category `vital-signs`) | US Core Vital Signs, plus the specific profiles (Blood Pressure, Body Height, Body Weight, BMI, Body Temperature, Heart Rate, Respiratory Rate, Pulse Oximetry, Head Circumference) | Insert-only; corrections are entered-in-error + new | `observation`, `observation_category`, `observation_coding`, `observation_component` (blood pressure), `observation_interpretation`; entered-in-error with `provenance`, `provenance_agent` |
+| Encounter diagnoses | `/encounters/{encounterId}/diagnoses` | **Cl** | Condition (category `encounter-diagnosis`) | US Core Condition Encounter Diagnosis | Row version; see §2.5 | `condition`, `condition_category`, `condition_coding`, `encounter_diagnosis` (rank 1–12); removal and entered-in-error with `provenance`, `provenance_agent` (D24) |
+| Code search | `/codes` | **Ad** (terminology) | — | — | Read-only | `code_system`, `concept`, `concept_property` |
+| Note (draft, versions, signed) | `/encounters/{encounterId}/notes`, `/notes/{noteId}`, `/notes/{noteId}/versions` | **Cl** | Composition + Provenance (P0_SCHEMA_SCOPE.md: clinical notes, signing, co-signature, addenda) | US Core Provenance. Composition has no US Core profile in 9.0.0; US Core exposes clinical notes through DocumentReference, so how `/fhir` presents notes is part of Anand's facade design (guide v2, Step 5) | Row version; `If-Match` on PATCH and sign (VG Step 5); versions in `_history` | `composition`, `composition_section`, `composition_section_entry`, `composition_author`, `composition_attester`; signing with `provenance`, `provenance_agent`, `provenance_signature`; versions in `fhir_resource_history` |
 | Addendum | `/notes/{noteId}/addenda` | **Cl** | Composition (addendum) + Provenance | US Core Provenance | Insert-only | `composition` with `composition_relates_to` `appends`, signed at once (`composition_attester`) |
-| Co-signature | `/notes/{noteId}/cosign` | **Cl** | Provenance (co-signer as an additional agent) | US Core Provenance | `If-Match` on the note | Composition, Provenance; co-signature rules in **Ad** |
-| Co-signature rules | `/cosign-rules` | **Ad** | — | — | Row version | Co-signature rules by state and provider |
-| Favorites | `/me/favorites` | **Ad** | — | — | Row version, PUT with `If-Match` | Templates and favorites |
-| After-visit summary | `/encounters/{encounterId}/after-visit-summary` | **F** + **Cl** | Composition (after-visit summary) | — | Generated per signed note version | Composition; PDF in file storage |
-| Problem list | `/patients/{patientId}/problems` | **Cl** | Condition (category `problem-list-item`) | US Core Condition Problems and Health Concerns | Row version; `If-Match` on PATCH | Condition |
-| Allergies | `/patients/{patientId}/allergies` | **Cl** | AllergyIntolerance | US Core AllergyIntolerance | Same | AllergyIntolerance |
-| Family history | `/patients/{patientId}/family-history` | **Cl** | FamilyMemberHistory | US Core FamilyMemberHistory | Insert + entered-in-error | FamilyMemberHistory |
-| Social history | `/patients/{patientId}/social-history` | **Cl** | Observation (category `social-history`) | US Core Smoking Status Observation (smoking); US Core Simple Observation or Observation Occupation for others | Insert + entered-in-error | Observation; occupation, industry and tribal affiliation are an approved P0 item |
-| Surgical history | `/patients/{patientId}/surgical-history` | **Cl** | Procedure | US Core Procedure | Insert + entered-in-error | Procedure |
+| Co-signature | `/notes/{noteId}/cosign` | **Cl** | Provenance (co-signer as an additional agent) | US Core Provenance | `If-Match` on the note | `composition_attester`, `provenance`, `provenance_agent`; co-sign status and review rows are A46 |
+| Co-signature rules | `/cosign-rules` | **Ad** | — | — | Row version | `cosign_rule`; its `version` column is A46 |
+| Favorites | `/me/favorites` | **Ad** | — | — | Row version, PUT with `If-Match` | `user_favorite`, referring to `note_template`; its `version` column is A46 |
+| After-visit summary | `/encounters/{encounterId}/after-visit-summary` | **F** + **Cl** | Composition (after-visit summary) | — | Generated per signed note version | `document_reference`, `document_reference_content` (linked to the signed `composition`); the PDF in `binary_object` |
+| Problem list | `/patients/{patientId}/problems` | **Cl** | Condition (category `problem-list-item`) | US Core Condition Problems and Health Concerns | Row version; `If-Match` on PATCH | `condition`, `condition_category`, `condition_coding`, `condition_body_site`, `annotation`; entered-in-error with `provenance`, `provenance_agent` |
+| Allergies | `/patients/{patientId}/allergies` | **Cl** | AllergyIntolerance | US Core AllergyIntolerance | Same | `allergy_intolerance`, `allergy_intolerance_coding`, `allergy_intolerance_reaction`, `allergy_reaction_manifestation`, `annotation`; entered-in-error with `provenance`, `provenance_agent` |
+| Family history | `/patients/{patientId}/family-history` | **Cl** | FamilyMemberHistory | US Core FamilyMemberHistory | Insert + entered-in-error | `family_member_history`, `family_member_history_condition`, `annotation`; entered-in-error with `provenance`, `provenance_agent` |
+| Social history | `/patients/{patientId}/social-history` | **Cl** | Observation (category `social-history`) | US Core Smoking Status Observation (smoking); US Core Simple Observation or Observation Occupation for others | Insert + entered-in-error | `observation`, `observation_category`, `observation_coding`, `annotation`; entered-in-error with `provenance`, `provenance_agent`; occupation, industry and tribal affiliation are A45 |
+| Surgical history | `/patients/{patientId}/surgical-history` | **Cl** | Procedure | US Core Procedure | Insert + entered-in-error | `procedure`, `procedure_coding`, `procedure_body_site`, `procedure_performer`, `annotation`; entered-in-error with `provenance`, `provenance_agent` |
 | Encounter audio | `/encounters/{encounterId}/audio` | **F** + **Ad** | — | — | Insert-only; needs an active recording consent of the same patient (database-enforced) | AI audio table |
 | Transcription | `/ai/transcriptions` | **Ad** | — | — | Insert-only; edits are new versions | AI transcript and request tables |
 | AI note draft | `/ai/note-drafts` | **Ad** → **Cl** (becomes a draft Composition) | — | — | — | AI request and suggestion tables, Composition |
@@ -117,7 +117,7 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | Documents | `/documents`, `/patients/{patientId}/documents` | **Cl** + **F** | DocumentReference | US Core DocumentReference |
 | Faxes, fax inbox | `/faxes`, `/fax-inbox` | **Ad** + **F**; filed faxes become DocumentReference (**Cl**) | DocumentReference | US Core DocumentReference |
 | C-CDA import and export | `/ccda/import`, `/patients/{patientId}/ccda` | **Cl** + **F** | DocumentReference | US Core DocumentReference |
-| Inbox, messages | `/inbox`, `/messages` | **Ad** (staff messages are an approved P0 item) | — | — |
+| Inbox, messages | `/inbox`, `/messages` | **Ad** (`work_item`, `work_item_event`; staff messages and their threads are an approved P0 item, D38, D77); lifecycle §5.9 | — | — |
 | Exports | `/exports` | **Ad** + **F** | — | — |
 
 ### 2.4 Minalini's resources
@@ -383,6 +383,22 @@ stateDiagram-v2
 | — → `pending` | Booking, nightly pre-visit batch for next-day appointments, check-in (VD-G3), or `POST /eligibility-checks` (manual) | System; FD, BIL (`eligibility-checks:create`) | 270 queued via `integration.enqueue("clearinghouse", "270", …)` (VG Step 4); `202` + operation for manual checks |
 | `pending` → `complete` | 271 through Thulasi's webhook receiver | System | Coverage status (`active`, `inactive`, `unknown`), copay, deductible stored; `eligibility.completed` |
 | `pending` → `error` | Partner error or timeout | System | Front desk sees "unable to verify"; can retry manually |
+
+### 5.9 Inbox item (admin `work_item`) — owner Anand; contract batch 3 (D77)
+
+Statuses are the schema's: `open`, `in-progress`, `on-hold`, `completed`, `cancelled`. Who has the item is `assignee` (one user or one role), not the status: "new" is `open` in a role's queue, "assigned" is `open` with one user, and a reassignment is an `assigned` event in the thread (`work_item_event`).
+
+| From → To | Trigger | Who | Side effects |
+|---|---|---|---|
+| — → `open` | `POST /messages` (`message`, `task`), or the inbox service on an event (BATCH3_PLAN §3) | Sender (`messages:create`); system | `created` event; `inbox.item-assigned` to the user, or to the role's users at the facility |
+| assignee change | `PATCH /inbox/{inboxItemId}` `{ assignee }` with `If-Match` | The assignee; a user holding the role (taking from the queue); ADM at their facilities (D77) | `assigned` event; `inbox.item-assigned`. A colleague who took it first makes `If-Match` fail (`412`) |
+| `open` ↔ `in-progress` ↔ `on-hold` | `PATCH` `{ status }` with `If-Match` | The assignee | `status-change` event |
+| any open status → `completed` | `POST …/complete`; or the action the kind waits for (co-sign, addendum, sign, file, acknowledge, respond, match), done by the system | The assignee; system | `status-change` event, `completedAt`, `completedBy` (absent for the system); `inbox.item-completed`. Kinds that wait for an action refuse `complete` (`422`, D77) |
+| any open status → `cancelled` | `POST …/cancel` `{ reason }` | The creator of a message or task | The reason in the thread; `inbox.item-completed` |
+| reply | `POST …/replies` `{ text, assignBack }` | Anyone who can see the item | `comment` event. For a message or task replied to by its assignee (or a holder of its role) or its sender, by default the item goes to the other party (`assigned` event, `inbox.item-assigned`); checked inside the transaction. Other replies never move the item |
+| escalation | System job: past `dueAt`, past the co-sign rule's days, or a critical result not acknowledged in time (D78) | System | `escalationLevel + 1`, `escalated` event, priority raised one step; normal items notify the assignee, then the facility's ADM role; critical results go to the covering clinician, then the practice lead (D78) |
+
+Nothing is deleted (D14). Notifications outside the app never carry patient data, titles or bodies (D81).
 
 ## 6. Open items in this document
 

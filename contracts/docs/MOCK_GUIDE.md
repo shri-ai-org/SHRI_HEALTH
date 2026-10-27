@@ -118,6 +118,80 @@ curl -s -X POST $B/patients/$P/problems "${H[@]}" -d '{"code":{"codings":[{"syst
 curl -s "$B/patients/$P/timeline?types=note&types=problem" -H 'Cookie: __Host-shri_session=mock'
 ```
 
+## 5c. An inbox flow (batch 3)
+
+Inbox, tasks and messages (D77): a medical assistant asks the front desk to move an appointment (a task for the front-desk role, D67) → the front desk takes it from the queue and completes it → a physician messages a nurse about a patient → the nurse replies, which hands it back → the physician reads the thread and completes it → completing a co-sign item by hand is refused → badge counts. Prism returns the first example unless you name one (`Prefer: example=message`); `If-Match` values are placeholders.
+
+```bash
+B=http://127.0.0.1:4010
+H=(-H 'Cookie: __Host-shri_session=mock' -H 'X-CSRF-Token: mock' -H 'Content-Type: application/json')
+F=5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c   # the example facility
+P=7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d   # the example patient
+T=0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d   # the example task
+M=a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d   # the example message
+K=b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e   # the example co-sign item
+
+curl -s -X POST $B/messages "${H[@]}" -d '{"kind":"task","assignee":{"type":"role","id":"4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b"},"facilityId":"'$F'","title":"Please move this follow-up to next week","dueAt":"2026-11-05T22:00:00Z","patientId":"'$P'","subject":{"type":"appointment","id":"9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e"}}'   # D67
+curl -s "$B/inbox?view=queue&itemType=task" -H 'Cookie: __Host-shri_session=mock'
+curl -s -X PATCH $B/inbox/$T -H 'Cookie: __Host-shri_session=mock' -H 'X-CSRF-Token: mock' -H 'Content-Type: application/merge-patch+json' -H 'If-Match: "1"' \
+  -d '{"assignee":{"type":"user","id":"2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f"}}'   # take it from the queue
+curl -s -X POST $B/inbox/$T/complete "${H[@]}" -d '{"comment":"Moved to Thursday 10:30."}'
+curl -s -X POST $B/messages "${H[@]}" -H 'Prefer: example=message' \
+  -d '{"kind":"message","assignee":{"type":"user","id":"3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a"},"facilityId":"'$F'","title":"Recheck blood pressure today","priority":"urgent","patientId":"'$P'"}'
+curl -s -X POST $B/inbox/$M/replies "${H[@]}" -d '{"text":"Rechecked: 128/82 seated, left arm."}'   # hands it back
+curl -s $B/inbox/$M -H 'Cookie: __Host-shri_session=mock' -H 'Prefer: example=message'   # the thread
+curl -s -X POST $B/inbox/$M/complete "${H[@]}" -d '{}'
+curl -s -X POST $B/inbox/$K/complete "${H[@]}" -H 'Prefer: code=422' -d '{}'   # a co-sign item is completed by co-signing (D77)
+curl -s $B/inbox/summary -H 'Cookie: __Host-shri_session=mock'
+```
+
+## 5d. Patient portal (B8a)
+
+The portal contract (`portal.yaml`, D89) is served by the same sample-data server, with no extra setup: `npm run mock` answers every `/portal/...` path, with synthetic examples in every response. The portal's staff side (`/patients/{patientId}/portal-account`, invitations, disable, enable, factor reset) is served there too.
+
+**Start it** as in §1, on a branch that has `portal.yaml` (on `main` once #73 merges):
+
+```bash
+cd contracts
+npm run mock          # or PORT=4020 npm run mock
+```
+
+Portal paths keep their `/portal` prefix and, like every path here, drop `/api/v1`: the mock's `http://127.0.0.1:4010/portal/me` is the real API's `/api/v1/portal/me`.
+
+**Acting as a signed-in patient.** Portal operations take the **portal** session cookie, never the staff one:
+
+| What | Send in the mock | In the real API |
+|---|---|---|
+| Patient session cookie | `Cookie: __Host-shri_portal=mock` (any value) | Set by `/portal/auth/callback` on the portal host (ADR-0013 §5) |
+| CSRF header, on POST | `X-CSRF-Token: mock` | The `csrfToken` from `GET /portal/auth/session` |
+| `Idempotency-Key` | A UUID on enrollment, booking, rescheduling and change requests | Same |
+
+- **Refusals:** without the portal cookie you get `401`, including when you send only the staff cookie. Nothing in a request names the patient (D84): the mock's examples are one synthetic patient, and the real API takes the patient from the session.
+- **Sign-in screens:** `GET /portal/auth/login` answers `302`.
+- **Enrollment:** `POST /portal/enrollments` is public, so send no cookie. It answers `204`, and `Prefer: code=422, example=business-rule-violation` gives the refusal the screen turns into its one "We couldn't use that code" message (the shared example; on the real API `errors` names `/invitationCode`).
+- **Choosing an example:** use the `Prefer` header (§4):
+
+  | Operation | Examples |
+  |---|---|
+  | `GET /portal/me/appointments` | `upcoming` (default) and `past`; past visits carry `visitSummaryId` |
+  | `GET /portal/me/visit-summaries/{visitSummaryId}` | `one` and `held` |
+  | `GET /portal/me/visit-summaries` and `GET /portal/me/problems` | the list mixes an available item and a held one (D86, D90) |
+  | Refusals | `Prefer: code=409` (a time just taken, or an appointment already checked in), `Prefer: code=422` (too late to cancel online) and the other documented ones |
+
+```bash
+B=http://127.0.0.1:4010
+P=(-H 'Cookie: __Host-shri_portal=mock' -H 'X-CSRF-Token: mock' -H 'Content-Type: application/json')
+curl -s $B/portal/auth/session "${P[@]}"
+curl -s $B/portal/me "${P[@]}"
+curl -s "$B/portal/me/appointments?when=past" "${P[@]}" -H 'Prefer: example=past'
+curl -s -X POST $B/portal/me/change-requests "${P[@]}" -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"changes":{"preferredLanguage":"es"}}'
+```
+
+**Against the real API later:** the patient realm and core's portal session aren't built yet (ADR-0013, T45). A development sign-in for the patient role, like the staff `X-Dev-User`, has been asked for, so the portal can be tested against the backend before the realm exists.
+
+**Hidden behind feature switches until their contracts exist (all P1):** Pay bills (payments and the ledger), Video (telehealth) and Immunizations. Hide them, don't delete them. Messages, results, prescriptions, documents, forms and record exports come with B8b (D88, D89); until then they stay on the portal's own in-memory mock.
+
 ## 6. What the mock cannot do
 
 | Limit | What it means for screens |

@@ -105,7 +105,7 @@ rules:
           match: "^(public|authenticated|partner-signed|[a-z][a-z-]*:[a-z][a-z-]*)$"
 
   shri-public-allowlist:
-    description: x-permission "public" only on /auth/login, /auth/callback and /health (SECURITY_MODEL §1).
+    description: x-permission "public" only on /auth/login, /auth/callback, /health and the portal's /portal/auth/login, /portal/auth/callback and /portal/enrollments (SECURITY_MODEL §1).
     message: "{{error}}"
     severity: error
     given: "$"
@@ -204,7 +204,7 @@ rules:
         functionOptions:
           values: [platform, partner-callbacks, files, practice-setup, onboarding, patients, scheduling, eligibility,
                    encounters, history, ai, medications, orders, billing, documents, ccda, inbox, exports,
-                   communications, dashboards]
+                   communications, dashboards, portal]
 
   shri-problem-responses:
     description: Every 4xx/5xx response is application/problem+json with the shared Problem schema (API_STANDARDS §9, ADR-0003).

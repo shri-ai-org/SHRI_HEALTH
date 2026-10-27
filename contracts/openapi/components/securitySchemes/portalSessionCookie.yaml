@@ -1,0 +1,8 @@
+type: apiKey
+in: cookie
+name: __Host-shri_portal
+description: >-
+  Patient portal session cookie (ADR-0013 §5, D84): a 256-bit reference token for a session in the separate
+  patient realm; the server stores only its SHA-256 hash. HttpOnly, Secure, SameSite=Strict, Path=/, host-only
+  on the portal host. Set by `/portal/auth/callback`; new session ID at every login. Staff routes refuse it, and
+  portal routes refuse the staff cookie.

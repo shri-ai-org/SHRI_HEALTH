@@ -24,6 +24,7 @@ services:
       SHRI_FHIR_READER_PASSWORD: ${SHRI_FHIR_READER_PASSWORD:?set SHRI_FHIR_READER_PASSWORD in infra/compose/.env}
       SHRI_INTEGRATION_PASSWORD: ${SHRI_INTEGRATION_PASSWORD:?set SHRI_INTEGRATION_PASSWORD in infra/compose/.env}
       SHRI_REPORTING_PASSWORD: ${SHRI_REPORTING_PASSWORD:?set SHRI_REPORTING_PASSWORD in infra/compose/.env}
+      SHRI_MAINTENANCE_PASSWORD: ${SHRI_MAINTENANCE_PASSWORD:?set SHRI_MAINTENANCE_PASSWORD in infra/compose/.env}
     volumes:
       # PostgreSQL 18 images keep data in a versioned folder under /var/lib/postgresql.
       - pgdata18:/var/lib/postgresql
@@ -35,12 +36,22 @@ services:
       retries: 20
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0.7
-    command: ["start-dev"]
+    # Our own image (D75, issue #55): Keycloak's Apache-2.0 release on Debian with Temurin 21,
+    # everything pinned and checksum-verified (infra/keycloak/Dockerfile).
+    build: ../keycloak
+    image: shri-health/keycloak:local
+    # Imports the staff realm (infra/keycloak/realms/shri-staff.json) at startup; existing realms
+    # are kept. The client secret comes from .env, never from the realm file.
+    command: ["start-dev", "--import-realm"]
+    volumes:
+      - ../keycloak/realms:/opt/keycloak/data/import:ro
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in infra/compose/.env}
       KC_HTTP_RELATIVE_PATH: /kc
+      # Keycloak 26.8 binds start-dev to localhost only; Nginx reaches it over the compose network.
+      KC_HTTP_HOST: 0.0.0.0
+      SHRI_WEB_CLIENT_SECRET: ${SHRI_WEB_CLIENT_SECRET:?set SHRI_WEB_CLIENT_SECRET in infra/compose/.env}
       KC_PROXY_HEADERS: xforwarded
       KC_HOSTNAME: https://localhost:8443/kc
       KC_HEALTH_ENABLED: "true"

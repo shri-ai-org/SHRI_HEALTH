@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError, newIdempotencyKey } from '../../api/client'
 import { registerPatient } from '../../api/generated/endpoints/patients/patients'
-import type { AdministrativeGender, ContactUse, PatientCreate } from '../../api/generated/model'
+import type { AdministrativeGender, BirthSex, ContactUse, PatientCreate } from '../../api/generated/model'
 import {
   Alert,
   Button,
@@ -22,6 +22,7 @@ import {
   useToast,
   type Problem,
 } from '../../design-system'
+import { BIRTH_SEX_OPTIONS, GENDER_IDENTITY_OPTIONS } from './demographics'
 import { useRegisterPrefill } from './registerPrefill'
 
 const REASON_LIMIT = 500
@@ -32,6 +33,9 @@ interface Form {
   preferredName: string
   birthDate: string | null
   gender: AdministrativeGender | ''
+  birthSex: BirthSex | ''
+  /** Key into GENDER_IDENTITY_OPTIONS, or '' when not given. */
+  genderIdentity: string
   phone: string | null
   /** SMS reminders need a mobile number, so mobile is the default. */
   phoneUse: Extract<ContactUse, 'mobile' | 'home' | 'work'>
@@ -50,6 +54,8 @@ const FIELD_LABELS: Record<string, string> = {
   '/preferredName': 'Preferred name',
   '/birthDate': 'Date of birth',
   '/gender': 'Legal sex',
+  '/birthSex': 'Sex assigned at birth',
+  '/genderIdentity': 'Gender identity',
   '/phones/0/number': 'Phone',
   '/phones/0/use': 'Phone type',
   '/emails/0/address': 'Email',
@@ -85,6 +91,9 @@ function toBody(form: Form): PatientCreate {
   }
   if (form.preferredName.trim()) body.preferredName = form.preferredName.trim()
   if (form.gender) body.gender = form.gender
+  if (form.birthSex) body.birthSex = form.birthSex
+  const identity = GENDER_IDENTITY_OPTIONS.find((o) => o.key === form.genderIdentity)
+  if (identity) body.genderIdentity = identity.value
   if (form.phone) body.phones = [{ number: form.phone, use: form.phoneUse }]
   if (form.email.trim()) body.emails = [{ address: form.email.trim(), use: 'home' }]
   if (form.line1.trim()) {
@@ -110,6 +119,8 @@ export function RegisterPatientPage() {
       preferredName: '',
       birthDate: prefill.birthDate ?? '',
       gender: '',
+      birthSex: '',
+      genderIdentity: '',
       phone: '',
       phoneUse: 'mobile',
       email: '',
@@ -212,6 +223,30 @@ export function RegisterPatientPage() {
               </Select>
             )}
           </Field>
+          <Field label="Sex assigned at birth" hint="Optional" error={errors.birthSex}>
+            {(p) => (
+              <Select {...p} value={form.birthSex} onChange={(e) => update({ birthSex: e.target.value as BirthSex | '' })}>
+                <option value="">Not asked</option>
+                {BIRTH_SEX_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Field label="Gender identity" hint="Optional" error={errors.genderIdentity}>
+            {(p) => (
+              <Select {...p} value={form.genderIdentity} onChange={(e) => update({ genderIdentity: e.target.value })}>
+                <option value="">Not asked</option>
+                {GENDER_IDENTITY_OPTIONS.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         </fieldset>
         <fieldset className="grid gap-4 md:grid-cols-3">
           <legend className="mb-2 text-sm font-semibold text-ink">Contact</legend>
@@ -278,6 +313,8 @@ const POINTERS: Partial<Record<keyof Form, string>> = {
   preferredName: '/preferredName',
   birthDate: '/birthDate',
   gender: '/gender',
+  birthSex: '/birthSex',
+  genderIdentity: '/genderIdentity',
   phone: '/phones',
   email: '/emails',
   line1: '/address/lines',
