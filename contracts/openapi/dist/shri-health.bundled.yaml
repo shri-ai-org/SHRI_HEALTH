@@ -406,6 +406,9 @@ paths:
                       - appointments:create
                       - appointments:check-in
                       - scheduling-reference:read
+                    practiceSettings:
+                      registration:
+                        showSexualOrientationAndGenderIdentity: false
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
@@ -1877,6 +1880,79 @@ paths:
         description: Related person ID.
         schema:
           $ref: '#/components/schemas/Id'
+    get:
+      operationId: getRelatedPerson
+      summary: Get one related person
+      description: One related person, with the strong `ETag` that `PATCH` needs. List items carry no ETag (API_STANDARDS §11).
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: patients:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The related person.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelatedPerson'
+              examples:
+                one:
+                  summary: One related person
+                  value:
+                    id: 6d7e8f9a-0b1c-4d2e-8f3a-4b5c6d7e8f9a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    name:
+                      given:
+                        - Darius71
+                      family: Kuhlman72
+                    relationships:
+                      - system: http://terminology.hl7.org/CodeSystem/v2-0131
+                        code: C
+                        display: Emergency Contact
+                      - system: http://terminology.hl7.org/CodeSystem/v3-RoleCode
+                        code: SPS
+                        display: spouse
+                    phones:
+                      - number: '+16175550145'
+                        use: mobile
+                    active: true
+                    createdAt: '2026-11-03T14:30:00Z'
+                    updatedAt: '2026-11-03T14:30:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `patients:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such related person of this patient in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
     patch:
       operationId: updateRelatedPerson
       summary: Update a related person
@@ -2178,6 +2254,78 @@ paths:
         description: Coverage ID.
         schema:
           $ref: '#/components/schemas/Id'
+    get:
+      operationId: getCoverage
+      summary: Get one coverage
+      description: One coverage, with the strong `ETag` that `PATCH` needs, for example to end it with `endDate` (D45). List items carry no ETag (API_STANDARDS §11). Entered-in-error coverages are returned too, marked by `status`.
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: coverages:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The coverage.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coverage'
+              examples:
+                one:
+                  summary: One coverage
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    order: 1
+                    payerId: 4b5c6d7e-8f9a-4b0c-8d1e-2f3a4b5c6d7e
+                    payerName: Test Health Plan
+                    memberId: TEST-M0012345
+                    groupNumber: TEST-G778
+                    planName: Test PPO
+                    relationshipToSubscriber: self
+                    startDate: '2026-01-01'
+                    status: active
+                    cardImages:
+                      - side: front
+                        fileId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                        addedAt: '2026-11-03T14:30:00Z'
+                    createdAt: '2026-11-03T14:30:00Z'
+                    updatedAt: '2026-11-03T14:30:00Z'
+                    endDate: '2026-12-31'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `coverages:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such coverage of this patient in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
     patch:
       operationId: updateCoverage
       summary: Update a coverage
@@ -7976,7 +8124,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `note-addenda:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+          description: 403. `permission-denied` (the role lacks `note-addenda:create`, or an RN adding to a note that is not a nursing note); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such note in this clinic or the user's facilities).
@@ -14991,6 +15139,137 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /practice-settings:
+    get:
+      operationId: getPracticeSettings
+      summary: Get the practice settings
+      description: 'The practice''s settings, with the `ETag` that `PATCH` needs (new inventory row #258). Today one setting: whether registration shows the sexual-orientation and gender-identity fields (D39). Every signed-in user reads the same values through `GET /me` (`practiceSettings`), so screens need no `practice-setup:read`.'
+      tags:
+        - practice-setup
+      x-owner: anand
+      x-permission: practice-setup:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The practice settings.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PracticeSettings'
+              examples:
+                one:
+                  summary: Default
+                  value:
+                    registration:
+                      showSexualOrientationAndGenderIdentity: false
+                    updatedAt: '2026-10-26T13:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `practice-setup:read`).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updatePracticeSettings
+      summary: Update the practice settings
+      description: 'Edits the practice settings with JSON Merge Patch and `If-Match` (new inventory row #259). Whether to show the sexual-orientation and gender-identity fields at registration is decided by each practice''s clinical leadership and counsel (D39); the fields stay optional in the contract and the schema either way.'
+      tags:
+        - practice-setup
+      x-owner: anand
+      x-permission: practice-setup:update
+      x-audit:
+        action: U
+        category: admin
+      x-concurrency: if-match-required
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/PracticeSettingsPatch'
+            examples:
+              show:
+                summary: Show the fields at registration
+                value:
+                  registration:
+                    showSexualOrientationAndGenderIdentity: true
+      responses:
+        '200':
+          description: The practice settings.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PracticeSettings'
+              examples:
+                updated:
+                  summary: Updated
+                  value:
+                    registration:
+                      showSexualOrientationAndGenderIdentity: true
+                    updatedAt: '2026-10-26T13:05:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `practice-setup:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /pharmacies:
     get:
       operationId: listPharmacies
@@ -19129,6 +19408,23 @@ components:
           $ref: '#/components/schemas/BuildInfo'
           description: The API build serving this session (Q31). Shown to signed-in users only, for support and bug reports; never returned by /health or any public operation.
           x-phi: none
+    MePracticeSettings:
+      description: Practice settings every signed-in user may read (D39).
+      type: object
+      required:
+        - registration
+      properties:
+        registration:
+          type: object
+          required:
+            - showSexualOrientationAndGenderIdentity
+          description: Registration settings.
+          x-phi: none
+          properties:
+            showSexualOrientationAndGenderIdentity:
+              type: boolean
+              description: Show the sexual-orientation and gender-identity fields on the registration screen (D39).
+              x-phi: none
     Me:
       description: 'The current user, their clinic and their effective permissions, for building menus (inventory #6). The server checks every action regardless.'
       type: object
@@ -19152,6 +19448,10 @@ components:
             type: string
             maxLength: 80
           description: Effective permission names from the user's roles (`resource:action`, SECURITY_MODEL §4.2).
+          x-phi: none
+        practiceSettings:
+          $ref: '#/components/schemas/MePracticeSettings'
+          description: The practice settings screens need (D39), the same values as `GET /practice-settings`, so no extra permission is needed to read them.
           x-phi: none
     BreakGlassReasonCode:
       description: Why a restricted chart is opened (SECURITY_MODEL §5.2). `other` needs `reasonText`.
@@ -19457,7 +19757,7 @@ components:
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
     BirthSex:
-      description: 'Sex assigned at birth, US Core `birthsex` codes: `F`, `M`, `UNK`. The US Core version (Open Decisions Q6) may replace this with the newer US Core `sex` element.'
+      description: 'Sex assigned at birth (D39), US Core 9.0.0 Birth Sex extension, value set Birth Sex (VSAC 2.16.840.1.113762.1.4.1021.24, version 2024-03-30, required binding): codes `F`, `M` and `UNK` (`http://terminology.hl7.org/CodeSystem/v3-AdministrativeGender` for `F` and `M`, `http://terminology.hl7.org/CodeSystem/v3-NullFlavor` for `UNK`). The value set also has `asked-declined`, `ASKU` and `OTH`; adding them here is an additive change if a practice needs "declined" told apart from "unknown". USCDI no longer requires birth sex (Q6, D82).'
       type: string
       enum:
         - F
@@ -19646,7 +19946,7 @@ components:
           x-phi: identifier
         gender:
           $ref: '#/components/schemas/AdministrativeGender'
-          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL).
+          description: 'Administrative gender, labelled "Legal sex" on screens (as on ID and insurance). Optional for the patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). On `/fhir` (US Core 9.0.0, D82) it is `Patient.gender` and, for `female` and `male`, the US Core Individual Sex extension with the Federal Administrative Sex value set (VSAC 2.16.840.1.113762.1.4.1021.121, version 2025-02-28): SNOMED CT `248152002` female, `248153007` male; `other` and `unknown` send no Individual Sex extension.'
           x-phi: clinical
         birthSex:
           $ref: '#/components/schemas/BirthSex'
@@ -19654,11 +19954,11 @@ components:
           x-phi: clinical
         genderIdentity:
           $ref: '#/components/schemas/CodedValue'
-          description: Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration item A45 (Anand).
+          description: 'Gender identity (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`, D39). Pinned to US Core 9.0.0 (D82): the HL7 `individual-genderIdentity` extension and the HL7 Gender Identity value set (`http://terminology.hl7.org/ValueSet/gender-identity`): SNOMED CT (`http://snomed.info/sct`) `446141000124107` identifies as female gender, `446151000124109` identifies as male gender, `33791000087105` identifies as nonbinary gender; `http://terminology.hl7.org/CodeSystem/data-absent-reason` `asked-declined` ("prefer not to say"); `http://terminology.hl7.org/CodeSystem/v3-NullFlavor` `UNK`. Any other code is refused (`422 business-rule-violation`, `errors` naming `/genderIdentity/code` `not-allowed-value`). Its column is migration item A45 (Anand).'
           x-phi: clinical
         sexualOrientation:
           $ref: '#/components/schemas/CodedValue'
-          description: Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration item A45 (Anand).
+          description: Sexual orientation (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`). US Core 9.0.0 has no Patient extension for it; it stays a coded value with its source system. Its column is migration item A45 (Anand).
           x-phi: clinical
         race:
           $ref: '#/components/schemas/RaceEthnicity'
@@ -19891,7 +20191,7 @@ components:
           x-phi: identifier
         gender:
           $ref: '#/components/schemas/AdministrativeGender'
-          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL).
+          description: 'Administrative gender, labelled "Legal sex" on screens (as on ID and insurance). Optional for the patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). On `/fhir` (US Core 9.0.0, D82) it is `Patient.gender` and, for `female` and `male`, the US Core Individual Sex extension with the Federal Administrative Sex value set (VSAC 2.16.840.1.113762.1.4.1021.121, version 2025-02-28): SNOMED CT `248152002` female, `248153007` male; `other` and `unknown` send no Individual Sex extension.'
           x-phi: clinical
         birthSex:
           $ref: '#/components/schemas/BirthSex'
@@ -19899,11 +20199,11 @@ components:
           x-phi: clinical
         genderIdentity:
           $ref: '#/components/schemas/CodedValue'
-          description: Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration item A45 (Anand).
+          description: 'Gender identity (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`, D39). Pinned to US Core 9.0.0 (D82): the HL7 `individual-genderIdentity` extension and the HL7 Gender Identity value set (`http://terminology.hl7.org/ValueSet/gender-identity`): SNOMED CT (`http://snomed.info/sct`) `446141000124107` identifies as female gender, `446151000124109` identifies as male gender, `33791000087105` identifies as nonbinary gender; `http://terminology.hl7.org/CodeSystem/data-absent-reason` `asked-declined` ("prefer not to say"); `http://terminology.hl7.org/CodeSystem/v3-NullFlavor` `UNK`. Any other code is refused (`422 business-rule-violation`, `errors` naming `/genderIdentity/code` `not-allowed-value`). Its column is migration item A45 (Anand).'
           x-phi: clinical
         sexualOrientation:
           $ref: '#/components/schemas/CodedValue'
-          description: Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration item A45 (Anand).
+          description: Sexual orientation (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`). US Core 9.0.0 has no Patient extension for it; it stays a coded value with its source system. Its column is migration item A45 (Anand).
           x-phi: clinical
         race:
           $ref: '#/components/schemas/RaceEthnicity'
@@ -20032,7 +20332,7 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AdministrativeGender'
             - type: 'null'
-          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). Send `null` to clear it.
+          description: 'Administrative gender, labelled "Legal sex" on screens (as on ID and insurance). Optional for the patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). On `/fhir` (US Core 9.0.0, D82) it is `Patient.gender` and, for `female` and `male`, the US Core Individual Sex extension with the Federal Administrative Sex value set (VSAC 2.16.840.1.113762.1.4.1021.121, version 2025-02-28): SNOMED CT `248152002` female, `248153007` male; `other` and `unknown` send no Individual Sex extension.'
           x-phi: clinical
         birthSex:
           oneOf:
@@ -20044,13 +20344,13 @@ components:
           oneOf:
             - $ref: '#/components/schemas/CodedValue'
             - type: 'null'
-          description: Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it.
+          description: 'Gender identity (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`, D39). Pinned to US Core 9.0.0 (D82): the HL7 `individual-genderIdentity` extension and the HL7 Gender Identity value set (`http://terminology.hl7.org/ValueSet/gender-identity`): SNOMED CT (`http://snomed.info/sct`) `446141000124107` identifies as female gender, `446151000124109` identifies as male gender, `33791000087105` identifies as nonbinary gender; `http://terminology.hl7.org/CodeSystem/data-absent-reason` `asked-declined` ("prefer not to say"); `http://terminology.hl7.org/CodeSystem/v3-NullFlavor` `UNK`. Any other code is refused (`422 business-rule-violation`, `errors` naming `/genderIdentity/code` `not-allowed-value`). Its column is migration item A45 (Anand).'
           x-phi: clinical
         sexualOrientation:
           oneOf:
             - $ref: '#/components/schemas/CodedValue'
             - type: 'null'
-          description: Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it.
+          description: Sexual orientation (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`). US Core 9.0.0 has no Patient extension for it; it stays a coded value with its source system. Its column is migration item A45 (Anand).
           x-phi: clinical
         race:
           oneOf:
@@ -26923,6 +27223,51 @@ components:
         active:
           type: boolean
           description: False retires this version.
+          x-phi: none
+    PracticeRegistrationSettings:
+      description: Registration settings (D39).
+      type: object
+      additionalProperties: false
+      required:
+        - showSexualOrientationAndGenderIdentity
+      properties:
+        showSexualOrientationAndGenderIdentity:
+          type: boolean
+          default: false
+          description: Show the optional sexual-orientation and gender-identity fields on the registration screen (D39). Default false; practice onboarding asks this question explicitly, so the setting records the practice's own decision, not a silent default. Hiding the fields never removes stored values.
+          x-phi: none
+    PracticeSettings:
+      description: Practice-wide settings (one per practice; stored as tenant settings, A49).
+      type: object
+      required:
+        - registration
+        - updatedAt
+      properties:
+        registration:
+          $ref: '#/components/schemas/PracticeRegistrationSettings'
+          description: Registration settings.
+          x-phi: none
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When a setting last changed.
+          x-phi: none
+    PracticeSettingsPatch:
+      description: Settings to change (JSON merge patch).
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        registration:
+          type: object
+          additionalProperties: false
+          minProperties: 1
+          description: Registration settings to change.
+          properties:
+            showSexualOrientationAndGenderIdentity:
+              type: boolean
+              default: false
+              description: Show the optional sexual-orientation and gender-identity fields on the registration screen (D39). Default false; practice onboarding asks this question explicitly, so the setting records the practice's own decision, not a silent default. Hiding the fields never removes stored values.
+              x-phi: none
           x-phi: none
     PharmacyDirectoryAddress:
       description: A pharmacy's address from the directory.
