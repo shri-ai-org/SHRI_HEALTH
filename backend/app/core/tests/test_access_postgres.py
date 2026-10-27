@@ -22,6 +22,7 @@ from app.core.audit import audit_patients
 from app.core.config import Settings
 from app.core.deps import CurrentUser, current_user, require, tenant_db
 from app.core.routing import API_PREFIX
+from app.core.tests.stand_ins import include_first
 from app.db.tests import builders as b
 from app.db.tests.conftest import (  # noqa: F401  (fixtures)
     SKIP_WITHOUT_DATABASE,
@@ -102,7 +103,7 @@ def client(signed_in: dict[str, CurrentUser]) -> Iterator[TestClient]:
     app = create_app(Settings(environment="test", auth_mode="dev_header",
                               database_url=TEST_DATABASE_URL))
     switch_to_role(app.state.db.engine.sync_engine, "shri_app")
-    app.include_router(_router(), prefix=API_PREFIX)
+    include_first(app, _router(), prefix=API_PREFIX)  # ahead of the real module routes
     app.dependency_overrides[current_user] = lambda: signed_in["user"]
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
