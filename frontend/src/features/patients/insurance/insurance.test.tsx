@@ -61,7 +61,7 @@ describe('InsurancePanel', () => {
     renderPanel()
     const table = await screen.findByRole('table', { name: 'Insurance coverages' })
     const rows = within(table).getAllByRole('row')
-    expect(rows[1]).toHaveTextContent('PrimaryTest Health Plan 1TST10001GRP-100Self—ActiveMark as error')
+    expect(rows[1]).toHaveTextContent('PrimaryTest Health Plan 1TST10001GRP-100Self—Active—Card photosMark as error')
     expect(rows[2]).toHaveTextContent('Ended')
     expect(rows[3]).toHaveTextContent('Entered in error')
     // A corrected coverage has no further action.

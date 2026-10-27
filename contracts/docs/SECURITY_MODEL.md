@@ -21,10 +21,10 @@ Every operation's `x-permission` puts it in exactly one class.
 
 | Class | `x-permission` value | Who can call | Examples |
 |---|---|---|---|
-| Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready` |
-| Authenticated | `authenticated` | Any logged-in user, acting on their own data | `GET /me`, `GET /auth/session`, `POST /auth/logout`, `GET /events/stream`, `GET /operations/{operationId}` |
+| Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready`; the portal's `GET /portal/auth/login`, `GET /portal/auth/callback` and `POST /portal/enrollments` (ADR-0013 §3, §5; lint allowlist `shri-public-allowlist`) |
+| Authenticated | `authenticated` | Any logged-in user, acting on their own data | `GET /me`, `GET /auth/session`, `POST /auth/logout`, `GET /events/stream`, `GET /operations/{operationId}`; with the portal cookie, `GET /portal/auth/session`, `POST /portal/auth/refresh`, `POST /portal/auth/logout` |
 | Permission | `<resource>:<action>` | Users whose roles include that permission | Almost every endpoint |
-| Partner | `partner-signed` | A partner whose request signature verifies | `POST /hooks/clearinghouse` |
+| Partner | `partner-signed` | A partner whose request signature verifies | `POST /hooks/clearinghouse`; Keycloak's `POST /hooks/keycloak/backchannel-logout`, whose signed `logout_token` is the authentication (D94) |
 
 The contract has no endpoint without `x-permission` (lint rule, CONTRACT_GOVERNANCE §5).
 
@@ -53,6 +53,7 @@ The contract has no endpoint without `x-permission` (lint rule, CONTRACT_GOVERNA
 | Absolute-limit notice | Shown before the 12-hour absolute limit (`expiresAt` from `GET /auth/session`), which **cannot be extended**, so people can save their work | Thulasi (issue #3) |
 | Refresh | `POST /auth/refresh` extends the idle timer (a user action) | CAT |
 | Logout | `POST /auth/logout` deletes the server session **and ends the user's Keycloak login session** (Keycloak's logout endpoint over the back channel, with the stored refresh token); returns `204` | CAT; Thulasi on #29 |
+| Ended in Keycloak | When Keycloak ends a staff session (an admin disables the user or ends their sessions, or they sign out elsewhere), it calls `POST /hooks/keycloak/backchannel-logout` with a signed `logout_token`; core validates it and ends every matching session of ours at once (D94). The 5-minute refresh failure stays as the backstop | Disabled or signed-out staff lose access at once, not at timeout |
 | Idle and absolute expiry | The server ends the Keycloak login session too, before deleting ours (on the next request or in the clean-up job). While our session is active, each user-initiated request also refreshes the stored Keycloak tokens server-side when the last refresh is more than 5 minutes old (background calls never do), so Keycloak's login stays alive with ours. A refused refresh (user disabled or Keycloak session revoked) ends our session immediately and is audited. Backstop: the realm's SSO Session Idle is our idle timeout plus 5 minutes (20 minutes) and SSO Session Max is 12 hours plus 5 minutes, so our limits always apply first and Keycloak ends its own login if our calls fail | Thulasi on #29 and #35 |
 | Login | `GET /auth/login` always sends `prompt=login`, so every new login asks for credentials even if a Keycloak cookie survives; there is no single sign-on across apps to keep. The browser starts login only when the user clicks "Sign in", never on its own after expiry or sign-out | Thulasi on #29; Minalini's PR #29 |
 
@@ -73,11 +74,15 @@ components:
     sessionCookie: { type: apiKey, in: cookie, name: __Host-shri_session }
     csrfHeader:    { type: apiKey, in: header, name: X-CSRF-Token }
     delegatedToken: { type: http, scheme: bearer }   # AI gateway only, see §2.4
+    portalSessionCookie: { type: apiKey, in: cookie, name: __Host-shri_portal }   # /portal/* only (ADR-0013 §5, D89)
 security:
   - sessionCookie: []          # default for GET
 # POST/PUT/PATCH operations: [{ sessionCookie: [], csrfHeader: [] }]
 # public operations: security: []
+# portal operations: [{ portalSessionCookie: [] }], writes [{ portalSessionCookie: [], csrfHeader: [] }]
 ```
+
+The two cookies never mix: an operation names one or the other, never both (lint rule `shri-security`), staff routes refuse the portal session and portal routes the staff one (core, ADR-0013 §5). In the database, portal requests run as their own role, `shri_portal`, which sees only the session patient's chart (D93).
 
 ### 2.4 Service-to-service calls
 
@@ -133,6 +138,7 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | Orders and results (Thulasi) | `lab-compendium:read`, `orders:read`, `orders:create`, `orders:medical-necessity-check`, `orders:sign-and-send`, `orders:cancel`, `orders:entered-in-error` (T13), `results:read`, `results:acknowledge`, `unmatched-results:read`, `unmatched-results:match`, `unmatched-results:reject` (T13/T34), `in-office-results:create` |
 | Files, setup, billing, documents (Anand) | `files:create`, `files:read`, `practice-setup:read\|create\|update`, `payers:read` (payer directory, read-only; added 2026-10-23), `lab-providers:read` (lab providers, read-only; D48), `consent-requirements:read` (D59), `provider-schedules:create\|update` (D66), `note-templates:read\|create-personal` (D73, A46), `onboarding:import`, `superbills:read\|update`, `claims:read\|create\|scrub\|submit\|status-check\|correct\|void`, `payments:create`, `payments:card-session`, `remittances:read\|post`, `billing-reports:read`, `documents:read\|create\|update`, `faxes:create`, `fax-inbox:read`, `fax-inbox:file`, `ccda:import`, `ccda:export`, `inbox:read\|update\|complete`, `messages:create`, `exports:read\|create` |
 | Communications and dashboard (Minalini) | `message-templates:read\|create\|update`, `communication-preferences:read\|update`, `communications:read`, `operations-dashboard:read` |
+| Patient portal, B8a (Vimal; sign-in, enrollment and factor reset Thulasi; D84, D89) | Role `PAT` only: `portal-profile:read`, `portal-profile:request-change`, `portal-appointments:read\|create\|cancel\|reschedule`, `portal-booking:read`, `portal-records:read`. Staff: `portal-accounts:read`, `portal-invitations:create\|revoke`, `portal-accounts:reset-factors`, `portal-accounts:disable\|enable` (ADM; D92). Proposed grants in NOTE_FOR_THULASI T45; they join §4.3 in the same change as core, as for T42 |
 
 ### 4.3 Draft role-to-permission matrix
 
@@ -280,8 +286,8 @@ Middleware writes audit events (D3; TA §6: append-only, hash-chained). The cont
 x-audit:
   action: R              # FHIR AuditEvent action: C create, R read, U update, E execute (actions, search)
   category: phi-read     # see table
-  patient: patientId     # path parameter holding the patient ID, or "body:/patientId", or "result" (search returns IDs)
-  actor: user            # optional; "partner" for /hooks/* (the partner is the actor), default "user"
+  patient: patientId     # path parameter holding the patient ID, or "body:/patientId", or "result" (search returns IDs), or "session" (portal)
+  actor: user            # optional; "partner" for /hooks/* (the partner is the actor), "patient" for /portal/*, default "user"
 ```
 
 | `category` | Operations | Must audit |
@@ -293,9 +299,11 @@ x-audit:
 | `security` | Login, logout, failed login, permission and CSRF denials, break-glass, restriction changes, role changes | Yes |
 | `ai` | AI requests (metadata only), and accept, edit, reject decisions | Yes (FRS §3.4) |
 | `admin` | Practice setup, AI settings, templates, co-sign rules | Yes |
-| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49), inbox badge counts (`GET /inbox/summary`, counts only; D77), session reads (`GET /auth/session`, `/me`, the event stream) | No |
+| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49) and the portal's (`/portal/booking/*`, `/portal/me/slots`), inbox badge counts (`GET /inbox/summary`, counts only; D77), session reads (`GET /auth/session`, `GET /portal/auth/session`, `/me`, the event stream), and a user's own operations (`GET /operations/{operationId}` and its cancel: IDs and status only) | No |
 
 Partner callbacks (`/hooks/*`) carry PHI, so they are audited as `phi-write` with the **partner as actor** (agreed, T37).
+
+Portal operations are audited with the **patient as actor** and the patient from the session (`actor: patient`, `patient: session`; ADR-0013 §6, D84). With a portal session, `none` is allowed only on `GET /portal/auth/session`, the three `/portal/booking/*` lists and `GET /portal/me/slots`; every other one, `security` included, names the session patient. Enforced by `shri-x-audit`.
 
 Audit records contain who, what, which record, which patient, outcome, time, request ID, and break-glass reason. **Never request or response bodies** (TA §6: "do not log unnecessary clinical payloads").
 

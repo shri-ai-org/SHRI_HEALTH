@@ -42,8 +42,8 @@ x-permission: notes:sign
 | Shape | `{ action, category, patient?, actor? }` — no other members |
 | `action` | FHIR AuditEvent action: `C` create, `R` read (including search), `U` update, `E` execute (actions) |
 | `category` | `phi-read`, `phi-write`, `sign`, `export`, `security`, `ai`, `admin`, or `none` (only health checks, session reads and reference catalogs: codes, pharmacies, payer directory, lab providers, lab compendium, slots, booking lists) |
-| `patient` | Where the patient ID comes from: a path parameter name (e.g. `patientId`), `body:/<json-pointer>`, or `result` (search and list results: the IDs returned are recorded). **Required** on paths containing `{patientId}` |
-| `actor` | `user` (default) or `partner` (partner callbacks, Thulasi T37) |
+| `patient` | Where the patient ID comes from: a path parameter name (e.g. `patientId`), `body:/<json-pointer>`, `result` (search and list results: the IDs returned are recorded), or `session` (portal operations: the signed-in patient, D84). **Required** on paths containing `{patientId}`, and `session` on every operation with a portal session except the five practice-data and session reads allowed `none` (SECURITY_MODEL §6); `session` only under `/portal/` |
+| `actor` | `user` (default), `partner` (partner callbacks, Thulasi T37) or `patient` (every `/portal/` operation and only those; ADR-0013 §6) |
 | Behavior | Audit **fails closed**: if the audit write fails, the request fails. Writes are audited in the same transaction; reads before the response is returned. Audit entries never contain request or response bodies (SECURITY_MODEL §6) |
 | Read by | Thulasi's middleware |
 | Lint rule | `shri-x-audit` |
@@ -77,7 +77,7 @@ birthDate:
 | `x-async` | Operations returning `202` | `true` | `shri-async` |
 | `x-storage` | Operations | `clinical`, `admin`, `audit`, `files` (informational; one database, ADR-0011; DATA_OWNERSHIP) | not linted; reviewed |
 | `x-events` | Operations that publish events | List of event types (EVENTS.md §4) | not linted; reviewed |
-| `x-release` | Operations | `P0`, `P0-stretch` | not linted; reviewed |
+| `x-release` | Operations | `P0`, `P0-stretch`, `P1` (the patient portal, D89) | not linted; reviewed |
 | `x-extensible-enum` | String schemas in responses that may gain values | List of known values, in place of `enum`; clients render unknown values safely (API_STANDARDS §6.5) | not linted; reviewed. oasdiff reads it natively and does not report an added value (CONTRACT_GOVERNANCE §4.1) |
 | `x-internal` | Servers | `false` for our public servers (OWASP API9 inventory rule) | `owasp:api9:2023-inventory-access` |
 
