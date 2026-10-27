@@ -64,6 +64,14 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 22 | POST | `/hooks/fax` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | §3.9 | B3 | Same |
 | 23 | POST | `/hooks/sms` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-SCH-01 reminders | B3 | Same |
 | 292 | POST | `/hooks/keycloak/backchannel-logout` (root) | T | Ad | `partner-signed` | sec (partner as actor) | – | | | §6 sessions | B1 | **New** (D94, 2026-10-27): Keycloak's signed `logout_token` (OpenID Connect Back-Channel Logout 1.0); ends matching staff sessions at once; `200`, or `400` for any failure; only from Keycloak |
+| 293 | POST | `/portal/pre-registrations` | V | Ad | `public` | pw (actor anonymous) | – | | | FR-PAT-01 | Demo | **New** (D96): the public form; always the same `204`; `Origin`, rate limits, ALTCHA; encrypted; deleted after 30 days unless accepted |
+| 294 | GET | `/pre-registrations` | V | Ad | `pre-registrations:read` | pr | – | | | FR-PAT-01 | Demo | **New** (D96): the front desk's queue |
+| 295 | GET | `/pre-registrations/{preRegistrationId}` | V | Ad | `pre-registrations:read` | pr | – | | | FR-PAT-01 | Demo | **New** (D96) |
+| 296 | POST | `/pre-registrations/{preRegistrationId}/accept` | V | Cl+Ad | `pre-registrations:accept` | pw | S | | | FR-PAT-01 | Demo | **New** (D96): creates (duplicate check, MRN) or links the patient, one transaction |
+| 297 | POST | `/pre-registrations/{preRegistrationId}/reject` | V | Ad | `pre-registrations:reject` | pw | – | | | FR-PAT-01 | Demo | **New** (D96): with a reason |
+| 298 | PUT | `/encounters/{encounterId}/follow-up` | V | Cl | `encounters:update` | pw | – | ✓ | | FR-SCH-02 | Demo | **New** (D98): the clinician's follow-up request |
+| 299 | POST | `/encounters/{encounterId}/follow-up/decline` | V | Cl | `appointments:status` | pw | – | | | FR-SCH-02 | Demo | **New** (D98): the patient didn't book it; reason required |
+| 300 | GET | `/portal/me/medications` | T | Cl | `portal-records:read` | pr (patient session) | – | | | §3.8 | Demo | **New** (plan §8.2 E): the patient's medication list, with transmission status |
 | 24 | GET | `/admin/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
 | 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |
@@ -199,17 +207,17 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 
 | # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 116 | GET | `/patients/{patientId}/medications` | T | Cl | `medications:read` | pr | – | | | FR-MED-01 | B5 | |
-| 117 | POST | `/patients/{patientId}/medications` | T | Cl | `medications:create` | pw | S | | | FR-MED-01 | B5 | |
+| 116 | GET | `/patients/{patientId}/medications` | T | Cl | `medications:read` | pr | – | | | FR-MED-01 | B5 | **Written** for the demo (D97, 2026-10-27) |
+| 117 | POST | `/patients/{patientId}/medications` | T | Cl | `medications:create` | pw | S | | | FR-MED-01 | B5 | **Written** for the demo (D97, 2026-10-27) |
 | 118 | POST | `/medications/{medicationId}/discontinue` | T | Cl | `medications:discontinue` | pw | – | | | FR-MED-01 | B5 | |
 | 119 | POST | `/patients/{patientId}/medication-reconciliation` | T | Cl | `medication-reconciliations:create` | pw | S | | | FR-MED-01, FR-SCH-02 rooming | B5 | |
-| 120 | POST | `/prescriptions` | T | Cl | `prescriptions:create` | pw | S | | | FR-MED-01 | B5 | |
-| 121 | GET | `/prescriptions/{prescriptionId}` | T | Cl | `prescriptions:read` | pr | – | | | FR-MED-01 | B5 | **New** (agreed, T31) |
-| 122 | PATCH | `/prescriptions/{prescriptionId}` | T | Cl | `prescriptions:update` | pw | – | ✓ | | FR-MED-01 | B5 | **New** (agreed, T31): **drafts only**; a signed prescription → `409 record-locked` |
-| 227 | POST | `/prescriptions/{prescriptionId}/entered-in-error` | T | Cl | `prescriptions:entered-in-error` | pw | – | | | FR-MED-01 | B5 | **New** (T34): drafts only; anything already sent uses cancel |
-| 123 | POST | `/prescriptions/{prescriptionId}/safety-check` | T | Cl | `prescriptions:safety-check` | pw | – | | | FR-MED-01, §3.4 CDS layer 1 | B5 | |
-| 124 | POST | `/alerts/{alertId}/override` | T | Cl | `alerts:override` | pw | – | | | §3.4 | B5 | |
-| 125 | POST | `/prescriptions/{prescriptionId}/sign-and-send` | T | Cl | `prescriptions:sign-and-send` | sg | R | ✓ | | FR-MED-01 | B5 | |
+| 120 | POST | `/prescriptions` | T | Cl | `prescriptions:create` | pw | S | | | FR-MED-01 | B5 | **Written** for the demo (D97, 2026-10-27) |
+| 121 | GET | `/prescriptions/{prescriptionId}` | T | Cl | `prescriptions:read` | pr | – | | | FR-MED-01 | B5 | **New** (agreed, T31). **Written** for the demo (D97, 2026-10-27) |
+| 122 | PATCH | `/prescriptions/{prescriptionId}` | T | Cl | `prescriptions:update` | pw | – | ✓ | | FR-MED-01 | B5 | **New** (agreed, T31): **drafts only**; a signed prescription → `409 record-locked`. **Written** for the demo (D97, 2026-10-27) |
+| 227 | POST | `/prescriptions/{prescriptionId}/entered-in-error` | T | Cl | `prescriptions:entered-in-error` | pw | – | | | FR-MED-01 | B5 | **New** (T34): drafts only; anything already sent uses cancel. **Written** for the demo (D97, 2026-10-27) |
+| 123 | POST | `/prescriptions/{prescriptionId}/safety-check` | T | Cl | `prescriptions:safety-check` | pw | – | | | FR-MED-01, §3.4 CDS layer 1 | B5 | **Written** for the demo (D97, 2026-10-27) |
+| 124 | POST | `/alerts/{alertId}/override` | T | Cl | `alerts:override` | pw | – | | | §3.4 | B5 | **Written** for the demo (D97, 2026-10-27) |
+| 125 | POST | `/prescriptions/{prescriptionId}/sign-and-send` | T | Cl | `prescriptions:sign-and-send` | sg | R | ✓ | | FR-MED-01 | B5 | **Written** for the demo (D97, 2026-10-27) |
 | 126 | POST | `/prescriptions/{prescriptionId}/cancel` | T | Cl | `prescriptions:cancel` | pw | R | | | FR-MED-01 | B5 | Sets `transmissionStatus: cancel-requested` until the pharmacy confirms (T35) |
 | 127 | POST | `/prescriptions/{prescriptionId}/change` | T | Cl | `prescriptions:change` | sg | R | ✓ | | FR-MED-01 | B5 | A CancelRx plus a NewRx linked by `replaces` (T35) |
 | 128 | GET | `/refill-requests` | T | Ad | `refill-requests:read` | pr | – | | | FR-MED-01, FR-ENC-05 | B5 | Items carry `type`: `renewal` \| `change` (pharmacy RxChangeRequest via `/hooks/erx`; depends on the e-prescribing vendor; T35) |
@@ -259,7 +267,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 234 | GET | `/lab-providers` | A | Ad | `lab-providers:read` | – | – | | | FR-ORD-01, §3.10 onboarding | B1 | **New** (D48, 2026-10-23): read-only, like the payer directory |
 | 235 | GET | `/lab-providers/{labProviderId}` | A | Ad | `lab-providers:read` | – | – | | | FR-ORD-01 | B1 | **New** (D48) |
 | 179–182 | same 4 | `/lab-accounts` | A | Ad | same | adm | S | ✓ | | FR-ORD-01 | B1 | Same |
-| 183–186 | same 4 | `/note-templates` | A | Ad | same | adm | S | ✓ | | FR-ENC-04 | B1 | Same |
+| 183–186 | same 4 | `/note-templates` | A | Ad | same | adm | S | ✓ | | FR-ENC-04 | B1 | Same; the two GETs take `note-templates:read` (D73, T42) so clinicians can start a templated note (demo contracts PR, 2026-10-27) |
 | 244–247 | same 4 | `/consent-requirements` | A | Ad | reads `consent-requirements:read` (FD, ADM); writes `practice-setup:create\|update` | adm | S | ✓ | | FR-PAT-01 | B1 | **New** (D59, 2026-10-24): consent kinds with the current `policyVersion` |
 | 187 | POST | `/onboarding/import` | A | Ad+F | `onboarding:import` | adm | S | | ✓ | §3.10 onboarding | B1 | |
 | 188 | GET | `/encounters/{encounterId}/superbill` | A | Cl | `superbills:read` | pr | – | | | FR-RCM-02 | B6 | |

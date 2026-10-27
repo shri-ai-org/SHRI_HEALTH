@@ -192,6 +192,33 @@ curl -s -X POST $B/portal/me/change-requests "${P[@]}" -H "Idempotency-Key: $(uu
 
 **Hidden behind feature switches until their contracts exist (all P1):** Pay bills (payments and the ledger), Video (telehealth) and Immunizations. Hide them, don't delete them. Messages, results, prescriptions, documents, forms and record exports come with B8b (D88, D89); until then they stay on the portal's own in-memory mock.
 
+## 5e. The demo story (20 November, D95)
+
+`tests/flows/demo-visit.mjs` runs the whole demo visit against the sample-data server, step by step, in the order of issue #85:
+1. pre-registration;
+2. the front desk creates the patient;
+3. insurance and eligibility;
+4. booking;
+5. the portal invitation;
+6. check-in and the status board;
+7. rooming;
+8. the consultation with a signed templated note;
+9. the prescription, with its allergy alert and override;
+10. the follow-up request;
+11. check-out with copay, after-visit summary and revisit;
+12. the patient's portal.
+
+```bash
+cd contracts
+npm run mock                              # in one terminal
+node tests/flows/demo-visit.mjs           # in another; BASE_URL=http://127.0.0.1:4020 for another port
+```
+
+- **Request bodies** are the contract's own request examples, so the script always sends what the contract accepts. IDs come from the previous answers.
+- **The documented refusals** come from `Prefer: code=…`: a failed bot check, a possible duplicate at accept, and signing before the override.
+- **Sessions:** staff calls use the mock staff cookie, the portal steps the mock patient cookie (§5d), and the public form none.
+- **Today's result:** all 12 steps pass (55 calls). Use it to check a screen's wiring step by step before the real API exists.
+
 ## 6. What the mock cannot do
 
 | Limit | What it means for screens |

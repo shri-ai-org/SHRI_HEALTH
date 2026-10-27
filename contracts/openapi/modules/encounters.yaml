@@ -603,6 +603,210 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/follow-up:
+    parameters:
+    - name: encounterId
+      in: path
+      required: true
+      description: Encounter ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    put:
+      operationId: setFollowUpRequest
+      summary: Ask for a follow-up visit
+      description: 'The clinician asks the front desk to book a revisit (D98): when, and optionally with whom and for what
+        kind of visit. Replaces an open request; a booked one can no longer change. The front desk sees it at check-out (`followUp`
+        on the appointment and on the staff status board) and books it with `POST /appointments` and `followUpOfEncounterId`.'
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: encounters:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: result
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpRequestPut'
+            examples:
+              threeMonths:
+                summary: In 3 months
+                value:
+                  interval:
+                    value: 3
+                    unit: month
+                  appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                  providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                  note: Recheck blood pressure.
+      responses:
+        '200':
+          description: The follow-up request. The `ETag` is the encounter's.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpRequest'
+              examples:
+                open:
+                  summary: Open
+                  value:
+                    interval:
+                      value: 3
+                      unit: month
+                    appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                    providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    note: Recheck blood pressure.
+                    status: open
+                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedAt: '2026-11-20T15:25:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `encounters:update`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the follow-up is already booked, or the encounter is entered-in-error
+            or cancelled; the problem carries `currentState`).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current
+            `ETag`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (the `If-Match` header is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/follow-up/decline:
+    parameters:
+    - name: encounterId
+      in: path
+      required: true
+      description: Encounter ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: declineFollowUpRequest
+      summary: Record that the follow-up was not booked
+      description: At check-out, when the patient does not book the revisit (D98). The request becomes `declined` with the
+        reason.
+      tags:
+      - encounters
+      x-owner: vimal
+      x-permission: appointments:status
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpDecline'
+            examples:
+              later:
+                summary: Will call later
+                value:
+                  reason: Patient will call to book.
+      responses:
+        '200':
+          description: The follow-up request, declined.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpRequest'
+              examples:
+                declined:
+                  summary: Declined
+                  value:
+                    interval:
+                      value: 3
+                      unit: month
+                    appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                    providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    note: Recheck blood pressure.
+                    status: declined
+                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedAt: '2026-11-20T15:25:00Z'
+                    declinedReason: Patient will call to book.
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `appointments:status`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (no open follow-up request on this encounter; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
   /encounters/{encounterId}/vitals:
     parameters: *id007
     post:
@@ -1180,7 +1384,8 @@ paths:
       description: 'Searches a code system by code or words (inventory #74; a GET on `/codes`, like `/pharmacies`, because
         the `/search` suffix is reserved for POST searches with PHI, API_STANDARDS §14): ICD-10-CM for diagnoses, RxNorm for
         drugs, LOINC, SNOMED CT, CPT (placeholder codes until the AMA license, Q7), HCPCS, CVX. Reference data, not patient
-        data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited.'
+        data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited. For `rxnorm` (drug search,
+        prescribing), results come from the free RxNorm Current Prescribable Content subset, which needs no UMLS license (D97).'
       tags:
       - encounters
       x-owner: vimal
@@ -2858,7 +3063,7 @@ components:
         interpretation:
           type: string
           enum:
-          - N
+          - 'N'
           - L
           - H
           - LL
@@ -3145,6 +3350,10 @@ components:
           $ref: ../components/schemas/Timestamp.yaml
           description: Last change.
           x-phi: none
+        followUp:
+          $ref: '#/components/schemas/FollowUpRequest'
+          description: The follow-up request, if the clinician made one (D98).
+          x-phi: clinical
     EncounterCreate:
       description: 'Body to open an unscheduled encounter (inventory #62; D16): a telephone encounter (class `VR`) or a documentation-only
         one (class `AMB`). Scheduled visits start at check-in instead. The caller becomes the rendering clinician unless `participants`
@@ -4094,3 +4303,115 @@ components:
           $ref: ../components/schemas/Cursor.yaml
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
+    FollowUpInterval:
+      description: When the patient should come back, from today.
+      type: object
+      additionalProperties: false
+      required:
+      - value
+      - unit
+      properties:
+        value:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 365
+          description: How many units.
+          x-phi: clinical
+        unit:
+          type: string
+          enum:
+          - day
+          - week
+          - month
+          description: Unit.
+          x-phi: none
+    FollowUpRequest:
+      description: 'The clinician''s follow-up request for a visit (D98): `open` until the front desk books the revisit (`booked`)
+        or records that the patient declined (`declined`).'
+      type: object
+      required:
+      - interval
+      - status
+      - requestedBy
+      - requestedAt
+      properties:
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: ../components/schemas/Id.yaml
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: ../components/schemas/Id.yaml
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: For the front desk ("recheck blood pressure").
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+          - open
+          - booked
+          - declined
+          description: Status.
+          x-phi: none
+        requestedBy:
+          $ref: ../components/schemas/Id.yaml
+          description: Who asked for it.
+          x-phi: none
+        requestedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When.
+          x-phi: none
+        bookedAppointmentId:
+          $ref: ../components/schemas/Id.yaml
+          description: The revisit, once `booked`.
+          x-phi: internal-id
+        declinedReason:
+          type: string
+          maxLength: 500
+          description: Why the patient declined, once `declined`.
+          x-phi: clinical
+    FollowUpRequestPut:
+      description: Body to set the visit's follow-up request, replacing an open one.
+      type: object
+      additionalProperties: false
+      required:
+      - interval
+      properties:
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: ../components/schemas/Id.yaml
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: ../components/schemas/Id.yaml
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: For the front desk.
+          x-phi: clinical
+    FollowUpDecline:
+      description: Body to record that the patient did not book the follow-up.
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: Why ("will call to book").
+          x-phi: clinical
+          minLength: 1

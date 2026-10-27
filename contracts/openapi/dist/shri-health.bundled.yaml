@@ -3977,6 +3977,443 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /pre-registrations:
+    get:
+      operationId: listPreRegistrations
+      summary: List pre-registrations
+      description: The front desk's queue of pre-registrations (D96), oldest first; pending by default.
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: pre-registrations:read
+      x-audit:
+        action: R
+        category: phi-read
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          required: false
+          description: Which ones (default `pending`).
+          schema:
+            type: string
+            enum:
+              - pending
+              - accepted
+              - rejected
+            default: pending
+        - name: facilityId
+          in: query
+          required: false
+          description: Only those asking for this facility.
+          schema:
+            $ref: '#/components/schemas/Id'
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistrationList'
+              examples:
+                page:
+                  summary: One pending
+                  value:
+                    items:
+                      - id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                        status: pending
+                        details:
+                          name:
+                            given:
+                              - Kaia401
+                            family: Lindgren118
+                          birthDate: '1990-03-14'
+                          gender: female
+                          phones:
+                            - number: '+12175550142'
+                              use: mobile
+                          email: kaia.lindgren@example.com
+                          address:
+                            lines:
+                              - 42 Sample Avenue
+                            city: Springfield
+                            state: IL
+                            postalCode: '62704'
+                            country: US
+                          preferredLanguage: en
+                          insurance:
+                            payerName: Example Health Plan
+                            memberId: TEST-MEMBER-042
+                            groupNumber: TEST-GRP-7
+                          preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                          reasonForVisit: New patient, annual checkup.
+                        entrySource: patient-reported
+                        submittedAt: '2026-11-18T09:12:00Z'
+                        deleteAfter: '2026-12-18T09:12:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (a facility the user is not assigned to).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}:
+    parameters:
+      - name: preRegistrationId
+        in: path
+        required: true
+        description: Pre-registration ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getPreRegistration
+      summary: Get a pre-registration
+      description: One pre-registration (D96).
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: pre-registrations:read
+      x-audit:
+        action: R
+        category: phi-read
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: The pre-registration.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                pending:
+                  summary: Pending
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: pending
+                    details:
+                      name:
+                        given:
+                          - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                        - number: '+12175550142'
+                          use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                          - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    deleteAfter: '2026-12-18T09:12:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such pre-registration in this clinic).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}/accept:
+    parameters:
+      - name: preRegistrationId
+        in: path
+        required: true
+        description: Pre-registration ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: acceptPreRegistration
+      summary: Accept a pre-registration
+      description: Creates the patient through the registration rules (duplicate check with `409 possible-duplicate` and the override; the MRN from the practice counter, D41), or links to an existing `patientId` chosen in duplicate review; insurance as typed becomes a note for the front desk, not a coverage, until the card is checked. The request is linked to the patient, all in one transaction (D96). Fields stay patient-reported until verified against ID.
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: pre-registrations:accept
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-events:
+        - patient.created
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationAccept'
+            examples:
+              create:
+                summary: Create the patient
+                value: {}
+              link:
+                summary: Link to an existing patient
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      responses:
+        '200':
+          description: The pre-registration, accepted.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                accepted:
+                  summary: Accepted
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: accepted
+                    details:
+                      name:
+                        given:
+                          - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                        - number: '+12175550142'
+                          use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                          - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    decidedAt: '2026-11-20T14:02:00Z'
+                    decidedBy: d0000000-0000-4000-8000-000000000001
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `pre-registrations:accept`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such pre-registration in this clinic).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: '409. `possible-duplicate` (similar patients exist: review them, then link or override); `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`); `patient-merged` (the patient to link was merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}/reject:
+    parameters:
+      - name: preRegistrationId
+        in: path
+        required: true
+        description: Pre-registration ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: rejectPreRegistration
+      summary: Reject a pre-registration
+      description: Rejects it with a reason (D96). It is deleted 30 days later. Nothing is sent to the person.
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: pre-registrations:reject
+      x-audit:
+        action: E
+        category: phi-write
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationReject'
+            examples:
+              spam:
+                summary: Spam
+                value:
+                  reasonCode: spam
+              other:
+                summary: Other
+                value:
+                  reasonCode: other
+                  reasonText: Asked for a practice in another state.
+      responses:
+        '200':
+          description: The pre-registration, rejected.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                rejected:
+                  summary: Rejected
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: rejected
+                    details:
+                      name:
+                        given:
+                          - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                        - number: '+12175550142'
+                          use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                          - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    deleteAfter: '2026-12-18T10:00:00Z'
+                    decidedAt: '2026-11-18T10:00:00Z'
+                    decidedBy: d0000000-0000-4000-8000-000000000001
+                    rejection:
+                      reasonCode: spam
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `pre-registrations:reject`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such pre-registration in this clinic).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a field is invalid, or `reasonText` is missing with `other`).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /slots:
     get:
       operationId: listSlots
@@ -4298,7 +4735,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `booking-conflict` (the slot is taken or overlaps another appointment); `patient-merged` (the patient was merged into another record).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (outside the provider's hours, overbooking not allowed for this type, or the type's overbook limit reached; or the provider or location does not belong to the facility (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (outside the provider's hours, overbooking not allowed for this type, or the type's overbook limit reached; or the provider or location does not belong to the facility (field code `invalid-reference`)); `followUpOfEncounterId` is not an open follow-up request for this patient (field code `invalid-reference`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -7156,7 +7593,7 @@ paths:
     get:
       operationId: searchCodes
       summary: Search codes
-      description: 'Searches a code system by code or words (inventory #74; a GET on `/codes`, like `/pharmacies`, because the `/search` suffix is reserved for POST searches with PHI, API_STANDARDS §14): ICD-10-CM for diagnoses, RxNorm for drugs, LOINC, SNOMED CT, CPT (placeholder codes until the AMA license, Q7), HCPCS, CVX. Reference data, not patient data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited.'
+      description: 'Searches a code system by code or words (inventory #74; a GET on `/codes`, like `/pharmacies`, because the `/search` suffix is reserved for POST searches with PHI, API_STANDARDS §14): ICD-10-CM for diagnoses, RxNorm for drugs, LOINC, SNOMED CT, CPT (placeholder codes until the AMA license, Q7), HCPCS, CVX. Reference data, not patient data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited. For `rxnorm` (drug search, prescribing), results come from the free RxNorm Current Prescribable Content subset, which needs no UMLS license (D97).'
       tags:
         - encounters
       x-owner: vimal
@@ -8992,6 +9429,201 @@ paths:
         '428':
           $ref: '#/components/responses/PreconditionRequired'
           description: 428. `precondition-required` (`If-Match` is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/follow-up:
+    parameters:
+      - name: encounterId
+        in: path
+        required: true
+        description: Encounter ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    put:
+      operationId: setFollowUpRequest
+      summary: Ask for a follow-up visit
+      description: 'The clinician asks the front desk to book a revisit (D98): when, and optionally with whom and for what kind of visit. Replaces an open request; a booked one can no longer change. The front desk sees it at check-out (`followUp` on the appointment and on the staff status board) and books it with `POST /appointments` and `followUpOfEncounterId`.'
+      tags:
+        - encounters
+      x-owner: vimal
+      x-permission: encounters:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: result
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpRequestPut'
+            examples:
+              threeMonths:
+                summary: In 3 months
+                value:
+                  interval:
+                    value: 3
+                    unit: month
+                  appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                  providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                  note: Recheck blood pressure.
+      responses:
+        '200':
+          description: The follow-up request. The `ETag` is the encounter's.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpRequest'
+              examples:
+                open:
+                  summary: Open
+                  value:
+                    interval:
+                      value: 3
+                      unit: month
+                    appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                    providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    note: Recheck blood pressure.
+                    status: open
+                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedAt: '2026-11-20T15:25:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `encounters:update`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the follow-up is already booked, or the encounter is entered-in-error or cancelled; the problem carries `currentState`).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current `ETag`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (the `If-Match` header is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/follow-up/decline:
+    parameters:
+      - name: encounterId
+        in: path
+        required: true
+        description: Encounter ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: declineFollowUpRequest
+      summary: Record that the follow-up was not booked
+      description: At check-out, when the patient does not book the revisit (D98). The request becomes `declined` with the reason.
+      tags:
+        - encounters
+      x-owner: vimal
+      x-permission: appointments:status
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpDecline'
+            examples:
+              later:
+                summary: Will call later
+                value:
+                  reason: Patient will call to book.
+      responses:
+        '200':
+          description: The follow-up request, declined.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpRequest'
+              examples:
+                declined:
+                  summary: Declined
+                  value:
+                    interval:
+                      value: 3
+                      unit: month
+                    appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                    providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    note: Recheck blood pressure.
+                    status: declined
+                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedAt: '2026-11-20T15:25:00Z'
+                    declinedReason: Patient will call to book.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `appointments:status`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (no open follow-up request on this encounter; the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -14271,11 +14903,11 @@ paths:
     get:
       operationId: listNoteTemplates
       summary: List note templates
-      description: Lists the practice's note templates.
+      description: Lists the practice's note templates. Clinicians read templates to start a note with `note-templates:read` (D73, T42; MD, APP, RN, MA, ADM, CO), not `practice-setup:read`.
       tags:
         - practice-setup
       x-owner: anand
-      x-permission: practice-setup:read
+      x-permission: note-templates:read
       x-audit:
         action: R
         category: admin
@@ -14347,7 +14979,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `practice-setup:read`).
+          description: 403. `permission-denied` (the role lacks `note-templates:read`).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -14481,11 +15113,11 @@ paths:
     get:
       operationId: getNoteTemplate
       summary: Get a note template
-      description: Returns one note template.
+      description: Returns one note template. Clinicians read templates to start a note with `note-templates:read` (D73, T42; MD, APP, RN, MA, ADM, CO), not `practice-setup:read`.
       tags:
         - practice-setup
       x-owner: anand
-      x-permission: practice-setup:read
+      x-permission: note-templates:read
       x-audit:
         action: R
         category: admin
@@ -14540,7 +15172,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `practice-setup:read`).
+          description: 403. `permission-denied` (the role lacks `note-templates:read`).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such note template in this clinic or the user's facilities).
@@ -15075,6 +15707,964 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/medications:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: listMedications
+      summary: List a patient's medications
+      description: 'The medication list (inventory #116; D28): what the patient takes, prescribed here or reported, active first. Entered-in-error entries are left out.'
+      tags:
+        - medications
+      x-owner: thulasi
+      x-permission: medications:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          required: false
+          description: Only this status.
+          schema:
+            type: string
+            enum:
+              - active
+              - completed
+              - stopped
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicationList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                      - id: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        medication:
+                          codings:
+                            - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                              code: '308191'
+                              display: amoxicillin 500 MG Oral Capsule
+                          text: Amoxicillin 500 mg capsule
+                        dosageText: 1 capsule by mouth three times daily for 10 days
+                        status: active
+                        source: prescription
+                        prescriptionId: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
+                        recordedAt: '2026-11-20T15:23:00Z'
+                        recordedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      - id: 7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        medication:
+                          codings:
+                            - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                              code: '314076'
+                              display: lisinopril 10 MG Oral Tablet
+                          text: Lisinopril 10 mg tablet
+                        dosageText: 1 tablet by mouth once daily
+                        status: active
+                        source: reported
+                        recordedAt: '2026-11-20T15:05:00Z'
+                        recordedBy: d0000000-0000-4000-8000-000000000002
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `medications:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: recordMedication
+      summary: Record a current medication
+      description: 'Adds a medication the patient already takes (inventory #117), e.g. at rooming. Recorded as reported (D28).'
+      tags:
+        - medications
+      x-owner: thulasi
+      x-permission: medications:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicationCreate'
+            examples:
+              lisinopril:
+                summary: Lisinopril, as the patient takes it
+                value:
+                  medication:
+                    codings:
+                      - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                        code: '314076'
+                        display: lisinopril 10 MG Oral Tablet
+                    text: Lisinopril 10 mg tablet
+                  dosageText: 1 tablet by mouth once daily
+      responses:
+        '201':
+          description: Created. The list entry.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medication'
+              examples:
+                recorded:
+                  summary: Recorded
+                  value:
+                    id: 7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    medication:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '314076'
+                          display: lisinopril 10 MG Oral Tablet
+                      text: Lisinopril 10 mg tablet
+                    dosageText: 1 tablet by mouth once daily
+                    status: active
+                    source: reported
+                    recordedAt: '2026-11-20T15:05:00Z'
+                    recordedBy: d0000000-0000-4000-8000-000000000002
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `medications:create`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `patient-merged` (the patient was merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a field is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /prescriptions:
+    post:
+      operationId: createPrescription
+      summary: Start a prescription
+      description: 'Starts a draft (inventory #120). Drug search is `GET /codes?system=rxnorm`, over RxNorm Current Prescribable Content (D97).'
+      tags:
+        - medications
+      x-owner: thulasi
+      x-permission: prescriptions:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: body:/patientId
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrescriptionCreate'
+            examples:
+              amoxicillin:
+                summary: Amoxicillin for 10 days
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  encounterId: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+                  medication:
+                    codings:
+                      - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                        code: '308191'
+                        display: amoxicillin 500 MG Oral Capsule
+                    text: Amoxicillin 500 mg capsule
+                  dosageText: 1 capsule by mouth three times daily for 10 days
+                  quantity:
+                    value: 30
+                    unit: capsule
+                  daysSupply: 10
+                  refills: 0
+                  substitutionAllowed: true
+                  pharmacyId: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+      responses:
+        '201':
+          description: Created. The draft.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Location:
+              $ref: '#/components/headers/Location'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prescription'
+              examples:
+                draft:
+                  summary: A draft
+                  value:
+                    id: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+                    status: draft
+                    medication:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '308191'
+                          display: amoxicillin 500 MG Oral Capsule
+                      text: Amoxicillin 500 mg capsule
+                    dosageText: 1 capsule by mouth three times daily for 10 days
+                    quantity:
+                      value: 30
+                      unit: capsule
+                    daysSupply: 10
+                    refills: 0
+                    substitutionAllowed: true
+                    pharmacyId: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+                    transmission:
+                      status: not-sent
+                    alerts: []
+                    createdAt: '2026-11-20T15:20:00Z'
+                    updatedAt: '2026-11-20T15:21:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `prescriptions:create`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient, encounter or pharmacy in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `patient-merged` (the patient was merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a field is invalid); `business-rule-violation` (the encounter is not this patient's, or is closed); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /prescriptions/{prescriptionId}:
+    parameters:
+      - name: prescriptionId
+        in: path
+        required: true
+        description: Prescription ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getPrescription
+      summary: Get a prescription
+      description: 'One prescription with its alerts and transmission status (inventory #121).'
+      tags:
+        - medications
+      x-owner: thulasi
+      x-permission: prescriptions:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: The prescription.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prescription'
+              examples:
+                draft:
+                  summary: A draft with an allergy alert
+                  value:
+                    id: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+                    status: draft
+                    medication:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '308191'
+                          display: amoxicillin 500 MG Oral Capsule
+                      text: Amoxicillin 500 mg capsule
+                    dosageText: 1 capsule by mouth three times daily for 10 days
+                    quantity:
+                      value: 30
+                      unit: capsule
+                    daysSupply: 10
+                    refills: 0
+                    substitutionAllowed: true
+                    pharmacyId: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+                    transmission:
+                      status: not-sent
+                    alerts:
+                      - id: 8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f
+                        kind: allergy
+                        severity: high
+                        message: Active allergy to penicillin; amoxicillin is a penicillin.
+                        allergyId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                        overrideRequired: true
+                    createdAt: '2026-11-20T15:20:00Z'
+                    updatedAt: '2026-11-20T15:21:00Z'
+                signed:
+                  summary: Signed and queued
+                  value:
+                    id: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+                    status: active
+                    medication:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '308191'
+                          display: amoxicillin 500 MG Oral Capsule
+                      text: Amoxicillin 500 mg capsule
+                    dosageText: 1 capsule by mouth three times daily for 10 days
+                    quantity:
+                      value: 30
+                      unit: capsule
+                    daysSupply: 10
+                    refills: 0
+                    substitutionAllowed: true
+                    pharmacyId: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+                    transmission:
+                      status: queued
+                      updatedAt: '2026-11-20T15:23:00Z'
+                    alerts:
+                      - id: 8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f
+                        kind: allergy
+                        severity: high
+                        message: Active allergy to penicillin; amoxicillin is a penicillin.
+                        allergyId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                        overrideRequired: true
+                        override:
+                          reason: Tolerated amoxicillin in 2024 without reaction.
+                          overriddenBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          overriddenAt: '2026-11-20T15:22:00Z'
+                    createdAt: '2026-11-20T15:20:00Z'
+                    updatedAt: '2026-11-20T15:23:00Z'
+                    prescriberId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    signedAt: '2026-11-20T15:23:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `prescriptions:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updatePrescription
+      summary: Edit a draft prescription
+      description: 'Changes a draft (inventory #122). A changed draft needs a new safety check before signing. A signed prescription is locked.'
+      tags:
+        - medications
+      x-owner: thulasi
+      x-permission: prescriptions:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: result
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrescriptionPatch'
+            examples:
+              dose:
+                summary: Fewer days
+                value:
+                  daysSupply: 7
+                  quantity:
+                    value: 21
+                    unit: capsule
+      responses:
+        '200':
+          description: The draft.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prescription'
+              examples:
+                draft:
+                  summary: Changed
+                  value:
+                    id: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+                    status: draft
+                    medication:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '308191'
+                          display: amoxicillin 500 MG Oral Capsule
+                      text: Amoxicillin 500 mg capsule
+                    dosageText: 1 capsule by mouth three times daily for 10 days
+                    quantity:
+                      value: 21
+                      unit: capsule
+                    daysSupply: 7
+                    refills: 0
+                    substitutionAllowed: true
+                    pharmacyId: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+                    transmission:
+                      status: not-sent
+                    alerts: []
+                    createdAt: '2026-11-20T15:20:00Z'
+                    updatedAt: '2026-11-20T15:21:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `prescriptions:update`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `record-locked` (the prescription is signed).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current `ETag`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (the `If-Match` header is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /prescriptions/{prescriptionId}/entered-in-error:
+    parameters:
+      - name: prescriptionId
+        in: path
+        required: true
+        description: Prescription ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: markPrescriptionEnteredInError
+      summary: Mark a draft prescription wrong
+      description: 'A draft written by mistake (inventory #227): entered-in-error with a reason and its Provenance; nothing is deleted (D14). A signed prescription is cancelled instead (later).'
+      tags:
+        - medications
+      x-owner: thulasi
+      x-permission: prescriptions:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrescriptionEnteredInError'
+            examples:
+              wrong:
+                summary: Wrong patient
+                value:
+                  reason: Started on the wrong patient.
+      responses:
+        '200':
+          description: The prescription.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prescription'
+              examples:
+                wrong:
+                  summary: Entered in error
+                  value:
+                    id: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+                    status: entered-in-error
+                    medication:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '308191'
+                          display: amoxicillin 500 MG Oral Capsule
+                      text: Amoxicillin 500 mg capsule
+                    dosageText: 1 capsule by mouth three times daily for 10 days
+                    quantity:
+                      value: 30
+                      unit: capsule
+                    daysSupply: 10
+                    refills: 0
+                    substitutionAllowed: true
+                    pharmacyId: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+                    transmission:
+                      status: not-sent
+                    alerts: []
+                    createdAt: '2026-11-20T15:20:00Z'
+                    updatedAt: '2026-11-20T15:21:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `prescriptions:entered-in-error`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: '409. `invalid-state-transition` (not a draft: a signed prescription is cancelled instead; the problem carries `currentState`).'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /prescriptions/{prescriptionId}/safety-check:
+    parameters:
+      - name: prescriptionId
+        in: path
+        required: true
+        description: Prescription ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: checkPrescriptionSafety
+      summary: Check a draft for allergy and duplicate alerts
+      description: 'Runs the safety check on a draft (inventory #123; D97): an `allergy` alert for an active allergy to an RxNorm ingredient of the drug, a `duplicate-medication` alert for an active medication with the same ingredient. The alerts are stored on the draft.'
+      tags:
+        - medications
+      x-owner: thulasi
+      x-permission: prescriptions:safety-check
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: The alerts.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyCheckResult'
+              examples:
+                allergy:
+                  summary: An allergy alert
+                  value:
+                    prescriptionId: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
+                    checkedAt: '2026-11-20T15:21:00Z'
+                    alerts:
+                      - id: 8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f
+                        kind: allergy
+                        severity: high
+                        message: Active allergy to penicillin; amoxicillin is a penicillin.
+                        allergyId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                        overrideRequired: true
+                none:
+                  summary: No alerts
+                  value:
+                    prescriptionId: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
+                    checkedAt: '2026-11-20T15:21:00Z'
+                    alerts: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `prescriptions:safety-check`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (not a draft; the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /alerts/{alertId}/override:
+    parameters:
+      - name: alertId
+        in: path
+        required: true
+        description: Alert ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: overrideAlert
+      summary: Override a safety alert
+      description: 'Records why the prescriber goes ahead despite an alert (inventory #124; D97). Required before signing for a `high` alert; audited.'
+      tags:
+        - medications
+      x-owner: thulasi
+      x-permission: alerts:override
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertOverride'
+            examples:
+              tolerated:
+                summary: Tolerated before
+                value:
+                  reason: Tolerated amoxicillin in 2024 without reaction.
+      responses:
+        '200':
+          description: The alert, overridden.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyAlert'
+              examples:
+                overridden:
+                  summary: Overridden
+                  value:
+                    id: 8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f
+                    kind: allergy
+                    severity: high
+                    message: Active allergy to penicillin; amoxicillin is a penicillin.
+                    allergyId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                    overrideRequired: true
+                    override:
+                      reason: Tolerated amoxicillin in 2024 without reaction.
+                      overriddenBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      overriddenAt: '2026-11-20T15:22:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `alerts:override`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such alert in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (already overridden, or its prescription is no longer a draft).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /prescriptions/{prescriptionId}/sign-and-send:
+    parameters:
+      - name: prescriptionId
+        in: path
+        required: true
+        description: Prescription ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: signAndSendPrescription
+      summary: Sign a prescription and send it to the pharmacy
+      description: 'Signs exactly the version read (`If-Match`), locks it, writes its Provenance, adds it to the medication list and queues NewRx for the pharmacy through the outbox, all in one transaction (inventory #125; D8, D25, D97). Refused while the latest safety check is missing or older than the draft, or a `high` alert has no override. Transmission then moves through `sent` to `accepted` or `rejected` (here a simulated pharmacy).'
+      tags:
+        - medications
+      x-owner: thulasi
+      x-permission: prescriptions:sign-and-send
+      x-audit:
+        action: E
+        category: sign
+        patient: result
+      x-idempotency: required
+      x-concurrency: if-match-required
+      x-events:
+        - prescription.signed
+        - prescription.transmission-updated
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: The prescription, signed and queued.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prescription'
+              examples:
+                signed:
+                  summary: Signed and queued
+                  value:
+                    id: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+                    status: active
+                    medication:
+                      codings:
+                        - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                          code: '308191'
+                          display: amoxicillin 500 MG Oral Capsule
+                      text: Amoxicillin 500 mg capsule
+                    dosageText: 1 capsule by mouth three times daily for 10 days
+                    quantity:
+                      value: 30
+                      unit: capsule
+                    daysSupply: 10
+                    refills: 0
+                    substitutionAllowed: true
+                    pharmacyId: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+                    transmission:
+                      status: queued
+                      updatedAt: '2026-11-20T15:23:00Z'
+                    alerts:
+                      - id: 8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f
+                        kind: allergy
+                        severity: high
+                        message: Active allergy to penicillin; amoxicillin is a penicillin.
+                        allergyId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                        overrideRequired: true
+                        override:
+                          reason: Tolerated amoxicillin in 2024 without reaction.
+                          overriddenBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          overriddenAt: '2026-11-20T15:22:00Z'
+                    createdAt: '2026-11-20T15:20:00Z'
+                    updatedAt: '2026-11-20T15:23:00Z'
+                    prescriberId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    signedAt: '2026-11-20T15:23:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `idempotency-key-missing` (the Idempotency-Key header is required).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `prescriptions:sign-and-send`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (not a draft; the problem carries `currentState`); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current `ETag`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: '422. `business-rule-violation` (`errors` names what is missing: `/dosageText`, `/quantity` or `/pharmacyId`, a safety check older than the draft, or an alert that needs an override); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (the `If-Match` header is missing).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -18410,6 +20000,162 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /portal/pre-registrations:
+    post:
+      operationId: submitPreRegistration
+      summary: Pre-register as a new patient
+      description: 'The public pre-registration form (D96): no account and no session. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is. Only a malformed request, a failed bot check or a rate limit gets a different answer, and those say nothing about the person. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email; the ALTCHA bot check is verified on the server. The submission is stored encrypted at rest and waits in the front desk''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).'
+      tags:
+        - portal
+      x-owner: vimal
+      x-permission: public
+      x-audit:
+        action: C
+        category: phi-write
+        actor: anonymous
+      x-storage: admin
+      x-events:
+        - pre-registration.received
+      x-release: P1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationCreate'
+            examples:
+              newPatient:
+                summary: A new patient
+                value:
+                  details:
+                    name:
+                      given:
+                        - Kaia401
+                      family: Lindgren118
+                    birthDate: '1990-03-14'
+                    gender: female
+                    phones:
+                      - number: '+12175550142'
+                        use: mobile
+                    email: kaia.lindgren@example.com
+                    address:
+                      lines:
+                        - 42 Sample Avenue
+                      city: Springfield
+                      state: IL
+                      postalCode: '62704'
+                      country: US
+                    preferredLanguage: en
+                    insurance:
+                      payerName: Example Health Plan
+                      memberId: TEST-MEMBER-042
+                      groupNumber: TEST-GRP-7
+                    preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                    reasonForVisit: New patient, annual checkup.
+                  contactConsent: true
+                  botCheck: mock-altcha-payload
+      responses:
+        '204':
+          description: Received. Always the same answer, with no body.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the portal host).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: '422. `validation-failed` (a field is missing or malformed); `business-rule-violation` (`errors` names `/botCheck`: the bot check failed or expired).'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /portal/me/medications:
+    get:
+      operationId: listPortalMedications
+      summary: List my medications
+      description: 'The patient''s medication list (§8.2 E of the batch 1 plan): what the practice prescribed, with where it is on its way to the pharmacy, and what the patient reported taking. Active first; entered-in-error entries never appear. No prescriber-only notes.'
+      tags:
+        - portal
+      x-owner: thulasi
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security:
+        - portalSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalMedicationList'
+              examples:
+                page:
+                  summary: A new prescription and a reported medication
+                  value:
+                    items:
+                      - id: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
+                        display: Amoxicillin 500 mg capsule
+                        dosageText: 1 capsule by mouth three times daily for 10 days
+                        status: active
+                        source: prescription
+                        prescribedAt: '2026-11-20T15:23:00Z'
+                        prescriberDisplayName: Dr. Lowe58
+                        pharmacyName: Example Pharmacy
+                        transmissionStatus: accepted
+                      - id: 7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e
+                        display: Lisinopril 10 mg tablet
+                        dosageText: 1 tablet by mouth once daily
+                        status: active
+                        source: reported
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account is not enrolled).'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     Address:
@@ -21348,6 +23094,212 @@ components:
             $ref: '#/components/schemas/PatientSummary'
           description: One summary per found ID, in request order.
           x-phi: identifier
+    PreRegistrationDetails:
+      description: What a person types into the public pre-registration form (D96). Patient-reported until the front desk checks it against ID at the visit (FR-PAT-02).
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - birthDate
+      properties:
+        name:
+          $ref: '#/components/schemas/HumanName'
+          description: Legal name.
+          x-phi: identifier
+        birthDate:
+          $ref: '#/components/schemas/Date'
+          description: Date of birth.
+          x-phi: identifier
+        gender:
+          $ref: '#/components/schemas/AdministrativeGender'
+          description: Administrative gender, if given.
+          x-phi: clinical
+        phones:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/Phone'
+          description: Phone numbers. At least one phone or an email.
+          x-phi: identifier
+        email:
+          $ref: '#/components/schemas/EmailAddress'
+          description: Email address.
+          x-phi: identifier
+        address:
+          $ref: '#/components/schemas/Address'
+          description: Home address.
+          x-phi: identifier
+        preferredLanguage:
+          type: string
+          maxLength: 35
+          description: Preferred language as a BCP 47 tag (D39).
+          x-phi: clinical
+          pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
+        insurance:
+          type: object
+          additionalProperties: false
+          description: Insurance as the person typed it; the front desk turns it into a coverage after checking the card.
+          x-phi: identifier
+          properties:
+            payerName:
+              type: string
+              maxLength: 200
+              description: Insurance company, as typed.
+              x-phi: identifier
+            memberId:
+              type: string
+              maxLength: 80
+              description: Member ID.
+              x-phi: identifier
+            groupNumber:
+              type: string
+              maxLength: 80
+              description: Group number.
+              x-phi: identifier
+        preferredFacilityId:
+          $ref: '#/components/schemas/Id'
+          description: The facility the person would like to visit.
+          x-phi: none
+        reasonForVisit:
+          type: string
+          maxLength: 1000
+          description: Why they want an appointment.
+          x-phi: clinical
+    PreRegistration:
+      description: A pre-registration in the front desk's queue (D96). Stored encrypted at rest; a rejected or never-reviewed one is deleted at `deleteAfter` (30 days).
+      type: object
+      required:
+        - id
+        - status
+        - details
+        - entrySource
+        - submittedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Pre-registration ID.
+          x-phi: none
+        status:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - rejected
+          description: Where it is.
+          x-phi: none
+        details:
+          $ref: '#/components/schemas/PreRegistrationDetails'
+          description: What was submitted.
+          x-phi: identifier
+        entrySource:
+          type: string
+          enum:
+            - patient-reported
+          description: Always patient-reported (FR-PAT-02).
+          x-phi: none
+        submittedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it arrived.
+          x-phi: none
+        decidedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the front desk accepted or rejected it.
+          x-phi: none
+        decidedBy:
+          $ref: '#/components/schemas/Id'
+          description: Who decided.
+          x-phi: none
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient it created or was linked to, once accepted.
+          x-phi: internal-id
+        rejection:
+          type: object
+          required:
+            - reasonCode
+          description: Why it was rejected.
+          x-phi: none
+          properties:
+            reasonCode:
+              type: string
+              enum:
+                - duplicate
+                - incomplete
+                - not-our-practice
+                - spam
+                - other
+              description: Reason.
+              x-phi: none
+            reasonText:
+              type: string
+              maxLength: 500
+              description: More detail; required for `other`.
+              x-phi: clinical
+        deleteAfter:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it will be deleted if still pending or rejected (30 days after it arrived or was rejected).
+          x-phi: none
+    PreRegistrationList:
+      description: Pre-registrations, oldest first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PreRegistration'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PreRegistrationAccept:
+      description: 'Body to accept a pre-registration: create the patient through the registration rules, or link to an existing patient found in duplicate review.'
+      type: object
+      additionalProperties: false
+      properties:
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: Link to this existing patient instead of creating one.
+          x-phi: internal-id
+        duplicateCheck:
+          type: string
+          enum:
+            - default
+            - override
+          default: default
+          description: 'As for `POST /patients`: `override` registers despite similar patients and needs `duplicateOverrideReason`.'
+          x-phi: none
+        duplicateOverrideReason:
+          type: string
+          maxLength: 500
+          description: Why it is not a duplicate.
+          x-phi: clinical
+    PreRegistrationReject:
+      description: Body to reject a pre-registration.
+      type: object
+      additionalProperties: false
+      required:
+        - reasonCode
+      properties:
+        reasonCode:
+          type: string
+          enum:
+            - duplicate
+            - incomplete
+            - not-our-practice
+            - spam
+            - other
+          description: Reason.
+          x-phi: none
+        reasonText:
+          type: string
+          maxLength: 500
+          description: More detail; required for `other`.
+          x-phi: clinical
     Slot:
       description: A free time computed from the provider's availability rules, minus exceptions and booked appointments. Slots are not stored.
       type: object
@@ -21631,6 +23583,70 @@ components:
           maxLength: 2000
           description: Instructions for the patient.
           x-phi: clinical
+        followUpOfEncounterId:
+          $ref: '#/components/schemas/Id'
+          description: 'Books the follow-up asked for in this encounter (D98): it must be an open request for the same patient; it becomes `booked` and points to the new appointment, in the same transaction.'
+          x-phi: internal-id
+    FollowUpInterval:
+      description: When the patient should come back, from today.
+      type: object
+      additionalProperties: false
+      required:
+        - value
+        - unit
+      properties:
+        value:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 365
+          description: How many units.
+          x-phi: clinical
+        unit:
+          type: string
+          enum:
+            - day
+            - week
+            - month
+          description: Unit.
+          x-phi: none
+    FollowUpSummary:
+      description: 'The visit''s follow-up request as the front desk needs it at check-out (D98): no clinical note beyond the request itself.'
+      type: object
+      required:
+        - encounterId
+        - interval
+        - status
+      properties:
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit that asked for it.
+          x-phi: internal-id
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: '#/components/schemas/Id'
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: '#/components/schemas/Id'
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: The clinician's note for the front desk.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - open
+            - booked
+            - declined
+          description: Status.
+          x-phi: none
     Appointment:
       description: An appointment (FHIR-shaped `Appointment`). For a restricted patient seen without a break-glass grant or care-team membership, `reasonForVisit`, `comment`, `patientInstruction` and `cancellation.reasonText` are left out (SECURITY_MODEL §5.2).
       type: object
@@ -21761,6 +23777,10 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: Last change.
           x-phi: none
+        followUp:
+          $ref: '#/components/schemas/FollowUpSummary'
+          description: The follow-up the clinician asked for in this visit, if any (D98).
+          x-phi: clinical
     AppointmentPatch:
       description: 'JSON Merge Patch for the room, reason for visit, staff note and patient instructions of a booked appointment. It has no time, provider, facility, type or length fields: those change only through `POST /appointments/{appointmentId}/reschedule`, which requires a reason and sets `rescheduledFromId` (D61). Status never changes here (API_STANDARDS §7.3).'
       type: object
@@ -21921,6 +23941,10 @@ components:
           $ref: '#/components/schemas/Id'
           description: The encounter, once checked in. Staff view only (D60).
           x-phi: internal-id
+        followUp:
+          $ref: '#/components/schemas/FollowUpSummary'
+          description: 'Staff view only (left out of the shared view, D47): the follow-up asked for in this visit, if any (D98).'
+          x-phi: clinical
     StatusBoardList:
       description: One page of the status board, by start time.
       type: object
@@ -22780,6 +24804,57 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: Last change.
           x-phi: none
+    FollowUpRequest:
+      description: 'The clinician''s follow-up request for a visit (D98): `open` until the front desk books the revisit (`booked`) or records that the patient declined (`declined`).'
+      type: object
+      required:
+        - interval
+        - status
+        - requestedBy
+        - requestedAt
+      properties:
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: '#/components/schemas/Id'
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: '#/components/schemas/Id'
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: For the front desk ("recheck blood pressure").
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - open
+            - booked
+            - declined
+          description: Status.
+          x-phi: none
+        requestedBy:
+          $ref: '#/components/schemas/Id'
+          description: Who asked for it.
+          x-phi: none
+        requestedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When.
+          x-phi: none
+        bookedAppointmentId:
+          $ref: '#/components/schemas/Id'
+          description: The revisit, once `booked`.
+          x-phi: internal-id
+        declinedReason:
+          type: string
+          maxLength: 500
+          description: Why the patient declined, once `declined`.
+          x-phi: clinical
     Encounter:
       description: 'An encounter with its workspace data (inventory #63; FRS FR-ENC-01): its ranked diagnoses, its vitals and a summary of its notes. Problems, allergies, history, medications and results come from their own endpoints, so each owner''s data stays in one place.'
       type: object
@@ -22892,6 +24967,10 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: Last change.
           x-phi: none
+        followUp:
+          $ref: '#/components/schemas/FollowUpRequest'
+          description: The follow-up request, if the clinician made one (D98).
+          x-phi: clinical
     EncounterPatch:
       description: 'JSON Merge Patch for an encounter that is not `finished` or `entered-in-error`: reasons, room and participants. Status changes only through actions (DATA_OWNERSHIP §5).'
       type: object
@@ -23843,6 +25922,43 @@ components:
             - type: 'null'
           description: Last day. Set it to end the rule. Send `null` to clear it.
           x-phi: none
+    FollowUpRequestPut:
+      description: Body to set the visit's follow-up request, replacing an open one.
+      type: object
+      additionalProperties: false
+      required:
+        - interval
+      properties:
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: '#/components/schemas/Id'
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: '#/components/schemas/Id'
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: For the front desk.
+          x-phi: clinical
+    FollowUpDecline:
+      description: Body to record that the patient did not book the follow-up.
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: Why ("will call to book").
+          x-phi: clinical
+          minLength: 1
     TimelineEntryType:
       description: 'Kind of record on the timeline. An extensible enum (API_STANDARDS §6.5): later batches add kinds, so screens show an unknown kind as a generic record. `medication`, `result` and `document` appear once their batches exist.'
       type: string
@@ -27018,6 +29134,488 @@ components:
           $ref: '#/components/schemas/Cursor'
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
+    MedicationListStatus:
+      description: 'Status on the medication list: `active`, `completed`, `stopped`, `entered-in-error` (never shown on screens).'
+      type: string
+      enum:
+        - active
+        - completed
+        - stopped
+        - entered-in-error
+    Medication:
+      description: 'An entry on the patient''s medication list: a `MedicationRequest` with `intent` and `reported` (D28). A prescription written here appears with `source: prescription`; a medication the patient already takes, recorded at rooming, with `source: reported`.'
+      type: object
+      required:
+        - id
+        - patientId
+        - medication
+        - status
+        - source
+        - recordedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Medication ID.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: Patient ID.
+          x-phi: internal-id
+        medication:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: 'The drug: RxNorm, or text when no code fits.'
+          x-phi: clinical
+        dosageText:
+          type: string
+          maxLength: 500
+          description: How it is taken, as written ("1 tablet by mouth once daily").
+          x-phi: clinical
+        status:
+          $ref: '#/components/schemas/MedicationListStatus'
+          description: Status.
+          x-phi: clinical
+        source:
+          type: string
+          enum:
+            - prescription
+            - reported
+          description: '`prescription` (written here; `prescriptionId` set) or `reported` (the patient takes it already).'
+          x-phi: none
+        prescriptionId:
+          $ref: '#/components/schemas/Id'
+          description: The prescription that put it on the list, when `source` is `prescription`.
+          x-phi: internal-id
+        note:
+          type: string
+          maxLength: 1000
+          description: A note.
+          x-phi: clinical
+        recordedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was recorded.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/Id'
+          description: Who recorded it.
+          x-phi: none
+    MedicationList:
+      description: The patient's medication list, active first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Medication'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    MedicationCreate:
+      description: Body to record a medication the patient already takes (rooming, reconciliation). Prescriptions are added by signing them, not here.
+      type: object
+      additionalProperties: false
+      required:
+        - medication
+      properties:
+        medication:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: 'The drug: RxNorm from `GET /codes?system=rxnorm`, or text.'
+          x-phi: clinical
+        dosageText:
+          type: string
+          maxLength: 500
+          description: How the patient takes it.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - active
+            - completed
+            - stopped
+          default: active
+          description: Status.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 1000
+          description: A note.
+          x-phi: clinical
+    PrescriptionQuantity:
+      description: How much to dispense.
+      type: object
+      additionalProperties: false
+      required:
+        - value
+        - unit
+      properties:
+        value:
+          type: number
+          minimum: 0.001
+          maximum: 100000
+          description: Amount.
+          x-phi: clinical
+        unit:
+          type: string
+          maxLength: 32
+          description: Unit, e.g. `capsule`, `tablet`, `mL`.
+          x-phi: clinical
+    PrescriptionCreate:
+      description: Body to start a draft prescription.
+      type: object
+      additionalProperties: false
+      required:
+        - patientId
+        - medication
+      properties:
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: Patient ID.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit.
+          x-phi: internal-id
+        medication:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: The drug, from `GET /codes?system=rxnorm`.
+          x-phi: clinical
+        dosageText:
+          type: string
+          maxLength: 500
+          description: Directions.
+          x-phi: clinical
+        quantity:
+          $ref: '#/components/schemas/PrescriptionQuantity'
+          description: How much.
+          x-phi: clinical
+        daysSupply:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 365
+          description: Days supply.
+          x-phi: clinical
+        refills:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 11
+          description: Refills.
+          x-phi: clinical
+        substitutionAllowed:
+          type: boolean
+          description: Generic substitution allowed.
+          x-phi: clinical
+        pharmacyId:
+          $ref: '#/components/schemas/Id'
+          description: The pharmacy.
+          x-phi: none
+        noteToPharmacy:
+          type: string
+          maxLength: 210
+          description: A note for the pharmacist.
+          x-phi: clinical
+    PrescriptionStatus:
+      description: '`draft` (editable), `active` (signed and sent), `cancelled`, `completed`, `entered-in-error`. A signed prescription is locked.'
+      type: string
+      enum:
+        - draft
+        - active
+        - cancelled
+        - completed
+        - entered-in-error
+    TransmissionStatus:
+      description: 'Where the prescription is on its way to the pharmacy: `not-sent` (a draft), `queued` (signed, waiting in the outbox), `sent`, `accepted` or `rejected` by the pharmacy, `error` (the partner failed after retries; an operator can replay it). Changes arrive through `/hooks/erx` and publish `prescription.transmission-updated`.'
+      type: string
+      enum:
+        - not-sent
+        - queued
+        - sent
+        - accepted
+        - rejected
+        - error
+    SafetyAlert:
+      description: One result of a safety check. The interaction kind is reserved for the drug-interaction database (Q13), not in the demo.
+      type: object
+      required:
+        - id
+        - kind
+        - severity
+        - message
+        - overrideRequired
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Alert ID.
+          x-phi: none
+        kind:
+          type: string
+          x-extensible-enum:
+            - allergy
+            - duplicate-medication
+            - interaction
+          maxLength: 32
+          description: '`allergy` (an active allergy to an ingredient of the drug), `duplicate-medication` (an active medication with the same ingredient), `interaction` (later, Q13).'
+          x-phi: none
+        severity:
+          type: string
+          enum:
+            - info
+            - warning
+            - high
+          description: How serious. `high` needs an override reason before signing.
+          x-phi: none
+        message:
+          type: string
+          maxLength: 500
+          description: What was found, in words for the prescriber.
+          x-phi: clinical
+        allergyId:
+          $ref: '#/components/schemas/Id'
+          description: The allergy behind an `allergy` alert.
+          x-phi: internal-id
+        medicationId:
+          $ref: '#/components/schemas/Id'
+          description: The list entry behind a `duplicate-medication` alert.
+          x-phi: internal-id
+        overrideRequired:
+          type: boolean
+          description: True when signing needs an override with a reason.
+          x-phi: none
+        override:
+          type: object
+          required:
+            - reason
+            - overriddenBy
+            - overriddenAt
+          description: Present once overridden.
+          x-phi: clinical
+          properties:
+            reason:
+              type: string
+              maxLength: 500
+              description: Why the prescriber went ahead.
+              x-phi: clinical
+            overriddenBy:
+              $ref: '#/components/schemas/Id'
+              description: Who overrode it.
+              x-phi: none
+            overriddenAt:
+              $ref: '#/components/schemas/Timestamp'
+              description: When.
+              x-phi: none
+    Prescription:
+      description: A prescription (`MedicationRequest`, intent `order`). Drafts are edited with `If-Match`; signing locks it, writes its Provenance and queues it for the pharmacy in one transaction (D8, D25).
+      type: object
+      required:
+        - id
+        - patientId
+        - status
+        - medication
+        - transmission
+        - alerts
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Prescription ID.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: Patient ID.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit it was written in.
+          x-phi: internal-id
+        status:
+          $ref: '#/components/schemas/PrescriptionStatus'
+          description: Status.
+          x-phi: clinical
+        medication:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: The drug, from RxNorm Current Prescribable Content.
+          x-phi: clinical
+        dosageText:
+          type: string
+          maxLength: 500
+          description: Directions ("1 capsule by mouth three times daily for 10 days"). Required to sign.
+          x-phi: clinical
+        quantity:
+          $ref: '#/components/schemas/PrescriptionQuantity'
+          description: How much to dispense. Required to sign.
+          x-phi: clinical
+        daysSupply:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 365
+          description: Days the quantity lasts.
+          x-phi: clinical
+        refills:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 11
+          description: Refills allowed.
+          x-phi: clinical
+        substitutionAllowed:
+          type: boolean
+          description: Generic substitution allowed.
+          x-phi: clinical
+        pharmacyId:
+          $ref: '#/components/schemas/Id'
+          description: The pharmacy (`GET /pharmacies`); defaults to the patient's preferred pharmacy. Required to sign.
+          x-phi: none
+        noteToPharmacy:
+          type: string
+          maxLength: 210
+          description: A note for the pharmacist.
+          x-phi: clinical
+        prescriberId:
+          $ref: '#/components/schemas/Id'
+          description: Who signed it.
+          x-phi: none
+        signedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was signed.
+          x-phi: none
+        transmission:
+          type: object
+          required:
+            - status
+          description: Delivery to the pharmacy.
+          x-phi: none
+          properties:
+            status:
+              $ref: '#/components/schemas/TransmissionStatus'
+              description: Status.
+              x-phi: none
+            updatedAt:
+              $ref: '#/components/schemas/Timestamp'
+              description: When it last changed.
+              x-phi: none
+            message:
+              type: string
+              maxLength: 500
+              description: The pharmacy's or partner's reason for `rejected` or `error`, as sent.
+              x-phi: clinical
+        alerts:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/SafetyAlert'
+          description: Alerts from the latest safety check.
+          x-phi: clinical
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: Created.
+          x-phi: none
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: Last changed.
+          x-phi: none
+    PrescriptionPatch:
+      description: Changes to a draft; only what is sent. A signed prescription is locked (`409 record-locked`).
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        medication:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: The drug.
+          x-phi: clinical
+        dosageText:
+          type: string
+          maxLength: 500
+          description: Directions.
+          x-phi: clinical
+        quantity:
+          $ref: '#/components/schemas/PrescriptionQuantity'
+          description: How much.
+          x-phi: clinical
+        daysSupply:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 365
+          description: Days supply.
+          x-phi: clinical
+        refills:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 11
+          description: Refills.
+          x-phi: clinical
+        substitutionAllowed:
+          type: boolean
+          description: Generic substitution allowed.
+          x-phi: clinical
+        pharmacyId:
+          $ref: '#/components/schemas/Id'
+          description: The pharmacy.
+          x-phi: none
+        noteToPharmacy:
+          type: string
+          maxLength: 210
+          description: A note for the pharmacist.
+          x-phi: clinical
+    PrescriptionEnteredInError:
+      description: Body to mark a draft wrong.
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: Why.
+          x-phi: clinical
+          minLength: 1
+    SafetyCheckResult:
+      description: The alerts for a draft, which are also stored on it. A changed draft needs a new check before signing.
+      type: object
+      required:
+        - prescriptionId
+        - checkedAt
+        - alerts
+      properties:
+        prescriptionId:
+          $ref: '#/components/schemas/Id'
+          description: Prescription ID.
+          x-phi: internal-id
+        checkedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was checked.
+          x-phi: none
+        alerts:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/SafetyAlert'
+          description: Alerts found; empty when none.
+          x-phi: clinical
+    AlertOverride:
+      description: Body to override an alert.
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: Why the prescriber goes ahead ("tolerated amoxicillin in 2024 without reaction").
+          x-phi: clinical
+          minLength: 1
     PaymentMethod:
       description: How the patient paid (`patient_payment.method`).
       type: string
@@ -28712,6 +31310,108 @@ components:
           maxItems: 200
           items:
             $ref: '#/components/schemas/PortalVital'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PreRegistrationCreate:
+      description: Body of the public pre-registration form (D96).
+      type: object
+      additionalProperties: false
+      required:
+        - details
+        - contactConsent
+        - botCheck
+      properties:
+        details:
+          $ref: '#/components/schemas/PreRegistrationDetails'
+          description: What the person tells the practice.
+          x-phi: identifier
+        contactConsent:
+          type: boolean
+          const: true
+          description: The person agrees to be contacted about their request.
+          x-phi: none
+        botCheck:
+          type: string
+          maxLength: 4000
+          description: The proof-of-work answer from the form's ALTCHA widget (MIT, self-hosted), checked by the server; nothing about the visitor goes to anyone else.
+          x-phi: none
+    PortalMedication:
+      description: A medication on the patient's list, in the words the patient sees.
+      type: object
+      required:
+        - id
+        - display
+        - status
+        - source
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Medication ID.
+          x-phi: internal-id
+        display:
+          type: string
+          maxLength: 500
+          description: The medication, in words.
+          x-phi: clinical
+        dosageText:
+          type: string
+          maxLength: 500
+          description: How to take it.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - active
+            - completed
+            - stopped
+          description: Status.
+          x-phi: clinical
+        source:
+          type: string
+          enum:
+            - prescription
+            - reported
+          description: '`prescription` (written by the practice) or `reported` (what the patient told the practice they take).'
+          x-phi: none
+        prescribedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was prescribed.
+          x-phi: none
+        prescriberDisplayName:
+          type: string
+          maxLength: 200
+          description: Who prescribed it.
+          x-phi: none
+        pharmacyName:
+          type: string
+          maxLength: 200
+          description: The pharmacy it was sent to.
+          x-phi: none
+        transmissionStatus:
+          type: string
+          enum:
+            - queued
+            - sent
+            - accepted
+            - rejected
+            - error
+          description: 'For a prescription: where it is on its way to the pharmacy.'
+          x-phi: none
+    PortalMedicationList:
+      description: The patient's medications, active first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalMedication'
           description: The items on this page.
           x-phi: clinical
         nextCursor:

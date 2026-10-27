@@ -1254,7 +1254,7 @@ paths:
                       availabilityRules:
                       - id: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
                         dayOfWeek: tue
-                        startTime: 08:00
+                        startTime: '08:00'
                         endTime: '12:00'
                         slotMinutes: 20
                         appointmentTypeIds: &id014 []
@@ -1323,7 +1323,7 @@ paths:
                   facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                   availabilityRules:
                   - dayOfWeek: tue
-                    startTime: 08:00
+                    startTime: '08:00'
                     endTime: '12:00'
                     slotMinutes: 20
                     appointmentTypeIds: *id014
@@ -2671,11 +2671,12 @@ paths:
     get:
       operationId: listNoteTemplates
       summary: List note templates
-      description: Lists the practice's note templates.
+      description: Lists the practice's note templates. Clinicians read templates to start a note with `note-templates:read`
+        (D73, T42; MD, APP, RN, MA, ADM, CO), not `practice-setup:read`.
       tags:
       - practice-setup
       x-owner: anand
-      x-permission: practice-setup:read
+      x-permission: note-templates:read
       x-audit:
         action: R
         category: admin
@@ -2744,7 +2745,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `practice-setup:read`).
+          description: 403. `permission-denied` (the role lacks `note-templates:read`).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -2842,11 +2843,12 @@ paths:
     get:
       operationId: getNoteTemplate
       summary: Get a note template
-      description: Returns one note template.
+      description: Returns one note template. Clinicians read templates to start a note with `note-templates:read` (D73, T42;
+        MD, APP, RN, MA, ADM, CO), not `practice-setup:read`.
       tags:
       - practice-setup
       x-owner: anand
-      x-permission: practice-setup:read
+      x-permission: note-templates:read
       x-audit:
         action: R
         category: admin
@@ -2875,7 +2877,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `practice-setup:read`).
+          description: 403. `permission-denied` (the role lacks `note-templates:read`).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such note template in this clinic or the user's facilities).

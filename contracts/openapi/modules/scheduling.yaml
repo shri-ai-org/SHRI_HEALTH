@@ -332,7 +332,8 @@ paths:
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (outside
             the provider's hours, overbooking not allowed for this type, or the type's overbook limit reached; or the provider
-            or location does not belong to the facility (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key
+            or location does not belong to the facility (field code `invalid-reference`)); `followUpOfEncounterId` is not
+            an open follow-up request for this patient (field code `invalid-reference`); `idempotency-key-reused` (the Idempotency-Key
             was used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
@@ -1664,6 +1665,10 @@ components:
           $ref: ../components/schemas/Timestamp.yaml
           description: Last change.
           x-phi: none
+        followUp:
+          $ref: '#/components/schemas/FollowUpSummary'
+          description: The follow-up the clinician asked for in this visit, if any (D98).
+          x-phi: clinical
     AppointmentSummary:
       description: An appointment in day and week views. `reasonForVisit` is left out for a restricted patient, as in `Appointment`.
       type: object
@@ -1779,6 +1784,11 @@ components:
           maxLength: 2000
           description: Instructions for the patient.
           x-phi: clinical
+        followUpOfEncounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: 'Books the follow-up asked for in this encounter (D98): it must be an open request for the same patient;
+            it becomes `booked` and points to the new appointment, in the same transaction.'
+          x-phi: internal-id
     AppointmentPatch:
       description: 'JSON Merge Patch for the room, reason for visit, staff note and patient instructions of a booked appointment.
         It has no time, provider, facility, type or length fields: those change only through `POST /appointments/{appointmentId}/reschedule`,
@@ -1949,6 +1959,11 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: The encounter, once checked in. Staff view only (D60).
           x-phi: internal-id
+        followUp:
+          $ref: '#/components/schemas/FollowUpSummary'
+          description: 'Staff view only (left out of the shared view, D47): the follow-up asked for in this visit, if any
+            (D98).'
+          x-phi: clinical
     StatusBoardList:
       description: One page of the status board, by start time.
       type: object
@@ -2259,3 +2274,41 @@ components:
           description: Why the check-in is undone, e.g. checked in the wrong patient. Recorded on the encounter's entered-in-error
             Provenance. May name people, so it is treated as patient data.
           x-phi: identifier
+    FollowUpSummary:
+      description: 'The visit''s follow-up request as the front desk needs it at check-out (D98): no clinical note beyond
+        the request itself.'
+      type: object
+      required:
+      - encounterId
+      - interval
+      - status
+      properties:
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit that asked for it.
+          x-phi: internal-id
+        interval:
+          $ref: encounters.yaml#/components/schemas/FollowUpInterval
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: ../components/schemas/Id.yaml
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: ../components/schemas/Id.yaml
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: The clinician's note for the front desk.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+          - open
+          - booked
+          - declined
+          description: Status.
+          x-phi: none
