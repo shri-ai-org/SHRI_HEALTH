@@ -32,18 +32,18 @@ The staff realm, imported at startup with `start-dev --import-realm` (compose, C
 | Setting | Value | Why |
 |---|---|---|
 | Sign-up | Off | Staff accounts are created by ADM |
-| Multi-factor | Required: `CONFIGURE_TOTP` is a default action for every new user | SECURITY_MODEL §9 ("MFA in Keycloak") |
+| Multi-factor | **On every sign-in.** The realm's sign-in flow `shri browser` has the password and the one-time code both REQUIRED (not Keycloak's conditional default), so a user whose code was removed is made to set one up before going on. `CONFIGURE_TOTP` is also a default action for new users | SECURITY_MODEL §9 ("MFA in Keycloak"); #72 |
 | Passwords | At least 12 characters, not the username or email, last 5 not reused | |
 | Brute force | 5 failures, then waits up to 15 minutes; **no** permanent lockout | Nobody can lock a colleague out |
 | SSO idle / maximum | 20 minutes / 12 hours 5 minutes | Our 15-minute and 12-hour limits plus 5 minutes, so ours always apply first (#35) |
 | Access token | 5 minutes; refresh tokens rotate, no reuse | Keep-alive refreshes server-side (#35) |
 | Remember me | Off | Shared clinic workstations |
 | Events | Logins, failures, refreshes and credential changes kept 90 days; admin events without details | Audit; details can carry user data |
-| Client `shri-web` | Confidential, code flow with PKCE `S256`, exact HTTPS redirect URI, no implicit, password or service-account grants, no full scope | ADR-0006: tokens never reach the browser |
+| Client `shri-web` | Confidential, code flow with PKCE `S256`, exact HTTPS redirect URI, no implicit, password or service-account grants, no full scope. Scopes `acr`, `basic`, `email` and `profile` only; **no `offline_access`** and no optional scopes | ADR-0006: tokens never reach the browser; offline tokens would outlive the 12-hour maximum |
 
 **The client secret is never in the file.** The file has `${SHRI_WEB_CLIENT_SECRET}`, which Keycloak fills from the environment when it imports. Locally that comes from `infra/compose/.env`; in production, from OpenBao. The redirect URI and post-logout URI default to the local stack and are overridden by `SHRI_WEB_REDIRECT_URI` and `SHRI_WEB_POST_LOGOUT_URI`.
 
-`tests/check_realm.py` (standard library only) fails if any setting above is weakened. CI runs it on the file, then again with `--live` against the Keycloak that imported it, so a setting Keycloak drops or renames on import is caught too.
+`tests/check_realm.py` (standard library only) fails if any setting above is weakened. CI runs it on the file, then again with `--live` against the Keycloak that imported it, so a setting Keycloak drops or renames on import is caught too. `--live` also signs in a synthetic user who has a password but no code, and fails unless Keycloak sends them to set one up. The user is deleted afterwards.
 
 **Two runtime settings this needs:**
 - `KC_HTTP_HOST=0.0.0.0`: Keycloak 26.8 binds `start-dev` to localhost only, which Nginx couldn't reach.

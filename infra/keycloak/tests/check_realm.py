@@ -9,9 +9,13 @@ setting Keycloak drops or renames on import is caught too.
         python infra/keycloak/tests/check_realm.py --live
 """
 
+import http.cookiejar
 import json
 import os
+import re
+import secrets
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -52,6 +56,29 @@ CLIENT_RULES: dict[str, Any] = {
 }
 
 
+STAFF_FLOW = "shri browser"
+NOT_ALLOWED_SCOPES = {"offline_access"}  # a way around the 12-hour maximum (Vimal, #72)
+
+
+def flow_problems(steps: list[tuple[str, str]]) -> list[str]:
+    """steps: (authenticator, requirement) in the staff sign-in flow, sub-flows included."""
+    found = []
+    for authenticator in ("auth-username-password-form", "auth-otp-form"):
+        if (authenticator, "REQUIRED") not in steps:
+            found.append(f"the staff sign-in flow must have {authenticator} REQUIRED (#72)")
+    if any(requirement == "CONDITIONAL" for _, requirement in steps):
+        found.append("the staff sign-in flow must not have a CONDITIONAL step: the code is asked every time")
+    return found
+
+
+def scope_problems(default: list[str], optional: list[str]) -> list[str]:
+    found = [f"client shri-web must not offer the {name} scope"
+             for name in sorted(NOT_ALLOWED_SCOPES & set(default + optional))]
+    if optional:
+        found.append(f"client shri-web must have no optional scopes, has {sorted(optional)}")
+    return found
+
+
 def problems_in(realm: dict[str, Any], client: dict[str, Any], actions: list[dict[str, Any]],
                 live: bool) -> list[str]:
     found = [f"realm {key} is {realm.get(key)!r}, must be {want!r}"
@@ -71,6 +98,8 @@ def problems_in(realm: dict[str, Any], client: dict[str, Any], actions: list[dic
             found.append(f"redirect URI {uri!r} must be an exact https URI")
     if not live and client.get("secret") != "${SHRI_WEB_CLIENT_SECRET}":
         found.append("the client secret must come from ${SHRI_WEB_CLIENT_SECRET}, never the file")
+    if realm.get("browserFlow") != STAFF_FLOW:
+        found.append(f"browserFlow is {realm.get('browserFlow')!r}, must be {STAFF_FLOW!r}")
     totp = next((a for a in actions if a.get("alias") == "CONFIGURE_TOTP"), {})
     if not (totp.get("enabled") and totp.get("defaultAction")):
         found.append("CONFIGURE_TOTP must be an enabled default action (multi-factor for every new user)")
@@ -80,7 +109,21 @@ def problems_in(realm: dict[str, Any], client: dict[str, Any], actions: list[dic
 def from_file() -> list[str]:
     realm = json.loads(REALM_FILE.read_text(encoding="utf-8"))
     client = next(c for c in realm["clients"] if c["clientId"] == "shri-web")
-    return problems_in(realm, client, realm.get("requiredActions", []), live=False)
+    found = problems_in(realm, client, realm.get("requiredActions", []), live=False)
+    flows = {f["alias"]: f for f in realm.get("authenticationFlows", [])}
+
+    def steps(alias: str) -> list[tuple[str, str]]:
+        out = []
+        for e in flows.get(alias, {}).get("authenticationExecutions", []):
+            if e.get("authenticatorFlow"):
+                out += [(e["flowAlias"], e["requirement"])] + steps(e["flowAlias"])
+            else:
+                out.append((e["authenticator"], e["requirement"]))
+        return out
+
+    found += flow_problems(steps(STAFF_FLOW))
+    found += scope_problems(client.get("defaultClientScopes", []), client.get("optionalClientScopes", []))
+    return found
 
 
 def _get(url: str, token: str) -> Any:
@@ -104,10 +147,70 @@ def from_keycloak() -> list[str]:
     client = _get(f"{admin}/clients?clientId=shri-web", token)[0]
     actions = _get(f"{admin}/authentication/required-actions", token)
     found = problems_in(realm, client, actions, live=True)
+    flow = urllib.parse.quote(realm.get("browserFlow", ""))
+    executions = _get(f"{admin}/authentication/flows/{flow}/executions", token)
+    found += flow_problems([(e.get("providerId") or e.get("displayName", ""), e["requirement"])
+                            for e in executions])
+    found += scope_problems(
+        [s["name"] for s in _get(f"{admin}/clients/{client['id']}/default-client-scopes", token)],
+        [s["name"] for s in _get(f"{admin}/clients/{client['id']}/optional-client-scopes", token)])
+    found += signs_in_without_code(base, admin, token)
     secret = _get(f"{admin}/clients/{client['id']}/client-secret", token).get("value")
     if secret != os.environ["SHRI_WEB_CLIENT_SECRET"]:
         found.append("the imported client secret is not the one from SHRI_WEB_CLIENT_SECRET")
     return found
+
+
+def signs_in_without_code(base: str, admin: str, token: str) -> list[str]:
+    """Signs in a synthetic user who has a password but no one-time code (as if it had been
+    removed) and checks that Keycloak sends them to set one up instead of signing them in. The
+    user is deleted afterwards. Only against a throwaway Keycloak (CI, local)."""
+
+    def call(method: str, path: str, body: Any = None) -> Any:
+        request = urllib.request.Request(
+            f"{admin}{path}", method=method, data=None if body is None else json.dumps(body).encode(),
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+            raw = response.read()
+            return json.loads(raw) if raw else None
+
+    name, password = f"synthetic.{secrets.token_hex(4)}", secrets.token_urlsafe(18)
+    call("POST", "/users", {"username": name, "email": f"{name}@example.invalid", "firstName": "Synthetic",
+                            "lastName": "Staff", "enabled": True, "emailVerified": True})
+    user_id = call("GET", f"/users?username={name}&exact=true")[0]["id"]
+    try:
+        call("PUT", f"/users/{user_id}/reset-password", {"type": "password", "value": password, "temporary": False})
+        call("PUT", f"/users/{user_id}", {"requiredActions": []})  # as if the code had been removed
+        jar = http.cookiejar.CookieJar()
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+                return None
+
+        browser = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), NoRedirect)
+        query = urllib.parse.urlencode({
+            "client_id": "shri-web", "response_type": "code", "scope": "openid", "state": "check",
+            "nonce": "check", "redirect_uri": "https://localhost:8443/api/v1/auth/callback",
+            "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", "code_challenge_method": "S256"})
+        page = browser.open(f"{base}/realms/shri-staff/protocol/openid-connect/auth?{query}").read().decode()
+        for cookie in jar:
+            cookie.secure = False  # the throwaway Keycloak is plain http
+        form = re.search(r'id="kc-form-login"[^>]*action="([^"]+)"', page)
+        if not form:
+            return ["live: the staff sign-in page has no login form"]
+        try:
+            browser.open(form.group(1).replace("&amp;", "&"),
+                         urllib.parse.urlencode({"username": name, "password": password}).encode())
+            location = ""
+        except urllib.error.HTTPError as redirect:
+            location = redirect.headers.get("Location", "")
+        if "code=" in location:
+            return ["a user with a password and no one-time code was signed in (#72)"]
+        if "execution=CONFIGURE_TOTP" not in location:
+            return [f"a user without a one-time code was not sent to set one up ({location[:80]!r})"]
+        return []
+    finally:
+        call("DELETE", f"/users/{user_id}")
 
 
 def main() -> int:
