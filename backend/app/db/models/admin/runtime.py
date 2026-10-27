@@ -74,6 +74,7 @@ class AppSession(Base, AdminMixin):
         UniqueConstraint("token_hash"),
         Index("ix_app_session_user", "tenant_id", "user_id"),
         Index("ix_app_session_expires", "expires_at"),
+        Index("ix_app_session_keycloak_sid", "keycloak_sid"),
         CheckConstraint(f"token_hash {SHA256_HEX}", name="token_hash_format"),
         CheckConstraint("idle_expires_at <= expires_at", name="idle_within_absolute"),
         CheckConstraint(f"keycloak_access_token_enc {CIPHERTEXT} AND "
@@ -84,6 +85,9 @@ class AppSession(Base, AdminMixin):
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     keycloak_access_token_enc: Mapped[str] = mapped_column(Text, nullable=False)
     keycloak_refresh_token_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    # Keycloak's session ID (the ID token's sid claim), so a back-channel logout ends just this
+    # session (D94; Thulasi on #80). Filled by core at sign-in.
+    keycloak_sid: Mapped[str | None] = mapped_column(String(100))
     last_activity_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
     # #35: user-initiated requests refresh the stored Keycloak tokens when this is > 5 min old.
     tokens_refreshed_at: Mapped[datetime] = mapped_column(nullable=False,

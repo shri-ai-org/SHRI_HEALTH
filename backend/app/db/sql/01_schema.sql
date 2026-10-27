@@ -611,6 +611,7 @@ CREATE TABLE admin.app_session (
 	token_hash VARCHAR(64) NOT NULL, 
 	keycloak_access_token_enc TEXT NOT NULL, 
 	keycloak_refresh_token_enc TEXT NOT NULL, 
+	keycloak_sid VARCHAR(100), 
 	last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	tokens_refreshed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	idle_expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
@@ -634,6 +635,8 @@ CREATE TABLE admin.app_session (
 );
 
 CREATE INDEX ix_app_session_expires ON admin.app_session (expires_at);
+
+CREATE INDEX ix_app_session_keycloak_sid ON admin.app_session (keycloak_sid);
 
 CREATE INDEX ix_app_session_tenant_id ON admin.app_session (tenant_id);
 

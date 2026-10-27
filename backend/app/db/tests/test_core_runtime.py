@@ -159,6 +159,29 @@ def test_session_token_is_a_sha256_hash_and_no_csrf_token_is_stored(
                               "column_name LIKE 'csrf%'")).scalar_one() == 0
 
 
+def test_a_session_keeps_keycloaks_session_id_for_back_channel_logout(
+        admin_engine: Engine, role_engine: dict[str, Engine]) -> None:
+    # D94, Thulasi on #80: a logout token's sid ends just that session, found by this index.
+    tenant = make_tenant(admin_engine)
+    user = make_user(admin_engine, tenant)
+    sid = str(uuid.uuid4())
+    with role_engine["shri_app"].begin() as conn:
+        with_clinic(conn, tenant)
+        conn.execute(text(
+            "INSERT INTO admin.app_session (id, tenant_id, user_id, token_hash, "
+            "keycloak_access_token_enc, keycloak_refresh_token_enc, keycloak_sid, "
+            "idle_expires_at, expires_at) VALUES (gen_random_uuid(), :t, :u, :h, "
+            "'vault:v1:YQ==', 'vault:v1:cg==', :s, now() + interval '15 minutes', "
+            "now() + interval '12 hours')"),
+            {"t": tenant, "u": user, "h": token_hash(), "s": sid})
+        assert conn.execute(text("SELECT count(*) FROM admin.app_session WHERE keycloak_sid = "
+                                 ":s"), {"s": sid}).scalar_one() == 1
+    with admin_engine.connect() as c:
+        assert c.execute(text("SELECT indexdef FROM pg_indexes WHERE schemaname = 'admin' AND "
+                              "indexname = 'ix_app_session_keycloak_sid'")).scalar_one().endswith(
+            "(keycloak_sid)")
+
+
 # ============================================================================ admin.lookup_session
 def test_lookup_session_finds_live_sessions_of_any_clinic_before_one_is_set(
         admin_engine: Engine, role_engine: dict[str, Engine]) -> None:

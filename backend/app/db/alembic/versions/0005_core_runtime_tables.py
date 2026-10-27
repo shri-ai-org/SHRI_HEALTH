@@ -3,7 +3,8 @@
 New tables, all clinic-scoped with forced RLS (models in app/db/models/admin/runtime.py):
   admin.app_session         one row per sign-in; session and CSRF tokens as SHA-256 hashes,
                             Keycloak tokens encrypted by core; tokens_refreshed_at records the
-                            last Keycloak refresh (#35)
+                            last Keycloak refresh (#35); keycloak_sid, Keycloak's session ID,
+                            for back-channel logout (D94)
   admin.idempotency_record  Idempotency-Key results for 24 hours (T21, ADR-0007)
   admin.operation           long-running 202 work (API_STANDARDS §13)
   admin.event_log           thin events for SSE replay (T28)
