@@ -25,6 +25,8 @@ services:
       SHRI_INTEGRATION_PASSWORD: ${SHRI_INTEGRATION_PASSWORD:?set SHRI_INTEGRATION_PASSWORD in infra/compose/.env}
       SHRI_REPORTING_PASSWORD: ${SHRI_REPORTING_PASSWORD:?set SHRI_REPORTING_PASSWORD in infra/compose/.env}
       SHRI_MAINTENANCE_PASSWORD: ${SHRI_MAINTENANCE_PASSWORD:?set SHRI_MAINTENANCE_PASSWORD in infra/compose/.env}
+      SHRI_PORTAL_PASSWORD: ${SHRI_PORTAL_PASSWORD:?set SHRI_PORTAL_PASSWORD in infra/compose/.env}
+      SHRI_PUBLIC_PASSWORD: ${SHRI_PUBLIC_PASSWORD:?set SHRI_PUBLIC_PASSWORD in infra/compose/.env}
     volumes:
       # PostgreSQL 18 images keep data in a versioned folder under /var/lib/postgresql.
       - pgdata18:/var/lib/postgresql
