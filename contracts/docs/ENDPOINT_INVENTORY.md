@@ -54,8 +54,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 12 | GET | `/users/{userId}/roles` | T | Ad | `roles:read` | adm | – | | | §3.10 | B1 | |
 | 13 | PUT | `/users/{userId}/roles` | T | Ad | `user-roles:update` | sec | – | ✓ | | §3.10 | B1 | |
 | 14 | GET | `/events/stream` | T | – | `authenticated` | – | – | | | FR-ORD-02, FR-SCH-02 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52): `text/event-stream`, `Last-Event-ID` resume (EVENTS.md §3) |
-| 15 | GET | `/operations/{operationId}` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** (API_STANDARDS §13); owner Thulasi (T26). Visible only to the creating user in the MVP; polling does not reset the idle timer |
-| 16 | POST | `/operations/{operationId}/cancel` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** |
+| 15 | GET | `/operations/{operationId}` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** (API_STANDARDS §13); owner Thulasi (T26). Visible only to the creating user in the MVP; polling does not reset the idle timer. **Written** 2026-10-27 (#80, Minalini's ask on #70): `Retry-After` while unfinished |
+| 16 | POST | `/operations/{operationId}/cancel` | T | Ad | `authenticated` | – | – | | | — | B1 | **New**. **Written** 2026-10-27 (#80): the creator only, where the kind allows it (AI kinds); `409` once finished |
 | 17 | GET | `/audit-events` | T | Au | `audit-events:read` | sec | – | | | §3.10, §6 Audit | B6 | |
 | 18 | GET | `/reports/chart-access` | T | Au | `chart-access-reports:read` | sec | – | | | §6 Sensitive records | B6 | |
 | 19 | POST | `/patients/{patientId}/break-glass` | T | Au | `patients:break-glass` | sec | S | | | FR-PAT-01 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D53): four reason codes, `reasonText` required for `other`, grant with `expiresAt` (4 hours) |
@@ -63,6 +63,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 21 | POST | `/hooks/erx` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-MED-01 | B5 | Same |
 | 22 | POST | `/hooks/fax` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | §3.9 | B3 | Same |
 | 23 | POST | `/hooks/sms` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-SCH-01 reminders | B3 | Same |
+| 292 | POST | `/hooks/keycloak/backchannel-logout` (root) | T | Ad | `partner-signed` | sec (partner as actor) | – | | | §6 sessions | B1 | **New** (D94, 2026-10-27): Keycloak's signed `logout_token` (OpenID Connect Back-Channel Logout 1.0); ends matching staff sessions at once; `200`, or `400` for any failure; only from Keycloak |
 | 24 | GET | `/admin/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
 | 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |
