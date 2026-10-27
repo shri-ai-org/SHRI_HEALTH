@@ -523,6 +523,163 @@ paths:
         "500":
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /operations/{operationId}:
+    parameters:
+    - name: operationId
+      in: path
+      required: true
+      description: Operation ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getOperation
+      summary: Read an operation
+      description: "The state of long-running work started with a `202` (inventory #15; API_STANDARDS §13): IDs and status only, never PHI. Only its creator sees it (T26). While it is `queued` or `running`, the response carries `Retry-After`; once `succeeded`, `result` names the resource to fetch with its own permission. Polling does not reset the idle timer (SECURITY_MODEL §2.1). Kept for 7 days."
+      tags:
+      - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+      responses:
+        "200":
+          description: The operation.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            Retry-After:
+              $ref: ../components/headers/RetryAfter.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/Operation.yaml
+              examples:
+                running:
+                  summary: A file still being scanned
+                  value:
+                    id: 4e5f6a7b-8c9d-4e0f-9a1b-2c3d4e5f6a7b
+                    kind: file.scan
+                    status: running
+                    createdAt: 2026-11-03T14:30:00Z
+                    updatedAt: 2026-11-03T14:30:02Z
+                succeeded:
+                  summary: An eligibility check that finished
+                  value:
+                    id: 5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c
+                    kind: eligibility.check
+                    status: succeeded
+                    createdAt: 2026-11-03T14:30:00Z
+                    updatedAt: 2026-11-03T14:30:09Z
+                    completedAt: 2026-11-03T14:30:09Z
+                    result:
+                      type: eligibility-check
+                      id: 3a4b5c6d-7e8f-4a9b-9c0d-1e2f3a4b5c6d
+        "401":
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        "403":
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (no signed-in user).
+        "404":
+          $ref: ../components/responses/NotFound.yaml
+          description: "404. `not-found` (no such operation, or another user created it: an operation is visible only to its creator, T26)."
+        "422":
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a parameter is invalid).
+        "429":
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        "500":
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /operations/{operationId}/cancel:
+    parameters:
+    - name: operationId
+      in: path
+      required: true
+      description: Operation ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: cancelOperation
+      summary: Cancel an operation
+      description: "Stops long-running work that has not finished, where its kind allows it (the AI kinds; inventory #16, API_STANDARDS §13). Only its creator can cancel it. Repeating it on a cancelled operation changes nothing."
+      tags:
+      - platform
+      x-owner: thulasi
+      x-permission: authenticated
+      x-audit:
+        action: E
+        category: none
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        "200":
+          description: The operation, now `cancelled`.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/Operation.yaml
+              examples:
+                cancelled:
+                  summary: Cancelled
+                  value:
+                    id: 4e5f6a7b-8c9d-4e0f-9a1b-2c3d4e5f6a7b
+                    kind: ai.transcription
+                    status: cancelled
+                    createdAt: 2026-11-03T14:30:00Z
+                    updatedAt: 2026-11-03T14:31:00Z
+                    completedAt: 2026-11-03T14:31:00Z
+        "401":
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        "403":
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (no signed-in user); `csrf-check-failed` (missing or wrong CSRF header or
+            Origin).
+        "404":
+          $ref: ../components/responses/NotFound.yaml
+          description: "404. `not-found` (no such operation, or another user created it: an operation is visible only to its creator, T26)."
+        "409":
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the operation already succeeded or failed, or its kind cannot be cancelled;
+            the problem carries `currentState`).
+        "422":
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a parameter is invalid).
+        "429":
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        "500":
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     SessionUser:

@@ -110,6 +110,10 @@ paths:
     $ref: 'modules/platform.yaml#/paths/~1patients~1{patientId}~1break-glass'
   /hooks/keycloak/backchannel-logout:
     $ref: 'modules/platform.yaml#/paths/~1hooks~1keycloak~1backchannel-logout'
+  /operations/{operationId}:
+    $ref: 'modules/platform.yaml#/paths/~1operations~1{operationId}'
+  /operations/{operationId}/cancel:
+    $ref: 'modules/platform.yaml#/paths/~1operations~1{operationId}~1cancel'
   /files/upload-url:
     $ref: 'modules/files.yaml#/paths/~1files~1upload-url'
   /files/{fileId}/complete:

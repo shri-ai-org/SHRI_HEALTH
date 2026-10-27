@@ -299,7 +299,7 @@ x-audit:
 | `security` | Login, logout, failed login, permission and CSRF denials, break-glass, restriction changes, role changes | Yes |
 | `ai` | AI requests (metadata only), and accept, edit, reject decisions | Yes (FRS §3.4) |
 | `admin` | Practice setup, AI settings, templates, co-sign rules | Yes |
-| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49) and the portal's (`/portal/booking/*`, `/portal/me/slots`), inbox badge counts (`GET /inbox/summary`, counts only; D77), session reads (`GET /auth/session`, `GET /portal/auth/session`, `/me`, the event stream) | No |
+| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49) and the portal's (`/portal/booking/*`, `/portal/me/slots`), inbox badge counts (`GET /inbox/summary`, counts only; D77), session reads (`GET /auth/session`, `GET /portal/auth/session`, `/me`, the event stream), and a user's own operations (`GET /operations/{operationId}` and its cancel: IDs and status only) | No |
 
 Partner callbacks (`/hooks/*`) carry PHI, so they are audited as `phi-write` with the **partner as actor** (agreed, T37).
 
