@@ -221,9 +221,10 @@ class SqlPatientRepository:
 
     async def get_patient(self, db: AsyncSession, patient_id: UUID
                           ) -> Versioned[schemas.Patient]:
-        row = (await db.execute(_PATIENT, {"id": patient_id})).mappings().first()
-        if row is None:
+        found = (await db.execute(_PATIENT, {"id": patient_id})).mappings().first()
+        if found is None:
             raise NotFound()
+        row: dict[str, Any] = dict(found)
         names = await self._children(db, _NAMES, [patient_id])
         official = next((n for n in names if n["use"] == "official"), names[0] if names else None)
         phones, emails = _contacts(await self._children(db, _TELECOMS, [patient_id]))

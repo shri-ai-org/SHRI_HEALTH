@@ -215,7 +215,7 @@ def test_update_related_person_needs_a_current_if_match(as_user: Client) -> None
     created = register(as_user)
     related_id = _add_contact(as_user, created["id"]).json()["id"]
     path = f"/api/v1/patients/{created['id']}/related-persons/{related_id}"
-    patch = {"phones": []}
+    patch: dict[str, Any] = {"phones": []}
     missing = as_user("fd").patch(path, json=patch)
     assert missing.status_code == 428
     assert problem_code(missing) == "precondition-required"
