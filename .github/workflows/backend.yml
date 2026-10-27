@@ -35,7 +35,8 @@ jobs:
 
       - name: Start the database (throwaway passwords, generated per run)
         run: |
-          for name in PG SHRI_MIGRATOR SHRI_APP SHRI_FHIR_READER SHRI_INTEGRATION SHRI_REPORTING; do
+          for name in PG SHRI_MIGRATOR SHRI_APP SHRI_FHIR_READER SHRI_INTEGRATION SHRI_REPORTING \
+              SHRI_MAINTENANCE; do
             value="$(openssl rand -hex 16)"
             echo "::add-mask::$value"
             echo "${name}_PASSWORD=$value" >> "$GITHUB_ENV"
@@ -44,7 +45,7 @@ jobs:
           docker run -d --name db -p 127.0.0.1:5432:5432 \
             -e POSTGRES_DB=shri_health -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD="$PG_PASSWORD" \
             -e SHRI_MIGRATOR_PASSWORD -e SHRI_APP_PASSWORD -e SHRI_FHIR_READER_PASSWORD \
-            -e SHRI_INTEGRATION_PASSWORD -e SHRI_REPORTING_PASSWORD \
+            -e SHRI_INTEGRATION_PASSWORD -e SHRI_REPORTING_PASSWORD -e SHRI_MAINTENANCE_PASSWORD \
             -v "$PWD/infra/compose/postgres/initdb:/docker-entrypoint-initdb.d:ro" \
             shri-health/postgres:ci
           for _ in $(seq 1 60); do
