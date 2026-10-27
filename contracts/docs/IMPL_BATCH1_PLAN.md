@@ -2,7 +2,9 @@
 
 Owner: Vimal (drafted with Claude Code) · 2026-10-27 · Branch `vimal/impl-batch1` from `main` (`dd36d41`) · **Approved by Vimal on 2026-10-27, with the decisions in §7.**
 
-**Revision 2 (2026-10-27, approved by Vimal the same day; recorded as D95):** adds §8, the plan for the **demo on 20 November**: a complete patient visit on the real system, across the patient, front-desk and clinician portals. It covers the gaps in the contract (pre-registration, the prescriptions slice, follow-up and check-out, the portal's medication list), Vimal's PR order to the three checkpoints (3, 10 and 17 November), and what is needed from each teammate, with dates. §1–§7 are unchanged. The goal, story, checkpoint dates and cut order are recorded as D95, so they are decided rather than provisional (D10).
+**Revision 2 (2026-10-27, approved by Vimal the same day; recorded as D95):** adds §8, the plan for the **demo on 20 November**: a complete patient visit on the real system, across the patient, front-desk and clinician portals. It covers the gaps in the contract (pre-registration, the prescriptions slice, follow-up and check-out, the portal's medication list), Vimal's PR order to the three checkpoints (Tuesday 3, Tuesday 10 and Tuesday 17 November), and what is needed from each teammate, with dates. §1–§7 are unchanged.
+
+**Revision 3 (2026-10-27):** the dates are corrected (checkpoints Tuesday 3, 10 and 17 November; rehearsals Wednesday 18 and Thursday 19 November; demo Friday 20 November), and §8.3–§8.6 now hold each person's confirmed deliverables and dates from their replies on the tracking issue (#85). Recorded as D95 (dates) and D99–D102. The goal, story, checkpoint dates and cut order are recorded as D95, so they are decided rather than provisional (D10).
 
 Read for this plan:
 - `backend/app/core/` (`require()`, `tenant_db`, `errors.py`, `permissions.py`, the development login);
@@ -237,6 +239,18 @@ Each PR is a few hundred lines with its tests, and asks Minalini for a review wh
 - The payer (eligibility) and the pharmacy are simulated.
 - No AI.
 
+**The calendar:**
+| Date | What |
+|---|---|
+| Wed 28 Oct | Pre-registration contract ready for review |
+| 31 Oct | Check-out (follow-up and copay) and prescriptions-slice contracts ready for review |
+| **Tue 3 Nov** | Checkpoint 1, with cut decisions (D102) |
+| 7 Nov | Payer and pharmacy message shapes |
+| **Tue 10 Nov** | Checkpoint 2, with cut decisions (D102); laptop fallback decided |
+| **Tue 17 Nov** | Checkpoint 3 |
+| Wed 18, Thu 19 Nov | Rehearsals |
+| **Fri 20 Nov** | Demo |
+
 The cut order (§8.6) says what is dropped first if a checkpoint slips.
 
 ### 8.1 The story, step by step: what the contract has, and what is missing
@@ -260,7 +274,7 @@ The cut order (§8.6) says what is dropped first if a checkpoint slips.
 
 ### 8.2 Draft contract changes (prose; the YAML follows once this plan is approved)
 
-All of these go in one demo contracts PR, contract first (root `CLAUDE.md`), by **30 October**.
+These go in four contracts PRs, contract first (root `CLAUDE.md`), each ready for review with all three reviewers requested: **A** (pre-registration) by **Wednesday 28 October**; **C** (check-out with the follow-up request and copay) and **B** (the prescriptions slice) by **31 October**; then **D** and **E** together (note templates for clinicians, the portal's medication list).
 
 **A. Pre-registration** (new; x-owner Vimal, patients module)
 - **Public submission, `POST /portal/pre-registrations`:**
@@ -271,7 +285,7 @@ All of these go in one demo contracts PR, contract first (root `CLAUDE.md`), by 
     - insurance as typed (payer name, member ID, group);
     - the preferred facility and the reason for the visit;
     - consent to be contacted, which is required.
-  - **What it answers:** always the same generic success, `202` with no body, whether or not the person is already a patient, so the form can't be used to learn who is a patient here. Only a malformed request, a failed bot check or a rate limit gets a different answer, and those say nothing about the person.
+  - **What it answers:** always the same generic success, `204` with no body, whether or not the person is already a patient, so the form can't be used to learn who is a patient here. Only a malformed request, a failed bot check or a rate limit gets a different answer, and those say nothing about the person.
 - **Abuse protection:**
   - `Origin` must be the portal host, as for enrollment (ADR-0013 §5);
   - rate limits per IP and per email address (core and Nginx);
@@ -301,12 +315,13 @@ All of these go in one demo contracts PR, contract first (root `CLAUDE.md`), by 
 - **Safety check, `POST /prescriptions/{id}/safety-check` (#123):**
   - an **allergy alert:** an active allergy coded to an RxNorm ingredient of the drug;
   - a **duplicate-medication alert:** an active medication with the same ingredient.
+  - The alerts are **fixed rules in code, each with its tests; never AI** (D99).
   - Each alert has a severity. `POST /alerts/{alertId}/override` (#124) takes a required reason where the severity requires one, and is audited.
   - The drug-interaction database (Q13) isn't in the demo; the contract leaves room for its alert kind.
 - **Sign and send, `POST /prescriptions/{id}/sign-and-send` (#125):**
   - `If-Match` and an `Idempotency-Key`;
   - refused while an alert that needs an override has none;
-  - signs and locks the prescription, writes its Provenance, and queues NewRx through the outbox (`enqueue(db, "erx", "NewRx", …)`, D25) in one transaction.
+  - signs and locks the prescription, writes its Provenance, and queues NewRx through the outbox (`enqueue(db, "erx", "NewRx", …)`, D25) in one transaction. Sending always goes through the outbox to the simulated pharmacy (D99), never straight from the request.
 - **Transmission:** `queued` → `sent` → `accepted` or `rejected`, through `/hooks/erx` (#21) from the simulated pharmacy. Each change publishes `prescription.transmission-updated`.
 - **Discontinue (#118)** is in only if time allows; cancel and change (#126–127), refills (#128–129) and the outside medication history (#131) are after the demo.
 
@@ -318,7 +333,7 @@ All of these go in one demo contracts PR, contract first (root `CLAUDE.md`), by 
 - **Booking the revisit:** `POST /appointments` takes an optional `followUpOfEncounterId`, which marks the request `booked` and links the new appointment, in the same transaction.
 - **When the patient doesn't book:** `POST /encounters/{encounterId}/follow-up/decline` (FD; `appointments:status`) with a reason.
 - **Check-out** stays `POST /appointments/{id}/status` with `checked-out`, which completes the visit flow (`fulfilled`, `appointment.checked-out`). The encounter closes through `POST /encounters/{id}/close` once the note is signed (Q22 guards).
-- **The copay** is the batch 1 payment operations: amount due from the eligibility check's copay, card through the processor's hosted fields (here, a simulation). Billing is x-owner Anand.
+- **The copay** is the batch 1 payment operations: amount due from the eligibility check's copay, card through the processor's hosted fields (here, a simulation). **Recording the copay is Anand's** (D100): he builds the payment service behind `POST /patients/{patientId}/payments` and `POST /payments/card-session` (x-owner Anand); check-out calls those operations and adds none of its own.
 
 **D. Note templates for clinicians:** `GET /note-templates` and `GET /note-templates/{noteTemplateId}` change from `practice-setup:read` to `note-templates:read` (D73, T42). It's a permission fix with x-owner Anand, and needs his agreement.
 
@@ -331,65 +346,78 @@ All of these go in one demo contracts PR, contract first (root `CLAUDE.md`), by 
 
 The PRs are small, each with its tests (§4), and the routes-to-contract test is updated as each lands.
 
-**Merge rule:** every patient-data PR merges only when core's audit writing and restricted-chart check exist (§7.1). Until then it is built and tested on a branch. The checkpoint is the date the PR is **ready to merge**.
+**Merge rule:** every patient-data PR merges only when core's audit writing and restricted-chart check exist (§7.1). Until then it is built and tested on a branch. The checkpoint is the date the PR is **ready to merge**. At the 3 and 10 November checkpoints we decide what to cut (§8.6, D102).
 
 | Checkpoint | PR | Content | Needs first |
 |---|---|---|---|
-| **30 Oct** | Demo contracts | §8.2 A–E, plus the debts from #68, #58 and #64 (follow-up 3, #80) | #73 and #64 merged |
-| **3 Nov** | PR-1 patients core | Search, register (MRN, duplicates), read, edit, summaries, identifiers, related persons, restrict | #52 → #69 → #74; mapping (m); write helpers; core's four pieces |
+| **Wed 28 Oct** | Contracts A: pre-registration | §8.2 A | #73 merged (done) |
+| 31 Oct | Contracts C: check-out | §8.2 C, with the copay through Anand's payment operations | — |
+| 31 Oct | Contracts B: prescriptions slice | §8.2 B | — |
+| After B | Contracts D and E | Note templates for clinicians (Anand's agreement, x-owner); the portal's medication list. Then the debts from #68, #58 and #64 (follow-up 3, #80) | — |
+| 7 Nov | Payer and pharmacy message shapes | The 270/271 and NewRx/status payloads the outbox sends to Thulasi's simulated payer and pharmacy | Contracts B |
+| **Tue 3 Nov** | PR-1 patients core | Search, register (MRN, duplicates), read, edit, summaries, identifiers, related persons, restrict | #52 → #69 → #74; mapping (m); write helpers; core's four pieces |
 | 3 Nov | PR-2 coverages and consents | Insurance and consents (card images later) | PR-1; Anand's payer service |
 | 3 Nov | PR-P pre-registration | Public submission (bot check, `Origin`, rate limits), staff queue, accept (through `register`) and reject, retention | PR-1; the pre-registration table; the bot-check dependency through the lockfile |
-| **10 Nov** | PR-3, PR-4 scheduling | Booking lists, slots, appointments, status board; book, edit, cancel, reschedule, status | Anand's practice-setup reads; core's facility filter |
+| **Tue 10 Nov** | PR-3, PR-4 scheduling | Booking lists, slots, appointments, status board; book, edit, cancel, reschedule, status | Anand's practice-setup reads; core's facility filter |
 | 10 Nov | PR-5 check-in, rooming and check-out | Check-in and undo with the encounter service; rooming (`roomed`, vitals, allergies, reason for visit); check-out (`checked-out`, the follow-up shown); the follow-up request (§8.2 C) | PR-4; write helpers for encounters and vitals |
-| 10 Nov | PR-6a eligibility | Check rows and reads, through the simulated payer | Core's outbox and operations; Thulasi's simulated payer |
-| **17 Nov** | PR-9 notes and signing | Encounter workspace, diagnoses, history, templated notes, signing with Provenance, after-visit summary (`202`) | Write helpers for notes, diagnoses and Provenance; note templates (§8.2 D) |
+| 10 Nov | PR-6a eligibility | Check rows and reads, tested against recorded payer replies; end to end once the simulated payer lands (17 Nov) | Core's outbox and operations; the payer message shape (7 Nov) |
+| **Tue 17 Nov** | PR-9 notes and signing | Encounter workspace, diagnoses, history, templated notes, signing with Provenance, after-visit summary (`202`) | Write helpers for notes, diagnoses and Provenance; note templates (§8.2 D) |
 | 17 Nov | PR-10 prescriptions | §8.2 B in `modules/medications`, with Thulasi reviewing if she agrees (otherwise hers) | The RxNorm load; write helpers for prescriptions; the outbox; the simulated pharmacy |
 | 17 Nov | PR-11 portal reads | Portal appointments, visit summaries and medications (§8.2 E); staff portal invitations and account | Core's portal session and `PAT`, or the patient development sign-in |
-| 18–19 Nov | Rehearsal | The full story on the test server, twice, with the demo reset between runs; fixes only | Everything above |
+| Wed 18, Thu 19 Nov | Rehearsals | The full story on the test server, twice, with the demo reset between runs; fixes only | Everything above |
 
 Card images (PR-7), duplicates and merges (PR-8) and the manual eligibility run aren't in the story, so they come after the demo.
 
-### 8.4 What I need from each teammate, and when
-
-**Thulasi**
-| By | What |
-|---|---|
-| **3 Nov** | The four core pieces: audit from `x-audit` (#79), the restricted-chart check, the facility filter, idempotency |
-| 3 Nov | A development sign-in for patients (`PAT`), like `X-Dev-User` |
-| 10 Nov | `publish()` and the event stream (live status board), `create_operation` and the operations read (#80), and the outbox `enqueue` (T29) |
-| 10 Nov | **Staff sign-in** on the real login (Keycloak realm #72, core's login and session) |
-| 10 Nov | **The simulated payer:** 270 in, 271 back through the webhook |
-| 17 Nov | **Patient sign-in:** the patient realm, core's portal session, `PAT` permissions (ADR-0013, T45) |
-| 17 Nov | **The simulated pharmacy:** NewRx in, status back through `/hooks/erx`; the prescriptions slice review |
-| 17 Nov | **The test server and deployment;** demo accounts for each role (FD, MA, MD, ADM, and the patient) |
+### 8.4 What each person delivers, and when (confirmed on #85)
 
 **Anand**
 | By | What |
 |---|---|
-| **31 Oct** | The database chain merged: #52 → #69 → #74 (with the fixes asked on #74) |
-| 31 Oct | Mapping (m) for patient, coverage, consent and related person; the write helpers posted on #13 (patients, coverage, consent, related persons) |
-| 31 Oct | The pre-registration table and its retention purge (§8.2 A) |
-| 5 Nov | Practice-setup read services: facilities, locations, providers, appointment types, schedules, payers, note templates |
-| 7 Nov | Write helpers for encounters, vitals, diagnoses, notes (Composition) and Provenance; the rest of mapping (m) |
-| 7 Nov | **Demo setup data:** one synthetic practice with facilities, providers, schedules, appointment types, payers, a pharmacy and note templates |
-| 10 Nov | Write helpers for prescriptions (`MedicationRequest`); the **RxNorm Current Prescribable Content** load |
-| 10 Nov | Copay: the payment operations (x-owner) with the simulated card processor |
-| **14 Nov** | **A one-command demo reset script:** drop to the demo setup data, with synthetic patients only |
+| **Tue 3 Nov** | #52, #69, #74 and the A43 PR merged; mapping (m) for patients and the write helpers (patients, coverage, consent, related persons); the pre-registration table |
+| Thu 5 Nov | Visit helpers: encounters, vitals, diagnoses |
+| Fri 6 Nov | The portal tables |
+| Mon 9 Nov | **Demo setup data** (one synthetic practice: facilities, providers, schedules, appointment types, payers, a pharmacy, note templates); the practice-setup read services; the **RxNorm Current Prescribable Content** load (its licence recorded under D75) |
+| Wed 11 Nov | Prescription helpers (`MedicationRequest`) and note helpers (Composition, Provenance) |
+| Fri 13 Nov | **The one-command demo reset script:** back to the demo setup data, synthetic patients only |
+| Date to confirm | The 30-day purge of rejected and never-reviewed pre-registrations (§8.2 A), with the table's retention; needed by 3 Nov with PR-P |
+| Date to confirm | **The copay recording service** (D100): the payment operations with the simulated card processor. Check-out needs it by the 10 November checkpoint |
 
-**Minalini:** the screens for each step, switched from her mocks to the generated client as each PR lands.
-| By | Screens |
+**Thulasi**
+| By | What |
 |---|---|
-| 3 Nov | Pre-registration (the public form with the bot check) and the staff queue; registration and patient screens on the real API (PR-1, PR-2) |
-| 10 Nov | Booking, check-in, the status board, rooming (vitals, allergies, current medications, reason for visit), check-out (copay, follow-up, revisit), the staff portal-invitation panel |
-| 17 Nov | The clinician workspace (history, diagnoses, templated note, signing), prescriptions (search, alerts and override, sign and send, the medication list), the after-visit summary; the portal's appointments, visit summary and prescription, with the switch to the generated client (#39) |
+| **Tue 3 Nov** | The four core pieces: audit from `x-audit` (#79), the restricted-chart check, the facility filter, idempotency |
+| **Tue 10 Nov** | **Real staff sign-in** (Keycloak realm #72, core's login and session) and **demo accounts** for each role (FD, MA, MD, ADM, and the patient) |
+| **Tue 17 Nov** | **The simulated payer** (270 in, 271 back through the webhook) and **the simulated pharmacy** (NewRx in, status back through `/hooks/erx`); **the patient session** (patient realm, core's portal session, `PAT` permissions; ADR-0013, T45) |
+| Test server | One cloud server running our Docker setup. Whether to fall back to a laptop is decided by **Tue 10 Nov** |
+
+**Not yet in Thulasi's reply** (asked on #85; each is needed by the date shown):
+- a development sign-in for patients (`PAT`), like `X-Dev-User`, for building the portal steps before 17 Nov;
+- `publish()` and the event stream (the live status board), by 10 Nov;
+- `create_operation` and the operations read (#80), by 10 Nov (eligibility, the after-visit summary);
+- the outbox `enqueue` (T29), by 10 Nov (eligibility; prescriptions by 17 Nov);
+- her review of the prescriptions slice (§8.2 B, x-owner Thulasi).
+
+**Minalini:** the screens **in demo order** (§8.1), each built on the mock as its contract lands (pre-registration from 28 Oct, check-out and prescriptions from 31 Oct), then switched to the real services as each PR merges at the checkpoints.
+
+**Vimal**
+| By | What |
+|---|---|
+| Wed 28 Oct | The pre-registration contract (§8.2 A) |
+| 31 Oct | The check-out and follow-up contract (§8.2 C) and the prescriptions slice (§8.2 B) |
+| 7 Nov | The payer and pharmacy message shapes |
+| Tue 3, 10, 17 Nov | The services in §8.3, ready to merge at each checkpoint |
+
+**Staff accounts for the demo:** disabling a staff member is done in Keycloak's admin console; there is no new screen (D101).
 
 ### 8.5 Risks
-- **Everything rests on the chain #52 → #69 → #74 and the write helpers.** If the helpers slip past 31 October, I'll write the rows in my repositories against the §7.3 interface and swap in the helpers later.
+- **Everything rests on the chain #52 → #69 → #74 and the write helpers.** If the helpers slip past 3 November, I'll write the rows in my repositories against the §7.3 interface and swap in the helpers later.
 - **The prescriptions slice sits in Thulasi's module.** Without her agreement it moves to her, and its PR-10 date becomes hers.
+- **Practice-setup reads land on 9 November,** the day before the scheduling checkpoint; scheduling is built against test data until then.
+- **The simulated payer lands on 17 November,** a week after the eligibility PR; PR-6a is tested against recorded replies and runs end to end only from 17 November.
 - **Real sign-in for staff and patients** is the most likely to slip. The development sign-ins are the fallback for rehearsal, not for the demo itself.
 
 ### 8.6 Cut order (agreed)
-If a checkpoint slips, cut in this order, and the story still runs:
+Cut decisions are made at the **3 and 10 November checkpoints** (D102), not later. If a checkpoint slips, cut in this order, and the story still runs:
 1. **Portal sign-in.** The portal step uses the patient development sign-in on the test server.
 2. **Pre-registration.** The front desk registers the patient directly at step 2.
 3. **Copay.** Check-out records no payment.
