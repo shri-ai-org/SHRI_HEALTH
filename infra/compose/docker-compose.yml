@@ -65,6 +65,9 @@ services:
     environment:
       ENVIRONMENT: development
       AUTH_MODE: dev_header
+      # The patient portal's development sign-in (X-Dev-Patient, X-Dev-Patient-Clinic); refused
+      # outside development and test.
+      PATIENT_AUTH_MODE: dev_header
       # Trust X-Forwarded-For/-Proto only from Nginx's fixed address below, so clients cannot
       # fake their IP in logs, rate limits or audit records.
       FORWARDED_ALLOW_IPS: 172.31.250.10
