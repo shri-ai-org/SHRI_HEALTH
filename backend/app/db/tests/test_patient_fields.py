@@ -342,6 +342,35 @@ def test_a_facility_has_a_time_zone(db: Session) -> None:
         db.flush()
 
 
+@pytest.mark.parametrize("zone", ["EST", "Mars/Olympus", "", "+05", "UTC", "america/chicago "])
+def test_a_time_zone_is_an_iana_name(db: Session, zone: str) -> None:
+    # D40, Vimal's review of #74: on the facility and on the practice, on insert and on update.
+    ctx = b.practice(db)
+    fac = ctx["facility"]
+    db.execute(text("UPDATE admin.facility SET timezone = 'America/Chicago' WHERE id = :f"),
+               {"f": fac.id})
+    db.execute(text("UPDATE admin.tenant SET timezone = 'America/Chicago'"))
+    with fails(db, "P0001", message="is not an IANA time zone name"):
+        db.add(M["facility"](location_id=fac.location_id, code="SECOND", name="Second office",
+                             timezone=zone))
+        db.flush()
+    with fails(db, "P0001", message="is not an IANA time zone name"):
+        db.execute(text("UPDATE admin.facility SET timezone = :z WHERE id = :f"),
+                   {"z": zone, "f": fac.id})
+    with fails(db, "P0001", message="is not an IANA time zone name"):
+        db.execute(text("UPDATE admin.tenant SET timezone = :z"), {"z": zone})
+
+
+def test_a_new_practice_needs_an_iana_time_zone(admin_engine: Engine) -> None:
+    with admin_engine.connect() as c:
+        with pytest.raises(DBAPIError) as refused:
+            c.execute(text("INSERT INTO admin.tenant (id, slug, name, timezone) VALUES "
+                           "(:i, :s, 'Test practice', 'EST')"),
+                      {"i": uuid.uuid4(), "s": f"t-{uuid.uuid4().hex[:12]}"})
+        assert refused.value.orig.sqlstate == "P0001"          # type: ignore[union-attr]
+        c.rollback()
+
+
 def test_the_d39_registration_setting_is_off_by_default(db: Session) -> None:
     row = db.execute(text(
         "SELECT value_type, default_value FROM admin.setting_definition "

@@ -7171,6 +7171,7 @@ Paths: `/encounters`, `/encounters/{encounterId}`
 | `updatedAt` | — | not mapped yet |
 | `vitals` | — | not mapped yet |
 | `participants[].role` | `encounter_participant.type_code` | mapped |
+| `selfPay` | `encounter.ext_self_pay` | mapped: set at check-in on the encounter it creates; no insurance claim for a self-pay visit (from `/appointments/{appointmentId}/check-in`) |
 
 ### Note (draft, versions, signed)
 

@@ -34,6 +34,21 @@ BEGIN
   RETURN NEW;
 END $$;
 
+-- A practice's and a facility's time zone is an IANA zone name (D40): one PostgreSQL knows
+-- (pg_timezone_names), in Area/Location form, which keeps out abbreviations such as EST and
+-- offsets such as +05. Vimal's review of #74. A missing one is left to NOT NULL.
+CREATE FUNCTION public.shri_timezone_check() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NEW.timezone IS NOT NULL AND (NEW.timezone !~ '^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$'
+     OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names z WHERE z.name = NEW.timezone))
+  THEN
+    RAISE EXCEPTION '% %: "%" is not an IANA time zone name', TG_TABLE_NAME, NEW.id,
+      NEW.timezone USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END $$;
+
 -- The next MRN of the caller's practice (D41): the practice's MRN system, and the prefix plus
 -- the number, six digits zero-padded (TEST-000123), longer past 999999. It runs as the caller,
 -- under RLS, so it only ever sees the caller's counter. The UPDATE locks the counter until the

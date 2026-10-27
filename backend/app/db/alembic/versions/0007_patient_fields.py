@@ -16,7 +16,8 @@ Changes to existing tables:
   clinical.encounter  ext_self_pay, from check-in (CheckInRequest.selfPay). The database
                       refuses an insurance claim for a self-pay visit, except the void of one
                       sent before (shri_claim_not_self_pay).
-  admin.facility      timezone NOT NULL (D40); a facility without one takes its practice's.
+  admin.facility      timezone NOT NULL (D40); a facility without one takes its practice's. It
+                      and admin.tenant.timezone must be IANA zone names (shri_timezone_check).
   admin.tenant_setting
                       version, the ETag for If-Match on PATCH /practice-settings (A49),
                       bumped on every update as A41.
@@ -29,7 +30,7 @@ Frozen SQL in sql_0007/:
   02_existing_tables.sql hand-written: the column changes to existing tables
   03_rls_grants.sql      generated (gen_db_rules.rls_sql): RLS and grants for the new tables
   04_functions.sql       hand-written: shri_claim_not_self_pay, shri_mrn_counter_guard,
-                         admin.next_mrn (EXECUTE for shri_app only)
+                         shri_timezone_check, admin.next_mrn (EXECUTE for shri_app only)
   05_triggers.sql        generated (gen_db_rules.GUARDS): the triggers that attach them
   06_seed.sql            generated: the code system and the setting
 
@@ -62,6 +63,9 @@ DOWNGRADE = [
     "DROP FUNCTION admin.next_mrn()",
     "DROP TRIGGER trg_claim_self_pay ON admin.claim",
     "DROP FUNCTION public.shri_claim_not_self_pay()",
+    "DROP TRIGGER trg_tenant_timezone ON admin.tenant",
+    "DROP TRIGGER trg_facility_timezone ON admin.facility",
+    "DROP FUNCTION public.shri_timezone_check()",
     # Their triggers, policies, grants, indexes and keys go with them.
     "DROP TABLE admin.employer",
     "DROP TABLE admin.mrn_counter",

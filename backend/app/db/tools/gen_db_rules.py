@@ -121,6 +121,9 @@ GUARDS = {
     "claim": [("self_pay", "BEFORE INSERT OR UPDATE OF superbill_id, frequency_code",
                "shri_claim_not_self_pay()")],
     "mrn_counter": [("guard", "BEFORE UPDATE", "shri_mrn_counter_guard()")],
+    # A real IANA zone name (D40): a wrong one breaks every time shown at the practice.
+    "facility": [("timezone", "BEFORE INSERT OR UPDATE OF timezone", "shri_timezone_check()")],
+    "tenant": [("timezone", "BEFORE INSERT OR UPDATE OF timezone", "shri_timezone_check()")],
     "employer": [("touch", "AFTER INSERT OR UPDATE OR DELETE",
                   "shri_fhir_touch_parent('patient_id', 'patient', 'meta_last_updated', "
                   "'related_person_id', 'related_person', 'meta_last_updated')")],

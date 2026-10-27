@@ -5,8 +5,11 @@
 #   columns:  [table.column, ...]  the columns that store it (required unless computed)
 #   computed: how it is derived    not stored as such; the repository works it out
 #   note:     anything else the repository must know
-# gen_docs.py stops if a resource, property, table or column named here does not exist, so this
-# file cannot drift silently. Same-named properties (camelCase of a column) need no entry.
+#   path:     the operation the property comes from, when it isn't one of the resource's own
+#             paths (a check-in request writing the encounter)
+# gen_docs.py stops if a resource, property, path, table or column named here does not exist,
+# so this file cannot drift silently. Same-named properties (camelCase of a column) need no
+# entry.
 
 "Patient (demographics, contacts)":
   genderIdentity:
@@ -73,6 +76,10 @@
     columns: [visit_flow_event.step, visit_flow_event.occurred_at]
 
 "Encounter":
+  selfPay:
+    path: /appointments/{appointmentId}/check-in
+    columns: [encounter.ext_self_pay]
+    note: set at check-in on the encounter it creates; no insurance claim for a self-pay visit
   startedAt:
     columns: [encounter.period_start]
   participants[].role:
