@@ -21,6 +21,7 @@ from .matching import Person, possible_duplicates
 from .repository import PatientRepository, Versioned
 from .store import (
     UNSET,
+    Coded,
     EmployerIn,
     FhirStore,
     IdentifierIn,
@@ -35,7 +36,6 @@ from .store import (
     Telecom,
     Written,
 )
-from .store import Coded as StoreCoded
 
 class InvalidCursor(AppError):
     """400 invalid-cursor (API_STANDARDS §9.3); core has no 400 class yet."""
@@ -108,8 +108,8 @@ def _name(n: schemas.HumanName, use: str) -> Name:
                 prefix=(n.prefix,) if n.prefix else (), suffix=(n.suffix,) if n.suffix else ())
 
 
-def _coded(c: schemas.CodedValue | None) -> StoreCoded | None:
-    return StoreCoded(system=c.system, code=c.code, display=c.display, text=c.text) if c else None
+def _coded(c: schemas.CodedValue | None) -> Coded | None:
+    return Coded(system=c.system, code=c.code, display=c.display, text=c.text) if c else None
 
 
 def _race(r: schemas.RaceEthnicity | None) -> RaceOrEthnicity | None:
@@ -160,7 +160,7 @@ def patient_in(body: schemas.PatientCreate, mrn_system: str, mrn: str) -> Patien
         employer=_employer(body.employer), entry_source="clinician")
 
 
-def _relationships(codes: list[schemas.CodedValue]) -> tuple[StoreCoded, ...]:
+def _relationships(codes: list[schemas.CodedValue]) -> tuple[Coded, ...]:
     return tuple(c for c in (_coded(x) for x in codes) if c is not None)
 
 

@@ -90,7 +90,7 @@ def test_a_possible_duplicate_needs_an_override_with_a_reason(as_user: Client) -
 
 
 @pytest.mark.xfail(strict=True, reason="Replay is core's idempotency middleware (T21, ADR-0007; "
-                   "table in #52): not on main yet. Passes, and must then lose this mark, once it is.")
+                   "table in #52): not on main yet. Once it is, this passes and loses the mark.")
 def test_a_keyed_registration_is_replayed_not_repeated(as_user: Client) -> None:
     fd = as_user("fd")
     headers = {"Idempotency-Key": str(uuid4())}  # one key, sent twice
