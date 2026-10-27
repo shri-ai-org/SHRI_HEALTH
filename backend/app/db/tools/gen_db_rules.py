@@ -5,7 +5,10 @@
   sql/30_guards.sql           attaches the hand-written rule functions (sql/10_rules.sql)
   sql/90_rls_grants.sql       row-level security policies and privileges, for all 5 roles,
                               across the clinical/admin/audit schemas (D23)
-  sql/95_seed.sql             code systems (roles and permissions live in core)
+  sql/92_fhir_visibility.sql  what /fhir may see: restricted charts hidden from shri_fhir_reader,
+                              and the audit function for a lookup it cannot serve (D22, 0006)
+  sql/95_seed.sql             code systems and the settings catalogue (roles and permissions
+                              live in core)
 
 Usage:  python -m app.db.tools.gen_db_rules     (writes the files above)
 
@@ -26,8 +29,9 @@ from typing import Any
 from sqlalchemy import Table
 
 from app.db.base import ADMIN_SCHEMA, AUDIT_SCHEMA, CLINICAL_SCHEMA, Base
-from app.db.constraints import referenced_table
+from app.db.constraints import patient_column, referenced_table
 from app.db.models import FHIR_RESOURCES, GLOBAL_TABLES, MAPPERS, systems
+from app.db.models.admin.core import SETTINGS
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]   # backend/app/db
 TENANT = "NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"
@@ -39,7 +43,7 @@ DELETABLE_ADMIN = {
     "availability_rule_appointment_type", "care_team_member", "charge_diagnosis_pointer",
     "charge_modifier", "compendium_aoe_option", "compendium_aoe_question",
     "compendium_covered_diagnosis", "compendium_panel_member", "compendium_test_code",
-    "eligibility_service_type", "fee_schedule_item", "integration_endpoint_setting",
+    "eligibility_service_type", "employer", "fee_schedule_item", "integration_endpoint_setting",
     "knowledge_chunk", "knowledge_source_role", "lab_account_bill_to", "note_template_section",
     "order_set_item", "patient_pharmacy", "picklist_item", "prescription_favorite",
     "role_permission", "schedule_availability_rule", "schedule_exception",
@@ -58,6 +62,11 @@ INSERT_ONLY = {
 }
 # Written only by SECURITY DEFINER functions.
 NO_APP_WRITE = {"fhir_resource_history"}
+# Short-lived runtime tables of Thulasi's core (issue #13, migration 0005). No role deletes from
+# them: only admin.purge_expired_runtime_rows() does, past retention (Thulasi's review of #52).
+RUNTIME = {"app_session", "event_log", "idempotency_record", "operation"}
+# Written once and never changed: no UPDATE.
+WRITE_ONCE = {"event_log"}
 
 #: shri_app on the two audit tables: D23/ADR-0011 condition 4 says "audit insert only" for
 #: shri_app overall. audit_event: insert only, no read-back (matches INSERT_ONLY's no-UPDATE
@@ -106,6 +115,24 @@ GUARDS = {
                              "ext_appointment_type_id", "shri_appointment_sync()")],
     "provenance": [("target", "BEFORE INSERT", "shri_provenance_target_check()")],
     "audit_event": [("chain", "BEFORE INSERT", "shri_audit_chain()")],
+    # Migration 0007 (A45): a self-pay visit never produces an insurance claim, except the
+    # void of one sent before the visit became self-pay; an MRN is never reused (D41); an
+    # employer change is a change to its patient or related person.
+    "claim": [("self_pay", "BEFORE INSERT OR UPDATE OF superbill_id, frequency_code",
+               "shri_claim_not_self_pay()")],
+    "mrn_counter": [("guard", "BEFORE UPDATE", "shri_mrn_counter_guard()")],
+    # A real IANA zone name (D40): a wrong one breaks every time shown at the practice.
+    "facility": [("timezone", "BEFORE INSERT OR UPDATE OF timezone", "shri_timezone_check()")],
+    "tenant": [("timezone", "BEFORE INSERT OR UPDATE OF timezone", "shri_timezone_check()")],
+    "employer": [("touch", "AFTER INSERT OR UPDATE OR DELETE",
+                  "shri_fhir_touch_parent('patient_id', 'patient', 'meta_last_updated', "
+                  "'related_person_id', 'related_person', 'meta_last_updated')")],
+    # Migration 0008 (A43): a consent requirement keeps its kind (D59); a merge records the
+    # versions it starts from, and is undone only while nothing it touched has changed (D51).
+    "consent_requirement": [("kind", "BEFORE UPDATE OF kind", "shri_fixed_columns('kind')")],
+    "patient_merge": [("versions", "BEFORE INSERT", "shri_patient_merge_versions()"),
+                      ("guard", "BEFORE UPDATE", "shri_patient_merge_guard()")],
+    "patient_merge_record": [("version", "BEFORE INSERT", "shri_patient_merge_record_version()")],
     "break_glass_access": [("guard", "BEFORE UPDATE",
                             "shri_freeze_except('reviewed_by_user_id', 'reviewed_at')")],
     "composition_section": [("content", "BEFORE INSERT OR UPDATE OR DELETE",
@@ -120,12 +147,15 @@ GUARDS = {
 DEFERRED = {
     "composition": ("signed", "shri_composition_signed_check()"),
     "medication_request": ("alerts", "shri_medication_request_alert_check()"),
+    # An undo that would leave a record pointing at another patient's (0008, D51).
+    "patient_merge": ("undo", "shri_patient_merge_undo_check()"),
 }
 #: Admin tables with VersionedMixin (A41/issue #13): practice-setup resources and
-#: patient_pharmacy, none of which have a FHIR meta_version_id of their own.
+#: patient_pharmacy, none of which have a FHIR meta_version_id of their own; tenant_setting for
+#: PATCH /practice-settings (A49, migration 0007); consent_requirement (D59, migration 0008).
 VERSIONED_TABLES = {"facility", "appointment_type", "note_template", "lab_provider",
                     "lab_account", "patient_pharmacy", "payer", "fee_schedule",
-                    "practice_payer"}
+                    "practice_payer", "tenant_setting", "consent_requirement"}
 # child table -> (fk column, parent table, editable parent statuses)
 FROZEN_CHILDREN = {
     "dosage": ("medication_request_id", "medication_request", "draft"),
@@ -237,7 +267,8 @@ def versioning_sql() -> str:
 
 
 def guards_sql() -> str:
-    out = ["-- Generated by tools/gen_db_rules.py - attaches sql/10_rules.sql functions.", ""]
+    out = ["-- Generated by tools/gen_db_rules.py - attaches sql/10_rules.sql functions (and the",
+           "-- rule functions later migrations add in their frozen SQL).", ""]
     for table, items in sorted(GUARDS.items()):
         qt = _q(_schema_of(MAPPERS[table].__table__), table)
         for suffix, when, fn in items:
@@ -362,7 +393,7 @@ def rls_sql(only: set[str] | None = None) -> str:
         privs = ["SELECT"]
         if name not in NO_APP_WRITE:
             privs.append("INSERT")
-            if name not in INSERT_ONLY:
+            if name not in INSERT_ONLY and name not in WRITE_ONCE:
                 privs.append("UPDATE")
             if name in deletable and name not in INSERT_ONLY:
                 privs.append("DELETE")
@@ -382,17 +413,184 @@ def rls_sql(only: set[str] | None = None) -> str:
     return "\n".join(out) + "\n"
 
 
-# Reference data only: code systems. Roles and permissions are not seeded: core's
-# ROLE_PERMISSIONS (backend/app/core/permissions.py) is the only catalogue (Vimal, #45).
+# --------------------------------------------------------------------------- /fhir visibility
+#: Restricted and very restricted charts (meta.security R, V; SECURITY_MODEL §5).
+RESTRICTED_LABELS = ("R", "V")
+#: Clinical resource tables with no patient: no patient column, no parent, nothing restricted
+#: can sit below them. They are always visible on /fhir. Every other clinical table must get
+#: a rule below, or the generator stops.
+FHIR_PATIENTLESS = {"location", "medication", "organization", "practitioner",
+                    "practitioner_role", "schedule"}
+#: Tables that point at a resource of any type by (type column, id column), not by a key.
+FHIR_POLYMORPHIC = {"fhir_resource_history": ("resource_type", "resource_id"),
+                    "provenance": ("target_resource_type", "target_id")}
+
+
+def _visible(table: str, alias: str, id_expr: str) -> str:
+    # S608: SQL built from model names only; this generator never sees user input.
+    return (f"EXISTS (SELECT 1 FROM {_q(CLINICAL_SCHEMA, table)} {alias} "  # noqa: S608
+            f"WHERE {alias}.id = {id_expr})")
+
+
+def _by_type(own_table: str, type_col: str, id_col: str) -> str:
+    # A row about a resource of its own table's type (a provenance of a provenance) falls to
+    # ELSE false and stays hidden: reading its own table from its own policy would recurse.
+    whens = " ".join(f"WHEN '{rtype}' THEN {_visible(cls.__table__.name, 'v', id_col)}"
+                     for rtype, cls in sorted(FHIR_RESOURCES.items())
+                     if cls.__table__.name != own_table)
+    return f"CASE {type_col} {whens} ELSE false END"
+
+
+def fhir_visibility_rules() -> dict[str, str]:
+    """Clinical table -> the condition under which shri_fhir_reader may see a row (D22).
+
+    The patient is visible unless its chart is restricted. Every other row is visible only if
+    each row it hangs off is visible to the same role: its patient, its parent row(s), or the
+    resource a history or provenance row is about. The conditions are subqueries that run as
+    shri_fhir_reader, so each one is filtered by the tables' own policies in turn, and a
+    restricted chart disappears with everything below it. No function is involved, so the
+    database never answers "is this patient restricted?" for the role.
+    """
+    labels = ", ".join(f"'{label}'" for label in RESTRICTED_LABELS)
+    rules: dict[str, str] = {}
+    for name, cls in sorted(MAPPERS.items()):
+        table = cls.__table__
+        if _schema_of(table) != CLINICAL_SCHEMA or name in FHIR_PATIENTLESS:
+            continue
+        if name == "patient":
+            rules[name] = f"NOT (meta_security && ARRAY[{labels}]::varchar[])"
+            continue
+        if name in FHIR_POLYMORPHIC:
+            rules[name] = _by_type(name, *FHIR_POLYMORPHIC[name])
+            continue
+        parts: list[str] = []
+        pcol = patient_column(table)
+        columns = ([pcol.name] if pcol is not None else []) + [
+            c for c in getattr(cls, "fhir_parent", ()) if pcol is None or c != pcol.name]
+        for col in columns:
+            target = referenced_table(table.c[col]).name
+            check = _visible(target, "v", f"{name}.{col}")
+            parts.append(check if not table.c[col].nullable else f"({col} IS NULL OR {check})")
+        if not parts:
+            raise ValueError(f"clinical table {name} has no patient, parent or target: add it "
+                             "to FHIR_PATIENTLESS only if nothing restricted can sit below it")
+        rules[name] = " AND ".join(parts)
+    for name, rule in rules.items():
+        if f"FROM {_q(CLINICAL_SCHEMA, name)} " in rule:
+            raise ValueError(f"the policy on {name} reads {name}: it would recurse forever")
+    return rules
+
+
+def fhir_lookup_denied_sql() -> str:
+    """audit.record_fhir_lookup_denied: Thulasi's shape (#13, D22). Returns nothing and writes
+    its own audit row, so /fhir never learns whether a chart was restricted or missing."""
+    allowed = ", ".join(f"'{rtype}'" for rtype in sorted(FHIR_RESOURCES))
+    labels = ", ".join(f"'{label}'" for label in RESTRICTED_LABELS)
+
+    def lookup(type_var: str, id_var: str, *, follow_provenance: bool) -> str:
+        whens = []
+        for rtype, cls in sorted(FHIR_RESOURCES.items()):
+            t = _q(CLINICAL_SCHEMA, cls.__table__.name)
+            pcol = patient_column(cls.__table__)
+            if rtype == "Patient":
+                pick = "r.id, NULL, NULL"
+            elif rtype == "Provenance" and follow_provenance:
+                pick = "NULL, r.target_resource_type, r.target_id"
+            else:
+                pick = f"{'r.' + pcol.name if pcol is not None else 'NULL'}, NULL, NULL"
+            # S608: SQL built from model names only; this generator never sees user input.
+            whens.append(f"    WHEN '{rtype}' THEN\n"  # noqa: S608
+                         f"      SELECT true, {pick} INTO v_found, v_patient, v_next_type, "
+                         f"v_next_id\n        FROM {t} r WHERE r.id = {id_var};")
+        return f"  CASE {type_var}\n" + "\n".join(whens) + "\n  END CASE;"
+
+    # S608: SQL built from model names only; this generator never sees user input.
+    return f"""-- Generated by tools/gen_db_rules.py - the /fhir denied-lookup audit. Do not edit.
+-- Called by the /fhir facade when it cannot serve a resource ID it was asked for. It decides
+-- here, as shri_migrator under the caller's clinic, whether the chart is restricted or the
+-- resource does not exist, and writes the audit row itself. It returns nothing, so the
+-- facade (and anyone who takes it over) cannot use it to learn which: the client gets the
+-- same 404 either way (D22). Restricted: a security event (access denied). Not found: an
+-- ordinary failed read, so the compliance officer's security log holds only restricted hits.
+CREATE FUNCTION audit.record_fhir_lookup_denied(p_resource_type text, p_resource_id uuid)
+RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, clinical, audit AS $$
+DECLARE
+  v_tenant uuid := NULLIF(current_setting('app.current_tenant_id', true), '')::uuid;
+  v_user uuid := NULLIF(current_setting('app.current_user_id', true), '')::uuid;
+  v_found boolean := false;
+  v_patient uuid;
+  v_next_type text;
+  v_next_id uuid;
+  v_restricted boolean := false;
+BEGIN
+  IF v_tenant IS NULL THEN
+    RAISE EXCEPTION 'no clinic set for this /fhir request' USING ERRCODE = '42501';
+  END IF;
+  IF p_resource_id IS NULL OR p_resource_type IS NULL
+     OR p_resource_type NOT IN ({allowed}) THEN
+    RAISE EXCEPTION 'not a /fhir resource type' USING ERRCODE = '22023';
+  END IF;
+{lookup('p_resource_type', 'p_resource_id', follow_provenance=True)}
+  -- A provenance is restricted when the resource it is about is.
+  IF v_next_type IN ({allowed}) AND v_next_type <> 'Provenance' THEN
+{lookup('v_next_type', 'v_next_id', follow_provenance=False)}
+  END IF;
+  IF v_patient IS NOT NULL THEN
+    SELECT p.meta_security && ARRAY[{labels}]::varchar[] INTO v_restricted
+      FROM clinical.patient p WHERE p.id = v_patient;
+  END IF;
+  INSERT INTO audit.audit_event (tenant_id, actor_type, actor_user_id, action, category,
+                                 outcome, entity_type, entity_id, patient_id, purpose_of_use,
+                                 reason, correlation_id)
+  VALUES (v_tenant, CASE WHEN v_user IS NULL THEN 'system' ELSE 'user' END, v_user,
+          CASE WHEN v_restricted THEN 'access-denied' ELSE 'read' END,
+          CASE WHEN v_restricted THEN 'security' ELSE 'phi-read' END,
+          CASE WHEN v_restricted THEN 'denied' ELSE 'failure' END,
+          p_resource_type, p_resource_id::text,
+          CASE WHEN v_restricted THEN v_patient END, 'TREAT',
+          CASE WHEN v_restricted THEN 'restricted' ELSE 'not-found' END,
+          left(NULLIF(current_setting('app.correlation_id', true), ''), 64));
+END $$;
+REVOKE EXECUTE ON FUNCTION audit.record_fhir_lookup_denied(text, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION audit.record_fhir_lookup_denied(text, uuid) TO shri_fhir_reader;
+"""  # noqa: S608
+
+
+def fhir_visibility_sql() -> str:
+    out = ["-- Generated by tools/gen_db_rules.py - what /fhir may see (D22). Do not edit by hand.",
+           "-- RESTRICTIVE: combined with AND on top of the clinic policy, for shri_fhir_reader",
+           "-- only. shri_app is unaffected: in the API, break-glass decides (D37).", ""]
+    for name, rule in fhir_visibility_rules().items():
+        out.append(f"CREATE POLICY fhir_hide_restricted ON {_q(CLINICAL_SCHEMA, name)} "
+                   f"AS RESTRICTIVE FOR SELECT TO shri_fhir_reader USING ({rule});")
+    return "\n".join(out) + "\n\n" + fhir_lookup_denied_sql()
+
+
+def _lit(s: str) -> str:
+    return "'" + s.replace("'", "''") + "'"
+
+
+def settings_seed_sql() -> str:
+    """The platform settings catalogue (admin/core.py SETTINGS)."""
+    out = [f"INSERT INTO {_q(ADMIN_SCHEMA, 'setting_definition')} "
+           "(id, key, value_type, default_value, description) VALUES"]
+    out.append(",\n".join(f"  (gen_random_uuid(), {_lit(k)}, {_lit(t.value)}, {_lit(d)}, "
+                          f"{_lit(desc)})" for k, t, d, desc in SETTINGS)
+               + "\nON CONFLICT (key) DO NOTHING;")
+    return "\n".join(out) + "\n"
+
+
+# Reference data only: code systems and the settings catalogue. Roles and permissions are not
+# seeded: core's ROLE_PERMISSIONS (backend/app/core/permissions.py) is the only catalogue
+# (Vimal, #45).
 def seed_sql() -> str:
-    def q(s: str) -> str:
-        return "'" + s.replace("'", "''") + "'"
     cs = _q(ADMIN_SCHEMA, "code_system")
     out = ["-- Generated by tools/gen_db_rules.py - reference data.", ""]
     out.append(f"INSERT INTO {cs} (id, code, uri, name) VALUES")
-    out.append(",\n".join(f"  (gen_random_uuid(), {q(c)}, {q(u)}, {q(n)})"
+    out.append(",\n".join(f"  (gen_random_uuid(), {_lit(c)}, {_lit(u)}, {_lit(n)})"
                           for c, u, n in systems.SEED) + "\nON CONFLICT DO NOTHING;")
-    return "\n".join(out) + "\n"
+    return "\n".join(out) + "\n\n" + settings_seed_sql()
 
 
 def schema_sql() -> str:
@@ -430,7 +628,8 @@ def schema_sql() -> str:
 def main() -> None:
     files = {"01_schema.sql": schema_sql(), "20_fhir_versioning.sql": versioning_sql(),
              "30_guards.sql": guards_sql(),
-             "90_rls_grants.sql": rls_sql(), "95_seed.sql": seed_sql()}
+             "90_rls_grants.sql": rls_sql(), "92_fhir_visibility.sql": fhir_visibility_sql(),
+             "95_seed.sql": seed_sql()}
     for name, body in files.items():
         (ROOT / "sql" / name).write_text(body)
         print(f"wrote sql/{name} ({body.count(chr(10))} lines)", file=sys.stderr)

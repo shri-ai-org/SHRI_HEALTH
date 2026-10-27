@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -22,7 +23,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import INET
+from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (
@@ -36,7 +37,9 @@ from app.db.base import (
 from app.db.models.enums import (
     ActorType,
     AuditAction,
+    AuditCategory,
     AuditOutcome,
+    BreakGlassReason,
     EndpointEnvironment,
     IntegrationKind,
     IntegrationMessageStatus,
@@ -58,8 +61,14 @@ class AuditEvent(Base, OptionalTenantMixin):
         Index("ix_audit_event_patient_time", "patient_id", "recorded_at"),
         Index("ix_audit_event_actor_time", "actor_user_id", "recorded_at"),
         Index("ix_audit_event_entity", "entity_type", "entity_id"),
-        CheckConstraint("action <> 'break-glass' OR reason IS NOT NULL",
-                        name="break_glass_reason"),
+        # Platform security events with no clinic (A47), for the later platform reviewer role.
+        Index("ix_audit_event_platform_time", "recorded_at",
+              postgresql_where=text("tenant_id IS NULL")),
+        # A break-glass row carries the grant's reason; empty or blank is no reason (D53, D5).
+        CheckConstraint("action <> 'break-glass' OR (reason IS NOT NULL "
+                        "AND length(trim(reason)) > 0)", name="break_glass_reason"),
+        # 1: the original payload; 2 (every new row, set by the chain trigger) adds category.
+        CheckConstraint("hash_version IN (1, 2)", name="hash_version_known"),
         CheckConstraint("actor_type <> 'user' OR actor_user_id IS NOT NULL", name="user_actor"),
     )
 
@@ -71,6 +80,8 @@ class AuditEvent(Base, OptionalTenantMixin):
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
     actor_display: Mapped[str | None] = mapped_column(String(200))
     action: Mapped[AuditAction] = mapped_column(enum_type(AuditAction), nullable=False)
+    # SECURITY_MODEL §6 category. Clinic-less rows are allowed only for security events (A47).
+    category: Mapped[AuditCategory] = mapped_column(enum_type(AuditCategory), nullable=False)
     outcome: Mapped[AuditOutcome] = mapped_column(enum_type(AuditOutcome), nullable=False)
     entity_type: Mapped[str | None] = mapped_column(String(64))     # FHIR type or table name
     entity_id: Mapped[str | None] = mapped_column(String(64))
@@ -84,6 +95,8 @@ class AuditEvent(Base, OptionalTenantMixin):
     chain_seq: Mapped[int | None] = mapped_column(BigInteger)
     prev_hash: Mapped[str | None] = mapped_column(String(64))
     hash: Mapped[str | None] = mapped_column(String(64))
+    hash_version: Mapped[int] = mapped_column(SmallInteger, nullable=False,
+                                              server_default=text("2"))
 
 
 class BreakGlassAccess(Base, AdminMixin):
@@ -93,7 +106,10 @@ class BreakGlassAccess(Base, AdminMixin):
     __table_args__ = (
         CheckConstraint("expires_at > granted_at", name="expiry_after_grant"),
         CheckConstraint("expires_at <= granted_at + interval '24 hours'", name="max_24h"),
-        CheckConstraint("length(trim(reason)) >= 10", name="reason_stated"),
+        # D53: a reason code; free text is required only for "other". coalesce, because a
+        # CHECK that evaluates to NULL passes: without it, "other" with no text would too.
+        CheckConstraint("reason_code <> 'other' OR coalesce(length(trim(reason_text)), 0) >= 1",
+                        name="other_needs_text"),
         CheckConstraint("(reviewed_at IS NULL) = (reviewed_by_user_id IS NULL)",
                         name="review_pair"),
         Index("ix_break_glass_access_active", "user_id", "patient_id", "expires_at"),
@@ -101,7 +117,9 @@ class BreakGlassAccess(Base, AdminMixin):
 
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.app_user.id"), nullable=False)
-    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    reason_code: Mapped[BreakGlassReason] = mapped_column(enum_type(BreakGlassReason),
+                                                          nullable=False)
+    reason_text: Mapped[str | None] = mapped_column(String(500))
     granted_at: Mapped[datetime] = mapped_column(nullable=False)
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     audit_event_id: Mapped[int | None] = mapped_column(BigInteger,
@@ -145,7 +163,17 @@ class DuplicateMatchEvidence(Base, AdminMixin):
 
 class PatientMerge(Base, AdminMixin):
     """Audited merge. Moved records are listed in patient_merge_record so it can be undone;
-    the merged patient gets a Patient.link 'replaced-by'."""
+    the merged patient gets a Patient.link 'replaced-by'.
+
+    Undo (D51): ``admin.patient_merge_undo_blocked_reason(id)`` says whether a merge can still
+    be undone: ``already-undone``, ``records-changed``, or NULL when it can. It compares
+    versions: the merge records both patients' versions here and each moved record's in
+    ``patient_merge_record``, before it changes them (the database checks that they are
+    current), and its one transaction moves each by exactly one. A merge can be undone while
+    it stands and every one of them is still at that next version. The database refuses an
+    undo that is not allowed, and any other change to a merge (``shri_patient_merge_guard``).
+    The undo sets ``unmerged_at``, moves the records back, and ends with
+    ``admin.finish_patient_merge_undo(id)`` (backend/app/db/CLAUDE.md)."""
     __tablename__ = "patient_merge"
     __table_args__ = (
         CheckConstraint("surviving_patient_id <> merged_patient_id", name="distinct_patients"),
@@ -165,6 +193,10 @@ class PatientMerge(Base, AdminMixin):
                                                             nullable=False)
     unmerged_at: Mapped[datetime | None]
     unmerged_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
+    #: Both patients' versions (meta_version_id) before the merge. NULL for merges recorded
+    #: before migration 0008, which can no longer be undone; required on every new merge.
+    surviving_patient_version: Mapped[int | None] = mapped_column(Integer)
+    merged_patient_version: Mapped[int | None] = mapped_column(Integer)
 
 
 class PatientMergeRecord(Base, AdminMixin):
@@ -222,6 +254,17 @@ class IntegrationMessage(Base, AdminMixin):
     __tablename__ = "integration_message"
     __table_args__ = (
         Index("ix_integration_message_dispatch", "status", "next_attempt_at"),
+        # The outbox (T29, D25): due outbound work, and per-key order (a CancelRx never
+        # overtakes its NewRx). Claimed through admin.claim_outbound_messages().
+        Index("ix_integration_message_outbound_due", "next_attempt_at",
+              postgresql_where=text("direction = 'outbound' AND status IN ('queued', 'failed')")),
+        Index("ix_integration_message_ordering", "tenant_id", "ordering_key", "created_at"),
+        # A claim whose worker died: claimable again once its lease (15 minutes) has run out.
+        Index("ix_integration_message_lease", "claimed_at",
+              postgresql_where=text("direction = 'outbound' AND status = 'sending'")),
+        # The outbound job is IDs only: a small JSON object, never a document.
+        CheckConstraint("payload IS NULL OR (jsonb_typeof(payload) = 'object' "
+                        "AND octet_length(payload::text) <= 8192)", name="payload_ids_only"),
         Index("ix_integration_message_control", "endpoint_id", "control_id"),
         UniqueConstraint("tenant_id", "idempotency_key"),
         UniqueConstraint("endpoint_id", "direction", "control_id"),   # HL7 MSH-10 dedupe
@@ -240,6 +283,9 @@ class IntegrationMessage(Base, AdminMixin):
     status: Mapped[IntegrationMessageStatus] = mapped_column(enum_type(IntegrationMessageStatus),
                                                              nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(100))
+    ordering_key: Mapped[str | None] = mapped_column(String(100))
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)   # outbound job: IDs only
+    claimed_at: Mapped[datetime | None]          # set by admin.claim_outbound_messages
     correlation_id: Mapped[str | None] = mapped_column(String(64))
     control_id: Mapped[str | None] = mapped_column(String(60))      # MSH-10 / ISA13 / ST02
     payload_binary_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(
