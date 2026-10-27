@@ -59,6 +59,9 @@ services:
   api:
     build:
       context: ../../backend
+      # The contract's operations map, the one file the image takes from contracts/ (Dockerfile).
+      additional_contexts:
+        contracts: ../../contracts/openapi/dist
     environment:
       ENVIRONMENT: development
       AUTH_MODE: dev_header
