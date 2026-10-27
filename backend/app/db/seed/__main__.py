@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import sys
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
@@ -13,6 +13,12 @@ from app.db.seed.starter import load_starter
 
 LAYERS = {"starter": load_starter}
 ALLOWED_ENVIRONMENTS = {"development", "test"}
+
+
+def bypasses_rls(db: Session) -> bool:
+    """A superuser or BYPASSRLS login would skip row-level security without a sound."""
+    return bool(db.execute(text("SELECT rolsuper OR rolbypassrls FROM pg_roles "
+                                "WHERE rolname = current_user")).scalar_one())
 
 
 def main(argv: list[str]) -> int:
@@ -31,6 +37,10 @@ def main(argv: list[str]) -> int:
     engine = create_engine(make_url(url).set(drivername="postgresql+psycopg"), poolclass=NullPool)
     try:
         with Session(engine) as db, db.begin():
+            if bypasses_rls(db):
+                print("refusing to seed as a role that bypasses row-level security; use "
+                      "shri_migrator", file=sys.stderr)
+                return 1
             LAYERS[argv[0]](db)
     finally:
         engine.dispose()

@@ -14,7 +14,10 @@ Layers, each building on the one before, through the same insert-if-missing buil
 
 It runs as ``shri_migrator`` (``MIGRATION_DATABASE_URL``), because creating a practice is a
 platform action no service role may take. It sets ``app.current_tenant_id`` for each practice,
-so forced row-level security checks every row it writes, and every trigger fires.
+so forced row-level security checks every row it writes, and every trigger fires. It refuses a
+login that bypasses row-level security. This is for development and test databases only:
+production onboarding must not copy it, since D23 keeps ``shri_migrator`` for migrations; it
+needs its own design.
 
 Usage:  python -m app.db.seed starter    (ENVIRONMENT must be development or test)
 """

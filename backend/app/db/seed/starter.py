@@ -28,7 +28,7 @@ def sid(kind: int, n: int) -> uuid.UUID:
 
 # Kinds of fixed ID.
 ORG, SITE, ROOM, FACILITY, PRACTITIONER, ROLE, SCHEDULE, RULE, VISIT, PAYER, PRACTICE_PAYER, \
-    TEMPLATE, SECTION, COUNTER, USER, NAME, IDENT, ROLE_LOCATION, ACTOR = range(1, 20)
+    TEMPLATE, SECTION, COUNTER, USER, NAME, IDENT, ROLE_LOCATION, ACTOR, ADDRESS = range(1, 21)
 
 #: The MRN system of the starter practice (D41): the practice prefix plus a number.
 MRN_SYSTEM = "https://shri.health/fhir/sid/mrn/riverbend"
@@ -44,24 +44,28 @@ class Practice:
     timezone: str
     mrn_prefix: str
     mrn_system: str
-    #: (fixed facility ID or None, code, name, IANA time zone)
-    facilities: tuple[tuple[uuid.UUID | None, str, str, str], ...]
+    #: (fixed facility ID or None, code, name, IANA time zone, (street, city, state, ZIP))
+    facilities: tuple[tuple[uuid.UUID | None, str, str, str, tuple[str, str, str, str]], ...]
 
 
 PRACTICES = (
     Practice(CLINIC_A, "riverbend", "Riverbend Family Medicine (synthetic)", "America/Chicago",
              "RFM", MRN_SYSTEM,
-             ((FACILITY_A, "MAIN", "Riverbend main office", "America/Chicago"),
-              (None, "NORTH", "Riverbend north office", "America/New_York"))),
+             ((FACILITY_A, "MAIN", "Riverbend main office (synthetic)", "America/Chicago",
+               ("100 Sample Avenue", "Springfield", "IL", "62704")),
+              (None, "NORTH", "Riverbend north office (synthetic)", "America/New_York",
+               ("200 Sample Avenue", "Columbus", "OH", "43004")))),
     Practice(CLINIC_B, "northgate", "Northgate Clinic (synthetic)", "America/Denver",
              "NGC", "https://shri.health/fhir/sid/mrn/northgate",
-             ((FACILITY_B, "MAIN", "Northgate office", "America/Denver"),)),
+             ((FACILITY_B, "MAIN", "Northgate office (synthetic)", "America/Denver",
+               ("300 Sample Avenue", "Denver", "CO", "80202")),)),
 )
 
-#: (dev user who is this provider, family, given, prefix, suffix, NPI not in NPPES)
+#: (dev user who is this provider, family, given, prefix, suffix, NPI not in NPPES). Names with
+#: digits, Synthea style, so they can never match a real clinician.
 PROVIDERS = (
-    ("md", "Lindqvist", "Avery", "Dr.", "MD", "1999999901"),
-    ("app", "Okonkwo", "Jordan", None, "NP", "1999999919"),
+    ("md", "Lindqvist58", "Avery401", "Dr.", "MD", "1999999901"),
+    ("app", "Okonkwo73", "Jordan552", None, "NP", "1999999919"),
 )
 
 #: (code, name, minutes, new patient, telehealth, note template code)
@@ -123,11 +127,15 @@ def _practice(db: Session, p: Practice, number: int) -> dict[str, Any]:
     _ensure(db, "mrn_counter", sid(COUNTER, number), tenant_id=p.tenant_id,
             prefix=p.mrn_prefix, system=p.mrn_system)
     sites = []
-    for i, (fixed, code, name, tz) in enumerate(p.facilities, start=1):
+    for i, (fixed, code, name, tz, (street, city, state, zip_code)) in enumerate(
+            p.facilities, start=1):
         n = number * 10 + i
         site = _ensure(db, "location", sid(SITE, n), tenant_id=p.tenant_id, name=name,
                        physical_type_system=systems.LOCATION_PHYSICAL_TYPE,
-                       physical_type_code="si", managing_organization_id=org.id)
+                       physical_type_code="si", managing_organization_id=org.id,
+                       address=[M["address"](id=sid(ADDRESS, n), line=[street], city=city,
+                                            state=state, postal_code=zip_code, country="US",
+                                            use="work")])
         _ensure(db, "location", sid(ROOM, n), tenant_id=p.tenant_id, name=f"{name}, exam 1",
                 physical_type_system=systems.LOCATION_PHYSICAL_TYPE, physical_type_code="ro",
                 part_of_location_id=site.id)
@@ -194,7 +202,8 @@ def _templates_and_visit_types(db: Session) -> dict[str, uuid.UUID]:
 
 
 def _schedules(db: Session, practice: dict[str, Any], visits: dict[str, uuid.UUID]) -> None:
-    """One schedule per provider and facility, Monday to Friday, 9:00 to 17:00, every visit type."""
+    """One schedule per provider and facility, Monday to Friday, 9:00 to 17:00, every visit type,
+    on a 20-minute grid that every visit length fits."""
     for i in range(1, len(PROVIDERS) + 1):
         for j, (site, fac) in enumerate(practice["sites"], start=1):
             n = i * 10 + j
@@ -208,7 +217,7 @@ def _schedules(db: Session, practice: dict[str, Any], visits: dict[str, uuid.UUI
             for d, day in enumerate(WEEKDAYS, start=1):
                 rule = _ensure(db, "schedule_availability_rule", sid(RULE, n * 10 + d),
                                tenant_id=CLINIC_A, schedule_id=sch.id, day_of_week=day,
-                               start_time=time(9), end_time=time(17), slot_minutes=15,
+                               start_time=time(9), end_time=time(17), slot_minutes=20,
                                location_id=site.id, effective_from=EFFECTIVE_FROM)
                 link = M["availability_rule_appointment_type"]
                 have = set(db.execute(select(link.appointment_type_id)
@@ -221,7 +230,8 @@ def _schedules(db: Session, practice: dict[str, Any], visits: dict[str, uuid.UUI
 def load_starter(db: Session) -> None:
     """Loads the starter layer in the session's transaction; the caller commits."""
     # The rule functions name tables without a schema, as the API role's search_path finds
-    # them (sql/00_extensions.sql); shri_migrator has no such setting. For this transaction only.
+    # them. shri_migrator has the same setting (sql/00_extensions.sql), but a role's settings
+    # apply only at login, and the tests switch to it with SET ROLE. For this transaction only.
     db.execute(text("SET LOCAL search_path = clinical, admin, audit, public"))
     _set_clinic(db, None)
     _ensure(db, "payer", PAYER_ID, name="Test Health Plan (synthetic)", payer_type="commercial")

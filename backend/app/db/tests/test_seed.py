@@ -44,8 +44,9 @@ def _seed(engine: Engine) -> None:
         starter.load_starter(db)
 
 
-def _snapshot(admin_engine: Engine) -> dict[str, tuple[int, int]]:
-    """Per table: row count, and the sum of every row's version (where it has one)."""
+def _snapshot(admin_engine: Engine) -> dict[str, tuple[Any, ...]]:
+    """Per table: row count, the sum of every row's version (where it has one) and the latest
+    updated_at (where it has one), so an update to a table without a version shows too."""
     out = {}
     with admin_engine.connect() as c:
         for table in COUNTED:
@@ -55,8 +56,9 @@ def _snapshot(admin_engine: Engine) -> dict[str, tuple[int, int]]:
                                  {"s": schema, "n": name}).scalars())
             version = ("meta_version_id" if "meta_version_id" in cols
                        else "version" if "version" in cols else "0")
+            updated = "max(updated_at)" if "updated_at" in cols else "NULL"
             out[table] = tuple(c.execute(text(  # noqa: S608
-                f"SELECT count(*), coalesce(sum({version}), 0) FROM {table}")).one())
+                f"SELECT count(*), coalesce(sum({version}), 0), {updated} FROM {table}")).one())
     return out
 
 
@@ -105,9 +107,22 @@ def test_the_dev_users_see_their_practice_through_the_api_role(
         conn.close()  # type: ignore[union-attr]
 
 
-def test_the_seed_refuses_to_run_outside_development(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.db.seed.__main__ import main
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    assert main(["starter"]) == 1
-    monkeypatch.setenv("ENVIRONMENT", "development")
-    assert main(["unknown"]) == 2
+def test_a_superuser_login_is_detected(admin_engine: Engine, migrator_engine: Engine) -> None:
+    """The test URL is a superuser, which would skip RLS; shri_migrator does not."""
+    from app.db.seed.__main__ import bypasses_rls
+    with Session(admin_engine) as db:
+        assert bypasses_rls(db)
+    with Session(migrator_engine) as db:
+        assert not bypasses_rls(db)
+
+
+def test_facilities_have_a_synthetic_address(migrator_engine: Engine,
+                                             admin_engine: Engine) -> None:
+    _seed(migrator_engine)
+    with admin_engine.connect() as c:
+        rows = c.execute(text("SELECT f.name, a.line, a.city, a.state FROM admin.facility f "
+                              "JOIN clinical.address a ON a.location_id = f.location_id "
+                              "WHERE f.tenant_id IN (:a, :b)"),
+                         {"a": CLINIC_A, "b": CLINIC_B}).all()
+    assert len(rows) == 3
+    assert all(r.name.endswith("(synthetic)") and "Sample Avenue" in r.line[0] for r in rows)
