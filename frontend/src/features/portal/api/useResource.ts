@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ApiError } from '../../../api/client'
 import { isProblem, type Problem } from '../../../design-system'
 
 export type Resource<T> =
@@ -6,8 +7,9 @@ export type Resource<T> =
   | { status: 'error'; data?: undefined; problem: Problem; reload: () => void }
   | { status: 'ready'; data: T; problem?: undefined; reload: () => void; setData: (update: (current: T) => T) => void }
 
-/** Any thrown value as a Problem, so screens always switch on `code`. */
+/** Any thrown value as a Problem (the generated client's `ApiError`, or the mock's Problem), so screens always switch on `code`. */
 export function toProblem(error: unknown): Problem {
+  if (error instanceof ApiError) return error.problem
   if (isProblem(error)) return error
   return { type: 'about:blank', title: 'Network error', status: 0, code: 'service-unavailable' }
 }

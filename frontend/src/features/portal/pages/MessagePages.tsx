@@ -268,7 +268,7 @@ export function ComposePage() {
               <ErrorSummary errors={errors} />
               {failure ? <Alert tone="critical" title="Message not sent">{failure} Your message is still here.</Alert> : null}
               <Field id="cm-from" label="From">
-                {(p) => <TextInput {...p} readOnly value={[...(session.name.given ?? []), session.name.family].join(' ')} className="bg-surface-2" />}
+                {(p) => <TextInput {...p} readOnly value={session.patient.displayName} className="bg-surface-2" />}
               </Field>
               <Field id="cm-to" label="To" required error={err('cm-to')}>
                 {(p) => (

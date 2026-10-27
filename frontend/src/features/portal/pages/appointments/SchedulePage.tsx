@@ -1,42 +1,38 @@
 import { Clock } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { newIdempotencyKey } from '../../../../api/client'
+import type { PortalAppointment, PortalBookingFacility, PortalSlot } from '../../../../api/generated/model'
 import { Alert, Button, DateInput, EmptyState, Field, formatDate, formatTime, Modal, problemCopy, Select, Spinner, todayIn } from '../../../../design-system'
 import { cn } from '../../../../design-system/lib/cn'
 import { usePortalApi } from '../../api/portalApi'
-import type { Appointment, AppointmentCategory, Facility, ReminderPreference, Slot } from '../../api/types'
 import { toProblem, useResource } from '../../api/useResource'
 import { useRouter } from '../../router'
 import { AsyncPanel, ErrorSummary, formatLongDay, PageHeader } from '../../ui'
 
 /*
- * The old "Schedule an appointment" page: one form with the old fields in the old order, and a
- * "Preferred time" box that opens the morning/afternoon slot picker. Two fixes: the old "Select a
- * specialty" list was really the clinic location, and "Reminder preferences" listed appointment
- * statuses; here they are labelled and filled correctly.
+ * The old "Schedule an appointment" page, on the contract's booking flow (M20): location, then the
+ * visit types offered there (each with its length), then the providers for that type, then a date
+ * and the free times (`GET /portal/me/slots`). A taken time (`409 booking-conflict`) reads the free
+ * times again. Rescheduling keeps the location and visit type and moves the time (and provider).
  */
 
 const REASONS = ['New Medical Problem Visit', 'Medical Problem Followup Visit', 'Annual Physical', 'Well child checkup', 'Others']
-const DURATIONS = [15, 30, 45, 60] as const
-const REMINDERS: Array<{ id: ReminderPreference; label: string }> = [
-  { id: 'text', label: 'Text message' },
-  { id: 'email', label: 'Email' },
-  { id: 'phone', label: 'Phone call' },
-]
+
+/** The bookable window: today plus 30 days. */
+const WINDOW_DAYS = 30
 
 interface Form {
   facilityId: string
-  categoryId: string
+  appointmentTypeId: string
   reason: string
   providerId: string
   date: string | null
-  slot: Slot | null
-  duration: '' | (typeof DURATIONS)[number]
-  reminder: '' | ReminderPreference
+  slot: PortalSlot | null
 }
 
 export function SchedulePage({ rescheduleId }: { rescheduleId?: string }) {
   const api = usePortalApi()
-  const refs = useResource(() => Promise.all([api.listFacilities(), api.listCategories(), rescheduleId ? api.getAppointment(rescheduleId) : Promise.resolve(null)]), [rescheduleId])
+  const refs = useResource(() => Promise.all([api.listBookingFacilities(), rescheduleId ? api.getAppointment(rescheduleId) : Promise.resolve(null)]), [rescheduleId])
   return (
     <>
       <PageHeader
@@ -44,52 +40,62 @@ export function SchedulePage({ rescheduleId }: { rescheduleId?: string }) {
         back={rescheduleId ? { to: `/appointments/${rescheduleId}`, label: 'Upcoming Visit Details' } : { to: '/appointments', label: 'My Appointments' }}
       />
       <AsyncPanel resource={refs} label="scheduling options">
-        {([facilities, categories, existing]) => <ScheduleForm facilities={facilities} categories={categories} existing={existing} />}
+        {([facilities, existing]) => <ScheduleForm facilities={facilities} existing={existing} />}
       </AsyncPanel>
     </>
   )
 }
 
-function ScheduleForm({ facilities, categories, existing }: { facilities: Facility[]; categories: AppointmentCategory[]; existing: Appointment | null }) {
+function ScheduleForm({ facilities, existing }: { facilities: PortalBookingFacility[]; existing: PortalAppointment | null }) {
   const api = usePortalApi()
   const { navigate } = useRouter()
-  const tz = facilities[0]?.timeZone ?? 'America/Chicago'
-  // When the form opened; the bookable window is today plus 30 days.
+  const [f, setF] = useState<Form>(() => ({
+    facilityId: existing?.facility.id ?? '',
+    appointmentTypeId: existing?.appointmentType.id ?? '',
+    reason: existing?.reasonForVisit ?? '',
+    providerId: existing?.provider.id ?? '',
+    date: existing ? todayIn(existing.timeZone, new Date(existing.startAt)) : '',
+    slot: null,
+  }))
+  const facility = facilities.find((x) => x.id === f.facilityId)
+  // Dates and times are the facility's (D40).
+  const tz = facility?.timeZone ?? existing?.timeZone ?? facilities[0]?.timeZone ?? 'UTC'
+  // When the form opened; the bookable window counts from then.
   const [openedAt] = useState(() => Date.now())
   const today = todayIn(tz, new Date(openedAt))
-  const lastDay = todayIn(tz, new Date(openedAt + 30 * 86_400_000))
-  const existingMinutes = existing ? Math.round((Date.parse(existing.endAt) - Date.parse(existing.startAt)) / 60000) : 0
-  const [f, setF] = useState<Form>({
-    facilityId: existing?.facility.id ?? '',
-    categoryId: existing?.category.id ?? '',
-    reason: existing?.reason ?? '',
-    providerId: existing?.provider.id ?? '',
-    date: existing ? todayIn(tz, new Date(existing.startAt)) : '',
-    slot: null,
-    duration: (DURATIONS as readonly number[]).includes(existingMinutes) ? (existingMinutes as Form['duration']) : '',
-    reminder: existing?.reminder ?? '',
-  })
-  const providers = useResource(() => (f.facilityId ? api.listProviders(f.facilityId) : Promise.resolve([])), [f.facilityId])
+  const lastDay = todayIn(tz, new Date(openedAt + WINDOW_DAYS * 86_400_000))
+
+  const types = useResource(() => (f.facilityId ? api.listBookingAppointmentTypes(f.facilityId) : Promise.resolve([])), [f.facilityId])
+  const providers = useResource(
+    () => (f.facilityId && f.appointmentTypeId ? api.listBookingProviders(f.facilityId, f.appointmentTypeId) : Promise.resolve([])),
+    [f.facilityId, f.appointmentTypeId],
+  )
   const [errors, setErrors] = useState<Array<{ fieldId: string; message: string }>>([])
   const [picking, setPicking] = useState(false)
+  // Bumped after a booking conflict, so the free times are read again.
+  const [slotsVersion, setSlotsVersion] = useState(0)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
-  const [booked, setBooked] = useState<Appointment | null>(null)
-  const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((x) => ({ ...x, [k]: v }))
+  const [booked, setBooked] = useState<PortalAppointment | null>(null)
+  // One key per chosen time: a retry of the same booking is the same request (API_STANDARDS §10).
+  const [key, setKey] = useState(newIdempotencyKey)
+  const set = (patch: Partial<Form>) => {
+    setF((x) => ({ ...x, ...patch }))
+    setKey(newIdempotencyKey())
+  }
   const err = (id: string) => errors.find((e) => e.fieldId === id)?.message
-  const canPickTime = Boolean(f.facilityId && f.providerId && f.date && f.date >= today && f.date <= lastDay)
+  const canPickTime = Boolean(f.facilityId && f.appointmentTypeId && f.providerId && f.date && f.date >= today && f.date <= lastDay)
+  const type = types.status === 'ready' ? types.data.find((t) => t.id === f.appointmentTypeId) : undefined
 
   function validate() {
     const found: typeof errors = []
     if (!f.facilityId) found.push({ fieldId: 'sc-facility', message: 'Select a location' })
-    if (!f.categoryId) found.push({ fieldId: 'sc-type', message: 'Select an appointment type' })
+    if (!f.appointmentTypeId) found.push({ fieldId: 'sc-type', message: 'Select an appointment type' })
     if (!f.reason) found.push({ fieldId: 'sc-reason', message: 'Select a reason for visit' })
     if (!f.providerId) found.push({ fieldId: 'sc-provider', message: 'Select a provider' })
     if (!f.date) found.push({ fieldId: 'sc-date', message: 'Enter a valid date as MM/DD/YYYY' })
     else if (f.date < today || f.date > lastDay) found.push({ fieldId: 'sc-date', message: `Choose a date from ${formatDate(today)} to ${formatDate(lastDay)}` })
     if (!f.slot) found.push({ fieldId: 'sc-time', message: 'Select a preferred time' })
-    if (!f.duration) found.push({ fieldId: 'sc-duration', message: 'Select a duration' })
-    if (!f.reminder) found.push({ fieldId: 'sc-reminder', message: 'Select a reminder preference' })
     return found
   }
 
@@ -98,17 +104,24 @@ function ScheduleForm({ facilities, categories, existing }: { facilities: Facili
     const found = validate()
     setErrors(found)
     setFailure(null)
-    if (found.length || !f.slot || !f.duration || !f.reminder) return
+    if (found.length || !f.slot) return
     setBusy(true)
-    const request = { facilityId: f.facilityId, categoryId: f.categoryId, reason: f.reason, providerId: f.providerId, startAt: f.slot.startAt, durationMinutes: f.duration, reminder: f.reminder }
     try {
-      setBooked(existing ? await api.rescheduleAppointment(existing.id, request) : await api.bookAppointment(request))
+      setBooked(
+        existing
+          ? await api.rescheduleAppointment(existing.id, { startAt: f.slot.startAt, ...(f.providerId !== existing.provider.id ? { providerId: f.providerId } : {}) }, key)
+          : await api.bookAppointment(
+              { facilityId: f.facilityId, appointmentTypeId: f.appointmentTypeId, providerId: f.providerId, startAt: f.slot.startAt, reasonForVisit: f.reason },
+              key,
+            ),
+      )
       window.scrollTo({ top: 0 })
     } catch (error) {
       const p = toProblem(error)
       if (p.code === 'booking-conflict') {
-        set('slot', null)
-        setFailure('The time slot is not available right now. Please choose another time for your appointment.')
+        set({ slot: null })
+        setSlotsVersion((v) => v + 1)
+        setFailure('That time was just taken. Please choose another time for your appointment.')
       } else setFailure(problemCopy(p).message)
     } finally {
       setBusy(false)
@@ -118,8 +131,8 @@ function ScheduleForm({ facilities, categories, existing }: { facilities: Facili
   if (booked) {
     return (
       <div className="max-w-2xl">
-        <Alert tone="success" title={`Appointment is ${existing ? 'rescheduled' : 'scheduled'} successfully on ${formatLongDay(booked.startAt, tz)} at ${formatTime(booked.startAt, tz)}.`}>
-          {booked.provider.displayName}, {booked.mode === 'video' ? 'video visit' : booked.facility.displayName}.
+        <Alert tone="success" title={`Appointment is ${existing ? 'rescheduled' : 'scheduled'} successfully on ${formatLongDay(booked.startAt, booked.timeZone)} at ${formatTime(booked.startAt, booked.timeZone)}.`}>
+          {booked.provider.displayName}, {booked.telehealth ? 'video visit' : booked.facility.name}.
         </Alert>
         <Button className="mt-4" onClick={() => navigate('/appointments')}>
           OK
@@ -137,48 +150,51 @@ function ScheduleForm({ facilities, categories, existing }: { facilities: Facili
       {failure ? <Alert tone="critical" title="Not scheduled">{failure}</Alert> : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="sc-facility" label="Select a location" required error={err('sc-facility')}>
+        <Field id="sc-facility" label="Select a location" required error={err('sc-facility')} {...(existing ? { hint: 'To change the location, cancel and book a new appointment' } : {})}>
           {(p) => (
-            <Select {...p} value={f.facilityId} onChange={(e) => setF((x) => ({ ...x, facilityId: e.target.value, providerId: '', slot: null }))}>
+            <Select {...p} disabled={Boolean(existing)} value={f.facilityId} onChange={(e) => set({ facilityId: e.target.value, appointmentTypeId: '', providerId: '', slot: null })}>
               <option value="">Select an option</option>
               {facilities.map((fa) => (
                 <option key={fa.id} value={fa.id}>
-                  {fa.displayName}
+                  {fa.name}
                 </option>
               ))}
             </Select>
           )}
         </Field>
-        <Field id="sc-type" label="Select appointment type" required error={err('sc-type')}>
+        <Field id="sc-type" label="Select appointment type" {...(f.facilityId ? {} : { hint: 'Select a location first' })} required error={err('sc-type')}>
           {(p) => (
-            <Select {...p} value={f.categoryId} onChange={(e) => set('categoryId', e.target.value)}>
-              <option value="">Select an option</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.displayName}
-                </option>
-              ))}
+            <Select {...p} disabled={Boolean(existing) || !f.facilityId || types.status !== 'ready'} value={f.appointmentTypeId} onChange={(e) => set({ appointmentTypeId: e.target.value, providerId: '', slot: null })}>
+              <option value="">{types.status === 'loading' && f.facilityId ? 'Loading appointment types…' : 'Select an option'}</option>
+              {types.status === 'ready'
+                ? types.data.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.durationMinutes} min{t.telehealth ? ', video' : ''})
+                    </option>
+                  ))
+                : existing ? <option value={existing.appointmentType.id}>{existing.appointmentType.name}</option> : null}
             </Select>
           )}
         </Field>
         <Field id="sc-reason" label="Select reason for visit" required error={err('sc-reason')}>
           {(p) => (
-            <Select {...p} value={f.reason} onChange={(e) => set('reason', e.target.value)}>
+            <Select {...p} disabled={Boolean(existing)} value={f.reason} onChange={(e) => set({ reason: e.target.value })}>
               <option value="">Select an option</option>
-              {REASONS.map((r) => (
+              {[...REASONS, ...(f.reason && !REASONS.includes(f.reason) ? [f.reason] : [])].map((r) => (
                 <option key={r}>{r}</option>
               ))}
             </Select>
           )}
         </Field>
-        <Field id="sc-provider" label="Your providers" {...(f.facilityId ? {} : { hint: 'Select a location first' })} required error={err('sc-provider')}>
+        <Field id="sc-provider" label="Your providers" {...(f.appointmentTypeId ? {} : { hint: 'Select an appointment type first' })} required error={err('sc-provider')}>
           {(p) => (
-            <Select {...p} disabled={!f.facilityId || providers.status !== 'ready'} value={f.providerId} onChange={(e) => setF((x) => ({ ...x, providerId: e.target.value, slot: null }))}>
-              <option value="">{providers.status === 'loading' && f.facilityId ? 'Loading providers…' : 'Select an option'}</option>
+            <Select {...p} disabled={!f.appointmentTypeId || providers.status !== 'ready'} value={f.providerId} onChange={(e) => set({ providerId: e.target.value, slot: null })}>
+              <option value="">{providers.status === 'loading' && f.appointmentTypeId ? 'Loading providers…' : 'Select an option'}</option>
               {providers.status === 'ready'
                 ? providers.data.map((pr) => (
                     <option key={pr.id} value={pr.id}>
                       {pr.displayName}
+                      {pr.specialty ? `, ${pr.specialty}` : ''}
                     </option>
                   ))
                 : null}
@@ -186,9 +202,9 @@ function ScheduleForm({ facilities, categories, existing }: { facilities: Facili
           )}
         </Field>
         <Field id="sc-date" label="Appointment preferred date" hint={`MM/DD/YYYY, up to ${formatDate(lastDay)}`} required error={err('sc-date')}>
-          {(p) => <DateInput {...p} value={f.date ?? ''} onValueChange={(v) => setF((x) => ({ ...x, date: v, slot: null }))} />}
+          {(p) => <DateInput {...p} value={f.date ?? ''} onValueChange={(v) => set({ date: v, slot: null })} />}
         </Field>
-        <Field id="sc-time" label="Preferred time" {...(canPickTime ? {} : { hint: 'Select a location, provider and date first' })} required error={err('sc-time')}>
+        <Field id="sc-time" label="Preferred time" {...(canPickTime ? {} : { hint: 'Select a location, type, provider and date first' })} required error={err('sc-time')}>
           {(p) => (
             <button
               {...p}
@@ -204,34 +220,10 @@ function ScheduleForm({ facilities, categories, existing }: { facilities: Facili
             </button>
           )}
         </Field>
-        <Field id="sc-duration" label="Duration (minutes)" required error={err('sc-duration')}>
-          {(p) => (
-            <Select {...p} value={f.duration} onChange={(e) => setF((x) => ({ ...x, duration: Number(e.target.value) as Form['duration'], slot: null }))}>
-              <option value="">Minutes</option>
-              {DURATIONS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
-        <Field id="sc-reminder" label="Reminder preferences" required error={err('sc-reminder')}>
-          {(p) => (
-            <Select {...p} value={f.reminder} onChange={(e) => set('reminder', e.target.value as ReminderPreference)}>
-              <option value="">Select an option</option>
-              {REMINDERS.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
       </div>
 
       <p className="text-sm text-ink-muted">
-        Please fill in all required fields and select Schedule to request your appointment. Video visits need a phone, tablet or computer with a camera and a good internet connection.
+        {type ? `This visit takes ${type.durationMinutes} minutes. ` : ''}Please fill in all required fields and select Schedule to request your appointment.
       </p>
       <div className="flex flex-col-reverse gap-3 border-t border-border-soft pt-5 sm:flex-row sm:justify-end">
         <Button variant="outline" onClick={() => navigate(existing ? `/appointments/${existing.id}` : '/appointments')}>
@@ -246,12 +238,13 @@ function ScheduleForm({ facilities, categories, existing }: { facilities: Facili
         <SlotPicker
           date={f.date}
           facilityId={f.facilityId}
+          appointmentTypeId={f.appointmentTypeId}
           providerId={f.providerId}
-          duration={f.duration || 15}
+          version={slotsVersion}
           timeZone={tz}
           selected={f.slot}
           onPick={(s) => {
-            set('slot', s)
+            set({ slot: s })
             setPicking(false)
           }}
           onClose={() => setPicking(false)}
@@ -262,9 +255,29 @@ function ScheduleForm({ facilities, categories, existing }: { facilities: Facili
 }
 
 /** The old "Select preferred timing" overlay: Morning (AM) and Afternoon (PM) time buttons. */
-function SlotPicker({ date, facilityId, providerId, duration, timeZone, selected, onPick, onClose }: { date: string; facilityId: string; providerId: string; duration: number; timeZone: string; selected: Slot | null; onPick: (s: Slot) => void; onClose: () => void }) {
+function SlotPicker({
+  date,
+  facilityId,
+  appointmentTypeId,
+  providerId,
+  version,
+  timeZone,
+  selected,
+  onPick,
+  onClose,
+}: {
+  date: string
+  facilityId: string
+  appointmentTypeId: string
+  providerId: string
+  version: number
+  timeZone: string
+  selected: PortalSlot | null
+  onPick: (s: PortalSlot) => void
+  onClose: () => void
+}) {
   const api = usePortalApi()
-  const slots = useResource(() => api.findSlots({ date, facilityId, providerId, durationMinutes: duration }), [date, facilityId, providerId, duration])
+  const slots = useResource(() => api.listSlots({ date, facilityId, appointmentTypeId, providerId }), [date, facilityId, appointmentTypeId, providerId, version])
   const heading = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: '2-digit', year: 'numeric' }).format(new Date(`${date}T12:00:00Z`))
   return (
     <Modal open size="lg" title="Select preferred timing" onClose={onClose}>
@@ -273,12 +286,12 @@ function SlotPicker({ date, facilityId, providerId, duration, timeZone, selected
         <Spinner label="Finding open times" />
       ) : (
         <AsyncPanel resource={slots} label="open times">
-          {(list) => {
-            if (!list.length) return <EmptyState title="No slots available" description="Try another date." />
-            const hour = (s: Slot) => Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hour12: false }).format(new Date(s.startAt)))
+          {(open) => {
+            if (!open.length) return <EmptyState title="No slots available" description="Try another date." />
+            const hour = (s: PortalSlot) => Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hour12: false }).format(new Date(s.startAt)))
             const groups = [
-              { title: 'Morning (AM)', items: list.filter((s) => hour(s) < 12) },
-              { title: 'Afternoon (PM)', items: list.filter((s) => hour(s) >= 12) },
+              { title: 'Morning (AM)', items: open.filter((s) => hour(s) < 12) },
+              { title: 'Afternoon (PM)', items: open.filter((s) => hour(s) >= 12) },
             ]
             return (
               <div className="space-y-5">

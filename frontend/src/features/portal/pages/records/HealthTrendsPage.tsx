@@ -1,13 +1,46 @@
 import { BarChart3, List } from 'lucide-react'
 import { useState } from 'react'
+import type { PortalVital, Quantity } from '../../../../api/generated/model'
 import { EmptyState, formatHeightFeetInches, toUsDisplay } from '../../../../design-system'
 import { cn } from '../../../../design-system/lib/cn'
 import { usePortalApi } from '../../api/portalApi'
-import type { Vital } from '../../api/types'
 import { useResource } from '../../api/useResource'
 import { AsyncPanel, Card, formatInstantShort, PageHeader, Pager, usePaged } from '../../ui'
 
-const TZ = 'America/Chicago'
+/** Vitals carry no facility; dates show in the patient's own time zone. */
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+/** One measuring session: every vital sign taken at the same moment, as the old portal showed a visit. */
+interface Reading {
+  takenAt: string
+  systolic?: number
+  diastolic?: number
+  pulse?: number
+  height?: Quantity
+  weight?: Quantity
+  bmi?: number
+  headCircumference?: Quantity
+}
+
+/** The contract lists one vital sign per row (US Core); the trends group them by when they were measured. */
+function toReadings(vitals: PortalVital[]): Reading[] {
+  const byTime = new Map<string, Reading>()
+  for (const v of vitals) {
+    const r = byTime.get(v.effectiveAt) ?? { takenAt: v.effectiveAt }
+    if (v.type === 'blood-pressure') {
+      if (v.systolic) r.systolic = v.systolic.value
+      if (v.diastolic) r.diastolic = v.diastolic.value
+    } else if (v.value) {
+      if (v.type === 'heart-rate') r.pulse = v.value.value
+      else if (v.type === 'body-height') r.height = v.value
+      else if (v.type === 'body-weight') r.weight = v.value
+      else if (v.type === 'bmi') r.bmi = v.value.value
+      else if (v.type === 'head-circumference') r.headCircumference = v.value
+    }
+    byTime.set(v.effectiveAt, r)
+  }
+  return [...byTime.values()].sort((a, b) => a.takenAt.localeCompare(b.takenAt))
+}
 
 interface Series {
   label: string
@@ -74,18 +107,16 @@ function LineChart({ title, unit, dates, series }: { title: string; unit: string
 }
 
 /** The old list view: one column per visit (newest first), one row per measurement, 3 visits a page. */
-function TrendTable({ vitals }: { vitals: Vital[] }) {
+function TrendTable({ vitals }: { vitals: Reading[] }) {
   const paged = usePaged([...vitals].reverse(), 3)
-  const q = (v: Vital['weight']) => (v ? toUsDisplay(v).text : '—')
-  const rows: Array<[string, (v: Vital) => string]> = [
+  const q = (v: Quantity | undefined) => (v ? toUsDisplay(v).text : '—')
+  const rows: Array<[string, (v: Reading) => string]> = [
     ['Blood Pressure', (v) => (v.systolic && v.diastolic ? `${v.systolic}/${v.diastolic} mmHg` : '—')],
     ['Pulse', (v) => (v.pulse ? `${v.pulse} /min` : '—')],
     ['Height', (v) => (v.height ? formatHeightFeetInches(v.height) : '—')],
     ['Weight', (v) => q(v.weight)],
-    ['Waist Circ', (v) => q(v.waistCircumference)],
     ['Head Circ', (v) => q(v.headCircumference)],
     ['BMI', (v) => v.bmi?.toFixed(1) ?? '—'],
-    ['BMI Status', (v) => v.bmiStatus ?? '—'],
   ]
   return (
     <>
@@ -96,7 +127,7 @@ function TrendTable({ vitals }: { vitals: Vital[] }) {
             <tr>
               <th scope="col" className="px-3 py-2.5 font-semibold">Date</th>
               {paged.rows.map((v) => (
-                <th key={v.id} scope="col" className="px-3 py-2.5 font-semibold">
+                <th key={v.takenAt} scope="col" className="px-3 py-2.5 font-semibold">
                   {formatInstantShort(v.takenAt, TZ)}
                 </th>
               ))}
@@ -107,7 +138,7 @@ function TrendTable({ vitals }: { vitals: Vital[] }) {
               <tr key={label} className="border-t border-border-soft">
                 <th scope="row" className="px-3 py-2.5 font-medium text-ink">{label}</th>
                 {paged.rows.map((v) => (
-                  <td key={v.id} className="px-3 py-2.5 tabular-nums">{fn(v)}</td>
+                  <td key={v.takenAt} className="px-3 py-2.5 tabular-nums">{fn(v)}</td>
                 ))}
               </tr>
             ))}
@@ -149,7 +180,7 @@ export function HealthTrendsPage() {
       <AsyncPanel resource={vitals} label="your vitals">
         {(list) => {
           if (!list.length) return <EmptyState title="No vitals on file yet" />
-          const sorted = [...list].sort((a, b) => a.takenAt.localeCompare(b.takenAt))
+          const sorted = toReadings(list)
           const dates = sorted.map((v) => v.takenAt)
           if (view === 'list') return <TrendTable vitals={sorted} />
           return (

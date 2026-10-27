@@ -1,7 +1,9 @@
 import { AlertTriangle, BellRing, CalendarDays, CreditCard, FlaskConical, FolderHeart, GraduationCap, Mail, Pill, Video } from 'lucide-react'
-import { formatTime, Spinner } from '../../../design-system'
+import { useState } from 'react'
+import { formatTime, Spinner, todayIn } from '../../../design-system'
 import { usePortalApi } from '../api/portalApi'
 import { useResource } from '../api/useResource'
+import { pathEnabled } from '../features'
 import { Link } from '../router'
 import { useSession } from '../session'
 import { formatLongDay, PageHeader } from '../ui'
@@ -22,17 +24,22 @@ const CARDS = [
   { to: '/patient-education', icon: GraduationCap, title: 'Patient Education', text: 'Search trusted patient education material.', accent: 'accent-education' },
 ]
 
+/** Alerts and Reminders show the next three upcoming appointments (M20: from `?when=upcoming`). */
+const ALERTS = 3
+
 export function HomePage() {
   const api = usePortalApi()
   const { session } = useSession()
-  const alerts = useResource(() => api.getAlerts(), [])
+  const alerts = useResource(() => api.listAppointments('upcoming').then((list) => list.filter((a) => a.status === 'booked').slice(0, ALERTS)), [])
+  // When the page opened, for "today" in each facility's zone.
+  const [now] = useState(() => new Date())
 
   return (
     <>
-      <PageHeader title={`Welcome, ${session.name.given?.[0] ?? ''}`} description="Your health, appointments and messages in one place." />
+      <PageHeader title={`Welcome, ${session.patient.displayName}`} description="Your health, appointments and messages in one place." />
       <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
         <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {CARDS.map(({ to, icon: Icon, title, text, accent }) => (
+          {CARDS.filter((c) => pathEnabled(c.to)).map(({ to, icon: Icon, title, text, accent }) => (
             <li key={title} className={accent}>
               <Link
                 to={to}
@@ -67,21 +74,24 @@ export function HomePage() {
               <p className="text-sm text-ink-muted">No alerts and reminders found.</p>
             ) : (
               <ul className="space-y-2">
-                {alerts.data.map((a) => (
-                  <li key={a.appointmentId}>
-                    <Link
-                      to={`/appointments/${a.appointmentId}`}
-                      className={`portal-lift flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium ${a.today ? 'border-critical-fg/30 bg-critical-bg text-critical-fg' : 'border-warning-fg/30 bg-warning-bg text-warning-fg'}`}
-                    >
-                      <AlertTriangle aria-hidden="true" size={16} className="mt-0.5 shrink-0" />
-                      <span>
-                        {a.today
-                          ? `Today at ${formatTime(a.startAt, a.timeZone)} you have an appointment.`
-                          : `You have an appointment on ${formatLongDay(a.startAt, a.timeZone)} at ${formatTime(a.startAt, a.timeZone)}.`}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
+                {alerts.data.map((a) => {
+                  const today = todayIn(a.timeZone, new Date(a.startAt)) === todayIn(a.timeZone, now)
+                  return (
+                    <li key={a.id}>
+                      <Link
+                        to={`/appointments/${a.id}`}
+                        className={`portal-lift flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium ${today ? 'border-critical-fg/30 bg-critical-bg text-critical-fg' : 'border-warning-fg/30 bg-warning-bg text-warning-fg'}`}
+                      >
+                        <AlertTriangle aria-hidden="true" size={16} className="mt-0.5 shrink-0" />
+                        <span>
+                          {today
+                            ? `Today at ${formatTime(a.startAt, a.timeZone)} you have an appointment.`
+                            : `You have an appointment on ${formatLongDay(a.startAt, a.timeZone)} at ${formatTime(a.startAt, a.timeZone)}.`}
+                        </span>
+                      </Link>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </div>

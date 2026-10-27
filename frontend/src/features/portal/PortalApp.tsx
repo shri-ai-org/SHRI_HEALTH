@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { onUnauthenticated, setCsrfSessionPath, setCsrfToken } from '../../api/client'
+import type { PortalSession } from '../../api/generated/model'
 import { IdleTimeoutWarning, Spinner } from '../../design-system'
 import { PortalApiContext, type PortalApi } from './api/portalApi'
-import type { PortalSession } from './api/types'
+import { pathEnabled } from './features'
 import './portal.css'
 import { PortalShell } from './PortalShell'
 import { matchPath, PortalRouter, useRouter } from './router'
@@ -79,35 +81,80 @@ export function PortalApp({ api }: { api: PortalApi }) {
   )
 }
 
+type GateState = { kind: 'checking' } | { kind: 'signed-out'; reason?: SignedOutReason } | { kind: 'signed-in'; session: PortalSession }
+
 function Gate({ api }: { api: PortalApi }) {
   const { path, navigate } = useRouter()
-  const [state, setState] = useState<{ kind: 'checking' } | { kind: 'signed-out'; reason?: SignedOutReason } | { kind: 'signed-in'; session: PortalSession }>({ kind: 'checking' })
+  const [state, setState] = useState<GateState>({ kind: 'checking' })
+  // The status for the 401 listener, set with the state (not in an effect), as in the staff session.
+  const signedInRef = useRef(false)
+
+  const signedIn = useCallback((session: PortalSession) => {
+    setCsrfToken(session.csrfToken)
+    signedInRef.current = true
+    setState({ kind: 'signed-in', session })
+  }, [])
+
+  const ended = useCallback(
+    (reason?: SignedOutReason) => {
+      setCsrfToken(null)
+      signedInRef.current = false
+      setState(reason ? { kind: 'signed-out', reason } : { kind: 'signed-out' })
+      if (reason) navigate('/sign-in', { replace: true })
+    },
+    [navigate],
+  )
 
   useEffect(() => {
-    api.refreshSession().then(
-      (session) => setState({ kind: 'signed-in', session }),
-      () => setState({ kind: 'signed-out' }),
+    // The portal's CSRF token comes from its own session (ADR-0013 §5).
+    setCsrfSessionPath('/portal/auth/session')
+    let live = true
+    // Reading the session never counts as activity, so it doesn't extend the idle timer.
+    api.getSession().then(
+      (session) => live && signedIn(session),
+      () => live && ended(),
     )
-  }, [api])
+    return () => {
+      live = false
+    }
+  }, [api, signedIn, ended])
+
+  // Any call answered 401: the server has ended the session.
+  useEffect(
+    () =>
+      onUnauthenticated(() => {
+        if (signedInRef.current) ended('expired')
+      }),
+    [ended],
+  )
 
   const signOut = useCallback(
     (reason: 'signed-out' | 'expired' = 'signed-out') => {
       void api.signOut().catch(() => undefined)
-      setState({ kind: 'signed-out', reason })
-      navigate('/sign-in', { replace: true })
+      ended(reason)
     },
-    [api, navigate],
+    [api, ended],
   )
 
   const refresh = useCallback(async () => {
-    const session = await api.refreshSession()
-    setState({ kind: 'signed-in', session })
-  }, [api])
+    signedIn(await api.refreshSession())
+  }, [api, signedIn])
 
-  const sessionApi = useMemo<SessionApi | null>(
-    () => (state.kind === 'signed-in' ? { session: state.session, signOut, refresh } : null),
-    [state, signOut, refresh],
-  )
+  // The local clock says a limit has passed: end the session only if the server agrees, as the
+  // staff session does. A failed read fails closed.
+  const expired = useCallback(async () => {
+    try {
+      const s = await api.getSession()
+      const now = Date.now()
+      if (Date.parse(s.idleExpiresAt) > now && Date.parse(s.expiresAt) > now) return signedIn(s)
+    } catch {
+      // Ended on the server, or unreachable: sign out here too.
+    }
+    signOut('expired')
+  }, [api, signedIn, signOut])
+
+  const session = state.kind === 'signed-in' ? state.session : null
+  const sessionApi = useMemo<SessionApi | null>(() => (session ? { session, signOut, refresh } : null), [session, signOut, refresh])
 
   if (state.kind === 'checking') {
     return (
@@ -117,19 +164,12 @@ function Gate({ api }: { api: PortalApi }) {
     )
   }
 
-  if (state.kind === 'signed-out' || !sessionApi) {
+  if (state.kind === 'signed-out') {
     // Enrolment comes before any sign-in: the realm account doesn't exist until the code is used.
     if (path === '/set-up-account') return <SetUpAccountPage />
-    return (
-      <SignInPage
-        {...(state.kind === 'signed-out' && state.reason ? { reason: state.reason } : {})}
-        onSignedIn={(session) => {
-          setState({ kind: 'signed-in', session })
-          // The sign-in page shows at the URL the patient asked for, so they land there afterwards.
-          navigate(SIGNED_OUT_PATHS.includes(path) ? '/' : path, { replace: true })
-        }}
-      />
-    )
+    // Sign-in leaves for the realm and comes back through `/portal/auth/callback`, which sets the
+    // cookie and returns to the portal.
+    return <SignInPage {...(state.kind === 'signed-out' && state.reason ? { reason: state.reason } : {})} />
   }
 
   if (SIGNED_OUT_PATHS.includes(path)) {
@@ -139,7 +179,7 @@ function Gate({ api }: { api: PortalApi }) {
   }
 
   let page: ReactNode = <NotFoundPage />
-  for (const route of ROUTES) {
+  for (const route of ROUTES.filter((r) => pathEnabled(r.pattern))) {
     const params = matchPath(route.pattern, path)
     if (params) {
       page = route.render(params)
@@ -154,12 +194,12 @@ function Gate({ api }: { api: PortalApi }) {
         <div key={path}>{page}</div>
       </PortalShell>
       <IdleTimeoutWarning
-        idleExpiresAt={sessionApi.session.idleExpiresAt}
-        expiresAt={sessionApi.session.expiresAt}
+        idleExpiresAt={state.session.idleExpiresAt}
+        expiresAt={state.session.expiresAt}
         // The dialog shows its own busy and error state; a failed refresh lets the patient retry.
-        onStaySignedIn={sessionApi.refresh}
+        onStaySignedIn={refresh}
         onSignOut={() => signOut('signed-out')}
-        onExpired={() => signOut('expired')}
+        onExpired={() => void expired()}
       />
     </SessionContext.Provider>
   )

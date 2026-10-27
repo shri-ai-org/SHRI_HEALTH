@@ -1,10 +1,11 @@
 /**
- * Patient portal data, shaped as the `/portal` contract will be (API_STANDARDS: camelCase,
- * instants in UTC ending in `At`, dates ending in `Date`, Money as decimal strings, lists as
- * `{ items, nextCursor }`). The contract does not exist yet (P1); see NOTE_FOR_VIMAL_PORTAL.md.
- * When it lands, these give way to the generated types in src/api/generated/.
+ * Data for the portal screens not in the contract yet (B8b and P1, D88), served by the in-memory
+ * mock and shaped as the contract will be (API_STANDARDS: camelCase, instants in UTC ending in
+ * `At`, dates ending in `Date`, Money as decimal strings, lists as `{ items, nextCursor }`). The
+ * B8a screens use the generated types in src/api/generated/; these give way to them batch by batch.
+ * Demographics, HealthIssue, Allergy and Vital remain only for the mock's health report (B8b exports).
  */
-import type { Address, HumanName, Money, Quantity } from '../../../design-system'
+import type { Money, Quantity } from '../../../design-system'
 
 export interface Page<T> {
   items: T[]
@@ -16,22 +17,8 @@ export interface Ref {
   displayName: string
 }
 
-export interface Facility extends Ref {
-  /** IANA zone; appointment times show in facility time (D40). */
-  timeZone: string
-  address: Address
-  phone: string
-}
-
 export interface Provider extends Ref {
   facilityIds: string[]
-}
-
-export interface PortalSession {
-  name: HumanName
-  /** Server-issued; the idle warning is timed from these (SECURITY_MODEL §2.1). */
-  idleExpiresAt: string
-  expiresAt: string
 }
 
 /** Demographics and Profile Information (old portal: Personal, Employer, Emergency Contact). */
@@ -67,62 +54,6 @@ export interface ReferenceLists {
   insuranceRelationships: string[]
   pharmacies: Pharmacy[]
   providers: Ref[]
-}
-
-/** FHIR Appointment status codes (API_STANDARDS §6.5). */
-export type AppointmentStatus = 'booked' | 'arrived' | 'checked-in' | 'fulfilled' | 'cancelled' | 'noshow'
-
-export interface Appointment {
-  id: string
-  startAt: string
-  endAt: string
-  status: AppointmentStatus
-  category: Ref
-  reason: string
-  mode: 'in-person' | 'video'
-  provider: Ref
-  facility: Facility
-  reminder: ReminderPreference
-  canReschedule: boolean
-  canCancel: boolean
-  /** Video visits: the room opens 15 minutes before the start. */
-  videoRoomOpen: boolean
-  instructions?: string
-  visitSummaryId?: string
-}
-
-export type ReminderPreference = 'text' | 'email' | 'phone'
-
-/** Old portal "Select appointment type". */
-export interface AppointmentCategory extends Ref {
-  mode: 'in-person' | 'video'
-}
-
-export interface Slot {
-  startAt: string
-  providerId: string
-  facilityId: string
-}
-
-export interface AppointmentRequest {
-  facilityId: string
-  categoryId: string
-  reason: string
-  providerId: string
-  startAt: string
-  durationMinutes: 15 | 30 | 45 | 60
-  reminder: ReminderPreference
-}
-
-export interface VisitSummary {
-  id: string
-  appointmentId: string
-  date: string
-  provider: Ref
-  reasons: string[]
-  vitals: Vital | null
-  problemsAndAllergies: Array<{ title: string; diagnosis: string }>
-  prescriptions: string[]
 }
 
 export interface Message {
@@ -331,10 +262,3 @@ export interface PatientReport {
   vitals: Vital | null
 }
 
-/** Old portal Alerts and Reminders: today's or the next appointment. */
-export interface AppointmentAlert {
-  appointmentId: string
-  startAt: string
-  timeZone: string
-  today: boolean
-}

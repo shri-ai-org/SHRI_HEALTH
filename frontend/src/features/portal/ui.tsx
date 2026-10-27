@@ -1,8 +1,8 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Lock } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Badge, EmptyState, ErrorState, formatDate, Spinner, TextInput, problemCopy, todayIn, type BadgeTone } from '../../design-system'
+import type { PortalAppointmentStatus } from '../../api/generated/model'
 import type { Resource } from './api/useResource'
-import type { AppointmentStatus, Occurrence } from './api/types'
 import { accentFor } from './accent'
 import { Link, useRouter } from './router'
 
@@ -154,28 +154,30 @@ export function formatInstantShort(instant: string, timeZone: string): string {
   return formatDate(todayIn(timeZone, new Date(instant)))
 }
 
-const APPOINTMENT_STATUS: Record<AppointmentStatus, { label: string; tone: BadgeTone }> = {
+const APPOINTMENT_STATUS: Record<PortalAppointmentStatus, { label: string; tone: BadgeTone }> = {
   booked: { label: 'Scheduled', tone: 'primary' },
-  arrived: { label: 'Arrived', tone: 'info' },
   'checked-in': { label: 'Checked in', tone: 'success' },
   fulfilled: { label: 'Completed', tone: 'neutral' },
   cancelled: { label: 'Canceled', tone: 'warning' },
   noshow: { label: 'Missed', tone: 'warning' },
 }
 
-export function AppointmentStatusBadge({ status }: { status: AppointmentStatus }) {
+export function AppointmentStatusBadge({ status }: { status: PortalAppointmentStatus }) {
   const s = APPOINTMENT_STATUS[status]
   return <Badge tone={s.tone}>{s.label}</Badge>
 }
 
-export const OCCURRENCE: Record<Occurrence, string> = {
-  unknown: 'Unknown or N/A',
-  first: 'First',
-  chronic: 'Chronic/Recurrent',
-  'acute-on-chronic': 'Acute on Chronic',
-  'early-recurrence': 'Early Recurrence (<2 Months)',
-  'late-recurrence': 'Late Recurrence (2-12 Months)',
-  'delayed-recurrence': 'Delayed Recurrence (> 12 Months)',
+/**
+ * A record the clinician hasn't released yet (D86, D90): it is listed, so silence never reads as
+ * "nothing there", but its content stays with the clinic until they release it.
+ */
+export function HeldMarker({ what }: { what: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm text-ink-muted">
+      <Lock aria-hidden="true" size={14} />
+      Held by your clinician. You'll see this {what} once they release it.
+    </span>
+  )
 }
 
 /** Client-side paging, as the old portal's lists did: a page of rows plus the pager state. */

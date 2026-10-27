@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { PortalSession } from './api/types'
+import type { PortalSession } from '../../api/generated/model'
 
 export interface SessionApi {
   session: PortalSession

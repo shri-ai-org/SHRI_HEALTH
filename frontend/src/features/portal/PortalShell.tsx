@@ -4,6 +4,7 @@ import { cn } from '../../design-system/lib/cn'
 import { usePortalApi } from './api/portalApi'
 import { useResource } from './api/useResource'
 import { accentFor } from './accent'
+import { pathEnabled } from './features'
 import { Link, useRouter } from './router'
 import { useSession } from './session'
 import { SourceCodeLink } from './sourceCode'
@@ -23,7 +24,7 @@ const HEALTH_SUMMARY = [
   { to: '/patient-documents', label: 'Patient Documents' },
   { to: '/reports', label: 'Reports' },
   { to: '/document-templates', label: 'Document Template' },
-]
+].filter((i) => pathEnabled(i.to))
 
 const ACCOUNT = [
   { to: '/demographics', label: 'Demographics' },
@@ -38,7 +39,13 @@ const TOP = [
   { to: '/billing', label: 'Billing', icon: CreditCard },
   { to: '/video-consult', label: 'Video Consult', icon: Video },
   { to: '/patient-education', label: 'Patient Education', icon: GraduationCap },
-]
+].filter((i) => pathEnabled(i.to))
+
+/** Up to two initials from the name the portal greets the patient by. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '')).toUpperCase()
+}
 
 function under(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`)
@@ -59,7 +66,7 @@ export function PortalShell({ children }: { children: ReactNode }) {
     setOpen('none')
   }
 
-  const name = [...(session.name.given ?? []), session.name.family].join(' ')
+  const name = session.patient.displayName
   const healthCurrent = HEALTH_SUMMARY.some((h) => under(path, h.to))
 
   return (
@@ -134,7 +141,7 @@ export function PortalShell({ children }: { children: ReactNode }) {
               className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-white hover:bg-white/15"
             >
               <span aria-hidden="true" className="flex size-8 items-center justify-center rounded-full bg-white text-xs font-bold text-indigo-800">
-                {(session.name.given?.[0]?.[0] ?? '') + (session.name.family[0] ?? '')}
+                {initials(name)}
               </span>
               <span className="hidden whitespace-nowrap sm:inline">{name}</span>
               <ChevronDown aria-hidden="true" size={14} />

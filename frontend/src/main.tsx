@@ -15,9 +15,9 @@ try {
   // Storage unavailable: the light theme applies.
 }
 
-// The patient portal runs on the mock API (synthetic data) until the /portal contract exists (B8,
-// D88), so only development builds serve it. In a production build this is null and the portal
-// code is left out of the bundle.
+// The patient portal's B8a screens use the generated client, but its later screens still run on
+// the in-memory mock (synthetic data) until B8b (D88, D89), so only development builds serve it.
+// In a production build this is null and the portal code is left out of the bundle.
 const MockPortal = import.meta.env.DEV ? lazy(() => import('./features/portal/MockPortal')) : null
 
 const isPortal = window.location.pathname === PORTAL_BASE || window.location.pathname.startsWith(`${PORTAL_BASE}/`)

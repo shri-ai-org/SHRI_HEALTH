@@ -6,6 +6,8 @@ The React patient portal (`frontend/src/features/portal/`) follows the old Shri 
 
 **Superseded (2026-10-26):** the decided paths are in ENDPOINT_INVENTORY "Later batches: patient portal" (#66, D83–D88). Sign-in, recovery and registration rows below are replaced by the patient realm and invitation-code enrolment (D85), and the screens now follow that.
 
+**Status (2026-10-27):** batch B8a is in the contract (#73, D89) and the screens use its generated client (M20): sign-in and session, enrollment, profile and change requests, appointments and booking, visit summaries, problems, allergies and vitals, plus the staff "Portal account" panel. The rows below for those are history. Messages, results, prescriptions, documents, forms, reports and the signature stay on the mock until B8b; Pay bills, Video and Immunizations are hidden behind `features.ts` (P1).
+
 ## Endpoints (proposed paths under `/api/v1/portal`)
 
 | Screen | Call | Notes |

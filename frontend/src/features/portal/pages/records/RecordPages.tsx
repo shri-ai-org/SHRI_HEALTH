@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Badge, formatPhone, type BadgeTone } from '../../../../design-system'
+import type { PortalAllergy, PortalProblem, PortalProblemClinicalStatus } from '../../../../api/generated/model'
+import { Badge, formatPartialDate, formatPhone, type BadgeTone } from '../../../../design-system'
 import { usePortalApi } from '../../api/portalApi'
 import type { ResultFlag } from '../../api/types'
 import { useResource } from '../../api/useResource'
 import { Link } from '../../router'
-import { AsyncPanel, Card, DefinitionList, formatInstantShort, formatShortDate, matches, OCCURRENCE, PageHeader, Pager, SearchBox, Table, tableLink, usePaged } from '../../ui'
+import { AsyncPanel, Card, DefinitionList, formatInstantShort, formatShortDate, HeldMarker, matches, PageHeader, Pager, SearchBox, Table, tableLink, usePaged } from '../../ui'
 
 /*
  * The old Health Summary record screens: a searchable list, and a detail page per record. Detail
@@ -14,12 +15,11 @@ import { AsyncPanel, Card, DefinitionList, formatInstantShort, formatShortDate, 
 
 const TZ = 'America/Chicago'
 
+/** "Recorded" instants have no facility; they show as the patient's own calendar date. */
+const BROWSER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
+
 function Footer({ topic }: { topic: string }) {
   return <p className="mt-5 text-sm text-ink-muted">If you have questions or concerns regarding {topic}, please contact your provider.</p>
-}
-
-function StatusBadge({ ended }: { ended: boolean }) {
-  return <Badge tone={ended ? 'neutral' : 'success'}>{ended ? 'Inactive' : 'Active'}</Badge>
 }
 
 /* ---------- Test Results ---------- */
@@ -119,9 +119,29 @@ export function TestResultDetailPage({ resultId }: { resultId: string }) {
 
 /* ---------- Health Issues (Medical Problems) ---------- */
 
+const PROBLEM_STATUS: Record<PortalProblemClinicalStatus, { label: string; tone: BadgeTone }> = {
+  active: { label: 'Active', tone: 'success' },
+  recurrence: { label: 'Came back', tone: 'warning' },
+  relapse: { label: 'Came back', tone: 'warning' },
+  inactive: { label: 'Inactive', tone: 'neutral' },
+  remission: { label: 'In remission', tone: 'neutral' },
+  resolved: { label: 'Resolved', tone: 'neutral' },
+}
+
+function ProblemStatus({ status }: { status?: PortalProblemClinicalStatus }) {
+  if (!status) return <>—</>
+  const s = PROBLEM_STATUS[status]
+  return <Badge tone={s.tone}>{s.label}</Badge>
+}
+
+/** A held problem is listed without its content (D90), so the list never looks emptier than the chart. */
+function problemTitle(p: PortalProblem): string {
+  return p.releaseStatus === 'held' ? 'Held by your clinician' : (p.display ?? 'Problem')
+}
+
 export function HealthIssuesPage() {
   const api = usePortalApi()
-  const list = useResource(() => api.listHealthIssues(), [])
+  const list = useResource(() => api.listProblems(), [])
   const [q, setQ] = useState('')
   return (
     <>
@@ -131,12 +151,23 @@ export function HealthIssuesPage() {
           <Table
             caption="Medical problems"
             empty="No details in this record"
-            rows={items.filter((h) => matches(q, h.title, h.diagnosis, h.endDate ? 'inactive' : 'active'))}
+            rows={items.filter((h) => matches(q, problemTitle(h), h.clinicalStatus))}
             rowKey={(h) => h.id}
             columns={[
-              { header: 'Title', rowHeader: true, cell: (h) => <Link to={`/health-issues/${h.id}`} className={tableLink}>{h.title}</Link> },
-              { header: 'Diagnosis', cell: (h) => h.diagnosis },
-              { header: 'Status', cell: (h) => <StatusBadge ended={Boolean(h.endDate)} /> },
+              {
+                header: 'Title',
+                rowHeader: true,
+                cell: (h) =>
+                  h.releaseStatus === 'held' ? (
+                    <HeldMarker what="problem" />
+                  ) : (
+                    <Link to={`/health-issues/${h.id}`} className={tableLink}>
+                      {problemTitle(h)}
+                    </Link>
+                  ),
+              },
+              { header: 'Since', cell: (h) => (h.onsetDate ? formatPartialDate(h.onsetDate) : '—') },
+              { header: 'Status', cell: (h) => <ProblemStatus {...(h.clinicalStatus ? { status: h.clinicalStatus } : {})} /> },
             ]}
           />
         )}
@@ -147,26 +178,27 @@ export function HealthIssuesPage() {
 
 export function HealthIssueDetailPage({ issueId }: { issueId: string }) {
   const api = usePortalApi()
-  const issue = useResource(() => api.getHealthIssue(issueId), [issueId])
+  const issue = useResource(() => api.getProblem(issueId), [issueId])
   return (
     <>
-      <PageHeader title={issue.status === 'ready' ? `${issue.data.title} - Problem` : 'Problem'} back={{ to: '/health-issues', label: 'Medical Problems' }} />
+      <PageHeader title={issue.status === 'ready' && issue.data.releaseStatus === 'available' ? `${problemTitle(issue.data)} - Problem` : 'Problem'} back={{ to: '/health-issues', label: 'Medical Problems' }} />
       <AsyncPanel resource={issue} label="this problem">
         {(h) => (
           <div className="max-w-3xl">
             <Card title="Problem Details">
-              <DefinitionList
-                items={[
-                  { term: 'Title', value: h.title },
-                  { term: 'Problem Status', value: <StatusBadge ended={Boolean(h.endDate)} /> },
-                  { term: 'Diagnosis Code', value: h.diagnosis },
-                  { term: 'Begin Date', value: h.beginDate ? formatShortDate(h.beginDate) : '—' },
-                  { term: 'End Date', value: h.endDate ? formatShortDate(h.endDate) : 'Problem is still active' },
-                  { term: 'Occurrence', value: OCCURRENCE[h.occurrence] },
-                  { term: 'Referred By', value: h.referredBy ?? '—' },
-                  { term: 'Notes', value: h.notes ?? '—' },
-                ]}
-              />
+              {h.releaseStatus === 'held' ? (
+                <HeldMarker what="problem" />
+              ) : (
+                <DefinitionList
+                  items={[
+                    { term: 'Title', value: problemTitle(h) },
+                    { term: 'Problem Status', value: <ProblemStatus {...(h.clinicalStatus ? { status: h.clinicalStatus } : {})} /> },
+                    { term: 'Begin Date', value: h.onsetDate ? formatPartialDate(h.onsetDate) : '—' },
+                    { term: 'End Date', value: h.abatementDate ? formatPartialDate(h.abatementDate) : 'Problem is still active' },
+                    { term: 'Recorded', value: h.recordedAt ? formatInstantShort(h.recordedAt, BROWSER_TZ) : '—' },
+                  ]}
+                />
+              )}
             </Card>
             <Footer topic="your medical problems" />
           </div>
@@ -177,6 +209,22 @@ export function HealthIssueDetailPage({ issueId }: { issueId: string }) {
 }
 
 /* ---------- Allergies ---------- */
+
+const ALLERGY_STATUS: Record<PortalAllergy['clinicalStatus'], { label: string; tone: BadgeTone }> = {
+  active: { label: 'Active', tone: 'success' },
+  inactive: { label: 'Inactive', tone: 'neutral' },
+  resolved: { label: 'Resolved', tone: 'neutral' },
+}
+
+const CRITICALITY: Record<NonNullable<PortalAllergy['criticality']>, string> = {
+  low: 'Low risk',
+  high: 'High risk',
+  'unable-to-assess': 'Risk not known',
+}
+
+function reactionsOf(a: PortalAllergy): string {
+  return (a.reactions ?? []).flatMap((r) => r.manifestations).join(', ') || '—'
+}
 
 export function AllergiesPage() {
   const api = usePortalApi()
@@ -189,12 +237,13 @@ export function AllergiesPage() {
         {(items) => (
           <Table
             caption="Allergies"
-            rows={items.filter((a) => matches(q, a.title))}
+            empty="No allergies on file"
+            rows={items.filter((a) => matches(q, a.display, reactionsOf(a)))}
             rowKey={(a) => a.id}
             columns={[
-              { header: 'Title', rowHeader: true, cell: (a) => <Link to={`/allergies/${a.id}`} className={tableLink}>{a.title}</Link> },
-              { header: 'Diagnosis', cell: (a) => a.diagnosis ?? '—' },
-              { header: 'Status', cell: (a) => <StatusBadge ended={Boolean(a.endDate)} /> },
+              { header: 'Title', rowHeader: true, cell: (a) => <Link to={`/allergies/${a.id}`} className={tableLink}>{a.display}</Link> },
+              { header: 'Reaction', cell: (a) => reactionsOf(a) },
+              { header: 'Status', cell: (a) => <Badge tone={ALLERGY_STATUS[a.clinicalStatus].tone}>{ALLERGY_STATUS[a.clinicalStatus].label}</Badge> },
             ]}
           />
         )}
@@ -208,20 +257,17 @@ export function AllergyDetailPage({ allergyId }: { allergyId: string }) {
   const allergy = useResource(() => api.getAllergy(allergyId), [allergyId])
   return (
     <>
-      <PageHeader title={allergy.status === 'ready' ? `Allergy - ${allergy.data.title}` : 'Allergy'} back={{ to: '/allergies', label: 'Allergies' }} />
+      <PageHeader title={allergy.status === 'ready' ? `Allergy - ${allergy.data.display}` : 'Allergy'} back={{ to: '/allergies', label: 'Allergies' }} />
       <AsyncPanel resource={allergy} label="this allergy">
         {(a) => (
           <div className="max-w-3xl">
             <Card title="Allergy Details">
               <DefinitionList
                 items={[
-                  { term: 'Problem Status', value: <StatusBadge ended={Boolean(a.endDate)} /> },
-                  { term: 'Reaction', value: a.reaction },
-                  { term: 'Begin Date', value: a.beginDate ? formatShortDate(a.beginDate) : '—' },
-                  { term: 'End Date', value: a.endDate ? formatShortDate(a.endDate) : 'Allergy is still active' },
-                  { term: 'Occurrence', value: OCCURRENCE[a.occurrence] },
-                  { term: 'Referred By', value: a.referredBy ?? '—' },
-                  { term: 'Notes', value: a.notes ?? '—' },
+                  { term: 'Allergy Status', value: <Badge tone={ALLERGY_STATUS[a.clinicalStatus].tone}>{ALLERGY_STATUS[a.clinicalStatus].label}</Badge> },
+                  { term: 'Reaction', value: reactionsOf(a) },
+                  { term: 'Risk', value: a.criticality ? CRITICALITY[a.criticality] : '—' },
+                  { term: 'Recorded', value: a.recordedAt ? formatInstantShort(a.recordedAt, BROWSER_TZ) : '—' },
                 ]}
               />
             </Card>

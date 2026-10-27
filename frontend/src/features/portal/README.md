@@ -2,9 +2,15 @@
 
 Owner: Minalini. Guide 04 Step 8, FRS 3.8. React rebuild of the earlier Shri patient portal (Angular 16), using the U.S. design system. **The screens and flows follow the old portal** (menus, pages, fields and steps); the look comes from the design system.
 
-Run `npm run dev` in `frontend/` and open <http://localhost:5173/portal>. It runs on the mock API with synthetic data, and **only in development builds**: a production build has no portal until the `/portal` contract exists (B8, D88). "Sign in" stands for a completed sign-in at the patient realm (D85). The mock lives in memory, so a full page reload signs you out.
+Run `npm run mock` in `contracts/`, then `npm run dev` in `frontend/`, and open <http://localhost:5173/portal>. Synthetic data only, and **only in development builds**: a production build has no portal until B8b exists (D88).
 
-Sign-in and enrolment follow the portal decisions (D83–D88, #66): Keycloak's patient realm handles passwords, multi-factor, reset and recovery, so the portal never asks for a password. New patients first use "Set up your account" with the front desk's invitation code, their date of birth and their email (ADR-0013). Keycloak then emails them a link to set a password and a second sign-in step, and only after that do they sign in. There is no self-registration.
+- **Batch B8a (D89, M20) goes through the generated client:** sign-in and session, "Set up your account", the profile and its change requests, appointments and booking, visit summaries, problems, allergies and vitals (`api/httpPortalApi.ts`). The dev proxy gives the sample-data server the portal cookie (MOCK_GUIDE §5d), so you are signed in as its one sample patient; signing out doesn't stick there, because the mock keeps no state.
+- **Everything later stays on the in-memory mock** (`api/mockPortalApi.ts`): messages, results, prescriptions, documents, forms, reports and the signature, until B8b.
+- **P1 features are hidden, not deleted** (`features.ts`): Pay bills, Video and Immunizations. Turn a switch on when its contract lands.
+
+Sign-in and enrollment follow the portal decisions (D83–D88, ADR-0013): Keycloak's patient realm handles passwords, the authenticator app, reset and recovery, so the portal never asks for a password. "Sign in" goes to `GET /portal/auth/login`. New patients first use "Set up your account" with the front desk's invitation code, their date of birth and their email. Keycloak then emails them a link to set a password and an authenticator app, and only after that do they sign in. There is no self-registration. The front desk issues the code from the patient page's "Portal account" panel after an ID check.
+
+Demographics edits are change requests (D91): only changed fields are sent, and the front desk applies them. The contract has no employer on the patient's side, so the old Employer section is gone. Visit summaries open through a short-lived download link; a problem or summary the clinician hasn't released shows "Held by your clinician" (D86, D90).
 
 ## Colours
 
@@ -52,6 +58,8 @@ Each area has its own colour, as the old home cards did: green Test Results, plu
 
 ## Checks
 
-- `portal.test.tsx` walks the main journeys (sign-in, menus, refill, schedule with the time picker, cancel, compose, trash and delete, payment, document template, account setup by invitation code) and runs axe (WCAG 2.1 A/AA) on every page.
+- `portal.test.tsx` walks the main journeys and runs axe (WCAG 2.1 A/AA) on every page. B8a journeys run against `test/fakePortalServer.ts`, a fake `/api/v1/portal` shaped as the contract, through the real fetch wrapper; the later ones run on the mock.
+  - B8a: sign-in, the session read and its CSRF token, a 401 ending the session, alerts, the hidden P1 pages, held problems and summaries, vitals grouping, booking with one key per chosen time, a taken time re-reading the free times, cancel with a reason, change requests and enrollment.
+  - Later batches: refill, compose, trash and delete, document template.
 - Checked by hand at 375px: no page scrolls sideways, and the phone menu is the old side panel.
 - Still to do by hand: a screen-reader pass (VoiceOver, NVDA) and a session with a few real patients once there's a pilot practice (Q18).
