@@ -1717,6 +1717,507 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/portal-account:
+    parameters: *id006
+    get:
+      operationId: getPortalAccount
+      summary: Get the patient's portal account
+      description: Whether the patient has a portal account or an active invitation, and the sign-in email (ADR-0013 §3, §4).
+        Batch B8a (D89).
+      x-owner: vimal
+      x-permission: portal-accounts:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                invited:
+                  summary: Invitation active
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: invited
+                    invitation:
+                      id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
+                      status: active
+                      issuedAt: '2026-11-03T14:30:00Z'
+                      expiresAt: '2026-11-06T14:30:00Z'
+                active:
+                  summary: Enrolled
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: active
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+                    factorsResetAt: '2026-12-01T15:00:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-accounts:read`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+      tags:
+      - patients
+  /patients/{patientId}/portal-invitations:
+    parameters: *id006
+    post:
+      operationId: createPortalInvitation
+      summary: Issue a portal invitation
+      description: 'Issues a single-use invitation code after the front desk has checked the patient''s photo ID in person
+        (ADR-0013 §3, D85). One active invitation per patient: issuing a new one revokes the old one. The code is in the response
+        only. Refused while the patient already has an account (one account per chart in P1). Batch B8a (D89).'
+      x-owner: vimal
+      x-permission: portal-invitations:create
+      x-audit:
+        action: C
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - idChecked
+              description: Body to issue an invitation.
+              properties:
+                idChecked:
+                  type: boolean
+                  const: true
+                  description: The user confirms they checked the patient's photo ID in person.
+                  x-phi: none
+            examples:
+              issue:
+                summary: Issue
+                value:
+                  idChecked: true
+      responses:
+        '201':
+          description: Created. The invitation with its code, shown once.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalInvitation'
+              examples:
+                issued:
+                  summary: Issued
+                  value:
+                    id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
+                    code: K7Q2-9MZD-4TXH
+                    issuedAt: '2026-11-03T14:30:00Z'
+                    expiresAt: '2026-11-06T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-invitations:create`); `break-glass-required` (the
+            patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `patient-merged` (the patient was merged into another record); `invalid-state-transition` (the
+            patient already has a portal account; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+      tags:
+      - patients
+  /patients/{patientId}/portal-invitations/{invitationId}/revoke:
+    parameters:
+    - *id011
+    - name: invitationId
+      in: path
+      required: true
+      description: Invitation ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: revokePortalInvitation
+      summary: Revoke a portal invitation
+      description: Revokes an unused invitation, for example when the printout was lost. Repeating it changes nothing. Batch
+        B8a (D89).
+      x-owner: vimal
+      x-permission: portal-invitations:revoke
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                revoked:
+                  summary: Revoked
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: none
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-invitations:revoke`); `break-glass-required` (the
+            patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient, or no such invitation for this patient).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the invitation was already used; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+      tags:
+      - patients
+  /patients/{patientId}/portal-account/reset-factors:
+    parameters: *id006
+    post:
+      operationId: resetPortalSignInFactors
+      summary: Reset the patient's sign-in factors
+      description: For a patient who has lost every second factor and come to the desk with photo ID (ADR-0013 §2). Removes
+        the realm account's second factors and recovery codes; the patient sets up new ones at the next sign-in. The password
+        is unchanged and our API never sees it (D3). Never done on the strength of a phone call or email. Implemented in core.
+        Batch B8a (D89).
+      x-owner: thulasi
+      x-permission: portal-accounts:reset-factors
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalFactorResetRequest'
+            examples:
+              reset:
+                summary: After an ID check
+                value:
+                  idChecked: true
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                reset:
+                  summary: Reset
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: active
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+                    factorsResetAt: '2026-12-01T15:00:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-accounts:reset-factors`); `break-glass-required` (the
+            patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the patient has no `active` or `pending-setup` portal account, for
+            example it is `suspended` or `disabled`; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the patient realm is unavailable).
+      tags:
+      - patients
+  /patients/{patientId}/portal-account/disable:
+    parameters: *id006
+    post:
+      operationId: disablePortalAccount
+      summary: Disable the patient's portal account
+      description: Stops the patient from signing in to the portal, for example when the account is misused or the patient
+        asks to close it. Every portal session of the patient ends at once, with its realm session (back channel), and the
+        realm account is disabled; nothing is deleted. A reason is required and audited. Amends ADR-0013 (D92). Implemented
+        in core. Batch B8a (D89).
+      tags:
+      - patients
+      x-owner: thulasi
+      x-permission: portal-accounts:disable
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAccountStatusChange'
+            examples:
+              disable:
+                summary: Disable
+                value:
+                  reason: Patient asked to close their portal account.
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                done:
+                  summary: Disabled
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: disabled
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+                    disabledAt: '2026-12-02T16:40:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-accounts:disable`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the account is not `active`, `pending-setup` or `suspended`; the problem
+            carries `currentState`). A suspended account that is disabled stays `disabled` if the merge is undone.
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the patient realm is unavailable).
+  /patients/{patientId}/portal-account/enable:
+    parameters: *id006
+    post:
+      operationId: enablePortalAccount
+      summary: Enable the patient's portal account
+      description: Lets a disabled account sign in again; its password and second factors are unchanged. A reason is required
+        and audited. Amends ADR-0013 (D92). Implemented in core. Batch B8a (D89).
+      tags:
+      - patients
+      x-owner: thulasi
+      x-permission: portal-accounts:enable
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAccountStatusChange'
+            examples:
+              enable:
+                summary: Enable
+                value:
+                  reason: Patient confirmed their identity at the desk and asked to reopen it.
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                done:
+                  summary: Enabled
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: active
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-accounts:enable`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the account is not `disabled`, or its chart has been merged into another;
+            the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the patient realm is unavailable).
   /duplicates:
     get:
       operationId: listDuplicates
@@ -1807,7 +2308,10 @@ paths:
         during the merge; every moved record is listed so the merge can be undone; the merged patient gets `mergedIntoId`
         and becomes inactive. All in one transaction. If either patient is restricted, the user needs a break-glass grant
         or care-team membership for **each** restricted patient (`403 break-glass-required`), and the surviving record keeps
-        the most restrictive restriction of the pair. Both patient IDs are audited.'
+        the most restrictive restriction of the pair. Both patient IDs are audited. On the merged chart, in the same transaction:
+        an `active` or `pending-setup` portal account becomes `suspended` (the state it had is kept) and its sessions end,
+        a `disabled` one stays `disabled`, and every active invitation is revoked (ADR-0013). The front desk issues a new
+        invitation for the surviving chart after an ID check.'
       tags:
       - patients
       x-owner: vimal
@@ -2002,7 +2506,9 @@ paths:
       summary: Undo a merge
       description: 'Undoes a merge (inventory #49): moved records go back to the merged patient, which becomes active again.
         Refused once either record has changed in a way that cannot be split back. Restricted charts need break-glass or care-team
-        membership for each restricted patient, as for a merge. Both patient IDs are audited.'
+        membership for each restricted patient, as for a merge. Both patient IDs are audited. A portal account suspended by
+        the merge goes back to exactly the state it had before the merge; one disabled in the meantime stays `disabled`. Invitations
+        revoked by the merge stay revoked.'
       tags:
       - patients
       x-owner: vimal
@@ -3952,3 +4458,139 @@ components:
             $ref: '#/components/schemas/PatientSummary'
           description: One summary per found ID, in request order.
           x-phi: identifier
+    PortalInvitationSummary:
+      description: An invitation, without its code (the code is shown once, when issued).
+      type: object
+      required:
+      - id
+      - status
+      - issuedAt
+      - expiresAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Invitation ID.
+          x-phi: internal-id
+        status:
+          type: string
+          enum:
+          - active
+          - used
+          - expired
+          - revoked
+          description: Where it is.
+          x-phi: none
+        issuedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was issued.
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it stops working (72 hours after issue).
+          x-phi: none
+    PortalInvitation:
+      description: 'A new invitation with its code. The code is in this response only: it is stored as an HMAC, never logged,
+        and can''t be read again. Print it or read it out at the desk; never email or text it (ADR-0013 §3).'
+      type: object
+      required:
+      - id
+      - code
+      - issuedAt
+      - expiresAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Invitation ID.
+          x-phi: internal-id
+        code:
+          type: string
+          maxLength: 14
+          pattern: ^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$
+          description: 'The invitation code: 12 Crockford base32 characters in three groups.'
+          x-phi: identifier
+        issuedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was issued.
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it stops working (72 hours, single use).
+          x-phi: none
+    PortalAccountStatus:
+      description: 'The patient''s portal account as the front desk sees it: never a password, factor or code. `none`: no
+        account and no active invitation; `invited`: an invitation is active; `pending-setup`: enrolled, but the patient hasn''t
+        finished the realm''s set-up (verify email, password, second factor); `active`; `disabled`: ADM disabled it (D92),
+        and `enable` reopens it; `suspended`: the chart was merged into another (ADR-0013) while the account was `active`
+        or `pending-setup`; its sessions ended and nobody can sign in. Undoing the merge restores exactly the earlier state,
+        unless ADM disabled the account meanwhile (then it stays `disabled`). `enable` and `reset-factors` refuse it.'
+      type: object
+      required:
+      - patientId
+      - status
+      properties:
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Patient ID.
+          x-phi: internal-id
+        status:
+          type: string
+          enum:
+          - none
+          - invited
+          - pending-setup
+          - active
+          - disabled
+          - suspended
+          description: Account state.
+          x-phi: none
+        email:
+          $ref: ../components/schemas/EmailAddress.yaml
+          description: 'The sign-in email, once enrolled (ADR-0013 §4: the front desk can tell a patient which email they
+            used).'
+          x-phi: identifier
+        invitation:
+          $ref: '#/components/schemas/PortalInvitationSummary'
+          description: The active invitation, if any.
+          x-phi: none
+        enrolledAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the patient enrolled.
+          x-phi: none
+        factorsResetAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the second factors were last reset by staff.
+          x-phi: none
+        disabledAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the account was disabled; present only while `disabled`.
+          x-phi: none
+    PortalFactorResetRequest:
+      description: Body to reset a patient's sign-in factors after an ID check at the desk (ADR-0013 §2).
+      type: object
+      additionalProperties: false
+      required:
+      - idChecked
+      properties:
+        idChecked:
+          type: boolean
+          const: true
+          description: The user confirms they checked the patient's photo ID in person.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: Anything worth recording (never the ID number).
+          x-phi: clinical
+    PortalAccountStatusChange:
+      description: Body to disable or enable a portal account (D92).
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why; audited, never shown to the patient.
+          x-phi: clinical

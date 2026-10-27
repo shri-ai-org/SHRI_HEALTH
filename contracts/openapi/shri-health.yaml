@@ -88,6 +88,9 @@ tags:
   - name: dashboards
     description: Operations dashboard.
     x-owner: minalini
+  - name: portal
+    description: Patient portal, under /portal (P1; D83-D89). The patient comes from the portal session, never the request; each operation keeps its owning module's x-owner.
+    x-owner: vimal
 paths:
   /auth/login:
     $ref: 'modules/platform.yaml#/paths/~1auth~1login'
@@ -139,6 +142,18 @@ paths:
     $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1restrict'
   /patients/{patientId}/unrestrict:
     $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1unrestrict'
+  /patients/{patientId}/portal-account:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account'
+  /patients/{patientId}/portal-invitations:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-invitations'
+  /patients/{patientId}/portal-invitations/{invitationId}/revoke:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-invitations~1{invitationId}~1revoke'
+  /patients/{patientId}/portal-account/reset-factors:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account~1reset-factors'
+  /patients/{patientId}/portal-account/disable:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account~1disable'
+  /patients/{patientId}/portal-account/enable:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account~1enable'
   /duplicates:
     $ref: 'modules/patients.yaml#/paths/~1duplicates'
   /duplicates/{duplicateId}/merge:
@@ -323,6 +338,54 @@ paths:
     $ref: 'modules/inbox.yaml#/paths/~1inbox~1{inboxItemId}~1replies'
   /messages:
     $ref: 'modules/inbox.yaml#/paths/~1messages'
+  /portal/auth/login:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1login'
+  /portal/auth/callback:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1callback'
+  /portal/auth/session:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1session'
+  /portal/auth/refresh:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1refresh'
+  /portal/auth/logout:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1logout'
+  /portal/enrollments:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1enrollments'
+  /portal/me:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me'
+  /portal/me/change-requests:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1change-requests'
+  /portal/me/appointments:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1appointments'
+  /portal/me/appointments/{appointmentId}:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1appointments~1{appointmentId}'
+  /portal/me/appointments/{appointmentId}/cancel:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1appointments~1{appointmentId}~1cancel'
+  /portal/me/appointments/{appointmentId}/reschedule:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1appointments~1{appointmentId}~1reschedule'
+  /portal/booking/facilities:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1booking~1facilities'
+  /portal/booking/appointment-types:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1booking~1appointment-types'
+  /portal/booking/providers:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1booking~1providers'
+  /portal/me/slots:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1slots'
+  /portal/me/visit-summaries:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1visit-summaries'
+  /portal/me/visit-summaries/{visitSummaryId}:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1visit-summaries~1{visitSummaryId}'
+  /portal/me/visit-summaries/{visitSummaryId}/download-url:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1visit-summaries~1{visitSummaryId}~1download-url'
+  /portal/me/problems:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1problems'
+  /portal/me/problems/{problemId}:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1problems~1{problemId}'
+  /portal/me/allergies:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1allergies'
+  /portal/me/allergies/{allergyId}:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1allergies~1{allergyId}'
+  /portal/me/vitals:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1vitals'
 components:
   schemas:
     Address:
@@ -445,6 +508,8 @@ components:
       $ref: 'components/securitySchemes/csrfHeader.yaml'
     delegatedToken:
       $ref: 'components/securitySchemes/delegatedToken.yaml'
+    portalSessionCookie:
+      $ref: 'components/securitySchemes/portalSessionCookie.yaml'
     sessionCookie:
       $ref: 'components/securitySchemes/sessionCookie.yaml'
   examples:
