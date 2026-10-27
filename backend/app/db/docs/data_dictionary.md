@@ -7075,6 +7075,18 @@ Paths: `/patients/{patientId}/preferred-pharmacy`
 | `state` | `pharmacy.state` | mapped |
 | `updatedAt` | `patient_pharmacy.updated_at` | same name |
 
+### Restriction flag
+
+Paths: `/patients/{patientId}/restrict`, `/unrestrict`
+
+| Property | Stored in | How |
+|---|---|---|
+| `category` | `patient.meta_security` | mapped: sensitive is the label R, vip is V; absent when the chart holds neither |
+| `changedAt` | `fhir_resource_history.recorded_at`, `fhir_resource_history.snapshot`, `fhir_resource_history.resource_id`, `fhir_resource_history.version_id` | computed: from the patient's version history: the recorded_at of the first version since the label last changed, that is, the earliest of the latest run of versions whose snapshot has the same R or V label (or none) as the chart has now. A change to anything else on the chart doesn't move it |
+| `patientId` | `patient.id` | mapped |
+| `reason` | `audit_event.reason` | mapped: not stored on the patient; the reason of the restrict or unrestrict audit row (category security), as for duplicateOverrideReason |
+| `restricted` | `patient.meta_security` | computed: true when patient.meta_security holds R or V (SECURITY_MODEL 5.2) |
+
 ### Duplicates, merges
 
 Paths: `/duplicates`, `/duplicates/{duplicateId}/merge`, `/duplicates/{duplicateId}/dismiss`, `/patient-merges/{mergeId}/undo`

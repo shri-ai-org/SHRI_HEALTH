@@ -120,6 +120,29 @@
       moves with every change, child rows included (the touch triggers), as the ETag does;
       updated_at moves only when the ORM updates the patient row itself
 
+"Restriction flag":
+  patientId:
+    columns: [patient.id]
+  restricted:
+    computed: true when patient.meta_security holds R or V (SECURITY_MODEL 5.2)
+    columns: [patient.meta_security]
+  category:
+    columns: [patient.meta_security]
+    note: sensitive is the label R, vip is V; absent when the chart holds neither
+  changedAt:
+    computed: >-
+      from the patient's version history: the recorded_at of the first version since the
+      label last changed, that is, the earliest of the latest run of versions whose snapshot
+      has the same R or V label (or none) as the chart has now. A change to anything else
+      on the chart doesn't move it
+    columns: [fhir_resource_history.recorded_at, fhir_resource_history.snapshot,
+              fhir_resource_history.resource_id, fhir_resource_history.version_id]
+  reason:
+    columns: [audit_event.reason]
+    note: >-
+      not stored on the patient; the reason of the restrict or unrestrict audit row (category
+      security), as for duplicateOverrideReason
+
 "Patient identifiers (MRN, driver's license)":
   type:
     columns: [identifier.type_code]
