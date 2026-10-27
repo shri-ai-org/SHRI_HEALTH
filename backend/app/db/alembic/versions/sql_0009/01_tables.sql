@@ -27,7 +27,7 @@ CREATE TABLE admin.pre_registration (
 	CONSTRAINT ck_pre_registration_details_size CHECK (octet_length(details::text) <= 32768), 
 	CONSTRAINT ck_pre_registration_patient_reported CHECK (entry_source = 'patient-reported'), 
 	CONSTRAINT ck_pre_registration_decision_matches_status CHECK ((status = 'pending' AND decided_at IS NULL AND decided_by_user_id IS NULL AND patient_id IS NULL AND id_document_type IS NULL AND rejection_reason_code IS NULL AND rejection_reason_text IS NULL) OR (status = 'accepted' AND decided_at IS NOT NULL AND decided_by_user_id IS NOT NULL AND patient_id IS NOT NULL AND id_document_type IS NOT NULL AND rejection_reason_code IS NULL AND rejection_reason_text IS NULL) OR (status = 'rejected' AND decided_at IS NOT NULL AND decided_by_user_id IS NOT NULL AND patient_id IS NULL AND id_document_type IS NULL AND rejection_reason_code IS NOT NULL)), 
-	CONSTRAINT ck_pre_registration_other_reason_has_text CHECK (rejection_reason_code IS DISTINCT FROM 'other' OR length(trim(rejection_reason_text)) > 0), 
+	CONSTRAINT ck_pre_registration_other_reason_has_text CHECK (rejection_reason_code IS DISTINCT FROM 'other' OR coalesce(length(trim(rejection_reason_text)), 0) > 0), 
 	CONSTRAINT fk_pre_registration_decided_by_user_id_app_user FOREIGN KEY(decided_by_user_id) REFERENCES admin.app_user (id), 
 	CONSTRAINT fk_pre_registration_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
 	CONSTRAINT fk_pre_registration_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 

@@ -142,8 +142,10 @@ class PreRegistration(Base, AdminMixin):
             "(status = 'rejected' AND decided_at IS NOT NULL AND decided_by_user_id IS NOT NULL "
             "AND patient_id IS NULL AND id_document_type IS NULL "
             "AND rejection_reason_code IS NOT NULL)", name="decision_matches_status"),
+        # coalesce: length(trim(NULL)) is NULL, which a CHECK would let through.
         CheckConstraint("rejection_reason_code IS DISTINCT FROM 'other' OR "
-                        "length(trim(rejection_reason_text)) > 0", name="other_reason_has_text"),
+                        "coalesce(length(trim(rejection_reason_text)), 0) > 0",
+                        name="other_reason_has_text"),
     )
 
     idempotency_key: Mapped[uuid.UUID] = mapped_column(nullable=False)

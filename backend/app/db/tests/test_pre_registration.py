@@ -258,10 +258,11 @@ def test_a_decision_must_be_complete(admin_engine: Engine, app_engine: Engine,
         with fails(s, "23514", "ck_pre_registration_decision_matches_status"):
             s.execute(text("UPDATE admin.pre_registration SET " + decided.format("rejected")
                            + " WHERE id = :r"), {"u": user, "r": rid})     # no reason
-        with fails(s, "23514", "ck_pre_registration_other_reason_has_text"):
-            s.execute(text("UPDATE admin.pre_registration SET " + decided.format("rejected")
-                           + ", rejection_reason_code = 'other', rejection_reason_text = ' ' "
-                           "WHERE id = :r"), {"u": user, "r": rid})
+        for blank in ("' '", "NULL"):
+            with fails(s, "23514", "ck_pre_registration_other_reason_has_text"):
+                s.execute(text("UPDATE admin.pre_registration SET " + decided.format("rejected")
+                               + ", rejection_reason_code = 'other', rejection_reason_text = "
+                               + blank + " WHERE id = :r"), {"u": user, "r": rid})
         s.execute(text("UPDATE admin.pre_registration SET " + decided.format("rejected")
                        + ", rejection_reason_code = 'spam' WHERE id = :r"), {"u": user, "r": rid})
         s.commit()
