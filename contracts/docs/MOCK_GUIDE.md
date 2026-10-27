@@ -216,6 +216,30 @@ node tests/flows/pre-registration.mjs          # in another; BASE_URL=http://127
   - reject with the `spam` or `other` example.
 - **Today's result:** 16 of 16 calls pass.
 
+## 5f. Check-out with the follow-up and the copay (demo steps 10–11, D98, D100)
+
+`tests/flows/check-out.mjs` runs the end of the visit against the sample-data server: the clinician's follow-up request, then the front desk's check-out.
+
+```bash
+cd contracts
+npm run mock                              # in one terminal
+node tests/flows/check-out.mjs            # in another; BASE_URL=http://127.0.0.1:4020 for another port
+```
+
+- **The follow-up request:** `PUT /encounters/{encounterId}/follow-up` with the encounter's `If-Match`. It answers `412` (`Prefer: code=412`) when the visit changed since it was read.
+- **At the desk:**
+  - `GET /appointments/{appointmentId}` with `Prefer: example=at-check-out` carries `followUp`;
+  - so does the staff board (`view=staff`, `Prefer: example=staff`); the shared board never does (D47).
+- **The copay** uses Anand's payment operations (D100):
+  - `POST /payments/card-session`, then `POST /patients/{patientId}/payments` with the card session and the appointment;
+  - `Prefer: code=422` gives the refusal for a session captured for another amount.
+- **The revisit:**
+  - `POST /appointments` with the `revisit` example (`followUpOfEncounterId`) books it;
+  - `Prefer: code=422` gives the refusal when the follow-up isn't open;
+  - `POST /encounters/{encounterId}/follow-up/decline` records the patient's no instead.
+- **Check-out:** `POST /appointments/{appointmentId}/status` with the `checked-out` example.
+- **Today's result:** 20 of 20 calls pass.
+
 ## 5h. Note templates for clinicians and the portal's medication list (demo steps 8 and 12)
 
 `tests/flows/templates-and-portal-medications.mjs` runs both on the sample-data server:

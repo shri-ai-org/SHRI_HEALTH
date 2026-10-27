@@ -220,6 +220,10 @@ paths:
     $ref: 'modules/encounters.yaml#/paths/~1patients~1{patientId}~1encounters'
   /encounters/{encounterId}/close:
     $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1close'
+  /encounters/{encounterId}/follow-up:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1follow-up'
+  /encounters/{encounterId}/follow-up/decline:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1follow-up~1decline'
   /encounters/{encounterId}/entered-in-error:
     $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1entered-in-error'
   /encounters/{encounterId}/vitals:

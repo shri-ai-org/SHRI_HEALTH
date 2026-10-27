@@ -4818,6 +4818,16 @@ paths:
                   appointmentTypeId: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
                   startAt: '2026-11-03T15:00:00Z'
                   reasonForVisit: Follow-up on blood pressure
+              revisit:
+                summary: The revisit, booked from the follow-up request (D98)
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                  facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                  appointmentTypeId: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                  startAt: '2027-02-02T15:00:00Z'
+                  reasonForVisit: Recheck blood pressure
+                  followUpOfEncounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
       responses:
         '201':
           description: Created. The new appointment.
@@ -4881,7 +4891,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `booking-conflict` (the slot is taken or overlaps another appointment); `patient-merged` (the patient was merged into another record).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (outside the provider's hours, overbooking not allowed for this type, or the type's overbook limit reached; or the provider or location does not belong to the facility (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (outside the provider's hours, overbooking not allowed for this type, or the type's overbook limit reached; or the provider or location does not belong to the facility (field code `invalid-reference`)); `followUpOfEncounterId` is not an open follow-up request for this patient (field code `invalid-reference`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -4954,6 +4964,40 @@ paths:
                     overbook: false
                     createdAt: '2026-11-02T16:05:00Z'
                     updatedAt: '2026-11-02T16:05:00Z'
+                at-check-out:
+                  summary: At check-out, with the visit's follow-up request (D98)
+                  value:
+                    id: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      displayName: Kuhlman72, Ramona980
+                    provider:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    appointmentType:
+                      id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      code: FOLLOWUP
+                      name: Follow-up visit
+                    status: checked-in
+                    startAt: '2026-11-03T15:00:00Z'
+                    endAt: '2026-11-03T15:20:00Z'
+                    durationMinutes: 20
+                    timeZone: America/Chicago
+                    reasonForVisit: Follow-up on blood pressure
+                    sameDayAddOn: false
+                    overbook: false
+                    createdAt: '2026-11-02T16:05:00Z'
+                    updatedAt: '2026-11-03T15:40:00Z'
+                    followUp:
+                      encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                      interval:
+                        value: 3
+                        unit: month
+                      appointmentTypeId: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      note: Recheck blood pressure.
+                      status: open
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
@@ -5344,6 +5388,10 @@ paths:
                 value:
                   status: roomed
                   roomLocationId: 9c0d1e2f-3a4b-4c5d-9e6f-7a8b9c0d1e2f
+              checked-out:
+                summary: Checked out; completes the visit flow
+                value:
+                  status: checked-out
       responses:
         '200':
           description: The appointment.
@@ -5512,6 +5560,15 @@ paths:
                           name: Follow-up visit
                         reasonForVisit: Follow-up on blood pressure
                         encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                        followUp:
+                          encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                          interval:
+                            value: 3
+                            unit: month
+                          appointmentTypeId: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                          providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          note: Recheck blood pressure.
+                          status: open
                     date: '2026-11-03'
                     timeZone: America/Chicago
                     facilityName: Test Clinic Main Street
@@ -6954,6 +7011,201 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a close rule is not met; `errors` names it: `/notes` `required` (no signed note), `/notes` `not-allowed-value` (a draft is still open), `/diagnoses` `required` (billable type without a diagnosis)).'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/follow-up:
+    parameters:
+      - name: encounterId
+        in: path
+        required: true
+        description: Encounter ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    put:
+      operationId: setFollowUpRequest
+      summary: Ask for a follow-up visit
+      description: 'The clinician asks the front desk to book a revisit (D98): when, and optionally with whom and for what kind of visit. Replaces an open request; a booked one can no longer change. The front desk sees it at check-out (`followUp` on the appointment and on the staff status board) and books it with `POST /appointments` and `followUpOfEncounterId`.'
+      tags:
+        - encounters
+      x-owner: vimal
+      x-permission: encounters:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: result
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpRequestPut'
+            examples:
+              threeMonths:
+                summary: In 3 months
+                value:
+                  interval:
+                    value: 3
+                    unit: month
+                  appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                  providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                  note: Recheck blood pressure.
+      responses:
+        '200':
+          description: The follow-up request. The `ETag` is the encounter's.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpRequest'
+              examples:
+                open:
+                  summary: Open
+                  value:
+                    interval:
+                      value: 3
+                      unit: month
+                    appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                    providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    note: Recheck blood pressure.
+                    status: open
+                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedAt: '2026-11-20T15:25:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `encounters:update`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the follow-up is already booked, or the encounter is entered-in-error or cancelled; the problem carries `currentState`).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current `ETag`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (the `If-Match` header is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/follow-up/decline:
+    parameters:
+      - name: encounterId
+        in: path
+        required: true
+        description: Encounter ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: declineFollowUpRequest
+      summary: Record that the follow-up was not booked
+      description: At check-out, when the patient does not book the revisit (D98). The request becomes `declined` with the reason.
+      tags:
+        - encounters
+      x-owner: vimal
+      x-permission: appointments:status
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpDecline'
+            examples:
+              later:
+                summary: Will call later
+                value:
+                  reason: Patient will call to book.
+      responses:
+        '200':
+          description: The follow-up request, declined.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpRequest'
+              examples:
+                declined:
+                  summary: Declined
+                  value:
+                    interval:
+                      value: 3
+                      unit: month
+                    appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                    providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    note: Recheck blood pressure.
+                    status: declined
+                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedAt: '2026-11-20T15:25:00Z'
+                    declinedReason: Patient will call to book.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `appointments:status`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (no open follow-up request on this encounter; the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -15810,7 +16062,7 @@ paths:
     post:
       operationId: recordPayment
       summary: Record a patient payment
-      description: 'Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in, so it works for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`. The receipt is created in the same step as the payment, so every recorded payment has one (`receiptFileId` is always present, D104).'
+      description: 'Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in or check-out (D100), so it works for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`. The receipt is created in the same step as the payment, so every recorded payment has one (`receiptFileId` is always present, D104).'
       tags:
         - billing
       x-owner: anand
@@ -22800,6 +23052,70 @@ components:
           maxLength: 2000
           description: Instructions for the patient.
           x-phi: clinical
+        followUpOfEncounterId:
+          $ref: '#/components/schemas/Id'
+          description: 'Books the follow-up asked for in this encounter (D98): it must be an open request for the same patient; it becomes `booked` and points to the new appointment, in the same transaction.'
+          x-phi: internal-id
+    FollowUpInterval:
+      description: When the patient should come back, from today.
+      type: object
+      additionalProperties: false
+      required:
+        - value
+        - unit
+      properties:
+        value:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 365
+          description: How many units.
+          x-phi: clinical
+        unit:
+          type: string
+          enum:
+            - day
+            - week
+            - month
+          description: Unit.
+          x-phi: none
+    FollowUpSummary:
+      description: 'The visit''s follow-up request as the front desk needs it at check-out (D98): no clinical note beyond the request itself.'
+      type: object
+      required:
+        - encounterId
+        - interval
+        - status
+      properties:
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit that asked for it.
+          x-phi: internal-id
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: '#/components/schemas/Id'
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: '#/components/schemas/Id'
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: The clinician's note for the front desk.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - open
+            - booked
+            - declined
+          description: Status.
+          x-phi: none
     Appointment:
       description: An appointment (FHIR-shaped `Appointment`). For a restricted patient seen without a break-glass grant or care-team membership, `reasonForVisit`, `comment`, `patientInstruction` and `cancellation.reasonText` are left out (SECURITY_MODEL §5.2).
       type: object
@@ -22930,6 +23246,10 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: Last change.
           x-phi: none
+        followUp:
+          $ref: '#/components/schemas/FollowUpSummary'
+          description: The follow-up the clinician asked for in this visit, if any (D98).
+          x-phi: clinical
     AppointmentPatch:
       description: 'JSON Merge Patch for the room, reason for visit, staff note and patient instructions of a booked appointment. It has no time, provider, facility, type or length fields: those change only through `POST /appointments/{appointmentId}/reschedule`, which requires a reason and sets `rescheduledFromId` (D61). Status never changes here (API_STANDARDS §7.3).'
       type: object
@@ -23090,6 +23410,10 @@ components:
           $ref: '#/components/schemas/Id'
           description: The encounter, once checked in. Staff view only (D60).
           x-phi: internal-id
+        followUp:
+          $ref: '#/components/schemas/FollowUpSummary'
+          description: 'Staff view only (left out of the shared view, D47): the follow-up asked for in this visit, if any (D98).'
+          x-phi: clinical
     StatusBoardList:
       description: One page of the status board, by start time.
       type: object
@@ -23949,6 +24273,57 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: Last change.
           x-phi: none
+    FollowUpRequest:
+      description: 'The clinician''s follow-up request for a visit (D98): `open` until the front desk books the revisit (`booked`) or records that the patient declined (`declined`).'
+      type: object
+      required:
+        - interval
+        - status
+        - requestedBy
+        - requestedAt
+      properties:
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: '#/components/schemas/Id'
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: '#/components/schemas/Id'
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: For the front desk ("recheck blood pressure").
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - open
+            - booked
+            - declined
+          description: Status.
+          x-phi: none
+        requestedBy:
+          $ref: '#/components/schemas/Id'
+          description: Who asked for it.
+          x-phi: none
+        requestedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When.
+          x-phi: none
+        bookedAppointmentId:
+          $ref: '#/components/schemas/Id'
+          description: The revisit, once `booked`.
+          x-phi: internal-id
+        declinedReason:
+          type: string
+          maxLength: 500
+          description: Why the patient declined, once `declined`.
+          x-phi: clinical
     Encounter:
       description: 'An encounter with its workspace data (inventory #63; FRS FR-ENC-01): its ranked diagnoses, its vitals and a summary of its notes. Problems, allergies, history, medications and results come from their own endpoints, so each owner''s data stays in one place.'
       type: object
@@ -24061,6 +24436,10 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: Last change.
           x-phi: none
+        followUp:
+          $ref: '#/components/schemas/FollowUpRequest'
+          description: The follow-up request, if the clinician made one (D98).
+          x-phi: clinical
     EncounterPatch:
       description: 'JSON Merge Patch for an encounter that is not `finished` or `entered-in-error`: reasons, room and participants. Status changes only through actions (DATA_OWNERSHIP §5).'
       type: object
@@ -24153,6 +24532,43 @@ components:
           $ref: '#/components/schemas/Cursor'
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
+    FollowUpRequestPut:
+      description: Body to set the visit's follow-up request, replacing an open one.
+      type: object
+      additionalProperties: false
+      required:
+        - interval
+      properties:
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: '#/components/schemas/Id'
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: '#/components/schemas/Id'
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: For the front desk.
+          x-phi: clinical
+    FollowUpDecline:
+      description: Body to record that the patient did not book the follow-up.
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: Why ("will call to book").
+          x-phi: clinical
+          minLength: 1
     EncounterEnteredInError:
       description: Body to mark an encounter entered in error (D14). The reason is stored in the Provenance record, never in a log.
       type: object
@@ -28257,7 +28673,7 @@ components:
         - ach
         - other
     PaymentCreate:
-      description: Body to record a patient payment, usually the copay at check-in (FRS FR-SCH-02, FR-RCM-03).
+      description: Body to record a patient payment, usually the copay at check-in or check-out (FRS FR-SCH-02, FR-RCM-03; D100).
       type: object
       additionalProperties: false
       required:
