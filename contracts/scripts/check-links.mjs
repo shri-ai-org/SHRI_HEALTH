@@ -1,5 +1,8 @@
 // Checks that every relative link in the markdown files points at a file or folder that exists.
 // Web links (http, https, mailto) and same-page anchors are skipped; a link's own #anchor is not checked.
+// Symbolic links met while walking a folder are never followed (a path given on the command line is), so
+// node_modules is skipped whether it is a folder or a symlink, and a worktree that links its node_modules to
+// another checkout's still checks only our own files.
 //
 //   node scripts/check-links.mjs            # every .md file under contracts/ (npm run links; part of npm test)
 //   node scripts/check-links.mjs .. docs    # the whole repository, or any folders and files given
@@ -15,7 +18,7 @@ const EXTERNAL = /^(https?:|mailto:|#)/;
 function markdownFiles(path) {
   if (!statSync(path).isDirectory()) return path.endsWith('.md') ? [path] : [];
   return readdirSync(path, { withFileTypes: true })
-    .filter((e) => !(e.isDirectory() && SKIP_DIRS.has(e.name)))
+    .filter((e) => !e.isSymbolicLink() && !(e.isDirectory() && SKIP_DIRS.has(e.name)))
     .flatMap((e) => markdownFiles(join(path, e.name)));
 }
 
