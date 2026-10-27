@@ -85,9 +85,21 @@ from app.db.constraints import patient_column      # which column says "this row
 from app.db.errors import db_error_detail          # map a caught DBAPIError to (status, detail)
 ```
 
-A full `fhir_store.create/update/entered_in_error/history` helper layer (as sketched in the
-original Implementation Guide) is not built yet — this adoption PR is the schema and the
-read-only `/fhir` facade only. Flag it if you need it before it exists.
+**The write helpers, `app.db.fhir_store`** (batch 1 plan §7.3, the interface Vimal posted on
+#13): `SqlFhirStore` writes Patient, RelatedPerson, Coverage and Consent with all their child
+rows, through the request's session; the data types and exceptions are importable from the same
+module. Each helper:
+- never commits; the endpoint's transaction holds the whole request;
+- replaces a list it is given, leaves a field left `UNSET` alone, and clears one set to `None`;
+- checks `if_version` under `SELECT … FOR UPDATE` and raises `StaleVersion(current_version)`;
+- returns `Written(id, version, last_updated)`, the version this transaction gives the
+  resource (the ETag), child rows included;
+- raises `ResourceNotFound` for a row the session can't see.
+
+`coverage_entered_in_error` writes its Provenance (agent: the current user's practitioner, or
+their name). `create_consent` sets the FHIR scope from the kind (`research`; `patient-privacy`
+for `privacy-notice` and `information-sharing`; otherwise `treatment`). Encounter, Condition
+and the rest follow with batch 2.
 
 ## Conventions for the repositories (Vimal's review of #45)
 
