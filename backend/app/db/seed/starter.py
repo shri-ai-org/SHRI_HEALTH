@@ -15,6 +15,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 import app.db.session  # noqa: F401  (fills child rows' tenant_id)
+from app.core.config import Settings
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS, FACILITY_A, FACILITY_B
 from app.db.models import MAPPERS, systems
 
@@ -30,8 +31,12 @@ def sid(kind: int, n: int) -> uuid.UUID:
 ORG, SITE, ROOM, FACILITY, PRACTITIONER, ROLE, SCHEDULE, RULE, VISIT, PAYER, PRACTICE_PAYER, \
     TEMPLATE, SECTION, COUNTER, USER, NAME, IDENT, ROLE_LOCATION, ACTOR, ADDRESS = range(1, 21)
 
-#: The MRN system of the starter practice (D41): the practice prefix plus a number.
-MRN_SYSTEM = "https://shri.health/fhir/sid/mrn/riverbend"
+#: The MRN system of the starter practice (D41): the placeholder domain until onboarding's real
+#: one is decided (Q3), in #96's shape. It freezes at the first MRN, so a database seeded with it
+#: keeps it.
+MRN_SYSTEM = "https://company-domain.invalid/sid/mrn/RFM"
+#: The environments the seed may run in; anything else, unset included, is refused.
+ALLOWED_ENVIRONMENTS = frozenset({"development", "test"})
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri")
 EFFECTIVE_FROM = date(2026, 10, 1)
 
@@ -56,7 +61,7 @@ PRACTICES = (
               (None, "NORTH", "Riverbend north office (synthetic)", "America/New_York",
                ("200 Sample Avenue", "Columbus", "OH", "43004")))),
     Practice(CLINIC_B, "northgate", "Northgate Clinic (synthetic)", "America/Denver",
-             "NGC", "https://shri.health/fhir/sid/mrn/northgate",
+             "NGC", "https://company-domain.invalid/sid/mrn/NGC",
              ((FACILITY_B, "MAIN", "Northgate office (synthetic)", "America/Denver",
                ("300 Sample Avenue", "Denver", "CO", "80202")),)),
 )
@@ -168,16 +173,17 @@ def _providers(db: Session, practice: dict[str, Any]) -> dict[str, uuid.UUID]:
                                        suffix=[suffix] if suffix else [], use="official")]
             db.add(pr)
             db.flush()
-        role = db.get(M["practitioner_role"], sid(ROLE, i))
-        if role is None:
-            role = M["practitioner_role"](id=sid(ROLE, i), tenant_id=CLINIC_A,
-                                          practitioner_id=pr.id,
-                                          organization_id=practice["org"].id)
-            role.location = [M["practitioner_role_location"](id=sid(ROLE_LOCATION, i * 10 + j),
-                                                             location_id=site.id)
-                             for j, (site, _) in enumerate(practice["sites"], start=1)]
-            db.add(role)
-            db.flush()
+        # One PractitionerRole per provider and facility, as practice setup maps it.
+        for j, (site, _) in enumerate(practice["sites"], start=1):
+            n = i * 10 + j
+            if db.get(M["practitioner_role"], sid(ROLE, n)) is None:
+                role = M["practitioner_role"](id=sid(ROLE, n), tenant_id=CLINIC_A,
+                                              practitioner_id=pr.id,
+                                              organization_id=practice["org"].id)
+                role.location = [M["practitioner_role_location"](id=sid(ROLE_LOCATION, n),
+                                                                 location_id=site.id)]
+                db.add(role)
+                db.flush()
         out[user] = pr.id
     return out
 
@@ -211,7 +217,7 @@ def _schedules(db: Session, practice: dict[str, Any], visits: dict[str, uuid.UUI
             if sch is None:
                 sch = M["schedule"](id=sid(SCHEDULE, n), tenant_id=CLINIC_A, ext_facility_id=fac.id)
                 sch.actor = [M["schedule_actor"](id=sid(ACTOR, n),
-                                                 practitioner_role_id=sid(ROLE, i))]
+                                                 practitioner_role_id=sid(ROLE, n))]
                 db.add(sch)
                 db.flush()
             for d, day in enumerate(WEEKDAYS, start=1):
@@ -227,8 +233,17 @@ def _schedules(db: Session, practice: dict[str, Any], visits: dict[str, uuid.UUI
     db.flush()
 
 
+def require_dev_environment() -> None:
+    """Every way into the seed calls this first: core's ENVIRONMENT setting (unset is
+    production) must be development or test."""
+    environment = Settings().environment
+    if environment not in ALLOWED_ENVIRONMENTS:
+        raise RuntimeError(f"refusing to seed synthetic data with ENVIRONMENT={environment}")
+
+
 def load_starter(db: Session) -> None:
     """Loads the starter layer in the session's transaction; the caller commits."""
+    require_dev_environment()
     # The rule functions name tables without a schema, as the API role's search_path finds
     # them. shri_migrator has the same setting (sql/00_extensions.sql), but a role's settings
     # apply only at login, and the tests switch to it with SET ROLE. For this transaction only.

@@ -24,6 +24,12 @@ COUNTED = ("admin.tenant", "clinical.organization", "clinical.location", "admin.
            "admin.app_user", "clinical.fhir_resource_history")
 
 
+@pytest.fixture(autouse=True)
+def _test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """load_starter refuses anything but development and test (core's ENVIRONMENT)."""
+    monkeypatch.setenv("ENVIRONMENT", "test")
+
+
 @pytest.fixture(scope="module")
 def migrator_engine() -> Iterator[Engine]:
     engine = create_engine(sync_url(), poolclass=NullPool)
@@ -87,6 +93,13 @@ def test_the_dev_users_see_their_practice_through_the_api_role(
         assert sorted(scalars("SELECT code FROM admin.note_template")) == [
             "ANNUAL", "FOLLOW-UP", "NEW-VISIT"]
         assert len(scalars("SELECT id FROM clinical.schedule")) == 4
+        # One PractitionerRole per provider and facility; each schedule uses its facility's role.
+        assert len(scalars("SELECT id FROM clinical.practitioner_role")) == 4
+        assert scalars(
+            "SELECT count(*) FROM clinical.schedule s JOIN admin.facility f ON f.id = "
+            "s.ext_facility_id JOIN clinical.schedule_actor a ON a.schedule_id = s.id "
+            "JOIN clinical.practitioner_role_location l ON l.practitioner_role_id = "
+            "a.practitioner_role_id WHERE l.location_id = f.location_id") == [4]
         assert set(scalars("SELECT id FROM admin.app_user")) >= {
             u.id for u in DEV_USERS.values() if u.organization_id == CLINIC_A}
         # Registration works at once: the counter exists, as onboarding creates it.

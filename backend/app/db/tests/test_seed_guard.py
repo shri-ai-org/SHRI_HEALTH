@@ -48,6 +48,20 @@ def test_the_seed_refuses_a_login_that_bypasses_rls(
     assert calls == []
 
 
+@pytest.mark.parametrize("environment", ["production", "staging", None])
+def test_load_starter_refuses_too_before_touching_the_database(
+        monkeypatch: pytest.MonkeyPatch, environment: str | None) -> None:
+    """The reset script and the tests call load_starter directly, not main."""
+    from app.db.seed.starter import load_starter
+
+    if environment is None:
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+    else:
+        monkeypatch.setenv("ENVIRONMENT", environment)
+    with pytest.raises(RuntimeError, match="refusing to seed"):
+        load_starter(None)  # type: ignore[arg-type]   # never reached: no session needed
+
+
 def test_an_unknown_layer_is_a_usage_error(calls: list[Any],
                                            monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "development")

@@ -9,10 +9,9 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
-from app.db.seed.starter import load_starter
+from app.db.seed.starter import load_starter, require_dev_environment
 
 LAYERS = {"starter": load_starter}
-ALLOWED_ENVIRONMENTS = {"development", "test"}
 
 
 def bypasses_rls(db: Session) -> bool:
@@ -25,9 +24,10 @@ def main(argv: list[str]) -> int:
     if len(argv) != 1 or argv[0] not in LAYERS:
         print(f"usage: python -m app.db.seed {{{'|'.join(LAYERS)}}}", file=sys.stderr)
         return 2
-    environment = os.environ.get("ENVIRONMENT", "production")
-    if environment not in ALLOWED_ENVIRONMENTS:
-        print(f"refusing to seed synthetic data with ENVIRONMENT={environment}", file=sys.stderr)
+    try:
+        require_dev_environment()        # load_starter checks again: one rule, every caller
+    except RuntimeError as refused:
+        print(refused, file=sys.stderr)
         return 1
     url = os.environ.get("MIGRATION_DATABASE_URL")
     if not url:
