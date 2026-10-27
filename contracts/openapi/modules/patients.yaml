@@ -1909,7 +1909,7 @@ paths:
                       id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
                       status: active
                       issuedAt: '2026-11-03T14:30:00Z'
-                      expiresAt: '2026-11-06T14:30:00Z'
+                      expiresAt: '2035-01-01T14:30:00Z'
                 active:
                   summary: Enrolled
                   value:
@@ -2004,7 +2004,7 @@ paths:
                     id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
                     code: K7Q2-9MZD-4TXH
                     issuedAt: '2026-11-03T14:30:00Z'
-                    expiresAt: '2026-11-06T14:30:00Z'
+                    expiresAt: '2035-01-01T14:30:00Z'
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).

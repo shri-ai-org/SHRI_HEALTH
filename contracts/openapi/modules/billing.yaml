@@ -204,7 +204,7 @@ paths:
                       currency: USD
                     status: pending
                     clientToken: TEST-hosted-fields-placeholder
-                    expiresAt: '2026-11-03T15:10:00Z'
+                    expiresAt: '2035-01-01T15:10:00Z'
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required
