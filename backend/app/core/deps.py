@@ -150,10 +150,15 @@ async def tenant_db(
         raise ServiceUnavailable("Database is not configured")
     # The clinic and user come from the server-side session (current_user), never from
     # request headers or the body (D21).
-    session = db.tenant_session(
-        user.organization_id, user.id, current_request_id(),
-        guard=lambda: _require_was_checked(request),
-    )
+    from app.core.access import check_facility_query  # access builds on this module
+
+    def guard() -> None:
+        # Both run at the first query, after all of the endpoint's dependencies, so a missing
+        # permission is always reported (403) before a facility that isn't the user's (404).
+        _require_was_checked(request)
+        check_facility_query(user, request.query_params.getlist("facilityId"))
+
+    session = db.tenant_session(user.organization_id, user.id, current_request_id(), guard=guard)
     audit.start_trail(request, user, session)  # the route's x-audit rows (app/core/audit.py)
     async with session:
         yield session
