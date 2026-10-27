@@ -4129,7 +4129,7 @@ paths:
     get:
       operationId: listPreRegistrations
       summary: List pre-registrations
-      description: 'The front desk''s queue of pre-registrations (D96), oldest first; pending by default. Facility scope (a work list; batch 1 plan decision 2): a request naming a `preferredFacilityId` is visible only to users assigned to that facility; one naming none is visible to every FD and ADM user in the clinic. Without `facilityId`, the list is limited the same way.'
+      description: 'The front desk''s queue of pre-registrations (D96), oldest first; pending by default. The queue is the clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.'
       tags:
         - patients
       x-owner: vimal
@@ -4155,12 +4155,6 @@ paths:
               - accepted
               - rejected
             default: pending
-        - name: facilityId
-          in: query
-          required: false
-          description: Only those asking for this facility.
-          schema:
-            $ref: '#/components/schemas/Id'
       responses:
         '200':
           description: One page.
@@ -4207,7 +4201,6 @@ paths:
                             payerName: Example Health Plan
                             memberId: TEST-MEMBER-042
                             groupNumber: TEST-GRP-7
-                          preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
                           reasonForVisit: New patient, annual checkup.
                         entrySource: patient-reported
                         submittedAt: '2026-11-18T09:12:00Z'
@@ -4244,7 +4237,7 @@ paths:
     get:
       operationId: getPreRegistration
       summary: Get a pre-registration
-      description: 'One pre-registration (D96). Facility scope (a work list; batch 1 plan decision 2): a request naming a `preferredFacilityId` is visible only to users assigned to that facility; one naming none is visible to every FD and ADM user in the clinic.'
+      description: 'One pre-registration (D96). The queue is the clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.'
       tags:
         - patients
       x-owner: vimal
@@ -4301,7 +4294,6 @@ paths:
                         payerName: Example Health Plan
                         memberId: TEST-MEMBER-042
                         groupNumber: TEST-GRP-7
-                      preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
                       reasonForVisit: New patient, annual checkup.
                     entrySource: patient-reported
                     submittedAt: '2026-11-18T09:12:00Z'
@@ -4335,7 +4327,7 @@ paths:
     post:
       operationId: acceptPreRegistration
       summary: Accept a pre-registration
-      description: 'Creates the patient through the registration rules (duplicate check with `409 possible-duplicate` and the override; the MRN from the practice counter, D41), or links to an existing `patientId` chosen in duplicate review; insurance as typed becomes a note for the front desk, not a coverage, until the card is checked. The request is linked to the patient, all in one transaction (D96). Fields stay patient-reported until verified against ID. Facility scope (a work list; batch 1 plan decision 2): a request naming a `preferredFacilityId` is visible only to users assigned to that facility; one naming none is visible to every FD and ADM user in the clinic.'
+      description: 'Creates the patient through the registration rules (duplicate check with `409 possible-duplicate` and the override; the MRN from the practice counter, D41), or links to an existing `patientId` chosen in duplicate review; insurance as typed stays on the request as a note for the front desk (returned by the queue reads), not a coverage, until the card is checked. The request is linked to the patient, all in one transaction (D96). The front-desk user must confirm they checked the person''s ID and say which kind (`identityVerified`, `idDocumentType`); the check is stored with who and when (`identityCheck`). Duplicate matching happens here, never at submit. The queue is the clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.'
       tags:
         - patients
       x-owner: vimal
@@ -4363,10 +4355,14 @@ paths:
             examples:
               create:
                 summary: Create the patient
-                value: {}
+                value:
+                  identityVerified: true
+                  idDocumentType: drivers-license
               link:
                 summary: Link to an existing patient
                 value:
+                  identityVerified: true
+                  idDocumentType: drivers-license
                   patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
       responses:
         '200':
@@ -4413,13 +4409,16 @@ paths:
                         payerName: Example Health Plan
                         memberId: TEST-MEMBER-042
                         groupNumber: TEST-GRP-7
-                      preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
                       reasonForVisit: New patient, annual checkup.
                     entrySource: patient-reported
                     submittedAt: '2026-11-18T09:12:00Z'
                     patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
                     decidedAt: '2026-11-20T14:02:00Z'
                     decidedBy: d0000000-0000-4000-8000-000000000001
+                    identityCheck:
+                      idDocumentType: drivers-license
+                      verifiedBy: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                      verifiedAt: '2026-11-20T14:02:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -4455,7 +4454,7 @@ paths:
     post:
       operationId: rejectPreRegistration
       summary: Reject a pre-registration
-      description: 'Rejects it with a reason (D96). It is deleted 30 days later. Nothing is sent to the person. Facility scope (a work list; batch 1 plan decision 2): a request naming a `preferredFacilityId` is visible only to users assigned to that facility; one naming none is visible to every FD and ADM user in the clinic.'
+      description: 'Rejects it with a reason (D96). It is deleted 30 days later. Nothing is sent to the person. The queue is the clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.'
       tags:
         - patients
       x-owner: vimal
@@ -4529,7 +4528,6 @@ paths:
                         payerName: Example Health Plan
                         memberId: TEST-MEMBER-042
                         groupNumber: TEST-GRP-7
-                      preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
                       reasonForVisit: New patient, annual checkup.
                     entrySource: patient-reported
                     submittedAt: '2026-11-18T09:12:00Z'
@@ -19204,11 +19202,21 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
-  /portal/pre-registrations:
+  /portal/practices/{practiceLinkId}/pre-registrations:
+    parameters:
+      - name: practiceLinkId
+        in: path
+        required: true
+        description: The practice's opaque pre-registration code, from its public pre-registration link (D96). It names the clinic; the clinic is resolved from it on the server, never from the body. Not patient data.
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{16,64}$
+          minLength: 16
+          maxLength: 64
     post:
       operationId: submitPreRegistration
       summary: Pre-register as a new patient
-      description: 'The public pre-registration form (D96): no account and no session. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is. Only a malformed request, a failed bot check or a rate limit gets a different answer, and those say nothing about the person. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email; the ALTCHA bot check is verified on the server. The submission is stored encrypted at rest and waits in the front desk''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).'
+      description: 'The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice''s own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).'
       tags:
         - portal
       x-owner: vimal
@@ -19255,7 +19263,6 @@ paths:
                       payerName: Example Health Plan
                       memberId: TEST-MEMBER-042
                       groupNumber: TEST-GRP-7
-                    preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
                     reasonForVisit: New patient, annual checkup.
                   contactConsent: true
                   botCheck: mock-altcha-payload
@@ -19273,19 +19280,28 @@ paths:
               $ref: '#/components/headers/RateLimitPolicy'
         '400':
           $ref: '#/components/responses/BadRequest'
-          description: 400. `malformed-request` (the body is not parseable JSON).
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required Idempotency-Key header is missing).
         '403':
           $ref: '#/components/responses/Forbidden'
           description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the portal host).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (the practice code is unknown, or the practice has turned its pre-registration link off). Says nothing about any person.
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: '422. `validation-failed` (a field is missing or malformed); `business-rule-violation` (`errors` names `/botCheck`: the bot check failed or expired).'
+          description: '422. `validation-failed` (a field is missing or malformed, including neither a phone nor an email); `business-rule-violation` (`errors` names `/botCheck`: the bot check failed or expired); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+      x-idempotency: required
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
 components:
   schemas:
     Address:
@@ -22270,8 +22286,9 @@ components:
           maxItems: 3
           items:
             $ref: '#/components/schemas/Phone'
-          description: Phone numbers. At least one phone or an email.
+          description: Phone numbers. At least one phone or an email (enforced by the schema).
           x-phi: identifier
+          minItems: 1
         email:
           $ref: '#/components/schemas/EmailAddress'
           description: Email address.
@@ -22289,7 +22306,7 @@ components:
         insurance:
           type: object
           additionalProperties: false
-          description: Insurance as the person typed it; the front desk turns it into a coverage after checking the card.
+          description: Insurance as the person typed it. It stays with the request as a note for the front desk, returned by `GET /pre-registrations` and `GET /pre-registrations/{preRegistrationId}`; accepting the request does not create a coverage. The front desk enters the coverage after checking the card.
           x-phi: identifier
           properties:
             payerName:
@@ -22307,15 +22324,42 @@ components:
               maxLength: 80
               description: Group number.
               x-phi: identifier
-        preferredFacilityId:
-          $ref: '#/components/schemas/Id'
-          description: The facility the person would like to visit. It decides which front-desk users see the request (facility scope).
-          x-phi: none
         reasonForVisit:
           type: string
           maxLength: 1000
           description: Why they want an appointment.
           x-phi: clinical
+      anyOf:
+        - required:
+            - phones
+        - required:
+            - email
+    PreRegistrationIdentityCheck:
+      description: The identity check the front-desk user recorded when accepting the request (D96).
+      type: object
+      required:
+        - idDocumentType
+        - verifiedBy
+        - verifiedAt
+      properties:
+        idDocumentType:
+          type: string
+          enum:
+            - drivers-license
+            - state-id
+            - passport
+            - military-id
+            - other
+          description: The kind of ID that was checked.
+          x-phi: none
+        verifiedBy:
+          $ref: '#/components/schemas/Id'
+          description: The front-desk user who checked it (from the session).
+          x-phi: internal-id
+        verifiedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When.
+          x-phi: none
     PreRegistration:
       description: A pre-registration in the front desk's queue (D96). Stored encrypted at rest; a rejected or never-reviewed one is deleted at `deleteAfter` (30 days).
       type: object
@@ -22346,7 +22390,7 @@ components:
           type: string
           enum:
             - patient-reported
-          description: Always patient-reported (FR-PAT-02).
+          description: 'Always patient-reported (FR-PAT-02): the details are as the person typed them. Accepting records that the person''s identity was checked against ID (`identityCheck`); each field is corrected on the chart as the front desk verifies it.'
           x-phi: none
         submittedAt:
           $ref: '#/components/schemas/Timestamp'
@@ -22390,6 +22434,10 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: When it will be deleted if still pending or rejected (30 days after it arrived or was rejected).
           x-phi: none
+        identityCheck:
+          $ref: '#/components/schemas/PreRegistrationIdentityCheck'
+          description: 'Once accepted: the identity check recorded at accept.'
+          x-phi: none
     PreRegistrationList:
       description: Pre-registrations, oldest first.
       type: object
@@ -22412,6 +22460,21 @@ components:
       type: object
       additionalProperties: false
       properties:
+        identityVerified:
+          type: boolean
+          const: true
+          description: The front-desk user confirms they checked the person's ID before accepting. Required, and must be true.
+          x-phi: none
+        idDocumentType:
+          type: string
+          enum:
+            - drivers-license
+            - state-id
+            - passport
+            - military-id
+            - other
+          description: The kind of ID that was checked.
+          x-phi: none
         patientId:
           $ref: '#/components/schemas/Id'
           description: Link to this existing patient instead of creating one.
@@ -22429,6 +22492,9 @@ components:
           maxLength: 500
           description: Why it is not a duplicate.
           x-phi: clinical
+      required:
+        - identityVerified
+        - idDocumentType
     PreRegistrationReject:
       description: Body to reject a pre-registration.
       type: object

@@ -1659,17 +1659,32 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
-  /portal/pre-registrations:
+  /portal/practices/{practiceLinkId}/pre-registrations:
+    parameters:
+    - name: practiceLinkId
+      in: path
+      required: true
+      description: The practice's opaque pre-registration code, from its public pre-registration link (D96). It names the
+        clinic; the clinic is resolved from it on the server, never from the body. Not patient data.
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{16,64}$
+        minLength: 16
+        maxLength: 64
     post:
       operationId: submitPreRegistration
       summary: Pre-register as a new patient
-      description: 'The public pre-registration form (D96): no account and no session. It always answers with the same generic
-        `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is.
-        Only a malformed request, a failed bot check or a rate limit gets a different answer, and those say nothing about
-        the person. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited
-        per IP and per email; the ALTCHA bot check is verified on the server. The submission is stored encrypted at rest and
-        waits in the front desk''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or
-        texted back with patient data (D81).'
+      description: 'The public pre-registration form (D96): no account and no session. The clinic comes only from the practice
+        code in the path, the practice''s own pre-registration link, resolved on the server; never from the body. It always
+        answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t
+        be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check
+        or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only:
+        no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching
+        happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are
+        rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request
+        bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double
+        submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue;
+        a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).'
       tags:
       - portal
       x-owner: vimal
@@ -1716,7 +1731,6 @@ paths:
                       payerName: Example Health Plan
                       memberId: TEST-MEMBER-042
                       groupNumber: TEST-GRP-7
-                    preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
                     reasonForVisit: New patient, annual checkup.
                   contactConsent: true
                   botCheck: mock-altcha-payload
@@ -1734,20 +1748,30 @@ paths:
               $ref: ../components/headers/RateLimitPolicy.yaml
         '400':
           $ref: ../components/responses/BadRequest.yaml
-          description: 400. `malformed-request` (the body is not parseable JSON).
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required
+            Idempotency-Key header is missing).
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the portal host).
+        "404":
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (the practice code is unknown, or the practice has turned its pre-registration link
+            off). Says nothing about any person.
+        "409":
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: '422. `validation-failed` (a field is missing or malformed); `business-rule-violation` (`errors` names
-            `/botCheck`: the bot check failed or expired).'
+          description: "422. `validation-failed` (a field is missing or malformed, including neither a phone nor an email); `business-rule-violation` (`errors` names `/botCheck`: the bot check failed or expired); `idempotency-key-reused` (the Idempotency-Key was used with a different body)."
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+      x-idempotency: required
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
 components:
   schemas:
     PortalSession:

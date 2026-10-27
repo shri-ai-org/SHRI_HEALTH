@@ -404,8 +404,8 @@ paths:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1medications'
   /portal/me/vitals:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1vitals'
-  /portal/pre-registrations:
-    $ref: 'modules/portal.yaml#/paths/~1portal~1pre-registrations'
+  /portal/practices/{practiceLinkId}/pre-registrations:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1practices~1{practiceLinkId}~1pre-registrations'
 components:
   schemas:
     Address:

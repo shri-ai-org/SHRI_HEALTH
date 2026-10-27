@@ -51,14 +51,22 @@ async function call(name, method, path, { as = 'staff', body, expect, prefer, he
 
 const key = () => ({ 'Idempotency-Key': randomUUID() });
 
+// The practice's own link carries its opaque code; the clinic is resolved from it on the server (D96).
+const FORM = '/portal/practices/{practiceLinkId}/pre-registrations';
+const LINK = FORM.replace('{practiceLinkId}', 'TEST-practice-link-0001');
+
 async function main() {
   step = 'the public form';
-  const form = example('POST', '/portal/pre-registrations');
-  const received = await call('a new patient submits it', 'POST', '/portal/pre-registrations', { as: 'none', body: form, expect: 204 });
+  const form = example('POST', FORM);
+  if ('preferredFacilityId' in form.details) throw new Error('the form has no facility (D96)');
+  if (!form.details.phones?.length && !form.details.email) throw new Error('the form example needs a phone or an email');
+  const submit = { as: 'none', body: form };
+  const received = await call('a new patient submits it', 'POST', LINK, { ...submit, headers: key(), expect: 204 });
   if (received.text) throw new Error('the public form must answer with no body');
-  await call('a failed bot check is refused', 'POST', '/portal/pre-registrations', { as: 'none', body: form, expect: 422, prefer: 422 });
-  await call('a wrong Origin is refused', 'POST', '/portal/pre-registrations', { as: 'none', body: form, expect: 403, prefer: 403 });
-  await call('too many submissions are rate-limited', 'POST', '/portal/pre-registrations', { as: 'none', body: form, expect: 429, prefer: 429 });
+  await call('a failed bot check is refused', 'POST', LINK, { ...submit, headers: key(), expect: 422, prefer: 422 });
+  await call('an unknown practice link', 'POST', LINK, { ...submit, headers: key(), expect: 404, prefer: 404 });
+  await call('a wrong Origin is refused', 'POST', LINK, { ...submit, headers: key(), expect: 403, prefer: 403 });
+  await call('too many submissions are rate-limited', 'POST', LINK, { ...submit, headers: key(), expect: 429, prefer: 429 });
 
   step = "the front desk's queue";
   await call('without a session', 'GET', '/pre-registrations', { as: 'none', expect: 401 });
@@ -66,13 +74,16 @@ async function main() {
   const queue = (await call('pending requests', 'GET', '/pre-registrations?status=pending', { expect: 200 })).data.items;
   if (!queue.length) throw new Error('the queue example has no pending request');
   const preId = queue[0].id;
-  await call('one request', 'GET', `/pre-registrations/${preId}`, { expect: 200 });
+  const one = (await call('one request', 'GET', `/pre-registrations/${preId}`, { expect: 200 })).data;
+  if (!one.details.insurance) throw new Error('the queue read must return the insurance note');
 
   step = 'accept';
   const create = example('POST', '/pre-registrations/{preRegistrationId}/accept', 'create');
+  if (create.identityVerified !== true || !create.idDocumentType) throw new Error('accept must carry the ID check');
   await call('a possible duplicate first', 'POST', `/pre-registrations/${preId}/accept`, { body: create, headers: key(), expect: 409, prefer: 409 });
   const accepted = await call('create the patient (MRN)', 'POST', `/pre-registrations/${preId}/accept`, { body: create, headers: key(), expect: 200 });
   if (accepted.data.status !== 'accepted' || !accepted.data.patientId) throw new Error('an accepted request must link its patient');
+  if (!accepted.data.identityCheck?.verifiedBy) throw new Error('an accepted request must record its ID check');
   const link = example('POST', '/pre-registrations/{preRegistrationId}/accept', 'link');
   await call('or link an existing patient', 'POST', `/pre-registrations/${preId}/accept`, { body: link, headers: key(), expect: 200 });
   await call('a request already decided', 'POST', `/pre-registrations/${preId}/accept`, { body: create, headers: key(), expect: 409, prefer: 409 });
