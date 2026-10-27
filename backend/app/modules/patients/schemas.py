@@ -250,3 +250,52 @@ class RelatedPerson(Out):
 class RelatedPersonList(Out):
     items: list[RelatedPerson]
     next_cursor: str | None = None
+
+
+class PatientPatch(Closed):
+    """JSON merge patch (RFC 7396) for demographics: an absent field is unchanged, `null` clears
+    it, lists replace the stored list. The MRN, identifiers, restriction and status aren't here."""
+
+    name: HumanName | None = None
+    preferred_name: Annotated[str, _text(100)] | None = None
+    previous_names: Annotated[list[HumanName], Field(max_length=5)] | None = None
+    birth_date: date | None = None
+    gender: Gender | None = None
+    birth_sex: BirthSex | None = None
+    gender_identity: CodedValue | None = None
+    sexual_orientation: CodedValue | None = None
+    race: RaceEthnicity | None = None
+    ethnicity: RaceEthnicity | None = None
+    preferred_language: LanguageTag | None = None
+    marital_status: MaritalStatus | Literal[""] | None = None
+    occupation: CodedValue | None = None
+    industry: CodedValue | None = None
+    tribal_affiliation: CodedValue | None = None
+    phones: Annotated[list[Phone], Field(max_length=5)] | None = None
+    emails: Annotated[list[Email], Field(max_length=3)] | None = None
+    address: Address | None = None
+    employer: Employer | None = None
+
+
+class PatientSummariesRequest(Closed):
+    patient_ids: Annotated[list[UUID], Field(min_length=1, max_length=50)]
+
+
+class PatientSummaryBatch(Out):
+    items: list[PatientSummary]
+
+
+class RestrictRequest(Closed):
+    category: Literal["sensitive", "vip"]
+    reason: Annotated[str, _text(500, min_length=1)]
+
+
+class UnrestrictRequest(Closed):
+    reason: Annotated[str, _text(500, min_length=1)]
+
+
+class PatientRestriction(Out):
+    patient_id: UUID
+    restricted: bool
+    category: Literal["sensitive", "vip"] | None = None
+    changed_at: datetime

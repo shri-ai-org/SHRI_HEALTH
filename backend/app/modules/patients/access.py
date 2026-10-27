@@ -3,11 +3,16 @@
 - the restricted-chart check, core's ``ensure_chart_access(db, user, patient_id)`` (Thulasi, #83;
   D37, SECURITY_MODEL §5.2), which raises ``break-glass-required``;
 - the FHIR write helpers, ``app.db.fhir_store.SqlFhirStore`` (Anand, #88), which implement
-  ``store.FhirStore``.
+  ``store.FhirStore``;
+- the audit hooks, core's ``audit_patients`` and ``audit_detail`` (Thulasi, #79), which name the
+  patients of an operation whose ``x-audit.patient`` is ``result`` or ``body:/…``, and the reason
+  where x-audit alone doesn't give it.
 
-Until each lands on main, its dependency **fails closed** with 503: no patient endpoint serves or
-writes a chart without the check and the helpers (batch 1 plan, decision 1). Tests replace both
-with ``app.dependency_overrides``.
+Until the check and the helpers land on main, their dependencies **fail closed** with 503: no
+patient endpoint serves or writes a chart without them (batch 1 plan, decision 1). The audit hooks
+do nothing until #79 is on main, as core's own do for a request with no audit trail; this branch
+merges only after #79 (the PR's dependencies). Tests replace all three with
+``app.dependency_overrides``.
 
 The helpers have their own copies of the interface's types: the same names and fields as
 ``store.py`` (the agreed interface, with the renames on #13), but their own ``UNSET`` sentinel and
@@ -19,11 +24,13 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass
 from types import ModuleType
 from typing import Any, cast
 from uuid import UUID
 
+from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser
@@ -98,3 +105,33 @@ class _Helpers:
 def fhir_store() -> FhirStore:
     """FastAPI dependency: the FHIR write helpers."""
     return cast(FhirStore, _Helpers(_module("app.db.fhir_store", "The FHIR write helpers")))
+
+
+@dataclass(frozen=True)
+class AuditHooks:
+    """``patients(request, ids)``: the patients an operation returned or touched. ``detail(request,
+    action, reason)``: the action and reason where x-audit alone doesn't say it (a restriction's
+    reason, a duplicate override's reason)."""
+
+    patients: Callable[[Request, Iterable[UUID]], None]
+    detail: Callable[[Request, str, str | None], None]
+
+
+def _no_patients(request: Request, patient_ids: Iterable[UUID]) -> None:
+    return None
+
+
+def _no_detail(request: Request, action: str, reason: str | None) -> None:
+    return None
+
+
+def audit_hooks() -> AuditHooks:
+    """FastAPI dependency: core's audit hooks, or no-ops before #79 is on main."""
+    try:
+        module = importlib.import_module("app.core.audit")
+    except ModuleNotFoundError:
+        return AuditHooks(_no_patients, _no_detail)
+    detail = cast(Callable[..., None], module.audit_detail)
+    return AuditHooks(
+        patients=cast(Callable[[Request, Iterable[UUID]], None], module.audit_patients),
+        detail=lambda request, action, reason: detail(request, action=action, reason=reason))

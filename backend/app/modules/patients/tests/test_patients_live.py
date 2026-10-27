@@ -231,3 +231,44 @@ def test_a_restricted_label_reads_back(client: Any, clinics: dict[UUID, UUID]) -
     engine.dispose()
     got = client("fd").get(f"/api/v1/patients/{patient['id']}").json()
     assert got["restricted"] is True
+
+
+def test_update_patient_against_the_real_helpers(client: Any) -> None:
+    family = f"Bui{uuid.uuid4().hex[:6]}"
+    created = client("fd").post("/api/v1/patients", json=_body(family))
+    path = f"/api/v1/patients/{created.json()['id']}"
+    patched = client("fd").patch(path, json={
+        "preferredName": None, "previousNames": [], "maritalStatus": "S",
+        "phones": [{"number": "+12175550123", "use": "home"}], "employer": None},
+        headers={"If-Match": created.headers["ETag"],
+                 "Content-Type": "application/merge-patch+json"})
+    assert patched.status_code == 200, patched.text
+    got = client("ma").get(path).json()
+    assert got["name"]["family"] == family  # untouched
+    assert "preferredName" not in got and got["previousNames"] == []
+    assert got["maritalStatus"] == "S" and "employer" not in got
+    assert got["phones"] == [{"number": "+12175550123", "use": "home", "textMessages": False}]
+    assert got["emails"] == [{"address": "mai.test@example.com"}]  # kept: only phones were sent
+    stale = client("fd").patch(path, json={"maritalStatus": "M"},
+                               headers={"If-Match": created.headers["ETag"]})
+    assert stale.status_code == 412 and stale.headers["ETag"] == patched.headers["ETag"]
+
+
+def test_restrict_unrestrict_and_summaries(client: Any) -> None:
+    first = client("fd").post("/api/v1/patients", json=_body(f"Ly{uuid.uuid4().hex[:6]}")).json()
+    second = client("fd").post("/api/v1/patients", json=_body(
+        f"Ngo{uuid.uuid4().hex[:6]}", birthDate="1990-01-01", phones=[], identifiers=[])).json()
+    base = f"/api/v1/patients/{first['id']}"
+    restricted = client("adm").post(f"{base}/restrict",
+                                    json={"category": "sensitive", "reason": "Test reason."})
+    assert restricted.status_code == 200, restricted.text
+    assert restricted.json()["category"] == "sensitive"
+    summaries = client("ma").post("/api/v1/patients/summaries", json={
+        "patientIds": [second["id"], first["id"], str(uuid.uuid4())]}).json()["items"]
+    assert [s["id"] for s in summaries] == [second["id"], first["id"]]
+    assert summaries[1]["restricted"] is True
+    lifted = client("adm").post(f"{base}/unrestrict", json={"reason": "Test reason."})
+    assert lifted.status_code == 200 and lifted.json()["restricted"] is False
+    assert client("ma").get(base).json()["restricted"] is False
+    assert client("md-b").post("/api/v1/patients/summaries",
+                               json={"patientIds": [first["id"]]}).json()["items"] == []

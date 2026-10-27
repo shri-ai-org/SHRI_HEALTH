@@ -38,7 +38,7 @@ BATCH_1 = frozenset({
 })
 
 # Not built yet. Each PR removes the operations it builds; the test fails if a built one is
-# still listed here. PR-1 builds search, register, read, identifiers and related persons.
+# still listed here. PR-1 builds patients core (plan §5).
 BUILT_IN_PR_1 = frozenset({
     "searchPatients",
     "registerPatient",
@@ -48,6 +48,10 @@ BUILT_IN_PR_1 = frozenset({
     "listRelatedPersons",
     "addRelatedPerson",
     "updateRelatedPerson",
+    "updatePatient",
+    "getPatientSummaries",
+    "restrictPatient",
+    "unrestrictPatient",
 })
 PENDING = BATCH_1 - BUILT_IN_PR_1
 

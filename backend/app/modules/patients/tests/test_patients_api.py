@@ -241,3 +241,108 @@ def test_without_the_real_chart_check_patient_reads_fail_closed(app: FastAPI,
     del app.dependency_overrides[access.chart_check]
     response = as_user("md").get(f"/api/v1/patients/{created['id']}")
     assert response.status_code == 503  # until core's ensure_chart_access (#83) is on main
+
+
+# ------------------------------------------------------------------------------- update patient
+MERGE_PATCH = {"Content-Type": "application/merge-patch+json"}
+
+
+def test_update_patient_with_if_match(as_user: Client) -> None:
+    created = register(as_user)
+    path = f"/api/v1/patients/{created['id']}"
+    patched = as_user("fd").patch(path, json={
+        "preferredName": "Kai", "phones": [{"number": "+12175550111", "textMessages": True}],
+        "maritalStatus": "M", "address": {"lines": ["7 Test Road"], "city": "Springfield",
+                                          "state": "IL", "postalCode": "62701", "country": "US"}},
+        headers={"If-Match": '"1"', **MERGE_PATCH})
+    assert patched.status_code == 200, patched.text
+    body = patched.json()
+    assert patched.headers["ETag"] == '"2"'
+    assert body["preferredName"] == "Kai" and body["maritalStatus"] == "M"
+    assert body["name"]["family"] == "Lindgren118"  # untouched
+    assert body["phones"] == [{"number": "+12175550111", "textMessages": True}]
+    cleared = as_user("fd").patch(path, json={"preferredName": None, "maritalStatus": None},
+                                  headers={"If-Match": '"2"', **MERGE_PATCH})
+    assert cleared.status_code == 200, cleared.text
+    assert "preferredName" not in cleared.json() and "maritalStatus" not in cleared.json()
+
+
+def test_update_patient_refusals(as_user: Client) -> None:
+    created = register(as_user)
+    path = f"/api/v1/patients/{created['id']}"
+    change = {"preferredName": "Kai"}
+    assert as_user("fd").patch(path, json=change).status_code == 428
+    stale = as_user("fd").patch(path, json=change, headers={"If-Match": '"9"'})
+    assert stale.status_code == 412 and stale.headers["ETag"] == '"1"'
+    assert as_user("ma").patch(path, json=change, headers={"If-Match": '"1"'}).status_code == 403
+    no_name = as_user("fd").patch(path, json={"name": None}, headers={"If-Match": '"1"'})
+    assert no_name.status_code == 422 and problem_code(no_name) == "business-rule-violation"
+    unknown = as_user("fd").patch(path, json={"mrn": "X"}, headers={"If-Match": '"1"'})
+    assert unknown.status_code == 422  # the MRN is never patched; the body is closed
+    other = as_user("md-b").patch(path, json=change, headers={"If-Match": '"1"'})
+    assert other.status_code in (403, 404)
+
+
+# ------------------------------------------------------------------------------------ summaries
+def test_summaries_in_request_order_leave_out_unknown_ids(as_user: Client, world: World) -> None:
+    first = register(as_user)
+    second = register(as_user, name={"family": "Okafor", "given": ["Ada"]},
+                      birthDate="1975-06-01", phones=[])
+    unknown = "00000000-0000-4000-8000-000000000001"
+    response = as_user("ma").post("/api/v1/patients/summaries", json={
+        "patientIds": [second["id"], unknown, first["id"]]})
+    assert response.status_code == 200, response.text
+    assert [i["id"] for i in response.json()["items"]] == [second["id"], first["id"]]
+    assert world.audited[-1] == [UUID(second["id"]), UUID(first["id"])]  # each ID returned
+
+
+def test_summaries_from_another_clinic_and_validation(as_user: Client) -> None:
+    created = register(as_user)
+    other = as_user("md-b").post("/api/v1/patients/summaries", json={"patientIds": [created["id"]]})
+    assert other.status_code == 200 and other.json()["items"] == []
+    too_many = as_user("ma").post("/api/v1/patients/summaries", json={
+        "patientIds": [created["id"]] * 51})
+    assert too_many.status_code == 422
+    assert as_user("dsp").post("/api/v1/patients/summaries",
+                               json={"patientIds": [created["id"]]}).status_code == 403
+
+
+# --------------------------------------------------------------------------- restrict, unrestrict
+def test_restrict_then_unrestrict(as_user: Client, world: World) -> None:
+    created = register(as_user)
+    base = f"/api/v1/patients/{created['id']}"
+    restricted = as_user("adm").post(f"{base}/restrict", json={
+        "category": "vip", "reason": "Staff member's family."})
+    assert restricted.status_code == 200, restricted.text
+    assert restricted.json()["restricted"] is True and restricted.json()["category"] == "vip"
+    assert world.details[-1] == ("update", "Staff member's family.")
+    assert problem_code(as_user("md").get(base)) == "break-glass-required"
+    lifted = as_user("adm").post(f"{base}/unrestrict", json={"reason": "No longer needed."})
+    assert lifted.status_code == 200 and lifted.json()["restricted"] is False
+    assert as_user("md").get(base).status_code == 200
+
+
+def test_restrict_refusals(as_user: Client) -> None:
+    created = register(as_user)
+    base = f"/api/v1/patients/{created['id']}"
+    body = {"category": "sensitive", "reason": "Requested by the patient."}
+    assert as_user("fd").post(f"{base}/restrict", json=body).status_code == 403
+    assert as_user("adm").post(f"{base}/restrict", json={"category": "other",
+                                                         "reason": "x"}).status_code == 422
+    assert as_user("adm").post(f"{base}/restrict", json={"category": "vip"}).status_code == 422
+    assert as_user("adm").post(
+        "/api/v1/patients/00000000-0000-4000-8000-000000000002/restrict",
+        json=body).status_code == 404
+
+
+# ------------------------------------------------------------------------------ the audit hook
+def test_search_and_register_name_their_patients_for_the_audit(as_user: Client,
+                                                              world: World) -> None:
+    created = register(as_user)
+    assert world.audited[-1] == [UUID(created["id"])]  # register: x-audit patient "result"
+    as_user("fd").post("/api/v1/patients/search", json={"criteria": {"mrn": created["mrn"]}})
+    assert world.audited[-1] == [UUID(created["id"])]  # search: the patients returned
+    override = as_user("fd").post("/api/v1/patients", json=new_patient(
+        phones=[], duplicateCheck="override", duplicateOverrideReason="Checked the ID."))
+    assert override.status_code == 201
+    assert ("create", "Checked the ID.") in world.details

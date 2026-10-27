@@ -32,6 +32,7 @@ from ..store import (
     ChildWritten,
     IdentifierIn,
     Name,
+    PatientChanges,
     PatientIn,
     RelatedPersonChanges,
     RelatedPersonIn,
@@ -79,6 +80,8 @@ class World:
     related: dict[UUID, dict[UUID, _Related]] = field(default_factory=dict)
     counters: dict[UUID, itertools.count[int]] = field(default_factory=dict)
     grants: set[tuple[UUID, UUID]] = field(default_factory=set)  # (user, patient)
+    audited: list[list[UUID]] = field(default_factory=list)  # each call of audit_patients
+    details: list[tuple[str, str | None]] = field(default_factory=list)  # audit_detail calls
 
     def clinic(self, db: Any) -> dict[UUID, _Patient]:
         return self.patients.setdefault(db.tenant_id, {})
@@ -132,6 +135,23 @@ class FakeStore:
         patient.version += 1
         return ChildWritten(added.id, Written(patient_id, patient.version, _NOW))
 
+    async def update_patient(self, db: Any, patient_id: UUID, changes: PatientChanges, *,
+                             if_version: int) -> Written:
+        patient = self.world.patient(db, patient_id)
+        if patient.version != if_version:
+            raise StaleVersion(patient.version)
+        values = {k: v for k, v in vars(changes).items() if v is not UNSET}
+        patient.data = replace(patient.data, **values)
+        patient.version += 1
+        return Written(patient_id, patient.version, _NOW)
+
+    async def set_patient_security(self, db: Any, patient_id: UUID, labels: frozenset[str], *,
+                                   if_version: int | None = None) -> Written:
+        patient = self.world.patient(db, patient_id)
+        patient.labels = set(labels)
+        patient.version += 1
+        return Written(patient_id, patient.version, _NOW)
+
     async def create_related_person(self, db: Any, data: RelatedPersonIn) -> Written:
         self.world.patient(db, data.patient_id)
         related_id = uuid.uuid4()
@@ -171,6 +191,8 @@ class FakeRepository:
             gender=cast(schemas.Gender, d.gender),
             phones=phones, emails=emails, identifiers=list(found.identifiers),
             previous_names=[_name(n) for n in d.names if n.use in ("old", "maiden")],
+            preferred_name=next((n.text for n in d.names if n.use == "nickname"), None),
+            marital_status=cast(schemas.MaritalStatus | None, d.marital_status),
             restricted=bool(found.labels & {"R", "V"}), active=d.active,
             created_at=_NOW, updated_at=_NOW), found.version)
 
@@ -250,3 +272,16 @@ def fake_chart_check(world: World) -> Any:
         if patient.labels & {"R", "V"} and (user.id, patient_id) not in world.grants:
             raise Forbidden(code="break-glass-required")
     return check
+
+
+def recording_audit(world: World) -> Any:
+    """Stands in for core's audit hooks (#79): records what the endpoint named."""
+    from ..access import AuditHooks
+
+    def patients(request: Any, patient_ids: Any) -> None:
+        world.audited.append(list(patient_ids))
+
+    def detail(request: Any, action: str, reason: str | None) -> None:
+        world.details.append((action, reason))
+
+    return AuditHooks(patients, detail)

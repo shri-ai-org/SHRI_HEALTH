@@ -13,7 +13,14 @@ from app.core.deps import CurrentUser, current_user, tenant_db
 from app.main import create_app
 
 from .. import access, api
-from .fakes import FakeRepository, FakeSession, FakeStore, World, fake_chart_check
+from .fakes import (
+    FakeRepository,
+    FakeSession,
+    FakeStore,
+    World,
+    fake_chart_check,
+    recording_audit,
+)
 
 
 @pytest.fixture
@@ -32,6 +39,7 @@ def app(world: World) -> Iterator[FastAPI]:
     application.dependency_overrides[api.repository] = lambda: FakeRepository(world)
     application.dependency_overrides[access.fhir_store] = lambda: FakeStore(world)
     application.dependency_overrides[access.chart_check] = lambda: fake_chart_check(world)
+    application.dependency_overrides[access.audit_hooks] = lambda: recording_audit(world)
     yield application
     application.dependency_overrides.clear()
 
