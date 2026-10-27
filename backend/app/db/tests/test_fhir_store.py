@@ -171,6 +171,29 @@ async def test_update_patient_replaces_lists_and_leaves_the_rest(
         assert stale.value.current_version == w2.version
 
 
+async def test_clearing_a_list_moves_the_version_and_race_leaves_ethnicity(
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
+    w = await _create(database, clinic,
+                      telecoms=(fs.Telecom(system="phone", value="+16145550100"),),
+                      race=fs.RaceOrEthnicity(omb_categories=("2106-3",)),
+                      ethnicity=fs.RaceOrEthnicity(omb_categories=("2186-5",)))
+    async with session(database, clinic) as s:
+        w2 = await STORE.update_patient(s, w.id, fs.PatientChanges(telecoms=()),
+                                        if_version=w.version)          # a DELETE only
+        await s.commit()
+    async with session(database, clinic) as s:
+        w3 = await STORE.update_patient(s, w.id, fs.PatientChanges(
+            race=fs.RaceOrEthnicity(omb_categories=("2054-5",))), if_version=w2.version)
+        await s.commit()
+    assert (w2.version, w3.version) == (w.version + 1, w.version + 2)
+    pid = {"p": w.id}
+    assert not _rows(admin_engine, "SELECT 1 FROM clinical.contact_point WHERE patient_id = :p",
+                     **pid)
+    assert sorted(tuple(r) for r in _rows(
+        admin_engine, "SELECT kind, code FROM clinical.patient_race_ethnicity WHERE "
+        "patient_id = :p", **pid)) == [("ethnicity", "2186-5"), ("race", "2054-5")]
+
+
 async def test_a_patient_of_another_clinic_is_not_found(
         database: Database, clinic: dict[str, Any], app_engine: Engine,
         admin_engine: Engine) -> None:
@@ -190,7 +213,7 @@ async def test_the_helpers_never_commit(database: Database, clinic: dict[str, An
 
 
 async def test_an_identifier_moves_its_patients_version(
-        database: Database, clinic: dict[str, Any]) -> None:
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
     w = await _create(database, clinic)
     async with session(database, clinic) as s:
         added = await STORE.add_patient_identifier(
@@ -198,10 +221,29 @@ async def test_an_identifier_moves_its_patients_version(
             if_version=w.version)
         await s.commit()
     assert added.parent.version == w.version + 1
+    assert added.child_id is not None
+    row = _rows(admin_engine, "SELECT patient_id, type_code, value FROM clinical.identifier "
+                "WHERE id = :i", i=added.child_id)
+    assert [tuple(r) for r in row] == [(w.id, "DL", "D1234567")]
     async with session(database, clinic) as s:
-        with pytest.raises(ValueError, match="only from admin.next_mrn"):
+        with pytest.raises(fs.InvalidInput, match="only from admin.next_mrn"):
             await STORE.add_patient_identifier(
                 s, w.id, fs.IdentifierIn(system=MRN_SYSTEM, value="TEST-9", type_code="MR"))
+
+
+async def test_no_other_identifier_uses_the_practices_mrn_system(
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
+    """Vimal's review of #88: a PI in the MRN system with a value the counter reaches later
+    would make that registration fail, and every one after it."""
+    w = await _create(database, clinic)
+    poison = fs.IdentifierIn(system=MRN_SYSTEM, value="TEST-000042", type_code="PI")
+    async with session(database, clinic) as s:
+        with pytest.raises(fs.InvalidInput, match="MRN system"):
+            await STORE.add_patient_identifier(s, w.id, poison)
+        with pytest.raises(fs.InvalidInput, match="MRN system"):
+            await STORE.create_patient(s, _patient(identifiers=(await _mrn(s), poison)))
+    assert len(_rows(admin_engine, "SELECT 1 FROM clinical.identifier WHERE patient_id = :p",
+                     p=w.id)) == 1
 
 
 async def test_restricting_a_chart_replaces_only_its_confidentiality(
@@ -250,6 +292,14 @@ async def test_a_related_person_with_relationships_and_employer(
                      "= :r", **rid)) == 1
     assert _rows(admin_engine, "SELECT name FROM admin.employer WHERE related_person_id = :r",
                  **rid)[0].name == "City Hospital"
+    async with session(database, clinic) as s:
+        w3 = await STORE.update_related_person(s, w.id, fs.RelatedPersonChanges(
+            active=False, gender="male", birth_date=dt.date(1950, 5, 1)), if_version=w2.version)
+        await s.commit()
+    assert w3.version == w2.version + 1
+    assert tuple(_rows(admin_engine, "SELECT active, gender, birth_date FROM clinical."
+                       "related_person WHERE id = :r", **rid)[0]) == (
+        False, "male", dt.date(1950, 5, 1))
 
 
 # ====================================================================== Coverage
@@ -312,8 +362,11 @@ async def test_entered_in_error_writes_its_provenance(
         with pytest.raises(fs.InvalidTransition) as again:
             await STORE.coverage_entered_in_error(s, w.id, fs.Reason(text="Again"))
         assert again.value.current_state == "entered-in-error"
-        with pytest.raises(ValueError):
+        with pytest.raises(fs.InvalidInput):
             await STORE.coverage_entered_in_error(s, w.id, fs.Reason(text="  "))
+        with pytest.raises(fs.InvalidTransition):                    # never used again (D45)
+            await STORE.update_coverage(s, w.id, fs.CoverageChanges(member_id="W1"),
+                                        if_version=w2.version)
 
 
 # ====================================================================== Consent

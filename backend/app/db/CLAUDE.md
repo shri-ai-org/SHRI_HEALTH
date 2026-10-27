@@ -95,6 +95,12 @@ module. Each helper:
 - returns `Written(id, version, last_updated)`, the version this transaction gives the
   resource (the ETag), child rows included;
 - raises `ResourceNotFound` for a row the session can't see.
+- raises `InvalidInput(reason)` (a `ValueError`) for input the API refuses with `422`, and
+  `InvalidTransition(current_state)` for a change the record's state doesn't allow, such as
+  editing an entered-in-error coverage (D45).
+
+No identifier other than the MR from `admin.next_mrn()` may use the practice's MRN system
+(`InvalidInput`), so a value the counter hasn't reached yet can't block a registration.
 
 `coverage_entered_in_error` writes its Provenance (agent: the current user's practitioner, or
 their name). `create_consent` sets the FHIR scope from the kind (`research`; `patient-privacy`
