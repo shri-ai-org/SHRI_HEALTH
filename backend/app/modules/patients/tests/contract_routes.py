@@ -79,7 +79,7 @@ def built_routes(module: str) -> list[BuiltRoute]:
             name for dependency in route.dependant.dependencies
             if (name := getattr(dependency.call, "__name__", "")).startswith("require_")
         )
-        for method in sorted(route.methods):
+        for method in sorted(route.methods or ()):
             routes.append(BuiltRoute(
                 operation_id=route.operation_id, method=method,
                 path=route.path.removeprefix(API_PREFIX),
