@@ -131,6 +131,26 @@ class Conflict(AppError):
     default_code = "invalid-state-transition"
 
 
+class InvalidCursor(AppError):
+    """400: a list cursor that is expired, tampered with or from another endpoint (API_STANDARDS
+    §9, §8)."""
+
+    default_code = "invalid-cursor"
+
+
+class PreconditionFailed(AppError):
+    """412: `If-Match` names a version that is no longer current (API_STANDARDS §9, §11). Pass the
+    current ETag so the client can re-read: `PreconditionFailed(headers={"ETag": '"7"'})`."""
+
+    default_code = "precondition-failed"
+
+
+class PreconditionRequired(AppError):
+    """428: `If-Match` is missing where the operation requires it (API_STANDARDS §9, §11)."""
+
+    default_code = "precondition-required"
+
+
 class ValidationFailed(AppError):
     default_code = "validation-failed"
 
