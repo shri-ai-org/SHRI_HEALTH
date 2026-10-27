@@ -2029,7 +2029,8 @@ paths:
           description: 404. `not-found` (no such patient in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: 409. `invalid-state-transition` (the patient has no enrolled portal account; the problem carries `currentState`).
+          description: 409. `invalid-state-transition` (the patient has no `active` or `pending-setup` portal account, for
+            example it is `suspended` or `disabled`; the problem carries `currentState`).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -2118,8 +2119,8 @@ paths:
           description: 404. `not-found` (no such patient in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: 409. `invalid-state-transition` (the account is not `active` or `pending-setup`; the problem carries
-            `currentState`).
+          description: 409. `invalid-state-transition` (the account is not `active`, `pending-setup` or `suspended`; the problem
+            carries `currentState`). A suspended account that is disabled stays `disabled` if the merge is undone.
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -2203,7 +2204,8 @@ paths:
           description: 404. `not-found` (no such patient in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: 409. `invalid-state-transition` (the account is not `disabled`; the problem carries `currentState`).
+          description: 409. `invalid-state-transition` (the account is not `disabled`, or its chart has been merged into another;
+            the problem carries `currentState`).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -2306,9 +2308,10 @@ paths:
         during the merge; every moved record is listed so the merge can be undone; the merged patient gets `mergedIntoId`
         and becomes inactive. All in one transaction. If either patient is restricted, the user needs a break-glass grant
         or care-team membership for **each** restricted patient (`403 break-glass-required`), and the surviving record keeps
-        the most restrictive restriction of the pair. Both patient IDs are audited. A portal account on the merged chart is
-        suspended and its sessions end (ADR-0013); the front desk issues a new invitation for the surviving chart after an
-        ID check.'
+        the most restrictive restriction of the pair. Both patient IDs are audited. On the merged chart, in the same transaction:
+        an `active` or `pending-setup` portal account becomes `suspended` (the state it had is kept) and its sessions end,
+        a `disabled` one stays `disabled`, and every active invitation is revoked (ADR-0013). The front desk issues a new
+        invitation for the surviving chart after an ID check.'
       tags:
       - patients
       x-owner: vimal
@@ -2504,7 +2507,8 @@ paths:
       description: 'Undoes a merge (inventory #49): moved records go back to the merged patient, which becomes active again.
         Refused once either record has changed in a way that cannot be split back. Restricted charts need break-glass or care-team
         membership for each restricted patient, as for a merge. Both patient IDs are audited. A portal account suspended by
-        the merge is restored.'
+        the merge goes back to exactly the state it had before the merge; one disabled in the meantime stays `disabled`. Invitations
+        revoked by the merge stay revoked.'
       tags:
       - patients
       x-owner: vimal
@@ -4516,8 +4520,9 @@ components:
       description: 'The patient''s portal account as the front desk sees it: never a password, factor or code. `none`: no
         account and no active invitation; `invited`: an invitation is active; `pending-setup`: enrolled, but the patient hasn''t
         finished the realm''s set-up (verify email, password, second factor); `active`; `disabled`: ADM disabled it (D92),
-        and `enable` reopens it; `suspended`: the chart was merged into another (ADR-0013), its sessions ended, and undoing
-        the merge restores it (`enable` does not apply).'
+        and `enable` reopens it; `suspended`: the chart was merged into another (ADR-0013) while the account was `active`
+        or `pending-setup`; its sessions ended and nobody can sign in. Undoing the merge restores exactly the earlier state,
+        unless ADM disabled the account meanwhile (then it stays `disabled`). `enable` and `reset-factors` refuse it.'
       type: object
       required:
       - patientId

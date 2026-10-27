@@ -259,8 +259,8 @@ paths:
           $ref: ../components/responses/UnprocessableContent.yaml
           description: '422. `validation-failed` (a field is missing or malformed); `business-rule-violation` (`errors` names
             `/invitationCode` `not-allowed-value` for every reason the code can''t be used: unknown, expired, used, revoked,
-            or the date of birth doesn''t match); `idempotency-key-reused` (the Idempotency-Key was used with a different
-            body).'
+            its chart merged into another or no longer active, or the date of birth doesn''t match); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).'
         '429': *id003
         '500': *id004
         '503': *id005
