@@ -26,11 +26,16 @@ from sqlalchemy.pool import NullPool
 from app.core.config import Settings
 from app.core.db import Database
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS, CurrentUser, current_user, tenant_db
-from app.db.tests.conftest import TEST_DATABASE_URL, make_tenant, sync_url, switch_to_role
+from app.db.tests.conftest import (
+    TEST_DATABASE_URL,
+    make_tenant,
+    open_session,
+    sync_url,
+    switch_to_role,
+)
 from app.main import create_app
 
 from .. import access
-from ..access import fhir_store
 
 HELPERS = importlib.util.find_spec("app.db.fhir_store") is not None
 
@@ -58,16 +63,13 @@ def clinics() -> Iterator[dict[UUID, UUID]]:
 
 
 @pytest.fixture
-async def database() -> AsyncIterator[Database]:
-    db = Database(Settings(database_url=SecretStr(TEST_DATABASE_URL or "")))
-    switch_to_role(db.engine.sync_engine, "shri_app")
-    yield db
-    await db.dispose()
-
-
-@pytest.fixture
-def client(database: Database, clinics: dict[UUID, UUID]) -> Iterator[Any]:
+def client(clinics: dict[UUID, UUID]) -> Iterator[Any]:
+    """One app and one TestClient per test. The app gets its own Database (as shri_app), so its
+    asyncpg connections live in the TestClient's event loop and close at its shutdown."""
     app: FastAPI = create_app(Settings(environment="test", auth_mode="dev_header"))
+    database = Database(Settings(database_url=SecretStr(TEST_DATABASE_URL or "")))
+    switch_to_role(database.engine.sync_engine, "shri_app")
+    app.state.db = database
 
     async def live_db(user: CurrentUser = Depends(current_user)) -> AsyncIterator[AsyncSession]:
         async with database.tenant_session(clinics[user.organization_id], user.id) as session:
@@ -78,13 +80,11 @@ def client(database: Database, clinics: dict[UUID, UUID]) -> Iterator[Any]:
 
     app.dependency_overrides[tenant_db] = live_db
     app.dependency_overrides[access.chart_check] = lambda: allow
-
-    def as_user(name: str) -> TestClient:
-        c = TestClient(app, raise_server_exceptions=False)
-        c.headers["X-Dev-User"] = name
-        return c
-
-    yield as_user
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        def as_user(name: str) -> TestClient:
+            test_client.headers["X-Dev-User"] = name
+            return test_client
+        yield as_user
 
 
 def _body(family: str, **extra: Any) -> dict[str, Any]:
@@ -218,12 +218,16 @@ def test_another_clinics_patient_is_not_found(client: Any) -> None:
     assert search.status_code == 200 and search.json()["items"] == []
 
 
-async def test_a_restricted_label_reads_back(client: Any, database: Database,
-                                            clinics: dict[UUID, UUID]) -> None:
+def test_a_restricted_label_reads_back(client: Any, clinics: dict[UUID, UUID]) -> None:
     patient = client("fd").post("/api/v1/patients",
                                 json=_body(f"Do{uuid.uuid4().hex[:6]}")).json()
-    async with database.tenant_session(clinics[CLINIC_A], DEV_USERS["fd"].id) as s:
-        await fhir_store().set_patient_security(s, UUID(patient["id"]), frozenset({"R"}))
-        await s.commit()
+    engine = create_engine(sync_url(), poolclass=NullPool)
+    switch_to_role(engine, "shri_app")
+    session = open_session(engine, clinics[CLINIC_A], DEV_USERS["fd"].id)
+    session.execute(text("UPDATE clinical.patient SET meta_security = ARRAY['R'] WHERE id = :i"),
+                    {"i": patient["id"]})
+    session.commit()
+    session.close()
+    engine.dispose()
     got = client("fd").get(f"/api/v1/patients/{patient['id']}").json()
     assert got["restricted"] is True
