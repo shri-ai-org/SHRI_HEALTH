@@ -1,17 +1,20 @@
 # Backend checks: ruff, mypy and pytest on Python 3.13, against the same PostgreSQL 18 + pgvector
 # image as local development (infra/compose/postgres; D31). Runs only when the backend, the database
-# image, this workflow or the role matrix the permission tests read (SECURITY_MODEL §4.3/§4.4)
-# changes, to save Free-plan minutes. Every Action is pinned by commit SHA.
+# image, this workflow, the role matrix the permission tests read (SECURITY_MODEL §4.3/§4.4) or the
+# bundled contract (core's operations map is generated from it) changes, to save Free-plan
+# minutes. Every Action is pinned by commit SHA.
 name: backend
 
 on:
   pull_request:
     paths: ["backend/**", "infra/compose/postgres/**", ".github/workflows/backend.yml",
-            "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**"]
+            "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**",
+            "contracts/openapi/dist/**"]
   push:
     branches: [main]
     paths: ["backend/**", "infra/compose/postgres/**", ".github/workflows/backend.yml",
-            "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**"]
+            "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**",
+            "contracts/openapi/dist/**"]
 
 permissions:
   contents: read
@@ -79,6 +82,12 @@ jobs:
       - name: Type check
         working-directory: backend
         run: mypy app
+
+      # Core reads each operation's x-permission and x-audit from app/core/operations.json, which
+      # is generated from the bundled contract; a contract change must regenerate it.
+      - name: Operations map matches the contract
+        working-directory: backend
+        run: python -m app.core.operations --check
 
       - name: Migrate
         working-directory: backend

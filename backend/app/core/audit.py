@@ -1,0 +1,323 @@
+"""Audit rows written from the contract's x-audit (SECURITY_MODEL §6, EXTENSIONS.md).
+
+Endpoints write no audit code. tenant_db starts an audit trail for the route's operation, and
+core writes it:
+
+- **Writes go in the endpoint's own transaction.** The rows are inserted when the endpoint
+  calls `await db.commit()`, so the change and its audit row commit together or not at all.
+- **Everything else is written before the response starts.** If the endpoint did not commit,
+  core rolls back whatever it left uncommitted, writes the audit rows and commits them, then
+  sends the response.
+- **Audit fails closed (T17).** If the rows cannot be written, the request fails: the commit
+  raises, or the response becomes a 500.
+- Only successful requests (status below 400) are audited this way. A permission refusal is
+  audited by require() as a security event (`record_denial`).
+
+What the endpoint adds, only where the contract says so:
+
+    audit_patients(request, ids)   x-audit patient "result" or "body:/…": the patients the
+                                   request touched or returned, before the commit or response
+                                   (an empty list for a search that found nobody)
+    audit_detail(request, action=…, reason=…)
+                                   the audit action, where the category alone does not say it:
+                                   required for category "security" (break-glass, restrict, …)
+
+Rows never hold request or response bodies, only who, what, which record, which patient,
+outcome, time and request ID (SECURITY_MODEL §6).
+"""
+
+import ipaddress
+import logging
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
+
+from sqlalchemy import event, text
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
+from starlette.requests import Request
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from app.core.errors import problem
+from app.core.operations import Operation, operation_for
+from app.core.request_id import current_request_id
+
+if TYPE_CHECKING:
+    from app.core.deps import CurrentUser
+
+log = logging.getLogger(__name__)
+
+TRAIL_STATE = "shri_audit_trail"  # request.state and session.info key
+
+# audit.audit_event.action (ck_audit_event_action_codes)
+ACTIONS = frozenset({
+    "read", "create", "update", "delete", "sign", "export", "print", "login", "logout",
+    "access-denied", "ai-request", "ai-review", "merge", "break-glass", "config-change",
+})
+_BY_LETTER = {"R": "read", "C": "create", "U": "update", "E": "update"}
+
+_COLUMNS = (
+    "tenant_id", "actor_type", "actor_user_id", "actor_display", "action", "outcome",
+    "entity_type", "entity_id", "patient_id", "reason", "source_ip", "user_agent",
+    "correlation_id",
+)
+_CATEGORY_CACHE = "shri_audit_has_category"
+
+
+def event_action(operation: Operation, override: str | None = None) -> str:
+    """The audit_event action for an operation's x-audit, unless the endpoint named one."""
+    if override is not None:
+        return override
+    rule = operation.audit
+    if rule.category == "security":
+        raise RuntimeError(f"{operation.operation_id} is a security operation: name its audit "
+                           "action with audit_detail(request, action=...)")
+    if rule.category in ("sign", "export"):
+        return rule.category
+    if rule.action == "R":
+        return "read"
+    if rule.category == "admin":
+        return "config-change"
+    if rule.category == "ai":
+        return "ai-request"
+    return _BY_LETTER[rule.action]
+
+
+def entity(operation: Operation, path_params: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Which record: the resource segment before the path's last parameter, and its value
+    (/patients/{patientId}/coverages/{coverageId}/entered-in-error → coverages, coverageId).
+    A path without parameters names its first segment (/patients/search → patients)."""
+    segments = operation.path.split("/")[3:]  # after "", "api", "v1"
+    for i in range(len(segments) - 1, 0, -1):
+        if segments[i].startswith("{"):
+            value = path_params.get(segments[i][1:-1])
+            return segments[i - 1], str(value) if value is not None else None
+    return (segments[0] or None) if segments else None, None
+
+
+def _client_ip(request: Request) -> str | None:
+    host = request.client.host if request.client else None
+    try:
+        return str(ipaddress.ip_address(host)) if host else None
+    except ValueError:  # e.g. the test client's "testclient"
+        return None
+
+
+@dataclass
+class AuditTrail:
+    """What one request will write to the audit log."""
+
+    operation: Operation
+    user: "CurrentUser"
+    session: AsyncSession
+    path_params: dict[str, Any]
+    request_id: str | None
+    source_ip: str | None
+    user_agent: str | None
+    patient_ids: list[UUID] | None = None
+    action: str | None = None
+    reason: str | None = None
+    written: bool = False
+    _committing: bool = False
+
+    def _patients(self) -> list[UUID | None]:
+        source = self.operation.audit.patient
+        if source is None:
+            return [None]
+        if source.startswith("body:") or source == "result":
+            if self.patient_ids is None:
+                raise RuntimeError(f"{self.operation.operation_id}: x-audit patient is "
+                                   f"{source!r}, so call audit_patients(request, ids) before "
+                                   "the commit or the response")
+            return list(self.patient_ids) or [None]
+        return [UUID(str(self.path_params[source]))]
+
+    def rows(self) -> list[dict[str, Any]]:
+        entity_type, entity_id = entity(self.operation, self.path_params)
+        action = event_action(self.operation, self.action)
+        common = {
+            "tenant_id": self.user.organization_id,
+            "actor_type": self.operation.audit.actor,
+            "actor_user_id": self.user.id,
+            "actor_display": self.user.display_name[:200] or None,
+            "action": action,
+            "outcome": "success",
+            "category": self.operation.audit.category,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "reason": self.reason,
+            "source_ip": self.source_ip,
+            "user_agent": self.user_agent,
+            "correlation_id": self.request_id,
+        }
+        return [{**common, "patient_id": patient_id} for patient_id in self._patients()]
+
+    async def write_now(self) -> None:
+        """For a request that did not commit: drop what it left uncommitted (tenant_db's
+        promise) and commit only the audit rows, which the before_commit hook inserts."""
+        await self.session.rollback()
+        await self.session.commit()
+
+
+def start_trail(request: Request, user: "CurrentUser", session: AsyncSession) -> None:
+    """Called by tenant_db. Routes outside the contract (only test apps have them; create_app
+    refuses to start with one) and operations with x-audit category "none" write nothing."""
+    operation = operation_for(request.scope.get("route"))
+    if operation is None or not operation.audit.audited:
+        return
+    trail = AuditTrail(
+        operation=operation, user=user, session=session,
+        path_params=dict(request.path_params), request_id=current_request_id(),
+        source_ip=_client_ip(request),
+        user_agent=(request.headers.get("user-agent") or "")[:300] or None,
+    )
+    session.info[TRAIL_STATE] = trail
+    setattr(request.state, TRAIL_STATE, trail)
+
+
+def _trail(request: Request) -> AuditTrail | None:
+    trail: AuditTrail | None = getattr(request.state, TRAIL_STATE, None)
+    if trail is None:
+        operation = operation_for(request.scope.get("route"))
+        if operation is not None and operation.audit.audited:
+            raise RuntimeError(f"{operation.operation_id} is audited: use Depends(tenant_db)")
+    return trail
+
+
+def audit_patients(request: Request, patient_ids: Iterable[UUID]) -> None:
+    """The patients this request touched or returned, for x-audit patient "result" or
+    "body:/…". Call it before `db.commit()` (writes) or before returning (reads)."""
+    trail = _trail(request)
+    if trail is None:
+        return
+    source = trail.operation.audit.patient or ""
+    if not (source.startswith("body:") or source == "result"):
+        raise RuntimeError(f"{trail.operation.operation_id}: the patient comes from "
+                           f"{source or 'nowhere'!r}, not from the endpoint")
+    trail.patient_ids = list(dict.fromkeys(patient_ids))
+
+
+def audit_detail(request: Request, *, action: str, reason: str | None = None) -> None:
+    """The audit action (and a reason, e.g. break-glass) where x-audit alone does not say it."""
+    if action not in ACTIONS:
+        raise ValueError(f"Unknown audit action {action!r}")
+    if reason is not None and len(reason) > 500:
+        raise ValueError("An audit reason is at most 500 characters")
+    trail = _trail(request)
+    if trail is None:
+        return
+    trail.action, trail.reason = action, reason
+
+
+def _has_category(connection: Connection) -> bool:
+    """Migration 0005 (#52) adds audit_event.category. Until it is applied the rows go in
+    without it, and 0005 derives the category from the action. Cached per database connection;
+    the API restarts after migrations. Remove this check once 0005 is on main."""
+    cached = connection.info.get(_CATEGORY_CACHE)
+    if cached is None:
+        cached = bool(connection.execute(text(
+            "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = "
+            "'audit.audit_event'::regclass AND attname = 'category' AND NOT attisdropped)"
+        )).scalar_one())
+        connection.info[_CATEGORY_CACHE] = cached
+    return cached
+
+
+def insert_rows(connection: Connection, rows: list[dict[str, Any]]) -> None:
+    """INSERT with no RETURNING: shri_app may read back only id and recorded_at (0005)."""
+    columns = _COLUMNS + (("category",) if _has_category(connection) else ())
+    statement = text(
+        f"INSERT INTO audit.audit_event ({', '.join(columns)}) "  # noqa: S608 (fixed names)
+        f"VALUES ({', '.join(':' + c for c in columns)})"
+    )
+    connection.execute(statement, [{c: row[c] for c in columns} for row in rows])
+
+
+@event.listens_for(Session, "before_commit")
+def _write_with_the_commit(session: Session) -> None:
+    trail: AuditTrail | None = session.info.get(TRAIL_STATE)
+    if trail is None or trail.written:
+        return
+    rows = trail.rows()  # raises if the endpoint has not named its patients
+    session.flush()  # the rows may name a patient this transaction creates
+    insert_rows(session.connection(), rows)
+    trail._committing = True
+
+
+@event.listens_for(Session, "after_commit")
+def _committed(session: Session) -> None:
+    trail: AuditTrail | None = session.info.get(TRAIL_STATE)
+    if trail is not None and trail._committing:
+        trail.written, trail._committing = True, False
+
+
+@event.listens_for(Session, "after_rollback")
+def _rolled_back(session: Session) -> None:
+    trail: AuditTrail | None = session.info.get(TRAIL_STATE)
+    if trail is not None:
+        trail._committing = False
+
+
+async def record_denial(request: Request, user: "CurrentUser", permission: str) -> None:
+    """A refused permission is a security event (SECURITY_MODEL §3 step 8). No patient ID: the
+    request was refused before anything was read, and an unchecked ID could be anyone's."""
+    db = request.app.state.db
+    if db is None:  # no database configured (unit tests, local runs without PostgreSQL)
+        return
+    operation = operation_for(request.scope.get("route"))
+    entity_type, entity_id = (entity(operation, dict(request.path_params))
+                              if operation else (None, None))
+    row = {
+        "tenant_id": user.organization_id, "actor_type": "user", "actor_user_id": user.id,
+        "actor_display": user.display_name[:200] or None, "action": "access-denied",
+        "outcome": "denied", "category": "security", "entity_type": entity_type,
+        "entity_id": entity_id, "patient_id": None,
+        "reason": f"permission-denied: requires {permission}", "source_ip": _client_ip(request),
+        "user_agent": (request.headers.get("user-agent") or "")[:300] or None,
+        "correlation_id": current_request_id(),
+    }
+    try:
+        async with db.tenant_session(user.organization_id, user.id,
+                                     current_request_id()) as session:
+            await session.run_sync(lambda s: insert_rows(s.connection(), [row]))
+            await session.commit()
+    except Exception:
+        # The request is refused either way; a lost denial row must still be seen.
+        log.exception("Could not audit a permission denial (request %s)", current_request_id())
+
+
+class AuditMiddleware:
+    """Writes a successful request's audit rows before its response starts, if the endpoint's
+    own commit has not; if they cannot be written, the client gets a 500 instead."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        replaced = False
+
+        async def send_after_audit(message: Message) -> None:
+            nonlocal replaced
+            if replaced:
+                return  # the app's own response was dropped for the 500
+            if message["type"] == "http.response.start" and message["status"] < 400:
+                trail: AuditTrail | None = scope.get("state", {}).get(TRAIL_STATE)
+                if trail is not None and not trail.written:
+                    try:
+                        await trail.write_now()
+                    except Exception:
+                        log.exception("Audit write failed; the request fails (request %s)",
+                                      trail.request_id)
+                        replaced = True
+                        response = problem(Request(scope), "internal-error",
+                                           "The request could not be audited")
+                        await response(scope, receive, send)
+                        return
+            await send(message)
+
+        await self.app(scope, receive, send_after_audit)

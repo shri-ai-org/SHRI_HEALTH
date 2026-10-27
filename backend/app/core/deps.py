@@ -21,7 +21,7 @@ from uuid import UUID
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import permissions
+from app.core import audit, permissions
 from app.core.config import Settings
 from app.core.db import Database
 from app.core.errors import Forbidden, ServiceUnavailable, Unauthorized
@@ -111,11 +111,13 @@ def require(permission: str) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
 
     async def check(request: Request, user: CurrentUser = Depends(current_user)) -> CurrentUser:
         if not user.can(permission):
+            await audit.record_denial(request, user, permission)
             raise Forbidden(f"Requires {permission}")
         setattr(request.state, _PERMISSION_CHECKED, permission)  # tenant_db looks for this
         return user
 
     check.__name__ = f"require_{permission.replace(':', '_').replace('-', '_')}"
+    check.shri_permission = permission  # type: ignore[attr-defined]  # read by route_problems()
     return check
 
 
@@ -139,7 +141,10 @@ async def tenant_db(
 
     Only for endpoints that also use require(): row-level security separates clinics, but not
     users within a clinic. Without a permission check the first query fails (500 in development
-    and tests, 403 elsewhere)."""
+    and tests, 403 elsewhere).
+
+    The operation's audit rows (x-audit) go in with the endpoint's first commit, or are written
+    before the response if it makes none (app/core/audit.py)."""
     db: Database | None = request.app.state.db
     if db is None:
         raise ServiceUnavailable("Database is not configured")
@@ -149,5 +154,6 @@ async def tenant_db(
         user.organization_id, user.id, current_request_id(),
         guard=lambda: _require_was_checked(request),
     )
+    audit.start_trail(request, user, session)  # the route's x-audit rows (app/core/audit.py)
     async with session:
         yield session
