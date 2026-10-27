@@ -95,6 +95,15 @@ module. Each helper:
 - returns `Written(id, version, last_updated)`, the version this transaction gives the
   resource (the ETag), child rows included;
 - raises `ResourceNotFound` for a row the session can't see.
+- raises `InvalidInput(reason)` (a `ValueError`) for input the API refuses with `422`, and
+  `InvalidTransition(current_state)` for a change the record's state doesn't allow, such as
+  editing an entered-in-error coverage (D45).
+
+No identifier other than the MR from `admin.next_mrn()` may use the practice's MRN system
+(`InvalidInput`), so a value the counter hasn't reached yet can't block a registration.
+
+`create_consent` makes the patient's earlier active consent of the same kind `inactive` in the
+same transaction, so the latest one of a kind is the one in force.
 
 `coverage_entered_in_error` writes its Provenance (agent: the current user's practitioner, or
 their name). `create_consent` sets the FHIR scope from the kind (`research`; `patient-privacy`
@@ -137,9 +146,10 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   status. `visit_flow_event` stays insert-only: the steps before the undo stay as history.
 - **Roles and permissions:** core's `ROLE_PERMISSIONS` (`backend/app/core/permissions.py`) is the
   only catalogue. `admin.role`, `admin.permission` and `admin.role_permission` are not seeded.
-- **MRN (D41, migration 0007):** registration calls `SELECT system, value FROM admin.next_mrn()`
-  in its own transaction and writes the patient's `identifier` row (type `MR`) with that system
-  and value. The value is the prefix plus a six-digit number (`TEST-000123`). The counter row
+- **MRN (D41, migration 0007):** `create_patient` calls `SELECT system, value FROM
+  admin.next_mrn()` in the registration's transaction and writes the patient's `identifier` row
+  (type `MR`) with that system and value; only an import (`entry_source` `imported`) supplies
+  its own MR instead, in its source system. A patient has exactly one. The value is the prefix plus a six-digit number (`TEST-000123`). The counter row
   stays locked until the registration commits, and a rollback gives the number back. A practice
   without an `mrn_counter` row gets `P0001`; practice setup creates it. The number only grows,
   and the prefix and system are fixed once the first MRN is issued.

@@ -2,8 +2,9 @@
 
 Vimal's interface (``backend/app/modules/patients/store.py`` on his branch), with the renames
 posted on #13: ``CoverageIn.member_id``, no ``CostIn.percent``,
-``ConsentIn.source_attachment_binary_object_id``, ``IdentifierIn.supporting_document_id``.
-His file re-exports these names.
+``ConsentIn.source_attachment_binary_object_id``, ``IdentifierIn.supporting_document_id``, and
+``Telecom.system`` ``sms`` for a phone that takes text messages. His file re-exports these
+names.
 
 Rules for every helper:
 - It takes the request's ``AsyncSession`` from ``tenant_db`` and never commits or opens a session:
@@ -17,8 +18,16 @@ Rules for every helper:
 - A resource the session cannot see (another clinic, or no such row) raises ``ResourceNotFound``.
 - A status change to ``entered-in-error`` writes its Provenance (agent the current user from
   ``app.current_user_id``, the reason, the target version) in the same transaction.
-- An MR identifier comes only from ``admin.next_mrn()`` (D41): ``create_patient`` takes it among
-  ``identifiers``, and no other helper adds or changes one.
+- A patient has exactly one MR identifier (D41). ``create_patient`` takes the next one from
+  ``admin.next_mrn()`` itself, unless an import (``entry_source`` ``imported``) supplies the
+  MRN it had in its source system; no other helper adds or changes one. No identifier we did
+  not issue may use the practice's MRN system, so a value the counter hasn't reached can never
+  block a registration.
+- ``create_consent`` makes the patient's earlier active consent of the same kind ``inactive``,
+  in the same transaction: the latest one is the one in force.
+- Input the API should refuse with ``422`` raises ``InvalidInput`` (a ``ValueError``);
+  ``InvalidTransition`` is a change the record's state doesn't allow. ``RuntimeError`` is a
+  programming error, such as a write with no signed-in user to record.
 """
 
 from __future__ import annotations
@@ -35,7 +44,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import systems
-from app.db.models.admin.core import AppUser
+from app.db.models.admin.core import AppUser, MrnCounter
 from app.db.models.admin.rcm import Employer
 from app.db.models.fhir.datatypes import Address, ContactPoint, HumanName, Identifier
 from app.db.models.fhir.directory import (
@@ -81,6 +90,14 @@ class InvalidTransition(Exception):
     def __init__(self, current_state: str) -> None:
         super().__init__("invalid state transition")
         self.current_state = current_state
+
+
+class InvalidInput(ValueError):
+    """Input the API refuses with 422; ``reason`` says why, in words for the problem detail."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -178,7 +195,7 @@ class PatientIn:
     marital_status: str | None = None  # v3 MaritalStatus
     telecoms: tuple[Telecom, ...] = ()
     addresses: tuple[PostalAddress, ...] = ()
-    identifiers: tuple[IdentifierIn, ...] = ()  # includes the MR from admin.next_mrn()
+    identifiers: tuple[IdentifierIn, ...] = ()  # no MR, except the one an import supplies
     employer: EmployerIn | None = None
     entry_source: str = "clinician"
 
@@ -540,6 +557,17 @@ _COVERAGE_FIELDS = ("subscriber_id", "subscriber_patient_id", "subscriber_relate
                     "period_end")
 
 
+async def _refuse_mrn_system(db: AsyncSession, identifiers: Sequence[IdentifierIn]) -> None:
+    """Only the counter writes in the practice's MRN system (D41): an identifier sent with it,
+    say with a value the counter will reach later, would make that registration fail. An
+    imported MRN keeps its source system."""
+    if not identifiers:
+        return
+    mrn_system = (await db.execute(select(MrnCounter.system))).scalar_one_or_none()
+    if mrn_system is not None and any(i.system == mrn_system for i in identifiers):
+        raise InvalidInput("only an MR identifier uses the practice's MRN system (D41)")
+
+
 async def _current_user(db: AsyncSession) -> AppUser:
     user_id = (await db.execute(text(
         "SELECT NULLIF(current_setting('app.current_user_id', true), '')"))).scalar_one()
@@ -555,12 +583,26 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- Patient
     async def create_patient(self, db: AsyncSession, data: PatientIn) -> Written:
+        mrns = [i for i in data.identifiers if i.type_code == "MR"]
+        if len(mrns) > 1:
+            raise InvalidInput("a patient has exactly one MRN (D41)")
+        if mrns and data.entry_source != "imported":
+            raise InvalidInput("an MRN comes only from admin.next_mrn(), unless an import "
+                               "supplies one (D41)")
+        await _refuse_mrn_system(db, data.identifiers)
+        identifiers = list(data.identifiers)
+        if not mrns:
+            # Taken in this transaction: the counter row stays locked until it commits, and a
+            # rollback gives the number back.
+            row = (await db.execute(text("SELECT system, value FROM admin.next_mrn()"))).one()
+            identifiers.append(IdentifierIn(system=row.system, value=row.value, type_code="MR",
+                                            use="usual"))
         pt = Patient(active=data.active, entry_source=data.entry_source)
         _apply_patient_fields(pt, data)
         db.add(pt)
         await db.flush()
         await _patient_children(db, pt.id, data)
-        db.add_all(_identifier({"patient_id": pt.id}, i) for i in data.identifiers)
+        db.add_all(_identifier({"patient_id": pt.id}, i) for i in identifiers)
         return await _written(db, pt)
 
     async def update_patient(self, db: AsyncSession, patient_id: uuid.UUID,
@@ -574,17 +616,19 @@ class SqlFhirStore:
                                      identifier: IdentifierIn, *, if_version: int | None = None
                                      ) -> ChildWritten:
         if identifier.type_code == "MR":
-            raise ValueError("an MR identifier comes only from admin.next_mrn() (D41)")
+            raise InvalidInput("an MR identifier comes only from admin.next_mrn() (D41)")
+        await _refuse_mrn_system(db, [identifier])
         pt = await _locked(db, Patient, patient_id, if_version)
         row = _identifier({"patient_id": patient_id}, identifier)
         db.add(row)
-        return ChildWritten(row.id, await _written(db, pt))
+        written = await _written(db, pt)          # flushes, which gives the row its ID
+        return ChildWritten(row.id, written)
 
     async def set_patient_security(self, db: AsyncSession, patient_id: uuid.UUID,
                                    labels: frozenset[str], *, if_version: int | None = None
                                    ) -> Written:
         if not labels <= _RESTRICTED:
-            raise ValueError("a chart is restricted with R or V, or unrestricted with none")
+            raise InvalidInput("a chart is restricted with R or V, or unrestricted with none")
         pt = await _locked(db, Patient, patient_id, if_version)
         pt.meta_security = ([label for label in pt.meta_security
                              if label not in _CONFIDENTIALITY] + sorted(labels))
@@ -623,6 +667,8 @@ class SqlFhirStore:
     async def update_coverage(self, db: AsyncSession, coverage_id: uuid.UUID,
                               changes: CoverageChanges, *, if_version: int) -> Written:
         cov = await _locked(db, Coverage, coverage_id, if_version)
+        if cov.status == "entered-in-error":          # never used again (D45)
+            raise InvalidTransition(cov.status)
         for field in _COVERAGE_FIELDS:
             if _given(getattr(changes, field)):
                 setattr(cov, field, getattr(changes, field))
@@ -635,7 +681,7 @@ class SqlFhirStore:
                                         reason: Reason, *, if_version: int | None = None
                                         ) -> Written:
         if not reason.text.strip():
-            raise ValueError("entered-in-error needs a reason")
+            raise InvalidInput("entered-in-error needs a reason")
         cov = await _locked(db, Coverage, coverage_id, if_version)
         if cov.status == "entered-in-error":
             raise InvalidTransition(cov.status)
@@ -658,6 +704,14 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- Consent
     async def create_consent(self, db: AsyncSession, data: ConsentIn) -> Written:
+        if data.status == "active":
+            # The latest consent of a kind is the one in force (patients.yaml, Consent.status).
+            earlier = (await db.execute(
+                select(Consent).where(Consent.patient_id == data.patient_id,
+                                      Consent.ext_kind == data.kind,
+                                      Consent.status == "active").with_for_update())).scalars()
+            for old in earlier:
+                old.status = "inactive"
         consent = Consent(
             status=data.status, patient_id=data.patient_id, date_time=data.date_time,
             scope_system=systems.CONSENT_SCOPE,
@@ -687,8 +741,8 @@ class SqlFhirStore:
 
 __all__ = [
     "UNSET", "ChildWritten", "Coded", "ConsentIn", "CostIn", "CoverageChanges", "CoverageClassIn",
-    "CoverageIn", "EmployerIn", "FhirStore", "IdentifierIn", "InvalidTransition", "Name",
-    "PatientChanges", "PatientIn", "PostalAddress", "RaceOrEthnicity", "Reason",
+    "CoverageIn", "EmployerIn", "FhirStore", "IdentifierIn", "InvalidInput", "InvalidTransition",
+    "Name", "PatientChanges", "PatientIn", "PostalAddress", "RaceOrEthnicity", "Reason",
     "RelatedPersonChanges", "RelatedPersonIn", "ResourceNotFound", "SqlFhirStore", "StaleVersion",
     "Telecom", "Written",
 ]
