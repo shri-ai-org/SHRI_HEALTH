@@ -1502,7 +1502,8 @@ paths:
       description: 'Searches a code system by code or words (inventory #74; a GET on `/codes`, like `/pharmacies`, because
         the `/search` suffix is reserved for POST searches with PHI, API_STANDARDS §14): ICD-10-CM for diagnoses, RxNorm for
         drugs, LOINC, SNOMED CT, CPT (placeholder codes until the AMA license, Q7), HCPCS, CVX. Reference data, not patient
-        data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited.'
+        data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited. For `rxnorm` (drug search,
+        prescribing), results come from the free RxNorm Current Prescribable Content subset, which needs no UMLS license (D97).'
       tags:
       - encounters
       x-owner: vimal
@@ -1557,6 +1558,13 @@ paths:
                       code: I10
                       display: Essential (primary) hypertension
                       billable: true
+                rxnorm:
+                  summary: Drug search (RxNorm Current Prescribable Content)
+                  value:
+                    items:
+                    - system: http://www.nlm.nih.gov/research/umls/rxnorm
+                      code: "308191"
+                      display: amoxicillin 500 MG Oral Capsule
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
