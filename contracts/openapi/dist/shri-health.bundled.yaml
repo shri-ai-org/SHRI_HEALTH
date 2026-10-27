@@ -567,6 +567,69 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /hooks/keycloak/backchannel-logout:
+    servers:
+      - url: /
+        description: Outside /api/v1 (API_STANDARDS §2).
+    post:
+      operationId: receiveKeycloakBackchannelLogout
+      summary: End sessions that Keycloak ended
+      description: 'Keycloak calls this when a staff member''s Keycloak session ends: an admin disables the user or ends their sessions, or the user signs out elsewhere (OpenID Connect Back-Channel Logout 1.0; D94). Core validates the signed `logout_token` against the staff realm''s published keys (`iss`, `aud` = `shri-web`, `iat` within a short window, `jti` used once, the back-channel logout `events` claim, and `sid` or `sub`, never `nonce`) and ends every matching session immediately, in the same transaction as its audit row. The token is never logged. Reachable only from Keycloak (Nginx, internal network). Public at the HTTP level; the signed token is the authentication. Not for browsers, so it is left out of the generated client.'
+      tags:
+        - partner-callbacks
+      x-owner: thulasi
+      x-permission: partner-signed
+      x-audit:
+        action: E
+        category: security
+        actor: partner
+      x-storage: admin
+      x-release: P0
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - logout_token
+              description: The form the specification defines; the field name is fixed by it (§2.5).
+              properties:
+                logout_token:
+                  type: string
+                  minLength: 1
+                  maxLength: 8192
+                  pattern: ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$
+                  description: The signed logout token (a JWS in compact form) that Keycloak sends.
+                  x-phi: internal-id
+            examples:
+              logout:
+                summary: A logout token (placeholder, not a real token)
+                value:
+                  logout_token: mock-header.mock-payload.mock-signature
+      responses:
+        '200':
+          description: The matching sessions have ended (or there were none). No body.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the logout token is missing, malformed, wrongly signed, expired, already used, or for another client); never says which.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /files/upload-url:
     post:
       operationId: createUploadUrl

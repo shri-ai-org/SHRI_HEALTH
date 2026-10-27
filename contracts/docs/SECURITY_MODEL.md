@@ -24,7 +24,7 @@ Every operation's `x-permission` puts it in exactly one class.
 | Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready`; the portal's `GET /portal/auth/login`, `GET /portal/auth/callback` and `POST /portal/enrollments` (ADR-0013 §3, §5; lint allowlist `shri-public-allowlist`) |
 | Authenticated | `authenticated` | Any logged-in user, acting on their own data | `GET /me`, `GET /auth/session`, `POST /auth/logout`, `GET /events/stream`, `GET /operations/{operationId}`; with the portal cookie, `GET /portal/auth/session`, `POST /portal/auth/refresh`, `POST /portal/auth/logout` |
 | Permission | `<resource>:<action>` | Users whose roles include that permission | Almost every endpoint |
-| Partner | `partner-signed` | A partner whose request signature verifies | `POST /hooks/clearinghouse` |
+| Partner | `partner-signed` | A partner whose request signature verifies | `POST /hooks/clearinghouse`; Keycloak's `POST /hooks/keycloak/backchannel-logout`, whose signed `logout_token` is the authentication (D94) |
 
 The contract has no endpoint without `x-permission` (lint rule, CONTRACT_GOVERNANCE §5).
 
@@ -53,6 +53,7 @@ The contract has no endpoint without `x-permission` (lint rule, CONTRACT_GOVERNA
 | Absolute-limit notice | Shown before the 12-hour absolute limit (`expiresAt` from `GET /auth/session`), which **cannot be extended**, so people can save their work | Thulasi (issue #3) |
 | Refresh | `POST /auth/refresh` extends the idle timer (a user action) | CAT |
 | Logout | `POST /auth/logout` deletes the server session **and ends the user's Keycloak login session** (Keycloak's logout endpoint over the back channel, with the stored refresh token); returns `204` | CAT; Thulasi on #29 |
+| Ended in Keycloak | When Keycloak ends a staff session (an admin disables the user or ends their sessions, or they sign out elsewhere), it calls `POST /hooks/keycloak/backchannel-logout` with a signed `logout_token`; core validates it and ends every matching session of ours at once (D94). The 5-minute refresh failure stays as the backstop | Disabled or signed-out staff lose access at once, not at timeout |
 | Idle and absolute expiry | The server ends the Keycloak login session too, before deleting ours (on the next request or in the clean-up job). While our session is active, each user-initiated request also refreshes the stored Keycloak tokens server-side when the last refresh is more than 5 minutes old (background calls never do), so Keycloak's login stays alive with ours. A refused refresh (user disabled or Keycloak session revoked) ends our session immediately and is audited. Backstop: the realm's SSO Session Idle is our idle timeout plus 5 minutes (20 minutes) and SSO Session Max is 12 hours plus 5 minutes, so our limits always apply first and Keycloak ends its own login if our calls fail | Thulasi on #29 and #35 |
 | Login | `GET /auth/login` always sends `prompt=login`, so every new login asks for credentials even if a Keycloak cookie survives; there is no single sign-on across apps to keep. The browser starts login only when the user clicks "Sign in", never on its own after expiry or sign-out | Thulasi on #29; Minalini's PR #29 |
 

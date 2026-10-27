@@ -63,6 +63,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 21 | POST | `/hooks/erx` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-MED-01 | B5 | Same |
 | 22 | POST | `/hooks/fax` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | §3.9 | B3 | Same |
 | 23 | POST | `/hooks/sms` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-SCH-01 reminders | B3 | Same |
+| 292 | POST | `/hooks/keycloak/backchannel-logout` (root) | T | Ad | `partner-signed` | sec (partner as actor) | – | | | §6 sessions | B1 | **New** (D94, 2026-10-27): Keycloak's signed `logout_token` (OpenID Connect Back-Channel Logout 1.0); ends matching staff sessions at once; `200`, or `400` for any failure; only from Keycloak |
 | 24 | GET | `/admin/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
 | 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |
