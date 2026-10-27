@@ -2453,14 +2453,18 @@ paths:
     post:
       operationId: mergeDuplicate
       summary: Merge a duplicate pair
-      description: 'Merges the other patient of the pair into `survivingPatientId` (inventory #48). Both patients are locked
-        during the merge; every moved record is listed so the merge can be undone; the merged patient gets `mergedIntoId`
-        and becomes inactive. All in one transaction. If either patient is restricted, the user needs a break-glass grant
-        or care-team membership for **each** restricted patient (`403 break-glass-required`), and the surviving record keeps
-        the most restrictive restriction of the pair. Both patient IDs are audited. On the merged chart, in the same transaction:
-        an `active` or `pending-setup` portal account becomes `suspended` (the state it had is kept) and its sessions end,
-        a `disabled` one stays `disabled`, and every active invitation is revoked (ADR-0013). The front desk issues a new
-        invitation for the surviving chart after an ID check.'
+      description: 'Merges the other patient of the pair into `survivingPatientId` by link (inventory #48; D103): the merged
+        patient gets a FHIR `Patient.link` of type `replaced-by` to the surviving one (and the surviving one `replaces`),
+        gets `mergedIntoId` and becomes inactive. **No record moves:** every record stays attached to the patient it was created
+        for, and signed notes and final results are never touched. Reads of the surviving chart follow the link and present
+        one chart (its own records and those of the patients it replaced); patient search returns the surviving patient; new
+        records are written to the surviving patient only, and a write naming the merged one is refused (`409 patient-merged`).
+        Both patients are locked during the merge, all in one transaction. If either patient is restricted, the user needs
+        a break-glass grant or care-team membership for **each** restricted patient (`403 break-glass-required`), and the
+        surviving record keeps the most restrictive restriction of the pair. Both patient IDs are audited. On the merged chart,
+        in the same transaction: an `active` or `pending-setup` portal account becomes `suspended` (the state it had is kept)
+        and its sessions end, a `disabled` one stays `disabled`, and every active invitation is revoked (ADR-0013). The front
+        desk issues a new invitation for the surviving chart after an ID check.'
       tags:
       - patients
       x-owner: vimal
@@ -2653,11 +2657,14 @@ paths:
     post:
       operationId: undoPatientMerge
       summary: Undo a merge
-      description: 'Undoes a merge (inventory #49): moved records go back to the merged patient, which becomes active again.
-        Refused once either record has changed in a way that cannot be split back. Restricted charts need break-glass or care-team
-        membership for each restricted patient, as for a merge. Both patient IDs are audited. A portal account suspended by
-        the merge goes back to exactly the state it had before the merge; one disabled in the meantime stays `disabled`. Invitations
-        revoked by the merge stay revoked.'
+      description: 'Undoes a merge (inventory #49; D103) by deactivating its link: the merged patient becomes active again
+        and loses `mergedIntoId`, and reads stop combining the two charts. Because nothing moved, nothing moves back: each
+        record stays with the patient it was created for, including those written to the surviving patient after the merge.
+        Refused (`409 invalid-state-transition`) when the merge was already undone, or while a later merge involving either
+        patient still stands (undo that one first). Restricted charts need break-glass or care-team membership for each restricted
+        patient, as for a merge. Both patient IDs are audited. A portal account suspended by the merge goes back to exactly
+        the state it had before the merge; one disabled in the meantime stays `disabled`. Invitations revoked by the merge
+        stay revoked.'
       tags:
       - patients
       x-owner: vimal
@@ -2727,8 +2734,8 @@ paths:
           description: 404. `not-found` (no such merge in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
-            (the merge was already undone, or the records cannot be split back).
+          description: '409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the merge was already undone, or a later merge involving either patient still stands; D103).'
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
@@ -4453,7 +4460,8 @@ components:
           x-phi: internal-id
         mergedPatientId:
           $ref: ../components/schemas/Id.yaml
-          description: Merged patient; now inactive, with `mergedIntoId`.
+          description: 'Merged patient; inactive while the merge stands, with `mergedIntoId` and a `replaced-by` link to the
+            surviving patient (D103).'
           x-phi: internal-id
         performedAt:
           $ref: ../components/schemas/Timestamp.yaml
@@ -4571,15 +4579,16 @@ components:
           x-phi: none
         undoAllowed:
           type: boolean
-          description: 'True while the merge can still be undone: it stands, and neither record has changed in a way that
-            cannot be split back.'
+          description: 'True while the merge stands and no later merge involving either patient still stands (D103). A merge
+            by link changes no records, so edits to either chart never block an undo.'
           x-phi: none
         undoBlockedReason:
           type: string
           enum:
           - already-undone
           - records-changed
-          description: Why undo is not allowed, when `undoAllowed` is false.
+          description: 'Why undo is not allowed, when `undoAllowed` is false: `already-undone` or `later-merge` (a later merge
+            involving either patient still stands).'
           x-phi: none
     PatientMergeList:
       description: One page of merges, newest first.
