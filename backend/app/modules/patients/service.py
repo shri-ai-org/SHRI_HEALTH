@@ -37,6 +37,7 @@ from .store import (
     Written,
 )
 
+
 class InvalidCursor(AppError):
     """400 invalid-cursor (API_STANDARDS §9.3); core has no 400 class yet."""
 
