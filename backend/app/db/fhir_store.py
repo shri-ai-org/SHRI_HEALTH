@@ -18,9 +18,13 @@ Rules for every helper:
 - A resource the session cannot see (another clinic, or no such row) raises ``ResourceNotFound``.
 - A status change to ``entered-in-error`` writes its Provenance (agent the current user from
   ``app.current_user_id``, the reason, the target version) in the same transaction.
-- An MR identifier comes only from ``admin.next_mrn()`` (D41): ``create_patient`` takes it among
-  ``identifiers``, and no other helper adds or changes one. No other identifier may use the
-  practice's MRN system, so a value the counter hasn't reached can never block a registration.
+- A patient has exactly one MR identifier (D41). ``create_patient`` takes the next one from
+  ``admin.next_mrn()`` itself, unless an import (``entry_source`` ``imported``) supplies the
+  MRN it had in its source system; no other helper adds or changes one. No identifier we did
+  not issue may use the practice's MRN system, so a value the counter hasn't reached can never
+  block a registration.
+- ``create_consent`` makes the patient's earlier active consent of the same kind ``inactive``,
+  in the same transaction: the latest one is the one in force.
 - Input the API should refuse with ``422`` raises ``InvalidInput`` (a ``ValueError``);
   ``InvalidTransition`` is a change the record's state doesn't allow. ``RuntimeError`` is a
   programming error, such as a write with no signed-in user to record.
@@ -191,7 +195,7 @@ class PatientIn:
     marital_status: str | None = None  # v3 MaritalStatus
     telecoms: tuple[Telecom, ...] = ()
     addresses: tuple[PostalAddress, ...] = ()
-    identifiers: tuple[IdentifierIn, ...] = ()  # includes the MR from admin.next_mrn()
+    identifiers: tuple[IdentifierIn, ...] = ()  # no MR, except the one an import supplies
     employer: EmployerIn | None = None
     entry_source: str = "clinician"
 
@@ -555,7 +559,8 @@ _COVERAGE_FIELDS = ("subscriber_id", "subscriber_patient_id", "subscriber_relate
 
 async def _refuse_mrn_system(db: AsyncSession, identifiers: Sequence[IdentifierIn]) -> None:
     """Only the counter writes in the practice's MRN system (D41): an identifier sent with it,
-    say with a value the counter will reach later, would make that registration fail."""
+    say with a value the counter will reach later, would make that registration fail. An
+    imported MRN keeps its source system."""
     if not identifiers:
         return
     mrn_system = (await db.execute(select(MrnCounter.system))).scalar_one_or_none()
@@ -578,13 +583,26 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- Patient
     async def create_patient(self, db: AsyncSession, data: PatientIn) -> Written:
-        await _refuse_mrn_system(db, [i for i in data.identifiers if i.type_code != "MR"])
+        mrns = [i for i in data.identifiers if i.type_code == "MR"]
+        if len(mrns) > 1:
+            raise InvalidInput("a patient has exactly one MRN (D41)")
+        if mrns and data.entry_source != "imported":
+            raise InvalidInput("an MRN comes only from admin.next_mrn(), unless an import "
+                               "supplies one (D41)")
+        await _refuse_mrn_system(db, data.identifiers)
+        identifiers = list(data.identifiers)
+        if not mrns:
+            # Taken in this transaction: the counter row stays locked until it commits, and a
+            # rollback gives the number back.
+            row = (await db.execute(text("SELECT system, value FROM admin.next_mrn()"))).one()
+            identifiers.append(IdentifierIn(system=row.system, value=row.value, type_code="MR",
+                                            use="usual"))
         pt = Patient(active=data.active, entry_source=data.entry_source)
         _apply_patient_fields(pt, data)
         db.add(pt)
         await db.flush()
         await _patient_children(db, pt.id, data)
-        db.add_all(_identifier({"patient_id": pt.id}, i) for i in data.identifiers)
+        db.add_all(_identifier({"patient_id": pt.id}, i) for i in identifiers)
         return await _written(db, pt)
 
     async def update_patient(self, db: AsyncSession, patient_id: uuid.UUID,
@@ -686,6 +704,14 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- Consent
     async def create_consent(self, db: AsyncSession, data: ConsentIn) -> Written:
+        if data.status == "active":
+            # The latest consent of a kind is the one in force (patients.yaml, Consent.status).
+            earlier = (await db.execute(
+                select(Consent).where(Consent.patient_id == data.patient_id,
+                                      Consent.ext_kind == data.kind,
+                                      Consent.status == "active").with_for_update())).scalars()
+            for old in earlier:
+                old.status = "inactive"
         consent = Consent(
             status=data.status, patient_id=data.patient_id, date_time=data.date_time,
             scope_system=systems.CONSENT_SCOPE,

@@ -73,11 +73,6 @@ def session(database: Database, clinic: dict[str, Any]) -> AsyncSession:
     return database.tenant_session(clinic["tenant"], clinic["user"])
 
 
-async def _mrn(s: AsyncSession) -> fs.IdentifierIn:
-    row = (await s.execute(text("SELECT system, value FROM admin.next_mrn()"))).one()
-    return fs.IdentifierIn(system=row.system, value=row.value, type_code="MR", use="usual")
-
-
 def _patient(**kw: Any) -> fs.PatientIn:
     return fs.PatientIn(**{"names": (OFFICIAL,), "birth_date": dt.date(1984, 3, 9),
                            "gender": "female", **kw})
@@ -85,9 +80,36 @@ def _patient(**kw: Any) -> fs.PatientIn:
 
 async def _create(database: Database, clinic: dict[str, Any], **kw: Any) -> fs.Written:
     async with session(database, clinic) as s:
-        written = await STORE.create_patient(s, _patient(identifiers=(await _mrn(s),), **kw))
+        written = await STORE.create_patient(s, _patient(**kw))
         await s.commit()
     return written
+
+
+async def test_create_patient_takes_the_next_mrn_unless_an_import_supplies_one(
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
+    def mrns(pid: uuid.UUID) -> list[tuple[str, str]]:
+        return [tuple(r) for r in _rows(admin_engine, "SELECT system, value FROM clinical."
+                                        "identifier WHERE patient_id = :p AND type_code = 'MR'",
+                                        p=pid)]
+
+    first, second = await _create(database, clinic), await _create(database, clinic)
+    assert mrns(first.id) == [(MRN_SYSTEM, "TEST-000001")]
+    assert mrns(second.id) == [(MRN_SYSTEM, "TEST-000002")]
+    old = fs.IdentifierIn(system="urn:oid:2.16.840.1.113883.3.0000.99", value="OE-77",
+                          type_code="MR", use="old")
+    imported = await _create(database, clinic, identifiers=(old,), entry_source="imported")
+    assert mrns(imported.id) == [(old.system, "OE-77")]          # no number taken
+    assert mrns((await _create(database, clinic)).id) == [(MRN_SYSTEM, "TEST-000003")]
+    async with session(database, clinic) as s:
+        with pytest.raises(fs.InvalidInput, match="unless an import"):
+            await STORE.create_patient(s, _patient(identifiers=(old,)))
+        with pytest.raises(fs.InvalidInput, match="exactly one MRN"):
+            await STORE.create_patient(s, _patient(identifiers=(old, old),
+                                                   entry_source="imported"))
+        with pytest.raises(fs.InvalidInput, match="MRN system"):
+            await STORE.create_patient(s, _patient(
+                identifiers=(fs.IdentifierIn(system=MRN_SYSTEM, value="TEST-000042",
+                                             type_code="MR"),), entry_source="imported"))
 
 
 def _rows(admin_engine: Engine, sql: str, **params: Any) -> list[Any]:
@@ -241,7 +263,7 @@ async def test_no_other_identifier_uses_the_practices_mrn_system(
         with pytest.raises(fs.InvalidInput, match="MRN system"):
             await STORE.add_patient_identifier(s, w.id, poison)
         with pytest.raises(fs.InvalidInput, match="MRN system"):
-            await STORE.create_patient(s, _patient(identifiers=(await _mrn(s), poison)))
+            await STORE.create_patient(s, _patient(identifiers=(poison,)))
     assert len(_rows(admin_engine, "SELECT 1 FROM clinical.identifier WHERE patient_id = :p",
                      p=w.id)) == 1
 
@@ -395,3 +417,25 @@ async def test_a_consent_with_its_scope_form_performer_and_verification(
     for table in ("consent_category", "consent_performer", "consent_verification"):
         assert len(_rows(admin_engine, f"SELECT 1 FROM clinical.{table} "  # noqa: S608
                          "WHERE consent_id = :c", c=w.id)) == 1
+
+
+async def test_a_new_consent_of_the_same_kind_retires_the_earlier_one(
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
+    patient = await _create(database, clinic)
+
+    def consent(kind: str, version: str) -> fs.ConsentIn:
+        return fs.ConsentIn(patient_id=patient.id, kind=kind, status="active",
+                            categories=(fs.Coded(system=systems.LOINC, code="59284-0"),),
+                            date_time=b.NOW, policy_version=version, provision_type="permit",
+                            signature_method="written")
+
+    async with session(database, clinic) as s:
+        old = await STORE.create_consent(s, consent("privacy-notice", "2025-01"))
+        other = await STORE.create_consent(s, consent("treatment", "2025-01"))
+        await s.commit()
+    async with session(database, clinic) as s:
+        new = await STORE.create_consent(s, consent("privacy-notice", "2026-01"))
+        await s.commit()
+    status = {r.id: r.status for r in _rows(admin_engine, "SELECT id, status FROM clinical."
+                                            "consent WHERE patient_id = :p", p=patient.id)}
+    assert status == {old.id: "inactive", other.id: "active", new.id: "active"}
