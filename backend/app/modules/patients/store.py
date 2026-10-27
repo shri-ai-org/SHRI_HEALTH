@@ -4,7 +4,10 @@ batch 1 plan, contracts/docs/IMPL_BATCH1_PLAN.md §7; posted on issue #13 for An
 
 Until ``app.db.fhir_store`` exists, ``FhirStore`` below is the contract between the two sides: the
 repository takes any object with these methods, the unit tests pass an in-memory fake, and the
-live-database tests run once the real module lands.
+live-database tests run once the real module lands. It carries the renames Anand posted on #13
+(``CoverageIn.member_id``, no ``CostIn.percent``, ``ConsentIn.source_attachment_binary_object_id``,
+``IdentifierIn.supporting_document_id``, ``Telecom.system`` ``sms``) and
+``CoverageChanges.payer_id``, which my first version missed (#88).
 
 Rules for every helper:
 - It takes the request's ``AsyncSession`` from ``tenant_db`` and never commits or opens a session:
@@ -86,7 +89,7 @@ class Name:
 
 @dataclass(frozen=True)
 class Telecom:
-    system: str  # phone | email
+    system: str  # phone | email | sms (a number with textMessages: true)
     value: str  # phone in E.164
     use: str | None = None  # home | work | mobile
     rank: int | None = None
@@ -111,6 +114,7 @@ class IdentifierIn:
     assigner_display: str | None = None
     period_start: date | None = None
     period_end: date | None = None
+    supporting_document_id: uuid.UUID | None = None  # documentId: the scanned license (D56)
 
 
 @dataclass(frozen=True)
@@ -208,8 +212,7 @@ class CoverageClassIn:
 @dataclass(frozen=True)
 class CostIn:
     type: Coded  # copay, deductible, …
-    money: Decimal | None = None  # USD, exact (D40)
-    percent: Decimal | None = None
+    money: Decimal  # USD, exact (D40); a percentage has no column, so none here
 
 
 @dataclass(frozen=True)
@@ -217,7 +220,8 @@ class CoverageIn:
     beneficiary_patient_id: uuid.UUID
     payer_id: uuid.UUID  # admin.payer (the payer directory); written as coverage_payor
     status: str = "active"
-    subscriber_id: str | None = None  # member ID
+    member_id: str | None = None  # memberId: the coverage's MB identifier
+    subscriber_id: str | None = None  # the subscriber's own ID
     subscriber_patient_id: uuid.UUID | None = None  # the patient themself …
     subscriber_related_person_id: uuid.UUID | None = None  # … or a related person (one of two)
     relationship_code: str | None = None  # subscriber-relationship: self | spouse | child | …
@@ -233,6 +237,8 @@ class CoverageIn:
 
 @dataclass(frozen=True)
 class CoverageChanges:
+    payer_id: uuid.UUID | _Unset = UNSET  # replaces the coverage_payor row
+    member_id: str | None | _Unset = UNSET
     subscriber_id: str | None | _Unset = UNSET
     subscriber_patient_id: uuid.UUID | None | _Unset = UNSET
     subscriber_related_person_id: uuid.UUID | None | _Unset = UNSET
@@ -258,7 +264,8 @@ class ConsentIn:
     signature_method: str | None = None
     provision_type: str | None = None  # permit | deny
     grantor_related_person_id: uuid.UUID | None = None  # signed by a related person
-    source_document_reference_id: uuid.UUID | None = None  # the signed form
+    source_attachment_binary_object_id: uuid.UUID | None = None  # signedFormFileId: the signed form
+    source_document_reference_id: uuid.UUID | None = None  # a form already filed as a document
     performer_patient_id: uuid.UUID | None = None
     performer_related_person_id: uuid.UUID | None = None
     verified: bool = False

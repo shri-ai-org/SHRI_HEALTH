@@ -38,8 +38,18 @@ BATCH_1 = frozenset({
 })
 
 # Not built yet. Each PR removes the operations it builds; the test fails if a built one is
-# still listed here.
-PENDING = BATCH_1
+# still listed here. PR-1 builds search, register, read, identifiers and related persons.
+BUILT_IN_PR_1 = frozenset({
+    "searchPatients",
+    "registerPatient",
+    "getPatient",
+    "listPatientIdentifiers",
+    "addPatientIdentifier",
+    "listRelatedPersons",
+    "addRelatedPerson",
+    "updateRelatedPerson",
+})
+PENDING = BATCH_1 - BUILT_IN_PR_1
 
 
 def test_batch_1_operations_are_built_or_pending() -> None:
