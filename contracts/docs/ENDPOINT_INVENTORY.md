@@ -54,8 +54,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 12 | GET | `/users/{userId}/roles` | T | Ad | `roles:read` | adm | – | | | §3.10 | B1 | |
 | 13 | PUT | `/users/{userId}/roles` | T | Ad | `user-roles:update` | sec | – | ✓ | | §3.10 | B1 | |
 | 14 | GET | `/events/stream` | T | – | `authenticated` | – | – | | | FR-ORD-02, FR-SCH-02 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52): `text/event-stream`, `Last-Event-ID` resume (EVENTS.md §3) |
-| 15 | GET | `/operations/{operationId}` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** (API_STANDARDS §13); owner Thulasi (T26). Visible only to the creating user in the MVP; polling does not reset the idle timer |
-| 16 | POST | `/operations/{operationId}/cancel` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** |
+| 15 | GET | `/operations/{operationId}` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** (API_STANDARDS §13); owner Thulasi (T26). Visible only to the creating user in the MVP; polling does not reset the idle timer. **Written** 2026-10-27 (#80, Minalini's ask on #70): `Retry-After` while unfinished |
+| 16 | POST | `/operations/{operationId}/cancel` | T | Ad | `authenticated` | – | – | | | — | B1 | **New**. **Written** 2026-10-27 (#80): the creator only, where the kind allows it (AI kinds); `409` once finished |
 | 17 | GET | `/audit-events` | T | Au | `audit-events:read` | sec | – | | | §3.10, §6 Audit | B6 | |
 | 18 | GET | `/reports/chart-access` | T | Au | `chart-access-reports:read` | sec | – | | | §6 Sensitive records | B6 | |
 | 19 | POST | `/patients/{patientId}/break-glass` | T | Au | `patients:break-glass` | sec | S | | | FR-PAT-01 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D53): four reason codes, `reasonText` required for `other`, grant with `expiresAt` (4 hours) |
