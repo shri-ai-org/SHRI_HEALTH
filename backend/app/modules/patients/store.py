@@ -335,9 +335,14 @@ class InvalidTransition(Exception):
         self.current_state = current_state
 
 
+class InvalidInput(ValueError):
+    """Input the helpers refuse (for example an MR identifier not from the counter, D41)."""
+
+
 __all__ = [
     "UNSET", "Coded", "ConsentIn", "CostIn", "CoverageChanges", "CoverageClassIn", "CoverageIn",
-    "ChildWritten", "EmployerIn", "FhirStore", "IdentifierIn", "InvalidTransition", "Name",
+    "ChildWritten", "EmployerIn", "FhirStore", "IdentifierIn", "InvalidInput", "InvalidTransition",
+    "Name",
     "PatientChanges",
     "PatientIn", "PostalAddress", "RaceOrEthnicity", "Reason", "RelatedPersonChanges",
     "RelatedPersonIn", "ResourceNotFound", "StaleVersion", "Telecom", "Written",

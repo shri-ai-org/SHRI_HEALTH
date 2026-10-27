@@ -25,6 +25,7 @@ from .store import (
     EmployerIn,
     FhirStore,
     IdentifierIn,
+    InvalidInput,
     Name,
     PatientIn,
     PostalAddress,
@@ -257,6 +258,8 @@ async def add_identifier(db: AsyncSession, repo: PatientRepository, store: FhirS
         written = await store.add_patient_identifier(db, patient.id, _identifier(body))
     except ResourceNotFound as gone:
         raise NotFound() from gone
+    except InvalidInput as refused:  # the helpers' own MRN-system check (D41)
+        raise business_rule("body", "/system", "not-allowed-value") from refused
     await db.commit()
     found = await repo.list_identifiers(db, patient.id, limit=100, offset=0)
     return next(i for i in found if i.id == written.child_id)
