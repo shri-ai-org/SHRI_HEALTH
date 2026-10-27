@@ -754,7 +754,8 @@ paths:
       description: 'Runs the safety check on a draft (inventory #123; D97): an `allergy` alert for an active allergy to an
         RxNorm ingredient of the drug, a `duplicate-medication` alert for an active medication with the same ingredient. The
         alerts are stored on the draft. Both alerts are fixed rules in the medications service, each with its tests; no AI
-        model produces, ranks or suppresses an alert (D99).'
+        model produces, ranks or suppresses an alert (D99). It doesn''t change the draft''s version or `ETag`, so an open
+        editor keeps its `If-Match`.'
       tags:
       - medications
       x-owner: thulasi
@@ -850,7 +851,7 @@ paths:
       operationId: overrideAlert
       summary: Override a safety alert
       description: 'Records why the prescriber goes ahead despite an alert (inventory #124; D97). Required before signing
-        for a `high` alert; audited.'
+        for a `high` alert; audited. It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`.'
       tags:
       - medications
       x-owner: thulasi
@@ -1050,10 +1051,73 @@ paths:
           description: 412. `precondition-failed` (the record changed since it was read; the response carries the current
             `ETag`).
         '422':
-          $ref: ../components/responses/UnprocessableContent.yaml
-          description: '422. `business-rule-violation` (`errors` names what is missing: `/dosageText`, `/quantity` or `/pharmacyId`,
-            a safety check older than the draft, or an alert that needs an override); `idempotency-key-reused` (the Idempotency-Key
-            was used with a different body).'
+          description: '422. `business-rule-violation`, with one entry in `errors` per refusal, each a JSON Pointer into the
+            prescription (as read with `GET`): `required` at `/dosageText`, `/quantity` or `/pharmacyId` (needed to sign);
+            `safety-check-stale` at `/alerts` (no safety check has run on this version of the draft, or the draft changed
+            since: run `POST …/safety-check` again; `safetyCheckedAt` is then absent); `override-required` at `/alerts/{i}`
+            (the `high` alert at that index of `alerts` has no override yet: override it with `POST /alerts/{alertId}/override`).
+            `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/problem+json:
+              schema:
+                $ref: ../components/schemas/Problem.yaml
+              examples:
+                missing-fields:
+                  summary: Fields required to sign are missing
+                  value:
+                    type: tag:company-domain.invalid,2026:problem/business-rule-violation
+                    title: Business rule violation
+                    status: 422
+                    detail: 2 fields break a rule.
+                    instance: /api/v1/prescriptions/6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d/sign-and-send
+                    code: business-rule-violation
+                    requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+                    errors:
+                    - in: body
+                      pointer: /dosageText
+                      code: required
+                    - in: body
+                      pointer: /pharmacyId
+                      code: required
+                safety-check-stale:
+                  summary: Run the safety check again
+                  value:
+                    type: tag:company-domain.invalid,2026:problem/business-rule-violation
+                    title: Business rule violation
+                    status: 422
+                    detail: 1 field breaks a rule.
+                    instance: /api/v1/prescriptions/6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d/sign-and-send
+                    code: business-rule-violation
+                    requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+                    errors:
+                    - in: body
+                      pointer: /alerts
+                      code: safety-check-stale
+                override-required:
+                  summary: An alert needs an override
+                  value:
+                    type: tag:company-domain.invalid,2026:problem/business-rule-violation
+                    title: Business rule violation
+                    status: 422
+                    detail: 1 field breaks a rule.
+                    instance: /api/v1/prescriptions/6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d/sign-and-send
+                    code: business-rule-violation
+                    requestId: 0b7e4b0c-3f4e-4d3a-9d0e-0c1b5e2f9a11
+                    errors:
+                    - in: body
+                      pointer: /alerts/0
+                      code: override-required
+                idempotency-key-reused:
+                  $ref: ../components/examples/ProblemIdempotencyKeyReused.yaml
         '428':
           $ref: ../components/responses/PreconditionRequired.yaml
           description: 428. `precondition-required` (the `If-Match` header is missing).
@@ -1485,6 +1549,13 @@ components:
               maxLength: 500
               description: The pharmacy's or partner's reason for `rejected` or `error`, as sent.
               x-phi: clinical
+        safetyCheckedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: 'When the latest safety check ran on this version of the draft (D97). Absent when no check has run,
+            or the draft changed since; signing then refuses with `safety-check-stale`. Neither the check nor an override
+            changes the draft''s version or `ETag`.'
+          readOnly: true
+          x-phi: none
         alerts:
           type: array
           maxItems: 50
@@ -1635,9 +1706,10 @@ components:
         reason:
           type: string
           maxLength: 500
-          description: Why the prescriber goes ahead ("tolerated amoxicillin in 2024 without reaction").
+          description: 'Why the prescriber goes ahead ("tolerated amoxicillin in 2024 without reaction"). At least 3 characters;
+            leading and trailing spaces don''t count.'
           x-phi: clinical
-          minLength: 1
+          minLength: 3
     PrescriptionEnteredInError:
       description: Body to mark a draft wrong.
       type: object

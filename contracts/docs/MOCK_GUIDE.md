@@ -258,12 +258,17 @@ node tests/flows/prescriptions.mjs          # in another; BASE_URL=http://127.0.
   - `Prefer: code=412` gives the stale-version refusal, and `code=409` the "signed, so locked" one.
 - **The safety check:** `POST …/safety-check`, with `Prefer: example=allergy`, `duplicate` or `none`.
   - On the real API the alerts are fixed rules in code, never AI (D99).
-  - A `high` alert needs `POST /alerts/{alertId}/override` with a reason before signing; `Prefer: code=422` on sign-and-send gives the refusal.
+  - A `high` alert needs `POST /alerts/{alertId}/override` with a reason (at least 3 characters) before signing.
+  - Neither the check nor an override changes the draft's `ETag`. `safetyCheckedAt` on the prescription says when the check ran on this version; it is absent when the check must run again.
+- **Refusals at signing** (`422 business-rule-violation`; each entry in `errors` points into the prescription):
+  - `Prefer: code=422, example=safety-check-stale`: `safety-check-stale` at `/alerts`, so run the check again;
+  - `Prefer: code=422, example=override-required`: `override-required` at `/alerts/0`, so override that alert;
+  - `Prefer: code=422, example=missing-fields`: `required` at `/dosageText` and `/pharmacyId`.
 - **Sign and send:** `POST …/sign-and-send` with `If-Match` and an `Idempotency-Key`.
   - The prescription comes back with transmission `queued`.
   - On the real API it then goes through the outbox to the simulated pharmacy (D99), and `prescription.transmission-updated` reports `sent`, then `accepted` or `rejected`.
 - **A wrong draft:** `POST …/entered-in-error` with a reason. A signed prescription answers `409`; it is cancelled instead (later batch).
-- **Today's result:** 21 of 21 calls pass.
+- **Today's result:** 22 of 22 calls pass.
 
 ## 5h. Note templates for clinicians and the portal's medication list (demo steps 8 and 12)
 

@@ -81,7 +81,12 @@ async function main() {
   if (!duplicate.alerts.some((a) => a.kind === 'duplicate-medication')) throw new Error('the duplicate example must carry a duplicate-medication alert');
 
   const signHeaders = () => ({ 'If-Match': read.etag, ...key() });
-  await call('signing before the override is refused', 'POST', `/prescriptions/${rxId}/sign-and-send`, { headers: signHeaders(), expect: 422, prefer: 422 });
+  const refusal = async (name, answer, code, pointer) => {
+    const { data } = await call(name, 'POST', `/prescriptions/${rxId}/sign-and-send`, { headers: signHeaders(), expect: 422, prefer: 422, answer });
+    if (!data.errors?.some((e) => e.code === code && e.pointer === pointer)) throw new Error(`${name}: expected ${code} at ${pointer}`);
+  };
+  await refusal('signing after the draft changed: run the check again', 'safety-check-stale', 'safety-check-stale', '/alerts');
+  await refusal('signing before the override is refused', 'override-required', 'override-required', '/alerts/0');
   await call('a role without alerts:override', 'POST', `/alerts/${alert.id}/override`, { body: example('POST', '/alerts/{alertId}/override'), expect: 403, prefer: 403 });
   await call('override the alert with a reason', 'POST', `/alerts/${alert.id}/override`, { body: example('POST', '/alerts/{alertId}/override'), expect: 200 });
 
