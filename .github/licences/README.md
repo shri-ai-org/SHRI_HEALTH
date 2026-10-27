@@ -6,6 +6,7 @@ CI fails if any package in our lockfiles has a licence that DECISIONS.md D75 doe
 |---|---|
 | `allowed.json` | The licences D75 allows for code; the fonts-and-data licences; aliases for non-SPDX names; and the per-package entries |
 | `check-npm.mjs` | `contracts/` and `frontend/`, after `npm ci`. Reads each `package-lock.json` entry, falling back to the installed `package.json`, including the older `licenses` list |
+| `check_images.py` | Third-party container images in `infra/compose/docker-compose.yml` and the workflows (OpenBao, nginx), against `images` |
 | `check_python.py` | `backend/`, after installing `requirements-dev.lock`, which contains every runtime package too. Reads `License-Expression`, then the `License ::` classifiers, then the `License` field |
 
 Both checks use only the standard library of Node and Python, so they add no dependency. Their rules are the same; keep them in step. They read SPDX expressions:
@@ -31,6 +32,16 @@ CI runs them in `contracts.yml`, `frontend.yml` and `backend.yml`, right after i
   | `exception` | the licence the exception covers | its line in D75's **licence exceptions register** |
 
   The entry adds its one licence to what that package may use. The package's real licence is still read, so if it changes to something else, the check fails.
+
+## Container images
+
+`images` lists every third-party image we run but don't build (`shri-health/…` images are ours, from pinned Dockerfiles). Each entry has:
+- a licence from `allowed`;
+- the version tag;
+- the `sha256` digest it's pinned to;
+- where it's used, and where its licence comes from.
+
+Every reference in compose and the workflows must be exactly `name:version@digest`, so an unlisted image, a moved tag or a missing pin fails CI. A new image, or a new version of one, follows the 7-day rule (a release at least 7 days old) and changes its entry in the same PR.
 
 ## Adding to it
 

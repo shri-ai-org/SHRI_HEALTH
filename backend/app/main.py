@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from app.core import health
 from app.core.audit import AuditMiddleware
 from app.core.config import Settings, get_settings
+from app.core.crypto import FieldCrypto
 from app.core.db import Database
 from app.core.errors import install_error_handlers
 from app.core.operations import OperationsMapError, load_operations, route_problems
@@ -32,6 +33,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
         if application.state.db is not None:
             await application.state.db.dispose()
+        if application.state.crypto is not None:
+            await application.state.crypto.aclose()
 
     application = FastAPI(
         title="Shri Health API",
@@ -43,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.settings = settings
     application.state.db = Database(settings) if settings.database_url else None
+    application.state.crypto = FieldCrypto(settings) if settings.openbao_transit_addr else None
 
     application.add_middleware(AuditMiddleware)  # innermost: sees the final status
     application.add_middleware(NoStoreMiddleware)

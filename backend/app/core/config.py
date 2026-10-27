@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     openbao_kv_mount: str = "secret"
     openbao_secret_path: str = "shri-health/api"  # noqa: S105 (a path, not a secret)
 
+    # OpenBao Transit, for field encryption (core/crypto.py). The token is the API's narrow one:
+    # encrypt and decrypt with openbao_transit_key only, never a root token. Unset: anything that
+    # needs encryption fails with a 500 (fail closed).
+    openbao_transit_addr: str | None = None
+    openbao_transit_token: SecretStr | None = None
+    openbao_transit_mount: str = "transit"
+    openbao_transit_key: str = "shri-fields"
+
     # Q31: the build this API runs, stamped by CI as image build arguments, never typed by hand.
     # Shown to signed-in users only (GET /auth/session), never on /health. Local builds keep the
     # defaults. A malformed value stops startup instead of being shown.

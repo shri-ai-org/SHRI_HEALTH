@@ -8,12 +8,12 @@ name: backend
 
 on:
   pull_request:
-    paths: ["backend/**", "infra/compose/postgres/**", ".github/workflows/backend.yml",
+    paths: ["backend/**", "infra/compose/**", ".github/workflows/backend.yml",
             "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**",
             "contracts/openapi/dist/**"]
   push:
     branches: [main]
-    paths: ["backend/**", "infra/compose/postgres/**", ".github/workflows/backend.yml",
+    paths: ["backend/**", "infra/compose/**", ".github/workflows/backend.yml",
             "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**",
             "contracts/openapi/dist/**"]
 
@@ -76,7 +76,9 @@ jobs:
       # lock is a superset of requirements.lock, so this covers the API image too.
       - name: Licences (D75)
         working-directory: backend
-        run: python ../.github/licences/check_python.py
+        run: |
+          python ../.github/licences/check_python.py
+          python ../.github/licences/check_images.py
 
       - name: Lint
         working-directory: backend
@@ -97,10 +99,34 @@ jobs:
           alembic -c app/db/alembic.ini upgrade head
           alembic -c app/db/alembic.ini check
 
+      # The OpenBao DEVELOPMENT server with Transit, as in compose (never on the test server or in
+      # production), so core/crypto.py is tested against the real thing. The root token only runs
+      # the setup; the tests get the API's narrow token (encrypt and decrypt with one key).
+      - name: Start OpenBao (development server, Transit only)
+        run: |
+          for name in OPENBAO_DEV_ROOT_TOKEN OPENBAO_API_TOKEN; do
+            value="$(python -c 'import uuid; print(uuid.uuid4())')"
+            echo "::add-mask::$value"
+            export "$name=$value"
+          done
+          echo "OPENBAO_TRANSIT_TOKEN=$OPENBAO_API_TOKEN" >> "$GITHUB_ENV"
+          echo "OPENBAO_TRANSIT_ADDR=http://127.0.0.1:8200" >> "$GITHUB_ENV"
+          docker run -d --name bao -p 127.0.0.1:8200:8200 -e BAO_DEV_ROOT_TOKEN_ID="$OPENBAO_DEV_ROOT_TOKEN" \
+            quay.io/openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf \
+            server -dev -dev-no-store-token -dev-listen-address=0.0.0.0:8200
+          for _ in $(seq 1 30); do
+            docker exec bao bao status -address=http://127.0.0.1:8200 >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec -i -e BAO_ADDR=http://127.0.0.1:8200 -e BAO_TOKEN="$OPENBAO_DEV_ROOT_TOKEN" \
+            -e OPENBAO_API_TOKEN bao sh -s < infra/compose/openbao/transit-init.sh
+
       - name: Tests
         working-directory: backend
         env:
           TEST_DATABASE_IMAGE: shri
+          # The real-OpenBao tests fail instead of skipping if the server above is missing.
+          REQUIRE_OPENBAO: "1"
         run: |
           export TEST_DATABASE_URL="postgresql+asyncpg://postgres:${PG_PASSWORD}@127.0.0.1:5432/shri_health"
           pytest -p no:cacheprovider -rs
