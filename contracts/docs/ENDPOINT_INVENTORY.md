@@ -263,7 +263,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 179–182 | same 4 | `/lab-accounts` | A | Ad | same | adm | S | ✓ | | FR-ORD-01 | B1 | Same |
 | 183–186 | same 4 | `/note-templates` | A | Ad | same | adm | S | ✓ | | FR-ENC-04 | B1 | Same |
 | 244–247 | same 4 | `/consent-requirements` | A | Ad | reads `consent-requirements:read` (FD, ADM); writes `practice-setup:create\|update` | adm | S | ✓ | | FR-PAT-01 | B1 | **New** (D59, 2026-10-24): consent kinds with the current `policyVersion` |
-| 258–259 | GET, PATCH | `/practice-settings` | A | Ad | `practice-setup:read`; `practice-setup:update` (ADM) | adm | – | ✓ (PATCH) | | D39 | B1 | **New** (contracts follow-up 2, 2026-10-26, D39 amended): one setting today, whether registration shows the sexual-orientation and gender-identity fields; every signed-in user reads it through `GET /me` (`practiceSettings`) |
+| 258–259 | GET, PATCH | `/practice-settings` | A | Ad | `practice-setup:read`; `practice-setup:update` (ADM) | adm | – | ✓ (PATCH) | | D39 | B1 | **New** (contracts follow-up 2, 2026-10-26, D39 amended): one setting today, whether registration shows the sexual-orientation and gender-identity fields; every signed-in user reads it through `GET /me` (`practiceSettings`). The response also carries the read-only `mrnPrefix` and `mrnSystem`, set at onboarding (D41; Anand's ask on #74, 2026-10-27) |
 | 187 | POST | `/onboarding/import` | A | Ad+F | `onboarding:import` | adm | S | | ✓ | §3.10 onboarding | B1 | |
 | 188 | GET | `/encounters/{encounterId}/superbill` | A | Cl | `superbills:read` | pr | – | | | FR-RCM-02 | B6 | |
 | 189 | PATCH | `/encounters/{encounterId}/superbill` | A | Cl | `superbills:update` | pw | – | ✓ | | FR-RCM-02 | B6 | |
