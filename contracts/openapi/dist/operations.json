@@ -567,6 +567,17 @@
    "path": "/api/v1/cosign-rules/{cosignRuleId}",
    "permission": "cosign-rules:read"
   },
+  "getCoverage": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/patients/{patientId}/coverages/{coverageId}",
+   "permission": "coverages:read"
+  },
   "getEligibilityCheck": {
    "audit": {
     "action": "R",
@@ -858,6 +869,16 @@
    "path": "/api/v1/practice-payers/{practicePayerId}",
    "permission": "practice-setup:read"
   },
+  "getPracticeSettings": {
+   "audit": {
+    "action": "R",
+    "category": "admin"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/practice-settings",
+   "permission": "practice-setup:read"
+  },
   "getProblem": {
    "audit": {
     "action": "R",
@@ -888,6 +909,17 @@
    "method": "GET",
    "path": "/api/v1/provider-schedules/{providerScheduleId}",
    "permission": "practice-setup:read"
+  },
+  "getRelatedPerson": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/patients/{patientId}/related-persons/{relatedPersonId}",
+   "permission": "patients:read"
   },
   "getSession": {
    "audit": {
@@ -2028,6 +2060,16 @@
    "idempotency": null,
    "method": "PATCH",
    "path": "/api/v1/practice-payers/{practicePayerId}",
+   "permission": "practice-setup:update"
+  },
+  "updatePracticeSettings": {
+   "audit": {
+    "action": "U",
+    "category": "admin"
+   },
+   "idempotency": null,
+   "method": "PATCH",
+   "path": "/api/v1/practice-settings",
    "permission": "practice-setup:update"
   },
   "updateProblem": {
