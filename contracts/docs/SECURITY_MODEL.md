@@ -21,10 +21,10 @@ Every operation's `x-permission` puts it in exactly one class.
 
 | Class | `x-permission` value | Who can call | Examples |
 |---|---|---|---|
-| Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready` |
-| Authenticated | `authenticated` | Any logged-in user, acting on their own data | `GET /me`, `GET /auth/session`, `POST /auth/logout`, `GET /events/stream`, `GET /operations/{operationId}` |
+| Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready`; the portal's `GET /portal/auth/login`, `GET /portal/auth/callback` and `POST /portal/enrollments` (ADR-0013 §3, §5; lint allowlist `shri-public-allowlist`) |
+| Authenticated | `authenticated` | Any logged-in user, acting on their own data | `GET /me`, `GET /auth/session`, `POST /auth/logout`, `GET /events/stream`, `GET /operations/{operationId}`; with the portal cookie, `GET /portal/auth/session`, `POST /portal/auth/refresh`, `POST /portal/auth/logout` |
 | Permission | `<resource>:<action>` | Users whose roles include that permission | Almost every endpoint |
-| Partner | `partner-signed` | A partner whose request signature verifies | `POST /hooks/clearinghouse` |
+| Partner | `partner-signed` | A partner whose request signature verifies | `POST /hooks/clearinghouse`; Keycloak's `POST /hooks/keycloak/backchannel-logout`, whose signed `logout_token` is the authentication (D94) |
 
 The contract has no endpoint without `x-permission` (lint rule, CONTRACT_GOVERNANCE §5).
 
@@ -53,6 +53,7 @@ The contract has no endpoint without `x-permission` (lint rule, CONTRACT_GOVERNA
 | Absolute-limit notice | Shown before the 12-hour absolute limit (`expiresAt` from `GET /auth/session`), which **cannot be extended**, so people can save their work | Thulasi (issue #3) |
 | Refresh | `POST /auth/refresh` extends the idle timer (a user action) | CAT |
 | Logout | `POST /auth/logout` deletes the server session **and ends the user's Keycloak login session** (Keycloak's logout endpoint over the back channel, with the stored refresh token); returns `204` | CAT; Thulasi on #29 |
+| Ended in Keycloak | When Keycloak ends a staff session (an admin disables the user or ends their sessions, or they sign out elsewhere), it calls `POST /hooks/keycloak/backchannel-logout` with a signed `logout_token`; core validates it and ends every matching session of ours at once (D94). The 5-minute refresh failure stays as the backstop | Disabled or signed-out staff lose access at once, not at timeout |
 | Idle and absolute expiry | The server ends the Keycloak login session too, before deleting ours (on the next request or in the clean-up job). While our session is active, each user-initiated request also refreshes the stored Keycloak tokens server-side when the last refresh is more than 5 minutes old (background calls never do), so Keycloak's login stays alive with ours. A refused refresh (user disabled or Keycloak session revoked) ends our session immediately and is audited. Backstop: the realm's SSO Session Idle is our idle timeout plus 5 minutes (20 minutes) and SSO Session Max is 12 hours plus 5 minutes, so our limits always apply first and Keycloak ends its own login if our calls fail | Thulasi on #29 and #35 |
 | Login | `GET /auth/login` always sends `prompt=login`, so every new login asks for credentials even if a Keycloak cookie survives; there is no single sign-on across apps to keep. The browser starts login only when the user clicks "Sign in", never on its own after expiry or sign-out | Thulasi on #29; Minalini's PR #29 |
 
@@ -73,11 +74,15 @@ components:
     sessionCookie: { type: apiKey, in: cookie, name: __Host-shri_session }
     csrfHeader:    { type: apiKey, in: header, name: X-CSRF-Token }
     delegatedToken: { type: http, scheme: bearer }   # AI gateway only, see §2.4
+    portalSessionCookie: { type: apiKey, in: cookie, name: __Host-shri_portal }   # /portal/* only (ADR-0013 §5, D89)
 security:
   - sessionCookie: []          # default for GET
 # POST/PUT/PATCH operations: [{ sessionCookie: [], csrfHeader: [] }]
 # public operations: security: []
+# portal operations: [{ portalSessionCookie: [] }], writes [{ portalSessionCookie: [], csrfHeader: [] }]
 ```
+
+The two cookies never mix: an operation names one or the other, never both (lint rule `shri-security`), staff routes refuse the portal session and portal routes the staff one (core, ADR-0013 §5). In the database, portal requests run as their own role, `shri_portal`, which sees only the session patient's chart (D93).
 
 ### 2.4 Service-to-service calls
 
@@ -131,8 +136,9 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | AI (Vimal) | `encounter-audio:create`, `transcriptions:read`, `transcriptions:create`, `note-drafts:create`, `chart-summaries:read`, `chart-summaries:create`, `ai-suggestions:decision`, `ai-settings:read`, `ai-settings:update` |
 | Medications (Thulasi) | `medications:read`, `medications:create`, `medications:discontinue`, `medication-reconciliations:create`, `prescriptions:read`, `prescriptions:create`, `prescriptions:update` (drafts only, T31), `prescriptions:entered-in-error` (drafts only, T13/T34), `prescriptions:safety-check`, `prescriptions:sign-and-send`, `prescriptions:cancel`, `prescriptions:change`, `alerts:override`, `refill-requests:read`, `refill-requests:respond`, `pharmacies:read`, `medication-history:fetch` |
 | Orders and results (Thulasi) | `lab-compendium:read`, `orders:read`, `orders:create`, `orders:medical-necessity-check`, `orders:sign-and-send`, `orders:cancel`, `orders:entered-in-error` (T13), `results:read`, `results:acknowledge`, `unmatched-results:read`, `unmatched-results:match`, `unmatched-results:reject` (T13/T34), `in-office-results:create` |
-| Files, setup, billing, documents (Anand) | `files:create`, `files:read`, `practice-setup:read\|create\|update`, `payers:read` (payer directory, read-only; added 2026-10-23), `lab-providers:read` (lab providers, read-only; D48), `consent-requirements:read` (D59), `provider-schedules:create\|update` (D66), `onboarding:import`, `superbills:read\|update`, `claims:read\|create\|scrub\|submit\|status-check\|correct\|void`, `payments:create`, `payments:card-session`, `remittances:read\|post`, `billing-reports:read`, `documents:read\|create\|update`, `faxes:create`, `fax-inbox:read`, `fax-inbox:file`, `ccda:import`, `ccda:export`, `inbox:read\|update\|complete`, `messages:create`, `exports:read\|create` |
+| Files, setup, billing, documents (Anand) | `files:create`, `files:read`, `practice-setup:read\|create\|update`, `payers:read` (payer directory, read-only; added 2026-10-23), `lab-providers:read` (lab providers, read-only; D48), `consent-requirements:read` (D59), `provider-schedules:create\|update` (D66), `note-templates:read\|create-personal` (D73, A46), `onboarding:import`, `superbills:read\|update`, `claims:read\|create\|scrub\|submit\|status-check\|correct\|void`, `payments:create`, `payments:card-session`, `remittances:read\|post`, `billing-reports:read`, `documents:read\|create\|update`, `faxes:create`, `fax-inbox:read`, `fax-inbox:file`, `ccda:import`, `ccda:export`, `inbox:read\|update\|complete`, `messages:create`, `exports:read\|create` |
 | Communications and dashboard (Minalini) | `message-templates:read\|create\|update`, `communication-preferences:read\|update`, `communications:read`, `operations-dashboard:read` |
+| Patient portal, B8a (Vimal; sign-in, enrollment and factor reset Thulasi; D84, D89) | Role `PAT` only: `portal-profile:read`, `portal-profile:request-change`, `portal-appointments:read\|create\|cancel\|reschedule`, `portal-booking:read`, `portal-records:read`. Staff: `portal-accounts:read`, `portal-invitations:create\|revoke`, `portal-accounts:reset-factors`, `portal-accounts:disable\|enable` (ADM; D92). Proposed grants in NOTE_FOR_THULASI T45; they join §4.3 in the same change as core, as for T42 |
 
 ### 4.3 Draft role-to-permission matrix
 
@@ -149,6 +155,7 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | ADM | Practice administrator (no clinical access by default, TA §3) |
 | CO | Compliance / privacy officer |
 | SUP | Shri platform support (**no PHI**, TA §6; replaces the `platform-admin` stand-in in Thulasi's skeleton, which had PHI access) |
+| PAT | **Patient, through the portal only** (D84, P1). Own record only: the patient comes from the session, never the request, and portal paths take no patient ID (`/portal/me/...`). Signs in through a separate Keycloak realm with multi-factor, enrolled by a front-desk invitation code (D85). Holds no staff permission, so it is not a column of the staff matrix below; its portal permissions and rows come with the portal contract (B8), together with core. |
 | DSP | Status board display: a shared waiting-room or hallway screen, never a person. Only `status-board:read`, and always the shared view: initials, appointment time and status (D47; in core since PR #7 db013df) |
 
 Legend: ✓ granted · R read part only · – not granted · ‡ pending clinical advisors
@@ -169,12 +176,14 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `appointments:status` (roomed, with provider, checked out) ‡ | ✓ (checked out) | ✓ (roomed) | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `timeline:read`, `encounters:read`, `notes:read`, `vitals:read`, history `:read` ‡ | – | ✓ | ✓ | ✓ | ✓ | R (signed notes, diagnoses) | – | R (investigations) | – | – |
 | `vitals:create`, `allergies:create\|update` ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
-| ‡ `encounters:create\|update\|close`, `diagnoses:*`, `notes:create\|update\|sign`, `note-addenda:create`, `after-visit-summaries:create`, other history writes | – | – | R (`notes:create\|update` for nursing notes) | ✓ | ✓ | – | – | – | – | – |
+| ‡ `encounters:create\|update\|close`, `diagnoses:*`, `notes:create\|update\|sign`, `note-addenda:create`, `after-visit-summaries:create`, other history writes | – | – | R (`notes:create\|update\|sign`, `note-addenda:create` for nursing notes; T42) | ✓ | ✓ | – | – | – | – | – |
 | `notes:cosign` ‡ | – | – | – | ✓ | – | – | – | – | – | – |
 | `*:entered-in-error` (clinical) ‡ | – | – | ✓ (own entries) | ✓ | ✓ | – | – | – | – | – |
 | `encounters:entered-in-error` ‡ | – | – | – | ✓ | ✓ | – | ✓ (only encounters with no signed note) | – | – | – |
 | `codes:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | `favorites:*` ‡ | – | – | ✓ | ✓ | ✓ | – | – | – | – | – |
+| `note-templates:read` (pick a template to start a note; D73, A46; in core since T42) | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | – | – |
+| `note-templates:create-personal` (a clinician's own templates; D73, A46; in core since T42) ‡ | – | – | ✓ | ✓ | ✓ | – | – | – | – | – |
 | AI clinical: `encounter-audio:create`, `transcriptions:*`, `note-drafts:create`, `chart-summaries:*`, `ai-suggestions:decision` ‡ | – | – | – | ✓ | ✓ | – | – | – | – | – |
 | `ai-settings:read\|update`, `cosign-rules:*`, `practice-setup:*`, `onboarding:import`, `message-templates:*` | – | – | – | – | – | – | ✓ | R | – | – |
 | `users:*`, `roles:read`, `user-roles:update` | – | – | – | – | – | – | ✓ | R | R | – |
@@ -212,6 +221,7 @@ Notes on the matrix:
 - Whether MA, RN may prescribe-draft or answer refills follows clinic protocol and state law: **pending clinical advisors**.
 - 2026-10-24 (D49–D67): the `appointments:create|update|cancel|check-in` row had ADM `–` and CO `✓`, the reverse of DATA_OWNERSHIP §5.1 (FD, ADM) and of core; corrected to ADM `✓`, CO `–`. Duplicate review moved to ADM only (D64). Provider self-service on schedules is P1 (D66).
 - 2026-10-24 (post-merge review of core PR #21): the clinician-writes row had APP `–` and BIL `✓`, a column shift from adding the DSP column on 2026-10-23; corrected to APP `✓`, BIL `–`, as in core. `medications:discontinue` (MD, APP) added to the prescribing row. APP's billing cell reads `superbills:read` only, as MD's and as core. BIL reads billing documents through `documents:read` only, with no `fax-inbox:read` (D71).
+- 2026-10-26 (T42; batch 2 plan Q2–Q4, D73): RN signs and writes addenda for nursing notes only; the notes service refuses other note types for RN (DATA_OWNERSHIP §5.3). `note-templates:read` lets clinicians pick a practice or personal template (the D49 pattern); practice templates are still written under `practice-setup:create|update`. A personal template is created with `note-templates:create-personal`; the server sets the owner, and only the owner edits it.
 
 ### 4.4 Matrix gaps filled in core — gap, pending clinical advisors
 
@@ -253,6 +263,10 @@ Settled on PR #10 (core tests in `test_permissions.py`): MA has no order drafts,
 4. The grant never widens the user's permissions; it only lifts the restriction.
 5. **Care-team members** of a restricted patient (the patient's care team in the schema) open the chart without break-glass; the access is still audited (D37). Membership is checked in `require()` from the database, never from the request.
 
+### 5.2a Inbox items (batch 3, D77, D80)
+
+An inbox item is visible only to users at its facility who are its assignee, hold its role, or sent it (ADM also sees items assigned at their facilities, to reassign them), **and** who hold the read permission for its kind: `results:read` for results, `refill-requests:read` and `prescriptions:read` for refills and failed prescriptions, `notes:read` for notes to sign or co-sign, `fax-inbox:read` for faxes to file (never BIL, D71), `documents:read` for documents, `claims:read`, `eligibility-checks:read`, `audit-events:read` for break-glass notices (CO), `unmatched-results:read`; messages and tasks need `inbox:read` only. An item about a restricted chart the user may not open (no grant, not on the care team; §5.2, D37) leaves out everything that could identify the patient or describe the chart: the patient, the body, the encounter, the `corrected` flag and every reply's text; a message or task title becomes "Item about a restricted chart" (system titles never name a patient). `GET /inbox?patientId=` for such a chart is refused with `403 break-glass-required` and audited with the patient ID, so the filter cannot be used to probe charts. Replies never move an item except between the assignee and the sender of a message or task (checked in the transaction). A sender must be able to open the patient and the linked record (D80); a recipient who cannot sees the link but not the record. **Pending (T43):** CO has no `inbox:*` today but receives the break-glass notice (A36); the matrix rows land with Thulasi's core change, as T42 did.
+
 ### 5.3 Clinic isolation in the database (ADR-0011)
 
 One PostgreSQL database holds every clinic's data. Isolation does not depend on application code alone; four database rules apply together:
@@ -260,7 +274,7 @@ One PostgreSQL database holds every clinic's data. Isolation does not depend on 
 1. **Forced row-level security** on every clinic table, read from the settings `tenant_db` sets (`app.current_tenant_id`, `app.current_user_id`, `app.correlation_id`). A session with no clinic set sees nothing.
 2. **Clinic-carrying links.** Composite foreign keys include the clinic ID, so a row can only point at a row of the same clinic (715 such keys in Sam's schema).
 3. **Same-patient links.** Composite foreign keys include the patient, so a patient's record can only point at the same patient's records (77 such keys).
-4. **Roles that never bypass RLS.** One role per service with the minimum grants (D23): `shri_app` (API: clinical and admin read/write with no DELETE on resource tables; `audit_event` read and insert, never update or delete; `break_glass_access` read and insert), `shri_fhir_reader` (`/fhir`: clinical read only, plus insert-only on `audit_event`; no access to `break_glass_access`), `shri_integration` (partner worker: integration tables, result filing with the reads it needs, insert-only on `audit_event`), `shri_reporting` (approved views only), `shri_migrator` (migrations only).
+4. **Roles that never bypass RLS.** One role per service with the minimum grants (D23): `shri_app` (API: clinical and admin read/write with no DELETE on resource tables; `audit_event` read and insert, never update or delete; `break_glass_access` read and insert), `shri_fhir_reader` (`/fhir`: clinical read only, plus insert-only on `audit_event`; no access to `break_glass_access`), `shri_integration` (partner worker: integration tables, result filing with the reads it needs, insert-only on `audit_event`), `shri_reporting` (approved views only), `shri_maintenance` (the scheduled purge functions only: EXECUTE on them, no table privileges, never the API; D23), `shri_migrator` (migrations only).
 
 ## 6. Audit (`x-audit`)
 
@@ -272,8 +286,8 @@ Middleware writes audit events (D3; TA §6: append-only, hash-chained). The cont
 x-audit:
   action: R              # FHIR AuditEvent action: C create, R read, U update, E execute (actions, search)
   category: phi-read     # see table
-  patient: patientId     # path parameter holding the patient ID, or "body:/patientId", or "result" (search returns IDs)
-  actor: user            # optional; "partner" for /hooks/* (the partner is the actor), default "user"
+  patient: patientId     # path parameter holding the patient ID, or "body:/patientId", or "result" (search returns IDs), or "session" (portal)
+  actor: user            # optional; "partner" for /hooks/* (the partner is the actor), "patient" for /portal/*, default "user"
 ```
 
 | `category` | Operations | Must audit |
@@ -285,9 +299,11 @@ x-audit:
 | `security` | Login, logout, failed login, permission and CSRF denials, break-glass, restriction changes, role changes | Yes |
 | `ai` | AI requests (metadata only), and accept, edit, reject decisions | Yes (FRS §3.4) |
 | `admin` | Practice setup, AI settings, templates, co-sign rules | Yes |
-| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49), session reads (`GET /auth/session`, `/me`, the event stream) | No |
+| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49) and the portal's (`/portal/booking/*`, `/portal/me/slots`), inbox badge counts (`GET /inbox/summary`, counts only; D77), session reads (`GET /auth/session`, `GET /portal/auth/session`, `/me`, the event stream), and a user's own operations (`GET /operations/{operationId}` and its cancel: IDs and status only) | No |
 
 Partner callbacks (`/hooks/*`) carry PHI, so they are audited as `phi-write` with the **partner as actor** (agreed, T37).
+
+Portal operations are audited with the **patient as actor** and the patient from the session (`actor: patient`, `patient: session`; ADR-0013 §6, D84). With a portal session, `none` is allowed only on `GET /portal/auth/session`, the three `/portal/booking/*` lists and `GET /portal/me/slots`; every other one, `security` included, names the session patient. Enforced by `shri-x-audit`.
 
 Audit records contain who, what, which record, which patient, outcome, time, request ID, and break-glass reason. **Never request or response bodies** (TA §6: "do not log unnecessary clinical payloads").
 
@@ -326,6 +342,7 @@ Used for:
 | 9 | Integration message payloads are never shown to `SUP`; metadata only. |
 | 10 | AI requests send only fields declared for the task; AI logs hold metadata, never patient text (VG Step 7). |
 | 11 | Shared screens (status board on a waiting-room or hallway display) show **initials plus appointment time** only (agreed by Minalini and Vimal, M11). Displays sign in with the `DSP` role, which the server always limits to that view (D47). |
+| 12 | Notifications outside the app (email, SMS, push) never contain patient data or an inbox item's title or body: only "You have a new item in Shri Health" (D81). |
 
 ## 9. STRIDE threat model by endpoint group
 

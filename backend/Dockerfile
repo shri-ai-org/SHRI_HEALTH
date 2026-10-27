@@ -1,3 +1,9 @@
+# The contract's operations map comes in through the named build context "contracts"
+# (contracts/openapi/dist): `docker build --build-context contracts=../contracts/openapi/dist`,
+# or compose's additional_contexts. It replaces this empty stage. Without it the build fails on
+# the COPY below, instead of looking for an image called "contracts" on a registry.
+FROM scratch AS contracts
+
 # Pinned by digest, so a rebuild uses exactly this image and a moved tag is visible.
 FROM python:3.13.17-slim-trixie@sha256:fe14fd57a4c0361110eaa0c284112b189750bcb43fb04bb5d1ee7b7744027ccf
 
@@ -12,6 +18,10 @@ COPY requirements.lock ./
 RUN pip install --require-hashes --no-deps -r requirements.lock \
     && useradd --system --uid 10001 --no-create-home api
 COPY app ./app
+# Only the operations map, never the contract itself: core reads each operation's permission
+# and audit rule from it, and refuses to start without it (app/core/operations.py).
+COPY --from=contracts operations.json /app/contracts/operations.json
+ENV SHRI_OPERATIONS_PATH=/app/contracts/operations.json
 
 # Q31: CI stamps the release version and the git commit here (.github/workflows/backend.yml);
 # local builds keep "dev" and "unknown". Core validates both at startup and shows them to

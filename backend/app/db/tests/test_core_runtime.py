@@ -18,7 +18,10 @@ from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, make_tenant, switch_to_
 
 pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
 
-ROLES = ("shri_app", "shri_fhir_reader", "shri_integration", "shri_reporting")
+ROLES = ("shri_app", "shri_fhir_reader", "shri_integration", "shri_reporting",
+         "shri_maintenance")
+#: Roles with no search_path setting of their own.
+NO_SEARCH_PATH = {"shri_fhir_reader", "shri_maintenance"}
 DENIED = "42501"
 CHECK_FAILED = "23514"
 UNIQUE_FAILED = "23505"
@@ -38,7 +41,7 @@ def role_engine() -> Iterator[dict[str, Engine]]:
     engines: dict[str, Engine] = {}
     for role in ROLES:
         engine = create_engine(sync_url(), poolclass=NullPool)
-        switch_to_role(engine, role, require_search_path=role != "shri_fhir_reader")
+        switch_to_role(engine, role, require_search_path=role not in NO_SEARCH_PATH)
         engines[role] = engine
     yield engines
     for engine in engines.values():
@@ -156,6 +159,29 @@ def test_session_token_is_a_sha256_hash_and_no_csrf_token_is_stored(
                               "column_name LIKE 'csrf%'")).scalar_one() == 0
 
 
+def test_a_session_keeps_keycloaks_session_id_for_back_channel_logout(
+        admin_engine: Engine, role_engine: dict[str, Engine]) -> None:
+    # D94, Thulasi on #80: a logout token's sid ends just that session, found by this index.
+    tenant = make_tenant(admin_engine)
+    user = make_user(admin_engine, tenant)
+    sid = str(uuid.uuid4())
+    with role_engine["shri_app"].begin() as conn:
+        with_clinic(conn, tenant)
+        conn.execute(text(
+            "INSERT INTO admin.app_session (id, tenant_id, user_id, token_hash, "
+            "keycloak_access_token_enc, keycloak_refresh_token_enc, keycloak_sid, "
+            "idle_expires_at, expires_at) VALUES (gen_random_uuid(), :t, :u, :h, "
+            "'vault:v1:YQ==', 'vault:v1:cg==', :s, now() + interval '15 minutes', "
+            "now() + interval '12 hours')"),
+            {"t": tenant, "u": user, "h": token_hash(), "s": sid})
+        assert conn.execute(text("SELECT count(*) FROM admin.app_session WHERE keycloak_sid = "
+                                 ":s"), {"s": sid}).scalar_one() == 1
+    with admin_engine.connect() as c:
+        assert c.execute(text("SELECT indexdef FROM pg_indexes WHERE schemaname = 'admin' AND "
+                              "indexname = 'ix_app_session_keycloak_sid'")).scalar_one().endswith(
+            "(keycloak_sid)")
+
+
 # ============================================================================ admin.lookup_session
 def test_lookup_session_finds_live_sessions_of_any_clinic_before_one_is_set(
         admin_engine: Engine, role_engine: dict[str, Engine]) -> None:
@@ -182,7 +208,7 @@ def test_lookup_session_finds_live_sessions_of_any_clinic_before_one_is_set(
 @pytest.mark.parametrize(("function", "allowed"), [
     ("admin.lookup_session(text)", "shri_app"),
     ("admin.claim_outbound_messages(integer)", "shri_integration"),
-    ("admin.purge_expired_runtime_rows()", "shri_app"),
+    ("admin.purge_expired_runtime_rows()", "shri_maintenance"),
 ])
 def test_cross_clinic_functions_are_narrow(admin_engine: Engine, function: str,
                                            allowed: str) -> None:
@@ -573,8 +599,10 @@ def test_purge_removes_only_rows_past_retention_in_every_clinic(
     u1, u2 = make_user(admin_engine, t1), make_user(admin_engine, t2)
     hours = timedelta(hours=1)
     with admin_engine.begin() as c:
-        live, ended, logged_out, recent = (token_hash() for _ in range(4))
+        live, ended, logged_out, recent, idled_out = (token_hash() for _ in range(5))
         _insert_session(c, t1, u1, live)
+        # Idled out 25 hours ago; its absolute expiry was only 13 hours ago (Vimal, #52).
+        _insert_session(c, t1, u1, idled_out, expires=-13 * hours, idle=-25 * hours)
         _insert_session(c, t2, u2, ended, expires=-25 * hours)        # ended 25 hours ago
         _insert_session(c, t1, u1, recent, expires=-23 * hours)       # within the 24 hours
         _insert_session(c, t1, u1, logged_out, revoked=True)          # logged out just now
@@ -604,14 +632,14 @@ def test_purge_removes_only_rows_past_retention_in_every_clinic(
              "(SELECT count(*) FROM admin.event_log WHERE tenant_id IN (:a, :b)), "
              "(SELECT count(*) FROM admin.operation WHERE tenant_id IN (:a, :b))")
     with admin_engine.connect() as c:
-        assert tuple(c.execute(text(count), {"a": t1, "b": t2}).one()) == (4, 2, 2, 3)
-    with role_engine["shri_app"].connect() as conn:                     # no clinic set
+        assert tuple(c.execute(text(count), {"a": t1, "b": t2}).one()) == (5, 2, 2, 3)
+    with role_engine["shri_maintenance"].connect() as conn:            # no clinic set
         deleted: dict[str, int] = {row.table_name: row.deleted for row in conn.execute(text(
             "SELECT table_name, deleted FROM admin.purge_expired_runtime_rows()"))}
         conn.commit()
     # At least ours (other tests' expired rows may go too); only counts come back.
     assert set(deleted) == {"app_session", "idempotency_record", "event_log", "operation"}
-    assert deleted["app_session"] >= 2 and deleted["idempotency_record"] >= 1
+    assert deleted["app_session"] >= 3 and deleted["idempotency_record"] >= 1
     assert deleted["event_log"] >= 1 and deleted["operation"] >= 1
     with admin_engine.connect() as c:
         assert tuple(c.execute(text(count), {"a": t1, "b": t2}).one()) == (2, 1, 1, 2)
@@ -711,6 +739,8 @@ def test_partner_callbacks_have_their_own_actor(admin_engine: Engine) -> None:
     ("emergency-care", None),                       # a code-only grant: its code is the reason
     ("other: covering for a colleague", None),
     (None, CHECK_FAILED),
+    ("", CHECK_FAILED),                             # empty or blank is no reason (Vimal, #52)
+    ("   ", CHECK_FAILED),
 ])
 def test_break_glass_audit_row_carries_the_grants_reason(admin_engine: Engine,
                                                          reason: str | None,
@@ -727,3 +757,23 @@ def test_break_glass_audit_row_carries_the_grants_reason(admin_engine: Engine,
                         ":u, 'break-glass', 'security', 'success', :r)",
                         {"t": tenant, "u": user, "r": reason}) == refused
         conn.rollback()
+
+
+def test_the_maintenance_role_can_only_run_the_purge(admin_engine: Engine) -> None:
+    """D23 as amended in #64: shri_maintenance runs the retention purge and nothing else. It has
+    no table privileges anywhere, and only USAGE on admin, to call the function."""
+    with admin_engine.connect() as c:
+        tables = c.execute(text(
+            "SELECT format('%I.%I', schemaname, tablename) FROM pg_tables "
+            "WHERE schemaname IN ('clinical', 'admin', 'audit', 'public')")).scalars().all()
+        for table in tables:
+            for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"):
+                assert not c.execute(text("SELECT has_table_privilege('shri_maintenance', :t, :p)"),
+                                     {"t": table, "p": privilege}).scalar_one(), (table, privilege)
+        # The data schemas; public's USAGE is whatever PUBLIC has (the image revokes it).
+        usage = {s: c.execute(text("SELECT has_schema_privilege('shri_maintenance', :s, 'USAGE')"),
+                              {"s": s}).scalar_one() for s in ("clinical", "admin", "audit")}
+        assert usage == {"clinical": False, "admin": True, "audit": False}
+        for function in ("admin.lookup_session(text)", "admin.claim_outbound_messages(integer)"):
+            assert not c.execute(text("SELECT has_function_privilege('shri_maintenance', :f, "
+                                      "'EXECUTE')"), {"f": function}).scalar_one(), function

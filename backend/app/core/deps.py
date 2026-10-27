@@ -21,7 +21,7 @@ from uuid import UUID
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import permissions
+from app.core import audit, permissions
 from app.core.config import Settings
 from app.core.db import Database
 from app.core.errors import Forbidden, ServiceUnavailable, Unauthorized
@@ -111,11 +111,13 @@ def require(permission: str) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
 
     async def check(request: Request, user: CurrentUser = Depends(current_user)) -> CurrentUser:
         if not user.can(permission):
+            await audit.record_denial(request, user, permission)
             raise Forbidden(f"Requires {permission}")
         setattr(request.state, _PERMISSION_CHECKED, permission)  # tenant_db looks for this
         return user
 
     check.__name__ = f"require_{permission.replace(':', '_').replace('-', '_')}"
+    check.shri_permission = permission  # type: ignore[attr-defined]  # read by route_problems()
     return check
 
 
@@ -139,15 +141,84 @@ async def tenant_db(
 
     Only for endpoints that also use require(): row-level security separates clinics, but not
     users within a clinic. Without a permission check the first query fails (500 in development
-    and tests, 403 elsewhere)."""
+    and tests, 403 elsewhere).
+
+    The operation's audit rows (x-audit) go in with the endpoint's first commit, or are written
+    before the response if it makes none (app/core/audit.py)."""
     db: Database | None = request.app.state.db
     if db is None:
         raise ServiceUnavailable("Database is not configured")
     # The clinic and user come from the server-side session (current_user), never from
     # request headers or the body (D21).
-    session = db.tenant_session(
-        user.organization_id, user.id, current_request_id(),
-        guard=lambda: _require_was_checked(request),
-    )
+    from app.core.access import check_facility_query  # access builds on this module
+
+    def guard() -> None:
+        # Both run at the first query, after all of the endpoint's dependencies, so a missing
+        # permission is always reported (403) before a facility that isn't the user's (404).
+        _require_was_checked(request)
+        check_facility_query(user, request.query_params.getlist("facilityId"))
+
+    session = db.tenant_session(user.organization_id, user.id, current_request_id(), guard=guard)
+    audit.start_trail(request, user, session)  # the route's x-audit rows (app/core/audit.py)
     async with session:
         yield session
+
+
+# The patient portal (ADR-0013, D84, D93). Portal routes never use current_user or tenant_db:
+#
+#     @router.get("/portal/me/profile", operation_id="getMyProfile")
+#     async def my_profile(
+#         patient: PortalPatient = Depends(portal_session),
+#         db: AsyncSession = Depends(portal_db),
+#     ): ...
+#
+# The patient comes only from the server-side portal session, never from the request, and the
+# audit rows of `x-audit: {patient: session, actor: patient}` operations take it from there.
+# create_app() refuses a route that serves such an operation without portal_session.
+PORTAL_SESSION_STATE = "shri_portal_session"
+
+
+@dataclass(frozen=True)
+class PortalPatient:
+    """A signed-in patient: the chart they may see, and their clinic."""
+
+    patient_id: UUID
+    organization_id: UUID
+    account_id: UUID | None = None
+
+
+async def current_patient(request: Request) -> PortalPatient:
+    """The signed-in patient. Signature final; the body is a placeholder that refuses every
+    request until patient sign-in exists. TODO(ADR-0013, T45): the `__Host-shri_portal` cookie
+    looked up as a portal session (realm `shri-patients`, invitation-code enrolment)."""
+    raise Unauthorized("Not signed in to the patient portal")
+
+
+async def portal_session(
+    request: Request, patient: PortalPatient = Depends(current_patient)
+) -> PortalPatient:
+    """Every portal route depends on this. It records the session's patient for the audit
+    rows, which take the patient from here and nowhere else."""
+    setattr(request.state, PORTAL_SESSION_STATE, patient)
+    return patient
+
+
+async def portal_db(
+    request: Request, patient: PortalPatient = Depends(portal_session)
+) -> AsyncIterator[AsyncSession]:
+    """The portal's database session. Signature final; the body is a placeholder that refuses
+    until the shri_portal role exists. TODO(D93, T45): connect as shri_portal
+    (PORTAL_DATABASE_URL), set app.current_tenant_id and app.current_patient_id, and start
+    the audit trail with audit.start_portal_trail(request, patient, session)."""
+    raise ServiceUnavailable("The patient portal's database is not available yet")
+    yield  # pragma: no cover  (makes this an async generator, like the real dependency)
+
+
+async def public_db(request: Request) -> AsyncIterator[AsyncSession]:
+    """The database session of a public form (D96: online pre-registration), with no account and
+    no session. Signature final; the body is a placeholder that refuses until it is built.
+    TODO(T47): resolve the clinic from the portal host the request came to (server
+    configuration, never the request: D21), check the `Origin`, open a session for that clinic,
+    and start the audit trail with audit.start_public_trail(request, clinic_id, session)."""
+    raise ServiceUnavailable("Public forms are not available yet")
+    yield  # pragma: no cover  (makes this an async generator, like the real dependency)

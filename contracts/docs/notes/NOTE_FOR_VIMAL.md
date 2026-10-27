@@ -115,3 +115,12 @@ Idle timeout on shared workstations (15 min proposed); clinical rows of the role
 ## 9. Decisions of 2026-10-23 (D28–D42)
 
 Anand approved the schema, PostgreSQL 18, D13–D19 and his items (D28). IDs are UUIDv4 (D29, ADR-0009 Accepted); hosting is Amazon RDS (D30, ADR-0012); care-team access is decided (D37, V6); Q24 and Q27–Q30 are decided (D30, D38–D41); the repository is the single source for plans and guides (D42). ADR-0004, ADR-0008, ADR-0009 and ADR-0010 are Accepted.
+
+## 10. AI models and the licence policy (D75, 2026-10-26)
+
+- **Choose AI models under Apache-2.0 or MIT.** The candidates from Tech Arch Appendix A that qualify:
+  - Qwen3.5-4B, Qwen3-Embedding-0.6B and Qwen3-Reranker-0.6B (Apache-2.0);
+  - faster-whisper large-v3 (MIT);
+  - PaddleOCR-VL (Apache-2.0);
+  - Docling's models (CDLA-Permissive-2.0 and Apache-2.0, both allowed).
+- **MedGemma** (Health AI Developer Foundations terms) **only if the benchmark** (guide Step 7, items 1 and 7) **shows no open model is good enough.** In that case, record it in the licence exceptions register first, with the benchmark results as the reason.

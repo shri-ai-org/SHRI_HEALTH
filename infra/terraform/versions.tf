@@ -1,7 +1,9 @@
+# Run with OpenTofu (MPL-2.0; D75), not Terraform. OpenTofu reads the same `terraform` block.
 # Pinned like every other dependency: releases at least 7 days old, upgraded through a reviewed PR.
-# Provider hashes are in .terraform.lock.hcl; CI initializes with -lockfile=readonly.
+# Provider hashes (from registry.opentofu.org) are in .terraform.lock.hcl; CI initializes with
+# -lockfile=readonly.
 terraform {
-  required_version = "= 1.16.6"
+  required_version = "= 1.13.1" # OpenTofu
 
   required_providers {
     aws = {

@@ -6,10 +6,10 @@ on:
   pull_request:
     # labeled/unlabeled: re-run when the breaking-change-approved label is added or removed.
     types: [opened, synchronize, reopened, labeled, unlabeled]
-    paths: ["contracts/**", ".github/workflows/contracts.yml"]
+    paths: ["contracts/**", ".github/workflows/contracts.yml", ".github/licences/**"]
   push:
     branches: [main]
-    paths: ["contracts/**", ".github/workflows/contracts.yml"]
+    paths: ["contracts/**", ".github/workflows/contracts.yml", ".github/licences/**"]
 
 permissions:
   contents: read
@@ -45,6 +45,11 @@ jobs:
       # --ignore-scripts: no install scripts run (this also skips @scarf/scarf analytics).
       - name: Install pinned tools
         run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # D75: every installed package's licence must be on the allowlist (issue #55). Standard
+      # library only; reads the lockfile, and package.json where the lockfile has no licence.
+      - name: Licences (D75)
+        run: node ../.github/licences/check-npm.mjs
 
       - name: Lint, lint fixtures and bundle
         run: npm test

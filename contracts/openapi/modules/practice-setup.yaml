@@ -1254,7 +1254,7 @@ paths:
                       availabilityRules:
                       - id: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
                         dayOfWeek: tue
-                        startTime: 08:00
+                        startTime: '08:00'
                         endTime: '12:00'
                         slotMinutes: 20
                         appointmentTypeIds: &id014 []
@@ -1323,7 +1323,7 @@ paths:
                   facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                   availabilityRules:
                   - dayOfWeek: tue
-                    startTime: 08:00
+                    startTime: '08:00'
                     endTime: '12:00'
                     slotMinutes: 20
                     appointmentTypeIds: *id014
@@ -2671,11 +2671,12 @@ paths:
     get:
       operationId: listNoteTemplates
       summary: List note templates
-      description: Lists the practice's note templates.
+      description: Lists the practice's note templates. Clinicians read templates to start a note with `note-templates:read`
+        (D73, T42; MD, APP, RN, MA, ADM, CO), not `practice-setup:read`.
       tags:
       - practice-setup
       x-owner: anand
-      x-permission: practice-setup:read
+      x-permission: note-templates:read
       x-audit:
         action: R
         category: admin
@@ -2744,7 +2745,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `practice-setup:read`).
+          description: 403. `permission-denied` (the role lacks `note-templates:read`).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -2842,11 +2843,12 @@ paths:
     get:
       operationId: getNoteTemplate
       summary: Get a note template
-      description: Returns one note template.
+      description: Returns one note template. Clinicians read templates to start a note with `note-templates:read` (D73, T42;
+        MD, APP, RN, MA, ADM, CO), not `practice-setup:read`.
       tags:
       - practice-setup
       x-owner: anand
-      x-permission: practice-setup:read
+      x-permission: note-templates:read
       x-audit:
         action: R
         category: admin
@@ -2875,7 +2877,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `practice-setup:read`).
+          description: 403. `permission-denied` (the role lacks `note-templates:read`).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such note template in this clinic or the user's facilities).
@@ -3280,6 +3282,140 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /practice-settings:
+    get:
+      operationId: getPracticeSettings
+      summary: Get the practice settings
+      description: 'The practice''s settings, with the `ETag` that `PATCH` needs (new inventory row #258). Today one setting:
+        whether registration shows the sexual-orientation and gender-identity fields (D39). Every signed-in user reads the
+        same values through `GET /me` (`practiceSettings`), so screens need no `practice-setup:read`.'
+      tags:
+      - practice-setup
+      x-owner: anand
+      x-permission: practice-setup:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The practice settings.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PracticeSettings'
+              examples:
+                one:
+                  summary: Default
+                  value:
+                    registration:
+                      showSexualOrientationAndGenderIdentity: false
+                    mrnPrefix: TEST
+                    mrnSystem: https://company-domain.invalid/sid/mrn/TEST
+                    updatedAt: '2026-10-26T13:00:00Z'
+        '401': &id093
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `practice-setup:read`).
+        '429': &id094
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500': &id095
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    patch:
+      operationId: updatePracticeSettings
+      summary: Update the practice settings
+      description: 'Edits the practice settings with JSON Merge Patch and `If-Match` (new inventory row #259). Whether to
+        show the sexual-orientation and gender-identity fields at registration is decided by each practice''s clinical leadership
+        and counsel (D39); the fields stay optional in the contract and the schema either way.'
+      tags:
+      - practice-setup
+      x-owner: anand
+      x-permission: practice-setup:update
+      x-audit:
+        action: U
+        category: admin
+      x-concurrency: if-match-required
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/PracticeSettingsPatch'
+            examples:
+              show:
+                summary: Show the fields at registration
+                value:
+                  registration:
+                    showSexualOrientationAndGenderIdentity: true
+      responses:
+        '200':
+          description: The practice settings.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PracticeSettings'
+              examples:
+                updated:
+                  summary: Updated
+                  value:
+                    registration:
+                      showSexualOrientationAndGenderIdentity: true
+                    mrnPrefix: TEST
+                    mrnSystem: https://company-domain.invalid/sid/mrn/TEST
+                    updatedAt: '2026-10-26T13:05:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401': *id093
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `practice-setup:update`); `csrf-check-failed` (missing or
+            wrong CSRF header or Origin).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (`If-Match` is missing).
+        '429': *id094
+        '500': *id095
 components:
   schemas:
     SetupCoding:
@@ -4864,4 +5000,73 @@ components:
         nextCursor:
           $ref: ../components/schemas/Cursor.yaml
           description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PracticeRegistrationSettings:
+      description: Registration settings (D39).
+      type: object
+      additionalProperties: false
+      required:
+      - showSexualOrientationAndGenderIdentity
+      properties:
+        showSexualOrientationAndGenderIdentity:
+          type: boolean
+          default: false
+          description: Show the optional sexual-orientation and gender-identity fields on the registration screen (D39). Default
+            false; practice onboarding asks this question explicitly, so the setting records the practice's own decision,
+            not a silent default. Hiding the fields never removes stored values.
+          x-phi: none
+    PracticeSettings:
+      description: Practice-wide settings (one per practice; stored as tenant settings, A49). The MRN prefix and system are
+        set at onboarding and are read-only.
+      type: object
+      required:
+      - registration
+      - mrnPrefix
+      - mrnSystem
+      - updatedAt
+      properties:
+        registration:
+          $ref: '#/components/schemas/PracticeRegistrationSettings'
+          description: Registration settings.
+          x-phi: none
+        updatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When a setting last changed.
+          x-phi: none
+        mrnPrefix:
+          type: string
+          pattern: ^[A-Z0-9]{2,8}$
+          minLength: 2
+          maxLength: 8
+          description: 'The practice''s MRN prefix (D41): every MRN is this prefix, a hyphen and the practice counter''s next
+            number (`TEST-000123`). Set when the practice is onboarded, in the same transaction as its MRN counter, and never
+            changed, so an MRN is never reused. Read-only here.'
+          x-phi: none
+        mrnSystem:
+          type: string
+          format: uri
+          maxLength: 300
+          description: 'The identifier system of the practice''s MRNs (D41): the `system` of every `MR` identifier on its
+            patients, and on `/fhir` (US Core Patient.identifier). Set at onboarding with the prefix and never changed. Read-only
+            here.'
+          x-phi: none
+    PracticeSettingsPatch:
+      description: Settings to change (JSON merge patch).
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        registration:
+          type: object
+          additionalProperties: false
+          minProperties: 1
+          description: Registration settings to change.
+          properties:
+            showSexualOrientationAndGenderIdentity:
+              type: boolean
+              default: false
+              description: Show the optional sexual-orientation and gender-identity fields on the registration screen (D39).
+                Default false; practice onboarding asks this question explicitly, so the setting records the practice's own
+                decision, not a silent default. Hiding the fields never removes stored values.
+              x-phi: none
           x-phi: none

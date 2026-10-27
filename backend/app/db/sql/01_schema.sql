@@ -634,6 +634,7 @@ CREATE TABLE admin.app_session (
 	token_hash VARCHAR(64) NOT NULL, 
 	keycloak_access_token_enc TEXT NOT NULL, 
 	keycloak_refresh_token_enc TEXT NOT NULL, 
+	keycloak_sid VARCHAR(100), 
 	last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	tokens_refreshed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	idle_expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
@@ -657,6 +658,8 @@ CREATE TABLE admin.app_session (
 );
 
 CREATE INDEX ix_app_session_expires ON admin.app_session (expires_at);
+
+CREATE INDEX ix_app_session_keycloak_sid ON admin.app_session (keycloak_sid);
 
 CREATE INDEX ix_app_session_tenant_id ON admin.app_session (tenant_id);
 
@@ -1593,7 +1596,7 @@ CREATE TABLE audit.audit_event (
 	tenant_id UUID, 
 	CONSTRAINT pk_audit_event PRIMARY KEY (id), 
 	CONSTRAINT uq_audit_event_tenant_id_chain_seq UNIQUE NULLS NOT DISTINCT (tenant_id, chain_seq), 
-	CONSTRAINT ck_audit_event_break_glass_reason CHECK (action <> 'break-glass' OR reason IS NOT NULL), 
+	CONSTRAINT ck_audit_event_break_glass_reason CHECK (action <> 'break-glass' OR (reason IS NOT NULL AND length(trim(reason)) > 0)), 
 	CONSTRAINT ck_audit_event_hash_version_known CHECK (hash_version IN (1, 2)), 
 	CONSTRAINT ck_audit_event_user_actor CHECK (actor_type <> 'user' OR actor_user_id IS NOT NULL), 
 	CONSTRAINT uq_audit_event_event_uuid UNIQUE (event_uuid), 
@@ -2507,13 +2510,7 @@ CREATE TABLE admin.event_log (
 
 CREATE INDEX ix_event_log_created ON admin.event_log (created_at);
 
-CREATE INDEX ix_event_log_patient_id ON admin.event_log (patient_id);
-
 CREATE INDEX ix_event_log_replay ON admin.event_log (tenant_id, seq);
-
-CREATE INDEX ix_event_log_target_role_code ON admin.event_log (target_role_code);
-
-CREATE INDEX ix_event_log_target_user_id ON admin.event_log (target_user_id);
 
 CREATE INDEX ix_event_log_tenant_id ON admin.event_log (tenant_id);
 

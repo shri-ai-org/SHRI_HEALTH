@@ -238,6 +238,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `token_hash` | varchar(64) | no |  |  | — |
 | `keycloak_access_token_enc` | text | no |  |  | — |
 | `keycloak_refresh_token_enc` | text | no |  |  | — |
+| `keycloak_sid` | varchar(100) | yes |  |  | — |
 | `last_activity_at` | datetime | no |  |  | — |
 | `tokens_refreshed_at` | datetime | no |  |  | — |
 | `idle_expires_at` | datetime | no |  |  | — |

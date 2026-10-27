@@ -120,7 +120,8 @@ data: {"specversion":"1.0","id":"4d6f…","type":"appointment.checked-in",…}
 | `file.scanned` | file | `status` (`clean`, `rejected`) | Anand (files) | Operation completion | Internal |
 | `fax.received` | fax | — | Anand | Fax inbox screen | Browser |
 | `claim.status-changed` | claim | `status` | Anand | Billing screens | Browser |
-| `inbox.item-assigned` | inbox-item | `itemType`, `priority` | Anand | Assigned user | Browser (personal) |
+| `inbox.item-assigned` | inbox-item | `itemType`, `priority` | Anand | The assigned user, or for a role assignee the role's users at the item's facility; also on reassignment, replies handed back and escalation (D77, D78) | Browser (personal) |
+| `inbox.item-completed` | inbox-item | `itemType`, `status` (`completed` or `cancelled`) | Anand | The assignee's and the role's screens (the item leaves the queue); the sender's `sent` view | Browser (personal) |
 | `communication.delivery-updated` | communication | `deliveryStatus` | Minalini | Communications screen | Browser |
 | `break-glass.granted` | patient | `grantId`, `userId` | Platform (Thulasi) | **Anand (inbox item for CO)**: the privacy-officer notice is an inbox item, never an email with PHI (T16) | Internal |
 | `stream.reset` | — | — | Platform | All screens: re-fetch | Browser |

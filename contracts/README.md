@@ -15,7 +15,7 @@ This folder is the **single source of truth** for every endpoint of the Shri Hea
 | `openapi/.spectral.yaml`, `openapi/rules/` | Lint ruleset and its custom rule functions (CONTRACT_GOVERNANCE §5) |
 | `openapi/redocly.yaml` | Structural validation against OpenAPI 3.1 |
 | `tests/lint-fixtures/` | One deliberately broken file per lint rule, plus a compliant sample in `valid/` |
-| `scripts/` | Layout check, mock launcher, sample builder, breaking-change check, oasdiff installer, role-matrix reader (`role_matrix.py`: SECURITY_MODEL §4.3/§4.4 against core; `python3 contracts/scripts/role_matrix.py`) |
+| `scripts/` | Layout check, mock launcher, sample builder, breaking-change check, oasdiff installer, role-matrix reader (`role_matrix.py`), YAML load and save (`yaml-io.mjs`), markdown link check (`check-links.mjs`) |
 | `docs/` | The rules: API_STANDARDS, SECURITY_MODEL, DATA_OWNERSHIP, EXTENSIONS, and the rest |
 
 ## First-time setup
@@ -36,7 +36,11 @@ The versions are exact and were at least 7 days old when chosen (TOOLCHAIN §5).
 | `npm run bundle` | Builds `openapi/dist/shri-health.bundled.yaml` from the split files |
 | `npm run lint` | Bundles, checks the layout, validates the bundle as OpenAPI 3.1, then runs the full lint ruleset. Fails on any error |
 | `npm run lint:fixtures` | Proves every lint rule catches what it claims, and that a compliant sample passes |
-| `npm test` | `lint` + `lint:fixtures` |
+| `npm test` | `lint` + `lint:fixtures` + `test:yaml` + `test:links` + `links` |
+| `npm run test:yaml` | Loads and writes every module file with `scripts/yaml-io.mjs` and fails unless each comes back byte-identical. Scripts that edit the contract use its `load()` and `save()`, so the diff shows only the lines they changed |
+| `npm run links` | Fails on any relative markdown link under `contracts/` whose file does not exist. `node scripts/check-links.mjs ..` checks the whole repository. It skips `node_modules` and never follows a symbolic link it meets while walking a folder |
+| `npm run test:links` | Tests for the link check (`tests/check-links.test.mjs`): broken links are reported; `node_modules`, as a folder or a symlink, and other symlinks are not walked |
+| `npm run matrix` | Compares the role matrix in SECURITY_MODEL §4.3/§4.4 with `backend/app/core/permissions.py`; exit 1 on any difference. Needs Python 3 and nothing else |
 | `npm run mock` | Starts the Prism mock server on port 4010 from the bundle. Until Stage 4 adds endpoints there is nothing to mock, and it says so |
 | `npm run mock:sample` | Starts Prism on the compliant sample, to try the shared components now |
 | `npm run breaking` | Compares the bundle with the one on `origin/main` (set `BASE_REF` to compare with another branch). Exit code 0: no breaking change; **3: a real breaking change**, listed in the output; 2: a tool or setup failure (oasdiff install or run, bundling, missing base ref), with a message saying so. In CI, only exit code 3 can be approved with the `breaking-change-approved` label |

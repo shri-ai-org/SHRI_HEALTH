@@ -1,4 +1,4 @@
-import { useId, useState, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { useId, useState, type InputHTMLAttributes, type Ref, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import { US_STATES } from '../format/address'
 import { formatDate, parseUsDate } from '../format/datetime'
 import { formatMoney, parseMoneyInput } from '../format/money'
@@ -142,6 +142,7 @@ export interface TextareaProps extends Omit<TextareaHTMLAttributes<HTMLTextAreaE
    * submit while `isOverLimit(value, limit)` is true.
    */
   limit?: number
+  ref?: Ref<HTMLTextAreaElement>
 }
 
 /** Multi-line text with an optional character count (WCAG 3.3.1: the count is read with the field). */

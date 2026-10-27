@@ -4,7 +4,7 @@ locals {
   tags = {
     Project     = "shri-health"
     Environment = var.environment
-    ManagedBy   = "terraform"
+    ManagedBy   = "opentofu"
     Owner       = "thulasi"
   }
 }

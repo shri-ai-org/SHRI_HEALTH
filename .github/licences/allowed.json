@@ -1,0 +1,58 @@
+{
+  "source": "DECISIONS.md D75 (licence policy). Change this file only through a reviewed PR that also changes D75 or its licence exceptions register.",
+  "allowed": [
+    "MIT", "MIT-0", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "ISC", "Unlicense",
+    "BlueOak-1.0.0", "PSF-2.0", "Python-2.0", "PostgreSQL", "MPL-2.0",
+    "LGPL-2.1-only", "LGPL-2.1-or-later", "LGPL-3.0-only", "LGPL-3.0-or-later",
+    "GPL-3.0-only", "GPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later"
+  ],
+  "fonts_and_data": {
+    "note": "D75 allows these licences only for fonts (OFL) and for data and model weights (CC0, CC-BY, CDLA-Permissive-2.0), so they pass only for the packages listed under `packages` below.",
+    "licences": ["OFL-1.1", "CC0-1.0", "CC-BY-3.0", "CC-BY-4.0", "CDLA-Permissive-2.0"]
+  },
+  "not_packages": {
+    "LOINC": "Terminology data, allowed by name in D75. It isn't a package, so no lockfile carries it."
+  },
+  "aliases": {
+    "Apache 2.0": "Apache-2.0",
+    "Apache License 2.0": "Apache-2.0",
+    "Apache License, Version 2.0": "Apache-2.0",
+    "Apache Software License": "Apache-2.0",
+    "BSD": "BSD-3-Clause",
+    "BSD License": "BSD-3-Clause",
+    "BSD license": "BSD-3-Clause",
+    "ISC License (ISCL)": "ISC",
+    "MIT License": "MIT",
+    "Mozilla Public License 2.0 (MPL 2.0)": "MPL-2.0",
+    "Python Software Foundation License": "PSF-2.0",
+    "The Unlicense (Unlicense)": "Unlicense",
+    "GNU Lesser General Public License v3 (LGPLv3)": "LGPL-3.0-only",
+    "GNU Lesser General Public License v3 or later (LGPLv3+)": "LGPL-3.0-or-later",
+    "LGPL-3.0": "LGPL-3.0-only",
+    "LGPL-2.1": "LGPL-2.1-only",
+    "GPL-3.0": "GPL-3.0-only",
+    "AGPL-3.0": "AGPL-3.0-only"
+  },
+  "packages": {
+    "npm:@fontsource-variable/plus-jakarta-sans": {
+      "kind": "font",
+      "licence": "OFL-1.1",
+      "register": "DECISIONS.md D75: OFL for fonts (the design system's typeface)"
+    },
+    "npm:caniuse-lite": {
+      "kind": "data",
+      "licence": "CC-BY-4.0",
+      "register": "DECISIONS.md D75: CC-BY for data (browser-support tables; build tool, dev only)"
+    },
+    "npm:language-subtag-registry": {
+      "kind": "data",
+      "licence": "CC0-1.0",
+      "register": "DECISIONS.md D75: CC0 for data (IANA language subtags; dev only)"
+    },
+    "npm:mdn-data": {
+      "kind": "data",
+      "licence": "CC0-1.0",
+      "register": "DECISIONS.md D75: CC0 for data (CSS property data; dev only)"
+    }
+  }
+}

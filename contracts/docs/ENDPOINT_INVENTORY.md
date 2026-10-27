@@ -32,6 +32,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | B5 | Medications, prescriptions, orders, results | Clinical (Thulasi) |
 | B6 | Billing and claims, C-CDA, exports, audit and integration admin, dashboard | Back office |
 | B7 | AI | After Step 5 endpoints (VD-G11) |
+| B8 | Patient portal (P1): **B8a** sign-in, enrollment, profile, appointments and booking, visit summaries, problems, allergies, vitals; **B8b** messages, results, prescriptions, documents, forms, bills, exports | B8a reads only what B2–B4 already specify; B8b follows B3, B5 and B6 (D88, D89) |
 
 ---
 
@@ -53,8 +54,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 12 | GET | `/users/{userId}/roles` | T | Ad | `roles:read` | adm | – | | | §3.10 | B1 | |
 | 13 | PUT | `/users/{userId}/roles` | T | Ad | `user-roles:update` | sec | – | ✓ | | §3.10 | B1 | |
 | 14 | GET | `/events/stream` | T | – | `authenticated` | – | – | | | FR-ORD-02, FR-SCH-02 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52): `text/event-stream`, `Last-Event-ID` resume (EVENTS.md §3) |
-| 15 | GET | `/operations/{operationId}` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** (API_STANDARDS §13); owner Thulasi (T26). Visible only to the creating user in the MVP; polling does not reset the idle timer |
-| 16 | POST | `/operations/{operationId}/cancel` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** |
+| 15 | GET | `/operations/{operationId}` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** (API_STANDARDS §13); owner Thulasi (T26). Visible only to the creating user in the MVP; polling does not reset the idle timer. **Written** 2026-10-27 (#80, Minalini's ask on #70): `Retry-After` while unfinished |
+| 16 | POST | `/operations/{operationId}/cancel` | T | Ad | `authenticated` | – | – | | | — | B1 | **New**. **Written** 2026-10-27 (#80): the creator only, where the kind allows it (AI kinds); `409` once finished |
 | 17 | GET | `/audit-events` | T | Au | `audit-events:read` | sec | – | | | §3.10, §6 Audit | B6 | |
 | 18 | GET | `/reports/chart-access` | T | Au | `chart-access-reports:read` | sec | – | | | §6 Sensitive records | B6 | |
 | 19 | POST | `/patients/{patientId}/break-glass` | T | Au | `patients:break-glass` | sec | S | | | FR-PAT-01 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D53): four reason codes, `reasonText` required for `other`, grant with `expiresAt` (4 hours) |
@@ -62,6 +63,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 21 | POST | `/hooks/erx` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-MED-01 | B5 | Same |
 | 22 | POST | `/hooks/fax` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | §3.9 | B3 | Same |
 | 23 | POST | `/hooks/sms` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-SCH-01 reminders | B3 | Same |
+| 292 | POST | `/hooks/keycloak/backchannel-logout` (root) | T | Ad | `partner-signed` | sec (partner as actor) | – | | | §6 sessions | B1 | **New** (D94, 2026-10-27): Keycloak's signed `logout_token` (OpenID Connect Back-Channel Logout 1.0); ends matching staff sessions at once; `200`, or `400` for any failure; only from Keycloak |
+| 300 | GET | `/portal/me/medications` | T | Cl | `portal-records:read` | pr (patient session) | – | | | §3.8 | Demo | **New** (plan §8.2 E; written for the demo ahead of B8b, together with the staff medications contract in #93, D88): the patient's medication list, with transmission status |
 | 24 | GET | `/admin/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
 | 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |
@@ -80,9 +83,11 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 34 | GET | `/patients/{patientId}/related-persons` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 (emergency contacts) | B2 | **New** (Stage 1 gap) |
 | 35 | POST | `/patients/{patientId}/related-persons` | V | Cl | `patients:update` | pw | S | | | FR-PAT-01 | B2 | **New** |
 | 36 | PATCH | `/patients/{patientId}/related-persons/{relatedPersonId}` | V | Cl | `patients:update` | pw | – | ✓ | | FR-PAT-01 | B2 | **New** |
+| 257 | GET | `/patients/{patientId}/related-persons/{relatedPersonId}` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 | B2 | **New** (contracts follow-up 2, 2026-10-26; Minalini on #48): one related person with the strong `ETag` #36 needs |
 | 37 | GET | `/patients/{patientId}/coverages` | V | Cl | `coverages:read` | pr | – | | | FR-PAT-01, FR-RCM-01 | B2 | |
 | 38 | POST | `/patients/{patientId}/coverages` | V | Cl | `coverages:create` | pw | S | | | FR-RCM-01 | B2 | |
 | 39 | PATCH | `/patients/{patientId}/coverages/{coverageId}` | V | Cl | `coverages:update` | pw | – | ✓ | | FR-RCM-01 | B2 | |
+| 256 | GET | `/patients/{patientId}/coverages/{coverageId}` | V | Cl | `coverages:read` | pr | – | | | FR-RCM-01 | B2 | **New** (contracts follow-up 2, 2026-10-26; Minalini on #48): one coverage with the strong `ETag` #39 needs, so a coverage can be ended (D45) |
 | 40 | POST | `/patients/{patientId}/coverages/{coverageId}/card-images` | V | Cl+F | `coverages:update` | pw | S | | | FR-PAT-01 | B2 | Body `{ fileId, side }` (API_STANDARDS §15) |
 | 232 | POST | `/patients/{patientId}/coverages/{coverageId}/entered-in-error` | V | Cl | `coverages:entered-in-error` | pw | – | | | FR-PAT-01, FR-RCM-01 | B2 | **New** (D45, 2026-10-23): a coverage recorded by mistake; ending one is `PATCH` with `endDate` |
 | 41 | GET | `/patients/{patientId}/consents` | V | Cl | `consents:read` | pr | – | | | FR-PAT-01 | B2 | |
@@ -257,8 +262,9 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 234 | GET | `/lab-providers` | A | Ad | `lab-providers:read` | – | – | | | FR-ORD-01, §3.10 onboarding | B1 | **New** (D48, 2026-10-23): read-only, like the payer directory |
 | 235 | GET | `/lab-providers/{labProviderId}` | A | Ad | `lab-providers:read` | – | – | | | FR-ORD-01 | B1 | **New** (D48) |
 | 179–182 | same 4 | `/lab-accounts` | A | Ad | same | adm | S | ✓ | | FR-ORD-01 | B1 | Same |
-| 183–186 | same 4 | `/note-templates` | A | Ad | same | adm | S | ✓ | | FR-ENC-04 | B1 | Same |
+| 183–186 | same 4 | `/note-templates` | A | Ad | same | adm | S | ✓ | | FR-ENC-04 | B1 | Same; the two GETs take `note-templates:read` (D73, T42) so clinicians can start a templated note (2026-10-27) |
 | 244–247 | same 4 | `/consent-requirements` | A | Ad | reads `consent-requirements:read` (FD, ADM); writes `practice-setup:create\|update` | adm | S | ✓ | | FR-PAT-01 | B1 | **New** (D59, 2026-10-24): consent kinds with the current `policyVersion` |
+| 258–259 | GET, PATCH | `/practice-settings` | A | Ad | `practice-setup:read`; `practice-setup:update` (ADM) | adm | – | ✓ (PATCH) | | D39 | B1 | **New** (contracts follow-up 2, 2026-10-26, D39 amended): one setting today, whether registration shows the sexual-orientation and gender-identity fields; every signed-in user reads it through `GET /me` (`practiceSettings`). The response also carries the read-only `mrnPrefix` and `mrnSystem`, set at onboarding (D41; Anand's ask on #74, 2026-10-27) |
 | 187 | POST | `/onboarding/import` | A | Ad+F | `onboarding:import` | adm | S | | ✓ | §3.10 onboarding | B1 | |
 | 188 | GET | `/encounters/{encounterId}/superbill` | A | Cl | `superbills:read` | pr | – | | | FR-RCM-02 | B6 | |
 | 189 | PATCH | `/encounters/{encounterId}/superbill` | A | Cl | `superbills:update` | pw | – | ✓ | | FR-RCM-02 | B6 | |
@@ -286,10 +292,14 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 211 | POST | `/fax-inbox/{faxId}/file` | A | Ad+F | `fax-inbox:file` | pw | – | | | §3.9 | B3 | |
 | 212 | POST | `/ccda/import` | A | Cl+F | `ccda:import` | pw | S | | ✓ | §3.9 | B6 | |
 | 213 | GET | `/patients/{patientId}/ccda` | A | F | `ccda:export` | ex | – | | | §3.9 | B6 | **Anand's call (A27, D28):** if generation is slow, change to `POST /patients/{patientId}/ccda-exports` → 202 (API_STANDARDS §13) |
-| 214 | GET | `/inbox` | A | Ad | `inbox:read` | pr | – | | | FR-ENC-05 | B3 | |
-| 215 | PATCH | `/inbox/{inboxItemId}` | A | Ad | `inbox:update` | pw | – | ✓ | | FR-ENC-05 | B3 | |
-| 216 | POST | `/inbox/{inboxItemId}/complete` | A | Ad | `inbox:complete` | pw | – | | | FR-ENC-05 | B3 | |
-| 217 | POST | `/messages` | A | Ad | `messages:create` | pw | S | | | FR-ENC-05 | B3 | |
+| 214 | GET | `/inbox` | A | Ad | `inbox:read` | pr | – | | | FR-ENC-05 | B3 | **Written in batch 3** (2026-10-26, D77): `view`, `itemType`, `status`, `priority`, `patientId`, `facilityId`, `dueBefore`; only kinds the user may read; restricted charts without access listed without the patient (D37) |
+| 252 | GET | `/inbox/{inboxItemId}` | A | Ad | `inbox:read` | pr | – | | | FR-ENC-05 | B3 | **New** (batch 3, D77): the item with its thread and the `ETag` #215 needs |
+| 255 | GET | `/inbox/summary` | A | Ad | `inbox:read` | – | – | | | FR-ENC-05 | B3 | **New** (batch 3, D77, Q10): badge counts only, no patient data |
+| 215 | PATCH | `/inbox/{inboxItemId}` | A | Ad | `inbox:update` | pw | – | ✓ | | FR-ENC-05 | B3 | Take from a queue, reassign (ADM at their facilities, Q5), status `open`/`in-progress`/`on-hold`, priority, due time |
+| 216 | POST | `/inbox/{inboxItemId}/complete` | A | Ad | `inbox:complete` | pw | – | | | FR-ENC-05 | B3 | Kinds that wait for an action are completed by it, not here (Q4) |
+| 253 | POST | `/inbox/{inboxItemId}/cancel` | A | Ad | `inbox:update` | pw | – | | | FR-ENC-05 | B3 | **New** (batch 3, D77): a message or task closed by its creator, with a reason; nothing is deleted (D14) |
+| 254 | POST | `/inbox/{inboxItemId}/replies` | A | Ad | `messages:create` | pw | S | | | FR-ENC-05 | B3 | **New** (batch 3, D77): message threads (D38); hands the item back to the other party |
+| 217 | POST | `/messages` | A | Ad | `messages:create` | pw | S | | | FR-ENC-05 | B3 | **Written in batch 3** (D77): `kind` `message` or `task`, one user or role, facility, title, body, priority, due time, optional patient and linked record (D67, D80) |
 | 218 | POST | `/exports` | A | Ad+F | `exports:create` | ex | S | | ✓ | §3.10 | B6 | |
 | 219 | GET | `/exports/{exportId}` | A | Ad+F | `exports:read` | ex | – | | | §3.10 | B6 | |
 
@@ -324,9 +334,11 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | Batch 1 review decisions (2026-10-23) | #232 coverage entered-in-error (D45), #233 dismiss a duplicate (D46), #234–235 read-only lab providers (D48) | Decided |
 | Proposed to owners | Single GETs in practice setup and documents (Anand), #213 async export (Anand) | Pending owners |
 | Batch 1 follow-up: Minalini's screen-mapping gaps (2026-10-24) | New #236–239 booking lists (D49), #240 merge list (D51), #241 summaries (D54), #242 undo check-in (D55), #243 reschedule (D61), #244–247 consent requirements (D59); #1–6, #14, #19, #148–150 written (D52, D53); #130 and #198–199 moved to batch 1 (D50, D58); `provider-schedules:create\|update` (D66) | D49–D70 |
+| Contract batch 3: inbox, tasks and messages (2026-10-26) | #214–217 written; new #252 (single GET), #253 (cancel), #254 (replies), #255 (summary) | D77–D81 |
+| Contracts follow-up 2 (2026-10-26) | New #256 single coverage, #257 single related person, #258–259 practice settings; `GET /me` gains `practiceSettings` | D39 (amended), D82 |
 | Moved outside `/api/v1` | `/hooks/*`, `/health` (public through Nginx); `/ready` internal and **not in the contract** | API_STANDARDS §2; agreed T24 |
 
-**Count:** 250 contract operations: 251 rows (27 platform, 24 patients, 12 scheduling and eligibility, 29 encounters and notes, 19 history, 9 AI, 17 medications, 18 orders, 76 Anand, 8 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24); #248 from Minalini's M16 sign-off (2026-10-24); #249–251 from batch 2 (single GETs for problems, allergies and co-sign rules, 2026-10-24). Recounted when the contract is written.
+**Count:** 254 contract operations: 255 rows (27 platform, 24 patients, 12 scheduling and eligibility, 29 encounters and notes, 19 history, 9 AI, 17 medications, 18 orders, 80 Anand, 8 Minalini) minus `/ready` (#27), which is not in the contract. New rows are numbered from #227 so existing references stay valid; #230–231 are the payer directory, #232–235 come from D45, D46 and D48 (2026-10-23); #236–247 from the batch 1 follow-up (D49–D61, 2026-10-24); #248 from Minalini's M16 sign-off (2026-10-24); #249–251 from batch 2 (single GETs for problems, allergies and co-sign rules, 2026-10-24); #252–255 from batch 3 (inbox, 2026-10-26); #260–291 from portal batch B8a (D89, D92, 2026-10-26; P1, so not in the count above). Recounted when the contract is written.
 
 ## Later batches: items recorded on 2026-10-24 (no contract change now)
 
@@ -334,7 +346,9 @@ Minalini's clinical items from the screen mapping, to be written in the batch na
 
 | Item | Batch | Note |
 |---|---|---|
-| Inbox task creation (`POST /messages`, #217) with assignee, due date and link to a record; clinicians request appointment changes this way (D67) | B3 | Anand |
+| Inbox task creation (`POST /messages`, #217) with assignee, due date and link to a record; clinicians request appointment changes this way (D67) | B3 | **Done in batch 3** (D77): `kind: task` |
+| **Not in the MVP:** a self-service out-of-office forward for clinicians who are away. Until then, ADM reassigns their items and overdue items escalate (D79) | P1 | Anand |
+| **Not in the MVP:** read / unread marks on inbox items (batch 3 plan Q11) | P1 | Anand, Minalini |
 | Co-sign "return to author" with a comment (`POST /notes/{noteId}/cosign` with `decision: return`) | B4 | **Done in batch 2:** `cosignStatus: returned`; the note stays signed and the author answers with an addendum; event `note.cosign-returned` |
 | Where patient instructions are stored (after-visit summary section vs. note section) | B4 | **Done in batch 2:** a note section, LOINC 69730-0, signed with the note and printed on the after-visit summary |
 | Timeline filters (`GET /patients/{patientId}/timeline`: type, date range) | B4 | **Done in batch 2:** `types`, `dateFrom`, `dateTo` |
@@ -348,3 +362,87 @@ Minalini's clinical items from the screen mapping, to be written in the batch na
 | **Confirmed:** per-user alert suppression is in-product (FRS §3.4), in the medications batch | B5 | Thulasi |
 | Vitals in U.S. customary UCUM units as entered (D69) | B4 | **Done in batch 2** |
 | AI contract shapes from Minalini's Stage 3 design (D70) | B7 | Vimal |
+
+## Later batches: patient portal (B8, P1; mapped 2026-10-26)
+
+Minalini's portal screens (#39) and her endpoint note (`frontend/src/features/portal/NOTE_FOR_VIMAL_PORTAL.md`), mapped to the decided shape (D83–D88).
+- **Paths:** one `portal.yaml` under `/api/v1/portal`. Patient data sits under `/portal/me/...` with no patient ID; the patient comes from the session (`PAT`, D84). A record ID in a path must belong to the session's patient, otherwise `404`.
+- **Ownership:** each operation keeps its owning module's `x-owner` (D83).
+- **Release:** everything follows D86: drafts, entered-in-error records and psychotherapy notes are never shown, and items held by a clinician show as held.
+- **Status (D89):** **B8a is in the contract** (#260–291 below, `x-release: P1`, served by the mock). The rows marked B8b are still only mapped; they follow their batches (D88).
+- **Sign-in and enrollment** follow ADR-0013 (#67, proposed): the patient redeems the code with their date of birth and email **before** any account exists, and only then signs in.
+
+| Screen | Her call | Decided path | x-owner | Staff data it reads | Batch (B8b: what it waits for) |
+|---|---|---|---|---|---|
+| Session | `GET /auth/session`, `POST /auth/refresh`, `POST /auth/logout` | `GET /portal/auth/session`, `POST /portal/auth/refresh`, `POST /portal/auth/logout` (patient realm, ADR-0013 §5) | thulasi | `admin.portal_session` (ADR-0013 §5) | **B8a** #262–264 |
+| Sign-in | `POST /portal/auth/login` | `GET /portal/auth/login`, `GET /portal/auth/callback`: the patient realm's sign-in with multi-factor (code + PKCE), like the staff `#1–2` | thulasi | — | **B8a** #260–261 |
+| Enrollment | (replaces registration, below) | `POST /portal/enrollments` `{ invitationCode, birthDate, email }`, public: redeems the code before any account exists, then the realm emails the set-up link (ADR-0013 §3); one answer for every failure. Staff side: `GET /patients/{patientId}/portal-account`, `POST /patients/{patientId}/portal-invitations` (code shown once), `POST …/portal-invitations/{invitationId}/revoke`, `POST /patients/{patientId}/portal-account/reset-factors`, `…/disable` and `…/enable` (ADM, D92) | thulasi (enrollment, factor reset, disable and enable); vimal (invitations, account) | `admin.portal_invitation`, `admin.portal_account` | **B8a** #265, #286–291 |
+| Alerts and reminders | `GET /portal/alerts` | No separate endpoint: today's and upcoming appointments are `GET /portal/me/appointments?when=upcoming` | vimal | `appointment` | **B8a** #269 |
+| Demographics | `GET`, `PUT /portal/demographics` | `GET /portal/me`; `POST /portal/me/change-requests` (proposed changes go to the front desk as an inbox task, not a direct write; name changes always reviewed) | vimal | `Patient`, `RelatedPerson` (emergency contact), employer (A45) | **B8a** #266–268 |
+| E-signature | `GET`, `PUT /portal/signature` | `GET`, `PUT /portal/me/signature` (the PNG through the files flow) | anand | `binary_object` | B8b; B1 (files) |
+| Reference lists | `GET /portal/reference-lists` | Not needed for B8a: the lists its screens use are enums in the contract. Revisit with forms | vimal | Code systems | B8b (forms) |
+| Appointments | `GET /portal/appointments[/{appointmentId}]`, `POST …/cancel` | `GET /portal/me/appointments[/{appointmentId}]`, `POST /portal/me/appointments/{appointmentId}/cancel` (reason required) | vimal | `appointment` | **B8a** #269, #271–272 |
+| Schedule and reschedule | `GET /portal/facilities`, `/portal/appointment-categories`, `/portal/providers`, `POST /portal/slots/search`, `POST /portal/appointments`, `POST …/reschedule` | `GET /portal/booking/facilities`, `/portal/booking/appointment-types`, `/portal/booking/providers` (bookable fields only, as D49); `GET /portal/me/slots?facilityId=&providerId=&appointmentTypeId=&date=` (no PHI, so `GET`); `POST /portal/me/appointments`, `POST /portal/me/appointments/{appointmentId}/reschedule` (`Idempotency-Key`, `409 booking-conflict`). The length comes from the appointment type, not a free 15–60-minute choice | vimal | Scheduling setup, `appointment` | **B8a** #270, #273–277 |
+| Visit summary | `GET /portal/visit-summaries/{visitSummaryId}` | `GET /portal/me/visit-summaries`, `GET /portal/me/visit-summaries/{visitSummaryId}` (signed and released only, D86; a held one is listed as held, without content), `GET …/{visitSummaryId}/download-url` (the PDF, short-lived) | vimal | After-visit summary `document_reference` | **B8a** #278–280 |
+| Video consult | `POST /portal/appointments/{appointmentId}/video-join` | `POST /portal/me/appointments/{appointmentId}/video-join` → `{ joinUrl }` | vimal | Telehealth appointment; Jitsi (P1) | B8b; B3; telehealth P1 |
+| Messages | `GET /portal/messages?folder=`, `POST …/{messageId}/read`, `POST /portal/messages`, `POST …/trash`, `POST …/remove-from-trash`, `GET /portal/message-recipients` | Same, under `/portal/me/messages` and `/portal/me/message-recipients`. Patient messages arrive as inbox `message` items for a role or user (D77); "trash" only hides a message from the patient | anand | `work_item`, `work_item_event` | B8b; B3 (inbox, #58) |
+| Test results | `GET /portal/results[/{resultId}]` | `GET /portal/me/results[/{resultId}]` (released per D86; held ones shown as held) | thulasi | `diagnostic_report`, `observation` | B8b; B5 |
+| Health issues, allergies | `GET /portal/health-issues[/{id}]`, `/portal/allergies[/{id}]` | `GET /portal/me/problems[/{problemId}]`, `/portal/me/allergies[/{allergyId}]` (entered-in-error excluded, D24) | vimal | `condition`, `allergy_intolerance` | **B8a** #281–284 |
+| Immunizations | `GET /portal/immunizations[/{id}]` | `GET /portal/me/immunizations[/{immunizationId}]` | to be decided (immunizations are P1, not in any batch yet) | `immunization` | Immunizations contract (P1) |
+| Health trends | `GET /portal/vitals` | `GET /portal/me/vitals` | vimal | `observation` (vital signs) | **B8a** #285 |
+| Prescriptions | `GET /portal/prescriptions`, `POST /portal/refill-requests`, `GET /portal/refill-requests/{id}` | `GET /portal/me/medications` (#300, written for the demo: prescriptions and reported medications in one list, with each prescription's transmission status); `POST /portal/me/refill-requests` (lands as a `refill-request` inbox item; controlled substances not refillable); `GET /portal/me/refill-requests/{refillRequestId}` | thulasi | `medication_request`, refill requests | The list: demo (#300). Refills: B8b; B5 |
+| Pay bills | `GET /portal/bills`, `POST /portal/payments` | `GET /portal/me/statements` (the ledger and statements are P1, D58); `POST /portal/me/payments/card-session` then `POST /portal/me/payments` (hosted fields only, Q17) | anand | Patient balance, `patient_payment` | B8b; B6; D58 |
+| Documents | `GET /portal/documents?source=`, `POST /portal/documents` (multipart), `GET …/{documentId}/content` | `GET /portal/me/documents?source=`; uploads through the files flow (`POST /portal/me/files/upload-url`, then `…/complete`, scanned) and `POST /portal/me/documents`; `GET /portal/me/documents/{documentId}/download-url` (short-lived, not the content) | anand | `document_reference`, `binary_object` | B8b; B1 (files); B3 (documents) |
+| Reports | `GET /portal/patient-report`, `…/ccr`, `…/ccd`, `…/pdf` | `POST /portal/me/record-exports` `{ format: ccda \| pdf }` → `202` and an operation, then a download URL (as #213) | anand | C-CDA, PDF | B8b; B6 (C-CDA) |
+| Forms | `GET /portal/document-templates[/{id}]`, `PUT …/{id}`, `POST …/send-for-review`, `POST …/clear` | `GET /portal/me/forms[/{formId}]`, `PATCH /portal/me/forms/{formId}` (`If-Match`), `POST /portal/me/forms/{formId}/submit` (signature required), `POST /portal/me/forms/{formId}/clear` | anand | Consent requirements (D59), forms, `consent` | B8b; B1 (D59); B3 (documents) |
+| Source code | (not in her note) | A "Source code" link on every portal page, to `/source.tar.gz` on the portal host (the running commit's source, with no version in the link because it shows before sign-in; ADR-0013 §1, D87). Not an API endpoint | thulasi (Nginx), with minalini | The build | — |
+
+**B8a operations (D89, 2026-10-26).** All `x-release: P1`. Portal operations use `portalSessionCookie` and are audited with `actor: patient`, `patient: session` (SECURITY_MODEL §6). The `PAT` grants and the staff grants are proposed in NOTE_FOR_THULASI T45.
+
+| # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 260 | GET | `/portal/auth/login` | T | Ad | `public` | sec | – | | | §3.8 | B8a | **New**: patient realm sign-in, code + PKCE, `prompt=login`, no `login_hint` (ADR-0013 §1, §5) |
+| 261 | GET | `/portal/auth/callback` | T | Ad | `public` | sec | – | | | §3.8 | B8a | **New**: new portal session, `__Host-shri_portal` |
+| 262 | GET | `/portal/auth/session` | T | Ad | `authenticated` | – | – | | | §3.8 | B8a | **New**: patient display name, CSRF token, idle and absolute expiry (15 minutes, 4 hours) |
+| 263 | POST | `/portal/auth/refresh` | T | Ad | `authenticated` | sec | – | | | §3.8 | B8a | **New**: "Stay signed in" |
+| 264 | POST | `/portal/auth/logout` | T | Ad | `authenticated` | sec | – | | | §3.8 | B8a | **New**: also ends the realm session (back channel) |
+| 265 | POST | `/portal/enrollments` | T | Ad | `public` | sec | S | | | §3.8 | B8a | **New**: invitation code (any case, dashes optional, normalized on the server) + date of birth + email; `Origin` must be the portal host; `204`; one `422` for every failure (ADR-0013 §3, §5) |
+| 266 | GET | `/portal/me` | V | Cl | `portal-profile:read` | pr | – | | | §3.8 | B8a | **New**: own details with pending change requests; preferred language, race, ethnicity, marital status, and sexual orientation and gender identity where the practice shows them (D91) |
+| 267 | GET | `/portal/me/change-requests` | V | Ad | `portal-profile:read` | pr | – | | | §3.8 | B8a | **New** |
+| 268 | POST | `/portal/me/change-requests` | V | Ad | `portal-profile:request-change` | pw | S | | | §3.8 | B8a | **New**: a front-desk inbox task (D77); nothing on the chart changes until accepted (D91) |
+| 269 | GET | `/portal/me/appointments` | V | Cl | `portal-appointments:read` | pr | – | | | §3.8 | B8a | **New**: `when` = `upcoming` or `past`; also feeds the alerts screen; a past visit carries `visitSummaryId` |
+| 270 | POST | `/portal/me/appointments` | V | Cl | `portal-appointments:create` | pw | S | | | §3.8 | B8a | **New**: same rules as #51; length from the appointment type; `409 booking-conflict` |
+| 271 | GET | `/portal/me/appointments/{appointmentId}` | V | Cl | `portal-appointments:read` | pr | – | | | §3.8 | B8a | **New** |
+| 272 | POST | `/portal/me/appointments/{appointmentId}/cancel` | V | Cl | `portal-appointments:cancel` | pw | – | | | §3.8 | B8a | **New**: reason required; inside the practice's online window (`canCancel`) |
+| 273 | POST | `/portal/me/appointments/{appointmentId}/reschedule` | V | Cl | `portal-appointments:reschedule` | pw | S | | | §3.8 | B8a | **New**: as #243 (D61), inside the online window (`canReschedule`) |
+| 274 | GET | `/portal/booking/facilities` | V | Ad | `portal-booking:read` | – | – | | | §3.8 | B8a | **New**: bookable fields only (as D49) |
+| 275 | GET | `/portal/booking/appointment-types` | V | Ad | `portal-booking:read` | – | – | | | §3.8 | B8a | **New**: types bookable online |
+| 276 | GET | `/portal/booking/providers` | V | Ad | `portal-booking:read` | – | – | | | §3.8 | B8a | **New** |
+| 277 | GET | `/portal/me/slots` | V | C | `portal-booking:read` | – | – | | | §3.8 | B8a | **New**: `facilityId`, `appointmentTypeId`, `date`, optional `providerId` |
+| 278 | GET | `/portal/me/visit-summaries` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New**: held ones listed as held (D86) |
+| 279 | GET | `/portal/me/visit-summaries/{visitSummaryId}` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New** |
+| 280 | GET | `/portal/me/visit-summaries/{visitSummaryId}/download-url` | V | F | `portal-records:read` | ex | – | | | §3.8 | B8a | **New**: short-lived link; `409` while held |
+| 281 | GET | `/portal/me/problems` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New**: entered-in-error never shown (D24); a held problem listed as held, without content (D90) |
+| 282 | GET | `/portal/me/problems/{problemId}` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New**: a held problem returns only its `id` and `releaseStatus: held` (D90) |
+| 283 | GET | `/portal/me/allergies` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New** |
+| 284 | GET | `/portal/me/allergies/{allergyId}` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New** |
+| 285 | GET | `/portal/me/vitals` | V | Cl | `portal-records:read` | pr | – | | | §3.8 | B8a | **New**: `type`, `dateFrom`, `dateTo`; units as entered (D69) |
+| 286 | GET | `/patients/{patientId}/portal-account` | V | Ad | `portal-accounts:read` | pr | – | | | §3.8 | B8a | **New** (staff): account state and sign-in email, never a password, factor or code |
+| 287 | POST | `/patients/{patientId}/portal-invitations` | V | Ad | `portal-invitations:create` | sec | – | | | §3.8 | B8a | **New** (staff): after an ID check; the code is in this response only (ADR-0013 §3) |
+| 288 | POST | `/patients/{patientId}/portal-invitations/{invitationId}/revoke` | V | Ad | `portal-invitations:revoke` | sec | – | | | §3.8 | B8a | **New** (staff) |
+| 289 | POST | `/patients/{patientId}/portal-account/reset-factors` | T | Ad | `portal-accounts:reset-factors` | sec | – | | | §3.8 | B8a | **New** (staff): after an ID check, never on a call or email (ADR-0013 §2) |
+| 290 | POST | `/patients/{patientId}/portal-account/disable` | T | Ad | `portal-accounts:disable` | sec | – | | | §3.8 | B8a | **New** (staff, ADM; D92): reason required; ends every portal session at once |
+| 291 | POST | `/patients/{patientId}/portal-account/enable` | T | Ad | `portal-accounts:enable` | sec | – | | | §3.8 | B8a | **New** (staff, ADM; D92): reason required |
+
+**Ruled out by the decisions, with their replacements:**
+
+| Her call | Why not | Instead |
+|---|---|---|
+| `POST /portal/registrations`, `POST /portal/registrations/summary` (11-page self-registration that the practice approves) | D85: no self-registration that links to a chart, and no name and date-of-birth matching | Front-desk invitation code after an ID check, then `POST /portal/enrollments`. The patient's history and details arrive afterwards as patient-reported data through `/portal/me/change-requests` and forms, for clinician review |
+| `POST /portal/auth/username-reminder` `{ firstName, lastName, birthDate, email, postalCode, phone }` | D85: no lookup by name and date of birth; recovery belongs to the patient realm | The realm's own recovery, by verified email or phone, rate-limited, never revealing whether an account exists (ADR-0013 §4) |
+| `POST /portal/auth/password-reset`, `POST /portal/me/password` | D3, D85: our API never handles patient passwords | The patient realm's reset and account pages |
+| `POST /portal/auth/login` with a password in our API | D85: the realm signs in, with multi-factor | `GET /portal/auth/login` → the realm, then `/portal/auth/callback` |
+| `GET /portal/patient-report/ccr` | CCR is a legacy format; we export C-CDA (FRS §3.9) | `POST /portal/me/record-exports` with `ccda` or `pdf` |
+| A free 15/30/45/60-minute length when booking | Lengths come from appointment types (practice setup) | Choose an appointment type |
+| Proxy access (switching to a family member) | D85: P2 | Not in the MVP portal |
+

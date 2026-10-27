@@ -14,6 +14,7 @@
  *
  * OpenAPI spec version: 1.0.0-draft.1
  */
+import type { BuildInfo } from './buildInfo';
 import type { SessionOrganization } from './sessionOrganization';
 import type { SessionUser } from './sessionUser';
 import type { Timestamp } from './timestamp';
@@ -35,4 +36,6 @@ export interface Session {
   idleExpiresAt: Timestamp;
   /** The absolute limit, 12 hours after login. It cannot be extended; screens show a notice before it so people can save their work. */
   expiresAt: Timestamp;
+  /** The API build serving this session (Q31). Shown to signed-in users only, for support and bug reports; never returned by /health or any public operation. */
+  build: BuildInfo;
 }
