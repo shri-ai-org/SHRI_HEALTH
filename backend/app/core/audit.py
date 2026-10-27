@@ -12,6 +12,18 @@ core writes it:
   raises, or the response becomes a 500.
 - Only successful requests (status below 400) are audited this way. A permission refusal is
   audited by require() as a security event (`record_denial`).
+- **One commit with changes per audited request.** After the commit that wrote the request's
+  audit rows, a further commit that carries changes is refused with a 500 and its changes are
+  never saved, so no change can go in without its audit row. A commit with nothing to save is
+  allowed.
+- **Public forms.** `actor: anonymous` (D96) records actor type `anonymous`, with no user, no
+  patient and the clinic deps.public_db resolved from the portal host; a request without one
+  fails (500).
+- **The portal.** For x-audit `patient: session` the patient comes only from the portal
+  session (deps.portal_session), never from the path, body or query, and a request without a
+  portal session fails (500). `actor: patient` records the patient as the actor: actor type
+  `patient`, with that patient's ID in `patient_id` (audit_event has no actor column for
+  patients; actor_user_id is for staff).
 
 What the endpoint adds, only where the contract says so:
 
@@ -28,6 +40,7 @@ outcome, time and request ID (SECURITY_MODEL §6).
 
 import ipaddress
 import logging
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -36,16 +49,17 @@ from uuid import UUID
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import ORMExecuteState, Session
+from sqlalchemy.sql.elements import TextClause
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.core.errors import problem
+from app.core.errors import InternalError, problem
 from app.core.operations import Operation, operation_for
 from app.core.request_id import current_request_id
 
 if TYPE_CHECKING:
-    from app.core.deps import CurrentUser
+    from app.core.deps import CurrentUser, PortalPatient
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +78,15 @@ _COLUMNS = (
     "user_agent", "correlation_id",
 )
 _CATEGORY_CACHE = "shri_audit_has_category"
+
+# session.info: set after the commit that wrote the request's audit rows; and whether SQL that
+# changes data ran since the last commit (raw text() DML never shows in session.dirty).
+AUDIT_COMMITTED = "audit_committed"
+_CHANGED_SINCE_COMMIT = "shri_changed_since_commit"
+_TEXT_DML = re.compile(r"^\s*(INSERT|UPDATE|DELETE|MERGE|TRUNCATE)\b", re.IGNORECASE)
+_TEXT_CTE_DML = re.compile(
+    r"\b(INSERT\s+INTO|DELETE\s+FROM|MERGE\s+INTO|UPDATE\s+[\w.\"]+\s+(AS\s+\w+\s+)?SET)\b",
+    re.IGNORECASE)
 
 
 def event_action(operation: Operation, override: str | None = None) -> str:
@@ -110,12 +133,14 @@ class AuditTrail:
     """What one request will write to the audit log."""
 
     operation: Operation
-    user: "CurrentUser"
+    user: "CurrentUser | None"  # the staff user; None on the portal
     session: AsyncSession
     path_params: dict[str, Any]
     request_id: str | None
     source_ip: str | None
     user_agent: str | None
+    portal: "PortalPatient | None" = None  # the signed-in patient (deps.portal_session)
+    clinic_id: UUID | None = None  # a public form's clinic, from the portal host (public_db)
     patient_ids: list[UUID] | None = None
     action: str | None = None
     reason: str | None = None
@@ -126,7 +151,9 @@ class AuditTrail:
     def _patients(self) -> list[UUID | None]:
         source = self.operation.audit.patient
         if source is None:
-            return [None]
+            return [self.portal.patient_id if self.portal else None]
+        if source == "session":
+            return [self._portal_patient().patient_id]
         if source.startswith("body:") or source == "result":
             if self.patient_ids is None:
                 raise RuntimeError(f"{self.operation.operation_id}: x-audit patient is "
@@ -135,14 +162,35 @@ class AuditTrail:
             return list(self.patient_ids) or [None]
         return [UUID(str(self.path_params[source]))]
 
+    def _portal_patient(self) -> "PortalPatient":
+        if self.portal is None:
+            raise RuntimeError(f"{self.operation.operation_id}: the patient comes from the portal "
+                               "session, and this request has none (use Depends(portal_session))")
+        return self.portal
+
+    def _actor(self) -> dict[str, Any]:
+        if self.operation.audit.actor == "anonymous":
+            if self.clinic_id is None:
+                raise RuntimeError(f"{self.operation.operation_id}: a public form's clinic comes "
+                                   "from the portal host, and this request has none "
+                                   "(use Depends(public_db))")
+            return {"tenant_id": self.clinic_id, "actor_type": "anonymous",
+                    "actor_user_id": None, "actor_display": None}
+        if self.operation.audit.actor == "patient":
+            patient = self._portal_patient()
+            return {"tenant_id": patient.organization_id, "actor_type": "patient",
+                    "actor_user_id": None, "actor_display": None}
+        if self.user is None:
+            raise RuntimeError(f"{self.operation.operation_id}: no signed-in staff user to audit")
+        return {"tenant_id": self.user.organization_id, "actor_type": self.operation.audit.actor,
+                "actor_user_id": self.user.id,
+                "actor_display": self.user.display_name[:200] or None}
+
     def rows(self) -> list[dict[str, Any]]:
         entity_type, entity_id = entity(self.operation, self.path_params)
         action = event_action(self.operation, self.action)
         common = {
-            "tenant_id": self.user.organization_id,
-            "actor_type": self.operation.audit.actor,
-            "actor_user_id": self.user.id,
-            "actor_display": self.user.display_name[:200] or None,
+            **self._actor(),
             "action": action,
             "outcome": "success",
             "category": self.operation.audit.category,
@@ -166,6 +214,21 @@ class AuditTrail:
 def start_trail(request: Request, user: "CurrentUser", session: AsyncSession) -> None:
     """Called by tenant_db. Routes outside the contract (only test apps have them; create_app
     refuses to start with one) and operations with x-audit category "none" write nothing."""
+    _start(request, session, user=user, portal=None)
+
+
+def start_portal_trail(request: Request, patient: "PortalPatient", session: AsyncSession) -> None:
+    """Called by deps.portal_db, with the patient from the portal session."""
+    _start(request, session, user=None, portal=patient)
+
+
+def start_public_trail(request: Request, clinic_id: UUID, session: AsyncSession) -> None:
+    """Called by deps.public_db, with the clinic resolved from the portal host (D96)."""
+    _start(request, session, user=None, portal=None, clinic_id=clinic_id)
+
+
+def _start(request: Request, session: AsyncSession, *, user: "CurrentUser | None",
+           portal: "PortalPatient | None", clinic_id: UUID | None = None) -> None:
     operation = operation_for(request.scope.get("route"))
     if operation is None or not operation.audit.audited:
         return
@@ -173,7 +236,8 @@ def start_trail(request: Request, user: "CurrentUser", session: AsyncSession) ->
         operation=operation, user=user, session=session,
         path_params=dict(request.path_params), request_id=current_request_id(),
         source_ip=_client_ip(request),
-        user_agent=(request.headers.get("user-agent") or "")[:300] or None,
+        user_agent=(request.headers.get("user-agent") or "")[:300] or None, portal=portal,
+        clinic_id=clinic_id,
     )
     session.info[TRAIL_STATE] = trail
     setattr(request.state, TRAIL_STATE, trail)
@@ -237,9 +301,46 @@ def insert_rows(connection: Connection, rows: list[dict[str, Any]]) -> None:
     connection.execute(statement, [{c: row[c] for c in columns} for row in rows])
 
 
+def _is_text_dml(statement: object) -> bool:
+    if not isinstance(statement, TextClause):
+        return False
+    sql = statement.text
+    return bool(_TEXT_DML.match(sql) or (sql.lstrip()[:4].upper() == "WITH"
+                                        and _TEXT_CTE_DML.search(sql)))
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _note_changes(state: ORMExecuteState) -> None:
+    """Marks SQL that changes data, which session.dirty can't see: Core insert(), update() and
+    delete(), and text() statements. (SQL run on session.connection() directly is not seen.)"""
+    if state.is_insert or state.is_update or state.is_delete or _is_text_dml(state.statement):
+        state.session.info[_CHANGED_SINCE_COMMIT] = True
+
+
+@event.listens_for(Session, "after_flush")
+def _note_flushed_changes(session: Session, _flush_context: Any) -> None:
+    """A flush that wrote ORM objects (an autoflush before a query, say) empties session.new
+    and session.dirty before the commit, so it is noted here."""
+    if session.new or session.deleted or session.dirty:
+        session.info[_CHANGED_SINCE_COMMIT] = True
+
+
+def _has_changes(session: Session) -> bool:
+    return bool(session.info.get(_CHANGED_SINCE_COMMIT) or session.new or session.deleted
+                or any(session.is_modified(o) for o in session.dirty))
+
+
 @event.listens_for(Session, "before_commit")
 def _write_with_the_commit(session: Session) -> None:
     trail: AuditTrail | None = session.info.get(TRAIL_STATE)
+    if session.info.get(AUDIT_COMMITTED):
+        if _has_changes(session):
+            # The transaction stays open and tenant_db's session rolls it back when the request
+            # ends, so these changes are never saved.
+            log.error("A second commit with changes in one audited request (%s, request %s)",
+                      trail.operation.operation_id if trail else "?", current_request_id())
+            raise InternalError("A request may save its changes only once")
+        return
     if trail is None or trail.written:
         return
     rows = trail.rows()  # raises if the endpoint has not named its patients
@@ -251,12 +352,15 @@ def _write_with_the_commit(session: Session) -> None:
 @event.listens_for(Session, "after_commit")
 def _committed(session: Session) -> None:
     trail: AuditTrail | None = session.info.get(TRAIL_STATE)
+    session.info[_CHANGED_SINCE_COMMIT] = False
     if trail is not None and trail._committing:
         trail.written, trail._committing = True, False
+        session.info[AUDIT_COMMITTED] = True
 
 
 @event.listens_for(Session, "after_rollback")
 def _rolled_back(session: Session) -> None:
+    session.info[_CHANGED_SINCE_COMMIT] = False
     trail: AuditTrail | None = session.info.get(TRAIL_STATE)
     if trail is not None:
         trail._committing = False

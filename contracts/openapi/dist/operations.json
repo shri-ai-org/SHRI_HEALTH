@@ -1,5 +1,5 @@
 {
- "generatedBy": "python -m app.core.operations",
+ "generatedBy": "npm run bundle (scripts/operations-map.mjs)",
  "operations": {
   "addAllergy": {
    "audit": {
@@ -133,6 +133,18 @@
    "path": "/api/v1/appointments",
    "permission": "appointments:create"
   },
+  "bookPortalAppointment": {
+   "audit": {
+    "action": "C",
+    "actor": "patient",
+    "category": "phi-write",
+    "patient": "session"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/portal/me/appointments",
+   "permission": "portal-appointments:create"
+  },
   "breakGlass": {
    "audit": {
     "action": "E",
@@ -166,6 +178,28 @@
    "path": "/api/v1/inbox/{inboxItemId}/cancel",
    "permission": "inbox:update"
   },
+  "cancelOperation": {
+   "audit": {
+    "action": "E",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/operations/{operationId}/cancel",
+   "permission": "authenticated"
+  },
+  "cancelPortalAppointment": {
+   "audit": {
+    "action": "E",
+    "actor": "patient",
+    "category": "phi-write",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/portal/me/appointments/{appointmentId}/cancel",
+   "permission": "portal-appointments:cancel"
+  },
   "checkInAppointment": {
    "audit": {
     "action": "E",
@@ -198,6 +232,17 @@
    "method": "POST",
    "path": "/api/v1/inbox/{inboxItemId}/complete",
    "permission": "inbox:complete"
+  },
+  "completePortalLogin": {
+   "audit": {
+    "action": "E",
+    "actor": "patient",
+    "category": "security"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/auth/callback",
+   "permission": "public"
   },
   "completeUpload": {
    "audit": {
@@ -365,6 +410,17 @@
    "path": "/api/v1/note-templates",
    "permission": "practice-setup:create"
   },
+  "createPortalInvitation": {
+   "audit": {
+    "action": "C",
+    "category": "security",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/patients/{patientId}/portal-invitations",
+   "permission": "portal-invitations:create"
+  },
   "createPracticePayer": {
    "audit": {
     "action": "C",
@@ -405,6 +461,17 @@
    "path": "/api/v1/files/upload-url",
    "permission": "files:create"
   },
+  "disablePortalAccount": {
+   "audit": {
+    "action": "E",
+    "category": "security",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/patients/{patientId}/portal-account/disable",
+   "permission": "portal-accounts:disable"
+  },
   "dismissDuplicate": {
    "audit": {
     "action": "E",
@@ -415,6 +482,28 @@
    "method": "POST",
    "path": "/api/v1/duplicates/{duplicateId}/dismiss",
    "permission": "duplicates:dismiss"
+  },
+  "enablePortalAccount": {
+   "audit": {
+    "action": "E",
+    "category": "security",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/patients/{patientId}/portal-account/enable",
+   "permission": "portal-accounts:enable"
+  },
+  "enrollInPortal": {
+   "audit": {
+    "action": "C",
+    "actor": "patient",
+    "category": "security"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/portal/enrollments",
+   "permission": "public"
   },
   "finishLogin": {
    "audit": {
@@ -612,6 +701,16 @@
    "path": "/api/v1/note-templates/{noteTemplateId}",
    "permission": "practice-setup:read"
   },
+  "getOperation": {
+   "audit": {
+    "action": "R",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/operations/{operationId}",
+   "permission": "authenticated"
+  },
   "getPatient": {
    "audit": {
     "action": "R",
@@ -654,6 +753,100 @@
    "method": "GET",
    "path": "/api/v1/payers/{payerId}",
    "permission": "payers:read"
+  },
+  "getPortalAccount": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/patients/{patientId}/portal-account",
+   "permission": "portal-accounts:read"
+  },
+  "getPortalAllergy": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/allergies/{allergyId}",
+   "permission": "portal-records:read"
+  },
+  "getPortalAppointment": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/appointments/{appointmentId}",
+   "permission": "portal-appointments:read"
+  },
+  "getPortalProblem": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/problems/{problemId}",
+   "permission": "portal-records:read"
+  },
+  "getPortalProfile": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me",
+   "permission": "portal-profile:read"
+  },
+  "getPortalSession": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/auth/session",
+   "permission": "authenticated"
+  },
+  "getPortalVisitSummary": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/visit-summaries/{visitSummaryId}",
+   "permission": "portal-records:read"
+  },
+  "getPortalVisitSummaryDownloadUrl": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "export",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/visit-summaries/{visitSummaryId}/download-url",
+   "permission": "portal-records:read"
   },
   "getPracticePayer": {
    "audit": {
@@ -1021,6 +1214,122 @@
    "path": "/api/v1/pharmacies",
    "permission": "pharmacies:read"
   },
+  "listPortalAllergies": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/allergies",
+   "permission": "portal-records:read"
+  },
+  "listPortalAppointments": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/appointments",
+   "permission": "portal-appointments:read"
+  },
+  "listPortalBookingAppointmentTypes": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/booking/appointment-types",
+   "permission": "portal-booking:read"
+  },
+  "listPortalBookingFacilities": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/booking/facilities",
+   "permission": "portal-booking:read"
+  },
+  "listPortalBookingProviders": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/booking/providers",
+   "permission": "portal-booking:read"
+  },
+  "listPortalBookingSlots": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/slots",
+   "permission": "portal-booking:read"
+  },
+  "listPortalChangeRequests": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/change-requests",
+   "permission": "portal-profile:read"
+  },
+  "listPortalProblems": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/problems",
+   "permission": "portal-records:read"
+  },
+  "listPortalVisitSummaries": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/visit-summaries",
+   "permission": "portal-records:read"
+  },
+  "listPortalVitals": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/vitals",
+   "permission": "portal-records:read"
+  },
   "listPracticePayers": {
    "audit": {
     "action": "R",
@@ -1236,6 +1545,17 @@
    "path": "/api/v1/duplicates/{duplicateId}/merge",
    "permission": "duplicates:merge"
   },
+  "receiveKeycloakBackchannelLogout": {
+   "audit": {
+    "action": "E",
+    "actor": "partner",
+    "category": "security"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/hooks/keycloak/backchannel-logout",
+   "permission": "partner-signed"
+  },
   "recordConsent": {
    "audit": {
     "action": "C",
@@ -1279,6 +1599,18 @@
    "method": "POST",
    "path": "/api/v1/encounters/{encounterId}/vitals",
    "permission": "vitals:create"
+  },
+  "refreshPortalSession": {
+   "audit": {
+    "action": "E",
+    "actor": "patient",
+    "category": "security",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/portal/auth/refresh",
+   "permission": "authenticated"
   },
   "refreshSession": {
    "audit": {
@@ -1333,6 +1665,18 @@
    "path": "/api/v1/inbox/{inboxItemId}/replies",
    "permission": "messages:create"
   },
+  "requestPortalChange": {
+   "audit": {
+    "action": "C",
+    "actor": "patient",
+    "category": "phi-write",
+    "patient": "session"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/portal/me/change-requests",
+   "permission": "portal-profile:request-change"
+  },
   "rescheduleAppointment": {
    "audit": {
     "action": "E",
@@ -1344,6 +1688,29 @@
    "path": "/api/v1/appointments/{appointmentId}/reschedule",
    "permission": "appointments:reschedule"
   },
+  "reschedulePortalAppointment": {
+   "audit": {
+    "action": "E",
+    "actor": "patient",
+    "category": "phi-write",
+    "patient": "session"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/portal/me/appointments/{appointmentId}/reschedule",
+   "permission": "portal-appointments:reschedule"
+  },
+  "resetPortalSignInFactors": {
+   "audit": {
+    "action": "E",
+    "category": "security",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/patients/{patientId}/portal-account/reset-factors",
+   "permission": "portal-accounts:reset-factors"
+  },
   "restrictPatient": {
    "audit": {
     "action": "E",
@@ -1354,6 +1721,17 @@
    "method": "POST",
    "path": "/api/v1/patients/{patientId}/restrict",
    "permission": "patients:restrict"
+  },
+  "revokePortalInvitation": {
+   "audit": {
+    "action": "E",
+    "category": "security",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/patients/{patientId}/portal-invitations/{invitationId}/revoke",
+   "permission": "portal-invitations:revoke"
   },
   "runEligibilityCheck": {
    "audit": {
@@ -1409,6 +1787,18 @@
    "path": "/api/v1/notes/{noteId}/sign",
    "permission": "notes:sign"
   },
+  "signOutOfPortal": {
+   "audit": {
+    "action": "E",
+    "actor": "patient",
+    "category": "security",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/portal/auth/logout",
+   "permission": "authenticated"
+  },
   "startLogin": {
    "audit": {
     "action": "E",
@@ -1417,6 +1807,17 @@
    "idempotency": null,
    "method": "GET",
    "path": "/api/v1/auth/login",
+   "permission": "public"
+  },
+  "startPortalLogin": {
+   "audit": {
+    "action": "E",
+    "actor": "patient",
+    "category": "security"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/auth/login",
    "permission": "public"
   },
   "streamEvents": {

@@ -20,6 +20,7 @@ Status values: **Proposed** → **Accepted** (all named sign-offs given) → **S
 | [ADR-0010](0010-api-versioning.md) | Major version in the path; additive change within v1 (partly superseded by ADR-0011) | **Accepted** | Thulasi, Minalini (2026-10-23) |
 | [ADR-0011](0011-single-postgresql-retire-hapi.md) | Single PostgreSQL with FHIR-shaped clinical tables; HAPI retired | **Accepted** | Decided by the team (2026-10-23) |
 | [ADR-0012](0012-hosting-amazon-rds.md) | Host the database on Amazon RDS for PostgreSQL 18 | **Accepted** | Decided by the team (2026-10-23) |
+| [ADR-0013](0013-patient-sign-in-portal.md) | Patient sign-in for the portal: separate realm, multi-factor, invitation-only enrolment | Proposed | Thulasi, Vimal, Anand, Minalini |
 
 Template:
 

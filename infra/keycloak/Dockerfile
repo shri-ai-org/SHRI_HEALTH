@@ -34,6 +34,7 @@ RUN set -eu; \
       "https://github.com/keycloak/keycloak/releases/download/${KEYCLOAK_VERSION}/keycloak-${KEYCLOAK_VERSION}.tar.gz"; \
     echo "${KC_DIST_SHA256}  /tmp/keycloak.tar.gz" | sha256sum -c -; \
     mkdir -p /opt/keycloak && tar -xzf /tmp/keycloak.tar.gz -C /opt/keycloak --strip-components=1; \
+    mkdir -p /opt/keycloak/data/import; \
     chmod -R g=u /opt/keycloak; \
     rm /tmp/jre.tar.gz /tmp/keycloak.tar.gz
 
@@ -47,7 +48,8 @@ ENV JAVA_HOME=/opt/java \
     LANG=C.UTF-8
 # Runs as an unprivileged user that owns only Keycloak's own directory (it writes its build and
 # data there), never root. Group 0 with group write (set in the fetch stage, so no second copy of
-# the files), so an orchestrator can run it as any UID.
+# the files), so an orchestrator can run it as any UID. data/ and data/import/ exist in the image,
+# so mounting realm files at data/import (compose, CI) doesn't leave data/ owned by root.
 RUN useradd --system --uid 10002 --gid 0 --no-create-home --home-dir /opt/keycloak keycloak
 COPY --from=fetch /opt/java /opt/java
 COPY --from=fetch --chown=10002:0 /opt/keycloak /opt/keycloak

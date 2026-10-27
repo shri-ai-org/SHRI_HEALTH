@@ -40,11 +40,18 @@ services:
     # everything pinned and checksum-verified (infra/keycloak/Dockerfile).
     build: ../keycloak
     image: shri-health/keycloak:local
-    command: ["start-dev"]
+    # Imports the staff realm (infra/keycloak/realms/shri-staff.json) at startup; existing realms
+    # are kept. The client secret comes from .env, never from the realm file.
+    command: ["start-dev", "--import-realm"]
+    volumes:
+      - ../keycloak/realms:/opt/keycloak/data/import:ro
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in infra/compose/.env}
       KC_HTTP_RELATIVE_PATH: /kc
+      # Keycloak 26.8 binds start-dev to localhost only; Nginx reaches it over the compose network.
+      KC_HTTP_HOST: 0.0.0.0
+      SHRI_WEB_CLIENT_SECRET: ${SHRI_WEB_CLIENT_SECRET:?set SHRI_WEB_CLIENT_SECRET in infra/compose/.env}
       KC_PROXY_HEADERS: xforwarded
       KC_HOSTNAME: https://localhost:8443/kc
       KC_HEALTH_ENABLED: "true"
@@ -52,6 +59,9 @@ services:
   api:
     build:
       context: ../../backend
+      # The contract's operations map, the one file the image takes from contracts/ (Dockerfile).
+      additional_contexts:
+        contracts: ../../contracts/openapi/dist
     environment:
       ENVIRONMENT: development
       AUTH_MODE: dev_header

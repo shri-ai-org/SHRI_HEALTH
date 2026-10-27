@@ -145,6 +145,53 @@ curl -s -X POST $B/inbox/$K/complete "${H[@]}" -H 'Prefer: code=422' -d '{}'   #
 curl -s $B/inbox/summary -H 'Cookie: __Host-shri_session=mock'
 ```
 
+## 5d. Patient portal (B8a)
+
+The portal contract (`portal.yaml`, D89) is served by the same sample-data server, with no extra setup: `npm run mock` answers every `/portal/...` path, with synthetic examples in every response. The portal's staff side (`/patients/{patientId}/portal-account`, invitations, disable, enable, factor reset) is served there too.
+
+**Start it** as in §1, on a branch that has `portal.yaml` (on `main` once #73 merges):
+
+```bash
+cd contracts
+npm run mock          # or PORT=4020 npm run mock
+```
+
+Portal paths keep their `/portal` prefix and, like every path here, drop `/api/v1`: the mock's `http://127.0.0.1:4010/portal/me` is the real API's `/api/v1/portal/me`.
+
+**Acting as a signed-in patient.** Portal operations take the **portal** session cookie, never the staff one:
+
+| What | Send in the mock | In the real API |
+|---|---|---|
+| Patient session cookie | `Cookie: __Host-shri_portal=mock` (any value) | Set by `/portal/auth/callback` on the portal host (ADR-0013 §5) |
+| CSRF header, on POST | `X-CSRF-Token: mock` | The `csrfToken` from `GET /portal/auth/session` |
+| `Idempotency-Key` | A UUID on enrollment, booking, rescheduling and change requests | Same |
+
+- **Refusals:** without the portal cookie you get `401`, including when you send only the staff cookie. Nothing in a request names the patient (D84): the mock's examples are one synthetic patient, and the real API takes the patient from the session.
+- **Sign-in screens:** `GET /portal/auth/login` answers `302`.
+- **Enrollment:** `POST /portal/enrollments` is public, so send no cookie. It answers `204`, and `Prefer: code=422, example=business-rule-violation` gives the refusal the screen turns into its one "We couldn't use that code" message (the shared example; on the real API `errors` names `/invitationCode`).
+- **Choosing an example:** use the `Prefer` header (§4):
+
+  | Operation | Examples |
+  |---|---|
+  | `GET /portal/me/appointments` | `upcoming` (default) and `past`; past visits carry `visitSummaryId` |
+  | `GET /portal/me/visit-summaries/{visitSummaryId}` | `one` and `held` |
+  | `GET /portal/me/visit-summaries` and `GET /portal/me/problems` | the list mixes an available item and a held one (D86, D90) |
+  | Refusals | `Prefer: code=409` (a time just taken, or an appointment already checked in), `Prefer: code=422` (too late to cancel online) and the other documented ones |
+
+```bash
+B=http://127.0.0.1:4010
+P=(-H 'Cookie: __Host-shri_portal=mock' -H 'X-CSRF-Token: mock' -H 'Content-Type: application/json')
+curl -s $B/portal/auth/session "${P[@]}"
+curl -s $B/portal/me "${P[@]}"
+curl -s "$B/portal/me/appointments?when=past" "${P[@]}" -H 'Prefer: example=past'
+curl -s -X POST $B/portal/me/change-requests "${P[@]}" -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"changes":{"preferredLanguage":"es"}}'
+```
+
+**Against the real API later:** the patient realm and core's portal session aren't built yet (ADR-0013, T45). A development sign-in for the patient role, like the staff `X-Dev-User`, has been asked for, so the portal can be tested against the backend before the realm exists.
+
+**Hidden behind feature switches until their contracts exist (all P1):** Pay bills (payments and the ledger), Video (telehealth) and Immunizations. Hide them, don't delete them. Messages, results, prescriptions, documents, forms and record exports come with B8b (D88, D89); until then they stay on the portal's own in-memory mock.
+
 ## 6. What the mock cannot do
 
 | Limit | What it means for screens |
