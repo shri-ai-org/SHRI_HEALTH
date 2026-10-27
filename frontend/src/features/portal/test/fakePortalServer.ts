@@ -86,6 +86,8 @@ export interface FakeOptions {
   bookingConflict?: boolean
   /** These paths answer `401`, as when the session has ended on the server. */
   unauthorized?: string[]
+  /** The held problem wrongly carries content, as a server bug might send (the screen must hide it, D90). */
+  heldProblemLeaks?: boolean
 }
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -94,7 +96,7 @@ const problem = (status: number, code: string) =>
   new Response(JSON.stringify({ type: 'about:blank', title: code, status, code }), { status, headers: { 'Content-Type': 'application/problem+json' } })
 const list = <T>(items: T[]) => json(200, { items })
 
-export function fakePortalServer({ signedIn = true, bookingConflict = false, unauthorized = [] }: FakeOptions = {}) {
+export function fakePortalServer({ signedIn = true, bookingConflict = false, unauthorized = [], heldProblemLeaks = false }: FakeOptions = {}) {
   const calls: FakeCall[] = []
   let conflictLeft = bookingConflict
   let slotReads = 0
@@ -116,7 +118,9 @@ export function fakePortalServer({ signedIn = true, bookingConflict = false, una
   ]
   const problems: PortalProblem[] = [
     { id: IDS.problem, releaseStatus: 'available', display: 'Essential hypertension', clinicalStatus: 'active', onsetDate: '2024-03', recordedAt: at(-700) },
-    { id: IDS.heldProblem, releaseStatus: 'held' },
+    heldProblemLeaks
+      ? { id: IDS.heldProblem, releaseStatus: 'held', display: 'Secret diagnosis', clinicalStatus: 'relapse', onsetDate: '2026-09' }
+      : { id: IDS.heldProblem, releaseStatus: 'held' },
   ]
   const allergies: PortalAllergy[] = [
     { id: IDS.allergy, display: 'Penicillin', clinicalStatus: 'active', criticality: 'high', reactions: [{ manifestations: ['Hives'] }], recordedAt: at(-1500) },

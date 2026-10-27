@@ -133,6 +133,21 @@ function changesBetween(before: ProfileForm, after: ProfileForm): PortalChangeRe
   return c
 }
 
+/**
+ * Coded fields the patient cleared. A change request can only set a value (the contract has no
+ * empty value), so a removal travels as a line in the note for the front desk.
+ */
+const REMOVABLE: Array<{ key: 'language' | 'maritalStatus' | 'race' | 'ethnicity'; fieldId: string; label: string }> = [
+  { key: 'language', fieldId: 'dm-language', label: 'preferred language' },
+  { key: 'maritalStatus', fieldId: 'dm-marital', label: 'marital status' },
+  { key: 'race', fieldId: 'dm-race', label: 'race' },
+  { key: 'ethnicity', fieldId: 'dm-ethnicity', label: 'ethnicity' },
+]
+
+function removedBetween(before: ProfileForm, after: ProfileForm) {
+  return REMOVABLE.filter((r) => before[r.key] !== '' && after[r.key] === '')
+}
+
 const CHANGE_LABELS: Record<keyof PortalChangeRequestChanges, string> = {
   name: 'name',
   preferredName: 'name you go by',
@@ -226,15 +241,24 @@ function DemographicsForm({ profile, onEdit, onSent }: { profile: PortalProfile;
     if (d.home === null) found.push({ fieldId: 'dm-home', message: 'Enter a valid 10-digit home phone, or leave it empty' })
     if (d.ecPhone === null) found.push({ fieldId: 'dm-ec-phone', message: 'Enter a valid 10-digit phone for your emergency contact, or leave it empty' })
     if ((d.ecPhone || d.ecRelationship.trim()) && !d.ecName.trim()) found.push({ fieldId: 'dm-ec-name', message: "Enter your emergency contact's name" })
-    if (isOverLimit(d.note, NOTE_LIMIT)) found.push({ fieldId: 'dm-note', message: `Shorten the note to ${NOTE_LIMIT} characters or fewer` })
+    const changes = changesBetween(initial, d)
+    const removed = removedBetween(initial, d)
+    // A request needs at least one change to carry the removal note with it.
+    if (removed.length && Object.keys(changes).length === 0) {
+      for (const r of removed) {
+        found.push({ fieldId: r.fieldId, message: `To remove your ${r.label}, ask the front desk at your next visit, or send it with another change` })
+      }
+    }
+    const removalLine = removed.length ? `Please also remove my ${removed.map((r) => r.label).join(', ')}.` : ''
+    const note = [d.note.trim(), removalLine].filter(Boolean).join('\n')
+    if (isOverLimit(note, NOTE_LIMIT)) found.push({ fieldId: 'dm-note', message: `Shorten the note to ${NOTE_LIMIT - removalLine.length - 1} characters or fewer` })
     setErrors(found)
     if (found.length) return
-    const changes = changesBetween(initial, d)
     if (Object.keys(changes).length === 0) return setNotice({ tone: 'info', text: 'Nothing has changed yet.' })
     setBusy(true)
     setFailure(null)
     try {
-      await api.requestChange({ changes, ...(d.note.trim() ? { note: d.note.trim() } : {}) }, key)
+      await api.requestChange({ changes, ...(note ? { note } : {}) }, key)
       window.scrollTo({ top: 0 })
       // Reading the profile again shows the new request as pending.
       onSent()
@@ -313,28 +337,28 @@ function DemographicsForm({ profile, onEdit, onSent }: { profile: PortalProfile;
         <Field id="dm-home" label="Home Phone" error={err('dm-home')}>
           {(p) => <PhoneInput {...p} autoComplete="off" value={initial.home ?? ''} onValueChange={(v) => set('home', v)} />}
         </Field>
-        <Field id="dm-marital" label="Marital Status">
+        <Field id="dm-marital" label="Marital Status" error={err('dm-marital')}>
           {(p) => (
             <Select {...p} value={d.maritalStatus} onChange={(e) => set('maritalStatus', e.target.value as ProfileForm['maritalStatus'])}>
               {options(MARITAL, 'Select marital status')}
             </Select>
           )}
         </Field>
-        <Field id="dm-race" label="Race">
+        <Field id="dm-race" label="Race" error={err('dm-race')}>
           {(p) => (
             <Select {...p} value={d.race} onChange={(e) => set('race', e.target.value)}>
               {options(RACES, 'Select race')}
             </Select>
           )}
         </Field>
-        <Field id="dm-language" label="Preferred language">
+        <Field id="dm-language" label="Preferred language" error={err('dm-language')}>
           {(p) => (
             <Select {...p} value={d.language} onChange={(e) => set('language', e.target.value)}>
               {options(LANGUAGES, 'Select language')}
             </Select>
           )}
         </Field>
-        <Field id="dm-ethnicity" label="Ethnicity">
+        <Field id="dm-ethnicity" label="Ethnicity" error={err('dm-ethnicity')}>
           {(p) => (
             <Select {...p} value={d.ethnicity} onChange={(e) => set('ethnicity', e.target.value)}>
               {options(ETHNICITIES, 'Select ethnicity')}

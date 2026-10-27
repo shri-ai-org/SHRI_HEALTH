@@ -80,7 +80,9 @@ describe('sign-in', () => {
   it('shows sign-in again when the server ends the session', async () => {
     setup('/portal/demographics', { unauthorized: ['/portal/me'] })
     expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
-    expect(screen.getByText(/You were signed out after 15 minutes without activity/)).toBeInTheDocument()
+    // A 401 can mean a disabled account or a session ended elsewhere, so the message names no cause.
+    expect(screen.getByText('Your session has ended. Please sign in again.')).toBeInTheDocument()
+    expect(screen.queryByText(/15 minutes without activity/)).toBeNull()
   })
 })
 
@@ -120,7 +122,7 @@ describe('home and menus', () => {
     if (!account) throw new Error('no account menu')
     expect(within(account).getAllByRole('link').map((l) => l.textContent)).toEqual(['Demographics', 'E-Signature', 'Password and security'])
     // Password, multi-factor and recovery are the patient realm's own pages (D85).
-    expect(within(account).getByRole('link', { name: 'Password and security' })).toHaveAttribute('href', expect.stringContaining('/realms/patients/account'))
+    expect(within(account).getByRole('link', { name: 'Password and security' })).toHaveAttribute('href', '/kc/realms/shri-patients/account')
     expect(within(account).getByRole('button', { name: 'Log out' })).toBeInTheDocument()
   })
 })
@@ -134,6 +136,15 @@ describe('health records (B8a)', () => {
     await user.click(within(table).getByRole('link', { name: 'Essential hypertension' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Essential hypertension - Problem' })).toBeInTheDocument()
     expect(window.location.pathname).toBe(`/portal/health-issues/${IDS.problem}`)
+  })
+
+  it('shows nothing of a held problem even if the server sends its content (D90)', async () => {
+    setup('/portal/health-issues', { heldProblemLeaks: true })
+    const table = await screen.findByRole('table', { name: 'Medical problems' })
+    const held = within(table).getByText(/Held by your clinician/).closest('tr')
+    if (!held) throw new Error('no held row')
+    expect(held).not.toHaveTextContent(/Secret diagnosis|Came back|09\/2026/)
+    expect(within(held).getAllByText('—')).toHaveLength(2)
   })
 
   it('shows allergies with their reactions and risk', async () => {
@@ -292,6 +303,29 @@ describe('demographics as change requests (D91)', () => {
     const { server, user } = setup('/portal/demographics')
     await user.click(await screen.findByRole('button', { name: 'Send changes' }))
     expect(await screen.findByText('Nothing has changed yet.')).toBeInTheDocument()
+    expect(server.to('POST', '/portal/me/change-requests')).toHaveLength(0)
+  })
+
+  it('sends a cleared field as a line in the note, with another change', async () => {
+    const { server, user } = setup('/portal/demographics')
+    await user.selectOptions(await screen.findByLabelText(/Preferred language/), '')
+    const city = screen.getByLabelText(/^City/)
+    await user.clear(city)
+    await user.type(city, 'Chatham')
+    await user.click(screen.getByRole('button', { name: 'Send changes' }))
+    expect(await screen.findByText(/Sent to the front desk/)).toBeInTheDocument()
+    const [sent] = server.to('POST', '/portal/me/change-requests')
+    expect(sent?.body).toEqual({
+      changes: { address: { lines: ['48 Placeholder St'], city: 'Chatham', state: 'IL', postalCode: '62704', country: 'US' } },
+      note: 'Please also remove my preferred language.',
+    })
+  })
+
+  it('asks the patient to raise a removal with the front desk when nothing else changed', async () => {
+    const { server, user } = setup('/portal/demographics')
+    await user.selectOptions(await screen.findByLabelText(/Marital Status/), '')
+    await user.click(screen.getByRole('button', { name: 'Send changes' }))
+    expect(screen.getByLabelText(/Marital Status/)).toHaveAccessibleDescription(/To remove your marital status, ask the front desk/)
     expect(server.to('POST', '/portal/me/change-requests')).toHaveLength(0)
   })
 })

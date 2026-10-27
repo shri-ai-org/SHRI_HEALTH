@@ -5,6 +5,7 @@ import { getPatient } from '../../api/generated/endpoints/patients/patients'
 import type { Patient } from '../../api/generated/model'
 import { PatientAppointmentsPanel } from '../scheduling/PatientAppointmentsPanel'
 import { InsurancePanel } from './insurance/InsurancePanel'
+import { PORTAL_ENABLED } from '../portal/features'
 import { PortalAccountPanel } from './PortalAccountPanel'
 import { birthSexLabel, genderIdentityLabel } from './demographics'
 import { Badge, formatAddressLines, formatDate, formatNameGivenFirst, formatPhone, ProblemAlert, Spinner, type Problem } from '../../design-system'
@@ -85,7 +86,8 @@ function PatientDetails({ patientId }: { patientId: string }) {
       </dl>
       <PatientAppointmentsPanel patientId={patient.id} patientName={formatNameGivenFirst(patient.name)} />
       <InsurancePanel patientId={patient.id} />
-      <PortalAccountPanel patientId={patient.id} />
+      {/* Development only, with the portal itself: core doesn't serve the portal-account routes yet. */}
+      {PORTAL_ENABLED ? <PortalAccountPanel patientId={patient.id} /> : null}
     </section>
   )
 }

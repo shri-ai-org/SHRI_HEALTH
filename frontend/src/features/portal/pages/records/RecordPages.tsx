@@ -151,7 +151,7 @@ export function HealthIssuesPage() {
           <Table
             caption="Medical problems"
             empty="No details in this record"
-            rows={items.filter((h) => matches(q, problemTitle(h), h.clinicalStatus))}
+            rows={items.filter((h) => matches(q, problemTitle(h), h.releaseStatus === 'available' ? h.clinicalStatus : undefined))}
             rowKey={(h) => h.id}
             columns={[
               {
@@ -166,8 +166,9 @@ export function HealthIssuesPage() {
                     </Link>
                   ),
               },
-              { header: 'Since', cell: (h) => (h.onsetDate ? formatPartialDate(h.onsetDate) : '—') },
-              { header: 'Status', cell: (h) => <ProblemStatus {...(h.clinicalStatus ? { status: h.clinicalStatus } : {})} /> },
+              // A held row shows nothing but the marker, even if the server ever sends more (D90).
+              { header: 'Since', cell: (h) => (h.releaseStatus === 'available' && h.onsetDate ? formatPartialDate(h.onsetDate) : '—') },
+              { header: 'Status', cell: (h) => (h.releaseStatus === 'available' ? <ProblemStatus {...(h.clinicalStatus ? { status: h.clinicalStatus } : {})} /> : '—') },
             ]}
           />
         )}

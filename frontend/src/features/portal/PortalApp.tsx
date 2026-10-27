@@ -123,7 +123,7 @@ function Gate({ api }: { api: PortalApi }) {
   useEffect(
     () =>
       onUnauthenticated(() => {
-        if (signedInRef.current) ended('expired')
+        if (signedInRef.current) ended('ended')
       }),
     [ended],
   )

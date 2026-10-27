@@ -29,8 +29,11 @@ import type { PortalApi, PortalContractApi, PortalLaterApi } from './portalApi'
 
 const LIMIT = 100
 
-/** The patient realm's account page (password, second factors), outside our API (D85). */
-const ACCOUNT_SECURITY_URL = '/auth/realms/patients/account'
+/**
+ * The patient realm's account page (password, second factors), outside our API (D85). Keycloak is
+ * served under `/kc/` and the realm is `shri-patients` (ADR-0013 §1).
+ */
+const ACCOUNT_SECURITY_URL = '/kc/realms/shri-patients/account'
 
 /**
  * The success body of a generated call. The fetch wrapper throws `ApiError` for every non-2xx, so a

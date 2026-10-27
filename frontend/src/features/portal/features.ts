@@ -1,4 +1,11 @@
 /**
+ * The portal and its staff side (the "Portal account" panel) together: development builds only,
+ * until core serves the portal and staff portal-account routes and the patient realm exists
+ * (D89, ADR-0013). Both halves turn on at once by changing this one line.
+ */
+export const PORTAL_ENABLED = import.meta.env.DEV
+
+/**
  * P1 portal features that have no contract yet (MOCK_GUIDE §5d). Their screens stay in the code,
  * hidden from the menus, the home page and the router, until their batch lands; then the switch
  * turns on. Hide them, don't delete them.

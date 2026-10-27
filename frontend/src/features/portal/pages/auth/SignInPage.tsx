@@ -5,7 +5,12 @@ import { usePortalApi } from '../../api/portalApi'
 import { Link } from '../../router'
 import { AuthLayout } from './AuthLayout'
 
-export type SignedOutReason = 'signed-out' | 'expired'
+/**
+ * `expired`: the idle limit passed (the timer, confirmed with the server). `ended`: the server
+ * ended the session for another reason it doesn't say (a `401`: staff disabled the account, D92,
+ * or it ended elsewhere), so the message makes no claim about why.
+ */
+export type SignedOutReason = 'signed-out' | 'expired' | 'ended'
 
 /**
  * Sign-in happens at the patient Keycloak realm, with multi-factor (D85): this page only starts it,
@@ -20,6 +25,7 @@ export function SignInPage({ reason }: { reason?: SignedOutReason }) {
     <AuthLayout title="Sign in" intro="Welcome. Sign in to see your health information.">
       <div className="space-y-4">
         {reason === 'expired' ? <Alert tone="info" title="You were signed out after 15 minutes without activity, to protect your information." /> : null}
+        {reason === 'ended' ? <Alert tone="info" title="Your session has ended. Please sign in again." /> : null}
         {reason === 'signed-out' ? <Alert tone="success" title="You have signed out." /> : null}
 
         <p className="text-sm text-ink-muted">You'll sign in on our secure sign-in page, then confirm it's you with an authenticator app on your phone.</p>
