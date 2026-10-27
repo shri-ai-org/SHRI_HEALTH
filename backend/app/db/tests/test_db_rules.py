@@ -572,8 +572,9 @@ def test_audit_chain_detects_tampering(app_engine: Engine, admin_engine: Engine)
     t = make_tenant(admin_engine)
     s = open_session(app_engine, t)
     for action in ("read", "read", "export"):
+        category = "export" if action == "export" else "phi-read"
         s.add(M["audit_event"](tenant_id=t, actor_type="system", action=action,
-                               outcome="success"))
+                               category=category, outcome="success"))
         s.flush()
     s.commit()
     # shri_audit_verify is reviewed with admin_engine throughout, not the app role: shri_app

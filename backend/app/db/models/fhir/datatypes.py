@@ -12,7 +12,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import CheckConstraint, Index, String, text
+from sqlalchemy import CheckConstraint, ForeignKey, ForeignKeyConstraint, Index, String, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -74,6 +74,16 @@ class Identifier(Base, FhirChildMixin):
                         name="ssn_not_clear_text"),
         CheckConstraint(f"system IS DISTINCT FROM '{systems.NPI}' OR shri_npi_valid(value)",
                         name="npi_valid"),
+        # Only a patient's identifier is backed by a scanned document, and only by one of the
+        # same patient's documents (D56, A43). Explicit: identifier's owner columns give it no
+        # patient column, so constraints.py adds no same-patient key for it.
+        CheckConstraint("supporting_document_id IS NULL OR patient_id IS NOT NULL",
+                        name="supporting_document_patient_only"),
+        ForeignKeyConstraint(["patient_id", "supporting_document_id"],
+                             ["clinical.document_reference.subject_patient_id",
+                              "clinical.document_reference.id"],
+                             name="fk_identifier_supporting_document_id_same_patient",
+                             use_alter=True, deferrable=True, initially="IMMEDIATE"),
     )
 
     patient_id: Mapped[uuid.UUID | None] = owner("patient", "Patient")
@@ -92,6 +102,11 @@ class Identifier(Base, FhirChildMixin):
     value: Mapped[str] = string("value", 200, required=True)
     period_start, period_end = period("period")
     assigner_display: Mapped[str | None] = ref_display("assigner")
+    # The scanned document behind it, e.g. a driver's license image filed with category
+    # identity (D56; the contract's documentId). FHIR Identifier has no element for it, so
+    # /fhir does not serve it.
+    supporting_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clinical.document_reference.id"))
 
 
 class HumanName(Base, FhirChildMixin):

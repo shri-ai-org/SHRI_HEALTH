@@ -740,6 +740,81 @@ paths:
       description: Related person ID.
       schema:
         $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getRelatedPerson
+      summary: Get one related person
+      description: One related person, with the strong `ETag` that `PATCH` needs. List items carry no ETag (API_STANDARDS
+        §11).
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The related person.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelatedPerson'
+              examples:
+                one:
+                  summary: One related person
+                  value:
+                    id: 6d7e8f9a-0b1c-4d2e-8f3a-4b5c6d7e8f9a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    name:
+                      given:
+                      - Darius71
+                      family: Kuhlman72
+                    relationships:
+                    - system: http://terminology.hl7.org/CodeSystem/v2-0131
+                      code: C
+                      display: Emergency Contact
+                    - system: http://terminology.hl7.org/CodeSystem/v3-RoleCode
+                      code: SPS
+                      display: spouse
+                    phones:
+                    - number: '+16175550145'
+                      use: mobile
+                    active: true
+                    createdAt: '2026-11-03T14:30:00Z'
+                    updatedAt: '2026-11-03T14:30:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such related person of this patient in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
     patch:
       operationId: updateRelatedPerson
       summary: Update a related person
@@ -1012,6 +1087,80 @@ paths:
       description: Coverage ID.
       schema:
         $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getCoverage
+      summary: Get one coverage
+      description: One coverage, with the strong `ETag` that `PATCH` needs, for example to end it with `endDate` (D45). List
+        items carry no ETag (API_STANDARDS §11). Entered-in-error coverages are returned too, marked by `status`.
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: coverages:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The coverage.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coverage'
+              examples:
+                one:
+                  summary: One coverage
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    order: 1
+                    payerId: 4b5c6d7e-8f9a-4b0c-8d1e-2f3a4b5c6d7e
+                    payerName: Test Health Plan
+                    memberId: TEST-M0012345
+                    groupNumber: TEST-G778
+                    planName: Test PPO
+                    relationshipToSubscriber: self
+                    startDate: '2026-01-01'
+                    status: active
+                    cardImages:
+                    - side: front
+                      fileId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                      addedAt: '2026-11-03T14:30:00Z'
+                    createdAt: '2026-11-03T14:30:00Z'
+                    updatedAt: '2026-11-03T14:30:00Z'
+                    endDate: '2026-12-31'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `coverages:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such coverage of this patient in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
     patch:
       operationId: updateCoverage
       summary: Update a coverage
@@ -2762,8 +2911,11 @@ components:
       - other
       - unknown
     BirthSex:
-      description: 'Sex assigned at birth, US Core `birthsex` codes: `F`, `M`, `UNK`. The US Core version (Open Decisions
-        Q6) may replace this with the newer US Core `sex` element.'
+      description: 'Sex assigned at birth (D39), US Core 9.0.0 Birth Sex extension, value set Birth Sex (VSAC 2.16.840.1.113762.1.4.1021.24,
+        version 2024-03-30, required binding): codes `F`, `M` and `UNK` (`http://terminology.hl7.org/CodeSystem/v3-AdministrativeGender`
+        for `F` and `M`, `http://terminology.hl7.org/CodeSystem/v3-NullFlavor` for `UNK`). The value set also has `asked-declined`,
+        `ASKU` and `OTH`; adding them here is an additive change if a practice needs "declined" told apart from "unknown".
+        USCDI no longer requires birth sex (Q6, D82).'
       type: string
       enum:
       - F
@@ -2918,8 +3070,8 @@ components:
           type: string
           format: uri
           maxLength: 300
-          description: Namespace of the value, e.g. a state's driver's license OID. The MRN system is per practice (D41);
-            `identifier.system` is at most 300 characters.
+          description: 'Namespace of the value, e.g. a state''s driver''s license OID. The MRN system is per practice: `mrnSystem`
+            in `GET /practice-settings` (D41); `identifier.system` is at most 300 characters.'
           x-phi: none
         value:
           type: string
@@ -3049,8 +3201,11 @@ components:
           x-phi: identifier
         gender: &id024
           $ref: '#/components/schemas/AdministrativeGender'
-          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender`
-            is NOT NULL).
+          description: 'Administrative gender, labelled "Legal sex" on screens (as on ID and insurance). Optional for the
+            patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). On `/fhir` (US Core 9.0.0, D82)
+            it is `Patient.gender` and, for `female` and `male`, the US Core Individual Sex extension with the Federal Administrative
+            Sex value set (VSAC 2.16.840.1.113762.1.4.1021.121, version 2025-02-28): SNOMED CT `248152002` female, `248153007`
+            male; `other` and `unknown` send no Individual Sex extension.'
           x-phi: clinical
         birthSex: &id025
           $ref: '#/components/schemas/BirthSex'
@@ -3058,12 +3213,18 @@ components:
           x-phi: clinical
         genderIdentity: &id026
           $ref: '#/components/schemas/CodedValue'
-          description: Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration
-            item A45 (Anand).
+          description: 'Gender identity (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`,
+            D39). Pinned to US Core 9.0.0 (D82): the HL7 `individual-genderIdentity` extension and the HL7 Gender Identity
+            value set (`http://terminology.hl7.org/ValueSet/gender-identity`): SNOMED CT (`http://snomed.info/sct`) `446141000124107`
+            identifies as female gender, `446151000124109` identifies as male gender, `33791000087105` identifies as nonbinary
+            gender; `http://terminology.hl7.org/CodeSystem/data-absent-reason` `asked-declined` ("prefer not to say"); `http://terminology.hl7.org/CodeSystem/v3-NullFlavor`
+            `UNK`. Any other code is refused (`422 business-rule-violation`, `errors` naming `/genderIdentity/code` `not-allowed-value`).
+            Its column is migration item A45 (Anand).'
           x-phi: clinical
         sexualOrientation: &id027
           $ref: '#/components/schemas/CodedValue'
-          description: Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration
+          description: Sexual orientation (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`).
+            US Core 9.0.0 has no Patient extension for it; it stays a coded value with its source system. Its column is migration
             item A45 (Anand).
           x-phi: clinical
         race: &id028
@@ -3244,8 +3405,11 @@ components:
           oneOf:
           - $ref: '#/components/schemas/AdministrativeGender'
           - type: 'null'
-          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender`
-            is NOT NULL). Send `null` to clear it.
+          description: 'Administrative gender, labelled "Legal sex" on screens (as on ID and insurance). Optional for the
+            patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). On `/fhir` (US Core 9.0.0, D82)
+            it is `Patient.gender` and, for `female` and `male`, the US Core Individual Sex extension with the Federal Administrative
+            Sex value set (VSAC 2.16.840.1.113762.1.4.1021.121, version 2025-02-28): SNOMED CT `248152002` female, `248153007`
+            male; `other` and `unknown` send no Individual Sex extension.'
           x-phi: clinical
         birthSex:
           oneOf:
@@ -3257,15 +3421,21 @@ components:
           oneOf:
           - $ref: '#/components/schemas/CodedValue'
           - type: 'null'
-          description: Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration
-            item A45 (Anand). Send `null` to clear it.
+          description: 'Gender identity (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`,
+            D39). Pinned to US Core 9.0.0 (D82): the HL7 `individual-genderIdentity` extension and the HL7 Gender Identity
+            value set (`http://terminology.hl7.org/ValueSet/gender-identity`): SNOMED CT (`http://snomed.info/sct`) `446141000124107`
+            identifies as female gender, `446151000124109` identifies as male gender, `33791000087105` identifies as nonbinary
+            gender; `http://terminology.hl7.org/CodeSystem/data-absent-reason` `asked-declined` ("prefer not to say"); `http://terminology.hl7.org/CodeSystem/v3-NullFlavor`
+            `UNK`. Any other code is refused (`422 business-rule-violation`, `errors` naming `/genderIdentity/code` `not-allowed-value`).
+            Its column is migration item A45 (Anand).'
           x-phi: clinical
         sexualOrientation:
           oneOf:
           - $ref: '#/components/schemas/CodedValue'
           - type: 'null'
-          description: Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration
-            item A45 (Anand). Send `null` to clear it.
+          description: Sexual orientation (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`).
+            US Core 9.0.0 has no Patient extension for it; it stays a coded value with its source system. Its column is migration
+            item A45 (Anand).
           x-phi: clinical
         race:
           oneOf:

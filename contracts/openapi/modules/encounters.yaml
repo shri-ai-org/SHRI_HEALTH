@@ -1773,9 +1773,9 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `note-addenda:create`); `csrf-check-failed` (missing or wrong
-            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
-            grant and is not on the care team (D37)).
+          description: 403. `permission-denied` (the role lacks `note-addenda:create`, or an RN adding to a note that is not
+            a nursing note); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such note in this clinic or the user's facilities).
@@ -2858,7 +2858,7 @@ components:
         interpretation:
           type: string
           enum:
-          - N
+          - 'N'
           - L
           - H
           - LL

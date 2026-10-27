@@ -226,6 +226,35 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 Composite foreign keys: `fk_ai_suggestion_unknown_ai_suggestion_id_tenant`
 
+## `admin.app_session`
+
+Admin (normalized). One server-side login session (reference-token login, T7, D52). The session token is stored only as a SHA-256 hash, and Keycloak's tokens only encrypted. The CSRF token is not stored: core derives it from the session (ADR-0006 §4). The cookie is resolved before the clinic is known through ``admin.lookup_session(token_hash)``, a narrow SECURITY DEFINER function, never by a cross-clinic read.
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `user_id` | uuid | no |  | admin.app_user.id | — |
+| `token_hash` | varchar(64) | no |  |  | — |
+| `keycloak_access_token_enc` | text | no |  |  | — |
+| `keycloak_refresh_token_enc` | text | no |  |  | — |
+| `keycloak_sid` | varchar(100) | yes |  |  | — |
+| `last_activity_at` | datetime | no |  |  | — |
+| `tokens_refreshed_at` | datetime | no |  |  | — |
+| `idle_expires_at` | datetime | no |  |  | — |
+| `expires_at` | datetime | no |  |  | — |
+| `revoked_at` | datetime | yes |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_app_session_idle_within_absolute`, `ck_app_session_token_hash_format`, `ck_app_session_tokens_encrypted`
+
+Unique: `uq_app_session_token_hash`
+
 ## `admin.app_user`
 
 Admin (normalized). Application profile of a Keycloak identity. tenant_id NULL = Shri platform staff, who get no clinical access by default.
@@ -920,6 +949,35 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 Unique: `uq_concept_property_concept_id_property_value`
 
+## `admin.consent_requirement`
+
+Admin (normalized). A consent the practice asks patients for, one row per kind and policy version (D59). A new version is a new row; the earlier one stays until it is retired (``is_active`` false). Nothing is deleted. The kind is fixed once created (``shri_fixed_columns``). A patient's consent records the version they saw (``consent.ext_policy_version``).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `kind` | varchar(40) | no |  |  | — |
+| `title` | varchar(200) | no |  |  | — |
+| `policy_version` | varchar(40) | no |  |  | — |
+| `is_required` | boolean | no |  |  | — |
+| `form_file_id` | uuid | yes |  | admin.binary_object.id | — |
+| `effective_date` | date | no |  |  | — |
+| `is_active` | boolean | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.binary_object.tenant_id, admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `version` | integer | no |  |  | — |
+
+Checks: `ck_consent_requirement_kind_codes`, `ck_consent_requirement_policy_version_given`, `ck_consent_requirement_title_given`
+
+Unique: `uq_consent_requirement_tenant_id_kind_policy_version`
+
+Composite foreign keys: `fk_consent_requirement_form_file_id_tenant`
+
 ## `admin.cosign_rule`
 
 Admin (normalized). FR-ENC-01: supervising-physician co-signature for NPs / PAs, configurable by state.
@@ -1099,6 +1157,38 @@ Checks: `ck_eligibility_service_type_code_format`
 
 Composite foreign keys: `fk_eligibility_service_type_eligibility_check_id_tenant`
 
+## `admin.employer`
+
+Admin (normalized). Employer of a patient, or of a related person such as a coverage subscriber (D38; workers' compensation claims need it). One per person. The contract's Employer: a name, an optional E.164 phone and an optional U.S. address (all of it or none). A change touches the patient or related person, so its version and ETag change too.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `patient_id` | uuid | yes |  | clinical.patient.id, clinical.related_person.patient_id | — |
+| `related_person_id` | uuid | yes |  | clinical.related_person.id | — |
+| `name` | varchar(200) | no |  |  | — |
+| `phone` | varchar(16) | yes |  |  | — |
+| `address_lines` | array | yes |  |  | — |
+| `address_city` | varchar(60) | yes |  |  | — |
+| `address_state` | varchar(2) | yes |  |  | — |
+| `address_postal_code` | varchar(10) | yes |  |  | — |
+| `address_country` | varchar(2) | yes |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.patient.tenant_id, clinical.related_person.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_employer_address_country_us`, `ck_employer_address_lines_count`, `ck_employer_address_postal_code_format`, `ck_employer_address_state_format`, `ck_employer_address_whole`, `ck_employer_name_given`, `ck_employer_one_person`, `ck_employer_phone_e164`
+
+Unique: `uq_employer_patient_id`, `uq_employer_related_person_id`
+
+Composite foreign keys: `fk_employer_patient_id_tenant`, `fk_employer_related_person_id_same_patient`, `fk_employer_related_person_id_tenant`
+
 ## `admin.erx_transaction`
 
 Admin (normalized). One NCPDP SCRIPT message with the eRx vendor (NewRx, CancelRx, RxRenewalRequest ...). Inbound renewal / change requests may arrive before they are matched to a prescription.
@@ -1134,6 +1224,34 @@ Unique: `uq_erx_transaction_patient_id_id`, `uq_erx_transaction_tenant_id_id`, `
 
 Composite foreign keys: `fk_erx_transaction_integration_message_id_tenant`, `fk_erx_transaction_medication_request_id_same_patient`, `fk_erx_transaction_medication_request_id_tenant`, `fk_erx_transaction_patient_id_tenant`, `fk_erx_transaction_related_transaction_id_same_patient`, `fk_erx_transaction_related_transaction_id_tenant`
 
+## `admin.event_log`
+
+Admin (normalized). Thin events for SSE delivery and Last-Event-ID replay (T28), kept 10 minutes; replay covers 5 (EVENTS §3). IDs and statuses only (EVENTS §1). ``seq`` orders replay after a given event; ``id`` is the event UUID sent to the browser. ``patient_id``, ``target_user_id`` and ``target_role_code`` say whom the event concerns, so core can re-check access on every replay (T28, D37). The role is a code from core's ROLE_PERMISSIONS (``FD``, ``MD``, ...), not a reference to ``admin.role``, which is not seeded. The partner worker may insert events (``result.received``).
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `seq` | bigint | no |  |  | — |
+| `facility_id` | uuid | yes |  | admin.facility.id | — |
+| `patient_id` | uuid | yes |  | clinical.patient.id | — |
+| `target_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `target_role_code` | text | yes |  |  | — |
+| `type` | varchar(100) | no |  |  | — |
+| `subject` | varchar(200) | no |  |  | — |
+| `data` | jsonb | no |  |  | — |
+| `created_at` | datetime | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.facility.tenant_id, admin.tenant.id, clinical.patient.tenant_id | — |
+
+Checks: `ck_event_log_target_role_code_format`
+
+Unique: `uq_event_log_seq`
+
+Composite foreign keys: `fk_event_log_facility_id_tenant`, `fk_event_log_patient_id_tenant`
+
 ## `admin.facility`
 
 Admin (normalized). Billing / operational attributes of a practice site. The site itself is a FHIR Location (``location_id``); rooms are child Locations of it.
@@ -1149,7 +1267,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `clia_number` | varchar(10) | yes |  |  | — |
 | `tax_id_ref` | varchar(200) | yes |  |  | — |
 | `place_of_service_code` | varchar(2) | no |  |  | — |
-| `timezone` | varchar(64) | yes |  |  | — |
+| `timezone` | varchar(64) | no |  |  | — |
 | `is_billing_location` | boolean | no |  |  | — |
 | `is_active` | boolean | no |  |  | — |
 | `id` | uuid | no |  |  | — |
@@ -1248,6 +1366,35 @@ Unique: `uq_fee_schedule_item_fee_schedule_id_code_system_code_modifier`
 
 Composite foreign keys: `fk_fee_schedule_item_fee_schedule_id_tenant`
 
+## `admin.idempotency_record`
+
+Admin (normalized). One use of an Idempotency-Key (T21, ADR-0007), kept 24 hours. The request body is never stored, only its hash; the response body only encrypted (it may hold patient data). 5xx and 429 responses are not stored.
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `user_id` | uuid | no |  | admin.app_user.id | — |
+| `method` | varchar(10) | no |  |  | — |
+| `path` | varchar(500) | no |  |  | — |
+| `key` | varchar(255) | no |  |  | — |
+| `request_hash` | varchar(64) | no |  |  | — |
+| `state` | varchar(40) | no |  |  | — |
+| `response_status` | smallint | yes |  |  | — |
+| `response_headers` | jsonb | yes |  |  | — |
+| `response_body_enc` | text | yes |  |  | — |
+| `expires_at` | datetime | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_idempotency_record_done_has_response`, `ck_idempotency_record_request_hash_format`, `ck_idempotency_record_response_body_encrypted`, `ck_idempotency_record_state_codes`, `ck_idempotency_record_stored_status`, `ck_idempotency_record_unsafe_method`
+
+Unique: `uq_idempotency_record_tenant_id_user_id_method_path_key`
+
 ## `admin.integration_endpoint`
 
 Admin (normalized). A configured connection: quest-hl7, waystar, erx vendor, sms, fax, payment processor. Credentials are OpenBao references only.
@@ -1314,6 +1461,9 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `message_type` | varchar(30) | no |  |  | — |
 | `status` | varchar(40) | no |  |  | — |
 | `idempotency_key` | varchar(100) | yes |  |  | — |
+| `ordering_key` | varchar(100) | yes |  |  | — |
+| `payload` | jsonb | yes |  |  | — |
+| `claimed_at` | datetime | yes |  |  | — |
 | `correlation_id` | varchar(64) | yes |  |  | — |
 | `control_id` | varchar(60) | yes |  |  | — |
 | `payload_binary_id` | uuid | yes |  | admin.binary_object.id | — |
@@ -1333,7 +1483,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_integration_message_attempts`, `ck_integration_message_dead_letter_reason`, `ck_integration_message_direction_codes`, `ck_integration_message_inbound_received_at`, `ck_integration_message_status_codes`
+Checks: `ck_integration_message_attempts`, `ck_integration_message_dead_letter_reason`, `ck_integration_message_direction_codes`, `ck_integration_message_inbound_received_at`, `ck_integration_message_payload_ids_only`, `ck_integration_message_status_codes`
 
 Unique: `uq_integration_message_endpoint_id_direction_control_id`, `uq_integration_message_tenant_id_id`, `uq_integration_message_tenant_id_idempotency_key`
 
@@ -1688,6 +1838,28 @@ Unique: `uq_migration_run_tenant_id_id`
 
 Composite foreign keys: `fk_migration_run_log_binary_id_tenant`, `fk_migration_run_rollback_plan_document_id_tenant`
 
+## `admin.mrn_counter`
+
+Admin (normalized). One medical record number counter per practice (D41): the practice prefix plus a number, never reused, e.g. ``TEST-000123``. ``admin.next_mrn()`` returns the practice's MRN system and the next value inside the registration transaction: the row lock serializes registrations, so no two patients get the same number, and a registration that rolls back gives its number back. The MRN itself is an ``identifier`` row (type MR) with that system. The database lets the number only grow, and the prefix and system change only until the first MRN is issued (``shri_mrn_counter_guard``). No role may delete the row.
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `prefix` | varchar(10) | no |  |  | — |
+| `system` | varchar(300) | no |  |  | — |
+| `next_value` | bigint | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_mrn_counter_next_value_positive`, `ck_mrn_counter_prefix_format`, `ck_mrn_counter_system_uri`
+
+Unique: `uq_mrn_counter_tenant_id`
+
 ## `admin.note_template`
 
 Admin (normalized). FR-ENC-04 specialty note templates; sections in note_template_section.
@@ -1764,6 +1936,30 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 Checks: `ck_openemr_column_map_action_code`, `ck_openemr_column_map_drop_has_reason`, `ck_openemr_column_map_kept_has_target`
 
 Unique: `uq_openemr_column_map_openemr_version_source_table_source_column`
+
+## `admin.operation`
+
+Admin (normalized). Long-running 202 work (T26, API_STANDARDS §13), kept 7 days once finished. IDs, kinds and statuses only; ``error`` is a Problem without patient data. In the MVP only its creator sees it (core). An operation the partner worker completes (eligibility, medication history) is marked ``assigned_to_integration``: shri_integration may then update its status, result and error, and nothing else (migration 0005).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `created_by_user_id` | uuid | no |  | admin.app_user.id | — |
+| `kind` | varchar(64) | no |  |  | — |
+| `status` | varchar(40) | no |  |  | — |
+| `result_type` | varchar(64) | yes |  |  | — |
+| `result_id` | uuid | yes |  |  | — |
+| `error` | jsonb | yes |  |  | — |
+| `completed_at` | datetime | yes |  |  | — |
+| `assigned_to_integration` | boolean | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_operation_completed_when_final`, `ck_operation_failure_has_error`, `ck_operation_result_pair`, `ck_operation_status_codes`
 
 ## `admin.order_set`
 
@@ -1887,6 +2083,8 @@ Contract (from DATA_OWNERSHIP.md):
 | `performed_by_user_id` | uuid | no |  | admin.app_user.id | `performedByUserId` |
 | `unmerged_at` | datetime | yes |  |  | no same-named property |
 | `unmerged_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
+| `surviving_patient_version` | integer | yes |  |  | no same-named property |
+| `merged_patient_version` | integer | yes |  |  | no same-named property |
 | `id` | uuid | no |  |  | `id` |
 | `tenant_id` | uuid | no |  | admin.duplicate_candidate.tenant_id, admin.tenant.id, clinical.patient.tenant_id | no same-named property |
 | `created_at` | datetime | no |  |  | `createdAt` |
@@ -1930,7 +2128,7 @@ Composite foreign keys: `fk_patient_merge_record_patient_merge_id_tenant`
 
 ## `admin.patient_payment`
 
-Admin (normalized). Copays and patient payments. Card payments go through a processor: only its reference is stored, and a CHECK rejects anything that looks like a card number.
+Admin (normalized). Copays and patient payments. Card payments go through a processor: only its reference is stored, and a CHECK rejects anything that looks like a card number. The receipt PDF is a file (``receipt_file_id``, D58), generated in the payment transaction.
 
 Patient-owned via `patient_id` (same-patient foreign keys apply).
 
@@ -1948,8 +2146,9 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `collected_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `is_refund` | boolean | no |  |  | — |
 | `refund_of_payment_id` | uuid | yes |  | admin.patient_payment.id | — |
+| `receipt_file_id` | uuid | yes |  | admin.binary_object.id | — |
 | `id` | uuid | no |  |  | — |
-| `tenant_id` | uuid | no |  | admin.patient_payment.tenant_id, admin.tenant.id, clinical.appointment.tenant_id, clinical.encounter.tenant_id, clinical.patient.tenant_id | — |
+| `tenant_id` | uuid | no |  | admin.binary_object.tenant_id, admin.patient_payment.tenant_id, admin.tenant.id, clinical.appointment.tenant_id, clinical.encounter.tenant_id, clinical.patient.tenant_id | — |
 | `created_at` | datetime | no |  |  | — |
 | `updated_at` | datetime | no |  |  | — |
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
@@ -1959,7 +2158,7 @@ Checks: `ck_patient_payment_amount_positive`, `ck_patient_payment_card_has_proce
 
 Unique: `uq_patient_payment_patient_id_id`, `uq_patient_payment_tenant_id_id`
 
-Composite foreign keys: `fk_patient_payment_appointment_id_same_patient`, `fk_patient_payment_appointment_id_tenant`, `fk_patient_payment_encounter_id_same_patient`, `fk_patient_payment_encounter_id_tenant`, `fk_patient_payment_patient_id_tenant`, `fk_patient_payment_refund_of_payment_id_same_patient`, `fk_patient_payment_refund_of_payment_id_tenant`
+Composite foreign keys: `fk_patient_payment_appointment_id_same_patient`, `fk_patient_payment_appointment_id_tenant`, `fk_patient_payment_encounter_id_same_patient`, `fk_patient_payment_encounter_id_tenant`, `fk_patient_payment_patient_id_tenant`, `fk_patient_payment_receipt_file_id_tenant`, `fk_patient_payment_refund_of_payment_id_same_patient`, `fk_patient_payment_refund_of_payment_id_tenant`
 
 ## `admin.patient_pharmacy`
 
@@ -2638,7 +2837,7 @@ Unique: `uq_tenant_organization_id`, `uq_tenant_slug`
 
 ## `admin.tenant_setting`
 
-Admin (normalized).
+Admin (normalized). A practice's value for a ``setting_definition``. ``version`` is the ETag for ``If-Match`` on ``PATCH /practice-settings`` (A49).
 
 Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
@@ -2652,6 +2851,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `updated_at` | datetime | no |  |  | — |
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `version` | integer | no |  |  | — |
 
 Unique: `uq_tenant_setting_tenant_id_setting_key`
 
@@ -2941,6 +3141,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `actor_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `actor_display` | varchar(200) | yes |  |  | — |
 | `action` | varchar(40) | no |  |  | — |
+| `category` | varchar(40) | no |  |  | — |
 | `outcome` | varchar(40) | no |  |  | — |
 | `entity_type` | varchar(64) | yes |  |  | — |
 | `entity_id` | varchar(64) | yes |  |  | — |
@@ -2954,9 +3155,10 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `chain_seq` | bigint | yes |  |  | — |
 | `prev_hash` | varchar(64) | yes |  |  | — |
 | `hash` | varchar(64) | yes |  |  | — |
+| `hash_version` | smallint | no |  |  | — |
 | `tenant_id` | uuid | yes |  | admin.tenant.id | — |
 
-Checks: `ck_audit_event_action_codes`, `ck_audit_event_actor_type_codes`, `ck_audit_event_break_glass_reason`, `ck_audit_event_outcome_codes`, `ck_audit_event_user_actor`
+Checks: `ck_audit_event_action_codes`, `ck_audit_event_actor_type_codes`, `ck_audit_event_break_glass_reason`, `ck_audit_event_category_codes`, `ck_audit_event_hash_version_known`, `ck_audit_event_outcome_codes`, `ck_audit_event_user_actor`
 
 Unique: `uq_audit_event_event_uuid`, `uq_audit_event_patient_id_id`, `uq_audit_event_tenant_id_chain_seq`
 
@@ -2972,7 +3174,8 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 |---|---|---|---|---|---|
 | `patient_id` | uuid | no |  | audit.audit_event.patient_id, clinical.patient.id | — |
 | `user_id` | uuid | no |  | admin.app_user.id | — |
-| `reason` | varchar(500) | no |  |  | — |
+| `reason_code` | varchar(40) | no |  |  | — |
+| `reason_text` | varchar(500) | yes |  |  | — |
 | `granted_at` | datetime | no |  |  | — |
 | `expires_at` | datetime | no |  |  | — |
 | `audit_event_id` | bigint | yes |  | audit.audit_event.id | — |
@@ -2985,7 +3188,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_break_glass_access_expiry_after_grant`, `ck_break_glass_access_max_24h`, `ck_break_glass_access_reason_stated`, `ck_break_glass_access_review_pair`
+Checks: `ck_break_glass_access_expiry_after_grant`, `ck_break_glass_access_max_24h`, `ck_break_glass_access_other_needs_text`, `ck_break_glass_access_reason_code_codes`, `ck_break_glass_access_review_pair`
 
 Composite foreign keys: `fk_break_glass_access_audit_event_id_same_patient`, `fk_break_glass_access_patient_id_tenant`
 
@@ -4540,6 +4743,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `service_provider_organization_id` | uuid | yes | `serviceProvider` | clinical.organization.id | — |
 | `ext_facility_id` | uuid | yes |  | admin.facility.id | — |
 | `ext_place_of_service_code` | varchar(2) | yes |  |  | — |
+| `ext_self_pay` | boolean | no |  |  | — |
 | `meta_version_id` | integer | no |  |  | — |
 | `meta_last_updated` | datetime | no |  |  | — |
 | `meta_txid` | bigint | yes |  |  | — |
@@ -4896,7 +5100,7 @@ Contract (from DATA_OWNERSHIP.md):
 
 | Column | Type | Null | FHIR | References | Contract name |
 |---|---|---|---|---|---|
-| `patient_id` | uuid | yes | owner → Patient | clinical.patient.id | no same-named property |
+| `patient_id` | uuid | yes | owner → Patient | clinical.document_reference.subject_patient_id, clinical.patient.id | no same-named property |
 | `practitioner_id` | uuid | yes | owner → Practitioner | clinical.practitioner.id | no same-named property |
 | `organization_id` | uuid | yes | owner → Organization | clinical.organization.id | no same-named property |
 | `location_id` | uuid | yes | owner → Location | clinical.location.id | no same-named property |
@@ -4914,6 +5118,7 @@ Contract (from DATA_OWNERSHIP.md):
 | `period_start` | datetime | yes | `period`.start |  | no same-named property |
 | `period_end` | datetime | yes | `period`.end |  | no same-named property |
 | `assigner_display` | varchar(300) | yes | `assigner`.display |  | no same-named property |
+| `supporting_document_id` | uuid | yes |  | clinical.document_reference.id | no same-named property |
 | `id` | uuid | no |  |  | `id` |
 | `tenant_id` | uuid | no |  | admin.tenant.id, clinical.coverage.tenant_id, clinical.document_reference.tenant_id, clinical.encounter.tenant_id, clinical.location.tenant_id, clinical.organization.tenant_id, clinical.patient.tenant_id, clinical.practitioner.tenant_id, clinical.related_person.tenant_id | no same-named property |
 | `created_at` | datetime | no |  |  | `createdAt` |
@@ -4921,9 +5126,9 @@ Contract (from DATA_OWNERSHIP.md):
 
 Contract properties with no column of the same name: `assigner`, `documentId`, `type`
 
-Checks: `ck_identifier_fhir_period_per_1`, `ck_identifier_fhir_type_coding`, `ck_identifier_fhir_type_display`, `ck_identifier_npi_valid`, `ck_identifier_one_owner`, `ck_identifier_ssn_not_clear_text`, `ck_identifier_use_codes`
+Checks: `ck_identifier_fhir_period_per_1`, `ck_identifier_fhir_type_coding`, `ck_identifier_fhir_type_display`, `ck_identifier_npi_valid`, `ck_identifier_one_owner`, `ck_identifier_ssn_not_clear_text`, `ck_identifier_supporting_document_patient_only`, `ck_identifier_use_codes`
 
-Composite foreign keys: `fk_identifier_coverage_id_tenant`, `fk_identifier_document_reference_id_tenant`, `fk_identifier_encounter_id_tenant`, `fk_identifier_location_id_tenant`, `fk_identifier_organization_id_tenant`, `fk_identifier_patient_id_tenant`, `fk_identifier_practitioner_id_tenant`, `fk_identifier_related_person_id_tenant`
+Composite foreign keys: `fk_identifier_coverage_id_tenant`, `fk_identifier_document_reference_id_tenant`, `fk_identifier_encounter_id_tenant`, `fk_identifier_location_id_tenant`, `fk_identifier_organization_id_tenant`, `fk_identifier_patient_id_tenant`, `fk_identifier_practitioner_id_tenant`, `fk_identifier_related_person_id_tenant`, `fk_identifier_supporting_document_id_same_patient`, `fk_identifier_supporting_document_id_tenant`
 
 ## `clinical.immunization`
 
@@ -5710,6 +5915,26 @@ Contract (from DATA_OWNERSHIP.md):
 | `ext_birthsex` | varchar(40) | yes | extension `us-core-birthsex` |  | no same-named property |
 | `ext_race_text` | varchar(200) | yes |  |  | no same-named property |
 | `ext_ethnicity_text` | varchar(200) | yes |  |  | no same-named property |
+| `ext_gender_identity_system` | varchar(300) | yes |  | admin.code_system.uri | no same-named property |
+| `ext_gender_identity_code` | varchar(64) | yes |  |  | no same-named property |
+| `ext_gender_identity_display` | varchar(500) | yes |  |  | no same-named property |
+| `ext_gender_identity_text` | varchar(1000) | yes |  |  | no same-named property |
+| `ext_sexual_orientation_system` | varchar(300) | yes |  | admin.code_system.uri | no same-named property |
+| `ext_sexual_orientation_code` | varchar(64) | yes |  |  | no same-named property |
+| `ext_sexual_orientation_display` | varchar(500) | yes |  |  | no same-named property |
+| `ext_sexual_orientation_text` | varchar(1000) | yes |  |  | no same-named property |
+| `ext_occupation_system` | varchar(300) | yes |  | admin.code_system.uri | no same-named property |
+| `ext_occupation_code` | varchar(64) | yes |  |  | no same-named property |
+| `ext_occupation_display` | varchar(500) | yes |  |  | no same-named property |
+| `ext_occupation_text` | varchar(1000) | yes |  |  | no same-named property |
+| `ext_industry_system` | varchar(300) | yes |  | admin.code_system.uri | no same-named property |
+| `ext_industry_code` | varchar(64) | yes |  |  | no same-named property |
+| `ext_industry_display` | varchar(500) | yes |  |  | no same-named property |
+| `ext_industry_text` | varchar(1000) | yes |  |  | no same-named property |
+| `ext_tribal_affiliation_system` | varchar(300) | yes |  | admin.code_system.uri | no same-named property |
+| `ext_tribal_affiliation_code` | varchar(64) | yes |  |  | no same-named property |
+| `ext_tribal_affiliation_display` | varchar(500) | yes |  |  | no same-named property |
+| `ext_tribal_affiliation_text` | varchar(1000) | yes |  |  | no same-named property |
 | `meta_version_id` | integer | no |  |  | no same-named property |
 | `meta_last_updated` | datetime | no |  |  | no same-named property |
 | `meta_txid` | bigint | yes |  |  | no same-named property |
@@ -5730,7 +5955,7 @@ Contract (from DATA_OWNERSHIP.md):
 
 Contract properties with no column of the same name: `address`, `birthSex`, `duplicateCheck`, `duplicateOverrideReason`, `emails`, `employer`, `ethnicity`, `genderIdentity`, `identifiers`, `industry`, `maritalStatus`, `mergedIntoId`, `mrn`, `name`, `occupation`, `phones`, `preferredLanguage`, `preferredName`, `preferredPharmacy`, `previousNames`, `race`, `restricted`, `sexualOrientation`, `tribalAffiliation`
 
-Checks: `ck_patient_ai_entry_verified`, `ck_patient_birth_date_not_future`, `ck_patient_birth_order`, `ck_patient_deceased_after_birth`, `ck_patient_entry_source_codes`, `ck_patient_ext_birthsex_codes`, `ck_patient_extension_is_array`, `ck_patient_fhir_deceased_x`, `ck_patient_fhir_marital_status_coding`, `ck_patient_fhir_marital_status_display`, `ck_patient_fhir_multiple_birth_x`, `ck_patient_gender_codes`, `ck_patient_meta_security_codes`
+Checks: `ck_patient_ai_entry_verified`, `ck_patient_birth_date_not_future`, `ck_patient_birth_order`, `ck_patient_deceased_after_birth`, `ck_patient_entry_source_codes`, `ck_patient_ext_birthsex_codes`, `ck_patient_extension_is_array`, `ck_patient_fhir_deceased_x`, `ck_patient_fhir_marital_status_coding`, `ck_patient_fhir_marital_status_display`, `ck_patient_fhir_multiple_birth_x`, `ck_patient_gender_codes`, `ck_patient_gender_identity_code_has_system`, `ck_patient_industry_code_has_system`, `ck_patient_meta_security_codes`, `ck_patient_occupation_code_has_system`, `ck_patient_sexual_orientation_code_has_system`, `ck_patient_tribal_affiliation_code_has_system`
 
 Unique: `uq_patient_tenant_id_id`
 
@@ -6730,18 +6955,18 @@ Paths: `/patients`, `/patients/{patientId}`
 | `duplicateCheck` | — | not mapped yet |
 | `duplicateOverrideReason` | — | not mapped yet |
 | `emails` | — | not mapped yet |
-| `employer` | — | not mapped yet |
+| `employer` | `employer.name`, `employer.phone`, `employer.address_lines`, `employer.address_city`, `employer.address_state`, `employer.address_postal_code`, `employer.address_country` | mapped: one admin row with patient_id (D38); clearing the employer deletes the row |
 | `ethnicity` | — | not mapped yet |
 | `gender` | `patient.gender` | same name |
-| `genderIdentity` | — | not mapped yet |
+| `genderIdentity` | `patient.ext_gender_identity_system`, `patient.ext_gender_identity_code`, `patient.ext_gender_identity_display`, `patient.ext_gender_identity_text` | mapped: shown at registration only where the practice's setting registration.show_sogi_fields is true (A49) |
 | `id` | `patient.id` | same name |
 | `identifiers` | — | not mapped yet |
-| `industry` | — | not mapped yet |
+| `industry` | `patient.ext_industry_system`, `patient.ext_industry_code`, `patient.ext_industry_display`, `patient.ext_industry_text` | mapped |
 | `maritalStatus` | — | not mapped yet |
 | `mergedIntoId` | — | not mapped yet |
-| `mrn` | — | not mapped yet |
+| `mrn` | `identifier.value`, `identifier.system`, `identifier.patient_id`, `identifier.type_code` | mapped: an identifier row with type_code MR, its system and value from admin.next_mrn() (the practice's mrn_counter, D41), written in the registration transaction |
 | `name` | — | not mapped yet |
-| `occupation` | — | not mapped yet |
+| `occupation` | `patient.ext_occupation_system`, `patient.ext_occupation_code`, `patient.ext_occupation_display`, `patient.ext_occupation_text` | mapped |
 | `phones` | — | not mapped yet |
 | `preferredLanguage` | — | not mapped yet |
 | `preferredName` | — | not mapped yet |
@@ -6749,8 +6974,8 @@ Paths: `/patients`, `/patients/{patientId}`
 | `previousNames` | — | not mapped yet |
 | `race` | — | not mapped yet |
 | `restricted` | — | not mapped yet |
-| `sexualOrientation` | — | not mapped yet |
-| `tribalAffiliation` | — | not mapped yet |
+| `sexualOrientation` | `patient.ext_sexual_orientation_system`, `patient.ext_sexual_orientation_code`, `patient.ext_sexual_orientation_display`, `patient.ext_sexual_orientation_text` | mapped: shown at registration only where the practice's setting registration.show_sogi_fields is true (A49) |
+| `tribalAffiliation` | `patient.ext_tribal_affiliation_system`, `patient.ext_tribal_affiliation_code`, `patient.ext_tribal_affiliation_display`, `patient.ext_tribal_affiliation_text` | mapped |
 | `updatedAt` | `patient.updated_at` | same name |
 
 ### Patient identifiers (MRN, driver's license)
@@ -6761,7 +6986,7 @@ Paths: `/patients/{patientId}/identifiers`
 |---|---|---|
 | `assigner` | — | not mapped yet |
 | `createdAt` | `identifier.created_at` | same name |
-| `documentId` | — | not mapped yet |
+| `documentId` | `identifier.supporting_document_id` | mapped: the scanned document behind the identifier, e.g. a driver's license image filed with category identity (D56); the same patient's document |
 | `id` | `identifier.id` | same name |
 | `system` | `identifier.system` | same name |
 | `type` | — | not mapped yet |
@@ -6779,7 +7004,7 @@ Paths: `/patients/{patientId}/related-persons`
 | `birthDate` | `related_person.birth_date` | same name |
 | `createdAt` | `related_person.created_at` | same name |
 | `emails` | — | not mapped yet |
-| `employer` | — | not mapped yet |
+| `employer` | `employer.name`, `employer.phone`, `employer.address_lines`, `employer.address_city`, `employer.address_state`, `employer.address_postal_code`, `employer.address_country` | mapped: one admin row with related_person_id (D38); clearing the employer deletes the row |
 | `gender` | `related_person.gender` | same name |
 | `id` | `related_person.id` | same name |
 | `name` | — | not mapped yet |
@@ -6980,6 +7205,7 @@ Paths: `/encounters`, `/encounters/{encounterId}`
 | `updatedAt` | — | not mapped yet |
 | `vitals` | — | not mapped yet |
 | `participants[].role` | `encounter_participant.type_code` | mapped |
+| `selfPay` | `encounter.ext_self_pay` | mapped: set at check-in on the encounter it creates; no insurance claim for a self-pay visit (from `/appointments/{appointmentId}/check-in`) |
 
 ### Note (draft, versions, signed)
 
@@ -7079,7 +7305,7 @@ Paths: `/facilities`, `/locations`
 | `phone` | — | not mapped yet |
 | `physicalType` | — | not mapped yet |
 | `placeOfServiceCode` | — | not mapped yet |
-| `timeZone` | — | not mapped yet |
+| `timeZone` | `facility.timezone` | mapped |
 | `updatedAt` | — | not mapped yet |
 
 ### Providers
