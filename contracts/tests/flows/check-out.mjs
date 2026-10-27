@@ -1,6 +1,6 @@
 // The check-out flow (D98, D100; demo steps 10–11, contracts/docs/IMPL_BATCH1_PLAN.md §8.2 C): the clinician asks for
-// a follow-up in the visit; at check-out the front desk sees it, takes the copay, produces the after-visit summary, books
-// the revisit from it (or records that the patient declined), and checks the patient out.
+// a follow-up in the visit; at check-out the front desk sees it, takes the copay, prints the after-visit summary, books
+// the revisit from it (or records that the patient declined; the clinician may withdraw it), and checks the patient out.
 //
 //   npm run mock                          (in another terminal; port 4010)
 //   node tests/flows/check-out.mjs
@@ -83,18 +83,28 @@ async function main() {
   await call('a card session for another amount is refused', 'POST', `/patients/${patientId}/payments`, { body: payment, headers: key(), expect: 422, prefer: 422 });
   await call('record the copay, with its receipt', 'POST', `/patients/${patientId}/payments`, { body: payment, headers: key(), expect: 201 });
 
-  const summary = await call('the after-visit summary', 'POST', `/encounters/${encounterId}/after-visit-summary`, { body: example('POST', '/encounters/{encounterId}/after-visit-summary'), headers: key(), expect: 202 });
-  await call('its operation', 'GET', `/operations/${summary.data.id}`, { expect: 200 });
+  // The clinician generates the summary from the signed note; the front desk only reads the latest one to print it.
+  await call('the clinician generates the after-visit summary', 'POST', `/encounters/${encounterId}/after-visit-summary`, { body: example('POST', '/encounters/{encounterId}/after-visit-summary'), headers: key(), expect: 202 });
+  const printed = (await call('the front desk gets it to print', 'GET', `/encounters/${encounterId}/after-visit-summary/download-url`, { expect: 200 })).data;
+  if (!printed.url || !printed.documentId) throw new Error('the summary read must give a download link');
+  await call('none generated yet', 'GET', `/encounters/${encounterId}/after-visit-summary/download-url`, { expect: 404, prefer: 404 });
 
   const revisit = example('POST', '/appointments', 'revisit');
   if (revisit.followUpOfEncounterId !== encounterId) throw new Error('the revisit example must book this visit\'s follow-up');
+  await call('check-out first names what blocks it (an open follow-up)', 'POST', `/appointments/${appointmentId}/check-out`, { headers: key(), expect: 409, prefer: 409 });
   await call('a follow-up that is not open is refused', 'POST', '/appointments', { body: revisit, headers: key(), expect: 422, prefer: 422 });
   await call('book the revisit from the follow-up', 'POST', '/appointments', { body: revisit, headers: key(), expect: 201 });
-  await call('declining an already booked follow-up is refused', 'POST', `/encounters/${encounterId}/follow-up/decline`, { body: example('POST', '/encounters/{encounterId}/follow-up/decline'), expect: 409, prefer: 409 });
-  await call('or, had the patient said no: decline with a reason', 'POST', `/encounters/${encounterId}/follow-up/decline`, { body: example('POST', '/encounters/{encounterId}/follow-up/decline'), expect: 200 });
+  const decline = { body: example('POST', '/encounters/{encounterId}/follow-up/decline'), headers: { 'If-Match': encounter.etag, ...key() } };
+  await call('declining an already booked follow-up is refused', 'POST', `/encounters/${encounterId}/follow-up/decline`, { ...decline, expect: 409, prefer: 409 });
+  await call('a clinician cannot decline (D67)', 'POST', `/encounters/${encounterId}/follow-up/decline`, { ...decline, expect: 403, prefer: 403 });
+  await call('or, had the patient said no: the desk declines with a reason', 'POST', `/encounters/${encounterId}/follow-up/decline`, { ...decline, expect: 200 });
+  await call('or the clinician withdraws an open request', 'POST', `/encounters/${encounterId}/follow-up/withdraw`, { body: example('POST', '/encounters/{encounterId}/follow-up/withdraw'), headers: { 'If-Match': encounter.etag }, expect: 200 });
 
-  await call('check the patient out', 'POST', `/appointments/${appointmentId}/status`, { body: example('POST', '/appointments/{appointmentId}/status', 'checked-out'), expect: 200 });
-  await call('without a session', 'POST', `/appointments/${appointmentId}/status`, { as: 'none', body: { status: 'checked-out' }, expect: 401 });
+  const out = (await call('check the patient out (FD, ADM)', 'POST', `/appointments/${appointmentId}/check-out`, { headers: key(), expect: 200 })).data;
+  if (out.visitStatus !== 'checked-out' || out.status !== 'fulfilled') throw new Error('check-out must end the visit flow');
+  if (out.followUp?.status !== 'booked' || !out.followUp.bookedAppointmentId) throw new Error('the booked follow-up must point at the revisit');
+  await call('a role without appointments:check-out', 'POST', `/appointments/${appointmentId}/check-out`, { headers: key(), expect: 403, prefer: 403 });
+  await call('without a session', 'POST', `/appointments/${appointmentId}/check-out`, { as: 'none', expect: 401 });
 }
 
 main()

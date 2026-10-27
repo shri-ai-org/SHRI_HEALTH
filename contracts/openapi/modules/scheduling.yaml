@@ -422,6 +422,8 @@ paths:
                       providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                       note: Recheck blood pressure.
                       status: open
+                    visitStatus: with-provider
+                    encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
         '401':
           $ref: ../components/responses/Unauthorized.yaml
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
@@ -546,7 +548,9 @@ paths:
       operationId: cancelAppointment
       summary: Cancel an appointment
       description: 'Cancels with a reason (inventory #55; DATA_OWNERSHIP §5.1): `booked` or `arrived`, or `checked-in` with
-        `left-without-being-seen`, which also cancels the encounter in the same transaction. Frees the slot.'
+        `left-without-being-seen`, which also cancels the encounter in the same transaction. Frees the slot. If the appointment
+        is the revisit of a follow-up request (D98), the request goes back to `open` in the same transaction, so the front
+        desk sees it again.'
       tags:
       - scheduling
       x-owner: vimal
@@ -747,10 +751,12 @@ paths:
     post:
       operationId: recordVisitStatus
       summary: Record a visit step
-      description: 'Records `arrived`, `roomed`, `with-provider`, `checked-out` or `noshow` (inventory #57; DATA_OWNERSHIP
-        §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider`
-        and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42);
-        `noshow` is an appointment status, kept in the appointment''s `_history`.'
+      description: 'Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed`
+        and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out`
+        are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment
+        status, kept in the appointment''s `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out`
+        (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names
+        `/status`).'
       tags:
       - scheduling
       x-owner: vimal
@@ -780,10 +786,6 @@ paths:
                 value:
                   status: roomed
                   roomLocationId: 9c0d1e2f-3a4b-4c5d-9e6f-7a8b9c0d1e2f
-              checked-out:
-                summary: Checked out; completes the visit flow
-                value:
-                  status: checked-out
       responses:
         '200':
           description: The appointment.
@@ -835,7 +837,7 @@ paths:
           description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: 409. `invalid-state-transition` (not allowed in the current state).
+          description: "409. `invalid-state-transition` (not allowed in the current state; or `checked-out`, which goes through `POST /appointments/{appointmentId}/check-out`: `errors` names `/status`)."
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`roomed`
@@ -845,6 +847,118 @@ paths:
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
         '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /appointments/{appointmentId}/check-out:
+    parameters:
+    - name: appointmentId
+      in: path
+      required: true
+      description: Appointment ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: checkOutAppointment
+      summary: Check the patient out
+      description: "Ends the visit flow at the desk (D98): the visit step becomes `checked-out` (kept with its time in `visit_flow_event`) and the appointment `fulfilled`. Front desk and ADM only (`appointments:check-out`). Refused with `409 invalid-state-transition` while something must be settled first; `errors` names each one, so the screen can point to the step: `/followUp` (the visit's follow-up request is still `open`: book it or decline it) and `/status` (the patient is not checked in, or is already checked out; the problem carries `currentState`). An unpaid copay and an unsigned note never block check-out: the note is often signed later, and balances are P1. The encounter is closed separately (`POST /encounters/{encounterId}/close`)."
+      tags:
+      - scheduling
+      x-owner: vimal
+      x-permission: appointments:check-out
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-events:
+      - appointment.status-changed
+      - appointment.checked-out
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      responses:
+        "200":
+          description: Checked out.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Appointment"
+              examples:
+                checked-out:
+                  summary: Checked out, with the revisit booked
+                  value:
+                    id: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      displayName: Kuhlman72, Ramona980
+                    provider:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    appointmentType:
+                      id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      code: FOLLOWUP
+                      name: Follow-up visit
+                    status: fulfilled
+                    startAt: 2026-11-03T15:00:00Z
+                    endAt: 2026-11-03T15:20:00Z
+                    durationMinutes: 20
+                    timeZone: America/Chicago
+                    reasonForVisit: Follow-up on blood pressure
+                    sameDayAddOn: false
+                    overbook: false
+                    createdAt: 2026-11-02T16:05:00Z
+                    updatedAt: 2026-11-03T15:52:00Z
+                    followUp:
+                      encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                      interval:
+                        value: 3
+                        unit: month
+                      appointmentTypeId: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      note: Recheck blood pressure.
+                      status: booked
+                      bookedAppointmentId: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    visitStatus: checked-out
+                    encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+        "400":
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        "401":
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        "403":
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `appointments:check-out`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        "404":
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such appointment).
+        "409":
+          $ref: ../components/responses/Conflict.yaml
+          description: "409. `invalid-state-transition` (`errors` names what must be settled first: `/followUp`, an open follow-up request; `/status`, not checked in or already checked out, with `currentState`); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running)."
+        "422":
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was
+            used with a different request).
+        "429":
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        "500":
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
   /status-board:
@@ -1242,7 +1356,9 @@ paths:
       description: 'Moves a `booked` or `arrived` appointment (new inventory row #243; D61). In one transaction: the old appointment
         becomes `cancelled` with the given reason, a new one is booked under the same rules as `POST /appointments` (provider-day
         lock, overbooking only where the type allows it), and the new one carries `rescheduledFromId`, set by the server.
-        A new date re-queues the eligibility check (D15). Returns the new appointment; the old one keeps its history.'
+        A new date re-queues the eligibility check (D15). Returns the new appointment; the old one keeps its history. If the
+        appointment is the revisit of a follow-up request (D98), the request stays `booked` and points at the new appointment,
+        in the same transaction.'
       tags:
       - scheduling
       x-owner: vimal
@@ -2367,5 +2483,10 @@ components:
           - open
           - booked
           - declined
-          description: Status.
+          - withdrawn
+          description: "`open` (asked for, not yet booked); `booked` (a revisit is booked: `bookedAppointmentId`); `declined` (the patient did not book it, with the front desk's reason); `withdrawn` (the clinician who asked for it withdrew it). If the booked revisit is cancelled, the request goes back to `open` and loses `bookedAppointmentId`, in the same transaction; if the revisit is rescheduled, it stays `booked` and points at the new appointment (D98)."
           x-phi: none
+        bookedAppointmentId:
+          $ref: ../components/schemas/Id.yaml
+          description: "Once `booked`: the revisit, so the screen can link it."
+          x-phi: internal-id
