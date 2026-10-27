@@ -19,9 +19,9 @@ from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, make_tenant, switch_to_
 pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
 
 ROLES = ("shri_app", "shri_fhir_reader", "shri_integration", "shri_reporting",
-         "shri_maintenance", "shri_public")
+         "shri_maintenance", "shri_public", "shri_portal")
 #: Roles with no search_path setting of their own.
-NO_SEARCH_PATH = {"shri_fhir_reader", "shri_maintenance", "shri_public"}
+NO_SEARCH_PATH = {"shri_fhir_reader", "shri_maintenance", "shri_public", "shri_portal"}
 DENIED = "42501"
 CHECK_FAILED = "23514"
 UNIQUE_FAILED = "23505"
@@ -211,6 +211,10 @@ def test_lookup_session_finds_live_sessions_of_any_clinic_before_one_is_set(
     ("admin.purge_expired_runtime_rows()", "shri_maintenance"),
     ("admin.submit_pre_registration(text, uuid, text, jsonb, boolean, inet, text, text)",
      "shri_public"),
+    ("admin.lookup_portal_session(text)", "shri_app"),
+    ("admin.lookup_portal_account(text)", "shri_app"),
+    ("admin.redeem_portal_invitation(text, date)", "shri_app"),
+    ("admin.end_backchannel_sessions(text, timestamp with time zone, text, text)", "shri_app"),
 ])
 def test_cross_clinic_functions_are_narrow(admin_engine: Engine, function: str,
                                            allowed: str) -> None:
@@ -641,7 +645,9 @@ def test_purge_removes_only_rows_past_retention_in_every_clinic(
         conn.commit()
     # At least ours (other tests' expired rows may go too); only counts come back.
     assert set(deleted) == {"app_session", "idempotency_record", "event_log", "operation",
-                            "pre_registration"}         # 0009; tested in test_pre_registration
+                            "pre_registration",       # 0009; tested in test_pre_registration
+                            "portal_session", "portal_invitation",
+                            "consumed_logout_token"}  # 0011; tested in test_portal_sign_in
     assert deleted["app_session"] >= 3 and deleted["idempotency_record"] >= 1
     assert deleted["event_log"] >= 1 and deleted["operation"] >= 1
     with admin_engine.connect() as c:

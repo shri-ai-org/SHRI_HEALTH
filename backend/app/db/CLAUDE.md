@@ -183,6 +183,31 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   and clears it; rescheduling moves it to the new appointment. The request changes only while
   open, and a declined or withdrawn one is final (`shri_follow_up_guard`). Nothing is deleted.
   That only the requesting clinician withdraws is the service's check.
+- **Portal sign-in (ADR-0013 §3 and §5, D92, migration 0011):**
+  - **Before a clinic is known**, core calls three functions as `shri_app`:
+    - `admin.lookup_portal_session(token_hash)` gives the session, clinic and patient of a
+      live session of an active account;
+    - `admin.lookup_portal_account(keycloak_user_id)` at `/callback` gives a pending-setup or
+      active account;
+    - `admin.redeem_portal_invitation(code_hmac, birth_date)` gives the clinic, patient and
+      invitation, or nothing. Commit even when it returns nothing, so the failed try counts;
+      the fifth revokes the invitation.
+  - **Invitations:** the code is stored only as its HMAC, and a patient has at most one open
+    invitation: revoke the old one before issuing a new one, in the same transaction.
+  - **Accounts:** one per patient and Keycloak user.
+    - `disabled` needs `disabled_at` and a reason.
+    - `suspended` (a merged chart) needs `status_before_suspension` (pending-setup or active)
+      and `suspended_by_merge_id`. The undo restores that status.
+  - **Portal sessions** mirror `app_session`.
+- **Staff back-channel logout (D94, migration 0011):** after validating the logout token, core
+  calls `SELECT * FROM admin.end_backchannel_sessions(:jti, :jti_expires_at, :sid, :sub)` as
+  `shri_app`, with no clinic set.
+  - With a `sid`, it ends that Keycloak session; with only a `sub`, it ends every live session
+    of that user.
+  - It returns `(session_id, tenant_id, user_id)` for each session it ended, so core can write
+    each session's audit row in its own clinic.
+  - A reused `jti` raises `P0001` with constraint `logout_token_replayed`, and a token naming
+    neither a session nor a user raises `22023`. Core answers 400 to both.
 - **Merge undo (D51):** `undoAllowed` and `undoBlockedReason` come from
   `SELECT admin.patient_merge_undo_blocked_reason(:merge_id)`: `already-undone`,
   `records-changed`, or NULL when the merge can still be undone. The rule compares versions,

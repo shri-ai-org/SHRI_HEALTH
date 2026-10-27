@@ -67,6 +67,9 @@ NO_APP_WRITE = {"fhir_resource_history"}
 RUNTIME = {"app_session", "event_log", "idempotency_record", "operation"}
 # Written once and never changed: no UPDATE.
 WRITE_ONCE = {"event_log"}
+#: Platform-wide tables no service role may read or write; only a SECURITY DEFINER function
+#: touches them. consumed_logout_token (D94, migration 0011): end_backchannel_sessions().
+NO_ROLE_ACCESS = {"consumed_logout_token"}
 #: shri_app privileges that replace the defaults below. pre_registration (D96, A51): rows come
 #: only from admin.submit_pre_registration() (shri_public, migration 0009); the front desk
 #: reads the queue and records its decision, nothing else.
@@ -148,6 +151,11 @@ GUARDS = {
                          ("decided", "BEFORE UPDATE", "shri_pre_registration_guard()")],
     # Migration 0010 (D98): a follow-up request changes only while open, and a declined or
     # withdrawn one is final.
+    # Migration 0011 (ADR-0013 §5): who an account or invitation is for never changes.
+    "portal_account": [("fixed", "BEFORE UPDATE",
+                        "shri_fixed_columns('keycloak_user_id', 'patient_id')")],
+    "portal_invitation": [("fixed", "BEFORE UPDATE", "shri_fixed_columns('patient_id', "
+                           "'code_hmac', 'issued_by_user_id', 'expires_at')")],
     "encounter_follow_up": [("fixed", "BEFORE UPDATE",
                              "shri_fixed_columns('encounter_id', 'patient_id')"),
                             ("guard", "BEFORE UPDATE", "shri_follow_up_guard()")],
@@ -387,6 +395,10 @@ def rls_sql(only: set[str] | None = None) -> str:
                     f"GRANT SELECT, UPDATE (name, legal_name, timezone, ai_enabled, "
                     f"pre_registration_code, pre_registration_enabled) ON {qt} TO shri_app;",
                     ""]
+            continue
+        if name in NO_ROLE_ACCESS:
+            out += [f"ALTER TABLE {qt} ENABLE ROW LEVEL SECURITY;",
+                    f"ALTER TABLE {qt} FORCE ROW LEVEL SECURITY;", ""]
             continue
         if name in GLOBAL_TABLES:
             out.append(f"GRANT SELECT ON {qt} TO shri_app;")

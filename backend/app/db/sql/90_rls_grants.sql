@@ -335,6 +335,9 @@ ALTER TABLE clinical.consent_verification ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.consent_verification FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.consent_verification USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+ALTER TABLE admin.consumed_logout_token ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.consumed_logout_token FORCE ROW LEVEL SECURITY;
+
 GRANT SELECT ON clinical.contact_point TO shri_fhir_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON clinical.contact_point TO shri_app;
 ALTER TABLE clinical.contact_point ENABLE ROW LEVEL SECURITY;
@@ -947,6 +950,21 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON admin.picklist_item TO shri_app;
 ALTER TABLE admin.picklist_item ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.picklist_item FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.picklist_item USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
+GRANT SELECT, INSERT, UPDATE ON admin.portal_account TO shri_app;
+ALTER TABLE admin.portal_account ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.portal_account FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.portal_account USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
+GRANT SELECT, INSERT, UPDATE ON admin.portal_invitation TO shri_app;
+ALTER TABLE admin.portal_invitation ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.portal_invitation FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.portal_invitation USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
+GRANT SELECT, INSERT, UPDATE ON admin.portal_session TO shri_app;
+ALTER TABLE admin.portal_session ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.portal_session FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.portal_session USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT, INSERT, UPDATE ON admin.practice_payer TO shri_app;
 ALTER TABLE admin.practice_payer ENABLE ROW LEVEL SECURITY;
