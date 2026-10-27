@@ -24,6 +24,8 @@ CREATE TRIGGER trg_observation_guard BEFORE UPDATE ON clinical.observation FOR E
 CREATE TRIGGER trg_patient_merge_versions BEFORE INSERT ON admin.patient_merge FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_versions();
 CREATE TRIGGER trg_patient_merge_guard BEFORE UPDATE ON admin.patient_merge FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_guard();
 CREATE TRIGGER trg_patient_merge_record_version BEFORE INSERT ON admin.patient_merge_record FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_record_version();
+CREATE TRIGGER trg_pre_registration_fixed BEFORE UPDATE ON admin.pre_registration FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('idempotency_key', 'request_hash', 'details', 'contact_consent', 'entry_source');
+CREATE TRIGGER trg_pre_registration_decided BEFORE UPDATE ON admin.pre_registration FOR EACH ROW EXECUTE FUNCTION shri_pre_registration_guard();
 CREATE TRIGGER trg_provenance_target BEFORE INSERT ON clinical.provenance FOR EACH ROW EXECUTE FUNCTION shri_provenance_target_check();
 CREATE TRIGGER trg_service_request_guard BEFORE UPDATE ON clinical.service_request FOR EACH ROW EXECUTE FUNCTION shri_service_request_guard();
 CREATE TRIGGER trg_tenant_timezone BEFORE INSERT OR UPDATE OF timezone ON admin.tenant FOR EACH ROW EXECUTE FUNCTION shri_timezone_check();

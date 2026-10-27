@@ -9,14 +9,19 @@ CREATE TABLE admin.tenant (
 	timezone VARCHAR(64) DEFAULT 'America/New_York' NOT NULL, 
 	ai_enabled BOOLEAN DEFAULT true NOT NULL, 
 	is_active BOOLEAN DEFAULT true NOT NULL, 
+	pre_registration_code VARCHAR(64), 
+	pre_registration_enabled BOOLEAN DEFAULT false NOT NULL, 
 	id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	CONSTRAINT pk_tenant PRIMARY KEY (id), 
 	CONSTRAINT ck_tenant_slug_format CHECK (slug ~ '^[a-z0-9][a-z0-9-]{1,78}$'), 
 	CONSTRAINT ck_tenant_market_profile CHECK (market_profile IN ('US', 'IN')), 
+	CONSTRAINT ck_tenant_pre_registration_code_format CHECK (pre_registration_code IS NULL OR pre_registration_code ~ '^[A-Za-z0-9_-]{16,64}$'), 
+	CONSTRAINT ck_tenant_pre_registration_needs_code CHECK (NOT pre_registration_enabled OR pre_registration_code IS NOT NULL), 
 	CONSTRAINT uq_tenant_slug UNIQUE (slug), 
-	CONSTRAINT uq_tenant_organization_id UNIQUE (organization_id)
+	CONSTRAINT uq_tenant_organization_id UNIQUE (organization_id), 
+	CONSTRAINT uq_tenant_pre_registration_code UNIQUE (pre_registration_code)
 );
 
 CREATE TABLE admin.setting_definition (
@@ -361,7 +366,7 @@ CREATE TABLE admin.mrn_counter (
 	updated_by_user_id UUID, 
 	CONSTRAINT pk_mrn_counter PRIMARY KEY (id), 
 	CONSTRAINT uq_mrn_counter_tenant_id UNIQUE (tenant_id), 
-	CONSTRAINT ck_mrn_counter_prefix_format CHECK (prefix ~ '^[A-Z0-9]{1,10}$'), 
+	CONSTRAINT ck_mrn_counter_prefix_format CHECK (prefix ~ '^[A-Z0-9]{2,8}$'), 
 	CONSTRAINT ck_mrn_counter_system_uri CHECK (system ~ '^(urn:|https?://)'), 
 	CONSTRAINT ck_mrn_counter_next_value_positive CHECK (next_value >= 1), 
 	CONSTRAINT fk_mrn_counter_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
@@ -1451,6 +1456,50 @@ CREATE TABLE admin.communication_preference (
 
 CREATE INDEX ix_communication_preference_tenant_id ON admin.communication_preference (tenant_id);
 
+CREATE TABLE admin.pre_registration (
+	idempotency_key UUID NOT NULL, 
+	request_hash VARCHAR(64) NOT NULL, 
+	details JSONB NOT NULL, 
+	contact_consent BOOLEAN NOT NULL, 
+	entry_source VARCHAR(40) DEFAULT 'patient-reported' NOT NULL, 
+	status VARCHAR(40) DEFAULT 'pending' NOT NULL, 
+	decided_at TIMESTAMP WITH TIME ZONE, 
+	decided_by_user_id UUID, 
+	patient_id UUID, 
+	id_document_type VARCHAR(40), 
+	rejection_reason_code VARCHAR(40), 
+	rejection_reason_text VARCHAR(500), 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_pre_registration PRIMARY KEY (id), 
+	CONSTRAINT uq_pre_registration_tenant_id_idempotency_key UNIQUE (tenant_id, idempotency_key), 
+	CONSTRAINT ck_pre_registration_request_hash_format CHECK (request_hash ~ '^[0-9a-f]{64}$'), 
+	CONSTRAINT ck_pre_registration_details_shape CHECK (jsonb_typeof(details) = 'object' AND details -> 'name' IS NOT NULL AND details -> 'birthDate' IS NOT NULL AND (details -> 'phones' IS NOT NULL OR details -> 'email' IS NOT NULL)), 
+	CONSTRAINT ck_pre_registration_details_size CHECK (octet_length(details::text) <= 32768), 
+	CONSTRAINT ck_pre_registration_patient_reported CHECK (entry_source = 'patient-reported'), 
+	CONSTRAINT ck_pre_registration_decision_matches_status CHECK ((status = 'pending' AND decided_at IS NULL AND decided_by_user_id IS NULL AND patient_id IS NULL AND id_document_type IS NULL AND rejection_reason_code IS NULL AND rejection_reason_text IS NULL) OR (status = 'accepted' AND decided_at IS NOT NULL AND decided_by_user_id IS NOT NULL AND patient_id IS NOT NULL AND id_document_type IS NOT NULL AND rejection_reason_code IS NULL AND rejection_reason_text IS NULL) OR (status = 'rejected' AND decided_at IS NOT NULL AND decided_by_user_id IS NOT NULL AND patient_id IS NULL AND id_document_type IS NULL AND rejection_reason_code IS NOT NULL)), 
+	CONSTRAINT ck_pre_registration_other_reason_has_text CHECK (rejection_reason_code IS DISTINCT FROM 'other' OR length(trim(rejection_reason_text)) > 0), 
+	CONSTRAINT fk_pre_registration_decided_by_user_id_app_user FOREIGN KEY(decided_by_user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_pre_registration_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
+	CONSTRAINT fk_pre_registration_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_pre_registration_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_pre_registration_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_pre_registration_entry_source_codes CHECK (entry_source IN ('clinician', 'imported', 'patient-reported', 'ai-generated', 'device', 'interface')), 
+	CONSTRAINT ck_pre_registration_status_codes CHECK (status IN ('pending', 'accepted', 'rejected')), 
+	CONSTRAINT ck_pre_registration_id_document_type_codes CHECK (id_document_type IN ('drivers-license', 'state-id', 'passport', 'military-id', 'other')), 
+	CONSTRAINT ck_pre_registration_rejection_reason_code_codes CHECK (rejection_reason_code IN ('duplicate', 'incomplete', 'not-our-practice', 'spam', 'other'))
+);
+
+CREATE INDEX ix_pre_registration_patient_id ON admin.pre_registration (patient_id);
+
+CREATE INDEX ix_pre_registration_queue ON admin.pre_registration (tenant_id, status, created_at);
+
+CREATE INDEX ix_pre_registration_tenant_id ON admin.pre_registration (tenant_id);
+
 CREATE TABLE admin.facility (
 	location_id UUID NOT NULL, 
 	code VARCHAR(40) NOT NULL, 
@@ -1599,11 +1648,12 @@ CREATE TABLE audit.audit_event (
 	CONSTRAINT ck_audit_event_break_glass_reason CHECK (action <> 'break-glass' OR (reason IS NOT NULL AND length(trim(reason)) > 0)), 
 	CONSTRAINT ck_audit_event_hash_version_known CHECK (hash_version IN (1, 2)), 
 	CONSTRAINT ck_audit_event_user_actor CHECK (actor_type <> 'user' OR actor_user_id IS NOT NULL), 
+	CONSTRAINT ck_audit_event_anonymous_actor CHECK (actor_type <> 'anonymous' OR actor_user_id IS NULL), 
 	CONSTRAINT uq_audit_event_event_uuid UNIQUE (event_uuid), 
 	CONSTRAINT fk_audit_event_actor_user_id_app_user FOREIGN KEY(actor_user_id) REFERENCES admin.app_user (id), 
 	CONSTRAINT fk_audit_event_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
 	CONSTRAINT fk_audit_event_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
-	CONSTRAINT ck_audit_event_actor_type_codes CHECK (actor_type IN ('user', 'system', 'ai', 'integration', 'patient', 'partner')), 
+	CONSTRAINT ck_audit_event_actor_type_codes CHECK (actor_type IN ('user', 'system', 'ai', 'integration', 'patient', 'partner', 'anonymous')), 
 	CONSTRAINT ck_audit_event_action_codes CHECK (action IN ('read', 'create', 'update', 'delete', 'sign', 'export', 'print', 'login', 'logout', 'access-denied', 'ai-request', 'ai-review', 'merge', 'break-glass', 'config-change')), 
 	CONSTRAINT ck_audit_event_category_codes CHECK (category IN ('phi-read', 'phi-write', 'sign', 'export', 'security', 'ai', 'admin')), 
 	CONSTRAINT ck_audit_event_outcome_codes CHECK (outcome IN ('success', 'failure', 'denied')), 
@@ -8006,6 +8056,8 @@ ALTER TABLE admin.patient_pharmacy ADD CONSTRAINT fk_patient_pharmacy_patient_id
 ALTER TABLE admin.payer_enrollment ADD CONSTRAINT fk_payer_enrollment_practitioner_id_tenant FOREIGN KEY(tenant_id, practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE admin.picklist_item ADD CONSTRAINT fk_picklist_item_picklist_id_tenant FOREIGN KEY(tenant_id, picklist_id) REFERENCES admin.picklist (tenant_id, id);
+
+ALTER TABLE admin.pre_registration ADD CONSTRAINT fk_pre_registration_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.remittance ADD CONSTRAINT fk_remittance_inbound_message_id_tenant FOREIGN KEY(tenant_id, inbound_message_id) REFERENCES admin.integration_message (tenant_id, id);
 

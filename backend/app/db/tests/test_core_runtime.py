@@ -19,9 +19,9 @@ from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, make_tenant, switch_to_
 pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
 
 ROLES = ("shri_app", "shri_fhir_reader", "shri_integration", "shri_reporting",
-         "shri_maintenance")
+         "shri_maintenance", "shri_public")
 #: Roles with no search_path setting of their own.
-NO_SEARCH_PATH = {"shri_fhir_reader", "shri_maintenance"}
+NO_SEARCH_PATH = {"shri_fhir_reader", "shri_maintenance", "shri_public"}
 DENIED = "42501"
 CHECK_FAILED = "23514"
 UNIQUE_FAILED = "23505"
@@ -209,6 +209,8 @@ def test_lookup_session_finds_live_sessions_of_any_clinic_before_one_is_set(
     ("admin.lookup_session(text)", "shri_app"),
     ("admin.claim_outbound_messages(integer)", "shri_integration"),
     ("admin.purge_expired_runtime_rows()", "shri_maintenance"),
+    ("admin.submit_pre_registration(text, uuid, text, jsonb, boolean, inet, text, text)",
+     "shri_public"),
 ])
 def test_cross_clinic_functions_are_narrow(admin_engine: Engine, function: str,
                                            allowed: str) -> None:
@@ -638,7 +640,8 @@ def test_purge_removes_only_rows_past_retention_in_every_clinic(
             "SELECT table_name, deleted FROM admin.purge_expired_runtime_rows()"))}
         conn.commit()
     # At least ours (other tests' expired rows may go too); only counts come back.
-    assert set(deleted) == {"app_session", "idempotency_record", "event_log", "operation"}
+    assert set(deleted) == {"app_session", "idempotency_record", "event_log", "operation",
+                            "pre_registration"}         # 0009; tested in test_pre_registration
     assert deleted["app_session"] >= 3 and deleted["idempotency_record"] >= 1
     assert deleted["event_log"] >= 1 and deleted["operation"] >= 1
     with admin_engine.connect() as c:
@@ -774,6 +777,8 @@ def test_the_maintenance_role_can_only_run_the_purge(admin_engine: Engine) -> No
         usage = {s: c.execute(text("SELECT has_schema_privilege('shri_maintenance', :s, 'USAGE')"),
                               {"s": s}).scalar_one() for s in ("clinical", "admin", "audit")}
         assert usage == {"clinical": False, "admin": True, "audit": False}
-        for function in ("admin.lookup_session(text)", "admin.claim_outbound_messages(integer)"):
+        for function in ("admin.lookup_session(text)", "admin.claim_outbound_messages(integer)",
+                         "admin.submit_pre_registration(text, uuid, text, jsonb, boolean, inet, "
+                         "text, text)"):
             assert not c.execute(text("SELECT has_function_privilege('shri_maintenance', :f, "
                                       "'EXECUTE')"), {"f": function}).scalar_one(), function

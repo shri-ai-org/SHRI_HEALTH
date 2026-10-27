@@ -977,6 +977,11 @@ ALTER TABLE clinical.practitioner_role_specialty ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.practitioner_role_specialty FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.practitioner_role_specialty USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+GRANT SELECT, UPDATE (status, decided_at, decided_by_user_id, patient_id, id_document_type, rejection_reason_code, rejection_reason_text, updated_at, updated_by_user_id) ON admin.pre_registration TO shri_app;
+ALTER TABLE admin.pre_registration ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.pre_registration FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.pre_registration USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON admin.prescription_favorite TO shri_app;
 ALTER TABLE admin.prescription_favorite ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.prescription_favorite FORCE ROW LEVEL SECURITY;
@@ -1199,7 +1204,7 @@ CREATE POLICY tenant_isolation ON admin.superbill USING (tenant_id = NULLIF(curr
 ALTER TABLE admin.tenant ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.tenant FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_self ON admin.tenant USING (id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
-GRANT SELECT, UPDATE (name, legal_name, timezone, ai_enabled) ON admin.tenant TO shri_app;
+GRANT SELECT, UPDATE (name, legal_name, timezone, ai_enabled, pre_registration_code, pre_registration_enabled) ON admin.tenant TO shri_app;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON admin.tenant_setting TO shri_app;
 ALTER TABLE admin.tenant_setting ENABLE ROW LEVEL SECURITY;

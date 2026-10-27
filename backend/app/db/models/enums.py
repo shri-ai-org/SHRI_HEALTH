@@ -992,6 +992,7 @@ class ActorType(StrEnum):
     INTEGRATION = "integration"
     PATIENT = "patient"
     PARTNER = "partner"                 # a partner callback (/hooks/*), audited as phi-write (T37)
+    ANONYMOUS = "anonymous"             # the public pre-registration form: nobody signed in (D96)
 
 
 class IntegrationKind(StrEnum):
@@ -1083,3 +1084,25 @@ class OperationStatus(StrEnum):         # contract OperationStatus; the last thr
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class PreRegistrationStatus(StrEnum):   # D96: the front desk's queue
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
+class PreRegistrationRejectReason(StrEnum):
+    DUPLICATE = "duplicate"
+    INCOMPLETE = "incomplete"
+    NOT_OUR_PRACTICE = "not-our-practice"
+    SPAM = "spam"
+    OTHER = "other"                     # needs a reason text
+
+
+class IdDocumentType(StrEnum):          # D96: the kind of ID checked at accept
+    DRIVERS_LICENSE = "drivers-license"
+    STATE_ID = "state-id"
+    PASSPORT = "passport"
+    MILITARY_ID = "military-id"
+    OTHER = "other"

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -17,6 +18,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (
@@ -28,7 +30,13 @@ from app.db.base import (
     VersionedMixin,
     enum_type,
 )
-from app.db.models.enums import SettingValueType
+from app.db.models.enums import (
+    EntrySource,
+    IdDocumentType,
+    PreRegistrationRejectReason,
+    PreRegistrationStatus,
+    SettingValueType,
+)
 
 NPI_CHECK = "{col} IS NULL OR shri_npi_valid({col})"
 STATE_CHECK = "{col} IS NULL OR {col} ~ '^[A-Z]{{2}}$'"
@@ -42,6 +50,11 @@ class Tenant(Base, UUIDPKMixin, TimestampMixin):
     __table_args__ = (
         CheckConstraint("slug ~ '^[a-z0-9][a-z0-9-]{1,78}$'", name="slug_format"),
         CheckConstraint("market_profile IN ('US', 'IN')", name="market_profile"),
+        CheckConstraint("pre_registration_code IS NULL OR "
+                        "pre_registration_code ~ '^[A-Za-z0-9_-]{16,64}$'",
+                        name="pre_registration_code_format"),
+        CheckConstraint("NOT pre_registration_enabled OR pre_registration_code IS NOT NULL",
+                        name="pre_registration_needs_code"),
     )
 
     slug: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
@@ -58,6 +71,13 @@ class Tenant(Base, UUIDPKMixin, TimestampMixin):
                                              server_default=text("true"))   # org kill switch
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True,
                                             server_default=text("true"))
+    #: The practice's public pre-registration code (D96): opaque, generated at onboarding, the
+    #: ``{practiceLinkId}`` in the form's URL. Not a secret and not patient data. Turning the
+    #: link off keeps the code; a new code replaces the old one.
+    pre_registration_code: Mapped[str | None] = mapped_column(String(64), unique=True)
+    pre_registration_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False,
+                                                           default=False,
+                                                           server_default=text("false"))
 
 
 class MrnCounter(Base, AdminMixin):
@@ -71,7 +91,8 @@ class MrnCounter(Base, AdminMixin):
     __tablename__ = "mrn_counter"
     __table_args__ = (
         UniqueConstraint("tenant_id"),
-        CheckConstraint("prefix ~ '^[A-Z0-9]{1,10}$'", name="prefix_format"),
+        # 2 to 8 capitals or digits, as GET /practice-settings returns it (#96).
+        CheckConstraint("prefix ~ '^[A-Z0-9]{2,8}$'", name="prefix_format"),
         CheckConstraint("system ~ '^(urn:|https?://)'", name="system_uri"),
         CheckConstraint("next_value >= 1", name="next_value_positive"),
     )
@@ -81,6 +102,70 @@ class MrnCounter(Base, AdminMixin):
     system: Mapped[str] = mapped_column(String(300), nullable=False)
     next_value: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1,
                                             server_default=text("1"))
+
+
+class PreRegistration(Base, AdminMixin):
+    """A request from the public pre-registration form (D96, A51), in the practice's queue.
+
+    Rows come only from ``admin.submit_pre_registration()`` (EXECUTE for ``shri_public`` only),
+    which finds the clinic from the practice's code and writes the ``anonymous`` audit row in
+    the same call; ``shri_app`` never inserts. ``created_at`` is when it arrived. The details
+    are as the person typed them (``patient-reported``), the insurance included, which stays
+    here as a note. The front desk accepts the request, with the patient it created or linked
+    and the kind of ID it checked, or rejects it with a reason. Who decided and when
+    (``decided_by_user_id``, ``decided_at``) is also who checked the ID and when. A decided
+    request never changes again (``shri_pre_registration_guard``).
+
+    The Idempotency-Key is kept here, unique per clinic, with the body's hash, because core's
+    ``idempotency_record`` needs a signed-in user. Rejected and never-reviewed requests are
+    deleted 30 days after the rejection or the arrival by
+    ``admin.purge_expired_runtime_rows()`` (``shri_maintenance``); no role deletes them."""
+    __tablename__ = "pre_registration"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idempotency_key"),
+        Index("ix_pre_registration_queue", "tenant_id", "status", "created_at"),
+        CheckConstraint("request_hash ~ '^[0-9a-f]{64}$'", name="request_hash_format"),
+        # The form's required fields (contract PreRegistrationDetails); core checks the rest.
+        CheckConstraint("jsonb_typeof(details) = 'object' AND details -> 'name' IS NOT NULL "
+                        "AND details -> 'birthDate' IS NOT NULL "
+                        "AND (details -> 'phones' IS NOT NULL OR details -> 'email' IS NOT NULL)",
+                        name="details_shape"),
+        CheckConstraint("octet_length(details::text) <= 32768", name="details_size"),
+        CheckConstraint("entry_source = 'patient-reported'", name="patient_reported"),
+        CheckConstraint(
+            "(status = 'pending' AND decided_at IS NULL AND decided_by_user_id IS NULL "
+            "AND patient_id IS NULL AND id_document_type IS NULL "
+            "AND rejection_reason_code IS NULL AND rejection_reason_text IS NULL) OR "
+            "(status = 'accepted' AND decided_at IS NOT NULL AND decided_by_user_id IS NOT NULL "
+            "AND patient_id IS NOT NULL AND id_document_type IS NOT NULL "
+            "AND rejection_reason_code IS NULL AND rejection_reason_text IS NULL) OR "
+            "(status = 'rejected' AND decided_at IS NOT NULL AND decided_by_user_id IS NOT NULL "
+            "AND patient_id IS NULL AND id_document_type IS NULL "
+            "AND rejection_reason_code IS NOT NULL)", name="decision_matches_status"),
+        CheckConstraint("rejection_reason_code IS DISTINCT FROM 'other' OR "
+                        "length(trim(rejection_reason_text)) > 0", name="other_reason_has_text"),
+    )
+
+    idempotency_key: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    #: SHA-256 (hex) of the request body, so a reused key with another body is refused.
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    contact_consent: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    entry_source: Mapped[EntrySource] = mapped_column(
+        enum_type(EntrySource), nullable=False, default=EntrySource.PATIENT_REPORTED.value,
+        server_default=EntrySource.PATIENT_REPORTED.value)
+    status: Mapped[PreRegistrationStatus] = mapped_column(
+        enum_type(PreRegistrationStatus), nullable=False,
+        default=PreRegistrationStatus.PENDING.value,
+        server_default=PreRegistrationStatus.PENDING.value)
+    decided_at: Mapped[datetime | None]
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clinical.patient.id"),
+                                                         index=True)
+    id_document_type: Mapped[IdDocumentType | None] = mapped_column(enum_type(IdDocumentType))
+    rejection_reason_code: Mapped[PreRegistrationRejectReason | None] = mapped_column(
+        enum_type(PreRegistrationRejectReason))
+    rejection_reason_text: Mapped[str | None] = mapped_column(String(500))
 
 
 class SettingDefinition(Base, UUIDPKMixin, TimestampMixin):

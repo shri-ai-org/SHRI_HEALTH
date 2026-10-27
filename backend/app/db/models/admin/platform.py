@@ -70,6 +70,9 @@ class AuditEvent(Base, OptionalTenantMixin):
         # 1: the original payload; 2 (every new row, set by the chain trigger) adds category.
         CheckConstraint("hash_version IN (1, 2)", name="hash_version_known"),
         CheckConstraint("actor_type <> 'user' OR actor_user_id IS NOT NULL", name="user_actor"),
+        # Nobody is signed in on the public pre-registration form (D96).
+        CheckConstraint("actor_type <> 'anonymous' OR actor_user_id IS NULL",
+                        name="anonymous_actor"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)

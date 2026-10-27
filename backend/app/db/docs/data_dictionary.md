@@ -2381,6 +2381,41 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 Unique: `uq_practice_payer_tenant_id_payer_id`
 
+## `admin.pre_registration`
+
+Admin (normalized). A request from the public pre-registration form (D96, A51), in the practice's queue.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `idempotency_key` | uuid | no |  |  | — |
+| `request_hash` | varchar(64) | no |  |  | — |
+| `details` | jsonb | no |  |  | — |
+| `contact_consent` | boolean | no |  |  | — |
+| `entry_source` | varchar(40) | no |  |  | — |
+| `status` | varchar(40) | no |  |  | — |
+| `decided_at` | datetime | yes |  |  | — |
+| `decided_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `patient_id` | uuid | yes |  | clinical.patient.id | — |
+| `id_document_type` | varchar(40) | yes |  |  | — |
+| `rejection_reason_code` | varchar(40) | yes |  |  | — |
+| `rejection_reason_text` | varchar(500) | yes |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.patient.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_pre_registration_decision_matches_status`, `ck_pre_registration_details_shape`, `ck_pre_registration_details_size`, `ck_pre_registration_entry_source_codes`, `ck_pre_registration_id_document_type_codes`, `ck_pre_registration_other_reason_has_text`, `ck_pre_registration_patient_reported`, `ck_pre_registration_rejection_reason_code_codes`, `ck_pre_registration_request_hash_format`, `ck_pre_registration_status_codes`
+
+Unique: `uq_pre_registration_tenant_id_idempotency_key`
+
+Composite foreign keys: `fk_pre_registration_patient_id_tenant`
+
 ## `admin.prescription_favorite`
 
 Admin (normalized). Saved prescription (drug + sig) for quick prescribing; owner NULL = practice-wide.
@@ -2827,13 +2862,15 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `timezone` | varchar(64) | no |  |  | — |
 | `ai_enabled` | boolean | no |  |  | — |
 | `is_active` | boolean | no |  |  | — |
+| `pre_registration_code` | varchar(64) | yes |  |  | — |
+| `pre_registration_enabled` | boolean | no |  |  | — |
 | `id` | uuid | no |  |  | — |
 | `created_at` | datetime | no |  |  | — |
 | `updated_at` | datetime | no |  |  | — |
 
-Checks: `ck_tenant_market_profile`, `ck_tenant_slug_format`
+Checks: `ck_tenant_market_profile`, `ck_tenant_pre_registration_code_format`, `ck_tenant_pre_registration_needs_code`, `ck_tenant_slug_format`
 
-Unique: `uq_tenant_organization_id`, `uq_tenant_slug`
+Unique: `uq_tenant_organization_id`, `uq_tenant_pre_registration_code`, `uq_tenant_slug`
 
 ## `admin.tenant_setting`
 
@@ -3158,7 +3195,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `hash_version` | smallint | no |  |  | — |
 | `tenant_id` | uuid | yes |  | admin.tenant.id | — |
 
-Checks: `ck_audit_event_action_codes`, `ck_audit_event_actor_type_codes`, `ck_audit_event_break_glass_reason`, `ck_audit_event_category_codes`, `ck_audit_event_hash_version_known`, `ck_audit_event_outcome_codes`, `ck_audit_event_user_actor`
+Checks: `ck_audit_event_action_codes`, `ck_audit_event_actor_type_codes`, `ck_audit_event_anonymous_actor`, `ck_audit_event_break_glass_reason`, `ck_audit_event_category_codes`, `ck_audit_event_hash_version_known`, `ck_audit_event_outcome_codes`, `ck_audit_event_user_actor`
 
 Unique: `uq_audit_event_event_uuid`, `uq_audit_event_patient_id_id`, `uq_audit_event_tenant_id_chain_seq`
 
