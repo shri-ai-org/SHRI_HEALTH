@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import APIRouter, Depends, Request
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from app.core.audit import audit_patients
 from app.core.config import Settings
 from app.core.deps import CurrentUser, current_user, require, tenant_db
 from app.core.routing import API_PREFIX
+from app.db.models import FHIR_RESOURCES
 from app.db.tests import builders as b
 from app.db.tests.conftest import (  # noqa: F401  (fixtures)
     SKIP_WITHOUT_DATABASE,
@@ -35,6 +36,7 @@ from app.main import create_app
 pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
 
 REQUEST_ID = "6f1c2a7e-3b4d-4c5e-8f9a-0b1c2d3e4f50"
+Patient = FHIR_RESOURCES["Patient"]
 DB = Depends(tenant_db)
 DEACTIVATE = text("UPDATE clinical.patient SET active = false WHERE id = :p")
 
@@ -72,6 +74,27 @@ def _router() -> APIRouter:
         await session.commit()  # without audit_patients(): the commit must be refused
         return {}
 
+    @router.post("/patients/{patientId}/allergies", operation_id="addAllergy")
+    async def commit_twice(patientId: UUID, second: str,  # noqa: N803
+                           user: CurrentUser = Depends(require("allergies:create")),
+                           session: AsyncSession = DB) -> dict[str, Any]:
+        await session.execute(DEACTIVATE, {"p": patientId})
+        await session.commit()  # the change and its audit row
+        if second == "text":
+            await session.execute(text("UPDATE clinical.patient SET gender = 'male' WHERE id = :p"),
+                                  {"p": patientId})
+        elif second == "core":
+            await session.execute(update(Patient).where(Patient.id == patientId)
+                                  .values(gender="male"))
+        elif second in ("orm", "flushed"):
+            patient = await session.get(Patient, patientId)
+            assert patient is not None
+            patient.gender = "male"
+            if second == "flushed":
+                await session.flush()  # out of session.dirty before the commit
+        await session.commit()  # refused with changes; allowed with none
+        return {}
+
     return router
 
 
@@ -86,7 +109,7 @@ def chart(db: Session, tenant: UUID) -> dict[str, Any]:  # noqa: F811
 @pytest.fixture
 def signed_in(chart: dict[str, Any]) -> dict[str, CurrentUser]:
     return {"user": CurrentUser(id=chart["user_id"], organization_id=chart["tenant"],
-                                roles=frozenset({"FD", "MD"}), display_name="Elena Rivera")}
+                                roles=frozenset({"FD", "MA", "MD"}), display_name="Elena Rivera")}
 
 
 @pytest.fixture
@@ -168,3 +191,29 @@ def test_a_refused_permission_is_a_security_event(
     assert (row.action, row.outcome, row.patient_id) == ("access-denied", "denied", None)
     assert (row.entity_type, row.entity_id) == ("patients", str(stranger))
     assert row.reason == "permission-denied: requires patients:read"
+
+
+def _gender(admin: Engine, patient_id: UUID) -> str:
+    with admin.connect() as c:
+        return str(c.execute(text("SELECT gender FROM clinical.patient WHERE id = :p"),
+                             {"p": patient_id}).scalar_one())
+
+
+@pytest.mark.parametrize("second", ["text", "core", "orm", "flushed"])
+def test_a_second_commit_with_changes_is_refused_and_not_saved(
+        client: TestClient, chart: dict[str, Any], admin_engine: Engine,  # noqa: F811
+        second: str) -> None:
+    pt = chart["patient"]
+    r = client.post(f"{API_PREFIX}/patients/{pt}/allergies", params={"second": second})
+    assert r.status_code == 500 and r.json()["code"] == "internal-error"
+    assert _gender(admin_engine, pt) == "female"  # the second change was never saved
+    assert not _active(admin_engine, pt)  # the first, with its audit row, was
+    assert [row.action for row in _audit_rows(admin_engine, chart["tenant"])] == ["create"]
+
+
+def test_a_second_commit_with_nothing_to_save_is_fine(
+        client: TestClient, chart: dict[str, Any], admin_engine: Engine) -> None:  # noqa: F811
+    pt = chart["patient"]
+    assert client.post(f"{API_PREFIX}/patients/{pt}/allergies",
+                       params={"second": "none"}).status_code == 200
+    assert [row.action for row in _audit_rows(admin_engine, chart["tenant"])] == ["create"]

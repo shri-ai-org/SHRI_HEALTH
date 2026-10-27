@@ -139,6 +139,12 @@ class ServiceUnavailable(AppError):
     default_code = "service-unavailable"
 
 
+class InternalError(AppError):
+    """A server-side rule was broken (500); the detail is generic, never the cause."""
+
+    default_code = "internal-error"
+
+
 def field_error(location: str, where: str, code: str) -> dict[str, str]:
     """One `errors[]` item: `where` is a JSON pointer for the body, else the parameter name."""
     if code not in FIELD_CODES:

@@ -10,9 +10,16 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from app.core import audit
-from app.core.audit import AuditMiddleware, AuditTrail, audit_detail, entity, event_action
-from app.core.deps import DEV_USERS
-from app.core.operations import load_operations
+from app.core.audit import (
+    AuditMiddleware,
+    AuditTrail,
+    audit_detail,
+    audit_patients,
+    entity,
+    event_action,
+)
+from app.core.deps import DEV_USERS, PortalPatient
+from app.core.operations import AuditRule, Operation, load_operations
 
 OPS = load_operations()
 PATIENT = UUID("0c000000-0000-4000-8000-000000000001")
@@ -127,3 +134,82 @@ def test_an_error_response_writes_no_success_row() -> None:
     trail = _FakeTrail(fail=True)
     assert _middleware_app(trail, 404).get("/x").status_code == 404
     assert not trail.written
+
+
+PORTAL_OP = Operation(
+    operation_id="getMyProfile", method="GET", path="/api/v1/portal/me/profile",
+    permission="public",
+    audit=AuditRule(action="R", category="phi-read", patient="session", actor="patient"))
+SESSION_PATIENT = UUID("0c000000-0000-4000-8000-0000000000aa")
+CLINIC = UUID("0a000000-0000-4000-8000-00000000000a")
+
+
+def _portal_trail(portal: PortalPatient | None, **path: Any) -> AuditTrail:
+    return AuditTrail(operation=PORTAL_OP, user=None, session=None,  # type: ignore[arg-type]
+                      path_params=path, request_id="r-2", source_ip=None, user_agent=None,
+                      portal=portal)
+
+
+def test_the_portal_patient_comes_from_the_session_and_is_the_actor() -> None:
+    portal = PortalPatient(patient_id=SESSION_PATIENT, organization_id=CLINIC)
+    (row,) = _portal_trail(portal).rows()
+    assert (row["patient_id"], row["tenant_id"]) == (SESSION_PATIENT, CLINIC)
+    assert (row["actor_type"], row["actor_user_id"], row["actor_display"]) == (
+        "patient", None, None)
+
+
+def test_a_patient_in_the_path_never_replaces_the_sessions() -> None:
+    portal = PortalPatient(patient_id=SESSION_PATIENT, organization_id=CLINIC)
+    (row,) = _portal_trail(portal, patientId=str(PATIENT)).rows()
+    assert row["patient_id"] == SESSION_PATIENT
+
+
+def test_no_portal_session_fails_closed() -> None:
+    with pytest.raises(RuntimeError, match="portal session"):
+        _portal_trail(None).rows()
+
+
+def test_a_portal_operation_never_takes_patients_from_the_endpoint() -> None:
+    request = Request({"type": "http", "state": {}, "app": FastAPI()})
+    setattr(request.state, audit.TRAIL_STATE,
+            _portal_trail(PortalPatient(patient_id=SESSION_PATIENT, organization_id=CLINIC)))
+    with pytest.raises(RuntimeError, match="not from the endpoint"):
+        audit_patients(request, [PATIENT])
+
+
+def test_a_staff_operation_needs_a_staff_user() -> None:
+    trail = _trail("getPatient", patientId=str(PATIENT))
+    trail.user = None
+    with pytest.raises(RuntimeError, match="no signed-in staff user"):
+        trail.rows()
+
+
+ANONYMOUS_OP = Operation(
+    operation_id="submitTestForm", method="POST", path="/api/v1/portal/test-forms",
+    permission="public", audit=AuditRule(action="C", category="phi-write", actor="anonymous"))
+
+
+def _public_trail(clinic_id: UUID | None) -> AuditTrail:
+    return AuditTrail(operation=ANONYMOUS_OP, user=None, session=None,  # type: ignore[arg-type]
+                      path_params={}, request_id="r-3", source_ip="203.0.113.7", user_agent="ua",
+                      clinic_id=clinic_id)
+
+
+def test_a_public_form_is_audited_as_anonymous_in_its_clinic() -> None:
+    (row,) = _public_trail(CLINIC).rows()
+    assert (row["tenant_id"], row["actor_type"], row["actor_user_id"], row["actor_display"]) == (
+        CLINIC, "anonymous", None, None)
+    assert (row["patient_id"], row["action"], row["category"]) == (None, "create", "phi-write")
+    assert (row["source_ip"], row["correlation_id"]) == ("203.0.113.7", "r-3")
+
+
+def test_a_public_form_without_a_clinic_fails_closed() -> None:
+    with pytest.raises(RuntimeError, match="portal host"):
+        _public_trail(None).rows()
+
+
+def test_a_staff_user_never_turns_a_public_form_into_their_own_row() -> None:
+    trail = _public_trail(CLINIC)
+    trail.user = DEV_USERS["fd"]  # even if a staff session were somehow present
+    (row,) = trail.rows()
+    assert (row["actor_type"], row["actor_user_id"]) == ("anonymous", None)
