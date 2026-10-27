@@ -172,6 +172,14 @@ paths:
     $ref: 'modules/patients.yaml#/paths/~1patient-merges'
   /patients/summaries:
     $ref: 'modules/patients.yaml#/paths/~1patients~1summaries'
+  /pre-registrations:
+    $ref: 'modules/patients.yaml#/paths/~1pre-registrations'
+  /pre-registrations/{preRegistrationId}:
+    $ref: 'modules/patients.yaml#/paths/~1pre-registrations~1{preRegistrationId}'
+  /pre-registrations/{preRegistrationId}/accept:
+    $ref: 'modules/patients.yaml#/paths/~1pre-registrations~1{preRegistrationId}~1accept'
+  /pre-registrations/{preRegistrationId}/reject:
+    $ref: 'modules/patients.yaml#/paths/~1pre-registrations~1{preRegistrationId}~1reject'
   /slots:
     $ref: 'modules/scheduling.yaml#/paths/~1slots'
   /appointments:
@@ -396,6 +404,8 @@ paths:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1medications'
   /portal/me/vitals:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1vitals'
+  /portal/pre-registrations:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1pre-registrations'
 components:
   schemas:
     Address:

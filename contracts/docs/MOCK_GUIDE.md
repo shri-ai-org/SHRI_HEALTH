@@ -191,6 +191,26 @@ curl -s -X POST $B/portal/me/change-requests "${P[@]}" -H "Idempotency-Key: $(uu
 **Against the real API later:** the patient realm and core's portal session aren't built yet (ADR-0013, T45). A development sign-in for the patient role, like the staff `X-Dev-User`, has been asked for, so the portal can be tested against the backend before the realm exists.
 
 **Hidden behind feature switches until their contracts exist (all P1):** Pay bills (payments and the ledger), Video (telehealth) and Immunizations. Hide them, don't delete them. Messages, results, prescriptions, documents, forms and record exports come with B8b (D88, D89); until then they stay on the portal's own in-memory mock.
+## 5e. Pre-registration (demo step 1, D96)
+
+`tests/flows/pre-registration.mjs` runs the pre-registration contract against the sample-data server: the public form, then the front desk's queue with accept and reject.
+
+```bash
+cd contracts
+npm run mock                                   # in one terminal
+node tests/flows/pre-registration.mjs          # in another; BASE_URL=http://127.0.0.1:4020 for another port
+```
+
+- **The public form** (`POST /portal/pre-registrations`) takes **no cookie at all**: it is `public` (D96). It always answers `204` with no body. The form screen shows the same "thank you" whatever happens, except for these three answers, which say nothing about the person:
+  - `Prefer: code=422`: a failed bot check, or a field error;
+  - `Prefer: code=403`: a wrong `Origin`;
+  - `Prefer: code=429`: a rate limit.
+- **The bot check:** the mock accepts any `botCheck` string. The real API verifies an ALTCHA payload on the server; the widget is added only after it passes the 7-day rule and the licence check (D75).
+- **The queue** uses the staff mock session (§3):
+  - `GET /pre-registrations?status=pending&facilityId=…`, oldest first;
+  - accept with the `create` example (or `link`, to an existing patient after a `409 possible-duplicate`);
+  - reject with the `spam` or `other` example.
+- **Today's result:** 15 of 15 calls pass.
 
 ## 5h. Note templates for clinicians and the portal's medication list (demo steps 8 and 12)
 

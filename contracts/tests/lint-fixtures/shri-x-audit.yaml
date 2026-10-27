@@ -38,3 +38,13 @@ paths:
       description: A portal read of patient data marked "none", so it would never be audited.
       responses:
         '200': { description: OK }
+  /patients/{patientId}/consents:
+    get:
+      operationId: listConsents
+      tags: [patients]
+      x-owner: vimal
+      x-permission: consents:read
+      x-audit: { action: R, category: phi-read, patient: patientId, actor: anonymous }
+      description: A signed-in operation that claims an anonymous actor.
+      responses:
+        '200': { description: OK }

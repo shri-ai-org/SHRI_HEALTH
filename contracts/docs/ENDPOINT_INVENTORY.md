@@ -64,6 +64,11 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 22 | POST | `/hooks/fax` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | §3.9 | B3 | Same |
 | 23 | POST | `/hooks/sms` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-SCH-01 reminders | B3 | Same |
 | 292 | POST | `/hooks/keycloak/backchannel-logout` (root) | T | Ad | `partner-signed` | sec (partner as actor) | – | | | §6 sessions | B1 | **New** (D94, 2026-10-27): Keycloak's signed `logout_token` (OpenID Connect Back-Channel Logout 1.0); ends matching staff sessions at once; `200`, or `400` for any failure; only from Keycloak |
+| 293 | POST | `/portal/pre-registrations` | V | Ad | `public` | pw (actor anonymous) | – | | | FR-PAT-01 | Demo | **New** (D96): the public form; always the same `204`; `Origin`, rate limits, ALTCHA; encrypted; deleted after 30 days unless accepted |
+| 294 | GET | `/pre-registrations` | V | Ad | `pre-registrations:read` | pr | – | | | FR-PAT-01 | Demo | **New** (D96): the front desk's queue |
+| 295 | GET | `/pre-registrations/{preRegistrationId}` | V | Ad | `pre-registrations:read` | pr | – | | | FR-PAT-01 | Demo | **New** (D96) |
+| 296 | POST | `/pre-registrations/{preRegistrationId}/accept` | V | Cl+Ad | `pre-registrations:accept` | pw | S | | | FR-PAT-01 | Demo | **New** (D96): creates (duplicate check, MRN) or links the patient, one transaction |
+| 297 | POST | `/pre-registrations/{preRegistrationId}/reject` | V | Ad | `pre-registrations:reject` | pw | – | | | FR-PAT-01 | Demo | **New** (D96): with a reason |
 | 300 | GET | `/portal/me/medications` | T | Cl | `portal-records:read` | pr (patient session) | – | | | §3.8 | Demo | **New** (plan §8.2 E; written for the demo ahead of B8b, together with the staff medications contract in #93, D88): the patient's medication list, with transmission status |
 | 24 | GET | `/admin/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |

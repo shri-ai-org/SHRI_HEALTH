@@ -1659,6 +1659,95 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /portal/pre-registrations:
+    post:
+      operationId: submitPreRegistration
+      summary: Pre-register as a new patient
+      description: 'The public pre-registration form (D96): no account and no session. It always answers with the same generic
+        `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is.
+        Only a malformed request, a failed bot check or a rate limit gets a different answer, and those say nothing about
+        the person. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited
+        per IP and per email; the ALTCHA bot check is verified on the server. The submission is stored encrypted at rest and
+        waits in the front desk''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or
+        texted back with patient data (D81).'
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: public
+      x-audit:
+        action: C
+        category: phi-write
+        actor: anonymous
+      x-storage: admin
+      x-events:
+      - pre-registration.received
+      x-release: P1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationCreate'
+            examples:
+              newPatient:
+                summary: A new patient
+                value:
+                  details:
+                    name:
+                      given:
+                      - Kaia401
+                      family: Lindgren118
+                    birthDate: '1990-03-14'
+                    gender: female
+                    phones:
+                    - number: '+12175550142'
+                      use: mobile
+                    email: kaia.lindgren@example.com
+                    address:
+                      lines:
+                      - 42 Sample Avenue
+                      city: Springfield
+                      state: IL
+                      postalCode: '62704'
+                      country: US
+                    preferredLanguage: en
+                    insurance:
+                      payerName: Example Health Plan
+                      memberId: TEST-MEMBER-042
+                      groupNumber: TEST-GRP-7
+                    preferredFacilityId: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
+                    reasonForVisit: New patient, annual checkup.
+                  contactConsent: true
+                  botCheck: mock-altcha-payload
+      responses:
+        '204':
+          description: Received. Always the same answer, with no body.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the portal host).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: '422. `validation-failed` (a field is missing or malformed); `business-rule-violation` (`errors` names
+            `/botCheck`: the bot check failed or expired).'
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     PortalSession:
@@ -2760,4 +2849,28 @@ components:
         nextCursor:
           $ref: ../components/schemas/Cursor.yaml
           description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PreRegistrationCreate:
+      description: Body of the public pre-registration form (D96).
+      type: object
+      additionalProperties: false
+      required:
+      - details
+      - contactConsent
+      - botCheck
+      properties:
+        details:
+          $ref: patients.yaml#/components/schemas/PreRegistrationDetails
+          description: What the person tells the practice.
+          x-phi: identifier
+        contactConsent:
+          type: boolean
+          const: true
+          description: The person agrees to be contacted about their request.
+          x-phi: none
+        botCheck:
+          type: string
+          maxLength: 4000
+          description: The proof-of-work answer from the form's ALTCHA widget (MIT, self-hosted), checked by the server; nothing
+            about the visitor goes to anyone else.
           x-phi: none
