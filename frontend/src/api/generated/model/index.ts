@@ -15,7 +15,6 @@
  * OpenAPI spec version: 1.0.0-draft.1
  */
 
-export * from './acceptedResponse';
 export * from './addAllergyHeaders';
 export * from './addCoverageHeaders';
 export * from './addEncounterDiagnosisHeaders';
@@ -495,7 +494,6 @@ export * from './timelineEntryEntrySource';
 export * from './timelineEntryType';
 export * from './timestamp';
 export * from './tooManyRequestsResponse';
-export * from './traceparentParameter';
 export * from './unauthorizedResponse';
 export * from './undoCheckInRequest';
 export * from './undoMergeRequest';
@@ -535,4 +533,3 @@ export * from './vitalsCreate';
 export * from './vitalsRecorded';
 export * from './vitalStatus';
 export * from './vitalType';
-export * from './xRequestIdParameter';
