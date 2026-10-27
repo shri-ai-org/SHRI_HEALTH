@@ -81,7 +81,7 @@ security:
 # portal operations: [{ portalSessionCookie: [] }], writes [{ portalSessionCookie: [], csrfHeader: [] }]
 ```
 
-The two cookies never mix: an operation names one or the other, never both (lint rule `shri-security`), staff routes refuse the portal session and portal routes the staff one (core, ADR-0013 §5).
+The two cookies never mix: an operation names one or the other, never both (lint rule `shri-security`), staff routes refuse the portal session and portal routes the staff one (core, ADR-0013 §5). In the database, portal requests run as their own role, `shri_portal`, which sees only the session patient's chart (D93).
 
 ### 2.4 Service-to-service calls
 

@@ -2306,7 +2306,9 @@ paths:
         during the merge; every moved record is listed so the merge can be undone; the merged patient gets `mergedIntoId`
         and becomes inactive. All in one transaction. If either patient is restricted, the user needs a break-glass grant
         or care-team membership for **each** restricted patient (`403 break-glass-required`), and the surviving record keeps
-        the most restrictive restriction of the pair. Both patient IDs are audited.'
+        the most restrictive restriction of the pair. Both patient IDs are audited. A portal account on the merged chart is
+        suspended and its sessions end (ADR-0013); the front desk issues a new invitation for the surviving chart after an
+        ID check.'
       tags:
       - patients
       x-owner: vimal
@@ -2501,7 +2503,8 @@ paths:
       summary: Undo a merge
       description: 'Undoes a merge (inventory #49): moved records go back to the merged patient, which becomes active again.
         Refused once either record has changed in a way that cannot be split back. Restricted charts need break-glass or care-team
-        membership for each restricted patient, as for a merge. Both patient IDs are audited.'
+        membership for each restricted patient, as for a merge. Both patient IDs are audited. A portal account suspended by
+        the merge is restored.'
       tags:
       - patients
       x-owner: vimal
@@ -4513,7 +4516,8 @@ components:
       description: 'The patient''s portal account as the front desk sees it: never a password, factor or code. `none`: no
         account and no active invitation; `invited`: an invitation is active; `pending-setup`: enrolled, but the patient hasn''t
         finished the realm''s set-up (verify email, password, second factor); `active`; `disabled`: ADM disabled it (D92),
-        and `enable` reopens it.'
+        and `enable` reopens it; `suspended`: the chart was merged into another (ADR-0013), its sessions ended, and undoing
+        the merge restores it (`enable` does not apply).'
       type: object
       required:
       - patientId
@@ -4531,6 +4535,7 @@ components:
           - pending-setup
           - active
           - disabled
+          - suspended
           description: Account state.
           x-phi: none
         email:
