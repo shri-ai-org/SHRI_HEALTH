@@ -29,6 +29,8 @@ from app.db.tests.conftest import (  # noqa: F401  (fixtures)
     admin_engine,
     app_engine,
     db,
+    make_tenant,
+    open_session,
     switch_to_role,
     tenant,
 )
@@ -53,6 +55,16 @@ def _router() -> APIRouter:
         access = await ensure_chart_access(session, user, patientId)
         return {"access": access.value}
 
+    @router.get("/patients/{patientId}/allergies", operation_id="listAllergies")
+    async def locked_first(patientId: UUID,  # noqa: N803
+                           user: CurrentUser = Depends(require("allergies:read")),
+                           session: AsyncSession = DB) -> dict[str, Any]:
+        # The wrong order: the patient row is locked before the chart check.
+        await session.execute(text("SELECT id FROM clinical.patient WHERE id = :p FOR UPDATE"),
+                              {"p": patientId})
+        access = await ensure_chart_access(session, user, patientId)
+        return {"access": access.value}
+
     @router.get("/appointments", operation_id="listAppointments")
     async def list_appointments(request: Request, facilityId: UUID | None = None,  # noqa: N803
                                 user: CurrentUser = Depends(require("appointments:read")),
@@ -67,10 +79,15 @@ def _router() -> APIRouter:
 @pytest.fixture
 def chart(db: Session, tenant: UUID) -> dict[str, Any]:  # noqa: F811
     staff = b.practitioner(db, "Rivera", "Elena")
+    colleague = b.practitioner(db, "Okafor", "Ade")
     patient = b.patient(db)
+    other_patient = b.patient(db, "Lindgren118", "Kaia401")
     db.commit()
     return {"tenant": tenant, "user_id": staff["user"].id,
-            "practitioner_id": staff["practitioner"].id, "patient": patient.id}
+            "practitioner_id": staff["practitioner"].id, "patient": patient.id,
+            "colleague_user_id": colleague["user"].id,
+            "colleague_practitioner_id": colleague["practitioner"].id,
+            "other_patient": other_patient.id}
 
 
 @pytest.fixture
@@ -93,17 +110,19 @@ def client(signed_in: dict[str, CurrentUser]) -> Iterator[TestClient]:
         c.portal.call(app.state.db.dispose)
 
 
-def _restrict(admin: Engine, patient_id: UUID) -> None:
+def _restrict(admin: Engine, patient_id: UUID, label: str = "R") -> None:
     with admin.begin() as c:
-        c.execute(text("UPDATE clinical.patient SET meta_security = '{R}' WHERE id = :p"),
-                  {"p": patient_id})
+        c.execute(text("UPDATE clinical.patient SET meta_security = ARRAY[:l]::varchar[] "
+                       "WHERE id = :p"), {"p": patient_id, "l": label})
 
 
-def _grant(admin: Engine, chart: dict[str, Any], *, expired: bool = False) -> None:
+def _grant(admin: Engine, chart: dict[str, Any], *, expired: bool = False, future: bool = False,
+           user: UUID | None = None, patient: UUID | None = None) -> None:
     """A break-glass grant, written as the grant endpoint will (columns differ before and after
-    migration 0005, D53)."""
+    migration 0005, D53): by default for the signed-in user on the chart's patient."""
     now = dt.datetime.now(dt.UTC)
-    start = now - dt.timedelta(hours=5) if expired else now - dt.timedelta(minutes=1)
+    start = (now - dt.timedelta(hours=5) if expired else
+             now + dt.timedelta(hours=1) if future else now - dt.timedelta(minutes=1))
     with admin.begin() as c:
         has_code = c.execute(text(
             "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'audit' "
@@ -113,8 +132,8 @@ def _grant(admin: Engine, chart: dict[str, Any], *, expired: bool = False) -> No
         c.execute(text(
             f"INSERT INTO audit.break_glass_access (id, tenant_id, patient_id, user_id, "  # noqa: S608
             f"{reason[0]}, granted_at, expires_at) VALUES (:i, :t, :p, :u, {reason[1]}, :g, :e)"),
-            {"i": uuid4(), "t": chart["tenant"], "p": chart["patient"], "u": chart["user_id"],
-             "g": start, "e": start + dt.timedelta(hours=4)})
+            {"i": uuid4(), "t": chart["tenant"], "p": patient or chart["patient"],
+             "u": user or chart["user_id"], "g": start, "e": start + dt.timedelta(hours=4)})
 
 
 def _care_team(admin: Engine, chart: dict[str, Any], **member: Any) -> None:
@@ -123,7 +142,7 @@ def _care_team(admin: Engine, chart: dict[str, Any], **member: Any) -> None:
             "INSERT INTO admin.care_team_member (id, tenant_id, patient_id, practitioner_id, "
             "user_id, role_code, period_start, period_end) "
             "VALUES (:i, :t, :p, :pr, :u, 'PCP', :start, :end)"),
-            {"i": uuid4(), "t": chart["tenant"], "p": chart["patient"],
+            {"i": uuid4(), "t": chart["tenant"], "p": member.get("patient", chart["patient"]),
              "pr": member.get("practitioner_id"), "u": member.get("user_id"),
              "start": member.get("start", dt.date.today() - dt.timedelta(days=30)),
              "end": member.get("end")})
@@ -218,3 +237,63 @@ def test_a_missing_permission_is_reported_before_the_facility(
                                     roles=frozenset({"DSP"}), facility_ids=frozenset({FACILITY}))
     r = client.get(f"{API_PREFIX}/appointments", params={"facilityId": str(OTHER_FACILITY)})
     assert r.status_code == 403 and r.json()["code"] == "permission-denied"
+
+
+# Whose grant, and which patient (SECURITY_MODEL §5.2 rule 3: "for that user and that patient
+# only"). Each must still be refused, so the check can't lose user_id or patient_id unnoticed.
+@pytest.mark.parametrize("case", ["grant-other-user", "grant-other-patient", "grant-in-future",
+                                  "team-other-patient", "team-other-user",
+                                  "team-other-practitioner", "team-starts-tomorrow"])
+def test_access_belongs_to_this_user_and_this_patient_only(
+        client: TestClient, chart: dict[str, Any], admin_engine: Engine,  # noqa: F811
+        case: str) -> None:
+    _restrict(admin_engine, chart["patient"])
+    if case == "grant-other-user":
+        _grant(admin_engine, chart, user=chart["colleague_user_id"])
+    elif case == "grant-other-patient":
+        _grant(admin_engine, chart, patient=chart["other_patient"])
+    elif case == "grant-in-future":
+        _grant(admin_engine, chart, future=True)
+    elif case == "team-other-patient":
+        _care_team(admin_engine, chart, user_id=chart["user_id"], patient=chart["other_patient"])
+    elif case == "team-other-user":
+        _care_team(admin_engine, chart, user_id=chart["colleague_user_id"])
+    elif case == "team-other-practitioner":
+        _care_team(admin_engine, chart, practitioner_id=chart["colleague_practitioner_id"])
+    elif case == "team-starts-tomorrow":
+        _care_team(admin_engine, chart, user_id=chart["user_id"],
+                   start=dt.date.today() + dt.timedelta(days=1))
+    r = client.get(f"{API_PREFIX}/patients/{chart['patient']}")
+    assert r.status_code == 403 and r.json()["code"] == "break-glass-required", case
+
+
+def test_a_very_restricted_chart_is_refused_too(
+        client: TestClient, chart: dict[str, Any], admin_engine: Engine) -> None:  # noqa: F811
+    _restrict(admin_engine, chart["patient"], "V")
+    r = client.get(f"{API_PREFIX}/patients/{chart['patient']}")
+    assert r.status_code == 403 and r.json()["code"] == "break-glass-required"
+
+
+def test_another_clinics_patient_is_not_found(
+        client: TestClient, chart: dict[str, Any], admin_engine: Engine,  # noqa: F811
+        app_engine: Engine) -> None:  # noqa: F811
+    other = open_session(app_engine, make_tenant(admin_engine))
+    try:
+        theirs = b.patient(other)
+        other.commit()
+        _restrict(admin_engine, theirs.id)  # restricted there, still only 404 here
+        r = client.get(f"{API_PREFIX}/patients/{theirs.id}")
+    finally:
+        other.close()
+    assert r.status_code == 404
+    assert _audit(admin_engine, chart["tenant"]) == []
+
+
+def test_a_lock_taken_before_the_check_fails_closed_instead_of_hanging(
+        client: TestClient, chart: dict[str, Any], admin_engine: Engine) -> None:  # noqa: F811
+    _restrict(admin_engine, chart["patient"])
+    started = dt.datetime.now(dt.UTC)
+    r = client.get(f"{API_PREFIX}/patients/{chart['patient']}/allergies")
+    waited = (dt.datetime.now(dt.UTC) - started).total_seconds()
+    assert r.status_code == 500 and r.json()["code"] == "internal-error"
+    assert waited < 10, waited  # the refusal row gave up after its lock timeout

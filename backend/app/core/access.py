@@ -19,6 +19,12 @@ It answers 404 for a patient the clinic does not have (or another clinic's), and
 patient) and that row is kept although the request fails. Access through a grant is marked
 on the request's own audit rows (purpose of use ETREAT).
 
+Call it first, before the endpoint reads or locks anything. The refusal row is written on a
+second connection; if the endpoint already holds a lock on the patient row (`SELECT … FOR
+UPDATE` for an If-Match check, say) or has written an audit row in its open transaction, that
+connection waits for this one. It gives up after REFUSAL_LOCK_TIMEOUT, so the request fails
+with a 500 (fail closed) instead of hanging.
+
 The front-desk exceptions (SECURITY_MODEL §5.2 rule 2: search, and booking and check-in, with
 name and appointment only) do not call ensure_chart_access; they call `chart_access()` to
 know whether they may show more than that (e.g. the status board's reason for visit, D60).
@@ -42,6 +48,9 @@ from app.core.request_id import current_request_id
 log = logging.getLogger(__name__)
 
 RESTRICTED_LABELS = ("R", "V")  # patient.meta_security: restricted, very restricted
+
+# How long the refusal row may wait for a lock the request itself holds (see the docstring).
+REFUSAL_LOCK_TIMEOUT = "2s"
 
 _CHART = text("""
 SELECT p.meta_security && CAST(:labels AS varchar[]) AS restricted,
@@ -161,7 +170,13 @@ async def _record_blocked(db: AsyncSession, user: CurrentUser, patient_id: UUID)
         "user_agent": trail.user_agent if trail else None,
         "correlation_id": current_request_id(),
     }
+
+    def write(sync_session: Any) -> None:
+        connection = sync_session.connection()
+        connection.execute(text(f"SET LOCAL lock_timeout = '{REFUSAL_LOCK_TIMEOUT}'"))
+        audit.insert_rows(connection, [row])
+
     async with database.tenant_session(user.organization_id, user.id,
                                        current_request_id()) as session:
-        await session.run_sync(lambda s: audit.insert_rows(s.connection(), [row]))
+        await session.run_sync(write)
         await session.commit()
