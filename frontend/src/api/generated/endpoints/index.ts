@@ -3,6 +3,7 @@ export * from './eligibility/eligibility';
 export * from './encounters/encounters';
 export * from './files/files';
 export * from './history/history';
+export * from './inbox/inbox';
 export * from './medications/medications';
 export * from './patients/patients';
 export * from './platform/platform';
