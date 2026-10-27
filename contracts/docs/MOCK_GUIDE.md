@@ -252,7 +252,7 @@ node tests/flows/prescriptions.mjs          # in another; BASE_URL=http://127.0.
 ```
 
 - **Current medications:** `GET`/`POST /patients/{patientId}/medications`.
-- **Drug search:** `GET /codes?system=rxnorm&q=…` with `Prefer: example=rxnorm`. The real API searches the RxNorm Current Prescribable Content.
+- **Drug search:** `GET /codes?system=rxnorm&q=…` with `Prefer: example=rxnorm`. The real API searches the RxNorm Current Prescribable Content. Each result carries `drug`: strength, dose form, route, ingredients with their RxCUIs, the brand name and, for a controlled substance, its DEA schedule (`controlledSchedule`).
 - **The draft:**
   - `POST /prescriptions`, then `PATCH` with `If-Match`;
   - `Prefer: code=412` gives the stale-version refusal, and `code=409` the "signed, so locked" one.

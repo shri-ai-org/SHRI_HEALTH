@@ -8210,7 +8210,7 @@ paths:
     get:
       operationId: searchCodes
       summary: Search codes
-      description: 'Searches a code system by code or words (inventory #74; a GET on `/codes`, like `/pharmacies`, because the `/search` suffix is reserved for POST searches with PHI, API_STANDARDS §14): ICD-10-CM for diagnoses, RxNorm for drugs, LOINC, SNOMED CT, CPT (placeholder codes until the AMA license, Q7), HCPCS, CVX. Reference data, not patient data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited. For `rxnorm` (drug search, prescribing), results come from the free RxNorm Current Prescribable Content subset, which needs no UMLS license (D97).'
+      description: 'Searches a code system by code or words (inventory #74; a GET on `/codes`, like `/pharmacies`, because the `/search` suffix is reserved for POST searches with PHI, API_STANDARDS §14): ICD-10-CM for diagnoses, RxNorm for drugs, LOINC, SNOMED CT, CPT (placeholder codes until the AMA license, Q7), HCPCS, CVX. Reference data, not patient data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited. For `rxnorm` (drug search, prescribing), results come from the free RxNorm Current Prescribable Content subset, which needs no UMLS license (D97). Each `rxnorm` result also carries `drug`: strength, dose form, route, the ingredients with their RxCUIs, the brand name for a branded product, and the DEA schedule for a controlled substance.'
       tags:
         - encounters
       x-owner: vimal
@@ -8276,6 +8276,13 @@ paths:
                       - system: http://www.nlm.nih.gov/research/umls/rxnorm
                         code: '308191'
                         display: amoxicillin 500 MG Oral Capsule
+                        drug:
+                          strength: 500 MG
+                          doseForm: Oral Capsule
+                          route: Oral
+                          ingredients:
+                            - rxcui: '723'
+                              name: amoxicillin
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -26009,6 +26016,68 @@ components:
         - cpt
         - hcpcs
         - cvx
+    DrugIngredient:
+      description: An active ingredient of a drug (RxNorm term type IN or PIN).
+      type: object
+      required:
+        - rxcui
+        - name
+      properties:
+        rxcui:
+          type: string
+          maxLength: 16
+          description: The ingredient's RxNorm concept ID (RxCUI).
+          x-phi: none
+          pattern: ^[0-9]{1,16}$
+        name:
+          type: string
+          maxLength: 200
+          description: The ingredient's name.
+          x-phi: none
+    DrugDetails:
+      description: 'What the prescribing screen needs about a drug from RxNorm Current Prescribable Content (D97): only on `system=rxnorm` results.'
+      type: object
+      required:
+        - ingredients
+      properties:
+        strength:
+          type: string
+          maxLength: 200
+          description: The strength, as RxNorm writes it ("500 MG"; for combinations, each joined with " / ").
+          x-phi: none
+        doseForm:
+          type: string
+          maxLength: 100
+          description: The dose form ("Oral Capsule").
+          x-phi: none
+        route:
+          type: string
+          maxLength: 50
+          description: The route ("Oral"), from the dose form's route in RxNorm.
+          x-phi: none
+        ingredients:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/DrugIngredient'
+          description: The active ingredients, each with its RxCUI. The safety check matches allergies and duplicates on these (D97, D99).
+          x-phi: none
+        brandName:
+          type: string
+          maxLength: 200
+          description: For a branded product, the brand name. Absent for a generic.
+          x-phi: none
+        controlledSchedule:
+          type: string
+          maxLength: 4
+          description: For a controlled substance, its U.S. DEA schedule (`CII` to `CV`), so the screen can show it before signing (EPCS, Q19). Absent when the drug is not controlled. Loaded with the terminology (A53).
+          x-phi: none
+          enum:
+            - CII
+            - CIII
+            - CIV
+            - CV
     CodeMatch:
       description: A code that matches the search.
       type: object
@@ -26036,6 +26105,10 @@ components:
         billable:
           type: boolean
           description: 'ICD-10-CM only: true for a billable (leaf) code.'
+          x-phi: none
+        drug:
+          $ref: '#/components/schemas/DrugDetails'
+          description: 'RxNorm only: strength, dose form, route, ingredients, brand and controlled-substance schedule.'
           x-phi: none
     CodeMatchList:
       description: Matching codes, best match first. Reference data, not patient data.

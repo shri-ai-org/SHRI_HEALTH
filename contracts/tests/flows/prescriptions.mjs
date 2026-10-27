@@ -64,7 +64,9 @@ async function main() {
 
   step = '9 the prescription';
   const found = (await call('drug search over RxNorm', 'GET', '/codes?system=rxnorm&q=amoxicillin', { expect: 200, answer: 'rxnorm' })).data.items;
-  if (!found.some((c) => c.system.endsWith('/rxnorm') && c.code === draftBody.medication.codings[0].code)) throw new Error('the search must return the drug the draft uses');
+  const drug = found.find((c) => c.system.endsWith('/rxnorm') && c.code === draftBody.medication.codings[0].code);
+  if (!drug) throw new Error('the search must return the drug the draft uses');
+  if (!drug.drug?.ingredients?.every((i) => i.rxcui && i.name) || !drug.drug.doseForm || !drug.drug.strength) throw new Error('an RxNorm result must carry its drug details');
 
   const draft = await call('start a draft', 'POST', '/prescriptions', { body: draftBody, headers: key(), expect: 201 });
   const rxId = draft.data.id;
