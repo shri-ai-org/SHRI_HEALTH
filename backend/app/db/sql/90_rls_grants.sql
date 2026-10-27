@@ -506,6 +506,11 @@ ALTER TABLE admin.eligibility_service_type ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.eligibility_service_type FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.eligibility_service_type USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+GRANT SELECT, INSERT, UPDATE, DELETE ON admin.employer TO shri_app;
+ALTER TABLE admin.employer ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.employer FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.employer USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
 GRANT SELECT ON clinical.encounter TO shri_fhir_reader;
 GRANT SELECT, INSERT, UPDATE ON clinical.encounter TO shri_app;
 ALTER TABLE clinical.encounter ENABLE ROW LEVEL SECURITY;
@@ -752,6 +757,11 @@ GRANT SELECT, INSERT, UPDATE ON admin.migration_run TO shri_app;
 ALTER TABLE admin.migration_run ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.migration_run FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.migration_run USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
+GRANT SELECT, INSERT, UPDATE ON admin.mrn_counter TO shri_app;
+ALTER TABLE admin.mrn_counter ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.mrn_counter FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.mrn_counter USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT, INSERT, UPDATE ON admin.note_template TO shri_app;
 ALTER TABLE admin.note_template ENABLE ROW LEVEL SECURITY;

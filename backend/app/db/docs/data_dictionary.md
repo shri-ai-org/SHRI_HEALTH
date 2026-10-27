@@ -1128,6 +1128,38 @@ Checks: `ck_eligibility_service_type_code_format`
 
 Composite foreign keys: `fk_eligibility_service_type_eligibility_check_id_tenant`
 
+## `admin.employer`
+
+Admin (normalized). Employer of a patient, or of a related person such as a coverage subscriber (D38; workers' compensation claims need it). One per person. The contract's Employer: a name, an optional E.164 phone and an optional U.S. address (all of it or none). A change touches the patient or related person, so its version and ETag change too.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `patient_id` | uuid | yes |  | clinical.patient.id, clinical.related_person.patient_id | — |
+| `related_person_id` | uuid | yes |  | clinical.related_person.id | — |
+| `name` | varchar(200) | no |  |  | — |
+| `phone` | varchar(16) | yes |  |  | — |
+| `address_lines` | array | yes |  |  | — |
+| `address_city` | varchar(60) | yes |  |  | — |
+| `address_state` | varchar(2) | yes |  |  | — |
+| `address_postal_code` | varchar(10) | yes |  |  | — |
+| `address_country` | varchar(2) | yes |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.patient.tenant_id, clinical.related_person.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_employer_address_country_us`, `ck_employer_address_lines_count`, `ck_employer_address_postal_code_format`, `ck_employer_address_state_format`, `ck_employer_address_whole`, `ck_employer_name_given`, `ck_employer_one_person`, `ck_employer_phone_e164`
+
+Unique: `uq_employer_patient_id`, `uq_employer_related_person_id`
+
+Composite foreign keys: `fk_employer_patient_id_tenant`, `fk_employer_related_person_id_same_patient`, `fk_employer_related_person_id_tenant`
+
 ## `admin.erx_transaction`
 
 Admin (normalized). One NCPDP SCRIPT message with the eRx vendor (NewRx, CancelRx, RxRenewalRequest ...). Inbound renewal / change requests may arrive before they are matched to a prescription.
@@ -1206,7 +1238,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `clia_number` | varchar(10) | yes |  |  | — |
 | `tax_id_ref` | varchar(200) | yes |  |  | — |
 | `place_of_service_code` | varchar(2) | no |  |  | — |
-| `timezone` | varchar(64) | yes |  |  | — |
+| `timezone` | varchar(64) | no |  |  | — |
 | `is_billing_location` | boolean | no |  |  | — |
 | `is_active` | boolean | no |  |  | — |
 | `id` | uuid | no |  |  | — |
@@ -1776,6 +1808,28 @@ Checks: `ck_migration_run_accepted_has_acceptor`, `ck_migration_run_environment`
 Unique: `uq_migration_run_tenant_id_id`
 
 Composite foreign keys: `fk_migration_run_log_binary_id_tenant`, `fk_migration_run_rollback_plan_document_id_tenant`
+
+## `admin.mrn_counter`
+
+Admin (normalized). One medical record number counter per practice (D41): the practice prefix plus a number, never reused, e.g. ``TEST-000123``. ``admin.next_mrn()`` returns the practice's MRN system and the next value inside the registration transaction: the row lock serializes registrations, so no two patients get the same number, and a registration that rolls back gives its number back. The MRN itself is an ``identifier`` row (type MR) with that system. The database lets the number only grow, and the prefix and system change only until the first MRN is issued (``shri_mrn_counter_guard``). No role may delete the row.
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `prefix` | varchar(10) | no |  |  | — |
+| `system` | varchar(300) | no |  |  | — |
+| `next_value` | bigint | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_mrn_counter_next_value_positive`, `ck_mrn_counter_prefix_format`, `ck_mrn_counter_system_uri`
+
+Unique: `uq_mrn_counter_tenant_id`
 
 ## `admin.note_template`
 
@@ -2751,7 +2805,7 @@ Unique: `uq_tenant_organization_id`, `uq_tenant_slug`
 
 ## `admin.tenant_setting`
 
-Admin (normalized).
+Admin (normalized). A practice's value for a ``setting_definition``. ``version`` is the ETag for ``If-Match`` on ``PATCH /practice-settings`` (A49).
 
 Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
@@ -2765,6 +2819,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `updated_at` | datetime | no |  |  | — |
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `version` | integer | no |  |  | — |
 
 Unique: `uq_tenant_setting_tenant_id_setting_key`
 
@@ -4656,6 +4711,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `service_provider_organization_id` | uuid | yes | `serviceProvider` | clinical.organization.id | — |
 | `ext_facility_id` | uuid | yes |  | admin.facility.id | — |
 | `ext_place_of_service_code` | varchar(2) | yes |  |  | — |
+| `ext_self_pay` | boolean | no |  |  | — |
 | `meta_version_id` | integer | no |  |  | — |
 | `meta_last_updated` | datetime | no |  |  | — |
 | `meta_txid` | bigint | yes |  |  | — |
@@ -5826,6 +5882,26 @@ Contract (from DATA_OWNERSHIP.md):
 | `ext_birthsex` | varchar(40) | yes | extension `us-core-birthsex` |  | no same-named property |
 | `ext_race_text` | varchar(200) | yes |  |  | no same-named property |
 | `ext_ethnicity_text` | varchar(200) | yes |  |  | no same-named property |
+| `ext_gender_identity_system` | varchar(300) | yes |  | admin.code_system.uri | no same-named property |
+| `ext_gender_identity_code` | varchar(64) | yes |  |  | no same-named property |
+| `ext_gender_identity_display` | varchar(500) | yes |  |  | no same-named property |
+| `ext_gender_identity_text` | varchar(1000) | yes |  |  | no same-named property |
+| `ext_sexual_orientation_system` | varchar(300) | yes |  | admin.code_system.uri | no same-named property |
+| `ext_sexual_orientation_code` | varchar(64) | yes |  |  | no same-named property |
+| `ext_sexual_orientation_display` | varchar(500) | yes |  |  | no same-named property |
+| `ext_sexual_orientation_text` | varchar(1000) | yes |  |  | no same-named property |
+| `ext_occupation_system` | varchar(300) | yes |  | admin.code_system.uri | no same-named property |
+| `ext_occupation_code` | varchar(64) | yes |  |  | no same-named property |
+| `ext_occupation_display` | varchar(500) | yes |  |  | no same-named property |
+| `ext_occupation_text` | varchar(1000) | yes |  |  | no same-named property |
+| `ext_industry_system` | varchar(300) | yes |  | admin.code_system.uri | no same-named property |
+| `ext_industry_code` | varchar(64) | yes |  |  | no same-named property |
+| `ext_industry_display` | varchar(500) | yes |  |  | no same-named property |
+| `ext_industry_text` | varchar(1000) | yes |  |  | no same-named property |
+| `ext_tribal_affiliation_system` | varchar(300) | yes |  | admin.code_system.uri | no same-named property |
+| `ext_tribal_affiliation_code` | varchar(64) | yes |  |  | no same-named property |
+| `ext_tribal_affiliation_display` | varchar(500) | yes |  |  | no same-named property |
+| `ext_tribal_affiliation_text` | varchar(1000) | yes |  |  | no same-named property |
 | `meta_version_id` | integer | no |  |  | no same-named property |
 | `meta_last_updated` | datetime | no |  |  | no same-named property |
 | `meta_txid` | bigint | yes |  |  | no same-named property |
@@ -5846,7 +5922,7 @@ Contract (from DATA_OWNERSHIP.md):
 
 Contract properties with no column of the same name: `address`, `birthSex`, `duplicateCheck`, `duplicateOverrideReason`, `emails`, `employer`, `ethnicity`, `genderIdentity`, `identifiers`, `industry`, `maritalStatus`, `mergedIntoId`, `mrn`, `name`, `occupation`, `phones`, `preferredLanguage`, `preferredName`, `preferredPharmacy`, `previousNames`, `race`, `restricted`, `sexualOrientation`, `tribalAffiliation`
 
-Checks: `ck_patient_ai_entry_verified`, `ck_patient_birth_date_not_future`, `ck_patient_birth_order`, `ck_patient_deceased_after_birth`, `ck_patient_entry_source_codes`, `ck_patient_ext_birthsex_codes`, `ck_patient_extension_is_array`, `ck_patient_fhir_deceased_x`, `ck_patient_fhir_marital_status_coding`, `ck_patient_fhir_marital_status_display`, `ck_patient_fhir_multiple_birth_x`, `ck_patient_gender_codes`, `ck_patient_meta_security_codes`
+Checks: `ck_patient_ai_entry_verified`, `ck_patient_birth_date_not_future`, `ck_patient_birth_order`, `ck_patient_deceased_after_birth`, `ck_patient_entry_source_codes`, `ck_patient_ext_birthsex_codes`, `ck_patient_extension_is_array`, `ck_patient_fhir_deceased_x`, `ck_patient_fhir_marital_status_coding`, `ck_patient_fhir_marital_status_display`, `ck_patient_fhir_multiple_birth_x`, `ck_patient_gender_codes`, `ck_patient_gender_identity_code_has_system`, `ck_patient_industry_code_has_system`, `ck_patient_meta_security_codes`, `ck_patient_occupation_code_has_system`, `ck_patient_sexual_orientation_code_has_system`, `ck_patient_tribal_affiliation_code_has_system`
 
 Unique: `uq_patient_tenant_id_id`
 
@@ -6846,18 +6922,18 @@ Paths: `/patients`, `/patients/{patientId}`
 | `duplicateCheck` | — | not mapped yet |
 | `duplicateOverrideReason` | — | not mapped yet |
 | `emails` | — | not mapped yet |
-| `employer` | — | not mapped yet |
+| `employer` | `employer.name`, `employer.phone`, `employer.address_lines`, `employer.address_city`, `employer.address_state`, `employer.address_postal_code`, `employer.address_country` | mapped: one admin row with patient_id (D38); clearing the employer deletes the row |
 | `ethnicity` | — | not mapped yet |
 | `gender` | `patient.gender` | same name |
-| `genderIdentity` | — | not mapped yet |
+| `genderIdentity` | `patient.ext_gender_identity_system`, `patient.ext_gender_identity_code`, `patient.ext_gender_identity_display`, `patient.ext_gender_identity_text` | mapped: shown at registration only where the practice's setting registration.show_sogi_fields is true (A49) |
 | `id` | `patient.id` | same name |
 | `identifiers` | — | not mapped yet |
-| `industry` | — | not mapped yet |
+| `industry` | `patient.ext_industry_system`, `patient.ext_industry_code`, `patient.ext_industry_display`, `patient.ext_industry_text` | mapped |
 | `maritalStatus` | — | not mapped yet |
 | `mergedIntoId` | — | not mapped yet |
-| `mrn` | — | not mapped yet |
+| `mrn` | `identifier.value`, `identifier.system`, `identifier.patient_id`, `identifier.type_code` | mapped: an identifier row with type_code MR, its system and value from admin.next_mrn() (the practice's mrn_counter, D41), written in the registration transaction |
 | `name` | — | not mapped yet |
-| `occupation` | — | not mapped yet |
+| `occupation` | `patient.ext_occupation_system`, `patient.ext_occupation_code`, `patient.ext_occupation_display`, `patient.ext_occupation_text` | mapped |
 | `phones` | — | not mapped yet |
 | `preferredLanguage` | — | not mapped yet |
 | `preferredName` | — | not mapped yet |
@@ -6865,8 +6941,8 @@ Paths: `/patients`, `/patients/{patientId}`
 | `previousNames` | — | not mapped yet |
 | `race` | — | not mapped yet |
 | `restricted` | — | not mapped yet |
-| `sexualOrientation` | — | not mapped yet |
-| `tribalAffiliation` | — | not mapped yet |
+| `sexualOrientation` | `patient.ext_sexual_orientation_system`, `patient.ext_sexual_orientation_code`, `patient.ext_sexual_orientation_display`, `patient.ext_sexual_orientation_text` | mapped: shown at registration only where the practice's setting registration.show_sogi_fields is true (A49) |
+| `tribalAffiliation` | `patient.ext_tribal_affiliation_system`, `patient.ext_tribal_affiliation_code`, `patient.ext_tribal_affiliation_display`, `patient.ext_tribal_affiliation_text` | mapped |
 | `updatedAt` | `patient.updated_at` | same name |
 
 ### Patient identifiers (MRN, driver's license)
@@ -6895,7 +6971,7 @@ Paths: `/patients/{patientId}/related-persons`
 | `birthDate` | `related_person.birth_date` | same name |
 | `createdAt` | `related_person.created_at` | same name |
 | `emails` | — | not mapped yet |
-| `employer` | — | not mapped yet |
+| `employer` | `employer.name`, `employer.phone`, `employer.address_lines`, `employer.address_city`, `employer.address_state`, `employer.address_postal_code`, `employer.address_country` | mapped: one admin row with related_person_id (D38); clearing the employer deletes the row |
 | `gender` | `related_person.gender` | same name |
 | `id` | `related_person.id` | same name |
 | `name` | — | not mapped yet |
@@ -7096,6 +7172,7 @@ Paths: `/encounters`, `/encounters/{encounterId}`
 | `updatedAt` | — | not mapped yet |
 | `vitals` | — | not mapped yet |
 | `participants[].role` | `encounter_participant.type_code` | mapped |
+| `selfPay` | `encounter.ext_self_pay` | mapped: set at check-in on the encounter it creates; no insurance claim for a self-pay visit (from `/appointments/{appointmentId}/check-in`) |
 
 ### Note (draft, versions, signed)
 
@@ -7195,7 +7272,7 @@ Paths: `/facilities`, `/locations`
 | `phone` | — | not mapped yet |
 | `physicalType` | — | not mapped yet |
 | `placeOfServiceCode` | — | not mapped yet |
-| `timeZone` | — | not mapped yet |
+| `timeZone` | `facility.timezone` | mapped |
 | `updatedAt` | — | not mapped yet |
 
 ### Providers

@@ -5,11 +5,12 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, Index, String, UniqueConstraint, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ClinicalResourceMixin, FhirChildMixin, FhirResourceMixin, enum_type
 from app.db.fhir_types import (
+    CODE_SYSTEM_FK,
     boolean,
     cc,
     children,
@@ -56,6 +57,18 @@ def _shared(owner_fk: str, *, name: bool = True, address: bool = True,
 
 
 # =========================================================================== Patient
+#: The D39 demographics stored as coded values on patient (A45).
+D39_CODED = ("gender_identity", "sexual_orientation", "occupation", "industry",
+             "tribal_affiliation")
+
+
+def _coded_value() -> tuple[Any, Any, Any, Any]:
+    """A contract CodedValue (system, code, display, text) with no FHIR element of its own.
+    Like ``cc()``, the system references ``code_system.uri``: only registered systems."""
+    return (mapped_column(String(300), ForeignKey(CODE_SYSTEM_FK, onupdate="CASCADE")),
+            mapped_column(String(64)), mapped_column(String(500)), mapped_column(String(1000)))
+
+
 class Patient(Base, ClinicalResourceMixin):
     """US Core Patient. MRN, driver's licence (AAMVA scan), payer member IDs and OpenEMR pubpid
     are rows in ``identifier``. A restricted / VIP chart is ``meta_security`` R or V
@@ -74,6 +87,9 @@ class Patient(Base, ClinicalResourceMixin):
                         "deceased_date_time::date >= birth_date", name="deceased_after_birth"),
         CheckConstraint("multiple_birth_integer IS NULL OR multiple_birth_integer >= 1",
                         name="birth_order"),
+        # A coded D39 value names its code system; free text alone is fine (A45).
+        *(CheckConstraint(f"(ext_{k}_code IS NULL) = (ext_{k}_system IS NULL)",
+                          name=f"{k}_code_has_system") for k in D39_CODED),
     )
 
     active: Mapped[bool] = boolean("active", required=True, default=True,
@@ -93,6 +109,19 @@ class Patient(Base, ClinicalResourceMixin):
         enum_type(BirthSex), info={"fhir_ext": US_CORE_BIRTHSEX, "fhir_type": "code"})
     ext_race_text: Mapped[str | None] = mapped_column(String(200))
     ext_ethnicity_text: Mapped[str | None] = mapped_column(String(200))
+    # D39 demographics (A45), each a contract CodedValue. Patient has no element for them: US
+    # Core carries gender identity and tribal affiliation as extensions, and sexual orientation,
+    # occupation and industry as Observations. Stored for /api/v1; not served on /fhir yet.
+    (ext_gender_identity_system, ext_gender_identity_code, ext_gender_identity_display,
+     ext_gender_identity_text) = _coded_value()
+    (ext_sexual_orientation_system, ext_sexual_orientation_code, ext_sexual_orientation_display,
+     ext_sexual_orientation_text) = _coded_value()
+    (ext_occupation_system, ext_occupation_code, ext_occupation_display,
+     ext_occupation_text) = _coded_value()
+    (ext_industry_system, ext_industry_code, ext_industry_display,
+     ext_industry_text) = _coded_value()
+    (ext_tribal_affiliation_system, ext_tribal_affiliation_code, ext_tribal_affiliation_display,
+     ext_tribal_affiliation_text) = _coded_value()
 
     locals().update(_shared("patient_id"))
     contact = children("PatientContact", "patient_id", "contact")

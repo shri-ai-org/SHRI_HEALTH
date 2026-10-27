@@ -24,6 +24,8 @@ V3_ROLE_CODE = "http://terminology.hl7.org/CodeSystem/v3-RoleCode"
 V3_PARTICIPATION_TYPE = "http://terminology.hl7.org/CodeSystem/v3-ParticipationType"
 V3_CONFIDENTIALITY = "http://terminology.hl7.org/CodeSystem/v3-Confidentiality"
 V3_NULL_FLAVOR = "http://terminology.hl7.org/CodeSystem/v3-NullFlavor"
+# US Core tribal affiliation (D39, A45).
+TRIBAL_ENTITY_US = "http://terminology.hl7.org/CodeSystem/v3-TribalEntityUS"
 V3_DATA_OPERATION = "http://terminology.hl7.org/CodeSystem/v3-DataOperation"
 V2_0203 = "http://terminology.hl7.org/CodeSystem/v2-0203"      # identifier type
 V2_0074 = "http://terminology.hl7.org/CodeSystem/v2-0074"      # diagnostic service section
@@ -116,6 +118,7 @@ SEED: list[tuple[str, str, str]] = [
     ("V3-PART", V3_PARTICIPATION_TYPE, "v3 ParticipationType"),
     ("V3-CONF", V3_CONFIDENTIALITY, "v3 Confidentiality"),
     ("V3-NULL", V3_NULL_FLAVOR, "v3 NullFlavor"),
+    ("V3-TRIBAL", TRIBAL_ENTITY_US, "v3 TribalEntityUS"),
     ("V3-DATAOP", V3_DATA_OPERATION, "v3 DataOperation"),
     ("V3-REASON", ACT_REASON, "v3 ActReason"),
     ("V3-MARITAL", MARITAL_STATUS, "v3 MaritalStatus"),

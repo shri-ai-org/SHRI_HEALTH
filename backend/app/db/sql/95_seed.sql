@@ -29,6 +29,7 @@ INSERT INTO admin.code_system (id, code, uri, name) VALUES
   (gen_random_uuid(), 'V3-PART', 'http://terminology.hl7.org/CodeSystem/v3-ParticipationType', 'v3 ParticipationType'),
   (gen_random_uuid(), 'V3-CONF', 'http://terminology.hl7.org/CodeSystem/v3-Confidentiality', 'v3 Confidentiality'),
   (gen_random_uuid(), 'V3-NULL', 'http://terminology.hl7.org/CodeSystem/v3-NullFlavor', 'v3 NullFlavor'),
+  (gen_random_uuid(), 'V3-TRIBAL', 'http://terminology.hl7.org/CodeSystem/v3-TribalEntityUS', 'v3 TribalEntityUS'),
   (gen_random_uuid(), 'V3-DATAOP', 'http://terminology.hl7.org/CodeSystem/v3-DataOperation', 'v3 DataOperation'),
   (gen_random_uuid(), 'V3-REASON', 'http://terminology.hl7.org/CodeSystem/v3-ActReason', 'v3 ActReason'),
   (gen_random_uuid(), 'V3-MARITAL', 'http://terminology.hl7.org/CodeSystem/v3-MaritalStatus', 'v3 MaritalStatus'),
@@ -63,3 +64,7 @@ INSERT INTO admin.code_system (id, code, uri, name) VALUES
   (gen_random_uuid(), 'SHRI-LOCAL', 'https://shri.health/fhir/CodeSystem/local', 'Shri tenant picklists'),
   (gen_random_uuid(), 'SHRI-CDS', 'https://shri.health/fhir/CodeSystem/cds-rule', 'Shri CDS rules')
 ON CONFLICT DO NOTHING;
+
+INSERT INTO admin.setting_definition (id, key, value_type, default_value, description) VALUES
+  (gen_random_uuid(), 'registration.show_sogi_fields', 'boolean', 'false', 'Show sexual orientation and gender identity at registration (D39, A49). Off by default: the practice turns it on.')
+ON CONFLICT (key) DO NOTHING;

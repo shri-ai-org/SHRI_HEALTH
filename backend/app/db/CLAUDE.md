@@ -125,6 +125,28 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   status. `visit_flow_event` stays insert-only: the steps before the undo stay as history.
 - **Roles and permissions:** core's `ROLE_PERMISSIONS` (`backend/app/core/permissions.py`) is the
   only catalogue. `admin.role`, `admin.permission` and `admin.role_permission` are not seeded.
+- **MRN (D41, migration 0007):** registration calls `SELECT system, value FROM admin.next_mrn()`
+  in its own transaction and writes the patient's `identifier` row (type `MR`) with that system
+  and value. The value is the prefix plus a six-digit number (`TEST-000123`). The counter row
+  stays locked until the registration commits, and a rollback gives the number back. A practice
+  without an `mrn_counter` row gets `P0001`; practice setup creates it. The number only grows,
+  and the prefix and system are fixed once the first MRN is issued.
+- **D39 coded demographics:** `patient.ext_{gender_identity,sexual_orientation,occupation,
+  industry,tribal_affiliation}_{system,code,display,text}`, one contract `CodedValue` each. A code
+  needs its system, a registered code system (`code_system.uri`); text alone is fine. They are
+  not served on `/fhir` yet.
+- **Employer (D38):** one `admin.employer` row per patient or related person. Clearing it
+  (`employer: null`) deletes the row. Any change to it touches its patient or related person,
+  so the ETag changes.
+- **`selfPay` at check-in:** stored as `encounter.ext_self_pay`. The database refuses a claim
+  for a self-pay visit, except a void (frequency `8`) of a claim sent before the visit became
+  self-pay.
+- **Practice settings (A49):** each is a `tenant_setting` row under a `setting_definition`
+  key, which is lower case. The repository maps the contract's
+  `showSexualOrientationAndGenderIdentity` to `registration.show_sogi_fields`, which defaults
+  to `false`. `tenant_setting.version` is the row's `ETag` for `If-Match` on
+  `PATCH /practice-settings`, bumped by the database on every update (as A41); the application
+  never writes it.
 
 ## Rules that never bend
 

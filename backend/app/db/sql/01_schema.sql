@@ -349,6 +349,28 @@ CREATE TABLE admin.message_template (
 
 CREATE INDEX ix_message_template_tenant_id ON admin.message_template (tenant_id);
 
+CREATE TABLE admin.mrn_counter (
+	prefix VARCHAR(10) NOT NULL, 
+	system VARCHAR(300) NOT NULL, 
+	next_value BIGINT DEFAULT 1 NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_mrn_counter PRIMARY KEY (id), 
+	CONSTRAINT uq_mrn_counter_tenant_id UNIQUE (tenant_id), 
+	CONSTRAINT ck_mrn_counter_prefix_format CHECK (prefix ~ '^[A-Z0-9]{1,10}$'), 
+	CONSTRAINT ck_mrn_counter_system_uri CHECK (system ~ '^(urn:|https?://)'), 
+	CONSTRAINT ck_mrn_counter_next_value_positive CHECK (next_value >= 1), 
+	CONSTRAINT fk_mrn_counter_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_mrn_counter_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_mrn_counter_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_mrn_counter_tenant_id ON admin.mrn_counter (tenant_id);
+
 CREATE TABLE admin.tenant_setting (
 	setting_key VARCHAR(100) NOT NULL, 
 	value TEXT NOT NULL, 
@@ -358,6 +380,7 @@ CREATE TABLE admin.tenant_setting (
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
 	CONSTRAINT pk_tenant_setting PRIMARY KEY (id), 
 	CONSTRAINT uq_tenant_setting_tenant_id_setting_key UNIQUE (tenant_id, setting_key), 
 	CONSTRAINT fk_tenant_setting_setting_key_setting_definition FOREIGN KEY(setting_key) REFERENCES admin.setting_definition (key) ON UPDATE CASCADE, 
@@ -1097,6 +1120,26 @@ CREATE TABLE clinical.patient (
 	ext_birthsex VARCHAR(40), 
 	ext_race_text VARCHAR(200), 
 	ext_ethnicity_text VARCHAR(200), 
+	ext_gender_identity_system VARCHAR(300), 
+	ext_gender_identity_code VARCHAR(64), 
+	ext_gender_identity_display VARCHAR(500), 
+	ext_gender_identity_text VARCHAR(1000), 
+	ext_sexual_orientation_system VARCHAR(300), 
+	ext_sexual_orientation_code VARCHAR(64), 
+	ext_sexual_orientation_display VARCHAR(500), 
+	ext_sexual_orientation_text VARCHAR(1000), 
+	ext_occupation_system VARCHAR(300), 
+	ext_occupation_code VARCHAR(64), 
+	ext_occupation_display VARCHAR(500), 
+	ext_occupation_text VARCHAR(1000), 
+	ext_industry_system VARCHAR(300), 
+	ext_industry_code VARCHAR(64), 
+	ext_industry_display VARCHAR(500), 
+	ext_industry_text VARCHAR(1000), 
+	ext_tribal_affiliation_system VARCHAR(300), 
+	ext_tribal_affiliation_code VARCHAR(64), 
+	ext_tribal_affiliation_display VARCHAR(500), 
+	ext_tribal_affiliation_text VARCHAR(1000), 
 	meta_version_id INTEGER DEFAULT 1 NOT NULL, 
 	meta_last_updated TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	meta_txid BIGINT, 
@@ -1118,10 +1161,20 @@ CREATE TABLE clinical.patient (
 	CONSTRAINT ck_patient_birth_date_not_future CHECK (birth_date IS NULL OR birth_date <= CURRENT_DATE + 1), 
 	CONSTRAINT ck_patient_deceased_after_birth CHECK (deceased_date_time IS NULL OR birth_date IS NULL OR deceased_date_time::date >= birth_date), 
 	CONSTRAINT ck_patient_birth_order CHECK (multiple_birth_integer IS NULL OR multiple_birth_integer >= 1), 
+	CONSTRAINT ck_patient_gender_identity_code_has_system CHECK ((ext_gender_identity_code IS NULL) = (ext_gender_identity_system IS NULL)), 
+	CONSTRAINT ck_patient_sexual_orientation_code_has_system CHECK ((ext_sexual_orientation_code IS NULL) = (ext_sexual_orientation_system IS NULL)), 
+	CONSTRAINT ck_patient_occupation_code_has_system CHECK ((ext_occupation_code IS NULL) = (ext_occupation_system IS NULL)), 
+	CONSTRAINT ck_patient_industry_code_has_system CHECK ((ext_industry_code IS NULL) = (ext_industry_system IS NULL)), 
+	CONSTRAINT ck_patient_tribal_affiliation_code_has_system CHECK ((ext_tribal_affiliation_code IS NULL) = (ext_tribal_affiliation_system IS NULL)), 
 	CONSTRAINT ck_patient_meta_security_codes CHECK (meta_security <@ ARRAY['L', 'M', 'N', 'R', 'V', 'PSY', 'SUD', 'ETH', 'HIV', 'SEX', 'SOC', 'CEL']::varchar[]), 
 	CONSTRAINT ck_patient_extension_is_array CHECK (jsonb_typeof(extension) = 'array'), 
 	CONSTRAINT fk_patient_marital_status_system_code_system FOREIGN KEY(marital_status_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
 	CONSTRAINT fk_patient_managing_organization_id_organization FOREIGN KEY(managing_organization_id) REFERENCES clinical.organization (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_patient_ext_gender_identity_system_code_system FOREIGN KEY(ext_gender_identity_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
+	CONSTRAINT fk_patient_ext_sexual_orientation_system_code_system FOREIGN KEY(ext_sexual_orientation_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
+	CONSTRAINT fk_patient_ext_occupation_system_code_system FOREIGN KEY(ext_occupation_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
+	CONSTRAINT fk_patient_ext_industry_system_code_system FOREIGN KEY(ext_industry_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
+	CONSTRAINT fk_patient_ext_tribal_affiliation_system_code_system FOREIGN KEY(ext_tribal_affiliation_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
 	CONSTRAINT fk_patient_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_patient_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_patient_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
@@ -1378,7 +1431,7 @@ CREATE TABLE admin.facility (
 	clia_number VARCHAR(10), 
 	tax_id_ref VARCHAR(200), 
 	place_of_service_code VARCHAR(2) DEFAULT '11' NOT NULL, 
-	timezone VARCHAR(64), 
+	timezone VARCHAR(64) NOT NULL, 
 	is_billing_location BOOLEAN DEFAULT true NOT NULL, 
 	is_active BOOLEAN DEFAULT true NOT NULL, 
 	id UUID NOT NULL, 
@@ -2368,6 +2421,42 @@ CREATE INDEX ix_user_favorite_tenant_id ON admin.user_favorite (tenant_id);
 
 CREATE INDEX ix_user_favorite_user_kind ON admin.user_favorite (user_id, kind, sequence);
 
+CREATE TABLE admin.employer (
+	patient_id UUID, 
+	related_person_id UUID, 
+	name VARCHAR(200) NOT NULL, 
+	phone VARCHAR(16), 
+	address_lines VARCHAR(100)[], 
+	address_city VARCHAR(60), 
+	address_state VARCHAR(2), 
+	address_postal_code VARCHAR(10), 
+	address_country VARCHAR(2), 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_employer PRIMARY KEY (id), 
+	CONSTRAINT ck_employer_one_person CHECK (num_nonnulls(patient_id, related_person_id) = 1), 
+	CONSTRAINT uq_employer_patient_id UNIQUE (patient_id), 
+	CONSTRAINT uq_employer_related_person_id UNIQUE (related_person_id), 
+	CONSTRAINT ck_employer_name_given CHECK (length(trim(name)) >= 1), 
+	CONSTRAINT ck_employer_phone_e164 CHECK (phone IS NULL OR phone ~ '^\+[1-9][0-9]{6,14}$'), 
+	CONSTRAINT ck_employer_address_whole CHECK (num_nonnulls(address_lines, address_city, address_state, address_postal_code, address_country) IN (0, 5)), 
+	CONSTRAINT ck_employer_address_lines_count CHECK (address_lines IS NULL OR cardinality(address_lines) BETWEEN 1 AND 3), 
+	CONSTRAINT ck_employer_address_state_format CHECK (address_state IS NULL OR address_state ~ '^[A-Z]{2}$'), 
+	CONSTRAINT ck_employer_address_postal_code_format CHECK (address_postal_code IS NULL OR address_postal_code ~ '^[0-9]{5}(-[0-9]{4})?$'), 
+	CONSTRAINT ck_employer_address_country_us CHECK (address_country IS NULL OR address_country = 'US'), 
+	CONSTRAINT fk_employer_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id) ON DELETE CASCADE, 
+	CONSTRAINT fk_employer_related_person_id_related_person FOREIGN KEY(related_person_id) REFERENCES clinical.related_person (id) ON DELETE CASCADE, 
+	CONSTRAINT fk_employer_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_employer_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_employer_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_employer_tenant_id ON admin.employer (tenant_id);
+
 CREATE TABLE admin.event_log (
 	seq BIGINT GENERATED ALWAYS AS IDENTITY, 
 	facility_id UUID, 
@@ -3254,6 +3343,7 @@ CREATE TABLE clinical.encounter (
 	service_provider_organization_id UUID, 
 	ext_facility_id UUID, 
 	ext_place_of_service_code VARCHAR(2), 
+	ext_self_pay BOOLEAN DEFAULT false NOT NULL, 
 	meta_version_id INTEGER DEFAULT 1 NOT NULL, 
 	meta_last_updated TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	meta_txid BIGINT, 
@@ -7747,6 +7837,12 @@ ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_integrat
 ALTER TABLE admin.eligibility_check ADD CONSTRAINT fk_eligibility_check_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.eligibility_service_type ADD CONSTRAINT fk_eligibility_service_type_eligibility_check_id_tenant FOREIGN KEY(tenant_id, eligibility_check_id) REFERENCES admin.eligibility_check (tenant_id, id);
+
+ALTER TABLE admin.employer ADD CONSTRAINT fk_employer_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.employer ADD CONSTRAINT fk_employer_related_person_id_same_patient FOREIGN KEY(patient_id, related_person_id) REFERENCES clinical.related_person (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.employer ADD CONSTRAINT fk_employer_related_person_id_tenant FOREIGN KEY(tenant_id, related_person_id) REFERENCES clinical.related_person (tenant_id, id);
 
 ALTER TABLE admin.erx_transaction ADD CONSTRAINT fk_erx_transaction_integration_message_id_tenant FOREIGN KEY(tenant_id, integration_message_id) REFERENCES admin.integration_message (tenant_id, id);
 
