@@ -43,6 +43,10 @@ _GUARD_KEY = "shri_tenant_guard"
 # don't have the key.
 TENANT_ID_INFO_KEY = "tenant_id"
 
+# session.info key holding the Database a tenant session came from, so core can write a row
+# that must outlive the request's own transaction (a refused chart access, app/core/access.py).
+DATABASE_INFO_KEY = "shri_database"
+
 
 class Database:
     def __init__(self, settings: Settings) -> None:
@@ -66,6 +70,7 @@ class Database:
         session = self.sessions()
         session.info[_GUARD_KEY] = guard
         session.info[TENANT_ID_INFO_KEY] = tenant_id
+        session.info[DATABASE_INFO_KEY] = self
         session.info[_CONTEXT_KEY] = {
             TENANT_SETTING: str(tenant_id),
             USER_SETTING: str(user_id),
