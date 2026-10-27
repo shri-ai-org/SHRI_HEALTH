@@ -5,6 +5,7 @@ import { listCoverages } from '../../../api/generated/endpoints/patients/patient
 import type { Coverage, CoverageList } from '../../../api/generated/model'
 import { Badge, Button, DataTable, formatDate, ProblemAlert, todayIn, type Column, type Problem } from '../../../design-system'
 import { AddCoverageDialog } from './AddCoverageDialog'
+import { CardPhotosDialog } from './CardPhotosDialog'
 import { EnteredInErrorDialog } from './EnteredInErrorDialog'
 import { priorityLabel, RELATIONSHIP } from './labels'
 
@@ -45,6 +46,7 @@ export function InsurancePanel({ patientId }: { patientId: string }) {
   const [problem, setProblem] = useState<Problem | null>(null)
   const [adding, setAdding] = useState(false)
   const [marking, setMarking] = useState<Coverage | null>(null)
+  const [photos, setPhotos] = useState<Coverage | null>(null)
 
   // Bumped after an add or a correction, to read the list again.
   const [version, setVersion] = useState(0)
@@ -86,13 +88,26 @@ export function InsurancePanel({ patientId }: { patientId: string }) {
     },
     { key: 'status', header: 'Status', render: (c) => statusBadge(c, on) },
     {
+      key: 'card',
+      header: 'Card',
+      render: (c) => {
+        const sides = (c.cardImages ?? []).map((i) => (i.side === 'front' ? 'Front' : 'Back'))
+        return sides.length ? sides.join(', ') : '—'
+      },
+    },
+    {
       key: 'actions',
       header: 'Actions',
       render: (c) =>
         c.status === 'entered-in-error' ? null : (
-          <Button variant="ghost" size="sm" onClick={() => setMarking(c)} aria-label={`Mark ${c.payerName ?? 'this coverage'} entered in error`}>
-            Mark as error
-          </Button>
+          <span className="flex flex-wrap gap-1">
+            <Button variant="outline" size="sm" onClick={() => setPhotos(c)} aria-label={`Card photos for ${c.payerName ?? 'this coverage'}`}>
+              Card photos
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setMarking(c)} aria-label={`Mark ${c.payerName ?? 'this coverage'} entered in error`}>
+              Mark as error
+            </Button>
+          </span>
         ),
     },
   ]
@@ -129,6 +144,7 @@ export function InsurancePanel({ patientId }: { patientId: string }) {
           }}
         />
       ) : null}
+      {photos ? <CardPhotosDialog patientId={patientId} coverage={photos} onClose={() => setPhotos(null)} onChanged={reload} /> : null}
       {marking ? (
         <EnteredInErrorDialog
           patientId={patientId}
