@@ -1,4 +1,5 @@
-"""The two pieces PR-1 needs from other owners, behind one seam each so the endpoints never change:
+"""The pieces PR-1 uses from other owners, one FastAPI dependency each, so tests can replace them
+with ``app.dependency_overrides``:
 
 - the restricted-chart check, core's ``ensure_chart_access(db, user, patient_id)`` (Thulasi, #83;
   D37, SECURITY_MODEL §5.2), which raises ``break-glass-required``;
@@ -7,12 +8,6 @@
 - the audit hooks, core's ``audit_patients`` and ``audit_detail`` (Thulasi, #79), which name the
   patients of an operation whose ``x-audit.patient`` is ``result`` or ``body:/…``, and the reason
   where x-audit alone doesn't give it.
-
-Until the check and the helpers land on main, their dependencies **fail closed** with 503: no
-patient endpoint serves or writes a chart without them (batch 1 plan, decision 1). The audit hooks
-do nothing until #79 is on main, as core's own do for a request with no audit trail; this branch
-merges only after #79 (the PR's dependencies). Tests replace all three with
-``app.dependency_overrides``.
 
 The helpers have their own copies of the interface's types: the same names and fields as
 ``store.py`` (the agreed interface, with the renames on #13), but their own ``UNSET`` sentinel and
@@ -23,7 +18,6 @@ out, so a field left unset is never mistaken for a value.
 from __future__ import annotations
 
 import dataclasses
-import importlib
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from types import ModuleType
@@ -33,34 +27,20 @@ from uuid import UUID
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import access as core_access
+from app.core import audit as core_audit
 from app.core.deps import CurrentUser
-from app.core.errors import ServiceUnavailable
+from app.db import fhir_store as helpers
 
 from . import store
 from .store import FhirStore
 
-ChartCheck = Callable[[AsyncSession, CurrentUser, UUID], Awaitable[None]]
-
-
-def _module(name: str, what: str) -> ModuleType:
-    try:
-        return importlib.import_module(name)
-    except ModuleNotFoundError as missing:
-        raise ServiceUnavailable(f"{what} is not available yet") from missing
-
-
-def _attribute(module: ModuleType, attribute: str, what: str) -> object:
-    found: object = module.__dict__.get(attribute)
-    if found is None:
-        raise ServiceUnavailable(f"{what} is not available yet")
-    return found
+ChartCheck = Callable[[AsyncSession, CurrentUser, UUID], Awaitable[object]]
 
 
 def chart_check() -> ChartCheck:
     """FastAPI dependency: the restricted-chart check to run before any chart is read or written."""
-    what = "The restricted-chart check"
-    check = _attribute(_module("app.core.access", what), "ensure_chart_access", what)
-    return cast(ChartCheck, check)
+    return core_access.ensure_chart_access
 
 
 class _Helpers:
@@ -69,8 +49,7 @@ class _Helpers:
 
     def __init__(self, module: ModuleType) -> None:
         self._module = module
-        store_class = _attribute(module, "SqlFhirStore", "The FHIR write helpers")
-        self._store = cast(Callable[[], Any], store_class)()
+        self._store = module.SqlFhirStore()
         self._errors: dict[type[BaseException], Callable[[Any], Exception]] = {
             module.StaleVersion: lambda e: store.StaleVersion(e.current_version),
             module.ResourceNotFound: lambda e: store.ResourceNotFound(),
@@ -104,7 +83,7 @@ class _Helpers:
 
 def fhir_store() -> FhirStore:
     """FastAPI dependency: the FHIR write helpers."""
-    return cast(FhirStore, _Helpers(_module("app.db.fhir_store", "The FHIR write helpers")))
+    return cast(FhirStore, _Helpers(helpers))
 
 
 @dataclass(frozen=True)
@@ -117,21 +96,9 @@ class AuditHooks:
     detail: Callable[[Request, str, str | None], None]
 
 
-def _no_patients(request: Request, patient_ids: Iterable[UUID]) -> None:
-    return None
-
-
-def _no_detail(request: Request, action: str, reason: str | None) -> None:
-    return None
-
-
 def audit_hooks() -> AuditHooks:
-    """FastAPI dependency: core's audit hooks, or no-ops before #79 is on main."""
-    try:
-        module = importlib.import_module("app.core.audit")
-    except ModuleNotFoundError:
-        return AuditHooks(_no_patients, _no_detail)
-    detail = cast(Callable[..., None], module.audit_detail)
+    """FastAPI dependency: core's audit hooks."""
     return AuditHooks(
-        patients=cast(Callable[[Request, Iterable[UUID]], None], module.audit_patients),
-        detail=lambda request, action, reason: detail(request, action=action, reason=reason))
+        patients=core_audit.audit_patients,
+        detail=lambda request, action, reason: core_audit.audit_detail(
+            request, action=action, reason=reason))

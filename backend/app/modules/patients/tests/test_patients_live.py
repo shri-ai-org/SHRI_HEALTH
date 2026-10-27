@@ -1,31 +1,25 @@
-"""PR-1 endpoints against a live database, as shri_app, with the real FHIR write helpers
-(app.db.fhir_store, #88) and the real reads (repository.py).
-
-Runs only where ``TEST_DATABASE_URL`` is set **and** the helpers and 0007's columns exist, which
-means main plus #52 → #69 → #74 → #88; elsewhere it is skipped. The chart check is core's (#83),
-not in that chain, so here it allows every read; restricted charts are covered by the in-memory
-tests until #83 lands. Synthetic data only.
+"""PR-1 endpoints against a live database, as shri_app, with nothing replaced but the sign-in:
+core's tenant_db, chart check (#83) and audit (#79), Anand's FHIR write helpers (#88) and the real
+reads (repository.py). Each test gets fresh clinics, with a real user per dev user name. Runs
+where ``TEST_DATABASE_URL`` is set. Synthetic data only.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import Iterator
 from typing import Any
 from uuid import UUID
 
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 from sqlalchemy import create_engine, text
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings
-from app.core.db import Database
-from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS, CurrentUser, current_user, tenant_db
+from app.core.deps import CLINIC_A, CLINIC_B, DEV_USER_HEADER, DEV_USERS, CurrentUser, current_user
+from app.db.tests import builders as b
 from app.db.tests.conftest import (
     TEST_DATABASE_URL,
     make_tenant,
@@ -35,15 +29,11 @@ from app.db.tests.conftest import (
 )
 from app.main import create_app
 
-from .. import access
-
-HELPERS = importlib.util.find_spec("app.db.fhir_store") is not None
-
 pytestmark = [
     pytest.mark.db,
-    pytest.mark.skipif(not (HELPERS and TEST_DATABASE_URL),
-                       reason="needs a test database and app.db.fhir_store (#88) with 0007 (#74)"),
+    pytest.mark.skipif(not TEST_DATABASE_URL, reason="needs a test database"),
 ]
+SIGNS_IN_AS = ("fd", "ma", "md", "adm", "md-b")
 
 MRN_SYSTEM = "urn:oid:2.16.840.1.113883.3.0000.7"
 
@@ -63,28 +53,43 @@ def clinics() -> Iterator[dict[UUID, UUID]]:
 
 
 @pytest.fixture
-def client(clinics: dict[UUID, UUID]) -> Iterator[Any]:
-    """One app and one TestClient per test. The app gets its own Database (as shri_app), so its
-    asyncpg connections live in the TestClient's event loop and close at its shutdown."""
-    app: FastAPI = create_app(Settings(environment="test", auth_mode="dev_header"))
-    database = Database(Settings(database_url=SecretStr(TEST_DATABASE_URL or "")))
-    switch_to_role(database.engine.sync_engine, "shri_app")
-    app.state.db = database
+def users(clinics: dict[UUID, UUID]) -> dict[str, CurrentUser]:
+    """A real user in its fresh clinic for each dev user name, with that dev user's roles."""
+    engine = create_engine(sync_url(), poolclass=NullPool)
+    switch_to_role(engine, "shri_app")
+    signed: dict[str, CurrentUser] = {}
+    for name in SIGNS_IN_AS:
+        dev = DEV_USERS[name]
+        session = open_session(engine, clinics[dev.organization_id])
+        made = b.practitioner(session, "Lindqvist58", name.replace("-", ""))
+        session.commit()
+        signed[name] = CurrentUser(id=made["user"].id, organization_id=clinics[dev.organization_id],
+                                   roles=dev.roles, facility_ids=dev.facility_ids,
+                                   display_name=dev.display_name)
+        session.close()
+    engine.dispose()
+    return signed
 
-    async def live_db(user: CurrentUser = Depends(current_user)) -> AsyncIterator[AsyncSession]:
-        async with database.tenant_session(clinics[user.organization_id], user.id) as session:
-            yield session
 
-    async def allow(db: AsyncSession, user: CurrentUser, patient_id: UUID) -> None:
-        return None
+@pytest.fixture
+def client(users: dict[str, CurrentUser]) -> Iterator[Any]:
+    """One app and one TestClient per test, on the test database as shri_app. Only the sign-in is
+    replaced: ``X-Dev-User`` names one of ``users``."""
+    app: FastAPI = create_app(Settings(environment="test", auth_mode="dev_header",
+                                       database_url=TEST_DATABASE_URL))
+    switch_to_role(app.state.db.engine.sync_engine, "shri_app")
 
-    app.dependency_overrides[tenant_db] = live_db
-    app.dependency_overrides[access.chart_check] = lambda: allow
+    def signed_in(request: Request) -> CurrentUser:
+        return users[request.headers[DEV_USER_HEADER]]
+
+    app.dependency_overrides[current_user] = signed_in
     with TestClient(app, raise_server_exceptions=False) as test_client:
         def as_user(name: str) -> TestClient:
-            test_client.headers["X-Dev-User"] = name
+            test_client.headers[DEV_USER_HEADER] = name
             return test_client
         yield as_user
+        assert test_client.portal is not None
+        test_client.portal.call(app.state.db.dispose)
 
 
 def _body(family: str, **extra: Any) -> dict[str, Any]:
@@ -218,19 +223,23 @@ def test_another_clinics_patient_is_not_found(client: Any) -> None:
     assert search.status_code == 200 and search.json()["items"] == []
 
 
-def test_a_restricted_label_reads_back(client: Any, clinics: dict[UUID, UUID]) -> None:
+def test_a_restricted_chart_needs_break_glass_but_search_still_finds_it(
+        client: Any, clinics: dict[UUID, UUID], users: dict[str, CurrentUser]) -> None:
     patient = client("fd").post("/api/v1/patients",
                                 json=_body(f"Do{uuid.uuid4().hex[:6]}")).json()
     engine = create_engine(sync_url(), poolclass=NullPool)
     switch_to_role(engine, "shri_app")
-    session = open_session(engine, clinics[CLINIC_A], DEV_USERS["fd"].id)
+    session = open_session(engine, clinics[CLINIC_A], users["fd"].id)
     session.execute(text("UPDATE clinical.patient SET meta_security = ARRAY['R'] WHERE id = :i"),
                     {"i": patient["id"]})
     session.commit()
     session.close()
     engine.dispose()
-    got = client("fd").get(f"/api/v1/patients/{patient['id']}").json()
-    assert got["restricted"] is True
+    refused = client("md").get(f"/api/v1/patients/{patient['id']}")
+    assert refused.status_code == 403 and refused.json()["code"] == "break-glass-required"
+    found = client("fd").post("/api/v1/patients/search",
+                              json={"criteria": {"mrn": patient["mrn"]}}).json()["items"]
+    assert [f["restricted"] for f in found] == [True]  # search is a front-desk exception (§5.2)
 
 
 def test_update_patient_against_the_real_helpers(client: Any) -> None:

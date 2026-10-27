@@ -147,7 +147,8 @@ def _identifier(i: schemas.PatientIdentifierCreate) -> IdentifierIn:
                         assigner_display=i.assigner, supporting_document_id=i.document_id)
 
 
-def patient_in(body: schemas.PatientCreate, mrn_system: str, mrn: str) -> PatientIn:
+def patient_in(body: schemas.PatientCreate) -> PatientIn:
+    """The registration for the helpers. No MR: ``create_patient`` issues it (D41, #88)."""
     names = (_name(body.name, "official"),
              *((Name(use="nickname", text=body.preferred_name),) if body.preferred_name else ()),
              *(_name(n, "old") for n in body.previous_names))
@@ -160,8 +161,7 @@ def patient_in(body: schemas.PatientCreate, mrn_system: str, mrn: str) -> Patien
         preferred_language=body.preferred_language, marital_status=body.marital_status,
         telecoms=_telecoms(body.phones, body.emails),
         addresses=tuple(a for a in (_address(body.address),) if a is not None),
-        identifiers=(IdentifierIn(system=mrn_system, value=mrn, type_code="MR", use="usual"),
-                     *(_identifier(i) for i in body.identifiers)),
+        identifiers=tuple(_identifier(i) for i in body.identifiers),
         employer=_employer(body.employer), entry_source="clinician")
 
 
@@ -234,8 +234,9 @@ async def register(db: AsyncSession, repo: PatientRepository, store: FhirStore,
                            detail="Matching patients exist. Review them, or resend with an "
                                   "override reason.",
                            candidateIds=[patient_id for patient_id, _ in matches])
-    system, mrn = await repo.next_mrn(db)  # last: the counter stays locked until commit
-    written = await store.create_patient(db, patient_in(body, system, mrn))
+    # Last: create_patient takes the next MRN from the practice's counter (D41), which stays
+    # locked until commit.
+    written = await store.create_patient(db, patient_in(body))
     name_patient(written.id)  # for the audit row, which commits with the patient (#79)
     await db.commit()
     return await repo.get_patient(db, written.id)

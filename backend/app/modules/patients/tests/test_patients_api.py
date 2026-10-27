@@ -11,12 +11,10 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.deps import DEV_USERS
 
-from .. import access
 from .conftest import new_patient
 from .fakes import MRN_SYSTEM, World
 
@@ -232,15 +230,6 @@ def test_related_person_validation_and_other_clinic(as_user: Client) -> None:
                                                      "relationships": []})
     assert no_relationship.status_code == 422
     assert as_user("md-b").get(path).status_code == 404
-
-
-# ------------------------------------------------------------------------------ fail closed
-def test_without_the_real_chart_check_patient_reads_fail_closed(app: FastAPI,
-                                                                as_user: Client) -> None:
-    created = register(as_user)
-    del app.dependency_overrides[access.chart_check]
-    response = as_user("md").get(f"/api/v1/patients/{created['id']}")
-    assert response.status_code == 503  # until core's ensure_chart_access (#83) is on main
 
 
 # ------------------------------------------------------------------------------- update patient

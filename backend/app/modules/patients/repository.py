@@ -13,12 +13,14 @@ adds, so it only runs once that has merged; until then the API tests use an in-m
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,11 +52,6 @@ class PatientRepository(Protocol):
         ...
 
     async def mrn_system(self, db: AsyncSession) -> str | None: ...
-
-    async def next_mrn(self, db: AsyncSession) -> tuple[str, str]:
-        """(system, value) from ``admin.next_mrn()`` (D41). Locks the counter until commit, so the
-        service calls it last."""
-        ...
 
     async def list_identifiers(self, db: AsyncSession, patient_id: UUID, *, limit: int,
                                offset: int) -> list[schemas.PatientIdentifier]: ...
@@ -188,7 +185,36 @@ def _employer(row: Mapping[str, Any]) -> schemas.Employer:
         address = schemas.Address(
             lines=list(row["address_lines"]), city=row["address_city"], state=row["address_state"],
             postal_code=row["address_postal_code"], country=row["address_country"] or "US")
-    return schemas.Employer(name=row["name"], phone=row["phone"], address=address)
+    phone = e164(row["phone"]) if row["phone"] else None
+    try:
+        return schemas.Employer(name=row["name"], phone=phone, address=address)
+    except ValidationError:  # a number stored some other way: as stored (see _phone)
+        return schemas.Employer.model_construct(name=row["name"], phone=row["phone"],
+                                                address=address)
+
+
+def e164(value: str) -> str:
+    """A stored phone as E.164 where that is unambiguous: our own writes already are, and a
+    U.S. number written another way (``+1 (555) 010-2000``, ``555-010-2000``) becomes
+    ``+15550102000``. Anything else comes back as stored."""
+    digits = re.sub(r"\D", "", value)
+    if value.lstrip().startswith("+") and 7 <= len(digits) <= 15:
+        return "+" + digits
+    if len(digits) == 10:
+        return "+1" + digits
+    if len(digits) == 11 and digits.startswith("1"):
+        return "+" + digits
+    return value
+
+
+def _phone(value: str, use: str | None, sms: bool) -> schemas.Phone:
+    """Never fail a chart read over how a number was stored (an import, an older row): a value
+    that still isn't E.164 is returned as stored, unvalidated."""
+    try:
+        return schemas.Phone(number=e164(value), use=use, text_messages=sms)
+    except ValidationError:
+        return schemas.Phone.model_construct(number=value, use=cast(schemas.ContactUse | None, use),
+                                             text_messages=sms)
 
 
 def _contacts(rows: Iterable[Mapping[str, Any]]) -> tuple[list[schemas.Phone], list[schemas.Email]]:
@@ -198,8 +224,7 @@ def _contacts(rows: Iterable[Mapping[str, Any]]) -> tuple[list[schemas.Phone], l
         if r["system"] == "email":
             emails.append(schemas.Email(address=r["value"], use=r["use"]))
         else:
-            phones.append(schemas.Phone(number=r["value"], use=r["use"],
-                                        text_messages=r["system"] == "sms"))
+            phones.append(_phone(r["value"], r["use"], r["system"] == "sms"))
     return phones, emails
 
 
@@ -299,10 +324,6 @@ class SqlPatientRepository:
         found = await db.execute(text("SELECT system FROM admin.mrn_counter"))
         system: str | None = found.scalar_one_or_none()
         return system
-
-    async def next_mrn(self, db: AsyncSession) -> tuple[str, str]:
-        row = (await db.execute(text("SELECT system, value FROM admin.next_mrn()"))).one()
-        return str(row.system), str(row.value)
 
     async def list_identifiers(self, db: AsyncSession, patient_id: UUID, *, limit: int,
                                offset: int) -> list[schemas.PatientIdentifier]:

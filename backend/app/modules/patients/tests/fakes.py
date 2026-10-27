@@ -1,5 +1,5 @@
 """In-memory stand-ins for the database, the FHIR write helpers and core's chart check, so the API
-tests run before #88 (fhir_store), #74 (next_mrn) and #83 (ensure_chart_access) are on main.
+tests need no database (test_patients_live.py covers the real ones).
 
 They behave like the real pieces where the API depends on it:
 - each clinic sees only its own rows, as forced row-level security does (another clinic's patient
@@ -31,6 +31,7 @@ from ..store import (
     UNSET,
     ChildWritten,
     IdentifierIn,
+    InvalidInput,
     Name,
     PatientChanges,
     PatientIn,
@@ -122,9 +123,15 @@ class FakeStore:
         self.world = world
 
     async def create_patient(self, db: Any, data: PatientIn) -> Written:
+        """Issues the MRN from the clinic's counter, as the real helper does (D41)."""
+        if any(i.type_code == "MR" or i.system == MRN_SYSTEM for i in data.identifiers):
+            raise InvalidInput("an MRN comes only from the practice's counter (D41)")
+        counter = self.world.counters.setdefault(db.tenant_id, itertools.count(1))
+        mrn = IdentifierIn(system=MRN_SYSTEM, value=f"TEST-{next(counter):06d}", type_code="MR",
+                           use="usual")
         patient_id = uuid.uuid4()
         self.world.clinic(db)[patient_id] = _Patient(
-            data, identifiers=[_identifier(i) for i in data.identifiers])
+            data, identifiers=[_identifier(i) for i in (mrn, *data.identifiers)])
         return Written(patient_id, 1, _NOW)
 
     async def add_patient_identifier(self, db: Any, patient_id: UUID, identifier: IdentifierIn,
@@ -230,10 +237,6 @@ class FakeRepository:
 
     async def mrn_system(self, db: Any) -> str | None:
         return MRN_SYSTEM
-
-    async def next_mrn(self, db: Any) -> tuple[str, str]:
-        counter = self.world.counters.setdefault(db.tenant_id, itertools.count(1))
-        return MRN_SYSTEM, f"TEST-{next(counter):06d}"
 
     async def list_identifiers(self, db: Any, patient_id: UUID, *, limit: int, offset: int
                                ) -> list[schemas.PatientIdentifier]:

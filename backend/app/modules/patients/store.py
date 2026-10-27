@@ -149,7 +149,7 @@ class PatientIn:
     marital_status: str | None = None  # v3 MaritalStatus
     telecoms: tuple[Telecom, ...] = ()
     addresses: tuple[PostalAddress, ...] = ()
-    identifiers: tuple[IdentifierIn, ...] = ()  # includes the MR from admin.next_mrn()
+    identifiers: tuple[IdentifierIn, ...] = ()  # no MR: create_patient issues it (D41)
     employer: EmployerIn | None = None
     entry_source: str = "clinician"
 
