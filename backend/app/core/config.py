@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     public_form_secret: SecretStr | None = None
     public_form_ip_limit: int = 20  # requests per IP per window
     public_form_ip_window_seconds: int = 3600
+    bot_challenge_ip_limit: int = 60  # GET /portal/bot-challenge, per IP per hour (its own budget)
     public_form_email_limit: int = 5  # requests per email address (as its keyed hash) per window
     public_form_email_window_seconds: int = 86400
     bot_check_max_number: int = 100_000  # the proof of work: about a second on a slow phone

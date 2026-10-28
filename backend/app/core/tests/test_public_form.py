@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import secrets
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +15,7 @@ from pydantic import SecretStr
 
 from app.core import public_form
 from app.core.config import Settings
+from app.core.operations import OPERATIONS_PATH_ENV, operations_file
 from app.core.public_form import (
     BotCheck,
     PublicFormGuards,
@@ -245,3 +247,60 @@ async def test_the_guards_create_and_check_challenges() -> None:
     payload = _payload(guards.create_challenge().as_json())
     assert await guards.bot_check_passes(payload, idempotency_key="key-1")
     assert not await guards.bot_check_passes(payload, idempotency_key="key-2")
+
+
+# ------------------------------------------------------------------- GET /portal/bot-challenge
+@pytest.fixture
+def with_challenge_operation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#136's operation, until it is on main: the route mounts only when the map has it."""
+    current = json.loads(operations_file().read_text(encoding="utf-8"))
+    current["operations"]["getBotChallenge"] = {
+        "method": "GET", "path": "/api/v1/portal/bot-challenge", "permission": "public",
+        "audit": {"action": "R", "category": "none", "actor": "anonymous"}, "idempotency": None}
+    path = tmp_path / "operations.json"
+    path.write_text(json.dumps(current), encoding="utf-8")
+    monkeypatch.setenv(OPERATIONS_PATH_ENV, str(path))
+
+
+def test_the_challenge_route_gives_a_signed_challenge_that_passes_once(
+        with_challenge_operation: None) -> None:
+    from app.main import create_app
+
+    app = create_app(_settings())
+    response = TestClient(app).get("/api/v1/portal/bot-challenge")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    challenge = response.json()
+    assert set(challenge) == {"algorithm", "challenge", "maxnumber", "salt", "signature"}
+    assert challenge["algorithm"] == "SHA-256" and "?expires=" in challenge["salt"]
+    guards: PublicFormGuards = getattr(app.state, public_form.STATE)
+    payload = _payload(challenge)
+    assert guards.bot_check.verify(payload, "key-1")  # signed by this app's key
+    assert not guards.bot_check.verify(payload, "key-2")  # single use
+
+
+def test_the_challenge_route_has_its_own_per_ip_budget(with_challenge_operation: None) -> None:
+    from app.main import create_app
+
+    client = TestClient(create_app(_settings(bot_challenge_ip_limit=1)))
+    assert client.get("/api/v1/portal/bot-challenge").status_code == 200
+    refused = client.get("/api/v1/portal/bot-challenge")
+    assert refused.status_code == 429 and refused.json()["code"] == "rate-limited"
+    assert int(refused.headers["retry-after"]) > 0
+
+
+def test_the_challenge_route_is_503_when_public_forms_are_not_configured(
+        with_challenge_operation: None) -> None:
+    from app.main import create_app
+
+    client = TestClient(create_app(Settings(environment="test", auth_mode="dev_header")))
+    assert client.get("/api/v1/portal/bot-challenge").status_code == 503
+
+
+def test_the_challenge_route_stays_out_until_the_contract_has_it() -> None:
+    from app.main import create_app
+
+    if "getBotChallenge" in json.loads(operations_file().read_text(encoding="utf-8"))["operations"]:
+        pytest.skip("the contract has the operation (#136 merged)")
+    client = TestClient(create_app(_settings()))
+    assert client.get("/api/v1/portal/bot-challenge").status_code == 404

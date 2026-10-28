@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.core import auth_api, events, health, long_running
+from app.core import auth_api, events, health, long_running, public_form
 from app.core.audit import AuditMiddleware
 from app.core.config import Settings, get_settings
 from app.core.crypto import FieldCrypto
@@ -73,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.add_exception_handler(Replay, replay_response)
     application.include_router(health.router)  # root: /health, /ready
     application.include_router(auth_api.router, prefix=API_PREFIX)  # staff sign-in
+    public_form.include_routes(application, API_PREFIX)  # GET /portal/bot-challenge (#136)
     # Core's own platform operations (x-owner thulasi): the event stream and operations.
     application.include_router(events.router, prefix=API_PREFIX)
     application.include_router(long_running.router, prefix=API_PREFIX)

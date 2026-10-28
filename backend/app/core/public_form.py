@@ -33,10 +33,10 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs
 
-from fastapi import Request
+from fastapi import APIRouter, Depends, FastAPI, Request, Response
 
 from app.core.config import Settings
-from app.core.errors import Forbidden, ServiceUnavailable
+from app.core.errors import AppError, Forbidden, ServiceUnavailable
 
 ALGORITHM = "SHA-256"
 MIN_SECRET_LENGTH = 32
@@ -207,6 +207,7 @@ class PublicFormGuards:
         self.limiter = RateLimiter({
             "ip": (settings.public_form_ip_limit, settings.public_form_ip_window_seconds),
             "email": (settings.public_form_email_limit, settings.public_form_email_window_seconds),
+            "challenge": (settings.bot_challenge_ip_limit, 3600),
         })
         self.bot_check = BotCheck(bot_key, settings.bot_check_max_number,
                                   settings.bot_check_ttl_seconds)
@@ -237,3 +238,42 @@ def public_form_guards(request: Request) -> PublicFormGuards:
     if guards is None:
         raise ServiceUnavailable("Public forms are not available")
     return guards
+
+
+# ------------------------------------------------------------------------ the challenge route
+class TooManyChallenges(AppError):
+    default_code = "rate-limited"
+
+
+CHALLENGE_OPERATION = "getBotChallenge"
+router = APIRouter(tags=["portal"])
+
+
+@router.get("/portal/bot-challenge", operation_id=CHALLENGE_OPERATION)
+async def get_bot_challenge(
+    request: Request, response: Response,
+    guards: PublicFormGuards = Depends(public_form_guards),
+) -> dict[str, Any]:
+    """A fresh signed ALTCHA challenge (#136, D96): public, no session and no practice code, not
+    audited. Per IP it has its own budget, so fetching one never uses up the form's; nginx limits
+    the path too. Each solved challenge is accepted once (BotCheck.verify)."""
+    client = request.client.host if request.client else "unknown"
+    wait = await guards.retry_after("challenge", client)
+    if wait is not None:
+        raise TooManyChallenges("Too many challenges; try again later",
+                                headers={"Retry-After": str(wait)})
+    response.headers["Cache-Control"] = "no-store"
+    return guards.create_challenge().as_json()
+
+
+def include_routes(app: FastAPI, api_prefix: str) -> None:
+    """Mounts the challenge route once the contract has it (#136). create_app() refuses a route
+    the operations map doesn't have, so until then it stays out and the API still starts."""
+    from app.core.operations import OperationsMapError, load_operations
+
+    try:
+        known = load_operations()
+    except OperationsMapError:
+        return
+    if CHALLENGE_OPERATION in known:
+        app.include_router(router, prefix=api_prefix)
