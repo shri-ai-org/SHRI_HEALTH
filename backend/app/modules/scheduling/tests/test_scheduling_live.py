@@ -254,6 +254,20 @@ def test_list_by_day_by_range_and_by_patient(client: Any, practice: Practice) ->
     assert client("md-b").get(f"{API}/appointments", params={"date": day}).json()["items"] == []
 
 
+def test_list_pages_in_the_database(client: Any, practice: Practice) -> None:
+    """#121 (Anand): pages come from the query (limit + 1), so every row is reachable and the
+    last page has no nextCursor."""
+    made = [_book(client, practice, patient=p, hour=h)["id"]
+            for p, h in (("kaia", 9), ("marcus", 10), ("restricted", 11))]
+    params: dict[str, Any] = {"date": practice.day.isoformat(), "limit": 2}
+    first = client("ma").get(f"{API}/appointments", params=params).json()
+    assert [a["id"] for a in first["items"]] == made[:2] and first["nextCursor"]
+    second = client("ma").get(f"{API}/appointments",
+                              params={**params, "cursor": first["nextCursor"]}).json()
+    assert [a["id"] for a in second["items"]] == made[2:]
+    assert "nextCursor" not in second or second["nextCursor"] is None
+
+
 def test_list_refuses(client: Any, practice: Practice) -> None:
     day = practice.day
     too_long = client("ma").get(f"{API}/appointments", params={
@@ -289,6 +303,23 @@ def test_reschedule_cancels_the_old_and_books_the_new(client: Any, practice: Pra
         "startAt": local(practice.day, 13), "reasonCode": "visit-type-changed",
         "appointmentTypeId": str(practice.types["NEW"])})
     assert longer.status_code == 201 and longer.json()["durationMinutes"] == 40  # #68
+
+
+def test_rescheduling_an_overbook_doesnt_count_itself(client: Any, practice: Practice) -> None:
+    """#121 (Anand): the appointment being moved is cancelled in the same transaction, so it
+    doesn't use up its type's overbook limit (D61: the same rules as booking)."""
+    _book(client, practice)
+    ob = _book(client, practice, patient="marcus", overbook=True,
+               appointmentTypeId=str(practice.types["OB"]))  # the type's limit is one
+    moved = client("fd").post(f"{API}/appointments/{ob['id']}/reschedule", json={
+        "startAt": local(practice.day, 9, 10), "reasonCode": "patient-request"})
+    assert moved.status_code == 201, moved.text
+    assert moved.json()["overbook"] is True
+    another = client("fd").post(f"{API}/appointments", json=_booking(
+        practice, "restricted", minute=10, overbook=True,
+        appointmentTypeId=str(practice.types["OB"])))
+    assert another.status_code == 422  # the moved overbook still counts for everyone else
+    assert another.json()["errors"][0]["pointer"] == "/overbook"
 
 
 def test_reschedule_refuses(client: Any, practice: Practice) -> None:

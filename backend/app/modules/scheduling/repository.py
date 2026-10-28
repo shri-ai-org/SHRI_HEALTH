@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -127,6 +127,8 @@ WHERE a.status = ANY(:statuses)
   AND (CAST(:end AS timestamptz) IS NULL OR a.start < :end)
   AND (CAST(:provider AS uuid) IS NULL OR pp.actor_practitioner_id = :provider)
   AND (CAST(:patient AS uuid) IS NULL OR a.subject_patient_id = :patient)
+  AND (CAST(:day_from AS date) IS NULL
+       OR CAST(a.start AT TIME ZONE f.timezone AS date) BETWEEN :day_from AND :day_to)
 ORDER BY a.start, a.id
 LIMIT :limit OFFSET :offset
 """)
@@ -160,6 +162,7 @@ SELECT count(*) FROM clinical.appointment a
 JOIN clinical.appointment_participant x ON x.appointment_id = a.id
 WHERE a.ext_overbook AND a.status = ANY(:active) AND x.actor_practitioner_id = :provider
   AND a.start < :end AND a."end" > :start
+  AND (CAST(:exclude AS uuid) IS NULL OR a.id <> :exclude)
 """)
 _SCHEDULE = text("""
 SELECT s.id FROM clinical.schedule s
@@ -170,6 +173,7 @@ WHERE s.active AND s.ext_facility_id = :facility
 ORDER BY s.created_at LIMIT 1
 """)
 _LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
+_LOCK_PATIENT = text("SELECT 1 FROM clinical.patient WHERE id = :id FOR SHARE")
 
 
 def _row(r: Any) -> AppointmentRow:
@@ -200,11 +204,14 @@ async def get(db: AsyncSession, appointment_id: UUID) -> AppointmentRow:
 async def list_appointments(db: AsyncSession, *, facilities: Iterable[UUID],
                             start: datetime | None, end: datetime | None,
                             provider_id: UUID | None, patient_id: UUID | None,
-                            statuses: Sequence[str] | None, limit: int, offset: int
-                            ) -> list[AppointmentRow]:
+                            statuses: Sequence[str] | None, limit: int, offset: int,
+                            days: tuple[date, date] | None = None) -> list[AppointmentRow]:
+    """Ordered by start and ID, paged in SQL. ``days`` keeps only appointments whose start falls
+    on those local days in their own facility's time zone (D40, D62)."""
     rows = (await db.execute(_LIST, {
         "statuses": list(statuses or LISTED_STATUSES), "facilities": list(facilities),
         "start": start, "end": end, "provider": provider_id, "patient": patient_id,
+        "day_from": days[0] if days else None, "day_to": days[1] if days else None,
         "limit": limit, "offset": offset})).mappings()
     return [_row(r) for r in rows]
 
@@ -242,9 +249,12 @@ async def busy(db: AsyncSession, provider_ids: Iterable[UUID], start: datetime, 
     return [Busy(r[0], r[1], r[2]) for r in rows]
 
 
-async def overbooked(db: AsyncSession, provider_id: UUID, start: datetime, end: datetime) -> int:
+async def overbooked(db: AsyncSession, provider_id: UUID, start: datetime, end: datetime,
+                     exclude_id: UUID | None = None) -> int:
+    """Overbooks of the provider overlapping the time, leaving out ``exclude_id`` (the
+    appointment being rescheduled, which is cancelled in the same transaction)."""
     count: int = (await db.execute(_OVERBOOKED, {
-        "provider": provider_id, "start": start, "end": end,
+        "provider": provider_id, "start": start, "end": end, "exclude": exclude_id,
         "active": list(BLOCKING_STATUSES)})).scalar_one()
     return count
 
@@ -260,6 +270,12 @@ async def lock_provider_day(db: AsyncSession, provider_id: UUID, day: str) -> No
     """Serializes bookings of one provider's local day (plan §2.2); the exclusion constraint
     is the last word."""
     await db.execute(_LOCK, {"key": f"appointment:{provider_id}:{day}"})
+
+
+async def lock_patient(db: AsyncSession, patient_id: UUID) -> None:
+    """Holds the patient row while booking, so a merge (D103), which updates it, can't commit
+    between the merged check and the insert."""
+    await db.execute(_LOCK_PATIENT, {"id": patient_id})
 
 
 async def _user_id(db: AsyncSession) -> UUID | None:

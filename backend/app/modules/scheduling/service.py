@@ -166,10 +166,12 @@ async def _validated(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
                      patient_id: UUID, provider_id: UUID, facility_id: UUID,
                      location_id: UUID | None, type_id: UUID, start: datetime,
                      minutes: int | None, overbook: bool, same_day_add_on: bool,
-                     now: datetime, prefix: str = ""
+                     now: datetime, prefix: str = "", rescheduling: UUID | None = None
                      ) -> tuple[FacilityRow, AppointmentTypeRow, repo.NewAppointment]:
-    """The booking rules (plan §2.2), shared by book and reschedule."""
+    """The booking rules (plan §2.2), shared by book and reschedule. ``rescheduling`` is the
+    appointment being replaced: it doesn't count against the type's overbook limit."""
     fac = await facility(db, ref, user, facility_id)
+    await repo.lock_patient(db, patient_id)  # no merge between this check and the insert
     person = (await repo.people(db, [patient_id])).get(patient_id)
     if person is None:
         raise NotFound()
@@ -204,7 +206,8 @@ async def _validated(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
     if overbook:
         if kind.max_overbook < 1:
             raise business_rule(f"{prefix}/overbook", "not-allowed-value")
-        if await repo.overbooked(db, provider_id, start, end) >= kind.max_overbook:
+        if await repo.overbooked(db, provider_id, start, end,
+                                 exclude_id=rescheduling) >= kind.max_overbook:
             raise business_rule(f"{prefix}/overbook", "out-of-range")  # the type's limit
     new = repo.NewAppointment(
         patient_id=patient_id, provider_id=provider_id, facility_id=fac.id,
@@ -254,9 +257,9 @@ async def reschedule(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
                      ) -> UUID:
     """D61: the old appointment is cancelled with the reason and the new one booked under the
     booking rules, with rescheduledFromId, in one transaction."""
-    old = await repo.get(db, appointment_id)
-    require_facility(user, old.facility_id)
+    require_facility(user, (await repo.get(db, appointment_id)).facility_id)
     row = await repo.locked(db, appointment_id)
+    old = await repo.get(db, appointment_id)  # read under the lock, so no edit is lost
     if row.status not in CANCELLABLE:
         raise Conflict(code="invalid-state-transition", currentState=row.status)
     type_id = body.appointment_type_id or old.type_id
@@ -273,7 +276,7 @@ async def reschedule(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
         location_id=body.location_id if body.location_id is not None else (
             old.location_id if body.facility_id in (None, old.facility_id) else None),
         type_id=type_id, start=body.start_at, minutes=minutes, overbook=old.overbook,
-        same_day_add_on=False, now=now)
+        same_day_add_on=False, now=now, rescheduling=old.id)
     await repo.cancel(db, row, body.reason_code, body.reason_text)
     new = replace(_with_text(new, old.reason, old.comment, old.patient_instruction),
                   rescheduled_from_id=old.id)
@@ -400,18 +403,16 @@ async def list_view(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser
     zones = {f.time_zone for f in facilities}
     start = end = None
     if days is not None and facilities:
-        # Widest UTC window over the facilities' zones, then each row is checked in its own.
+        # Widest UTC window over the facilities' zones (for the index); the query then keeps
+        # each row whose start is on those days in its own facility's zone.
         bounds = [slots.day_bounds(days[0], z)[0] for z in zones] + [
             slots.day_bounds(days[1], z)[1] for z in zones]
         start, end = min(bounds), max(bounds)
     rows = await repo.list_appointments(
         db, facilities=[f.id for f in facilities], start=start, end=end,
         provider_id=provider_id, patient_id=patient_id, statuses=statuses,
-        limit=10_000, offset=0)
-    if days is not None:
-        rows = [r for r in rows
-                if days[0] <= slots.local_day(r.start, r.time_zone) <= days[1]]
-    chunk, next_cursor = page(rows, limit, offset)
+        limit=limit + 1, offset=offset, days=days)
+    chunk, next_cursor = fetched(rows, limit, offset)
     out = [summary(a) for a in await appointments_out(db, user, chunk)]
     return out, next_cursor, zones.pop() if len(zones) == 1 else None
 
