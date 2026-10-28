@@ -304,3 +304,18 @@ def test_a_keyed_registration_is_replayed_not_repeated(client: Any) -> None:
                               json={"criteria": {"family": family,
                                                  "birthDate": body["birthDate"]}}).json()["items"]
     assert [f["id"] for f in found] == [first.json()["id"]]
+
+
+def test_search_treats_percent_and_underscore_as_letters(client: Any) -> None:
+    """A name is a literal prefix, never a pattern: "%" and "_" can't list every patient (D65)."""
+    tag = uuid.uuid4().hex[:6]
+    brien = client("fd").post("/api/v1/patients", json=_body(f"OXBrien{tag}", identifiers=[]))
+    assert brien.status_code == 201, brien.text
+    for criteria in ({"family": "%%", "given": "%"}, {"family": "%%", "birthDate": "1984-03-09"},
+                     {"family": f"O_Brien{tag}", "birthDate": "1984-03-09"}):
+        found = client("fd").post("/api/v1/patients/search", json={"criteria": criteria})
+        assert found.status_code == 200, (criteria, found.text)
+        assert found.json()["items"] == [], criteria
+    prefix = client("fd").post("/api/v1/patients/search", json={"criteria": {
+        "family": f"oxbrien{tag}"[:9], "birthDate": "1984-03-09"}}).json()["items"]
+    assert brien.json()["id"] in [i["id"] for i in prefix]  # a real prefix still matches

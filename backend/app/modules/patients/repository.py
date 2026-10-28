@@ -120,12 +120,12 @@ WHERE (:include_inactive OR p.active)
   AND (CAST(:birth_date AS date) IS NULL OR p.birth_date = :birth_date)
   AND (CAST(:family AS text) IS NULL OR EXISTS (
         SELECT 1 FROM clinical.human_name n WHERE n.patient_id = p.id
-          AND lower(n.family) LIKE lower(:family) || '%'
+          AND starts_with(lower(n.family), lower(:family))
           AND (CAST(:given AS text) IS NULL OR EXISTS (
-                SELECT 1 FROM unnest(n.given) g WHERE lower(g) LIKE lower(:given) || '%'))))
+                SELECT 1 FROM unnest(n.given) g WHERE starts_with(lower(g), lower(:given))))))
   AND (CAST(:given AS text) IS NULL OR CAST(:family AS text) IS NOT NULL OR EXISTS (
         SELECT 1 FROM clinical.human_name n, unnest(n.given) g
-         WHERE n.patient_id = p.id AND lower(g) LIKE lower(:given) || '%'))
+         WHERE n.patient_id = p.id AND starts_with(lower(g), lower(:given))))
   AND (CAST(:phone AS text) IS NULL OR EXISTS (
         SELECT 1 FROM clinical.contact_point c WHERE c.patient_id = p.id
           AND c.system IN ('phone', 'sms') AND c.value = :phone))
