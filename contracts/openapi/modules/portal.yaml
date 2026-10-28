@@ -1775,6 +1775,63 @@ paths:
       x-idempotency: required
       parameters:
       - $ref: ../components/parameters/IdempotencyKey.yaml
+  /portal/bot-challenge:
+    get:
+      operationId: getBotChallenge
+      summary: Get a bot-check challenge
+      description: 'A fresh proof-of-work challenge for the ALTCHA widget on the public pre-registration form (D96; ALTCHA
+        is MIT and self-hosted). Public: no session and no practice code, so it can''t be used to test practice codes, and
+        it says nothing about any person. The salt carries an expiry a few minutes ahead (`?expires=`, Unix seconds) and the
+        signature (an HMAC with a key only the server holds) covers it, so a challenge can''t be made up or stretched. The
+        form solves it in the browser and sends the solution as `botCheck` with `POST /portal/practices/{practiceLinkId}/pre-registrations`.
+        **Each solved challenge is accepted only once:** core records it when a submission uses it and refuses it after that,
+        until it expires (Thulasi). `Cache-Control: no-store`, so no cache hands one challenge to two visitors. Rate-limited
+        per IP. Not audited: no session, no person, nothing stored until a submission uses it.'
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: R
+        category: none
+        actor: anonymous
+      x-storage: admin
+      x-release: P1
+      security: []
+      responses:
+        '200':
+          description: A new challenge, valid until the expiry in its salt.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BotChallenge'
+              examples:
+                challenge:
+                  summary: A challenge (synthetic values)
+                  value:
+                    algorithm: SHA-256
+                    challenge: '0000000000000000000000000000000000000000000000000000000000000001'
+                    maxnumber: 100000
+                    salt: TEST-salt-1?expires=2051222400
+                    signature: '0000000000000000000000000000000000000000000000000000000000000002'
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: '503. `service-unavailable` (the server can''t sign challenges right now, for example its key is unavailable).'
 components:
   schemas:
     PortalSession:
@@ -2898,6 +2955,48 @@ components:
         botCheck:
           type: string
           maxLength: 4000
-          description: The proof-of-work answer from the form's ALTCHA widget (MIT, self-hosted), checked by the server; nothing
-            about the visitor goes to anyone else.
+          description: 'The solved challenge from the form''s ALTCHA widget (MIT, self-hosted), for a challenge from `GET
+            /portal/bot-challenge`. Checked by the server, and accepted only once; nothing about the visitor goes to anyone
+            else.'
+          x-phi: none
+    BotChallenge:
+      description: 'An ALTCHA proof-of-work challenge (D96). Nothing about a person. The browser finds the number, up to `maxnumber`,
+        whose hash with the salt matches `challenge`, and sends the result as `botCheck`.'
+      type: object
+      required:
+      - algorithm
+      - challenge
+      - maxnumber
+      - salt
+      - signature
+      properties:
+        algorithm:
+          type: string
+          enum:
+          - SHA-256
+          description: The hash function.
+          x-phi: none
+        challenge:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          maxLength: 64
+          description: The hash to find, in lowercase hex.
+          x-phi: none
+        maxnumber:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 10000000
+          description: The largest number the search may need; sets how much work the browser does.
+          x-phi: none
+        salt:
+          type: string
+          maxLength: 200
+          description: Random salt that carries the challenge's expiry, a few minutes ahead (`?expires=`, Unix seconds).
+          x-phi: none
+        signature:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          maxLength: 64
+          description: The server's HMAC over the challenge, in lowercase hex. Only the server can check it.
           x-phi: none
