@@ -97,7 +97,7 @@ export const getRecordPaymentUrl = (patientId: Id,) => {
 }
 
 /**
- * Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in, so it works for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session is this patient's and was captured for the same amount; a mismatch is `422 business-rule-violation`. The receipt is created in the same step as the payment, so every recorded payment has one (`receiptFileId` is always present, D104).
+ * Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in or check-out (D100), so it works for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session is this patient's and was captured for the same amount; a mismatch is `422 business-rule-violation`. The receipt is created in the same step as the payment, so every recorded payment has one (`receiptFileId` is always present, D104).
  * @summary Record a patient payment
  */
 export const recordPayment = async (patientId: Id,
