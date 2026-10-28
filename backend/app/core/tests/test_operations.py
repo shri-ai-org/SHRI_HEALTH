@@ -279,6 +279,21 @@ def test_a_public_form_with_public_db_passes(use_map: Callable[..., Path]) -> No
                                 "submitPreRegistration", [PUBLIC_DB]))) == []
 
 
+def test_pre_registrations_idempotency_is_its_database_functions(
+        use_map: Callable[..., Path]) -> None:
+    """x-idempotency: required on the public form is handled by 0009's function (practice + key),
+    so the staff-only idempotency rule (#103) doesn't refuse it; another public form still is."""
+    required = {"submitPreRegistration": {**PRE_REGISTRATION_OP["submitPreRegistration"],
+                                          "idempotency": "required"}}
+    use_map(required)
+    assert route_problems(_app(("POST", "/portal/practices/{practiceLinkId}/pre-registrations",
+                                "submitPreRegistration", [PUBLIC_DB]))) == []
+    other = {"submitTestForm": {**ANONYMOUS_OP["submitTestForm"], "idempotency": "required"}}
+    use_map(other)
+    problems = route_problems(_app(("POST", "/portal/test-forms", "submitTestForm", [PUBLIC_DB])))
+    assert any("core handles only for staff sessions so far" in p for p in problems), problems
+
+
 def test_an_audited_public_form_must_be_audited_by_its_database_function(
         use_map: Callable[..., Path]) -> None:
     """public_db starts no audit trail, so an audited public form other than pre-registration
