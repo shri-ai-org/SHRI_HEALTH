@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.core import events, health, long_running
+from app.core import auth_api, events, health, long_running
 from app.core.audit import AuditMiddleware
 from app.core.config import Settings, get_settings
 from app.core.crypto import FieldCrypto
@@ -17,6 +17,7 @@ from app.core.operations import OperationsMapError, load_operations, route_probl
 from app.core.request_id import RequestIdMiddleware
 from app.core.response_headers import NoStoreMiddleware
 from app.core.routing import API_PREFIX, include_module_routers
+from app.core.session import Keycloak, LoginStates
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await application.state.db.dispose()
         if application.state.crypto is not None:
             await application.state.crypto.aclose()
+        if application.state.keycloak is not None:
+            await application.state.keycloak.aclose()
 
     application = FastAPI(
         title="Shri Health API",
@@ -48,6 +51,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = settings
     application.state.db = Database(settings) if settings.database_url else None
     application.state.crypto = FieldCrypto(settings) if settings.openbao_transit_addr else None
+    # Staff sign-in (core/session.py); unconfigured, the sign-in routes answer 503.
+    application.state.keycloak = Keycloak(settings) if settings.keycloak_public_url else None
+    application.state.login_states = LoginStates()
 
     application.add_middleware(AuditMiddleware)  # innermost: sees the final status
     application.add_middleware(IdempotencyMiddleware)  # stores it, audit 500s included
@@ -56,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handlers(application)
     application.add_exception_handler(Replay, replay_response)
     application.include_router(health.router)  # root: /health, /ready
+    application.include_router(auth_api.router, prefix=API_PREFIX)  # staff sign-in
     # Core's own platform operations (x-owner thulasi): the event stream and operations.
     application.include_router(events.router, prefix=API_PREFIX)
     application.include_router(long_running.router, prefix=API_PREFIX)

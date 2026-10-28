@@ -98,7 +98,16 @@ services:
         contracts: ../../contracts/openapi/dist
     environment:
       ENVIRONMENT: development
+      # dev_header: X-Dev-User. Set keycloak for real staff sign-in through the realm below.
       AUTH_MODE: dev_header
+      # Staff sign-in (core/session.py). The issuer is the public URL (KC_HOSTNAME); the API
+      # reaches Keycloak over the compose network. Same client secret as the realm's.
+      KEYCLOAK_PUBLIC_URL: https://localhost:8443/kc
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080/kc
+      KEYCLOAK_CLIENT_SECRET: ${SHRI_WEB_CLIENT_SECRET:?set SHRI_WEB_CLIENT_SECRET in infra/compose/.env}
+      KEYCLOAK_REDIRECT_URI: https://localhost:8443/api/v1/auth/callback
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in infra/compose/.env}
+      ALLOWED_ORIGINS: '["https://localhost:8443"]'
       # The patient portal's development sign-in (X-Dev-Patient, X-Dev-Patient-Clinic); refused
       # outside development and test.
       PATIENT_AUTH_MODE: dev_header
