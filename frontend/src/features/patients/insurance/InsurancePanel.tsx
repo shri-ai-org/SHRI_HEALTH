@@ -62,8 +62,14 @@ export function InsurancePanel({ patientId }: { patientId: string }) {
       })
       .catch((error: unknown) => {
         if (!current) return
-        if (error instanceof ApiError) setProblem(error.problem)
-        else throw error
+        if (!(error instanceof ApiError)) throw error
+        // Until the coverage API is served (PR-2, #122), the list answers 404 for an unknown route.
+        // The chart page has already found the patient, so this means no coverage to show: the
+        // front desk sees "No insurance on file", not "not found" (Vimal, #85). Remove with #122.
+        if (error.status === 404 && error.code === 'not-found') {
+          setItems([])
+          setProblem(null)
+        } else setProblem(error.problem)
       })
     return () => {
       current = false

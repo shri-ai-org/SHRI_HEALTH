@@ -75,6 +75,20 @@ describe('InsurancePanel', () => {
     expect(await screen.findByText('No insurance on file')).toBeInTheDocument()
   })
 
+  it('shows "No insurance on file", not "not found", while the coverage API is not served yet (until #122)', async () => {
+    serve({ [LIST]: [() => problem(404, 'not-found', { requestId: 'r-40' })] })
+    renderPanel()
+    expect(await screen.findByText('No insurance on file')).toBeInTheDocument()
+    expect(screen.queryByText('Reference: r-40')).not.toBeInTheDocument()
+  })
+
+  it('still shows any other refusal of the list in plain words', async () => {
+    serve({ [LIST]: [() => problem(403, 'permission-denied', { requestId: 'r-41' })] })
+    renderPanel()
+    expect(await screen.findByText('Reference: r-41')).toBeInTheDocument()
+    expect(screen.queryByText('No insurance on file')).not.toBeInTheDocument()
+  })
+
   it('adds a coverage from the payer directory with an Idempotency-Key, as the next priority', async () => {
     const user = userEvent.setup()
     const server = serve({
