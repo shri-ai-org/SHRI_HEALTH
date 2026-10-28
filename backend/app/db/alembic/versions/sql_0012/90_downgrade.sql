@@ -1,6 +1,6 @@
--- Migration 0012 downgrade: the enrollment key, the optional receipt, and the version-based
--- merge undo of 0008 (D51) with admin.patient_merge_record. The table, its keys, grants and
--- policy are copied from the generated sql/ files before 0012; the functions from
+-- Migration 0012 downgrade: the enrollment key, the payment and file columns, the optional
+-- receipt, and the version-based merge undo of 0008 (D51) with admin.patient_merge_record.
+-- The table, its keys, grants and policy are copied from the generated sql/ files before 0012; the functions from
 -- sql_0008/04_functions.sql, verbatim. Frozen.
 
 ALTER TABLE admin.payer_enrollment
@@ -9,6 +9,11 @@ ALTER TABLE admin.payer_enrollment
   ADD CONSTRAINT uq_payer_enrollment_payer_id_practitioner_id_transactio_c010
   UNIQUE NULLS NOT DISTINCT (payer_id, practitioner_id, transaction, clearinghouse);
 ALTER TABLE admin.patient_payment ALTER COLUMN receipt_file_id DROP NOT NULL;
+ALTER TABLE admin.patient_payment DROP COLUMN check_number;
+ALTER TABLE admin.patient_payment DROP COLUMN note;
+ALTER TABLE admin.binary_object DROP COLUMN purpose;
+ALTER TABLE admin.binary_object DROP COLUMN state;
+ALTER TABLE admin.binary_object DROP COLUMN wrapped_data_key;
 
 ALTER TABLE admin.patient_merge ADD COLUMN surviving_patient_version INTEGER;
 ALTER TABLE admin.patient_merge ADD COLUMN merged_patient_version INTEGER;

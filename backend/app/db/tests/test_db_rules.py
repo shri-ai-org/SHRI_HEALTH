@@ -528,7 +528,8 @@ def test_charge_pointer_must_be_on_its_own_encounter(db: Session) -> None:
 def test_card_numbers_never_stored(db: Session) -> None:
     pt = b.patient(db)
     receipt = M["binary_object"](bucket="docs", storage_key=f"k/{uuid.uuid4()}.pdf",
-                                 content_type="application/pdf", size_bytes=10, sha256="a" * 64)
+                                 content_type="application/pdf", size_bytes=10, sha256="a" * 64,
+                                 purpose="receipt", state="clean")
     db.add(receipt)
     db.flush()
     with fails(db, "23514", "ck_patient_payment_no_card_number"):

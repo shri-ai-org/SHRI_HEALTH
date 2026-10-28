@@ -28,7 +28,8 @@ DL_SYSTEM = "urn:oid:2.16.840.1.113883.4.3.39"     # a state's driver's license 
 
 def _file(db: Session) -> Any:
     blob = M["binary_object"](bucket="docs", storage_key=f"k/{uuid.uuid4()}.pdf",
-                              content_type="application/pdf", size_bytes=10, sha256="a" * 64)
+                              content_type="application/pdf", size_bytes=10, sha256="a" * 64,
+                              purpose="document")
     db.add(blob)
     db.flush()
     return blob
@@ -48,8 +49,8 @@ def _other_clinic_file(admin_engine: Engine) -> uuid.UUID:
     tenant, blob = make_tenant(admin_engine), uuid.uuid4()
     with admin_engine.begin() as c:
         c.execute(text("INSERT INTO admin.binary_object (id, tenant_id, bucket, storage_key, "
-                       "content_type, size_bytes, sha256, scan_status) VALUES (:i, :t, 'docs', "
-                       ":k, 'application/pdf', 10, :h, 'pending')"),
+                       "content_type, size_bytes, sha256, scan_status, purpose) VALUES (:i, :t, "
+                       "'docs', :k, 'application/pdf', 10, :h, 'pending', 'document')"),
                   {"i": blob, "t": tenant, "k": f"k/{blob}.pdf", "h": "b" * 64})
     return blob
 
@@ -151,6 +152,48 @@ def test_a_payment_receipt_is_a_file_in_its_clinic(db: Session, admin_engine: En
         pay(_other_clinic_file(admin_engine))
     with fails(db, "23502"):                               # D104: every payment has one
         pay(None)
+
+
+def test_a_payment_records_a_check_number_only_for_a_check(db: Session) -> None:
+    pt = b.patient(db)
+    receipt = _file(db).id
+    db.add(M["patient_payment"](patient_id=pt.id, amount=25, method="check", check_number="1042",
+                                note="Copay", collected_at=b.NOW, receipt_file_id=receipt))
+    db.flush()
+    with fails(db, "23514", "ck_patient_payment_check_number_method"):
+        db.add(M["patient_payment"](patient_id=pt.id, amount=25, method="cash",
+                                    check_number="1043", collected_at=b.NOW,
+                                    receipt_file_id=receipt))
+        db.flush()
+
+
+# =========================================================================== file states (0012)
+def _blob(db: Session, **kw: Any) -> Any:
+    row = M["binary_object"](bucket="docs", storage_key=f"k/{uuid.uuid4()}", size_bytes=10,
+                             content_type="image/jpeg", sha256="c" * 64, **kw)
+    db.add(row)
+    db.flush()
+    return row
+
+
+def test_an_upload_starts_pending_and_is_clean_only_after_a_clean_scan(db: Session) -> None:
+    card = _blob(db, purpose="insurance-card")
+    assert card.state == "pending-upload"
+    with fails(db, "23514", "ck_binary_object_clean_when_scanned"):
+        _blob(db, purpose="insurance-card", state="clean")
+    _blob(db, purpose="insurance-card", state="clean", scan_status="clean", scanned_at=b.NOW,
+          wrapped_data_key="vault:v1:TEST")
+
+
+def test_a_generated_file_is_clean_from_the_start(db: Session) -> None:
+    _blob(db, purpose="receipt", state="clean")
+    with fails(db, "23514", "ck_binary_object_generated_clean"):
+        _blob(db, purpose="after-visit-summary", state="pending-upload")
+
+
+def test_a_files_data_key_is_kept_only_once_it_is_clean(db: Session) -> None:
+    with fails(db, "23514", "ck_binary_object_key_when_clean"):
+        _blob(db, purpose="insurance-card", state="quarantined", wrapped_data_key="vault:v1:TEST")
 
 
 # ====================================================================== merge by link (D103)
