@@ -220,6 +220,45 @@ async def test_signing_needs_a_current_check_and_what_the_pharmacy_needs(
                  i=first.alert_ids[0])[0].status == "cancelled"      # the earlier check's
 
 
+async def test_signing_names_each_refusal_where_get_shows_it(
+        database: Database, clinic: dict[str, Any]) -> None:
+    """#124 (Vimal): one errors entry per refusal, at the JSON Pointer the contract names."""
+    patient, enc = await _visit(database, clinic)
+    allergy = await _allergy(database, clinic, patient)
+    async with session(database, clinic) as s:
+        w = await STORE.create_prescription(s, _draft(patient, enc, clinic, dosage_text=None,
+                                                      quantity=None, pharmacy_id=None))
+        with pytest.raises(fs.SignRefused) as refused:           # each its own, combined
+            await STORE.sign_prescription(s, w.id, if_version=w.version)
+        assert refused.value.errors == (("/dosageText", "required"), ("/quantity", "required"),
+                                        ("/pharmacyId", "required"),
+                                        ("/alerts", "safety-check-stale"))
+        assert "required at /quantity" in str(refused.value)
+        w = await STORE.update_prescription(s, w.id, fs.PrescriptionChanges(
+            dosage_text="1 capsule three times daily", pharmacy_id=clinic["pharmacy"],
+            quantity=fs.DispenseQuantity(Decimal(30), "capsule")), if_version=w.version)
+        check = await STORE.record_safety_check(s, w.id, (
+            fs.AlertIn(ALLERGY_RULE, "allergy", "high", "Allergy", allergy_id=allergy),
+            fs.AlertIn(DUPLICATE_RULE, "duplicate-medication", "warning", "Duplicate"),
+            fs.AlertIn(ALLERGY_RULE, "allergy", "high", "Allergy, again")), if_version=w.version)
+        order = await fs.prescription_alert_ids(s, w.id)
+        assert sorted(order) == sorted(check.alert_ids)
+        highs = [check.alert_ids[0], check.alert_ids[2]]
+        with pytest.raises(fs.SignRefused) as refused:
+            await STORE.sign_prescription(s, w.id, if_version=w.version)
+        assert refused.value.errors == tuple(
+            (f"/alerts/{order.index(a)}", "override-required") for a in sorted(
+                highs, key=order.index))
+        await STORE.override_alert(s, highs[0], "Tolerated it before")
+        with pytest.raises(fs.SignRefused) as refused:           # only the other one is left
+            await STORE.sign_prescription(s, w.id, if_version=w.version)
+        assert refused.value.errors == ((f"/alerts/{order.index(highs[1])}",
+                                         "override-required"),)
+        await STORE.override_alert(s, highs[1], "Tolerated it before")
+        await STORE.sign_prescription(s, w.id, if_version=w.version)
+        await s.commit()
+
+
 # ====================================================================== transmission
 async def test_the_transmission_moves_forward_only(
         database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:

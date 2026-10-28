@@ -146,6 +146,18 @@ class InvalidInput(ValueError):
         self.reason = reason
 
 
+class SignRefused(InvalidInput):
+    """Signing refused (422 business-rule-violation): one ``(pointer, code)`` per refusal, each
+    a JSON Pointer into the prescription as GET reads it: ``required`` at ``/dosageText``,
+    ``/quantity`` or ``/pharmacyId``; ``safety-check-stale`` at ``/alerts``;
+    ``override-required`` at ``/alerts/{i}``, ``i`` the alert's index in
+    ``prescription_alert_ids()``."""
+
+    def __init__(self, errors: tuple[tuple[str, str], ...]) -> None:
+        super().__init__("; ".join(f"{code} at {pointer}" for pointer, code in errors))
+        self.errors = errors
+
+
 @dataclass(frozen=True)
 class Written:
     id: uuid.UUID
@@ -1533,15 +1545,16 @@ class SqlFhirStore:
             raise InvalidTransition(mr.status)
         signer = await _practitioner(db)
         dosage = await _dosage_text(db, mr.id)
-        problems = [f"required: {p}" for p, missing in (
+        errors = [(pointer, "required") for pointer, missing in (
             ("/dosageText", not dosage), ("/quantity", mr.dispense_request_quantity_value is None),
             ("/pharmacyId", mr.dispense_request_performer_pharmacy_id is None)) if missing]
         if mr.ext_safety_checked_version != mr.meta_version_id:
-            problems.append("safety-check-stale")
-        elif await _unmitigated_high_alerts(db, mr):
-            problems.append("override-required")
-        if problems:
-            raise InvalidInput("; ".join(problems))
+            errors.append(("/alerts", "safety-check-stale"))     # its alerts are not this draft's
+        else:
+            errors += [(f"/alerts/{i}", "override-required")
+                       for i in await _unmitigated_high_alerts(db, mr)]
+        if errors:
+            raise SignRefused(tuple(errors))
         now = await _db_now(db)
         mr.status, mr.authored_on = "active", now
         mr.ext_signed_at, mr.ext_signed_by_user_id = now, signer.id
@@ -1907,7 +1920,19 @@ def _alerts_of(mr: MedicationRequest) -> Any:
                   DetectedIssueImplicated.detected_issue_id == DetectedIssue.id)
             .where(DetectedIssueImplicated.medication_request_id == mr.id,
                    DetectedIssue.identified_date_time == mr.ext_safety_checked_at,
-                   DetectedIssue.status.not_in(("cancelled", "entered-in-error"))))
+                   DetectedIssue.status.not_in(("cancelled", "entered-in-error")))
+            .order_by(DetectedIssue.id))
+
+
+async def prescription_alert_ids(db: AsyncSession, prescription_id: uuid.UUID
+                                 ) -> list[uuid.UUID]:
+    """The prescription's ``alerts`` (its latest check's, live), in the order GET returns them
+    and ``SignRefused``'s ``/alerts/{i}`` counts them. Empty when no check has run."""
+    mr = (await db.execute(select(MedicationRequest).where(
+        MedicationRequest.id == prescription_id))).scalar_one_or_none()
+    if mr is None:
+        raise ResourceNotFound
+    return list((await db.execute(_alerts_of(mr).with_only_columns(DetectedIssue.id))).scalars())
 
 
 async def _cancel_alerts(db: AsyncSession, prescription_id: uuid.UUID) -> None:
@@ -1924,12 +1949,13 @@ async def _cancel_alerts(db: AsyncSession, prescription_id: uuid.UUID) -> None:
         await _written(db, issue)
 
 
-async def _unmitigated_high_alerts(db: AsyncSession, mr: MedicationRequest) -> bool:
+async def _unmitigated_high_alerts(db: AsyncSession, mr: MedicationRequest) -> list[int]:
+    """The indexes, in ``_alerts_of`` order, of the high alerts that have no override yet."""
     mitigated = select(DetectedIssueMitigation.id).where(
         DetectedIssueMitigation.detected_issue_id == DetectedIssue.id).exists()
-    found = (await db.execute(_alerts_of(mr).where(DetectedIssue.severity == "high", ~mitigated)
-                              .limit(1))).first()
-    return found is not None
+    rows = (await db.execute(_alerts_of(mr).with_only_columns(
+        DetectedIssue.severity, mitigated))).all()
+    return [i for i, (severity, done) in enumerate(rows) if severity == "high" and not done]
 
 
 async def _alert_prescription(db: AsyncSession, alert_id: uuid.UUID) -> uuid.UUID:
@@ -2045,6 +2071,6 @@ __all__ = [
     "NoteIn", "ParticipantIn", "PatientChanges", "PatientIn", "PostalAddress",
     "PrescriptionChanges", "PrescriptionIn", "RaceOrEthnicity", "ReactionIn", "Reason",
     "RelatedPersonChanges", "RelatedPersonIn", "ResourceNotFound", "SafetyCheckWritten",
-    "SectionIn", "SectionText", "SqlFhirStore", "StaleVersion", "Telecom", "TransmissionWritten",
-    "VitalIn", "Written", "section_text",
+    "SectionIn", "SectionText", "SignRefused", "SqlFhirStore", "StaleVersion", "Telecom",
+    "TransmissionWritten", "VitalIn", "Written", "prescription_alert_ids", "section_text",
 ]

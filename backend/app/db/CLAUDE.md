@@ -152,8 +152,8 @@ The prescription helpers (D97), on the same rules. A prescription is a Medicatio
   migration 0013);
 - `override_alert`: a `detected_issue_mitigation` with the trimmed reason, once, while the draft
   is a draft; the draft's version doesn't move;
-- `sign_prescription`: refuses (`InvalidInput`) a missing sig, quantity or pharmacy, a check
-  not on the current version (`safety-check-stale`) or a `high` alert without override; then
+- `sign_prescription`: refuses with `SignRefused(errors)`, one `(pointer, code)` per refusal as
+  the contract's 422 lists them (`/alerts/{i}` counts `prescription_alert_ids()`, GET's order); then
   signs, writes its Provenance (with the content's SHA-256) and the NewRx `erx_transaction`
   (`queued`), and the prescription is frozen;
 - `set_transmission_status`: the NewRx row moves `queued` to `sent`, then `accepted` or
