@@ -138,6 +138,12 @@ def test_support_staff_get_no_phi() -> None:
         ("FD", "note-templates:read", False),
         ("BIL", "note-templates:read", False),
         ("SUP", "note-templates:read", False),
+        # T52: MA and RN update the encounter (its reasons only, the service's rule) at rooming.
+        ("MA", "encounters:update", True), ("RN", "encounters:update", True),
+        ("MD", "encounters:update", True), ("APP", "encounters:update", True),
+        ("FD", "encounters:update", False), ("BIL", "encounters:update", False),
+        ("ADM", "encounters:update", False), ("DSP", "encounters:update", False),
+        ("MA", "encounters:create", False), ("RN", "encounters:close", False),
     ],
 )
 def test_matrix_rows(role: str, permission: str, allowed: bool) -> None:

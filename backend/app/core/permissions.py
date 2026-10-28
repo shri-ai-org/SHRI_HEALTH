@@ -131,7 +131,10 @@ _CLINICIAN_WRITE = _expand(
 _AI_CLINICAL = _expand("encounter-audio:create", "transcriptions:read|create",
                        "note-drafts:create", "chart-summaries:read|create",
                        "ai-suggestions:decision")
-_ROOMING = _expand("vitals:create", "allergies:create|update", "appointments:status")
+# encounters:update: MA and RN record the encounter's reasons at rooming (T52, Minalini on #114);
+# the encounters service lets them change `reasons` only, anything else is 403.
+_ROOMING = _expand("vitals:create", "allergies:create|update", "appointments:status",
+                   "encounters:update")
 
 _MD = frozenset().union(
     _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _CHART_READ, _CLINICIAN_WRITE,
