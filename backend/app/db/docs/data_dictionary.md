@@ -5786,6 +5786,8 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `ext_signed_at` | datetime | yes |  |  | — |
 | `ext_signed_by_practitioner_id` | uuid | yes |  | clinical.practitioner.id | — |
 | `ext_signed_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `ext_safety_checked_at` | datetime | yes |  |  | — |
+| `ext_safety_checked_version` | integer | yes |  |  | — |
 | `meta_version_id` | integer | no |  |  | — |
 | `meta_last_updated` | datetime | no |  |  | — |
 | `meta_txid` | bigint | yes |  |  | — |
@@ -7693,7 +7695,7 @@ Paths: `/encounters/{encounterId}/notes`, `/notes/{noteId}`, `/notes/{noteId}/ve
 | `title` | `composition.title` | same name |
 | `updatedAt` | `composition.updated_at` | same name |
 | `versionId` | — | not mapped yet |
-| `sections[].text` | `composition_section.text_div` | mapped |
+| `sections[].text` | `composition_section.text_div` | mapped: the text as typed, escaped in one XHTML div (app.db.fhir_store writes it; fhir_store.section_text() reads it back); no text is no div |
 
 ### Addendum
 

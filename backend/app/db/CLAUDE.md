@@ -129,7 +129,36 @@ The visit helpers (batch 2), on the same rules:
   `encounter-diagnosis`) and its ranked link, inserted or closed up in a safe order; removal is
   D24's (entered-in-error with Provenance, the link deleted, the Condition kept).
 
-Notes, prescriptions and the rest follow.
+The prescription helpers (D97), on the same rules. A prescription is a MedicationRequest, intent
+`order`, written by the current user's practitioner:
+- `create_prescription`, `update_prescription`: a draft only (`InvalidTransition` once signed);
+  the sig is one `dosage` row; days supply is `expectedSupplyDuration` in UCUM `d`;
+- `prescription_entered_in_error`: a draft only, with its Provenance; its alerts are cancelled;
+- `record_safety_check(..., if_version=)`: the version the rules ran on. Each alert is a
+  `detected_issue` (from an active `cds_rule` by code; severity `info`/`warning`/`high` stored
+  as `low`/`moderate`/`high`; kind as v3 ActCode `ALGY`, `DUPTHPY`, `DRG`) implicating the draft
+  and the allergy or other medication behind it; the earlier check's alerts are cancelled. It
+  sets `ext_safety_checked_at` and `ext_safety_checked_version` without a new version (A58,
+  migration 0013);
+- `override_alert`: a `detected_issue_mitigation` with the trimmed reason, once, while the draft
+  is a draft; the draft's version doesn't move;
+- `sign_prescription`: refuses (`InvalidInput`) a missing sig, quantity or pharmacy, a check
+  not on the current version (`safety-check-stale`) or a `high` alert without override; then
+  signs, writes its Provenance (with the content's SHA-256) and the NewRx `erx_transaction`
+  (`queued`), and the prescription is frozen;
+- `set_transmission_status`: the NewRx row moves `queued` to `sent`, then `accepted` or
+  `rejected`; `error` (needs the message) is replayed as `queued`. The same status again
+  changes nothing.
+
+The note helpers (D8, D73): `create_note`, `update_note` (autosave of a draft; sections merged
+by id; every committed save is a version), `sign_note` (legal attester and Provenance, then
+frozen), `add_note_addendum` (a new signed Composition that `appends`; the note becomes
+`amended`), `cosign_note` (a professional attester, never the author, once) and
+`note_entered_in_error`. A section's text is stored escaped in one XHTML div;
+`fhir_store.section_text()` reads it back. Signatures carry the SHA-256 of the signed content
+(`_digest`: canonical JSON) in the attester and the Provenance signature.
+
+The medication list's reported entries, the co-signature status and "return to author" follow.
 
 ## Conventions for the repositories (Vimal's review of #45)
 
@@ -276,6 +305,15 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     each session's audit row in its own clinic.
   - A reused `jti` raises `P0001` with constraint `logout_token_replayed`, and a token naming
     neither a session nor a user raises `22023`. Core answers 400 to both.
+- **Prescriptions and their alerts (D97, A58, migration 0013):** the contract's
+  `safetyCheckedAt` is `medication_request.ext_safety_checked_at`, present only while
+  `ext_safety_checked_version` is the current `meta_version_id`. A prescription's `alerts` are
+  the `detected_issue` rows that implicate it, not cancelled, with `identified_date_time` equal
+  to its `ext_safety_checked_at` (a duplicate alert also implicates the other medication);
+  `overrideRequired` is severity `high`; `override` is the alert's mitigation (`ext_reason`,
+  `date`, the author practitioner's user). `transmission` is the latest outbound NewRx
+  `erx_transaction` (`not-sent` when there is none); its `updatedAt` is that row's
+  `updated_at`.
 - **Merge by link (D103, migration 0012):** a merge records `admin.patient_merge` and both
   patients' `patient_link` rows (the merged one `replaced-by` the surviving one, which
   `replaces` it) and makes the merged patient inactive, in one transaction. No record moves.

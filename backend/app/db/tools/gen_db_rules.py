@@ -266,6 +266,7 @@ def versioning_sql() -> str:
     for rtype, cls in sorted(FHIR_RESOURCES.items()):
         t = cls.__tablename__
         qt = _q(CLINICAL_SCHEMA, t)
+        unversioned = ", ".join(f"'{c}'" for c in cls.fhir_unversioned_columns)
         out += [
             f"CREATE OR REPLACE FUNCTION {CLINICAL_SCHEMA}.shri_snapshot_{t}(p_id uuid) "
             "RETURNS jsonb LANGUAGE sql STABLE AS $$",
@@ -273,7 +274,7 @@ def versioning_sql() -> str:
             f"  FROM {qt} r WHERE r.id = p_id",
             "$$;",
             f"CREATE TRIGGER trg_{t}_version BEFORE INSERT OR UPDATE ON {qt}",
-            "  FOR EACH ROW EXECUTE FUNCTION shri_fhir_version();",
+            f"  FOR EACH ROW EXECUTE FUNCTION shri_fhir_version({unversioned});",
             f"CREATE CONSTRAINT TRIGGER trg_{t}_history AFTER INSERT OR UPDATE ON {qt}",
             "  DEFERRABLE INITIALLY DEFERRED",
             f"  FOR EACH ROW EXECUTE FUNCTION shri_fhir_history('{rtype}');",

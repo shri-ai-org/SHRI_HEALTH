@@ -4387,6 +4387,8 @@ CREATE TABLE clinical.medication_request (
 	ext_signed_at TIMESTAMP WITH TIME ZONE, 
 	ext_signed_by_practitioner_id UUID, 
 	ext_signed_by_user_id UUID, 
+	ext_safety_checked_at TIMESTAMP WITH TIME ZONE, 
+	ext_safety_checked_version INTEGER, 
 	meta_version_id INTEGER DEFAULT 1 NOT NULL, 
 	meta_last_updated TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	meta_txid BIGINT, 

@@ -95,6 +95,9 @@
 "Note (draft, versions, signed)":
   sections[].text:
     columns: [composition_section.text_div]
+    note: >-
+      the text as typed, escaped in one XHTML div (app.db.fhir_store writes it;
+      fhir_store.section_text() reads it back); no text is no div
 
 "Co-signature rules":
   superviseeProviderId:
