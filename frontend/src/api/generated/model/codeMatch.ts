@@ -14,6 +14,7 @@
  *
  * OpenAPI spec version: 1.0.0-draft.1
  */
+import type { DrugDetails } from './drugDetails';
 
 /**
  * A code that matches the search.
@@ -36,4 +37,6 @@ export interface CodeMatch {
   display: string;
   /** ICD-10-CM only: true for a billable (leaf) code. */
   billable?: boolean;
+  /** RxNorm only: strength, dose form, route, ingredients, brand and controlled-substance schedule. */
+  drug?: DrugDetails;
 }

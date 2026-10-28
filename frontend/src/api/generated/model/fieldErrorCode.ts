@@ -16,21 +16,7 @@
  */
 
 /**
- * Why one field failed validation (API_STANDARDS §9.2).
+ * Why one field failed validation (API_STANDARDS §9.2). An extensible enum: codes are added (never renamed or reused), so clients must treat a code they do not know as a generic field error (API_STANDARDS §6.5).
+ * @maxLength 64
  */
-export type FieldErrorCode = typeof FieldErrorCode[keyof typeof FieldErrorCode];
-
-
-export const FieldErrorCode = {
-  required: 'required',
-  'unknown-field': 'unknown-field',
-  'invalid-format': 'invalid-format',
-  'invalid-type': 'invalid-type',
-  'too-short': 'too-short',
-  'too-long': 'too-long',
-  'out-of-range': 'out-of-range',
-  'not-allowed-value': 'not-allowed-value',
-  'invalid-reference': 'invalid-reference',
-  'conflicting-fields': 'conflicting-fields',
-  'not-editable': 'not-editable',
-} as const;
+export type FieldErrorCode = string;
