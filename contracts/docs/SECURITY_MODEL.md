@@ -138,7 +138,7 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | Orders and results (Thulasi) | `lab-compendium:read`, `orders:read`, `orders:create`, `orders:medical-necessity-check`, `orders:sign-and-send`, `orders:cancel`, `orders:entered-in-error` (T13), `results:read`, `results:acknowledge`, `unmatched-results:read`, `unmatched-results:match`, `unmatched-results:reject` (T13/T34), `in-office-results:create` |
 | Files, setup, billing, documents (Anand) | `files:create`, `files:read`, `practice-setup:read\|create\|update`, `payers:read` (payer directory, read-only; added 2026-10-23), `lab-providers:read` (lab providers, read-only; D48), `consent-requirements:read` (D59), `provider-schedules:create\|update` (D66), `note-templates:read\|create-personal` (D73, A46), `onboarding:import`, `superbills:read\|update`, `claims:read\|create\|scrub\|submit\|status-check\|correct\|void`, `payments:create`, `payments:card-session`, `remittances:read\|post`, `billing-reports:read`, `documents:read\|create\|update`, `faxes:create`, `fax-inbox:read`, `fax-inbox:file`, `ccda:import`, `ccda:export`, `inbox:read\|update\|complete`, `messages:create`, `exports:read\|create` |
 | Communications and dashboard (Minalini) | `message-templates:read\|create\|update`, `communication-preferences:read\|update`, `communications:read`, `operations-dashboard:read` |
-| Pre-registration (Vimal, D96) | `pre-registrations:read`, `pre-registrations:accept`, `pre-registrations:reject` (FD, ADM; proposed in NOTE_FOR_THULASI T47, joining §4.3 with core) |
+| Pre-registration (Vimal, D96) | `pre-registrations:read`, `pre-registrations:accept`, `pre-registrations:reject` (FD, ADM; T47, in §4.3 with core since #110) |
 | Patient portal, B8a (Vimal; sign-in, enrollment and factor reset Thulasi; D84, D89) | Role `PAT` only: `portal-profile:read`, `portal-profile:request-change`, `portal-appointments:read\|create\|cancel\|reschedule`, `portal-booking:read`, `portal-records:read`. Staff: `portal-accounts:read`, `portal-invitations:create\|revoke`, `portal-accounts:reset-factors`, `portal-accounts:disable\|enable` (ADM; D92). Proposed grants in NOTE_FOR_THULASI T45; they join §4.3 in the same change as core, as for T42 |
 | Check-out and follow-up (Vimal, D98) | `appointments:check-out` (FD, ADM), `follow-ups:decline` (FD, ADM), `after-visit-summaries:read` (FD, MA, RN, MD, APP, ADM; read the latest after-visit summary to print it). Proposed in NOTE_FOR_THULASI T50; they join §4.3 with core |
 
@@ -202,6 +202,7 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `duplicates:dismiss` (D46; in core since #7) | – | – | – | – | – | – | ✓ | – | – | – |
 | `lab-providers:read` (D48; in core since #7) | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | – | – |
 | `consent-requirements:read` (D59; in core since #21) | ✓ | – | – | – | – | – | ✓ | R | – | – |
+| `pre-registrations:read`, `pre-registrations:accept`, `pre-registrations:reject` (D96; in core since T47, #110) | ✓ | – | – | – | – | – | ✓ | – | – | – |
 | `provider-schedules:create\|update` (D66: split from `practice-setup:*`; in core since #21) | ✓ | – | – | – | – | – | ✓ | – | – | – |
 | `documents:*`, `fax-inbox:*`, `faxes:create` | ✓ | ✓ | ✓ | ✓ | ✓ | R (`documents:read` only; D71) | – | – | – | – |
 | `ccda:import\|export` | ✓ | – | ✓ | ✓ | ✓ | – | – | – | – | – |

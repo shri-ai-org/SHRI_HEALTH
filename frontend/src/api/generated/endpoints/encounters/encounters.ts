@@ -1523,7 +1523,7 @@ export const getSearchCodesUrl = (params: SearchCodesParams,) => {
 }
 
 /**
- * Searches a code system by code or words (inventory #74; a GET on `/codes`, like `/pharmacies`, because the `/search` suffix is reserved for POST searches with PHI, API_STANDARDS §14): ICD-10-CM for diagnoses, RxNorm for drugs, LOINC, SNOMED CT, CPT (placeholder codes until the AMA license, Q7), HCPCS, CVX. Reference data, not patient data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited.
+ * Searches a code system by code or words (inventory #74; a GET on `/codes`, like `/pharmacies`, because the `/search` suffix is reserved for POST searches with PHI, API_STANDARDS §14): ICD-10-CM for diagnoses, RxNorm for drugs, LOINC, SNOMED CT, CPT (placeholder codes until the AMA license, Q7), HCPCS, CVX. Reference data, not patient data, so `q` may be in the query string (API_STANDARDS §16) and the call is not audited. For `rxnorm` (drug search, prescribing), results come from the free RxNorm Current Prescribable Content subset, which needs no UMLS license (D97). Each `rxnorm` result also carries `drug`: strength, dose form, route, the ingredients with their RxCUIs, the brand name for a branded product, and the DEA schedule for a controlled substance.
  * @summary Search codes
  */
 export const searchCodes = async (params: SearchCodesParams, options?: Parameters<typeof apiFetch>[1]): Promise<searchCodesResponse> => {

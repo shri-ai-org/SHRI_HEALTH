@@ -105,7 +105,7 @@ module. Each helper:
 - stores every reason trimmed, and refuses a blank one with `InvalidInput` at `field="reason"`;
 - raises `CoverageOrderTaken` (an `InvalidInput` at `field="order"`) when another coverage of
   the patient has the same order for an overlapping period (`ex_coverage_order_no_overlap`,
-  migration 0012; an open end is open-ended, entered-in-error coverages don't count), so an
+  migration 0013; an open end is open-ended, entered-in-error coverages don't count), so an
   ended coverage frees its order.
 
 No identifier other than the MR from `admin.next_mrn()` may use the practice's MRN system

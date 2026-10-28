@@ -44,14 +44,3 @@ ALTER TABLE admin.binary_object ADD CONSTRAINT ck_binary_object_key_when_clean
 ALTER TABLE admin.binary_object ADD CONSTRAINT ck_binary_object_clean_when_scanned
   CHECK (state <> 'clean' OR scan_status = 'clean'
          OR purpose IN ('receipt', 'after-visit-summary'));
-
--- ============================================================================= clinical.coverage
--- One coverage per patient per order at any time: periods with the same order may not overlap
--- (an open end is open-ended); entered-in-error coverages don't count (D45). Ending a coverage
--- (an end date) frees its order for the next period, which one active coverage per order
--- (0001's partial unique index) did not.
-DROP INDEX clinical.uq_coverage_active_order;
-ALTER TABLE clinical.coverage ADD CONSTRAINT ex_coverage_order_no_overlap EXCLUDE USING gist
-  (beneficiary_patient_id WITH =, "order" WITH =,
-   daterange(period_start, period_end, '[]') WITH &&)
-  WHERE (status <> 'entered-in-error' AND "order" IS NOT NULL);
