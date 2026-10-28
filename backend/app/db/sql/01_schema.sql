@@ -1138,7 +1138,7 @@ CREATE TABLE admin.payer_enrollment (
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
 	CONSTRAINT pk_payer_enrollment PRIMARY KEY (id), 
-	CONSTRAINT uq_payer_enrollment_payer_id_practitioner_id_transactio_c010 UNIQUE NULLS NOT DISTINCT (payer_id, practitioner_id, transaction, clearinghouse), 
+	CONSTRAINT uq_payer_enrollment_tenant_id_payer_id_practitioner_id__a493 UNIQUE NULLS NOT DISTINCT (tenant_id, payer_id, practitioner_id, transaction, clearinghouse), 
 	CONSTRAINT ck_payer_enrollment_approved_at CHECK (status <> 'approved' OR approved_at IS NOT NULL), 
 	CONSTRAINT fk_payer_enrollment_payer_id_payer FOREIGN KEY(payer_id) REFERENCES admin.payer (id), 
 	CONSTRAINT fk_payer_enrollment_practitioner_id_practitioner FOREIGN KEY(practitioner_id) REFERENCES clinical.practitioner (id), 
@@ -2483,8 +2483,6 @@ CREATE TABLE admin.patient_merge (
 	performed_by_user_id UUID NOT NULL, 
 	unmerged_at TIMESTAMP WITH TIME ZONE, 
 	unmerged_by_user_id UUID, 
-	surviving_patient_version INTEGER, 
-	merged_patient_version INTEGER, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -3091,27 +3089,6 @@ CREATE TABLE admin.compendium_aoe_option (
 );
 
 CREATE INDEX ix_compendium_aoe_option_tenant_id ON admin.compendium_aoe_option (tenant_id);
-
-CREATE TABLE admin.patient_merge_record (
-	patient_merge_id UUID NOT NULL, 
-	resource_type VARCHAR(64) NOT NULL, 
-	resource_id UUID NOT NULL, 
-	version_before_merge INTEGER NOT NULL, 
-	id UUID NOT NULL, 
-	tenant_id UUID NOT NULL, 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	created_by_user_id UUID, 
-	updated_by_user_id UUID, 
-	CONSTRAINT pk_patient_merge_record PRIMARY KEY (id), 
-	CONSTRAINT uq_patient_merge_record_patient_merge_id_resource_type__6e7b UNIQUE (patient_merge_id, resource_type, resource_id), 
-	CONSTRAINT fk_patient_merge_record_patient_merge_id_patient_merge FOREIGN KEY(patient_merge_id) REFERENCES admin.patient_merge (id), 
-	CONSTRAINT fk_patient_merge_record_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
-	CONSTRAINT fk_patient_merge_record_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
-	CONSTRAINT fk_patient_merge_record_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_patient_merge_record_tenant_id ON admin.patient_merge_record (tenant_id);
 
 CREATE TABLE admin.portal_account (
 	keycloak_user_id VARCHAR(100) NOT NULL, 
@@ -3816,7 +3793,7 @@ CREATE TABLE admin.patient_payment (
 	collected_by_user_id UUID, 
 	is_refund BOOLEAN NOT NULL, 
 	refund_of_payment_id UUID, 
-	receipt_file_id UUID, 
+	receipt_file_id UUID NOT NULL, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -8324,8 +8301,6 @@ ALTER TABLE admin.patient_merge ADD CONSTRAINT fk_patient_merge_duplicate_candid
 ALTER TABLE admin.patient_merge ADD CONSTRAINT fk_patient_merge_merged_patient_id_tenant FOREIGN KEY(tenant_id, merged_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.patient_merge ADD CONSTRAINT fk_patient_merge_surviving_patient_id_tenant FOREIGN KEY(tenant_id, surviving_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE admin.patient_merge_record ADD CONSTRAINT fk_patient_merge_record_patient_merge_id_tenant FOREIGN KEY(tenant_id, patient_merge_id) REFERENCES admin.patient_merge (tenant_id, id);
 
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_appointment_id_same_patient FOREIGN KEY(patient_id, appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 

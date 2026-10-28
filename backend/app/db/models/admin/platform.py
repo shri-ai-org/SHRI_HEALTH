@@ -165,18 +165,14 @@ class DuplicateMatchEvidence(Base, AdminMixin):
 
 
 class PatientMerge(Base, AdminMixin):
-    """Audited merge. Moved records are listed in patient_merge_record so it can be undone;
-    the merged patient gets a Patient.link 'replaced-by'.
+    """Audited merge by link (D103): the merged patient gets a Patient.link ``replaced-by`` the
+    surviving one (which ``replaces`` it), and no record moves.
 
-    Undo (D51): ``admin.patient_merge_undo_blocked_reason(id)`` says whether a merge can still
-    be undone: ``already-undone``, ``records-changed``, or NULL when it can. It compares
-    versions: the merge records both patients' versions here and each moved record's in
-    ``patient_merge_record``, before it changes them (the database checks that they are
-    current), and its one transaction moves each by exactly one. A merge can be undone while
-    it stands and every one of them is still at that next version. The database refuses an
-    undo that is not allowed, and any other change to a merge (``shri_patient_merge_guard``).
-    The undo sets ``unmerged_at``, moves the records back, and ends with
-    ``admin.finish_patient_merge_undo(id)`` (backend/app/db/CLAUDE.md)."""
+    Undo (D51, D103): ``admin.patient_merge_undo_blocked_reason(id)`` says whether a merge can
+    still be undone: ``already-undone``, ``later-merge`` (a later merge involving either patient
+    still stands), or NULL when it can. The undo sets ``unmerged_at`` and removes the links; the
+    database refuses an undo that is not allowed, and any other change to a merge
+    (``shri_patient_merge_guard``)."""
     __tablename__ = "patient_merge"
     __table_args__ = (
         CheckConstraint("surviving_patient_id <> merged_patient_id", name="distinct_patients"),
@@ -196,21 +192,6 @@ class PatientMerge(Base, AdminMixin):
                                                             nullable=False)
     unmerged_at: Mapped[datetime | None]
     unmerged_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
-    #: Both patients' versions (meta_version_id) before the merge. NULL for merges recorded
-    #: before migration 0008, which can no longer be undone; required on every new merge.
-    surviving_patient_version: Mapped[int | None] = mapped_column(Integer)
-    merged_patient_version: Mapped[int | None] = mapped_column(Integer)
-
-
-class PatientMergeRecord(Base, AdminMixin):
-    __tablename__ = "patient_merge_record"
-    __table_args__ = (UniqueConstraint("patient_merge_id", "resource_type", "resource_id"),)
-
-    patient_merge_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.patient_merge.id"),
-                                                        nullable=False)
-    resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    resource_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
-    version_before_merge: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 # =========================================================================== integration

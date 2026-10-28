@@ -198,8 +198,8 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   `(tenant_id, kind, policy_version)`). The kind never changes; retiring sets `is_active`
   false; nothing is deleted. The contract's `required` and `active` are `is_required` and
   `is_active`; `version` is the ETag.
-- **Payment receipts (D58):** `patient_payment.receipt_file_id`, the receipt PDF, a file in the
-  same clinic, written in the payment transaction.
+- **Payment receipts (D58, D104):** `patient_payment.receipt_file_id`, the receipt PDF, a file in
+  the same clinic, written in the payment transaction. Required (migration 0012).
 - **Pre-registration (D96, A51, migration 0009):** the public form calls
   `SELECT admin.submit_pre_registration(:practice_code, :idempotency_key, :request_hash,
   :details, :contact_consent, :source_ip, :user_agent, :request_id)` as `shri_public`, with no
@@ -276,20 +276,16 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     each session's audit row in its own clinic.
   - A reused `jti` raises `P0001` with constraint `logout_token_replayed`, and a token naming
     neither a session nor a user raises `22023`. Core answers 400 to both.
-- **Merge undo (D51):** `undoAllowed` and `undoBlockedReason` come from
-  `SELECT admin.patient_merge_undo_blocked_reason(:merge_id)`: `already-undone`,
-  `records-changed`, or NULL when the merge can still be undone. The rule compares versions,
-  so each service follows a fixed order in one transaction:
-  - **merge:** lock both patients; insert `patient_merge` with both patients' current versions
-    (`surviving_patient_version`, `merged_patient_version`) and one `patient_merge_record` per
-    resource it will move, at its current version (`version_before_merge`); the database
-    refuses a version that isn't current. Then move the records and add both patients' links,
-    so every one of them moves by exactly one version;
-  - **undo:** set `unmerged_at` (refused with `records-changed` when the rule says no), move
-    the records back, then `SELECT admin.finish_patient_merge_undo(:merge_id)`. A record
-    created or linked since the merge that points at a moved record (a new result on a moved
-    visit) isn't seen by the rule; `finish` refuses that undo with `records-changed` instead
-    of a key error. An undo that skips `finish` is refused at commit.
+- **Merge by link (D103, migration 0012):** a merge records `admin.patient_merge` and both
+  patients' `patient_link` rows (the merged one `replaced-by` the surviving one, which
+  `replaces` it) and makes the merged patient inactive, in one transaction. No record moves.
+  The contract's `mergedIntoId` is the merged patient's `replaced-by` link.
+  - **Undo** sets `unmerged_at` and `unmerged_by_user_id` and removes both links; nothing moves
+    back. `undoAllowed` and `undoBlockedReason` come from
+    `SELECT admin.patient_merge_undo_blocked_reason(:merge_id)`: `already-undone`,
+    `later-merge` (a later merge involving either patient still stands), or NULL when it can
+    be undone. The database refuses an undo the rule doesn't allow, and any other change to a
+    merge.
 
 ## Terminology (`app.db.terminology`)
 

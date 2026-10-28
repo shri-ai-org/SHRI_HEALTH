@@ -1,4 +1,5 @@
-"""Migration 0008: the batch 1 follow-up schema items (A43; issue #13, follow-up c).
+"""Migration 0008: the batch 1 follow-up schema items (A43; issue #13, follow-up c), with
+migration 0012's required receipt (D104) and merge by link (D103).
 
 Every test runs as shri_app (SET ROLE from the superuser URL, see conftest.py), with forced
 row-level security in force.
@@ -11,7 +12,6 @@ from typing import Any
 
 import pytest
 from sqlalchemy import Engine, text
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.db.models import MAPPERS, systems
@@ -141,7 +141,7 @@ def test_a_consent_requirements_form_is_a_file_in_its_clinic(db: Session,
 def test_a_payment_receipt_is_a_file_in_its_clinic(db: Session, admin_engine: Engine) -> None:
     pt = b.patient(db)
 
-    def pay(receipt: uuid.UUID) -> None:
+    def pay(receipt: uuid.UUID | None) -> None:
         db.add(M["patient_payment"](patient_id=pt.id, amount=25, method="cash",
                                     collected_at=b.NOW, receipt_file_id=receipt))
         db.flush()
@@ -149,28 +149,23 @@ def test_a_payment_receipt_is_a_file_in_its_clinic(db: Session, admin_engine: En
     pay(_file(db).id)
     with fails(db, "23503", "fk_patient_payment_receipt_file_id_tenant"):
         pay(_other_clinic_file(admin_engine))
+    with fails(db, "23502"):                               # D104: every payment has one
+        pay(None)
 
 
-# ====================================================================== merge undo (D51)
-def _merge(db: Session) -> dict[str, Any]:
-    """A merge as the service does it, in one transaction: first the merge row with both
-    patients' versions and the record of each move at its version, then the moves: the merged
-    patient's encounter goes to the surviving patient and both patients get their link."""
-    ctx = b.practice(db)
-    keep, dup = b.patient(db), b.patient(db, "Nguyen", "May")
+# ====================================================================== merge by link (D103)
+def _merge(db: Session, keep: Any = None, dup: Any = None, ctx: Any = None) -> dict[str, Any]:
+    """A merge as the service does it (D103): the merge row, both patients' links and the
+    merged patient made inactive, in one transaction. No record moves."""
+    ctx = ctx or b.practice(db)
+    keep = keep or b.patient(db)
+    dup = dup or b.patient(db, "Nguyen", "May")
     enc = b.encounter(db, dup, ctx, status="finished")
     db.commit()
     merge = M["patient_merge"](surviving_patient_id=keep.id, merged_patient_id=dup.id,
                                reason="Same person", performed_at=b.NOW,
-                               performed_by_user_id=ctx["user"].id,
-                               surviving_patient_version=keep.meta_version_id,
-                               merged_patient_version=dup.meta_version_id)
+                               performed_by_user_id=ctx["user"].id)
     db.add(merge)
-    db.flush()
-    db.add(M["patient_merge_record"](patient_merge_id=merge.id, resource_type="Encounter",
-                                     resource_id=enc.id,
-                                     version_before_merge=enc.meta_version_id))
-    enc.subject_patient_id = keep.id
     keep.link.append(M["patient_link"](other_patient_id=dup.id, type="replaces"))
     dup.link.append(M["patient_link"](other_patient_id=keep.id, type="replaced-by"))
     dup.active = False
@@ -186,60 +181,26 @@ def _blocked(db: Session, merge: Any) -> str | None:
 
 
 def _undo(db: Session, m: dict[str, Any]) -> None:
+    """The undo as the service does it: mark the merge undone and remove both links."""
     db.execute(text("UPDATE admin.patient_merge SET unmerged_at = now(), "
                     "unmerged_by_user_id = :u WHERE id = :m"),
                {"u": m["ctx"]["user"].id, "m": m["merge"].id})
+    db.execute(text("DELETE FROM clinical.patient_link WHERE patient_id IN (:k, :d) "
+                    "AND other_patient_id IN (:k, :d)"), {"k": m["keep"].id, "d": m["dup"].id})
 
 
-def _move_back_and_finish(db: Session, m: dict[str, Any]) -> None:
-    db.execute(text("UPDATE clinical.encounter SET subject_patient_id = :p WHERE id = :e"),
-               {"p": m["dup"].id, "e": m["encounter"].id})
-    db.execute(text("SELECT admin.finish_patient_merge_undo(:m)"), {"m": m["merge"].id})
-
-
-def test_a_merge_moves_everything_it_touches_by_one_version(db: Session) -> None:
+def test_a_merge_moves_no_record(db: Session) -> None:
     m = _merge(db)
-    assert m["keep"].meta_version_id == m["merge"].surviving_patient_version + 1
-    assert m["dup"].meta_version_id == m["merge"].merged_patient_version + 1
-    record = db.execute(text("SELECT version_before_merge FROM admin.patient_merge_record "
-                             "WHERE patient_merge_id = :m"), {"m": m["merge"].id}).scalar_one()
-    assert m["encounter"].meta_version_id == record + 1
+    db.refresh(m["encounter"])
+    assert m["encounter"].subject_patient_id == m["dup"].id
+    assert [(link.type, link.other_patient_id) for link in m["dup"].link] == [
+        ("replaced-by", m["keep"].id)]
 
 
-def test_a_merge_records_the_versions_it_starts_from(db: Session) -> None:
-    ctx = b.practice(db)
-    keep, dup = b.patient(db), b.patient(db, "Nguyen", "May")
-    enc = b.encounter(db, dup, ctx, status="finished")
-    db.commit()
-
-    def merge(**versions: Any) -> Any:
-        row = M["patient_merge"](surviving_patient_id=keep.id, merged_patient_id=dup.id,
-                                 reason="Same person", performed_at=b.NOW,
-                                 performed_by_user_id=ctx["user"].id, **versions)
-        db.add(row)
-        db.flush()
-        return row
-
-    with fails(db, "P0001", message="record both patients' current versions"):
-        merge()
-    with fails(db, "P0001", message="record both patients' current versions"):
-        merge(surviving_patient_version=keep.meta_version_id,
-              merged_patient_version=dup.meta_version_id + 1)
-    row = merge(surviving_patient_version=keep.meta_version_id,
-                merged_patient_version=dup.meta_version_id)
-    enc.subject_patient_id = keep.id                     # moved before it is listed
-    db.flush()
-    with fails(db, "P0001", message="list it before the merge moves it"):
-        db.add(M["patient_merge_record"](patient_merge_id=row.id, resource_type="Encounter",
-                                         resource_id=enc.id, version_before_merge=1))
-        db.flush()
-
-
-def test_an_untouched_merge_can_be_undone_once(db: Session) -> None:
+def test_a_merge_can_be_undone_once(db: Session) -> None:
     m = _merge(db)
     assert _blocked(db, m["merge"]) is None
-    _undo(db, m)                         # the undo marks it, moves the records back, finishes
-    _move_back_and_finish(db, m)
+    _undo(db, m)
     db.commit()
     assert _blocked(db, m["merge"]) == "already-undone"
     with fails(db, "P0001", message="it was undone and no longer changes"):
@@ -247,66 +208,43 @@ def test_an_untouched_merge_can_be_undone_once(db: Session) -> None:
                    {"m": m["merge"].id})
 
 
-@pytest.mark.parametrize("change", ["moved record", "surviving patient", "merged patient"])
-def test_a_change_since_the_merge_blocks_its_undo(db: Session, change: str) -> None:
+def test_changes_to_either_chart_since_the_merge_do_not_block_its_undo(db: Session) -> None:
     m = _merge(db)
-    if change == "moved record":
-        m["encounter"].period_end = b.NOW + dt.timedelta(hours=1)
-    elif change == "surviving patient":
-        m["keep"].ext_race_text = "Asked again"
-    else:
-        m["dup"].ext_race_text = "Asked again"
-    db.commit()
-    assert _blocked(db, m["merge"]) == "records-changed"
-    with fails(db, "P0001", message="cannot be undone (records-changed)"):
-        _undo(db, m)
-
-
-def test_a_new_record_on_the_surviving_chart_does_not_block_the_undo(db: Session) -> None:
-    m = _merge(db)
+    m["encounter"].period_end = b.NOW + dt.timedelta(hours=1)
+    m["keep"].ext_race_text = "Asked again"
+    m["dup"].ext_race_text = "Asked again"
     b.encounter(db, m["keep"], m["ctx"])
     db.commit()
     assert _blocked(db, m["merge"]) is None
-
-
-def test_an_undo_that_would_split_a_new_link_is_refused_as_records_changed(db: Session) -> None:
-    # The documented limitation: a result added since the merge to the moved visit doesn't
-    # change the visit's version, so undoAllowed stays true. The undo itself is refused at
-    # commit with records-changed, not a raw key error.
-    m = _merge(db)
-    b.blood_pressure(db, m["keep"], m["encounter"])
+    _undo(db, m)
     db.commit()
-    assert _blocked(db, m["merge"]) is None
-    _undo(db, m)
-    with fails(db, "P0001", message="cannot be undone (records-changed)"):
-        _move_back_and_finish(db, m)
 
 
-def test_an_undo_must_finish(db: Session) -> None:
-    m = _merge(db)
-    _undo(db, m)
-    db.execute(text("UPDATE clinical.encounter SET subject_patient_id = :p WHERE id = :e"),
-               {"p": m["dup"].id, "e": m["encounter"].id})
-    with pytest.raises(DBAPIError) as refused:
-        db.commit()
-    assert refused.value.orig.sqlstate == "P0001"          # type: ignore[union-attr]
-    assert "the undo did not finish" in str(refused.value.orig)
-    db.rollback()
-    with fails(db, "P0001", message="no undo of it in progress"):
-        db.execute(text("SELECT admin.finish_patient_merge_undo(:m)"), {"m": m["merge"].id})
+@pytest.mark.parametrize("role", ["surviving", "merged"])
+def test_a_later_merge_involving_either_patient_blocks_the_undo(db: Session, role: str) -> None:
+    first = _merge(db)
+    third = b.patient(db, "Okafor", "Lee")
+    # The surviving patient is merged on into a third chart, or a third chart into it.
+    later = (_merge(db, keep=third, dup=first["keep"], ctx=first["ctx"]) if role == "surviving"
+             else _merge(db, keep=first["keep"], dup=third, ctx=first["ctx"]))
+    assert _blocked(db, first["merge"]) == "later-merge"
+    with fails(db, "P0001", message="cannot be undone (later-merge)"):
+        _undo(db, first)
+    _undo(db, later)                     # once the later merge is undone, the first one can be
+    db.commit()
+    assert _blocked(db, first["merge"]) is None
 
 
-def test_an_undo_that_moves_records_back_first_is_refused(db: Session) -> None:
-    m = _merge(db)
-    db.execute(text("UPDATE clinical.encounter SET subject_patient_id = :p WHERE id = :e"),
-               {"p": m["dup"].id, "e": m["encounter"].id})
-    with fails(db, "P0001", message="cannot be undone (records-changed)"):
-        _undo(db, m)
+def test_a_later_merge_of_other_patients_does_not_block_the_undo(db: Session) -> None:
+    first = _merge(db)
+    _merge(db, keep=b.patient(db, "Okafor", "Lee"), dup=b.patient(db, "Garcia", "Ana"),
+           ctx=first["ctx"])
+    assert _blocked(db, first["merge"]) is None
 
 
 def test_a_merge_changes_only_by_its_undo(db: Session) -> None:
     m = _merge(db)
-    for change in ("reason = 'Different reason'", "surviving_patient_version = 99",
+    for change in ("reason = 'Different reason'",
                    f"surviving_patient_id = '{m['dup'].id}', merged_patient_id = '{m['keep'].id}'"):
         with fails(db, "P0001", message="only its undo may change it"):
             db.execute(text(f"UPDATE admin.patient_merge SET {change} WHERE id = :m"),  # noqa: S608
@@ -326,10 +264,8 @@ def test_the_undo_rule_sees_only_its_own_clinic(app_engine: Engine, admin_engine
         conn.close()  # type: ignore[union-attr]
 
 
-@pytest.mark.parametrize("function", ["admin.patient_merge_undo_blocked_reason(uuid)",
-                                      "admin.finish_patient_merge_undo(uuid)"])
-def test_the_undo_functions_run_as_the_caller_for_shri_app_only(admin_engine: Engine,
-                                                                function: str) -> None:
+def test_the_undo_rule_runs_as_the_caller_for_shri_app_only(admin_engine: Engine) -> None:
+    function = "admin.patient_merge_undo_blocked_reason(uuid)"
     with admin_engine.connect() as c:
         definer, config = c.execute(text(
             "SELECT p.prosecdef, p.proconfig FROM pg_proc p "
