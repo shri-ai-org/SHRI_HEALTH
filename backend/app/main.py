@@ -12,6 +12,7 @@ from app.core.config import Settings, get_settings
 from app.core.crypto import FieldCrypto
 from app.core.db import Database
 from app.core.errors import install_error_handlers
+from app.core.idempotency import IdempotencyMiddleware, Replay, replay_response
 from app.core.operations import OperationsMapError, load_operations, route_problems
 from app.core.request_id import RequestIdMiddleware
 from app.core.response_headers import NoStoreMiddleware
@@ -49,9 +50,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.crypto = FieldCrypto(settings) if settings.openbao_transit_addr else None
 
     application.add_middleware(AuditMiddleware)  # innermost: sees the final status
+    application.add_middleware(IdempotencyMiddleware)  # stores it, audit 500s included
     application.add_middleware(NoStoreMiddleware)
     application.add_middleware(RequestIdMiddleware)
     install_error_handlers(application)
+    application.add_exception_handler(Replay, replay_response)
     application.include_router(health.router)  # root: /health, /ready
     modules = include_module_routers(application)
     # Every /api/v1 route is a contract operation with its x-permission and, where it is

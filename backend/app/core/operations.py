@@ -201,6 +201,15 @@ def route_problems(app: FastAPI) -> list[str]:
             if checked != wanted:
                 problems.append(f"{where}: require() checks {sorted(checked)}, the contract's "
                                 f"x-permission is {operation.permission!r}")
+            if operation.idempotency is not None and method in ("POST", "PUT", "PATCH"):
+                staff = operation.audit.actor == "user" and operation.permission not in NO_REQUIRE
+                if operation.portal or not staff:
+                    problems.append(f"{where}: {operation.operation_id} has x-idempotency, which "
+                                    "core handles only for staff sessions so far (not yet for "
+                                    "the portal, public forms or partners)")
+                elif tenant_db not in calls:
+                    problems.append(f"{where}: {operation.operation_id} has x-idempotency, so it "
+                                    "needs Depends(tenant_db), which claims the key")
             if operation.audit.actor == "anonymous":
                 # A public form: no staff session and no portal session, and the clinic comes
                 # from the portal host, never the request (D96).
