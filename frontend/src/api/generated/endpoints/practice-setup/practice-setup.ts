@@ -79,6 +79,8 @@ import type {
   PracticePayerCreate,
   PracticePayerList,
   PracticePayerPatch,
+  PracticeSettings,
+  PracticeSettingsPatch,
   PreconditionFailedResponse,
   PreconditionRequiredResponse,
   Provider,
@@ -100,6 +102,7 @@ import type {
   UpdateLocationHeaders,
   UpdateNoteTemplateHeaders,
   UpdatePracticePayerHeaders,
+  UpdatePracticeSettingsHeaders,
   UpdateProviderHeaders,
   UpdateProviderScheduleHeaders
 } from '../../model';
@@ -3112,7 +3115,7 @@ export const getListNoteTemplatesUrl = (params?: ListNoteTemplatesParams,) => {
 }
 
 /**
- * Lists the practice's note templates.
+ * Lists the practice's note templates. Clinicians read templates to start a note with `note-templates:read` (D73, T42; MD, APP, RN, MA, ADM, CO), not `practice-setup:read`.
  * @summary List note templates
  */
 export const listNoteTemplates = async (params?: ListNoteTemplatesParams, options?: Parameters<typeof apiFetch>[1]): Promise<listNoteTemplatesResponse> => {
@@ -3268,7 +3271,7 @@ export const getGetNoteTemplateUrl = (noteTemplateId: Id,) => {
 }
 
 /**
- * Returns one note template.
+ * Returns one note template. Clinicians read templates to start a note with `note-templates:read` (D73, T42; MD, APP, RN, MA, ADM, CO), not `practice-setup:read`.
  * @summary Get a note template
  */
 export const getNoteTemplate = async (noteTemplateId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getNoteTemplateResponse> => {
@@ -3708,6 +3711,157 @@ return apiFetch<updateConsentRequirementResponse>(getUpdateConsentRequirementUrl
     method: 'PATCH',
     headers: { 'Content-Type': 'application/merge-patch+json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(consentRequirementPatch)
+  }
+);}
+
+
+export type getPracticeSettingsResponse200 = {
+  data: PracticeSettings
+  status: 200
+}
+
+export type getPracticeSettingsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getPracticeSettingsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getPracticeSettingsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getPracticeSettingsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getPracticeSettingsResponseSuccess = (getPracticeSettingsResponse200) & {
+  headers: Headers;
+};
+export type getPracticeSettingsResponseError = (getPracticeSettingsResponse401 | getPracticeSettingsResponse403 | getPracticeSettingsResponse429 | getPracticeSettingsResponse500) & {
+  headers: Headers;
+};
+
+export type getPracticeSettingsResponse = (getPracticeSettingsResponseSuccess | getPracticeSettingsResponseError)
+
+export const getGetPracticeSettingsUrl = () => {
+
+
+
+
+  return `/practice-settings`
+}
+
+/**
+ * The practice's settings, with the `ETag` that `PATCH` needs (new inventory row #258). Today one setting: whether registration shows the sexual-orientation and gender-identity fields (D39). Every signed-in user reads the same values through `GET /me` (`practiceSettings`), so screens need no `practice-setup:read`.
+ * @summary Get the practice settings
+ */
+export const getPracticeSettings = async ( options?: Parameters<typeof apiFetch>[1]): Promise<getPracticeSettingsResponse> => {
+
+  return apiFetch<getPracticeSettingsResponse>(getGetPracticeSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type updatePracticeSettingsResponse200 = {
+  data: PracticeSettings
+  status: 200
+}
+
+export type updatePracticeSettingsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type updatePracticeSettingsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type updatePracticeSettingsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type updatePracticeSettingsResponse412 = {
+  data: PreconditionFailedResponse
+  status: 412
+}
+
+export type updatePracticeSettingsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type updatePracticeSettingsResponse428 = {
+  data: PreconditionRequiredResponse
+  status: 428
+}
+
+export type updatePracticeSettingsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type updatePracticeSettingsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type updatePracticeSettingsResponseSuccess = (updatePracticeSettingsResponse200) & {
+  headers: Headers;
+};
+export type updatePracticeSettingsResponseError = (updatePracticeSettingsResponse400 | updatePracticeSettingsResponse401 | updatePracticeSettingsResponse403 | updatePracticeSettingsResponse412 | updatePracticeSettingsResponse422 | updatePracticeSettingsResponse428 | updatePracticeSettingsResponse429 | updatePracticeSettingsResponse500) & {
+  headers: Headers;
+};
+
+export type updatePracticeSettingsResponse = (updatePracticeSettingsResponseSuccess | updatePracticeSettingsResponseError)
+
+export const getUpdatePracticeSettingsUrl = () => {
+
+
+
+
+  return `/practice-settings`
+}
+
+/**
+ * Edits the practice settings with JSON Merge Patch and `If-Match` (new inventory row #259). Whether to show the sexual-orientation and gender-identity fields at registration is decided by each practice's clinical leadership and counsel (D39); the fields stay optional in the contract and the schema either way.
+ * @summary Update the practice settings
+ */
+export const updatePracticeSettings = async (practiceSettingsPatch: PracticeSettingsPatch,
+    headers: UpdatePracticeSettingsHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<updatePracticeSettingsResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<updatePracticeSettingsResponse>(getUpdatePracticeSettingsUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/merge-patch+json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(practiceSettingsPatch)
   }
 );}
 

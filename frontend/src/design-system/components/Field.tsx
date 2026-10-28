@@ -9,6 +9,8 @@ export interface FieldControlProps {
 
 export interface FieldProps {
   label: string
+  /** Fixed id for the control, so an error summary can link to it. Generated when omitted. */
+  id?: string
   /** Shown under the label, e.g. the expected format "MM/DD/YYYY". */
   hint?: string
   error?: string | undefined
@@ -20,8 +22,9 @@ export interface FieldProps {
  * Label, hint and error for one control, wired with ids so screen readers read them together
  * (WCAG 1.3.1, 3.3.1, 3.3.2). Required fields say "(required)" in words, not only with a star.
  */
-export function Field({ label, hint, error, required = false, children }: FieldProps) {
-  const id = useId()
+export function Field({ id: fixedId, label, hint, error, required = false, children }: FieldProps) {
+  const generatedId = useId()
+  const id = fixedId ?? generatedId
   const hintId = hint ? `${id}-hint` : undefined
   const errorId = error ? `${id}-error` : undefined
   const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined

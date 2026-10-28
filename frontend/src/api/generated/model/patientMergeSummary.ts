@@ -35,8 +35,8 @@ export interface PatientMergeSummary {
   performedAt: Timestamp;
   /** When it was undone, if it was. */
   undoneAt?: Timestamp;
-  /** True while the merge can still be undone: it stands, and neither record has changed in a way that cannot be split back. */
+  /** True while the merge stands and no later merge involving either patient still stands (D103). A merge by link changes no records, so edits to either chart never block an undo. */
   undoAllowed: boolean;
-  /** Why undo is not allowed, when `undoAllowed` is false. */
+  /** Why undo is not allowed, when `undoAllowed` is false: `already-undone` or `later-merge` (a later merge involving either patient still stands). */
   undoBlockedReason?: PatientMergeSummaryUndoBlockedReason;
 }

@@ -7,6 +7,10 @@ export default defineConfig({
   shri: {
     input: {
       target: '../contracts/openapi/dist/shri-health.bundled.yaml',
+      // Partner callbacks (`/hooks/*`, e.g. the Keycloak event hook) are called by outside
+      // systems, never by our screens, so they are not generated (Thulasi, M21). Every shared
+      // schema is still generated, as before the filter.
+      filters: { mode: 'exclude', tags: ['partner-callbacks'], includeUnreferencedSchemas: true },
     },
     output: {
       mode: 'tags-split',
