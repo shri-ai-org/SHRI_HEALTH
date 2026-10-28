@@ -30,7 +30,9 @@ paths:
         and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card
         numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in, so it works
         for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session
-        is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`.'
+        is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`. The receipt
+        is created in the same step as the payment, so every recorded payment has one (`receiptFileId` is always present,
+        D104).'
       tags:
       - billing
       x-owner: anand
@@ -327,8 +329,9 @@ components:
           x-phi: financial
         receiptFileId:
           $ref: ../components/schemas/Id.yaml
-          description: The receipt (PDF), generated at payment and stored through the file service with purpose `receipt`;
-            download it with `GET /files/{fileId}/download-url`, which needs `payments:create` or `superbills:read` (D58).
+          description: 'The receipt (PDF), created in the same step and transaction as the payment, so it is always present
+            (D104); stored through the file service with purpose `receipt`; download it with `GET /files/{fileId}/download-url`,
+            which needs `payments:create` or `superbills:read` (D58).'
           x-phi: internal-id
         collectedAt:
           $ref: ../components/schemas/Timestamp.yaml

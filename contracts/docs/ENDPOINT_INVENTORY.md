@@ -102,9 +102,9 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 45 | POST | `/patients/{patientId}/unrestrict` | V | Cl | `patients:restrict` | sec | – | | | FR-PAT-01 | B2 | **New** |
 | 46 | GET | `/patients/{patientId}/timeline` | V | C | `timeline:read` | pr | – | | | FR-PAT-02 | B4 | Moved to B4 (reads clinical data) |
 | 47 | GET | `/duplicates` | V | Ad | `duplicates:read` | pr | – | | | FR-PAT-01 | B2 | |
-| 48 | POST | `/duplicates/{duplicateId}/merge` | V | Ad+Cl | `duplicates:merge` | pw | S | | | FR-PAT-01 | B2 | |
+| 48 | POST | `/duplicates/{duplicateId}/merge` | V | Ad+Cl | `duplicates:merge` | pw | S | | | FR-PAT-01 | B2 |By link, nothing moves (D103) |
 | 233 | POST | `/duplicates/{duplicateId}/dismiss` | V | Ad | `duplicates:dismiss` | sec | S | | | FR-PAT-01 | B2 | **New** (D46, 2026-10-23): dismiss a false match with a required reason; audited as `security` with both patient IDs |
-| 49 | POST | `/patient-merges/{mergeId}/undo` | V | Ad+Cl | `patient-merges:undo` | pw | S | | | FR-PAT-01 | B2 | |
+| 49 | POST | `/patient-merges/{mergeId}/undo` | V | Ad+Cl | `patient-merges:undo` | pw | S | | | FR-PAT-01 | B2 |Deactivates the link (D103) |
 | 240 | GET | `/patient-merges` | V | Ad | `patient-merges:read` | pr | – | | | FR-PAT-01 | B2 | **New** (D51, 2026-10-24): query `patientId`; merge ID, status, `undoAllowed` |
 | 241 | POST | `/patients/summaries` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 | B2 | **New** (D54, 2026-10-24): up to 50 IDs in the body; each ID returned is audited |
 
