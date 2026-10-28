@@ -116,6 +116,11 @@ INTEGRATION_WRITE_TABLES = {
     "observation_component", "service_request_status_event", "unmatched_result",
     "unmatched_result_candidate",
 }
+#: Read, and update only these columns, so the partner worker files a pharmacy's answer to a
+#: NewRx (set_transmission_status, /hooks/erx; Thulasi on #124, migration 0015).
+INTEGRATION_COLUMN_UPDATE = {
+    "erx_transaction": ("status", "error_message", "vendor_message_id", "updated_by_user_id"),
+}
 
 EDITABLE_RESULT = "registered,partial,preliminary,amended,corrected,appended,cancelled,unknown"
 GUARDS = {
@@ -404,6 +409,10 @@ def rls_sql(only: set[str] | None = None) -> str:
             _grant(out, "shri_integration", ["SELECT"], qt)
         elif name in INTEGRATION_WRITE_TABLES:
             _grant(out, "shri_integration", ["INSERT", "UPDATE"], qt)
+        elif name in INTEGRATION_COLUMN_UPDATE:
+            _grant(out, "shri_integration", ["SELECT"], qt)
+            out.append(f"GRANT UPDATE ({', '.join(INTEGRATION_COLUMN_UPDATE[name])}) ON {qt} "
+                       "TO shri_integration;")
 
         # --------------------------------------------------- shri_app
         if name == "tenant":
