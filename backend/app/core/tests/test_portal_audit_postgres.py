@@ -25,6 +25,7 @@ from app.core.deps import CurrentUser, PortalPatient, current_patient, portal_db
 from app.core.operations import OPERATIONS_PATH_ENV, operations_file
 from app.core.request_id import current_request_id
 from app.core.routing import API_PREFIX
+from app.core.tests.stand_ins import include_first
 from app.db.tests import builders as b
 from app.db.tests.conftest import (  # noqa: F401  (fixtures)
     SKIP_WITHOUT_DATABASE,
@@ -109,7 +110,7 @@ def client(chart: dict[str, Any], tmp_path: Path,
     app = create_app(Settings(environment="test", auth_mode="dev_header",
                               database_url=TEST_DATABASE_URL))
     switch_to_role(app.state.db.engine.sync_engine, "shri_app")
-    app.include_router(_router(), prefix=API_PREFIX)
+    include_first(app, _router(), prefix=API_PREFIX)  # ahead of the real module routes
     app.state.test_staff = CurrentUser(id=chart["staff"], organization_id=chart["tenant"],
                                        roles=frozenset({"FD"}))
     app.dependency_overrides[current_patient] = lambda: PortalPatient(
