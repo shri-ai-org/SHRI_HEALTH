@@ -2,3 +2,6 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+# Playwright (npm run e2e)
+playwright-report/
+test-results/
