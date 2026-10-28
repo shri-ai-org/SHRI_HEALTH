@@ -9,6 +9,9 @@
 #   shri_integration  the partner worker
 #   shri_reporting    read-only reports
 #   shri_maintenance  runs the scheduled purge functions only; no table access (D23, #52/#64)
+#   shri_portal       the patient portal's requests: the session patient's chart only (D93)
+#   shri_public       public forms with no session (pre-registration, D96): EXECUTE on one
+#                     narrow insert function and INSERT on audit rows, nothing else (#13)
 #
 # No role is a superuser or may bypass row-level security.
 set -euo pipefail
@@ -19,7 +22,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
     -v fhir_reader_pw="${SHRI_FHIR_READER_PASSWORD:?}" \
     -v integration_pw="${SHRI_INTEGRATION_PASSWORD:?}" \
     -v reporting_pw="${SHRI_REPORTING_PASSWORD:?}" \
-    -v maintenance_pw="${SHRI_MAINTENANCE_PASSWORD:?}" <<'SQL'
+    -v maintenance_pw="${SHRI_MAINTENANCE_PASSWORD:?}" \
+    -v portal_pw="${SHRI_PORTAL_PASSWORD:?}" \
+    -v public_pw="${SHRI_PUBLIC_PASSWORD:?}" <<'SQL'
 REVOKE ALL ON DATABASE :"DBNAME" FROM PUBLIC;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 
@@ -38,8 +43,12 @@ CREATE ROLE shri_reporting LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE
     PASSWORD :'reporting_pw';
 CREATE ROLE shri_maintenance LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT
     PASSWORD :'maintenance_pw';
+CREATE ROLE shri_portal LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT
+    PASSWORD :'portal_pw';
+CREATE ROLE shri_public LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT
+    PASSWORD :'public_pw';
 
 GRANT CONNECT ON DATABASE :"DBNAME"
     TO shri_migrator, shri_app, shri_fhir_reader, shri_integration, shri_reporting,
-       shri_maintenance;
+       shri_maintenance, shri_portal, shri_public;
 SQL

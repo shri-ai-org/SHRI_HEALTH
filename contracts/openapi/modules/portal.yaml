@@ -1582,6 +1582,196 @@ paths:
         '422': *id020
         '429': *id003
         '500': *id004
+  /portal/me/medications:
+    get:
+      operationId: listPortalMedications
+      summary: List my medications
+      description: 'The patient''s medication list (§8.2 E of the batch 1 plan): what the practice prescribed, with where
+        it is on its way to the pharmacy, and what the patient reported taking. Active first; entered-in-error entries never
+        appear. No prescriber-only notes.'
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security:
+      - portalSessionCookie: []
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalMedicationList'
+              examples:
+                page:
+                  summary: A new prescription and a reported medication
+                  value:
+                    items:
+                    - id: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
+                      display: Amoxicillin 500 mg capsule
+                      dosageText: 1 capsule by mouth three times daily for 10 days
+                      status: active
+                      source: prescription
+                      prescribedAt: '2026-11-20T15:23:00Z'
+                      prescriberDisplayName: Dr. Lowe58
+                      pharmacyName: Example Pharmacy
+                      transmissionStatus: accepted
+                    - id: 7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e
+                      display: Lisinopril 10 mg tablet
+                      dosageText: 1 tablet by mouth once daily
+                      status: active
+                      source: reported
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account
+            is not enrolled).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /portal/practices/{practiceLinkId}/pre-registrations:
+    parameters:
+    - name: practiceLinkId
+      in: path
+      required: true
+      description: The practice's opaque pre-registration code, from its public pre-registration link (D96). It names the
+        clinic; the clinic is resolved from it on the server, never from the body. Not patient data.
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{16,64}$
+        minLength: 16
+        maxLength: 64
+    post:
+      operationId: submitPreRegistration
+      summary: Pre-register as a new patient
+      description: 'The public pre-registration form (D96): no account and no session. The clinic comes only from the practice
+        code in the path, the practice''s own pre-registration link, resolved on the server; never from the body. It always
+        answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t
+        be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check
+        or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only:
+        no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching
+        happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are
+        rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request
+        bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double
+        submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue;
+        a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).'
+      tags:
+      - portal
+      x-owner: vimal
+      x-permission: public
+      x-audit:
+        action: C
+        category: phi-write
+        actor: anonymous
+      x-storage: admin
+      x-events:
+      - pre-registration.received
+      x-release: P1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationCreate'
+            examples:
+              newPatient:
+                summary: A new patient
+                value:
+                  details:
+                    name:
+                      given:
+                      - Kaia401
+                      family: Lindgren118
+                    birthDate: '1990-03-14'
+                    gender: female
+                    phones:
+                    - number: '+12175550142'
+                      use: mobile
+                    email: kaia.lindgren@example.com
+                    address:
+                      lines:
+                      - 42 Sample Avenue
+                      city: Springfield
+                      state: IL
+                      postalCode: '62704'
+                      country: US
+                    preferredLanguage: en
+                    insurance:
+                      payerName: Example Health Plan
+                      memberId: TEST-MEMBER-042
+                      groupNumber: TEST-GRP-7
+                    reasonForVisit: New patient, annual checkup.
+                  contactConsent: true
+                  botCheck: mock-altcha-payload
+      responses:
+        '204':
+          description: Received. Always the same answer, with no body.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required
+            Idempotency-Key header is missing).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the portal host).
+        "404":
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (the practice code is unknown, or the practice has turned its pre-registration link
+            off). Says nothing about any person.
+        "409":
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: "422. `validation-failed` (a field is missing or malformed, including neither a phone nor an email); `business-rule-violation` (`errors` names `/botCheck`: the bot check failed or expired); `idempotency-key-reused` (the Idempotency-Key was used with a different body)."
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+      x-idempotency: required
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
 components:
   schemas:
     PortalSession:
@@ -2604,4 +2794,107 @@ components:
         nextCursor:
           $ref: ../components/schemas/Cursor.yaml
           description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalMedication:
+      description: A medication on the patient's list, in the words the patient sees.
+      type: object
+      required:
+      - id
+      - display
+      - status
+      - source
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Medication ID.
+          x-phi: internal-id
+        display:
+          type: string
+          maxLength: 500
+          description: The medication, in words.
+          x-phi: clinical
+        dosageText:
+          type: string
+          maxLength: 500
+          description: How to take it.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+          - active
+          - completed
+          - stopped
+          description: Status.
+          x-phi: clinical
+        source:
+          type: string
+          enum:
+          - prescription
+          - reported
+          description: '`prescription` (written by the practice) or `reported` (what the patient told the practice they take).'
+          x-phi: none
+        prescribedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was prescribed.
+          x-phi: none
+        prescriberDisplayName:
+          type: string
+          maxLength: 200
+          description: Who prescribed it.
+          x-phi: none
+        pharmacyName:
+          type: string
+          maxLength: 200
+          description: The pharmacy it was sent to.
+          x-phi: none
+        transmissionStatus:
+          type: string
+          enum:
+          - queued
+          - sent
+          - accepted
+          - rejected
+          - error
+          description: 'For a prescription: where it is on its way to the pharmacy.'
+          x-phi: none
+    PortalMedicationList:
+      description: The patient's medications, active first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalMedication'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PreRegistrationCreate:
+      description: Body of the public pre-registration form (D96).
+      type: object
+      additionalProperties: false
+      required:
+      - details
+      - contactConsent
+      - botCheck
+      properties:
+        details:
+          $ref: patients.yaml#/components/schemas/PreRegistrationDetails
+          description: What the person tells the practice.
+          x-phi: identifier
+        contactConsent:
+          type: boolean
+          const: true
+          description: The person agrees to be contacted about their request.
+          x-phi: none
+        botCheck:
+          type: string
+          maxLength: 4000
+          description: The proof-of-work answer from the form's ALTCHA widget (MIT, self-hosted), checked by the server; nothing
+            about the visitor goes to anyone else.
           x-phi: none

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 ADMIN_URL = os.environ.get("TEST_DATABASE_URL")
 SERVICE_ROLES = ["shri_app", "shri_fhir_reader", "shri_integration", "shri_maintenance",
-                 "shri_migrator", "shri_reporting"]
+                 "shri_migrator", "shri_portal", "shri_public", "shri_reporting"]
 
 pytestmark = [
     pytest.mark.db,

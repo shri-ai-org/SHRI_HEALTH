@@ -2900,6 +2900,459 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /pre-registrations:
+    get:
+      operationId: listPreRegistrations
+      summary: List pre-registrations
+      description: 'The front desk''s queue of pre-registrations (D96), oldest first; pending by default. The queue is the
+        clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a
+        request of another clinic is `404`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: pre-registrations:read
+      x-audit:
+        action: R
+        category: phi-read
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: status
+        in: query
+        required: false
+        description: Which ones (default `pending`).
+        schema:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - rejected
+          default: pending
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistrationList'
+              examples:
+                page:
+                  summary: One pending
+                  value:
+                    items:
+                    - id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                      status: pending
+                      details:
+                        name:
+                          given:
+                          - Kaia401
+                          family: Lindgren118
+                        birthDate: '1990-03-14'
+                        gender: female
+                        phones:
+                        - number: '+12175550142'
+                          use: mobile
+                        email: kaia.lindgren@example.com
+                        address:
+                          lines:
+                          - 42 Sample Avenue
+                          city: Springfield
+                          state: IL
+                          postalCode: '62704'
+                          country: US
+                        preferredLanguage: en
+                        insurance:
+                          payerName: Example Health Plan
+                          memberId: TEST-MEMBER-042
+                          groupNumber: TEST-GRP-7
+                        reasonForVisit: New patient, annual checkup.
+                      entrySource: patient-reported
+                      submittedAt: '2026-11-18T09:12:00Z'
+                      deleteAfter: '2026-12-18T09:12:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (a facility the user is not assigned to).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}:
+    parameters:
+    - name: preRegistrationId
+      in: path
+      required: true
+      description: Pre-registration ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getPreRegistration
+      summary: Get a pre-registration
+      description: 'One pre-registration (D96). The queue is the clinic''s: every FD and ADM user of the clinic the request
+        was submitted to (through its practice code) sees it; a request of another clinic is `404`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: pre-registrations:read
+      x-audit:
+        action: R
+        category: phi-read
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: The pre-registration.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                pending:
+                  summary: Pending
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: pending
+                    details:
+                      name:
+                        given:
+                        - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                      - number: '+12175550142'
+                        use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                        - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    deleteAfter: '2026-12-18T09:12:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned
+            to).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}/accept:
+    parameters:
+    - name: preRegistrationId
+      in: path
+      required: true
+      description: Pre-registration ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: acceptPreRegistration
+      summary: Accept a pre-registration
+      description: 'Creates the patient through the registration rules (duplicate check with `409 possible-duplicate` and
+        the override; the MRN from the practice counter, D41), or links to an existing `patientId` chosen in duplicate review;
+        insurance as typed stays on the request as a note for the front desk (returned by the queue reads), not a coverage,
+        until the card is checked. The request is linked to the patient, all in one transaction (D96). The front-desk user
+        must confirm they checked the person''s ID and say which kind (`identityVerified`, `idDocumentType`); the check is
+        stored with who and when (`identityCheck`). Duplicate matching happens here, never at submit. The queue is the clinic''s:
+        every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of
+        another clinic is `404`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: pre-registrations:accept
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-events:
+      - patient.created
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationAccept'
+            examples:
+              create:
+                summary: Create the patient
+                value: { identityVerified: true, idDocumentType: drivers-license }
+              link:
+                summary: Link to an existing patient
+                value:
+                  identityVerified: true
+                  idDocumentType: drivers-license
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      responses:
+        '200':
+          description: The pre-registration, accepted.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                accepted:
+                  summary: Accepted
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: accepted
+                    details:
+                      name:
+                        given:
+                        - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                      - number: '+12175550142'
+                        use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                        - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    decidedAt: '2026-11-20T14:02:00Z'
+                    decidedBy: d0000000-0000-4000-8000-000000000001
+                    identityCheck:
+                      idDocumentType: drivers-license
+                      verifiedBy: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                      verifiedAt: 2026-11-20T14:02:00Z
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `pre-registrations:accept`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned
+            to).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `possible-duplicate` (similar patients exist: review them, then link or override); `invalid-state-transition`
+            (already accepted or rejected; the problem carries `currentState`); `patient-merged` (the patient to link was
+            merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`);
+            `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}/reject:
+    parameters:
+    - name: preRegistrationId
+      in: path
+      required: true
+      description: Pre-registration ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: rejectPreRegistration
+      summary: Reject a pre-registration
+      description: 'Rejects it with a reason (D96). It is deleted 30 days later. Nothing is sent to the person. The queue
+        is the clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees
+        it; a request of another clinic is `404`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: pre-registrations:reject
+      x-audit:
+        action: E
+        category: phi-write
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationReject'
+            examples:
+              spam:
+                summary: Spam
+                value:
+                  reasonCode: spam
+              other:
+                summary: Other
+                value:
+                  reasonCode: other
+                  reasonText: Asked for a practice in another state.
+      responses:
+        '200':
+          description: The pre-registration, rejected.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                rejected:
+                  summary: Rejected
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: rejected
+                    details:
+                      name:
+                        given:
+                        - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                      - number: '+12175550142'
+                        use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                        - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    deleteAfter: '2026-12-18T10:00:00Z'
+                    decidedAt: '2026-11-18T10:00:00Z'
+                    decidedBy: d0000000-0000-4000-8000-000000000001
+                    rejection:
+                      reasonCode: spam
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `pre-registrations:reject`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned
+            to).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid, or `reasonText` is missing with `other`).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     AdministrativeGender:
@@ -4764,3 +5217,264 @@ components:
           maxLength: 500
           description: Why; audited, never shown to the patient.
           x-phi: clinical
+    PreRegistrationDetails:
+      description: What a person types into the public pre-registration form (D96). Patient-reported until the front desk
+        checks it against ID at the visit (FR-PAT-02).
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - birthDate
+      properties:
+        name:
+          $ref: ../components/schemas/HumanName.yaml
+          description: Legal name.
+          x-phi: identifier
+        birthDate:
+          $ref: ../components/schemas/Date.yaml
+          description: Date of birth.
+          x-phi: identifier
+        gender:
+          $ref: '#/components/schemas/AdministrativeGender'
+          description: Administrative gender, if given.
+          x-phi: clinical
+        phones:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/Phone'
+          description: Phone numbers. At least one phone or an email (enforced by the schema).
+          x-phi: identifier
+          minItems: 1
+        email:
+          $ref: ../components/schemas/EmailAddress.yaml
+          description: Email address.
+          x-phi: identifier
+        address:
+          $ref: ../components/schemas/Address.yaml
+          description: Home address.
+          x-phi: identifier
+        preferredLanguage:
+          type: string
+          maxLength: 35
+          description: Preferred language as a BCP 47 tag (D39).
+          x-phi: clinical
+          pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
+        insurance:
+          type: object
+          additionalProperties: false
+          description: Insurance as the person typed it. It stays with the request as a note for the front desk, returned
+            by `GET /pre-registrations` and `GET /pre-registrations/{preRegistrationId}`; accepting the request does not create
+            a coverage. The front desk enters the coverage after checking the card.
+          x-phi: identifier
+          properties:
+            payerName:
+              type: string
+              maxLength: 200
+              description: Insurance company, as typed.
+              x-phi: identifier
+            memberId:
+              type: string
+              maxLength: 80
+              description: Member ID.
+              x-phi: identifier
+            groupNumber:
+              type: string
+              maxLength: 80
+              description: Group number.
+              x-phi: identifier
+        reasonForVisit:
+          type: string
+          maxLength: 1000
+          description: Why they want an appointment.
+          x-phi: clinical
+      anyOf:
+      - required:
+        - phones
+      - required:
+        - email
+    PreRegistration:
+      description: A pre-registration in the front desk's queue (D96). Stored encrypted at rest; a rejected or never-reviewed
+        one is deleted at `deleteAfter` (30 days).
+      type: object
+      required:
+      - id
+      - status
+      - details
+      - entrySource
+      - submittedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Pre-registration ID.
+          x-phi: none
+        status:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - rejected
+          description: Where it is.
+          x-phi: none
+        details:
+          $ref: '#/components/schemas/PreRegistrationDetails'
+          description: What was submitted.
+          x-phi: identifier
+        entrySource:
+          type: string
+          enum:
+          - patient-reported
+          description: "Always patient-reported (FR-PAT-02): the details are as the person typed them. Accepting records that the person's identity was checked against ID (`identityCheck`); each field is corrected on the chart as the front desk verifies it."
+          x-phi: none
+        submittedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it arrived.
+          x-phi: none
+        decidedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the front desk accepted or rejected it.
+          x-phi: none
+        decidedBy:
+          $ref: ../components/schemas/Id.yaml
+          description: Who decided.
+          x-phi: none
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient it created or was linked to, once accepted.
+          x-phi: internal-id
+        rejection:
+          type: object
+          required:
+          - reasonCode
+          description: Why it was rejected.
+          x-phi: none
+          properties:
+            reasonCode:
+              type: string
+              enum:
+              - duplicate
+              - incomplete
+              - not-our-practice
+              - spam
+              - other
+              description: Reason.
+              x-phi: none
+            reasonText:
+              type: string
+              maxLength: 500
+              description: More detail; required for `other`.
+              x-phi: clinical
+        deleteAfter:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it will be deleted if still pending or rejected (30 days after it arrived or was rejected).
+          x-phi: none
+        identityCheck:
+          $ref: "#/components/schemas/PreRegistrationIdentityCheck"
+          description: "Once accepted: the identity check recorded at accept."
+          x-phi: none
+    PreRegistrationList:
+      description: Pre-registrations, oldest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PreRegistration'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PreRegistrationAccept:
+      description: 'Body to accept a pre-registration: create the patient through the registration rules, or link to an existing
+        patient found in duplicate review.'
+      type: object
+      additionalProperties: false
+      properties:
+        identityVerified:
+          type: boolean
+          const: true
+          description: The front-desk user confirms they checked the person's ID before accepting. Required, and must be true.
+          x-phi: none
+        idDocumentType:
+          type: string
+          enum:
+          - drivers-license
+          - state-id
+          - passport
+          - military-id
+          - other
+          description: The kind of ID that was checked.
+          x-phi: none
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Link to this existing patient instead of creating one.
+          x-phi: internal-id
+        duplicateCheck:
+          type: string
+          enum:
+          - default
+          - override
+          default: default
+          description: 'As for `POST /patients`: `override` registers despite similar patients and needs `duplicateOverrideReason`.'
+          x-phi: none
+        duplicateOverrideReason:
+          type: string
+          maxLength: 500
+          description: Why it is not a duplicate.
+          x-phi: clinical
+      required:
+      - identityVerified
+      - idDocumentType
+    PreRegistrationReject:
+      description: Body to reject a pre-registration.
+      type: object
+      additionalProperties: false
+      required:
+      - reasonCode
+      properties:
+        reasonCode:
+          type: string
+          enum:
+          - duplicate
+          - incomplete
+          - not-our-practice
+          - spam
+          - other
+          description: Reason.
+          x-phi: none
+        reasonText:
+          type: string
+          maxLength: 500
+          description: More detail; required for `other`.
+          x-phi: clinical
+    PreRegistrationIdentityCheck:
+      description: The identity check the front-desk user recorded when accepting the request (D96).
+      type: object
+      required:
+      - idDocumentType
+      - verifiedBy
+      - verifiedAt
+      properties:
+        idDocumentType:
+          type: string
+          enum:
+          - drivers-license
+          - state-id
+          - passport
+          - military-id
+          - other
+          description: The kind of ID that was checked.
+          x-phi: none
+        verifiedBy:
+          $ref: ../components/schemas/Id.yaml
+          description: The front-desk user who checked it (from the session).
+          x-phi: internal-id
+        verifiedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When.
+          x-phi: none

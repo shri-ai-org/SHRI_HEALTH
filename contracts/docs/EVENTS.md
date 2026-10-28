@@ -91,6 +91,7 @@ data: {"specversion":"1.0","id":"4d6f…","type":"appointment.checked-in",…}
 | Type | Subject | `data` (beyond IDs of the subject) | Published by | Consumers | Delivery |
 |---|---|---|---|---|---|
 | `patient.created` | patient | — | Vimal (patients) | Minalini (communications preferences defaults) | Internal |
+| `pre-registration.received` | pre-registration | — | Vimal (patients) | Front-desk queue screen | Browser (staff of the practice; no patient data) |
 | `patient.updated` | patient | — | Vimal | — (nothing is mirrored since ADR-0011) | Internal |
 | `patient.merged` | patient (surviving) | `mergedPatientId` | Vimal | Anand (billing, documents re-point), Minalini | Internal + browser |
 | `appointment.booked` | appointment | `patientId`, `providerId`, `facilityId`, `start` | Vimal (scheduling) | Minalini (reminders), status board | Internal + browser |

@@ -43,7 +43,7 @@ x-permission: notes:sign
 | `action` | FHIR AuditEvent action: `C` create, `R` read (including search), `U` update, `E` execute (actions) |
 | `category` | `phi-read`, `phi-write`, `sign`, `export`, `security`, `ai`, `admin`, or `none` (only health checks, session reads and reference catalogs: codes, pharmacies, payer directory, lab providers, lab compendium, slots, booking lists) |
 | `patient` | Where the patient ID comes from: a path parameter name (e.g. `patientId`), `body:/<json-pointer>`, `result` (search and list results: the IDs returned are recorded), or `session` (portal operations: the signed-in patient, D84). **Required** on paths containing `{patientId}`, and `session` on every operation with a portal session except the five practice-data and session reads allowed `none` (SECURITY_MODEL §6); `session` only under `/portal/` |
-| `actor` | `user` (default), `partner` (partner callbacks, Thulasi T37) or `patient` (every `/portal/` operation and only those; ADR-0013 §6) |
+| `actor` | `user` (default), `partner` (partner callbacks, Thulasi T37), `patient` (every `/portal/` operation and only those; ADR-0013 §6) or `anonymous` (public operations with no user and no patient session, such as pre-registration, and only those; D96) |
 | Behavior | Audit **fails closed**: if the audit write fails, the request fails. Writes are audited in the same transaction; reads before the response is returned. Audit entries never contain request or response bodies (SECURITY_MODEL §6) |
 | Read by | Thulasi's middleware |
 | Lint rule | `shri-x-audit` |

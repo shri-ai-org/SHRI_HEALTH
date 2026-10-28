@@ -74,8 +74,8 @@ _BY_LETTER = {"R": "read", "C": "create", "U": "update", "E": "update"}
 
 _COLUMNS = (
     "tenant_id", "actor_type", "actor_user_id", "actor_display", "action", "outcome",
-    "entity_type", "entity_id", "patient_id", "reason", "source_ip", "user_agent",
-    "correlation_id",
+    "entity_type", "entity_id", "patient_id", "purpose_of_use", "reason", "source_ip",
+    "user_agent", "correlation_id",
 )
 _CATEGORY_CACHE = "shri_audit_has_category"
 
@@ -144,6 +144,7 @@ class AuditTrail:
     patient_ids: list[UUID] | None = None
     action: str | None = None
     reason: str | None = None
+    purpose_of_use: str | None = None  # ETREAT: opened through a break-glass grant
     written: bool = False
     _committing: bool = False
 
@@ -196,6 +197,7 @@ class AuditTrail:
             "entity_type": entity_type,
             "entity_id": entity_id,
             "reason": self.reason,
+            "purpose_of_use": self.purpose_of_use,
             "source_ip": self.source_ip,
             "user_agent": self.user_agent,
             "correlation_id": self.request_id,
@@ -377,7 +379,7 @@ async def record_denial(request: Request, user: "CurrentUser", permission: str) 
         "tenant_id": user.organization_id, "actor_type": "user", "actor_user_id": user.id,
         "actor_display": user.display_name[:200] or None, "action": "access-denied",
         "outcome": "denied", "category": "security", "entity_type": entity_type,
-        "entity_id": entity_id, "patient_id": None,
+        "entity_id": entity_id, "patient_id": None, "purpose_of_use": None,
         "reason": f"permission-denied: requires {permission}", "source_ip": _client_ip(request),
         "user_agent": (request.headers.get("user-agent") or "")[:300] or None,
         "correlation_id": current_request_id(),
