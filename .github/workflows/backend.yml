@@ -10,12 +10,12 @@ on:
   pull_request:
     paths: ["backend/**", "infra/compose/**", ".github/workflows/backend.yml",
             "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**",
-            "contracts/openapi/dist/**"]
+            "contracts/openapi/dist/**", "scripts/check_env.py"]
   push:
     branches: [main]
     paths: ["backend/**", "infra/compose/**", ".github/workflows/backend.yml",
             "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**",
-            "contracts/openapi/dist/**"]
+            "contracts/openapi/dist/**", "scripts/check_env.py"]
 
 permissions:
   contents: read

@@ -23,9 +23,11 @@ import re
 from typing import Any
 
 import httpx
+from fastapi import FastAPI
 
 from app.core.config import Settings
 from app.core.errors import InternalError
+from app.core.lifecycle import on_shutdown
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +40,8 @@ class FieldCrypto:
 
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
         if settings.openbao_transit_addr is None or settings.openbao_transit_token is None:
-            raise ValueError("OpenBao Transit is not configured")
+            missing = settings.missing("openbao_transit_addr", "openbao_transit_token")
+            raise ValueError(f"OpenBao Transit is not configured: set {', '.join(missing)}")
         mount = settings.openbao_transit_mount.strip("/")
         key = settings.openbao_transit_key
         self._encrypt_path = f"/v1/{mount}/encrypt/{key}"
@@ -105,3 +108,10 @@ async def encrypt_field(app: Any, plaintext: bytes) -> str:
 async def decrypt_field(app: Any, ciphertext: str) -> bytes:
     """The plaintext of Transit `ciphertext`; InternalError (500) if it can't be decrypted."""
     return await field_crypto(app).decrypt(ciphertext)
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """Field encryption through Transit; unconfigured, encryption fails closed (500)."""
+    app.state.crypto = FieldCrypto(settings) if settings.openbao_transit_addr else None
+    if app.state.crypto is not None:
+        on_shutdown(app, app.state.crypto.aclose)

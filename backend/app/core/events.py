@@ -41,16 +41,18 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import access
+from app.core.config import Settings
 from app.core.db import TENANT_ID_INFO_KEY, Database
 from app.core.deps import CurrentUser, require
 from app.core.errors import AppError, ServiceUnavailable
 from app.core.request_id import current_request_id
+from app.core.routing import API_PREFIX
 
 log = logging.getLogger(__name__)
 
@@ -295,3 +297,6 @@ async def stream_events(
     return StreamingResponse(body(), media_type="text/event-stream",
                              headers={"X-Accel-Buffering": "no"})
 
+
+def register(app: FastAPI, settings: Settings) -> None:
+    app.include_router(router, prefix=API_PREFIX)
