@@ -98,6 +98,17 @@
     note: >-
       the text as typed, escaped in one XHTML div (app.db.fhir_store writes it;
       fhir_store.section_text() reads it back); no text is no div
+  cosignStatus:
+    columns: [composition.ext_cosign_status]
+  cosigner:
+    columns: [composition.ext_cosigner_practitioner_id]
+    note: the supervising physician named by the matching co-sign rule, set at signing
+  cosignReturn:
+    columns: [composition.ext_cosign_return_comment, composition.ext_cosign_returned_at,
+              composition.ext_cosigner_practitioner_id]
+    note: >-
+      present only while cosignStatus is returned (returnedBy is the co-signer); earlier
+      returns stay in the note's history
 
 "Co-signature rules":
   superviseeProviderId:

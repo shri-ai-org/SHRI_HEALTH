@@ -3827,13 +3827,17 @@ Contract (from DATA_OWNERSHIP.md):
 | `custodian_organization_id` | uuid | yes | `custodian` | clinical.organization.id | no same-named property |
 | `ext_template_id` | uuid | yes |  | admin.note_template.id | no same-named property |
 | `ext_is_ai_assisted` | boolean | no |  |  | no same-named property |
+| `ext_cosign_status` | varchar(40) | no |  |  | no same-named property |
+| `ext_cosigner_practitioner_id` | uuid | yes |  | clinical.practitioner.id | no same-named property |
+| `ext_cosign_return_comment` | varchar(2000) | yes |  |  | no same-named property |
+| `ext_cosign_returned_at` | datetime | yes |  |  | no same-named property |
 | `meta_version_id` | integer | no |  |  | no same-named property |
 | `meta_last_updated` | datetime | no |  |  | no same-named property |
 | `meta_txid` | bigint | yes |  |  | no same-named property |
 | `meta_security` | array | no | `meta.security` |  | no same-named property |
 | `extension` | jsonb | no |  |  | no same-named property |
 | `id` | uuid | no |  |  | `id` |
-| `tenant_id` | uuid | no |  | admin.ai_suggestion.tenant_id, admin.note_template.tenant_id, admin.tenant.id, clinical.encounter.tenant_id, clinical.organization.tenant_id, clinical.patient.tenant_id | no same-named property |
+| `tenant_id` | uuid | no |  | admin.ai_suggestion.tenant_id, admin.note_template.tenant_id, admin.tenant.id, clinical.encounter.tenant_id, clinical.organization.tenant_id, clinical.patient.tenant_id, clinical.practitioner.tenant_id | no same-named property |
 | `created_at` | datetime | no |  |  | `createdAt` |
 | `updated_at` | datetime | no |  |  | `updatedAt` |
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
@@ -3847,11 +3851,11 @@ Contract (from DATA_OWNERSHIP.md):
 
 Contract properties with no column of the same name: `addenda`, `aiAssisted`, `author`, `completedAt`, `cosignReturn`, `cosignStatus`, `cosignedAt`, `cosignedBy`, `cosigner`, `error`, `kind`, `noteId`, `noteType`, `patientId`, `recordedAt`, `recordedBy`, `result`, `sections`, `signedAt`, `signedBy`, `templateId`, `text`, `versionId`
 
-Checks: `ck_composition_ai_entry_verified`, `ck_composition_entry_source_codes`, `ck_composition_extension_is_array`, `ck_composition_fhir_category_coding`, `ck_composition_fhir_category_display`, `ck_composition_fhir_type_coding`, `ck_composition_fhir_type_display`, `ck_composition_fhir_type_required`, `ck_composition_meta_security_codes`, `ck_composition_status_codes`
+Checks: `ck_composition_ai_entry_verified`, `ck_composition_cosign_has_cosigner`, `ck_composition_draft_not_cosigned`, `ck_composition_entry_source_codes`, `ck_composition_ext_cosign_status_codes`, `ck_composition_extension_is_array`, `ck_composition_fhir_category_coding`, `ck_composition_fhir_category_display`, `ck_composition_fhir_type_coding`, `ck_composition_fhir_type_display`, `ck_composition_fhir_type_required`, `ck_composition_meta_security_codes`, `ck_composition_return_comment_while_returned`, `ck_composition_status_codes`
 
 Unique: `uq_composition_id_status`, `uq_composition_subject_patient_id_id`, `uq_composition_tenant_id_id`
 
-Composite foreign keys: `fk_composition_ai_suggestion_id_same_patient`, `fk_composition_ai_suggestion_id_tenant`, `fk_composition_custodian_organization_id_tenant`, `fk_composition_encounter_id_same_patient`, `fk_composition_encounter_id_tenant`, `fk_composition_ext_template_id_tenant`, `fk_composition_subject_patient_id_tenant`
+Composite foreign keys: `fk_composition_ai_suggestion_id_same_patient`, `fk_composition_ai_suggestion_id_tenant`, `fk_composition_custodian_organization_id_tenant`, `fk_composition_encounter_id_same_patient`, `fk_composition_encounter_id_tenant`, `fk_composition_ext_cosigner_practitioner_id_tenant`, `fk_composition_ext_template_id_tenant`, `fk_composition_subject_patient_id_tenant`
 
 ## `clinical.composition_attester`
 
@@ -7680,11 +7684,11 @@ Paths: `/encounters/{encounterId}/notes`, `/notes/{noteId}`, `/notes/{noteId}/ve
 | `addenda` | — | not mapped yet |
 | `aiAssisted` | — | not mapped yet |
 | `author` | — | not mapped yet |
-| `cosignReturn` | — | not mapped yet |
-| `cosignStatus` | — | not mapped yet |
+| `cosignReturn` | `composition.ext_cosign_return_comment`, `composition.ext_cosign_returned_at`, `composition.ext_cosigner_practitioner_id` | mapped: present only while cosignStatus is returned (returnedBy is the co-signer); earlier returns stay in the note's history |
+| `cosignStatus` | `composition.ext_cosign_status` | mapped |
 | `cosignedAt` | — | not mapped yet |
 | `cosignedBy` | — | not mapped yet |
-| `cosigner` | — | not mapped yet |
+| `cosigner` | `composition.ext_cosigner_practitioner_id` | mapped: the supervising physician named by the matching co-sign rule, set at signing |
 | `createdAt` | `composition.created_at` | same name |
 | `encounterId` | `composition.encounter_id` | same name |
 | `id` | `composition.id` | same name |

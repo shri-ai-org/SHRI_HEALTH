@@ -477,6 +477,13 @@ class CompositionStatus(StrEnum):       # also DocumentReference.docStatus
     ENTERED_IN_ERROR = "entered-in-error"
 
 
+class CosignStatus(StrEnum):           # D73, migration 0013: the contract's cosignStatus
+    NOT_REQUIRED = "not-required"       # no co-sign rule matched (and every draft)
+    PENDING = "pending"                 # waiting for the supervising physician
+    RETURNED = "returned"               # sent back with a comment; the author adds an addendum
+    COSIGNED = "cosigned"
+
+
 class DocumentRelationshipType(StrEnum):
     REPLACES = "replaces"
     TRANSFORMS = "transforms"

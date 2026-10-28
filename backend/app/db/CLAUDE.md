@@ -113,8 +113,12 @@ Every resource row a helper writes records `created_by_user_id` (a new row) and
 transaction's time, which `meta_last_updated` also uses.
 
 `coverage_entered_in_error` writes its Provenance (agent: the current user's practitioner, or
-their name). `create_consent` sets the FHIR scope from the kind (`research`; `patient-privacy`
-for `privacy-notice` and `information-sharing`; otherwise `treatment`).
+their name). `create_consent` sets the FHIR scope and category from the kind, one fixed set
+per kind (agreed on #88; the caller passes no categories): `treatment`, `telehealth` and
+`financial` are scope `treatment` with LOINC `59284-0` only; `privacy-notice` is
+`patient-privacy` with `npp` and LOINC `57016-8`; `information-sharing` is `patient-privacy`
+with LOINC `64292-6` and ActCode `IDSCL`; `ambient-recording` is `patient-privacy` with ActCode
+`ICOL`; `research` is `research` with `research`.
 
 The visit helpers (batch 2), on the same rules:
 - `create_encounter` and `set_encounter_status`: every status change is a status-history row;
@@ -129,13 +133,19 @@ The visit helpers (batch 2), on the same rules:
   `encounter-diagnosis`) and its ranked link, inserted or closed up in a safe order; removal is
   D24's (entered-in-error with Provenance, the link deleted, the Condition kept).
 
+`record_medication` (D28; demo step 7): a medication the patient already takes, on the list. A
+MedicationRequest with intent `plan`, `reportedBoolean` true and the patient as requester (the
+prescriber isn't known), with the sig and a note; never signed, and the database never lets one
+be sent (`shri_erx_order_only`). The prescription helpers treat it as not found.
+
 The prescription helpers (D97), on the same rules. A prescription is a MedicationRequest, intent
 `order`, written by the current user's practitioner:
 - `create_prescription`, `update_prescription`: a draft only (`InvalidTransition` once signed);
   the sig is one `dosage` row; days supply is `expectedSupplyDuration` in UCUM `d`;
 - `prescription_entered_in_error`: a draft only, with its Provenance; its alerts are cancelled;
 - `record_safety_check(..., if_version=)`: the version the rules ran on. Each alert is a
-  `detected_issue` (from an active `cds_rule` by code; severity `info`/`warning`/`high` stored
+  `detected_issue` (from an active `cds_rule` by code, the clinic's before the platform's
+  `allergy` and `duplicate-medication`, migration 0013; severity `info`/`warning`/`high` stored
   as `low`/`moderate`/`high`; kind as v3 ActCode `ALGY`, `DUPTHPY`, `DRG`) implicating the draft
   and the allergy or other medication behind it; the earlier check's alerts are cancelled. It
   sets `ext_safety_checked_at` and `ext_safety_checked_version` without a new version (A58,
@@ -152,13 +162,14 @@ The prescription helpers (D97), on the same rules. A prescription is a Medicatio
 
 The note helpers (D8, D73): `create_note`, `update_note` (autosave of a draft; sections merged
 by id; every committed save is a version), `sign_note` (legal attester and Provenance, then
-frozen), `add_note_addendum` (a new signed Composition that `appends`; the note becomes
-`amended`), `cosign_note` (a professional attester, never the author, once) and
-`note_entered_in_error`. A section's text is stored escaped in one XHTML div;
+frozen; with `cosigner_practitioner_id`, the co-signer the matching rule names, never the
+author, `cosignStatus` is `pending`), `add_note_addendum` (a new signed Composition that
+`appends`; the note becomes `amended`, and a `returned` note `pending` again), `cosign_note`
+and `return_note_to_author` (the named co-signer only, while `pending`: a professional attester
+and its Provenance, `cosigned`; or `returned` with the comment, the note still signed and
+frozen) and `note_entered_in_error`. A section's text is stored escaped in one XHTML div;
 `fhir_store.section_text()` reads it back. Signatures carry the SHA-256 of the signed content
 (`_digest`: canonical JSON) in the attester and the Provenance signature.
-
-The medication list's reported entries, the co-signature status and "return to author" follow.
 
 ## Conventions for the repositories (Vimal's review of #45)
 
@@ -294,6 +305,9 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     held.
   - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
     provider's busy times without anyone's appointment.
+  - **A note's co-signature return** (`ext_cosign_return_comment`, `ext_cosign_returned_at`)
+    is never readable: its SELECT on `composition` is column-limited
+    (`PORTAL_HIDDEN_COLUMNS`, migration 0013), so select the columns it needs, never `*`.
   - **Who wrote a version:** a version the portal writes records the patient in
     `fhir_resource_history.recorded_by_patient_id`.
 - **Change requests (D91):** `admin.portal_change_request`. The patient inserts it pending; the
@@ -320,7 +334,18 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   `overrideRequired` is severity `high`; `override` is the alert's mitigation (`ext_reason`,
   `date`, the author practitioner's user). `transmission` is the latest outbound NewRx
   `erx_transaction` (`not-sent` when there is none); its `updatedAt` is that row's
-  `updated_at`.
+  `updated_at`. On the medication list, `source` is `reported` for intent `plan` and
+  `prescription` for a signed order (`prescriptionId` its `id`).
+- **Co-signature (D73, migration 0013):** `composition.ext_cosign_status` (`not-required` for
+  every draft), `ext_cosigner_practitioner_id` (the contract's `cosigner`; never changes once
+  named) and, only while `returned`, `ext_cosign_return_comment` and `ext_cosign_returned_at`
+  (`cosignReturn`; `returnedBy` is the co-signer). A signed note may change these and nothing
+  else, and `cosigned` is final (`shri_composition_guard`). `cosignedAt` and `cosignedBy` are
+  the `professional` attester. Each change is a version, so earlier returns stay in the
+  history.
+- **Platform rules (migration 0013):** `admin.cds_rule` rows with `tenant_id` NULL, read by
+  every clinic and written by no role; a migration inserts them as the owner with RLS unforced
+  for that statement (`sql_0013/04_platform_rules.sql`).
 - **Merge by link (D103, migration 0012):** a merge records `admin.patient_merge` and both
   patients' `patient_link` rows (the merged one `replaced-by` the surviving one, which
   `replaces` it) and makes the merged patient inactive, in one transaction. No record moves.

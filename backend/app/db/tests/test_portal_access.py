@@ -339,3 +339,29 @@ def test_change_requests_are_the_patients_own_and_the_front_desk_decides(
         conn = s.bind
         s.close()
         conn.close()  # type: ignore[union-attr]
+
+
+def test_the_cosigners_return_comment_is_never_read(portal_engine: Engine,
+                                                    chart: dict[str, Any]) -> None:
+    """Migration 0013: the portal reads the patient's signed note, but not the co-signer's
+    return-to-author comment or when it was returned (D73), which are between clinicians."""
+    s: Session = chart["s"]
+    me = chart["me"]
+    sup = b.practitioner(s, "Okafor", "Chidi")
+    note = b.note(s, me["pt"], me["enc"], chart["ctx"])
+    b.sign_note(s, note, chart["ctx"])
+    note.ext_cosign_status, note.ext_cosigner_practitioner_id = "pending", sup["practitioner"].id
+    s.commit()
+    s.execute(text("UPDATE clinical.composition SET ext_cosign_status = 'returned', "
+                   "ext_cosign_return_comment = 'Please add the exam.', "
+                   "ext_cosign_returned_at = now() WHERE id = :n"), {"n": note.id})
+    s.commit()
+    with portal_engine.begin() as c:
+        _as_patient(c, chart)
+        assert c.execute(text("SELECT title, status, ext_cosign_status FROM clinical.composition"
+                              " WHERE id = :n"), {"n": note.id}).one() == (
+            "Follow-up visit", "final", "returned")
+        for sql in ("SELECT ext_cosign_return_comment FROM clinical.composition",
+                    "SELECT ext_cosign_returned_at FROM clinical.composition",
+                    "SELECT * FROM clinical.composition"):
+            assert _refused(c, sql) == DENIED, sql

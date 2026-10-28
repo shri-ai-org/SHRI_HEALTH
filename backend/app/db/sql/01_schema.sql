@@ -4138,6 +4138,10 @@ CREATE TABLE clinical.composition (
 	custodian_organization_id UUID, 
 	ext_template_id UUID, 
 	ext_is_ai_assisted BOOLEAN DEFAULT false NOT NULL, 
+	ext_cosign_status VARCHAR(40) DEFAULT 'not-required' NOT NULL, 
+	ext_cosigner_practitioner_id UUID, 
+	ext_cosign_return_comment VARCHAR(2000), 
+	ext_cosign_returned_at TIMESTAMP WITH TIME ZONE, 
 	meta_version_id INTEGER DEFAULT 1 NOT NULL, 
 	meta_last_updated TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	meta_txid BIGINT, 
@@ -4157,6 +4161,9 @@ CREATE TABLE clinical.composition (
 	ai_suggestion_id UUID, 
 	CONSTRAINT pk_composition PRIMARY KEY (id), 
 	CONSTRAINT uq_composition_id_status UNIQUE (id, status), 
+	CONSTRAINT ck_composition_draft_not_cosigned CHECK (status <> 'preliminary' OR ext_cosign_status = 'not-required'), 
+	CONSTRAINT ck_composition_cosign_has_cosigner CHECK (ext_cosign_status = 'not-required' OR ext_cosigner_practitioner_id IS NOT NULL), 
+	CONSTRAINT ck_composition_return_comment_while_returned CHECK (CASE WHEN ext_cosign_status = 'returned' THEN coalesce(length(trim(ext_cosign_return_comment)), 0) > 0 AND ext_cosign_returned_at IS NOT NULL ELSE ext_cosign_return_comment IS NULL AND ext_cosign_returned_at IS NULL END), 
 	CONSTRAINT ck_composition_meta_security_codes CHECK (meta_security <@ ARRAY['L', 'M', 'N', 'R', 'V', 'PSY', 'SUD', 'ETH', 'HIV', 'SEX', 'SOC', 'CEL']::varchar[]), 
 	CONSTRAINT ck_composition_extension_is_array CHECK (jsonb_typeof(extension) = 'array'), 
 	CONSTRAINT fk_composition_type_system_code_system FOREIGN KEY(type_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
@@ -4165,11 +4172,13 @@ CREATE TABLE clinical.composition (
 	CONSTRAINT fk_composition_encounter_id_encounter FOREIGN KEY(encounter_id) REFERENCES clinical.encounter (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_composition_custodian_organization_id_organization FOREIGN KEY(custodian_organization_id) REFERENCES clinical.organization (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_composition_ext_template_id_note_template FOREIGN KEY(ext_template_id) REFERENCES admin.note_template (id), 
+	CONSTRAINT fk_composition_ext_cosigner_practitioner_id_practitioner FOREIGN KEY(ext_cosigner_practitioner_id) REFERENCES clinical.practitioner (id), 
 	CONSTRAINT fk_composition_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_composition_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_composition_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_composition_verified_by_user_id_app_user FOREIGN KEY(verified_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT ck_composition_status_codes CHECK (status IN ('preliminary', 'final', 'amended', 'entered-in-error')), 
+	CONSTRAINT ck_composition_ext_cosign_status_codes CHECK (ext_cosign_status IN ('not-required', 'pending', 'returned', 'cosigned')), 
 	CONSTRAINT ck_composition_entry_source_codes CHECK (entry_source IN ('clinician', 'imported', 'patient-reported', 'ai-generated', 'device', 'interface')), 
 	CONSTRAINT ck_composition_fhir_type_coding CHECK ((type_code IS NULL) = (type_system IS NULL)), 
 	CONSTRAINT ck_composition_fhir_type_display CHECK (type_display IS NULL OR type_code IS NOT NULL), 
@@ -4418,7 +4427,7 @@ CREATE TABLE clinical.medication_request (
 	verified_by_user_id UUID, 
 	ai_suggestion_id UUID, 
 	CONSTRAINT pk_medication_request PRIMARY KEY (id), 
-	CONSTRAINT ck_medication_request_active_requires_signature CHECK (status IN ('draft', 'cancelled', 'entered-in-error') OR entry_source IN ('imported', 'interface') OR (ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL)), 
+	CONSTRAINT ck_medication_request_active_requires_signature CHECK (status IN ('draft', 'cancelled', 'entered-in-error') OR entry_source IN ('imported', 'interface') OR (intent = 'plan' AND (reported_boolean IS TRUE OR reported_practitioner_id IS NOT NULL)) OR (ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL)), 
 	CONSTRAINT ck_medication_request_medication_code_binding CHECK (medication_codeable_concept_system IS NULL OR medication_codeable_concept_system IN ('http://www.nlm.nih.gov/research/umls/rxnorm', 'http://hl7.org/fhir/sid/ndc')), 
 	CONSTRAINT ck_medication_request_repeats_range CHECK (dispense_request_number_of_repeats_allowed IS NULL OR dispense_request_number_of_repeats_allowed BETWEEN 0 AND 11), 
 	CONSTRAINT ck_medication_request_cii_no_refills CHECK (ext_dea_schedule IS DISTINCT FROM 'CII' OR coalesce(dispense_request_number_of_repeats_allowed, 0) = 0), 
@@ -8618,6 +8627,8 @@ ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_custodian_organiz
 ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_encounter_id_same_patient FOREIGN KEY(subject_patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
+ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ext_cosigner_practitioner_id_tenant FOREIGN KEY(tenant_id, ext_cosigner_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ext_template_id_tenant FOREIGN KEY(tenant_id, ext_template_id) REFERENCES admin.note_template (tenant_id, id);
 

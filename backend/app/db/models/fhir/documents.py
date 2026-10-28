@@ -46,6 +46,7 @@ from app.db.fhir_types import (
 from app.db.models.enums import (
     CompositionAttestationMode,
     CompositionStatus,
+    CosignStatus,
     DocumentOrigin,
     DocumentReferenceStatus,
     DocumentRelationshipType,
@@ -162,6 +163,17 @@ class Composition(Base, ClinicalResourceMixin):
         Index("ix_composition_unsigned", "tenant_id", "status",
               postgresql_where=text("status = 'preliminary'")),
         UniqueConstraint("id", "status"),     # attester / section guards pin parent state
+        # Co-signature (D73, migration 0013): a draft needs none yet; a co-signature names its
+        # co-signer; the return comment is there exactly while the note is returned.
+        CheckConstraint("status <> 'preliminary' OR ext_cosign_status = 'not-required'",
+                        name="draft_not_cosigned"),
+        CheckConstraint("ext_cosign_status = 'not-required' OR "
+                        "ext_cosigner_practitioner_id IS NOT NULL", name="cosign_has_cosigner"),
+        CheckConstraint("CASE WHEN ext_cosign_status = 'returned' THEN "
+                        "coalesce(length(trim(ext_cosign_return_comment)), 0) > 0 AND "
+                        "ext_cosign_returned_at IS NOT NULL ELSE "
+                        "ext_cosign_return_comment IS NULL AND ext_cosign_returned_at IS NULL END",
+                        name="return_comment_while_returned"),
     )
 
     status: Mapped[str] = code("status", CompositionStatus, required=True,
@@ -181,6 +193,16 @@ class Composition(Base, ClinicalResourceMixin):
     ext_template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.note_template.id"))
     ext_is_ai_assisted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
                                                      server_default=text("false"))
+    # Co-signature (D73, migration 0013): the contract's cosignStatus and cosigner (the
+    # supervising physician named by the matching co-sign rule), and, while returned, the
+    # co-signer's comment and when (cosignReturn; earlier returns stay in the history).
+    ext_cosign_status: Mapped[str] = mapped_column(
+        enum_type(CosignStatus), nullable=False, default=CosignStatus.NOT_REQUIRED.value,
+        server_default=CosignStatus.NOT_REQUIRED.value)
+    ext_cosigner_practitioner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clinical.practitioner.id"))
+    ext_cosign_return_comment: Mapped[str | None] = mapped_column(String(2000))
+    ext_cosign_returned_at: Mapped[datetime | None]
 
     author = children("CompositionAuthor", "composition_id", None, spread=True)
     attester = children("CompositionAttester", "composition_id", "attester", order_by="time")
