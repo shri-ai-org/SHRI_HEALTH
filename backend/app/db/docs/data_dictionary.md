@@ -381,6 +381,9 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `scan_status` | varchar(40) | no |  |  | — |
 | `scanned_at` | datetime | yes |  |  | — |
 | `retention_until` | datetime | yes |  |  | — |
+| `purpose` | varchar(40) | no |  |  | — |
+| `state` | varchar(40) | no |  |  | — |
+| `wrapped_data_key` | text | yes |  |  | — |
 | `id` | uuid | no |  |  | — |
 | `tenant_id` | uuid | no |  | admin.tenant.id | — |
 | `created_at` | datetime | no |  |  | — |
@@ -388,7 +391,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_binary_object_scan_status_codes`, `ck_binary_object_scanned_at`, `ck_binary_object_sha256_format`, `ck_binary_object_size`
+Checks: `ck_binary_object_clean_when_scanned`, `ck_binary_object_generated_clean`, `ck_binary_object_key_when_clean`, `ck_binary_object_purpose_codes`, `ck_binary_object_scan_status_codes`, `ck_binary_object_scanned_at`, `ck_binary_object_sha256_format`, `ck_binary_object_size`, `ck_binary_object_state_codes`
 
 Unique: `uq_binary_object_tenant_id_bucket_storage_key_storage_version_id`, `uq_binary_object_tenant_id_id`
 
@@ -723,7 +726,7 @@ Contract (from DATA_OWNERSHIP.md):
 | `created_at` | datetime | no |  |  | no same-named property |
 | `updated_at` | datetime | no |  |  | no same-named property |
 
-Contract properties with no column of the same name: `billable`, `display`, `system`
+Contract properties with no column of the same name: `billable`, `display`, `drug`, `system`
 
 Unique: `uq_code_system_code`, `uq_code_system_uri`
 
@@ -934,7 +937,7 @@ Contract (from DATA_OWNERSHIP.md):
 | `created_at` | datetime | no |  |  | no same-named property |
 | `updated_at` | datetime | no |  |  | no same-named property |
 
-Contract properties with no column of the same name: `billable`, `system`
+Contract properties with no column of the same name: `billable`, `drug`, `system`
 
 Checks: `ck_concept_period`
 
@@ -954,7 +957,7 @@ Contract (from DATA_OWNERSHIP.md):
 | `value` | varchar(500) | no |  |  | no same-named property |
 | `id` | uuid | no |  |  | no same-named property |
 
-Contract properties with no column of the same name: `billable`, `code`, `display`, `system`
+Contract properties with no column of the same name: `billable`, `code`, `display`, `drug`, `system`
 
 Unique: `uq_concept_property_concept_id_property_value`
 
@@ -986,6 +989,21 @@ Checks: `ck_consent_requirement_kind_codes`, `ck_consent_requirement_policy_vers
 Unique: `uq_consent_requirement_tenant_id_kind_policy_version`
 
 Composite foreign keys: `fk_consent_requirement_form_file_id_tenant`
+
+## `admin.consumed_logout_token`
+
+Admin, platform-wide. A staff back-channel logout token already acted on (D94; OpenID Connect Back-Channel Logout 1.0: ``jti`` used once). Platform-wide, since the token arrives before any clinic is known; no role reads or writes it except ``admin.end_backchannel_sessions()``. Kept until the token itself expires.
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `jti` | varchar(255) | no |  |  | — |
+| `expires_at` | datetime | no |  |  | — |
+| `consumed_at` | datetime | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+
+Checks: `ck_consumed_logout_token_jti_given`
 
 ## `admin.cosign_rule`
 
@@ -1926,6 +1944,52 @@ Unique: `uq_note_template_section_template_id_section_code`, `uq_note_template_s
 
 Composite foreign keys: `fk_note_template_section_template_id_tenant`
 
+## `admin.online_bookable_type`
+
+Admin (normalized). A visit type patients may book online at a facility (A50 (3), the contract's "Kinds of visit bookable online, at a facility"). Practice configuration: a row is removed to stop offering it.
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `facility_id` | uuid | no |  | admin.facility.id | — |
+| `appointment_type_id` | uuid | no |  | admin.appointment_type.id | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.appointment_type.tenant_id, admin.facility.tenant_id, admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Unique: `uq_online_bookable_type_facility_id_appointment_type_id`
+
+Composite foreign keys: `fk_online_bookable_type_appointment_type_id_tenant`, `fk_online_bookable_type_facility_id_tenant`
+
+## `admin.online_booking_setting`
+
+Admin (normalized). The practice's online booking rules (A50 (3)): whether patients may book online, how far ahead and how soon, and the cut-offs that decide the portal's ``canCancel`` and ``canReschedule``. One row per practice; ``version`` is the ETag.
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `is_enabled` | boolean | no |  |  | — |
+| `booking_window_days` | smallint | no |  |  | — |
+| `min_notice_minutes` | integer | no |  |  | — |
+| `cancel_cutoff_hours` | smallint | no |  |  | — |
+| `reschedule_cutoff_hours` | smallint | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `version` | integer | no |  |  | — |
+
+Checks: `ck_online_booking_setting_cutoff_range`, `ck_online_booking_setting_notice_range`, `ck_online_booking_setting_window_range`
+
+Unique: `uq_online_booking_setting_tenant_id`
+
 ## `admin.openemr_column_map`
 
 Admin, platform-wide. FR-MIG-00 (P0): every OpenEMR 8.x column mapped as keep / merge / drop to a Shri column and FHIR element. Platform-wide (one matrix per OpenEMR version).
@@ -2083,7 +2147,7 @@ Composite foreign keys: `fk_outbound_communication_param_communication_id_tenant
 
 ## `admin.patient_merge`
 
-Admin (normalized). Audited merge. Moved records are listed in patient_merge_record so it can be undone; the merged patient gets a Patient.link 'replaced-by'.
+Admin (normalized). Audited merge by link (D103): the merged patient gets a Patient.link ``replaced-by`` the surviving one (which ``replaces`` it), and no record moves.
 
 Contract (from DATA_OWNERSHIP.md):
 - Duplicates, merges: `/duplicates`, `/duplicates/{duplicateId}/merge`, `/duplicates/{duplicateId}/dismiss`, `/patient-merges/{mergeId}/undo`
@@ -2098,8 +2162,6 @@ Contract (from DATA_OWNERSHIP.md):
 | `performed_by_user_id` | uuid | no |  | admin.app_user.id | `performedByUserId` |
 | `unmerged_at` | datetime | yes |  |  | no same-named property |
 | `unmerged_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
-| `surviving_patient_version` | integer | yes |  |  | no same-named property |
-| `merged_patient_version` | integer | yes |  |  | no same-named property |
 | `id` | uuid | no |  |  | `id` |
 | `tenant_id` | uuid | no |  | admin.duplicate_candidate.tenant_id, admin.tenant.id, clinical.patient.tenant_id | no same-named property |
 | `created_at` | datetime | no |  |  | `createdAt` |
@@ -2114,32 +2176,6 @@ Checks: `ck_patient_merge_distinct_patients`, `ck_patient_merge_unmerge_pair`
 Unique: `uq_patient_merge_tenant_id_id`
 
 Composite foreign keys: `fk_patient_merge_duplicate_candidate_id_tenant`, `fk_patient_merge_merged_patient_id_tenant`, `fk_patient_merge_surviving_patient_id_tenant`
-
-## `admin.patient_merge_record`
-
-Admin (normalized).
-
-Contract (from DATA_OWNERSHIP.md):
-- Duplicates, merges: `/duplicates`, `/duplicates/{duplicateId}/merge`, `/duplicates/{duplicateId}/dismiss`, `/patient-merges/{mergeId}/undo`
-
-| Column | Type | Null | FHIR | References | Contract name |
-|---|---|---|---|---|---|
-| `patient_merge_id` | uuid | no |  | admin.patient_merge.id | no same-named property |
-| `resource_type` | varchar(64) | no |  |  | no same-named property |
-| `resource_id` | uuid | no |  |  | no same-named property |
-| `version_before_merge` | integer | no |  |  | no same-named property |
-| `id` | uuid | no |  |  | `id` |
-| `tenant_id` | uuid | no |  | admin.patient_merge.tenant_id, admin.tenant.id | no same-named property |
-| `created_at` | datetime | no |  |  | `createdAt` |
-| `updated_at` | datetime | no |  |  | no same-named property |
-| `created_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
-| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | no same-named property |
-
-Contract properties with no column of the same name: `duplicateId`, `matchScore`, `matchedOn`, `mergedPatientId`, `patientAId`, `patientBId`, `performedAt`, `performedByUserId`, `reason`, `reviewedAt`, `reviewedByUserId`, `status`, `survivingPatientId`, `undoneAt`, `undoneByUserId`
-
-Unique: `uq_patient_merge_record_patient_merge_id_resource_type_resource_id`
-
-Composite foreign keys: `fk_patient_merge_record_patient_merge_id_tenant`
 
 ## `admin.patient_payment`
 
@@ -2161,7 +2197,9 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `collected_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `is_refund` | boolean | no |  |  | — |
 | `refund_of_payment_id` | uuid | yes |  | admin.patient_payment.id | — |
-| `receipt_file_id` | uuid | yes |  | admin.binary_object.id | — |
+| `receipt_file_id` | uuid | no |  | admin.binary_object.id | — |
+| `check_number` | varchar(40) | yes |  |  | — |
+| `note` | varchar(500) | yes |  |  | — |
 | `id` | uuid | no |  |  | — |
 | `tenant_id` | uuid | no |  | admin.binary_object.tenant_id, admin.patient_payment.tenant_id, admin.tenant.id, clinical.appointment.tenant_id, clinical.encounter.tenant_id, clinical.patient.tenant_id | — |
 | `created_at` | datetime | no |  |  | — |
@@ -2169,7 +2207,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_patient_payment_amount_positive`, `ck_patient_payment_card_has_processor_ref`, `ck_patient_payment_method_codes`, `ck_patient_payment_no_card_number`, `ck_patient_payment_refund_link`
+Checks: `ck_patient_payment_amount_positive`, `ck_patient_payment_card_has_processor_ref`, `ck_patient_payment_check_number_method`, `ck_patient_payment_method_codes`, `ck_patient_payment_no_card_number`, `ck_patient_payment_refund_link`
 
 Unique: `uq_patient_payment_patient_id_id`, `uq_patient_payment_tenant_id_id`
 
@@ -2268,7 +2306,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 Checks: `ck_payer_enrollment_approved_at`, `ck_payer_enrollment_status_codes`, `ck_payer_enrollment_transaction_codes`
 
-Unique: `uq_payer_enrollment_payer_id_practitioner_id_transaction_clearinghouse`
+Unique: `uq_payer_enrollment_tenant_id_payer_id_practitioner_id_transaction_clearinghouse`
 
 Composite foreign keys: `fk_payer_enrollment_practitioner_id_tenant`
 
@@ -2376,6 +2414,127 @@ Unique: `uq_picklist_item_picklist_id_code`
 
 Composite foreign keys: `fk_picklist_item_picklist_id_tenant`
 
+## `admin.portal_account`
+
+Admin (normalized). The link from a patient-realm Keycloak user to one chart (ADR-0013 §5; one account, one chart in P1, D85). Disabling (D92) needs its time and reason; a merge suspends the account (ADR-0013 §6) and keeps the status it had, which the undo restores. A disabled account is never suspended or re-activated by a merge.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `keycloak_user_id` | varchar(100) | no |  |  | — |
+| `patient_id` | uuid | no |  | clinical.patient.id | — |
+| `status` | varchar(40) | no |  |  | — |
+| `enrolled_at` | datetime | yes |  |  | — |
+| `factors_reset_at` | datetime | yes |  |  | — |
+| `disabled_at` | datetime | yes |  |  | — |
+| `disabled_reason` | varchar(500) | yes |  |  | — |
+| `status_before_suspension` | varchar(40) | yes |  |  | — |
+| `suspended_by_merge_id` | uuid | yes |  | admin.patient_merge.id | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.patient_merge.tenant_id, admin.tenant.id, clinical.patient.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_portal_account_disabled_has_time_and_reason`, `ck_portal_account_set_up_has_time`, `ck_portal_account_status_before_suspension_codes`, `ck_portal_account_status_codes`, `ck_portal_account_suspended_from_live`, `ck_portal_account_suspended_has_origin`
+
+Unique: `uq_portal_account_patient_id_id`, `uq_portal_account_tenant_id_id`
+
+Composite foreign keys: `fk_portal_account_patient_id_tenant`, `fk_portal_account_suspended_by_merge_id_tenant`
+
+## `admin.portal_change_request`
+
+Admin (normalized). A patient's request to change their own chart (D91, A50 (2), (7)): nothing on the chart changes until the front desk accepts it and makes the change itself. ``changes`` holds the requested values as the contract's ``PortalChangeRequestChanges``, the D39 fields included. The patient writes it as ``shri_portal``; the front desk decides as ``shri_app``. What was asked never changes, and a decided request is final.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `patient_id` | uuid | no |  | admin.work_item.patient_id, clinical.patient.id | — |
+| `changes` | jsonb | no |  |  | — |
+| `note` | varchar(500) | yes |  |  | — |
+| `status` | varchar(40) | no |  |  | — |
+| `decided_at` | datetime | yes |  |  | — |
+| `decided_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `decision_note` | varchar(500) | yes |  |  | — |
+| `work_item_id` | uuid | yes |  | admin.work_item.id | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id, admin.work_item.tenant_id, clinical.patient.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_portal_change_request_changes_given`, `ck_portal_change_request_changes_size`, `ck_portal_change_request_decision_matches_status`, `ck_portal_change_request_decision_note_not_blank`, `ck_portal_change_request_status_codes`
+
+Composite foreign keys: `fk_portal_change_request_patient_id_tenant`, `fk_portal_change_request_work_item_id_same_patient`, `fk_portal_change_request_work_item_id_tenant`
+
+## `admin.portal_invitation`
+
+Admin (normalized). An enrolment code the front desk issued in person, after an ID check (ADR-0013 §3). Only the code's HMAC (with a key from OpenBao) is stored. 72 hours, single use, and one open invitation per patient: issuing a new one revokes the old one in the same transaction.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `patient_id` | uuid | no |  | clinical.patient.id | — |
+| `code_hmac` | varchar(64) | no |  |  | — |
+| `issued_by_user_id` | uuid | no |  | admin.app_user.id | — |
+| `expires_at` | datetime | no |  |  | — |
+| `used_at` | datetime | yes |  |  | — |
+| `revoked_at` | datetime | yes |  |  | — |
+| `failed_tries` | smallint | no |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.patient.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_portal_invitation_code_hmac_format`, `ck_portal_invitation_expires_after_issue`, `ck_portal_invitation_failed_tries_range`, `ck_portal_invitation_used_or_revoked`
+
+Composite foreign keys: `fk_portal_invitation_patient_id_tenant`
+
+## `admin.portal_session`
+
+Admin (normalized). A patient's server-side session (ADR-0013 §5): the app_session columns, for the account and its patient instead of a user. ``__Host-shri_portal`` carries the token, stored only as a SHA-256 hash. 15 minutes idle and 4 hours absolute (Q20), set by core.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `account_id` | uuid | no |  | admin.portal_account.id | — |
+| `patient_id` | uuid | no |  | admin.portal_account.patient_id, clinical.patient.id | — |
+| `token_hash` | varchar(64) | no |  |  | — |
+| `keycloak_access_token_enc` | text | no |  |  | — |
+| `keycloak_refresh_token_enc` | text | no |  |  | — |
+| `keycloak_sid` | varchar(100) | yes |  |  | — |
+| `last_activity_at` | datetime | no |  |  | — |
+| `tokens_refreshed_at` | datetime | no |  |  | — |
+| `idle_expires_at` | datetime | no |  |  | — |
+| `expires_at` | datetime | no |  |  | — |
+| `revoked_at` | datetime | yes |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.portal_account.tenant_id, admin.tenant.id, clinical.patient.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_portal_session_idle_within_absolute`, `ck_portal_session_token_hash_format`, `ck_portal_session_tokens_encrypted`
+
+Composite foreign keys: `fk_portal_session_account_id_same_patient`, `fk_portal_session_account_id_tenant`, `fk_portal_session_patient_id_tenant`
+
 ## `admin.practice_payer`
 
 Admin (normalized). A payer this practice actually works with, i.e. the `/practice-payers` directory (A39/issue #13) - distinct from `payer`, the platform-wide, read-only payer list. The platform payer is never edited per-practice; this row is where a practice turns one on and tracks whether it's currently active for the practice to bill against.
@@ -2482,6 +2641,36 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 Checks: `ck_prompt_template_feature_codes`, `ck_prompt_template_version`
 
 Unique: `uq_prompt_template_tenant_id_code_version`
+
+## `admin.release_hold`
+
+Admin (normalized). A clinician's individual hold on one item from the portal (D86, D90; A50 (4), (5)): a visit summary or document (DocumentReference), a result (DiagnosticReport) or a problem (Condition), never an allergy or a vital sign. The reason is ``risk-of-harm`` or ``patient-request``. The portal never reads the reason or the clinician: it lists a held item through ``admin.portal_held_items()`` as "held by your clinician", without its content. A hold is lifted once and stays lifted; nothing is deleted.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `patient_id` | uuid | no |  | clinical.condition.subject_patient_id, clinical.diagnostic_report.subject_patient_id, clinical.document_reference.subject_patient_id, clinical.patient.id | — |
+| `document_reference_id` | uuid | yes |  | clinical.document_reference.id | — |
+| `diagnostic_report_id` | uuid | yes |  | clinical.diagnostic_report.id | — |
+| `condition_id` | uuid | yes |  | clinical.condition.id | — |
+| `reason` | varchar(40) | no |  |  | — |
+| `held_by_user_id` | uuid | no |  | admin.app_user.id | — |
+| `held_at` | datetime | no |  |  | — |
+| `lifted_at` | datetime | yes |  |  | — |
+| `lifted_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.condition.tenant_id, clinical.diagnostic_report.tenant_id, clinical.document_reference.tenant_id, clinical.patient.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_release_hold_lifted_after_held`, `ck_release_hold_lifted_by_whom`, `ck_release_hold_one_item`, `ck_release_hold_reason_codes`
+
+Composite foreign keys: `fk_release_hold_condition_id_same_patient`, `fk_release_hold_condition_id_tenant`, `fk_release_hold_diagnostic_report_id_same_patient`, `fk_release_hold_diagnostic_report_id_tenant`, `fk_release_hold_document_reference_id_same_patient`, `fk_release_hold_document_reference_id_tenant`, `fk_release_hold_patient_id_tenant`
 
 ## `admin.remittance`
 
@@ -3148,7 +3337,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 Checks: `ck_work_item_completed_has_time`, `ck_work_item_escalation_level`, `ck_work_item_item_type_codes`, `ck_work_item_one_assignee`, `ck_work_item_one_subject`, `ck_work_item_priority`, `ck_work_item_status_codes`
 
-Unique: `uq_work_item_tenant_id_id`
+Unique: `uq_work_item_patient_id_id`, `uq_work_item_tenant_id_id`
 
 Composite foreign keys: `fk_work_item_appointment_id_same_patient`, `fk_work_item_appointment_id_tenant`, `fk_work_item_claim_id_same_patient`, `fk_work_item_claim_id_tenant`, `fk_work_item_composition_id_same_patient`, `fk_work_item_composition_id_tenant`, `fk_work_item_diagnostic_report_id_same_patient`, `fk_work_item_diagnostic_report_id_tenant`, `fk_work_item_document_reference_id_same_patient`, `fk_work_item_document_reference_id_tenant`, `fk_work_item_encounter_id_same_patient`, `fk_work_item_encounter_id_tenant`, `fk_work_item_facility_id_tenant`, `fk_work_item_fax_transmission_id_tenant`, `fk_work_item_medication_request_id_same_patient`, `fk_work_item_medication_request_id_tenant`, `fk_work_item_patient_id_tenant`, `fk_work_item_service_request_id_same_patient`, `fk_work_item_service_request_id_tenant`, `fk_work_item_unmatched_result_id_tenant`
 
@@ -3894,7 +4083,7 @@ Contract properties with no column of the same name: `abatementDate`, `additiona
 
 Checks: `ck_condition_abatement_age_comparator_codes`, `ck_condition_ai_entry_verified`, `ck_condition_clinical_status_codes`, `ck_condition_code_system_binding`, `ck_condition_entry_source_codes`, `ck_condition_extension_is_array`, `ck_condition_fhir_abatement_age_comparator`, `ck_condition_fhir_abatement_age_qty_3`, `ck_condition_fhir_abatement_period_per_1`, `ck_condition_fhir_abatement_x`, `ck_condition_fhir_asserter_arc`, `ck_condition_fhir_code_coding`, `ck_condition_fhir_code_display`, `ck_condition_fhir_code_required`, `ck_condition_fhir_con_4`, `ck_condition_fhir_con_5`, `ck_condition_fhir_onset_age_comparator`, `ck_condition_fhir_onset_age_qty_3`, `ck_condition_fhir_onset_period_per_1`, `ck_condition_fhir_onset_x`, `ck_condition_fhir_recorder_arc`, `ck_condition_fhir_severity_coding`, `ck_condition_fhir_severity_display`, `ck_condition_meta_security_codes`, `ck_condition_onset_age_comparator_codes`, `ck_condition_verification_status_codes`
 
-Unique: `uq_condition_tenant_id_id`
+Unique: `uq_condition_subject_patient_id_id`, `uq_condition_tenant_id_id`
 
 Composite foreign keys: `fk_condition_ai_suggestion_id_same_patient`, `fk_condition_ai_suggestion_id_tenant`, `fk_condition_asserter_patient_id_tenant`, `fk_condition_asserter_practitioner_id_tenant`, `fk_condition_asserter_related_person_id_same_patient`, `fk_condition_asserter_related_person_id_tenant`, `fk_condition_encounter_id_same_patient`, `fk_condition_encounter_id_tenant`, `fk_condition_recorder_patient_id_tenant`, `fk_condition_recorder_practitioner_id_tenant`, `fk_condition_recorder_related_person_id_same_patient`, `fk_condition_recorder_related_person_id_tenant`, `fk_condition_subject_patient_id_tenant`
 
@@ -5220,10 +5409,11 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `version_id` | integer | no |  |  | — |
 | `recorded_at` | datetime | no |  |  | — |
 | `recorded_by_user_id` | uuid | yes |  |  | — |
+| `recorded_by_patient_id` | uuid | yes |  |  | — |
 | `snapshot` | jsonb | no |  |  | — |
 | `tenant_id` | uuid | no |  | admin.tenant.id | — |
 
-Checks: `ck_fhir_resource_history_version_positive`
+Checks: `ck_fhir_resource_history_one_author`, `ck_fhir_resource_history_version_positive`
 
 Unique: `uq_fhir_resource_history_resource_type_resource_id_version_id`
 
@@ -7477,6 +7667,7 @@ Paths: `/codes`
 | `billable` | — | not mapped yet |
 | `code` | `code_system.code` | same name |
 | `display` | — | not mapped yet |
+| `drug` | — | not mapped yet |
 | `system` | — | not mapped yet |
 
 ### Note (draft, versions, signed)

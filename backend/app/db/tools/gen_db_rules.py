@@ -56,7 +56,7 @@ TENANT_ONLY = {"audit_event"}
 INSERT_ONLY = {
     "audit_event", "fhir_resource_history", "work_item_event", "result_acknowledgement",
     "claim_status_event", "service_request_status_event", "visit_flow_event",
-    "patient_merge_record", "ai_suggestion_evidence", "ai_suggestion_unknown",
+    "ai_suggestion_evidence", "ai_suggestion_unknown",
     "detected_issue_mitigation", "composition_attester", "provenance", "provenance_agent",
     "provenance_entity", "provenance_signature", "eligibility_benefit",
 }
@@ -174,9 +174,7 @@ GUARDS = {
     "encounter_follow_up": [("fixed", "BEFORE UPDATE",
                              "shri_fixed_columns('encounter_id', 'patient_id')"),
                             ("guard", "BEFORE UPDATE", "shri_follow_up_guard()")],
-    "patient_merge": [("versions", "BEFORE INSERT", "shri_patient_merge_versions()"),
-                      ("guard", "BEFORE UPDATE", "shri_patient_merge_guard()")],
-    "patient_merge_record": [("version", "BEFORE INSERT", "shri_patient_merge_record_version()")],
+    "patient_merge": [("guard", "BEFORE UPDATE", "shri_patient_merge_guard()")],
     "break_glass_access": [("guard", "BEFORE UPDATE",
                             "shri_freeze_except('reviewed_by_user_id', 'reviewed_at')")],
     "composition_section": [("content", "BEFORE INSERT OR UPDATE OR DELETE",
@@ -191,8 +189,6 @@ GUARDS = {
 DEFERRED = {
     "composition": ("signed", "shri_composition_signed_check()"),
     "medication_request": ("alerts", "shri_medication_request_alert_check()"),
-    # An undo that would leave a record pointing at another patient's (0008, D51).
-    "patient_merge": ("undo", "shri_patient_merge_undo_check()"),
 }
 #: Admin tables with VersionedMixin (A41/issue #13): practice-setup resources and
 #: patient_pharmacy, none of which have a FHIR meta_version_id of their own; tenant_setting for

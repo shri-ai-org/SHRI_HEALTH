@@ -217,7 +217,6 @@ def world(engines: tuple[Engine, Engine]) -> dict[str, Any]:
               _payer(admin, f"Live {tag} Retired Plan", f"R{tag}", active=False)]
     return {"tag": tag, "payers": payers,
             "a": _clinic(admin, app_engine, tag, payers[:2]),
-            # Another clearinghouse in clinic B: see test_two_clinics_enroll_with_the_same_payer.
             "b": _clinic(admin, app_engine, tag, payers[:1], clearinghouse="availity")}
 
 
@@ -320,10 +319,6 @@ def test_permissions(client: Any) -> None:
     assert client("md").get("/api/v1/payers").status_code == 403
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "admin.payer_enrollment's unique key (payer_id, practitioner_id, transaction, "
-    "clearinghouse) has no tenant_id, so a second clinic cannot record the same practice-wide "
-    "enrollment with a platform payer (backend/app/db, a migration)"))
 def test_two_clinics_enroll_with_the_same_payer(world: dict[str, Any],
                                                 engines: tuple[Engine, Engine]) -> None:
     _, app_engine = engines
