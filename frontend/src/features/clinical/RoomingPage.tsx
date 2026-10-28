@@ -2,11 +2,11 @@ import { ArrowLeft } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { ApiError, etagOf, ifMatch, newIdempotencyKey } from '../../api/client'
-import { getEncounter, recordVitals, searchCodes, updateEncounter } from '../../api/generated/endpoints/encounters/encounters'
+import { getEncounter, recordVitals, updateEncounter } from '../../api/generated/endpoints/encounters/encounters'
 import { addAllergy, listAllergies } from '../../api/generated/endpoints/history/history'
 import { getPatientSummaries } from '../../api/generated/endpoints/patients/patients'
 import { listBookableLocations, recordVisitStatus } from '../../api/generated/endpoints/scheduling/scheduling'
-import type { Allergy, AllergyCreate, BookableLocation, CodeMatch, Encounter, PatientSummary, Vital } from '../../api/generated/model'
+import type { Allergy, AllergyCreate, BookableLocation, Encounter, PatientSummary, Vital } from '../../api/generated/model'
 import {
   ageInYears,
   Badge,
@@ -27,6 +27,9 @@ import {
   type Column,
   type Problem,
 } from '../../design-system'
+import { DrugPicker, drugConcept, NO_DRUG, type DrugChoice } from './DrugPicker'
+import { MedicationsSection } from './MedicationsSection'
+import { catchProblem, Panel } from './parts'
 import { bmi, EMPTY_VITALS, INTERPRETATION, SINGLE_VITALS, toVitalEntries, VITAL_LABEL, type VitalsErrors, type VitalsForm } from './vitals'
 
 /** SNOMED CT "No known allergy" (716186003), the statement the contract names for it. */
@@ -42,17 +45,10 @@ interface Loaded {
   rooms: BookableLocation[]
 }
 
-function catchProblem(set: (p: Problem) => void) {
-  return (error: unknown) => {
-    if (error instanceof ApiError) set(error.problem)
-    else throw error
-  }
-}
 
 /**
- * Rooming one checked-in patient (demo step 7): the exam room, the reason for the visit, vitals
- * and allergies. Reached from Today by the encounter's opaque ID only (D13). Current medications
- * join this screen with the prescriptions slice (#93).
+ * Rooming one checked-in patient (demo step 7): the exam room, the reason for the visit, vitals,
+ * allergies and current medications. Reached from Today by the encounter's opaque ID only (D13).
  */
 /** The encounter with its ETag, the patient's minimum-necessary summary (D54) and the facility's rooms. */
 async function load(encounterId: string): Promise<Loaded | null> {
@@ -136,17 +132,7 @@ export function RoomingPage() {
       </div>
       <VitalsSection encounter={encounter} open={open} onChanged={refresh} />
       <AllergiesSection encounter={encounter} open={open} />
-    </section>
-  )
-}
-
-function Panel({ title, id, children }: { title: string; id: string; children: React.ReactNode }) {
-  return (
-    <section aria-labelledby={id} className="space-y-4 rounded-xl border border-border bg-surface-1 p-5">
-      <h2 id={id} className="text-lg font-semibold text-ink">
-        {title}
-      </h2>
-      {children}
+      <MedicationsSection patientId={encounter.patientId} open={open} />
     </section>
   )
 }
@@ -422,9 +408,7 @@ const SEVERITIES = [
 ] as const
 
 function AddAllergyForm({ encounter, onAdded }: { encounter: Encounter; onAdded: (message: string) => void }) {
-  const [query, setQuery] = useState('')
-  const [matches, setMatches] = useState<CodeMatch[] | null>(null)
-  const [picked, setPicked] = useState('')
+  const [drug, setDrug] = useState<DrugChoice>(NO_DRUG)
   const [type, setType] = useState<'allergy' | 'intolerance'>('allergy')
   const [criticality, setCriticality] = useState<'' | 'low' | 'high' | 'unable-to-assess'>('')
   const [reaction, setReaction] = useState('')
@@ -437,26 +421,6 @@ function AddAllergyForm({ encounter, onAdded }: { encounter: Encounter; onAdded:
   const key = useRef<string | null>(null)
   const nkaKey = useRef<string | null>(null)
 
-  async function search() {
-    const q = query.trim()
-    if (q.length < 2) {
-      setError('Enter at least 2 letters.')
-      return
-    }
-    setError(undefined)
-    setProblem(null)
-    try {
-      // Drug names only: no patient data goes in this query string (D13).
-      const res = await searchCodes({ system: 'rxnorm', q, limit: 10 })
-      if (res.status === 200) {
-        setMatches(res.data.items)
-        setPicked(res.data.items[0] ? `${res.data.items[0].system}|${res.data.items[0].code}` : '')
-      }
-    } catch (e) {
-      catchProblem(setProblem)(e)
-    }
-  }
-
   async function send(body: AllergyCreate, message: string, which: React.RefObject<string | null>) {
     which.current ??= newIdempotencyKey()
     setBusy(true)
@@ -465,9 +429,7 @@ function AddAllergyForm({ encounter, onAdded }: { encounter: Encounter; onAdded:
       const res = await addAllergy(encounter.patientId, body, { 'Idempotency-Key': which.current })
       if (res.status === 201) {
         which.current = null
-        setQuery('')
-        setMatches(null)
-        setPicked('')
+        setDrug(NO_DRUG)
         setReaction('')
         setSeverity('')
         setCriticality('')
@@ -482,14 +444,12 @@ function AddAllergyForm({ encounter, onAdded }: { encounter: Encounter; onAdded:
 
   function submit(e: FormEvent) {
     e.preventDefault()
-    const text = query.trim()
-    const match = matches?.find((m) => `${m.system}|${m.code}` === picked)
-    if (!match && !text) {
+    const code = drugConcept(drug)
+    if (!code) {
       setError('Search for the substance, or type its name.')
       return
     }
-    // A coded drug (RxNorm) is what the prescription safety check matches on (D99); text is kept otherwise.
-    const code = match ? { codings: [{ system: match.system, code: match.code, display: match.display }], text: match.display } : { text }
+    setError(undefined)
     const body: AllergyCreate = {
       code,
       type,
@@ -508,52 +468,19 @@ function AddAllergyForm({ encounter, onAdded }: { encounter: Encounter; onAdded:
     <form onSubmit={submit} noValidate className="space-y-4 border-t border-border pt-4">
       <h3 className="text-base font-semibold text-ink">Record an allergy</h3>
       {problem ? <ProblemAlert problem={problem} /> : null}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-56 flex-1">
-          <Field label="Substance" hint="A drug name finds its RxNorm code; other substances can be typed" error={error}>
-            {(p) => (
-              <TextInput
-                {...p}
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value)
-                  setMatches(null)
-                  setPicked('')
-                  changed()
-                }}
-              />
-            )}
-          </Field>
-        </div>
-        <Button variant="outline" onClick={() => void search()}>
-          Search drugs
-        </Button>
-      </div>
-      {matches ? (
-        matches.length === 0 ? (
-          <p className="text-sm text-ink-muted">No drug matches; it will be recorded as typed.</p>
-        ) : (
-          <Field label="Drug">
-            {(p) => (
-              <Select
-                {...p}
-                value={picked}
-                onChange={(e) => {
-                  setPicked(e.target.value)
-                  changed()
-                }}
-              >
-                {matches.map((m) => (
-                  <option key={`${m.system}|${m.code}`} value={`${m.system}|${m.code}`}>
-                    {m.display}
-                  </option>
-                ))}
-                <option value="">None of these: record as typed</option>
-              </Select>
-            )}
-          </Field>
-        )
-      ) : null}
+      <DrugPicker
+        label="Substance"
+        matchLabel="Drug"
+        hint="A drug name finds its RxNorm code; other substances can be typed"
+        value={drug}
+        error={error}
+        onProblem={setProblem}
+        onChange={(next) => {
+          setDrug(next)
+          setError(undefined)
+          changed()
+        }}
+      />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Type">
           {(p) => (

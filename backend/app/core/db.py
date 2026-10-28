@@ -82,6 +82,18 @@ class Database:
         }
         return session
 
+    def system_session(self, tenant_id: UUID, correlation_id: str | None = None) -> AsyncSession:
+        """A session scoped to one clinic for work no user started (the outbox worker): the
+        clinic is set as for tenant_session, and app.current_user_id is empty."""
+        session = self.sessions()
+        session.info[TENANT_ID_INFO_KEY] = tenant_id
+        session.info[DATABASE_INFO_KEY] = self
+        session.info[_CONTEXT_KEY] = {
+            TENANT_SETTING: str(tenant_id), USER_SETTING: "",
+            CORRELATION_SETTING: correlation_id or "",
+        }
+        return session
+
     async def ping(self) -> None:
         async with self.engine.connect() as conn:
             await conn.execute(text("SELECT 1"))

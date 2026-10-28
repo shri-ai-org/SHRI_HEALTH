@@ -95,8 +95,19 @@ async def current_user(request: Request) -> CurrentUser:
         if user is None:
             raise Unauthorized(f"Unknown test user; use one of: {', '.join(DEV_USERS)}")
         return user
-    # Keycloak login (reference-token sessions) is not built yet.
-    raise Unauthorized("Not signed in")
+    # Staff sign-in (core/session.py). CSRF first, from the cookie alone, so a forged request
+    # never reaches the session, let alone moves its idle timer.
+    from app.core import session as sessions  # session builds on this module
+
+    token = request.cookies.get(sessions.SESSION_COOKIE)
+    if not token:
+        raise Unauthorized("Not signed in")
+    sessions.check_csrf(request, settings, token)
+    found = await sessions.session_from_cookie(request)
+    facts = await sessions.user_facts(request.app.state.db, found)
+    setattr(request.state, sessions.SESSION_STATE, found)  # for /auth/session, refresh, logout
+    return CurrentUser(id=found.user_id, organization_id=found.tenant_id, roles=facts.roles,
+                       facility_ids=facts.facility_ids, display_name=facts.display_name)
 
 
 def require(permission: str) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
