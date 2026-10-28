@@ -283,12 +283,23 @@
     note: set at check-in on the encounter it creates; no insurance claim for a self-pay visit
   startedAt:
     columns: [encounter.period_start]
+  updatedAt:
+    columns: [encounter.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
   participants[].role:
     columns: [encounter_participant.type_code]
 
 "Note (draft, versions, signed)":
   sections[].text:
     columns: [composition_section.text_div]
+  updatedAt:
+    columns: [composition.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
+
+"After-visit summary":
+  updatedAt:
+    columns: [document_reference.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
 
 "Co-signature rules":
   superviseeProviderId:
