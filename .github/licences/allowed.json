@@ -54,5 +54,21 @@
       "licence": "CC0-1.0",
       "register": "DECISIONS.md D75: CC0 for data (CSS property data; dev only)"
     }
+  },
+  "images": {
+    "quay.io/openbao/openbao": {
+      "licence": "MPL-2.0",
+      "version": "2.7.1",
+      "digest": "sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf",
+      "use": "Development and CI only: the OpenBao dev server with Transit for field encryption (core/crypto.py). Never the test server or production.",
+      "source": "https://github.com/openbao/openbao (OCI label org.opencontainers.image.licenses=MPL-2.0); release 2026-10-01"
+    },
+    "nginx": {
+      "licence": "BSD-2-Clause",
+      "version": "1.27-alpine",
+      "digest": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "use": "Local development reverse proxy (infra/compose).",
+      "source": "https://nginx.org/LICENSE (the image has no licence label)"
+    }
   }
 }

@@ -1,4 +1,5 @@
-# Local development stack: API, PostgreSQL, Keycloak, Nginx (HTTPS on https://localhost:8443).
+# Local development stack: API, PostgreSQL, Keycloak, OpenBao (dev server, Transit only), Nginx
+# (HTTPS on https://localhost:8443).
 #
 #   cp infra/compose/example.env infra/compose/.env     # then fill in the passwords
 #   infra/nginx/make-dev-cert.sh                        # once: self-signed certificate
@@ -58,6 +59,37 @@ services:
       KC_HOSTNAME: https://localhost:8443/kc
       KC_HEALTH_ENABLED: "true"
 
+  openbao:
+    # A DEVELOPMENT server only (in memory, unsealed, a root token): never for the test server or
+    # production, which get a real OpenBao. The API uses its Transit engine to encrypt fields
+    # (core/crypto.py). Its data is lost when it stops: ciphertext written before a restart can't
+    # be decrypted afterwards, so stored idempotent responses and sessions from before are lost too.
+    # MPL-2.0 (D75), pinned by digest (.github/licences/allowed.json "images").
+    image: quay.io/openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf
+    command: ["server", "-dev", "-dev-no-store-token", "-dev-listen-address=0.0.0.0:8200"]
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_ROOT_TOKEN:?set OPENBAO_DEV_ROOT_TOKEN in infra/compose/.env}
+    healthcheck:
+      test: ["CMD", "bao", "status", "-address=http://127.0.0.1:8200"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  openbao-init:
+    # One shot: the Transit key, and the API's narrow token (encrypt and decrypt with that key only).
+    image: quay.io/openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf
+    entrypoint: ["sh", "/init/transit-init.sh"]
+    environment:
+      BAO_ADDR: http://openbao:8200
+      BAO_TOKEN: ${OPENBAO_DEV_ROOT_TOKEN:?set OPENBAO_DEV_ROOT_TOKEN in infra/compose/.env}
+      OPENBAO_API_TOKEN: ${OPENBAO_API_TOKEN:?set OPENBAO_API_TOKEN in infra/compose/.env}
+    volumes:
+      - ./openbao:/init:ro
+    restart: "no"
+    depends_on:
+      openbao:
+        condition: service_healthy
+
   api:
     build:
       context: ../../backend
@@ -77,12 +109,17 @@ services:
       # the migrator's login; migrations run separately as shri_migrator.
       DATABASE_URL: postgresql+asyncpg://shri_app:${SHRI_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
       FHIR_DATABASE_URL: postgresql+asyncpg://shri_fhir_reader:${SHRI_FHIR_READER_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
+      # Field encryption through OpenBao Transit, with the narrow token only (never the root).
+      OPENBAO_TRANSIT_ADDR: http://openbao:8200
+      OPENBAO_TRANSIT_TOKEN: ${OPENBAO_API_TOKEN:?set OPENBAO_API_TOKEN in infra/compose/.env}
     depends_on:
       postgres:
         condition: service_healthy
+      openbao-init:
+        condition: service_completed_successfully
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
     ports:
       - "127.0.0.1:8443:443"
       - "127.0.0.1:8080:80"
