@@ -123,12 +123,14 @@ const summary = { id: patientId, name: { family: 'Testperson', given: ['Ana'] },
 
 const ENCOUNTER = `GET /api/v1/encounters/${encounterId}`
 const ALLERGIES = `GET /api/v1/patients/${patientId}/allergies?limit=100`
+const MEDICATIONS = `GET /api/v1/patients/${patientId}/medications?limit=100`
 function visit(encounters: Array<() => Response> = [() => withEtag(encounter(), '"3"')], extra: Record<string, Array<() => Response>> = {}) {
   return serve({
     [ENCOUNTER]: encounters,
     'POST /api/v1/patients/summaries': [() => json(200, { items: [summary] })],
     [`GET /api/v1/booking/locations?facilityId=${facility.id}&limit=100`]: [() => json(200, { items: [room1, room2, lobby] })],
     [ALLERGIES]: [() => json(200, { items: [] })],
+    [MEDICATIONS]: [() => json(200, { items: [] })],
     ...extra,
   })
 }
@@ -233,7 +235,7 @@ describe('RoomingPage', () => {
     })
     renderRoutes(`/visits/${encounterId}/rooming`)
     await user.type(await screen.findByLabelText('Substance'), 'amox')
-    await user.click(screen.getByRole('button', { name: 'Search drugs' }))
+    await user.click(screen.getByRole('button', { name: 'Search drugs for substance' }))
     expect(await screen.findByRole('combobox', { name: 'Drug' })).toHaveValue(`${amoxicillin.system}|723`)
     await user.selectOptions(screen.getByRole('combobox', { name: 'Criticality' }), 'High')
     await user.type(screen.getByLabelText('Reaction'), 'Hives')
@@ -276,7 +278,83 @@ describe('RoomingPage', () => {
     expect(await screen.findByText('This visit is closed; it can no longer be changed here.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Save vitals' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Record allergy' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add medication' })).not.toBeInTheDocument()
     expect(screen.getByText('Knee pain')).toBeInTheDocument()
+  })
+})
+
+describe('current medications at rooming', () => {
+  const lisinopril = { system: 'http://www.nlm.nih.gov/research/umls/rxnorm', code: '314076', display: 'lisinopril 10 MG Oral Tablet' }
+  const med = (n: number, extra: object = {}) => ({
+    id: `00000000-0000-4000-8000-0000000008a${n}`,
+    patientId,
+    medication: { codings: [lisinopril], text: lisinopril.display },
+    dosageText: '1 tablet by mouth once daily',
+    status: 'active',
+    source: 'reported',
+    recordedAt: now.toISOString(),
+    ...extra,
+  })
+  const ADD = `POST /api/v1/patients/${patientId}/medications`
+
+  it('lists the medications, reported or prescribed here', async () => {
+    visit(undefined, { [MEDICATIONS]: [() => json(200, { items: [med(1), med(2, { medication: { text: 'Fish oil' }, dosageText: undefined, source: 'prescription', prescriptionId: '00000000-0000-4000-8000-0000000008f1' })] })] })
+    renderRoutes(`/visits/${encounterId}/rooming`)
+    const table = await screen.findByRole('table', { name: 'Medications on the list' })
+    const rows = within(table).getAllByRole('row')
+    expect(rows[1]).toHaveTextContent('lisinopril 10 MG Oral Tablet1 tablet by mouth once dailyActiveReported')
+    expect(within(rows[2]!).getByText('Prescribed here')).toBeInTheDocument()
+    expect(await axeViolations()).toEqual([])
+  })
+
+  it('adds a medication coded in RxNorm, as active, with how it is taken and an Idempotency-Key', async () => {
+    const user = userEvent.setup()
+    const server = visit(undefined, {
+      'GET /api/v1/codes?system=rxnorm&q=lisin&limit=10': [() => json(200, { items: [lisinopril] })],
+      [ADD]: [() => json(201, med(1))],
+      [MEDICATIONS]: [() => json(200, { items: [] }), () => json(200, { items: [med(1)] })],
+    })
+    renderRoutes(`/visits/${encounterId}/rooming`)
+    await user.type(await screen.findByLabelText('Medication'), 'lisin')
+    await user.click(screen.getByRole('button', { name: 'Search drugs for medication' }))
+    expect(await screen.findByRole('combobox', { name: 'Matching medication' })).toHaveValue(`${lisinopril.system}|314076`)
+    await user.type(screen.getByLabelText(/How the patient takes it/), '1 tablet by mouth once daily')
+    await user.click(screen.getByRole('button', { name: 'Add medication' }))
+
+    expect(await screen.findByText('lisinopril 10 MG Oral Tablet added to the medication list')).toBeInTheDocument()
+    const [sent] = server.bodies(ADD)
+    expect(sent?.body).toEqual({ medication: { codings: [lisinopril], text: lisinopril.display }, status: 'active', dosageText: '1 tablet by mouth once daily' })
+    expect(sent?.headers.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/)
+    expect(await within(await screen.findByRole('table', { name: 'Medications on the list' })).findByText('lisinopril 10 MG Oral Tablet')).toBeInTheDocument()
+  })
+
+  it('records a medication as typed when it isn’t searched, and asks for a name when empty', async () => {
+    const user = userEvent.setup()
+    const server = visit(undefined, { [ADD]: [() => json(201, med(1, { medication: { text: 'Fish oil' } }))] })
+    renderRoutes(`/visits/${encounterId}/rooming`)
+    await user.click(await screen.findByRole('button', { name: 'Add medication' }))
+    expect(screen.getByText('Search for the medication, or type its name.')).toBeInTheDocument()
+    expect(server.bodies(ADD)).toEqual([])
+
+    await user.type(screen.getByLabelText('Medication'), 'Fish oil')
+    await user.click(screen.getByRole('button', { name: 'Add medication' }))
+    expect(await screen.findByText('Fish oil added to the medication list')).toBeInTheDocument()
+    expect(server.bodies(ADD)[0]?.body).toEqual({ medication: { text: 'Fish oil' }, status: 'active' })
+  })
+
+  it('keeps the entry and its key after a refusal, and uses a new key once it changes', async () => {
+    const user = userEvent.setup()
+    const server = visit(undefined, { [ADD]: [() => problem(422, 'validation-failed', { requestId: 'r-31' }), () => json(201, med(1, { medication: { text: 'Fish oil 1000 mg' } }))] })
+    renderRoutes(`/visits/${encounterId}/rooming`)
+    await user.type(await screen.findByLabelText('Medication'), 'Fish oil')
+    await user.click(screen.getByRole('button', { name: 'Add medication' }))
+    expect(await screen.findByText('Reference: r-31')).toBeInTheDocument()
+    expect(screen.getByLabelText('Medication')).toHaveValue('Fish oil')
+    await user.type(screen.getByLabelText('Medication'), ' 1000 mg')
+    await user.click(screen.getByRole('button', { name: 'Add medication' }))
+    expect(await screen.findByText('Fish oil 1000 mg added to the medication list')).toBeInTheDocument()
+    const [first, second] = server.bodies(ADD)
+    expect(second?.headers.get('Idempotency-Key')).not.toBe(first?.headers.get('Idempotency-Key'))
   })
 })
 

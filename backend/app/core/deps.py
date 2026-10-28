@@ -95,8 +95,19 @@ async def current_user(request: Request) -> CurrentUser:
         if user is None:
             raise Unauthorized(f"Unknown test user; use one of: {', '.join(DEV_USERS)}")
         return user
-    # Keycloak login (reference-token sessions) is not built yet.
-    raise Unauthorized("Not signed in")
+    # Staff sign-in (core/session.py). CSRF first, from the cookie alone, so a forged request
+    # never reaches the session, let alone moves its idle timer.
+    from app.core import session as sessions  # session builds on this module
+
+    token = request.cookies.get(sessions.SESSION_COOKIE)
+    if not token:
+        raise Unauthorized("Not signed in")
+    sessions.check_csrf(request, settings, token)
+    found = await sessions.session_from_cookie(request)
+    facts = await sessions.user_facts(request.app.state.db, found)
+    setattr(request.state, sessions.SESSION_STATE, found)  # for /auth/session, refresh, logout
+    return CurrentUser(id=found.user_id, organization_id=found.tenant_id, roles=facts.roles,
+                       facility_ids=facts.facility_ids, display_name=facts.display_name)
 
 
 def require(permission: str) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
@@ -262,9 +273,25 @@ async def portal_db(
 
 async def public_db(request: Request) -> AsyncIterator[AsyncSession]:
     """The database session of a public form (D96: online pre-registration), with no account and
-    no session. Signature final; the body is a placeholder that refuses until it is built.
-    TODO(T47): resolve the clinic from the portal host the request came to (server
-    configuration, never the request: D21), check the `Origin`, open a session for that clinic,
-    and start the audit trail with audit.start_public_trail(request, clinic_id, session)."""
-    raise ServiceUnavailable("Public forms are not available yet")
-    yield  # pragma: no cover  (makes this an async generator, like the real dependency)
+    no session: PUBLIC_DATABASE_URL, the shri_public role, which has no table privileges and can
+    only run the form's own SECURITY DEFINER function (migration 0009).
+
+    - **`Origin` first:** anything but the portal host is 403 `csrf-check-failed`, whatever the
+      route checks itself (core/public_form.py).
+    - **No clinic is set here.** The clinic comes only from the practice code in the path, and the
+      function resolves it in the database (D96, D21); nothing in the request names it.
+    - **No audit trail from core.** The function writes the request and its `anonymous` audit row
+      in one call (D96); create_app() accepts this only for the operations in
+      operations.AUDITED_IN_DATABASE.
+    - Nothing is saved unless the endpoint commits; the rest is rolled back.
+
+    Unconfigured (no PUBLIC_DATABASE_URL, portal origin or form secret): 503, never an open
+    form."""
+    from app.core.public_form import require_portal_origin  # public_form builds on errors only
+
+    db: Database | None = getattr(request.app.state, "public_db", None)
+    if db is None:
+        raise ServiceUnavailable("Public forms are not available")
+    require_portal_origin(request)
+    async with db.sessions() as session:
+        yield session

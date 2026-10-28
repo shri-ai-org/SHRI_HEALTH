@@ -57,6 +57,11 @@ jobs:
       - name: Committed bundle is up to date
         run: git diff --exit-code -- openapi/dist/
 
+      # Core reads each operation's permission and audit rule from this map at runtime (#79), so
+      # it must match the bundle exactly. The step above covers it too; this names the cause.
+      - name: Operations map is up to date
+        run: npm run check:operations
+
       # check-breaking.sh exits 0 (no breaking change), 3 (breaking change) or 2 (the check could
       # not run). Only exit 3 can be approved, and only by the run that applying the label starts:
       # GitHub records who applied it (sender) and checks out the PR as it was at that moment. Any

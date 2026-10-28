@@ -920,11 +920,6 @@ ALTER TABLE admin.patient_merge ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.patient_merge FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.patient_merge USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
-GRANT SELECT, INSERT ON admin.patient_merge_record TO shri_app;
-ALTER TABLE admin.patient_merge_record ENABLE ROW LEVEL SECURITY;
-ALTER TABLE admin.patient_merge_record FORCE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON admin.patient_merge_record USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
-
 GRANT SELECT, INSERT, UPDATE ON admin.patient_payment TO shri_app;
 ALTER TABLE admin.patient_payment ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.patient_payment FORCE ROW LEVEL SECURITY;

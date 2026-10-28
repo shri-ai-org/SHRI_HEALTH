@@ -38,6 +38,7 @@ CATALOGUE: frozenset[str] = _expand(
     "coverages:read|create|update|entered-in-error",  # entered-in-error: D45 (T40)
     "consents:read|create", "timeline:read", "duplicates:read|merge|dismiss",  # dismiss: D46
     "patient-merges:read|undo",  # read: D51 (T41)
+    "pre-registrations:read|accept|reject",  # the front desk's queue (D96, T47)
     # Scheduling, eligibility (Vimal)
     "slots:read", "status-board:read",
     "appointments:read|create|update|cancel|check-in|undo-check-in|reschedule|status",  # D55, D61
@@ -160,7 +161,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "eligibility-checks:read|create", "consents:read|create",
                 "appointments:status", "codes:read",
                 "payments:create|card-session", "ccda:import|export",
-                "operations-dashboard:read"),
+                "operations-dashboard:read",
+                "pre-registrations:read|accept|reject"),  # D96, T47
     ),
     # Medical assistant (rooming). Orders: point-of-care results only, as in §4.3; no order entry.
     "MA": frozenset().union(
@@ -206,6 +208,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "coverages:read|create|update|entered-in-error",
                 "eligibility-checks:read|create", "consents:read|create",
                 "duplicates:read|merge|dismiss", "patient-merges:read|undo",
+                "pre-registrations:read|accept|reject",  # D96, T47
                 "lab-providers:read", "encounters:entered-in-error",
                 "codes:read", "ai-settings:read|update", "cosign-rules:read|create|update",
                 "practice-setup:read|create|update", "note-templates:read", "payers:read",

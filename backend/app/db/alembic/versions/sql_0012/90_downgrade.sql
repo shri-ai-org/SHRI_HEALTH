@@ -1,0 +1,220 @@
+-- Migration 0012 downgrade: the enrollment key, the payment and file columns, the optional
+-- receipt, and the version-based merge undo of 0008 (D51) with admin.patient_merge_record.
+-- The table, its keys, grants and policy are copied from the generated sql/ files before 0012; the functions from
+-- sql_0008/04_functions.sql, verbatim. Frozen.
+
+ALTER TABLE admin.payer_enrollment
+  DROP CONSTRAINT uq_payer_enrollment_tenant_id_payer_id_practitioner_id__a493;
+ALTER TABLE admin.payer_enrollment
+  ADD CONSTRAINT uq_payer_enrollment_payer_id_practitioner_id_transactio_c010
+  UNIQUE NULLS NOT DISTINCT (payer_id, practitioner_id, transaction, clearinghouse);
+ALTER TABLE admin.patient_payment ALTER COLUMN receipt_file_id DROP NOT NULL;
+ALTER TABLE admin.patient_payment DROP COLUMN check_number;
+ALTER TABLE admin.patient_payment DROP COLUMN note;
+ALTER TABLE admin.binary_object DROP COLUMN purpose;
+ALTER TABLE admin.binary_object DROP COLUMN state;
+ALTER TABLE admin.binary_object DROP COLUMN wrapped_data_key;
+
+ALTER TABLE admin.patient_merge ADD COLUMN surviving_patient_version INTEGER;
+ALTER TABLE admin.patient_merge ADD COLUMN merged_patient_version INTEGER;
+DROP TRIGGER trg_patient_merge_guard ON admin.patient_merge;
+DROP FUNCTION public.shri_patient_merge_guard();
+DROP FUNCTION admin.patient_merge_undo_blocked_reason(uuid);
+
+CREATE TABLE admin.patient_merge_record (
+	patient_merge_id UUID NOT NULL, 
+	resource_type VARCHAR(64) NOT NULL, 
+	resource_id UUID NOT NULL, 
+	version_before_merge INTEGER NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_patient_merge_record PRIMARY KEY (id), 
+	CONSTRAINT uq_patient_merge_record_patient_merge_id_resource_type__6e7b UNIQUE (patient_merge_id, resource_type, resource_id), 
+	CONSTRAINT fk_patient_merge_record_patient_merge_id_patient_merge FOREIGN KEY(patient_merge_id) REFERENCES admin.patient_merge (id), 
+	CONSTRAINT fk_patient_merge_record_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_patient_merge_record_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_patient_merge_record_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_patient_merge_record_tenant_id ON admin.patient_merge_record (tenant_id);
+ALTER TABLE admin.patient_merge_record ADD CONSTRAINT fk_patient_merge_record_patient_merge_id_tenant FOREIGN KEY(tenant_id, patient_merge_id) REFERENCES admin.patient_merge (tenant_id, id);
+
+GRANT SELECT, INSERT ON admin.patient_merge_record TO shri_app;
+ALTER TABLE admin.patient_merge_record ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.patient_merge_record FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.patient_merge_record USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
+-- ============================================================================ merge undo (D51)
+-- A merge records the versions it starts from, before it changes anything: both patients' on
+-- patient_merge, each moved record's in patient_merge_record. Its one transaction then moves each
+-- of them by exactly one version (the versioning trigger bumps a resource once per transaction).
+-- Versions only grow, so a record still at that next version has not changed since the merge.
+
+-- A new merge names both patients' current versions.
+CREATE FUNCTION public.shri_patient_merge_versions() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF (SELECT count(*) FROM clinical.patient p
+       WHERE (p.id = NEW.surviving_patient_id AND p.meta_version_id = NEW.surviving_patient_version)
+          OR (p.id = NEW.merged_patient_id AND p.meta_version_id = NEW.merged_patient_version)) < 2
+  THEN
+    RAISE EXCEPTION 'patient merge %: record both patients'' current versions, before the merge '
+      'changes either', NEW.id USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END $$;
+
+-- Each moved record is listed at its current version, before the merge moves it.
+CREATE FUNCTION public.shri_patient_merge_record_version() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  v_table text := clinical.shri_resource_table(NEW.resource_type);
+  v_version integer;
+BEGIN
+  IF v_table IS NULL THEN
+    RAISE EXCEPTION 'patient merge record: % is not a stored FHIR resource', NEW.resource_type
+      USING ERRCODE = 'P0001';
+  END IF;
+  EXECUTE format('SELECT meta_version_id FROM clinical.%I WHERE id = $1', v_table)
+    INTO v_version USING NEW.resource_id;
+  IF v_version IS DISTINCT FROM NEW.version_before_merge THEN
+    RAISE EXCEPTION 'patient merge record: %/% is at version %, not %; list it before the merge '
+      'moves it', NEW.resource_type, NEW.resource_id, v_version, NEW.version_before_merge
+      USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END $$;
+
+-- Whether a merge can still be undone: NULL when it can, otherwise the contract's
+-- undoBlockedReason. It can while it stands and both patients and every record it moved are
+-- still at the version the merge left them at. It runs as the caller, under RLS, so it only sees
+-- the caller's clinic.
+--
+-- Not covered (its cost would be a query per same-patient key, most of them unindexed): a record
+-- created or linked after the merge that points at a moved record, such as a new result on a
+-- moved visit. The undo itself is then refused with the same 'records-changed', not a key error
+-- (admin.finish_patient_merge_undo).
+CREATE FUNCTION admin.patient_merge_undo_blocked_reason(p_merge_id uuid) RETURNS text
+LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  m record;
+  r record;
+  v_table text;
+  v_version integer;
+BEGIN
+  SELECT pm.unmerged_at, pm.surviving_patient_id, pm.surviving_patient_version,
+         pm.merged_patient_id, pm.merged_patient_version INTO m
+    FROM admin.patient_merge pm WHERE pm.id = p_merge_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'patient merge % not found', p_merge_id USING ERRCODE = 'P0002';
+  END IF;
+  IF m.unmerged_at IS NOT NULL THEN
+    RETURN 'already-undone';
+  END IF;
+  IF m.surviving_patient_version IS NULL OR m.merged_patient_version IS NULL OR (
+       SELECT count(*) FROM clinical.patient p
+        WHERE (p.id = m.surviving_patient_id AND p.meta_version_id = m.surviving_patient_version + 1)
+           OR (p.id = m.merged_patient_id AND p.meta_version_id = m.merged_patient_version + 1)) < 2
+  THEN
+    RETURN 'records-changed';
+  END IF;
+  FOR r IN SELECT mr.resource_type, mr.resource_id, mr.version_before_merge
+             FROM admin.patient_merge_record mr WHERE mr.patient_merge_id = p_merge_id LOOP
+    v_table := clinical.shri_resource_table(r.resource_type);
+    IF v_table IS NULL THEN
+      RETURN 'records-changed';
+    END IF;
+    v_version := NULL;
+    EXECUTE format('SELECT meta_version_id FROM clinical.%I WHERE id = $1', v_table)
+      INTO v_version USING r.resource_id;
+    IF v_version IS DISTINCT FROM r.version_before_merge + 1 THEN
+      RETURN 'records-changed';
+    END IF;
+  END LOOP;
+  RETURN NULL;
+END $$;
+REVOKE EXECUTE ON FUNCTION admin.patient_merge_undo_blocked_reason(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin.patient_merge_undo_blocked_reason(uuid) TO shri_app;
+
+-- A merge changes only by its undo, only while the undo is allowed, and never after it. The undo
+-- is three steps in one transaction: set unmerged_at, move the records back, then
+-- SELECT admin.finish_patient_merge_undo(id). Setting unmerged_at defers the deferrable keys for
+-- the rest of the transaction, so the moves can be checked together at the end.
+CREATE FUNCTION public.shri_patient_merge_guard() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  changed text[];
+  v_reason text;
+BEGIN
+  IF OLD.unmerged_at IS NOT NULL THEN
+    RAISE EXCEPTION 'patient merge %: it was undone and no longer changes', OLD.id
+      USING ERRCODE = 'P0001';
+  END IF;
+  changed := public.shri_changed_columns(to_jsonb(OLD), to_jsonb(NEW),
+               ARRAY['unmerged_at', 'unmerged_by_user_id'] || public.shri_meta_columns());
+  IF cardinality(changed) > 0 THEN
+    RAISE EXCEPTION 'patient merge %: only its undo may change it; cannot change: %', OLD.id,
+      array_to_string(changed, ', ') USING ERRCODE = 'P0001';
+  END IF;
+  IF NEW.unmerged_at IS NOT NULL THEN
+    v_reason := admin.patient_merge_undo_blocked_reason(OLD.id);
+    IF v_reason IS NOT NULL THEN
+      RAISE EXCEPTION 'patient merge %: it cannot be undone (%)', OLD.id, v_reason
+        USING ERRCODE = 'P0001';
+    END IF;
+    IF NULLIF(current_setting('shri.patient_merge_undo', true), '') IS NOT NULL THEN
+      RAISE EXCEPTION 'patient merge %: finish the undo already in progress first', OLD.id
+        USING ERRCODE = 'P0001';
+    END IF;
+    PERFORM set_config('shri.patient_merge_undo', OLD.id::text, true);
+    SET CONSTRAINTS ALL DEFERRED;
+  END IF;
+  RETURN NEW;
+END $$;
+
+-- The undo's last step, after the records are back: runs the deferred key checks now and turns a
+-- same-patient key violation (a record left pointing at a record that went back to the other
+-- patient) into the contract's 'records-changed', so the API never sees a raw key error. (At
+-- commit it would be too late: the key checks are already queued by then.)
+CREATE FUNCTION admin.finish_patient_merge_undo(p_merge_id uuid) RETURNS void
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF current_setting('shri.patient_merge_undo', true) IS DISTINCT FROM p_merge_id::text THEN
+    RAISE EXCEPTION 'patient merge %: no undo of it in progress', p_merge_id
+      USING ERRCODE = 'P0001';
+  END IF;
+  -- Finished first: running the deferred checks also runs shri_patient_merge_undo_check.
+  PERFORM set_config('shri.patient_merge_undo', '', true);
+  BEGIN
+    SET CONSTRAINTS ALL IMMEDIATE;
+  EXCEPTION WHEN foreign_key_violation THEN
+    RAISE EXCEPTION 'patient merge %: it cannot be undone (records-changed): a record created '
+      'or linked since the merge points at a record the merge moved', p_merge_id
+      USING ERRCODE = 'P0001';
+  END;
+END $$;
+REVOKE EXECUTE ON FUNCTION admin.finish_patient_merge_undo(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin.finish_patient_merge_undo(uuid) TO shri_app;
+
+-- At commit: an undo that skipped admin.finish_patient_merge_undo is refused with a clear error,
+-- before the deferred key checks could fail with a raw one.
+CREATE FUNCTION public.shri_patient_merge_undo_check() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND OLD.unmerged_at IS NULL AND NEW.unmerged_at IS NOT NULL
+     AND current_setting('shri.patient_merge_undo', true) = NEW.id::text THEN
+    RAISE EXCEPTION 'patient merge %: the undo did not finish: end it with '
+      'admin.finish_patient_merge_undo()', NEW.id USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NULL;
+END $$;
+
+CREATE TRIGGER trg_patient_merge_versions BEFORE INSERT ON admin.patient_merge FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_versions();
+CREATE TRIGGER trg_patient_merge_guard BEFORE UPDATE ON admin.patient_merge FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_guard();
+CREATE TRIGGER trg_patient_merge_record_version BEFORE INSERT ON admin.patient_merge_record FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_record_version();
+CREATE CONSTRAINT TRIGGER trg_patient_merge_undo AFTER INSERT OR UPDATE ON admin.patient_merge DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_undo_check();
+CREATE TRIGGER trg_patient_merge_record_insert_only BEFORE UPDATE OR DELETE ON admin.patient_merge_record FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
