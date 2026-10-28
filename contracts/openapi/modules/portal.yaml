@@ -117,8 +117,8 @@ paths:
                     patient:
                       displayName: Maria712
                     csrfToken: mock-csrf-token-not-a-secret
-                    idleExpiresAt: '2026-10-26T16:15:00Z'
-                    expiresAt: '2026-10-26T20:00:00Z'
+                    idleExpiresAt: '2035-01-01T16:15:00Z'
+                    expiresAt: '2035-01-01T20:00:00Z'
         '401': &id010
           $ref: ../components/responses/Unauthorized.yaml
           description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
@@ -1261,7 +1261,7 @@ paths:
                   summary: Link
                   value:
                     url: https://portal.company-domain.invalid/files/download/0e1f2a3b-4c5d-4e6f-8a7b-9c0d1e2f3a4b
-                    expiresAt: '2026-10-26T16:05:00Z'
+                    expiresAt: '2035-01-01T16:05:00Z'
         '401': *id010
         '403':
           $ref: ../components/responses/Forbidden.yaml

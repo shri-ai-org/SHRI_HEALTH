@@ -235,8 +235,8 @@ paths:
                       id: 0a000000-0000-4000-8000-00000000000a
                       name: Test Clinic
                     csrfToken: TEST-csrf-placeholder
-                    idleExpiresAt: '2026-11-03T15:00:00Z'
-                    expiresAt: '2026-11-04T02:00:00Z'
+                    idleExpiresAt: '2035-01-01T15:00:00Z'
+                    expiresAt: '2035-01-02T02:00:00Z'
                     build:
                       version: 0.1.0
                       commit: 7544a31c0d2e
@@ -338,8 +338,8 @@ paths:
                       id: 0a000000-0000-4000-8000-00000000000a
                       name: Test Clinic
                     csrfToken: TEST-csrf-placeholder
-                    idleExpiresAt: '2026-11-03T14:45:00Z'
-                    expiresAt: '2026-11-04T02:00:00Z'
+                    idleExpiresAt: '2035-01-01T14:45:00Z'
+                    expiresAt: '2035-01-02T02:00:00Z'
                     build:
                       version: 0.1.0
                       commit: 7544a31c0d2e
@@ -545,7 +545,7 @@ paths:
                     userId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
                     reasonCode: continuity-of-care
                     grantedAt: '2026-11-03T14:30:00Z'
-                    expiresAt: '2026-11-03T18:30:00Z'
+                    expiresAt: '2035-01-01T18:30:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -846,7 +846,7 @@ paths:
                     uploadUrl: https://files.company-domain.invalid/quarantine/TEST-upload-1
                     uploadHeaders:
                       Content-Type: image/jpeg
-                    expiresAt: '2026-11-03T14:45:00Z'
+                    expiresAt: '2035-01-01T14:45:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -985,7 +985,7 @@ paths:
                   summary: Download link
                   value:
                     url: https://files.company-domain.invalid/clean/TEST-download-1
-                    expiresAt: '2026-11-03T14:35:00Z'
+                    expiresAt: '2035-01-01T14:35:00Z'
                     contentType: image/jpeg
                     sizeBytes: 348211
         '401':
@@ -3141,7 +3141,7 @@ paths:
                       id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
                       status: active
                       issuedAt: '2026-11-03T14:30:00Z'
-                      expiresAt: '2026-11-06T14:30:00Z'
+                      expiresAt: '2035-01-01T14:30:00Z'
                 active:
                   summary: Enrolled
                   value:
@@ -3239,7 +3239,7 @@ paths:
                     id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
                     code: K7Q2-9MZD-4TXH
                     issuedAt: '2026-11-03T14:30:00Z'
-                    expiresAt: '2026-11-06T14:30:00Z'
+                    expiresAt: '2035-01-01T14:30:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -6196,7 +6196,7 @@ paths:
                           currency: USD
                     requestedAt: '2026-11-03T14:52:00Z'
                     respondedAt: '2026-11-03T14:52:09Z'
-                    expiresAt: '2026-11-04T14:52:09Z'
+                    expiresAt: '2035-01-01T14:52:09Z'
                 pending:
                   summary: Still waiting for the 271
                   value:
@@ -6328,7 +6328,7 @@ paths:
                               currency: USD
                         requestedAt: '2026-11-03T14:52:00Z'
                         respondedAt: '2026-11-03T14:52:09Z'
-                        expiresAt: '2026-11-04T14:52:09Z'
+                        expiresAt: '2035-01-01T14:52:09Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -15979,7 +15979,7 @@ paths:
                       currency: USD
                     status: pending
                     clientToken: TEST-hosted-fields-placeholder
-                    expiresAt: '2026-11-03T15:10:00Z'
+                    expiresAt: '2035-01-01T15:10:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required Idempotency-Key header is missing).
@@ -17258,8 +17258,8 @@ paths:
                     patient:
                       displayName: Maria712
                     csrfToken: mock-csrf-token-not-a-secret
-                    idleExpiresAt: '2026-10-26T16:15:00Z'
-                    expiresAt: '2026-10-26T20:00:00Z'
+                    idleExpiresAt: '2035-01-01T16:15:00Z'
+                    expiresAt: '2035-01-01T20:00:00Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
@@ -17314,8 +17314,8 @@ paths:
                     patient:
                       displayName: Maria712
                     csrfToken: mock-csrf-token-not-a-secret
-                    idleExpiresAt: '2026-10-26T16:15:00Z'
-                    expiresAt: '2026-10-26T20:00:00Z'
+                    idleExpiresAt: '2035-01-01T16:15:00Z'
+                    expiresAt: '2035-01-01T20:00:00Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
@@ -18725,7 +18725,7 @@ paths:
                   summary: Link
                   value:
                     url: https://portal.company-domain.invalid/files/download/0e1f2a3b-4c5d-4e6f-8a7b-9c0d1e2f3a4b
-                    expiresAt: '2026-10-26T16:05:00Z'
+                    expiresAt: '2035-01-01T16:05:00Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).

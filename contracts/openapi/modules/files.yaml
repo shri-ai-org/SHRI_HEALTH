@@ -65,7 +65,7 @@ paths:
                     uploadUrl: https://files.company-domain.invalid/quarantine/TEST-upload-1
                     uploadHeaders:
                       Content-Type: image/jpeg
-                    expiresAt: '2026-11-03T14:45:00Z'
+                    expiresAt: '2035-01-01T14:45:00Z'
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -201,7 +201,7 @@ paths:
                   summary: Download link
                   value:
                     url: https://files.company-domain.invalid/clean/TEST-download-1
-                    expiresAt: '2026-11-03T14:35:00Z'
+                    expiresAt: '2035-01-01T14:35:00Z'
                     contentType: image/jpeg
                     sizeBytes: 348211
         '401':
