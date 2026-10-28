@@ -8,7 +8,7 @@ until the real pieces are on main. Synthetic data only.
 
 from collections.abc import Callable
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -85,17 +85,6 @@ def test_a_possible_duplicate_needs_an_override_with_a_reason(as_user: Client) -
         duplicateOverrideReason="Different person: checked the ID at the desk."))
     assert override.status_code == 201
     assert override.json()["mrn"] == "TEST-000002"
-
-
-@pytest.mark.xfail(strict=True, reason="Replay is core's idempotency middleware (T21, ADR-0007; "
-                   "table in #52): not on main yet. Once it is, this passes and loses the mark.")
-def test_a_keyed_registration_is_replayed_not_repeated(as_user: Client) -> None:
-    fd = as_user("fd")
-    headers = {"Idempotency-Key": str(uuid4())}  # one key, sent twice
-    first = fd.post("/api/v1/patients", json=new_patient(), headers=headers)
-    replay = fd.post("/api/v1/patients", json=new_patient(), headers=headers)
-    assert first.status_code == replay.status_code == 201
-    assert replay.json()["id"] == first.json()["id"]
 
 
 # ------------------------------------------------------------------------------- read, search

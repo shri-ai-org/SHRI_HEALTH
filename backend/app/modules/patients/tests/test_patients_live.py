@@ -6,6 +6,7 @@ where ``TEST_DATABASE_URL`` is set. Synthetic data only.
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -281,3 +282,25 @@ def test_restrict_unrestrict_and_summaries(client: Any) -> None:
     assert client("ma").get(base).json()["restricted"] is False
     assert client("md-b").post("/api/v1/patients/summaries",
                                json={"patientIds": [first["id"]]}).json()["items"] == []
+
+
+# Safe retries (ADR-0007, T21): core's tenant_db claims the key and stores the response as Transit
+# ciphertext, so this needs OpenBao; it skips without it, as core's own tests do; CI requires it.
+@pytest.mark.skipif(not os.environ.get("OPENBAO_TRANSIT_ADDR")
+                    and os.environ.get("REQUIRE_OPENBAO") != "1",
+                    reason="OPENBAO_TRANSIT_ADDR not set (the stored response is encrypted)")
+def test_a_keyed_registration_is_replayed_not_repeated(client: Any) -> None:
+    family = f"Kim{uuid.uuid4().hex[:6]}"
+    key = {"Idempotency-Key": str(uuid.uuid4())}
+    body = _body(family)  # one body, sent twice (_body draws a new license number each call)
+    first = client("fd").post("/api/v1/patients", json=body, headers=key)
+    assert first.status_code == 201, first.text
+    replay = client("fd").post("/api/v1/patients", json=body, headers=key)
+    assert replay.status_code == 201 and replay.headers["Idempotent-Replayed"] == "true"
+    assert replay.json() == first.json()  # the same patient and MRN: registered once
+    reused = client("fd").post("/api/v1/patients", json=_body(f"{family}x"), headers=key)
+    assert reused.status_code == 422 and reused.json()["code"] == "idempotency-key-reused"
+    found = client("fd").post("/api/v1/patients/search",
+                              json={"criteria": {"family": family,
+                                                 "birthDate": body["birthDate"]}}).json()["items"]
+    assert [f["id"] for f in found] == [first.json()["id"]]
