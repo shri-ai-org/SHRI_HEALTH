@@ -106,10 +106,29 @@ No identifier other than the MR from `admin.next_mrn()` may use the practice's M
 `create_consent` makes the patient's earlier active consent of the same kind `inactive` in the
 same transaction, so the latest one of a kind is the one in force.
 
+Every resource row a helper writes records `created_by_user_id` (a new row) and
+`updated_by_user_id` from `app.current_user_id`. Times the helpers set themselves (Provenance
+`recorded`, a default start, `recordedDate`, a note's time) are the database's `now()`, the
+transaction's time, which `meta_last_updated` also uses.
+
 `coverage_entered_in_error` writes its Provenance (agent: the current user's practitioner, or
 their name). `create_consent` sets the FHIR scope from the kind (`research`; `patient-privacy`
-for `privacy-notice` and `information-sharing`; otherwise `treatment`). Encounter, Condition
-and the rest follow with batch 2.
+for `privacy-notice` and `information-sharing`; otherwise `treatment`).
+
+The visit helpers (batch 2), on the same rules:
+- `create_encounter` and `set_encounter_status`: every status change is a status-history row;
+  starting sets the start time, finishing the end time; `entered-in-error` needs a reason and
+  writes its Provenance, and nothing changes after it;
+- `record_vitals`: one vital-signs Observation per entry, with the contract's LOINC code, the
+  value and UCUM unit as entered (D69), blood pressure as two components; at most one per type,
+  never in the future;
+- `create_allergy`, `update_allergy`, `allergy_entered_in_error`: reactions with their
+  manifestations, and a note;
+- `add_encounter_diagnosis` and `remove_encounter_diagnosis`: a Condition (category
+  `encounter-diagnosis`) and its ranked link, inserted or closed up in a safe order; removal is
+  D24's (entered-in-error with Provenance, the link deleted, the Condition kept).
+
+Notes, prescriptions and the rest follow.
 
 ## Conventions for the repositories (Vimal's review of #45)
 
