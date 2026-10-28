@@ -179,6 +179,7 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `timeline:read`, `encounters:read`, `notes:read`, `vitals:read`, history `:read` ‡ | – | ✓ | ✓ | ✓ | ✓ | R (signed notes, diagnoses) | – | R (investigations) | – | – |
 | `vitals:create`, `allergies:create\|update` ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
 | ‡ `encounters:create\|update\|close`, `diagnoses:*`, `notes:create\|update\|sign`, `note-addenda:create`, `after-visit-summaries:create`, other history writes | – | – | R (`notes:create\|update\|sign`, `note-addenda:create` for nursing notes; T42) | ✓ | ✓ | – | – | – | – | – |
+| ‡ `encounters:update` (MA and RN: the encounter's `reasons` only, at rooming; anything else is `403 permission-denied`; T52, #129) | – | ✓ | ✓ | – | – | – | – | – | – | – |
 | `notes:cosign` ‡ | – | – | – | ✓ | – | – | – | – | – | – |
 | `*:entered-in-error` (clinical) ‡ | – | – | ✓ (own entries) | ✓ | ✓ | – | – | – | – | – |
 | `encounters:entered-in-error` ‡ | – | – | – | ✓ | ✓ | – | ✓ (only encounters with no signed note) | – | – | – |
