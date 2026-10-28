@@ -27,6 +27,10 @@ Changes:
                         and its time (column-limited SELECT; gen_db_rules.PORTAL_HIDDEN_COLUMNS).
   admin.cds_rule        the platform's two fixed prescription rules (tenant_id NULL):
                         allergy (high, not suppressible) and duplicate-medication (moderate).
+  clinical.coverage     one coverage per patient per order at any time: same-order periods may
+                        not overlap (ex_coverage_order_no_overlap; an open end is open-ended,
+                        entered-in-error excluded), replacing one active coverage per order, so
+                        an ended coverage frees its order.
 
 The alerts stay in clinical.detected_issue (with their overrides in detected_issue_mitigation),
 which are their own resources, so recording them doesn't move the prescription's version either.
@@ -41,6 +45,7 @@ Frozen SQL in sql_0013/:
   04_platform_rules.sql the two platform rules (as generated), inserted by the owner with
                         RLS unforced for that statement
   05_portal.sql         the portal's column-limited SELECT on composition (as generated)
+  06_coverage_order.sql the coverage order rule (hand-written)
   90_downgrade.sql      everything back as 0012 left it
 
 Revision ID: 0013
@@ -62,7 +67,7 @@ SQL_DIR = pathlib.Path(__file__).with_name("sql_0013")
 
 
 FILES = ["01_safety_check.sql", "02_reported_medications.sql", "03_cosign.sql",
-         "04_platform_rules.sql", "05_portal.sql"]
+         "04_platform_rules.sql", "05_portal.sql", "06_coverage_order.sql"]
 
 
 def upgrade() -> None:

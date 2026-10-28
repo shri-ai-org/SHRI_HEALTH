@@ -2,6 +2,10 @@
 -- cannot be kept by 0012's schema: the downgrade stops at the check rather than lose one.
 -- The platform rules go only while no alert names them (detected_issue keeps its rule).
 
+-- One active coverage per order again, as 0001 indexed it.
+ALTER TABLE clinical.coverage DROP CONSTRAINT ex_coverage_order_no_overlap;
+CREATE UNIQUE INDEX uq_coverage_active_order ON clinical.coverage (beneficiary_patient_id, "order") WHERE status = 'active';
+
 -- The portal reads the whole note again, as 0011 granted it.
 REVOKE SELECT ON clinical.composition FROM shri_portal;
 GRANT SELECT ON clinical.composition TO shri_portal;
