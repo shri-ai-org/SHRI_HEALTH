@@ -60,6 +60,7 @@ schema changes, never for serving a request.
 | `shri_reporting` | approved reports | nothing yet — no reporting views exist; grants come when they do |
 | `shri_migrator` | migrations only | owns all three schemas |
 | `shri_public` | the public pre-registration form (D96), the only write without a sign-in | `USAGE` on `admin` and `EXECUTE` on `admin.submit_pre_registration()`; no table privileges (0009) |
+| `shri_portal` | the patient portal's requests (`portal_db`, D93) | the chart in `app.current_patient_id` only, through generated RESTRICTIVE policies (`gen_db_rules.portal_sql`); bookings, cancellations and change requests; `audit_event` insert-only; no DELETE anywhere (0011) |
 
 `shri_app`, `shri_integration` and `shri_fhir_reader` also have `USAGE` (never `CREATE`) on
 schema `public`, where the rule functions that every trigger calls live (migration 0003). The
@@ -199,6 +200,32 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     - `suspended` (a merged chart) needs `status_before_suspension` (pending-setup or active)
       and `suspended_by_merge_id`. The undo restores that status.
   - **Portal sessions** mirror `app_session`.
+- **The portal's database role (D93, migration 0011):** `portal_db` sets
+  `app.current_tenant_id` and `app.current_patient_id` (no user) and runs as `shri_portal`.
+  - **What it sees:** the session patient's chart only. It never sees drafts,
+    entered-in-error records, non-final results (only `final`, `amended`, `corrected` and
+    `appended`, until non-final results are decided on #13), notes or documents labelled
+    `PSY`, or held items.
+  - **Shared and staff data:** practitioners, locations and organizations by clinic. A
+    practitioner's name is visible, never their date of birth, gender or personal address,
+    phone or identifiers.
+  - **Never:** history, provenance, alerts or record notes.
+  - **A new clinical table** gets a policy from the generator (`portal_rules`), or goes in
+    `PORTAL_NEVER` or `PORTAL_REFERENCE`.
+  - **Held items (D90):** a hold is an `admin.release_hold` row. The portal lists held items
+    with `SELECT * FROM admin.portal_held_items()` (type, ID and date only) and shows them as
+    held.
+  - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
+    provider's busy times without anyone's appointment.
+  - **Who wrote a version:** a version the portal writes records the patient in
+    `fhir_resource_history.recorded_by_patient_id`.
+- **Change requests (D91):** `admin.portal_change_request`. The patient inserts it pending; the
+  front desk sets `status`, `decided_at`, `decided_by_user_id` and `decision_note`. What was
+  asked never changes, and a decided request is final.
+- **Online booking (A50 (3)):** `admin.online_booking_setting`, one per practice, `version` the
+  ETag, holds the window, the notice and the cancel and reschedule cut-offs.
+  `admin.online_bookable_type` holds the visit types bookable at each facility; delete a row to
+  stop offering one.
 - **Staff back-channel logout (D94, migration 0011):** after validating the logout token, core
   calls `SELECT * FROM admin.end_backchannel_sessions(:jti, :jti_expires_at, :sid, :sub)` as
   `shri_app`, with no clinic set.

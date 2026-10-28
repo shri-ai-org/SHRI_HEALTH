@@ -2,10 +2,25 @@
 ALTER TABLE admin.consumed_logout_token ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.consumed_logout_token FORCE ROW LEVEL SECURITY;
 
+GRANT SELECT, INSERT, UPDATE, DELETE ON admin.online_bookable_type TO shri_app;
+ALTER TABLE admin.online_bookable_type ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.online_bookable_type FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.online_bookable_type USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
+GRANT SELECT, INSERT, UPDATE ON admin.online_booking_setting TO shri_app;
+ALTER TABLE admin.online_booking_setting ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.online_booking_setting FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.online_booking_setting USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
 GRANT SELECT, INSERT, UPDATE ON admin.portal_account TO shri_app;
 ALTER TABLE admin.portal_account ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.portal_account FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.portal_account USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
+GRANT SELECT, UPDATE (status, decided_at, decided_by_user_id, decision_note, work_item_id, updated_at, updated_by_user_id) ON admin.portal_change_request TO shri_app;
+ALTER TABLE admin.portal_change_request ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.portal_change_request FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.portal_change_request USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT, INSERT, UPDATE ON admin.portal_invitation TO shri_app;
 ALTER TABLE admin.portal_invitation ENABLE ROW LEVEL SECURITY;
@@ -16,4 +31,9 @@ GRANT SELECT, INSERT, UPDATE ON admin.portal_session TO shri_app;
 ALTER TABLE admin.portal_session ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.portal_session FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.portal_session USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
+GRANT SELECT, INSERT, UPDATE (lifted_at, lifted_by_user_id, updated_at, updated_by_user_id) ON admin.release_hold TO shri_app;
+ALTER TABLE admin.release_hold ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.release_hold FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.release_hold USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 

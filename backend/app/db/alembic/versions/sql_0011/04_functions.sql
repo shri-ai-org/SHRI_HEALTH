@@ -193,3 +193,97 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT; table_name := 'consumed_logout_token'; deleted := n;
   RETURN NEXT;
 END $$;
+
+-- =================================================================== part 2: the portal (D93)
+-- A decided request is final: accepted or declined, it stays as it was decided.
+CREATE FUNCTION public.shri_final_once_decided() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF OLD.status <> 'pending' THEN
+    RAISE EXCEPTION '% %: it was % and no longer changes', TG_TABLE_NAME, OLD.id, OLD.status
+      USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END $$;
+
+-- A hold is lifted once and stays lifted (D90): its record of who held it, why and when is
+-- kept as it was.
+CREATE FUNCTION public.shri_release_hold_guard() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF OLD.lifted_at IS NOT NULL THEN
+    RAISE EXCEPTION 'release hold %: it was lifted and no longer changes', OLD.id
+      USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END $$;
+
+-- The session patient's held items, for the portal's "held by your clinician" markers (D86,
+-- D90): which item and its date, never its content, the reason or the clinician. The items
+-- themselves are hidden from shri_portal, so this reads them as the migrator, in the session's
+-- clinic and for the session's patient only. The date is the visit or document's date, the
+-- result's issue date, or the problem's recorded date.
+CREATE FUNCTION admin.portal_held_items()
+RETURNS TABLE (item_type text, item_id uuid, item_date timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+  SELECT 'DocumentReference', d.id, d.date
+    FROM admin.release_hold h JOIN clinical.document_reference d ON d.id = h.document_reference_id
+   WHERE h.lifted_at IS NULL
+     AND h.patient_id = NULLIF(current_setting('app.current_patient_id', true), '')::uuid
+  UNION ALL
+  SELECT 'DiagnosticReport', r.id, r.issued
+    FROM admin.release_hold h JOIN clinical.diagnostic_report r ON r.id = h.diagnostic_report_id
+   WHERE h.lifted_at IS NULL
+     AND h.patient_id = NULLIF(current_setting('app.current_patient_id', true), '')::uuid
+  UNION ALL
+  SELECT 'Condition', c.id, c.recorded_date
+    FROM admin.release_hold h JOIN clinical.condition c ON c.id = h.condition_id
+   WHERE h.lifted_at IS NULL
+     AND h.patient_id = NULLIF(current_setting('app.current_patient_id', true), '')::uuid
+$$;
+REVOKE EXECUTE ON FUNCTION admin.portal_held_items() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin.portal_held_items() TO shri_portal;
+
+-- When a provider is busy, for online booking's free times (ADR-0013; the contract's
+-- PortalSlot is computed, not stored). Other patients' appointments are hidden from
+-- shri_portal, so this returns only the blocking times of one provider in the session's
+-- clinic, at most 62 days, with nothing about whose they are.
+CREATE FUNCTION admin.portal_busy_times(p_practitioner_id uuid, p_from timestamptz,
+                                        p_to timestamptz)
+RETURNS TABLE (start_at timestamptz, end_at timestamptz)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF p_from IS NULL OR p_to IS NULL OR p_to <= p_from OR p_to - p_from > interval '62 days' THEN
+    RAISE EXCEPTION 'busy times: a window of up to 62 days' USING ERRCODE = '22023';
+  END IF;
+  RETURN QUERY
+  SELECT p.period_start, p.period_end FROM clinical.appointment_participant p
+   WHERE p.actor_practitioner_id = p_practitioner_id AND p.ext_blocking
+     AND p.period_start < p_to AND p.period_end > p_from
+   ORDER BY p.period_start;
+END $$;
+REVOKE EXECUTE ON FUNCTION admin.portal_busy_times(uuid, timestamptz, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin.portal_busy_times(uuid, timestamptz, timestamptz)
+  TO shri_portal;
+
+-- 0002's history snapshot, recording the patient as the author of a version written in a
+-- portal session (ADR-0013 §6), where there is no user. A staff user, when set, is the author.
+CREATE OR REPLACE FUNCTION public.shri_fhir_history() RETURNS trigger LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = clinical, admin, audit, public, pg_temp AS $$
+DECLARE ver int; snap jsonb; who_user uuid; who_patient uuid;
+BEGIN
+  EXECUTE format('SELECT meta_version_id, shri_snapshot_%s($1) FROM %I WHERE id = $1',
+                 TG_TABLE_NAME, TG_TABLE_NAME) INTO ver, snap USING NEW.id;
+  IF snap IS NULL THEN
+    RETURN NULL;
+  END IF;
+  who_user := NULLIF(current_setting('app.current_user_id', true), '')::uuid;
+  IF who_user IS NULL THEN
+    who_patient := NULLIF(current_setting('app.current_patient_id', true), '')::uuid;
+  END IF;
+  INSERT INTO fhir_resource_history (tenant_id, resource_type, resource_id, version_id,
+                                     recorded_by_user_id, recorded_by_patient_id, snapshot)
+  VALUES (NEW.tenant_id, TG_ARGV[0], NEW.id, ver, who_user, who_patient, snap)
+  ON CONFLICT (resource_type, resource_id, version_id) DO NOTHING;
+  RETURN NULL;
+END $$;

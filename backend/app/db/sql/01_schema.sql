@@ -276,11 +276,13 @@ CREATE TABLE clinical.fhir_resource_history (
 	version_id INTEGER NOT NULL, 
 	recorded_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	recorded_by_user_id UUID, 
+	recorded_by_patient_id UUID, 
 	snapshot JSONB NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	CONSTRAINT pk_fhir_resource_history PRIMARY KEY (id), 
 	CONSTRAINT uq_fhir_resource_history_resource_type_resource_id_version_id UNIQUE (resource_type, resource_id, version_id), 
 	CONSTRAINT ck_fhir_resource_history_version_positive CHECK (version_id >= 1), 
+	CONSTRAINT ck_fhir_resource_history_one_author CHECK (recorded_by_user_id IS NULL OR recorded_by_patient_id IS NULL), 
 	CONSTRAINT fk_fhir_resource_history_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT
 );
 
@@ -580,6 +582,31 @@ CREATE INDEX ix_operation_created ON admin.operation (created_at);
 CREATE INDEX ix_operation_creator ON admin.operation (tenant_id, created_by_user_id, created_at);
 
 CREATE INDEX ix_operation_tenant_id ON admin.operation (tenant_id);
+
+CREATE TABLE admin.online_booking_setting (
+	is_enabled BOOLEAN DEFAULT false NOT NULL, 
+	booking_window_days SMALLINT DEFAULT 60 NOT NULL, 
+	min_notice_minutes INTEGER DEFAULT 120 NOT NULL, 
+	cancel_cutoff_hours SMALLINT DEFAULT 24 NOT NULL, 
+	reschedule_cutoff_hours SMALLINT DEFAULT 24 NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	version INTEGER DEFAULT 1 NOT NULL, 
+	CONSTRAINT pk_online_booking_setting PRIMARY KEY (id), 
+	CONSTRAINT uq_online_booking_setting_tenant_id UNIQUE (tenant_id), 
+	CONSTRAINT ck_online_booking_setting_window_range CHECK (booking_window_days BETWEEN 1 AND 365), 
+	CONSTRAINT ck_online_booking_setting_notice_range CHECK (min_notice_minutes BETWEEN 0 AND 20160), 
+	CONSTRAINT ck_online_booking_setting_cutoff_range CHECK (cancel_cutoff_hours BETWEEN 0 AND 336 AND reschedule_cutoff_hours BETWEEN 0 AND 336), 
+	CONSTRAINT fk_online_booking_setting_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_online_booking_setting_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_online_booking_setting_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_online_booking_setting_tenant_id ON admin.online_booking_setting (tenant_id);
 
 CREATE TABLE admin.note_template (
 	code VARCHAR(60) NOT NULL, 
@@ -2507,6 +2534,26 @@ CREATE INDEX ix_event_log_replay ON admin.event_log (tenant_id, seq);
 
 CREATE INDEX ix_event_log_tenant_id ON admin.event_log (tenant_id);
 
+CREATE TABLE admin.online_bookable_type (
+	facility_id UUID NOT NULL, 
+	appointment_type_id UUID NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_online_bookable_type PRIMARY KEY (id), 
+	CONSTRAINT uq_online_bookable_type_facility_id_appointment_type_id UNIQUE (facility_id, appointment_type_id), 
+	CONSTRAINT fk_online_bookable_type_facility_id_facility FOREIGN KEY(facility_id) REFERENCES admin.facility (id), 
+	CONSTRAINT fk_online_bookable_type_appointment_type_id_appointment_type FOREIGN KEY(appointment_type_id) REFERENCES admin.appointment_type (id), 
+	CONSTRAINT fk_online_bookable_type_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_online_bookable_type_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_online_bookable_type_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_online_bookable_type_tenant_id ON admin.online_bookable_type (tenant_id);
+
 CREATE TABLE admin.order_set_item (
 	order_set_id UUID NOT NULL, 
 	sequence SMALLINT NOT NULL, 
@@ -3895,6 +3942,7 @@ CREATE TABLE clinical.condition (
 	CONSTRAINT ck_condition_fhir_onset_x CHECK (((onset_date_time IS NOT NULL))::int + ((onset_age_value IS NOT NULL OR onset_age_code IS NOT NULL))::int + ((onset_period_start IS NOT NULL OR onset_period_end IS NOT NULL))::int + ((onset_string IS NOT NULL))::int <= 1), 
 	CONSTRAINT ck_condition_fhir_abatement_x CHECK (((abatement_date_time IS NOT NULL))::int + ((abatement_age_value IS NOT NULL OR abatement_age_code IS NOT NULL))::int + ((abatement_period_start IS NOT NULL OR abatement_period_end IS NOT NULL))::int + ((abatement_string IS NOT NULL))::int <= 1), 
 	CONSTRAINT uq_condition_tenant_id_id UNIQUE (tenant_id, id), 
+	CONSTRAINT uq_condition_subject_patient_id_id UNIQUE (subject_patient_id, id), 
 	CONSTRAINT ck_condition_ai_entry_verified CHECK (entry_source <> 'ai-generated' OR (ai_suggestion_id IS NOT NULL AND verified_by_user_id IS NOT NULL))
 );
 
@@ -5536,6 +5584,48 @@ CREATE TABLE admin.migration_run (
 
 CREATE INDEX ix_migration_run_tenant_id ON admin.migration_run (tenant_id);
 
+CREATE TABLE admin.release_hold (
+	patient_id UUID NOT NULL, 
+	document_reference_id UUID, 
+	diagnostic_report_id UUID, 
+	condition_id UUID, 
+	reason VARCHAR(40) NOT NULL, 
+	held_by_user_id UUID NOT NULL, 
+	held_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	lifted_at TIMESTAMP WITH TIME ZONE, 
+	lifted_by_user_id UUID, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_release_hold PRIMARY KEY (id), 
+	CONSTRAINT ck_release_hold_one_item CHECK (num_nonnulls(document_reference_id, diagnostic_report_id, condition_id) = 1), 
+	CONSTRAINT ck_release_hold_lifted_by_whom CHECK ((lifted_at IS NULL) = (lifted_by_user_id IS NULL)), 
+	CONSTRAINT ck_release_hold_lifted_after_held CHECK (lifted_at IS NULL OR lifted_at >= held_at), 
+	CONSTRAINT fk_release_hold_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
+	CONSTRAINT fk_release_hold_document_reference_id_document_reference FOREIGN KEY(document_reference_id) REFERENCES clinical.document_reference (id), 
+	CONSTRAINT fk_release_hold_diagnostic_report_id_diagnostic_report FOREIGN KEY(diagnostic_report_id) REFERENCES clinical.diagnostic_report (id), 
+	CONSTRAINT fk_release_hold_condition_id_condition FOREIGN KEY(condition_id) REFERENCES clinical.condition (id), 
+	CONSTRAINT fk_release_hold_held_by_user_id_app_user FOREIGN KEY(held_by_user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_release_hold_lifted_by_user_id_app_user FOREIGN KEY(lifted_by_user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_release_hold_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_release_hold_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_release_hold_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_release_hold_reason_codes CHECK (reason IN ('risk-of-harm', 'patient-request'))
+);
+
+CREATE INDEX ix_release_hold_patient_id ON admin.release_hold (patient_id);
+
+CREATE INDEX ix_release_hold_tenant_id ON admin.release_hold (tenant_id);
+
+CREATE UNIQUE INDEX uq_release_hold_one_active_condition ON admin.release_hold (condition_id) WHERE lifted_at IS NULL AND condition_id IS NOT NULL;
+
+CREATE UNIQUE INDEX uq_release_hold_one_active_document ON admin.release_hold (document_reference_id) WHERE lifted_at IS NULL AND document_reference_id IS NOT NULL;
+
+CREATE UNIQUE INDEX uq_release_hold_one_active_report ON admin.release_hold (diagnostic_report_id) WHERE lifted_at IS NULL AND diagnostic_report_id IS NOT NULL;
+
 CREATE TABLE admin.claim_diagnosis (
 	claim_id UUID NOT NULL, 
 	sequence SMALLINT NOT NULL, 
@@ -7016,7 +7106,8 @@ CREATE TABLE admin.work_item (
 	CONSTRAINT fk_work_item_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT ck_work_item_item_type_codes CHECK (item_type IN ('result-review', 'refill-request', 'message', 'task', 'document-review', 'unsigned-note', 'cosign', 'fax-indexing', 'unmatched-result', 'eligibility', 'claim-rejection', 'rooming')), 
 	CONSTRAINT ck_work_item_status_codes CHECK (status IN ('open', 'in-progress', 'on-hold', 'completed', 'cancelled')), 
-	CONSTRAINT uq_work_item_tenant_id_id UNIQUE (tenant_id, id)
+	CONSTRAINT uq_work_item_tenant_id_id UNIQUE (tenant_id, id), 
+	CONSTRAINT uq_work_item_patient_id_id UNIQUE (patient_id, id)
 );
 
 CREATE INDEX ix_work_item_open ON admin.work_item (tenant_id, assigned_user_id, status, priority) WHERE status IN ('open', 'in-progress', 'on-hold');
@@ -7710,6 +7801,41 @@ CREATE INDEX ix_diagnostic_report_result_obs ON clinical.diagnostic_report_resul
 
 CREATE INDEX ix_diagnostic_report_result_tenant_id ON clinical.diagnostic_report_result (tenant_id);
 
+CREATE TABLE admin.portal_change_request (
+	patient_id UUID NOT NULL, 
+	changes JSONB NOT NULL, 
+	note VARCHAR(500), 
+	status VARCHAR(40) DEFAULT 'pending' NOT NULL, 
+	decided_at TIMESTAMP WITH TIME ZONE, 
+	decided_by_user_id UUID, 
+	decision_note VARCHAR(500), 
+	work_item_id UUID, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_portal_change_request PRIMARY KEY (id), 
+	CONSTRAINT ck_portal_change_request_changes_given CHECK (jsonb_typeof(changes) = 'object' AND changes <> '{}'::jsonb), 
+	CONSTRAINT ck_portal_change_request_changes_size CHECK (octet_length(changes::text) <= 16384), 
+	CONSTRAINT ck_portal_change_request_decision_matches_status CHECK ((status = 'pending') = (decided_at IS NULL AND decided_by_user_id IS NULL)), 
+	CONSTRAINT ck_portal_change_request_decision_note_not_blank CHECK (status = 'pending' OR decision_note IS NULL OR length(trim(decision_note)) > 0), 
+	CONSTRAINT fk_portal_change_request_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
+	CONSTRAINT fk_portal_change_request_decided_by_user_id_app_user FOREIGN KEY(decided_by_user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_portal_change_request_work_item_id_work_item FOREIGN KEY(work_item_id) REFERENCES admin.work_item (id), 
+	CONSTRAINT fk_portal_change_request_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_portal_change_request_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_portal_change_request_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_portal_change_request_status_codes CHECK (status IN ('pending', 'accepted', 'declined'))
+);
+
+CREATE INDEX ix_portal_change_request_patient_id ON admin.portal_change_request (patient_id);
+
+CREATE INDEX ix_portal_change_request_queue ON admin.portal_change_request (tenant_id, status, created_at);
+
+CREATE INDEX ix_portal_change_request_tenant_id ON admin.portal_change_request (tenant_id);
+
 CREATE TABLE admin.work_item_event (
 	work_item_id UUID NOT NULL, 
 	event VARCHAR(20) NOT NULL, 
@@ -8175,6 +8301,10 @@ ALTER TABLE admin.migration_run ADD CONSTRAINT fk_migration_run_rollback_plan_do
 
 ALTER TABLE admin.note_template_section ADD CONSTRAINT fk_note_template_section_template_id_tenant FOREIGN KEY(tenant_id, template_id) REFERENCES admin.note_template (tenant_id, id);
 
+ALTER TABLE admin.online_bookable_type ADD CONSTRAINT fk_online_bookable_type_appointment_type_id_tenant FOREIGN KEY(tenant_id, appointment_type_id) REFERENCES admin.appointment_type (tenant_id, id);
+
+ALTER TABLE admin.online_bookable_type ADD CONSTRAINT fk_online_bookable_type_facility_id_tenant FOREIGN KEY(tenant_id, facility_id) REFERENCES admin.facility (tenant_id, id);
+
 ALTER TABLE admin.order_set_item ADD CONSTRAINT fk_order_set_item_compendium_test_id_tenant FOREIGN KEY(tenant_id, compendium_test_id) REFERENCES admin.compendium_test (tenant_id, id);
 
 ALTER TABLE admin.order_set_item ADD CONSTRAINT fk_order_set_item_order_set_id_tenant FOREIGN KEY(tenant_id, order_set_id) REFERENCES admin.order_set (tenant_id, id);
@@ -8223,6 +8353,12 @@ ALTER TABLE admin.portal_account ADD CONSTRAINT fk_portal_account_patient_id_ten
 
 ALTER TABLE admin.portal_account ADD CONSTRAINT fk_portal_account_suspended_by_merge_id_tenant FOREIGN KEY(tenant_id, suspended_by_merge_id) REFERENCES admin.patient_merge (tenant_id, id);
 
+ALTER TABLE admin.portal_change_request ADD CONSTRAINT fk_portal_change_request_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.portal_change_request ADD CONSTRAINT fk_portal_change_request_work_item_id_same_patient FOREIGN KEY(patient_id, work_item_id) REFERENCES admin.work_item (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.portal_change_request ADD CONSTRAINT fk_portal_change_request_work_item_id_tenant FOREIGN KEY(tenant_id, work_item_id) REFERENCES admin.work_item (tenant_id, id);
+
 ALTER TABLE admin.portal_invitation ADD CONSTRAINT fk_portal_invitation_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.portal_session ADD CONSTRAINT fk_portal_session_account_id_same_patient FOREIGN KEY(patient_id, account_id) REFERENCES admin.portal_account (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
@@ -8232,6 +8368,20 @@ ALTER TABLE admin.portal_session ADD CONSTRAINT fk_portal_session_account_id_ten
 ALTER TABLE admin.portal_session ADD CONSTRAINT fk_portal_session_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.pre_registration ADD CONSTRAINT fk_pre_registration_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.release_hold ADD CONSTRAINT fk_release_hold_condition_id_same_patient FOREIGN KEY(patient_id, condition_id) REFERENCES clinical.condition (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.release_hold ADD CONSTRAINT fk_release_hold_condition_id_tenant FOREIGN KEY(tenant_id, condition_id) REFERENCES clinical.condition (tenant_id, id);
+
+ALTER TABLE admin.release_hold ADD CONSTRAINT fk_release_hold_diagnostic_report_id_same_patient FOREIGN KEY(patient_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.release_hold ADD CONSTRAINT fk_release_hold_diagnostic_report_id_tenant FOREIGN KEY(tenant_id, diagnostic_report_id) REFERENCES clinical.diagnostic_report (tenant_id, id);
+
+ALTER TABLE admin.release_hold ADD CONSTRAINT fk_release_hold_document_reference_id_same_patient FOREIGN KEY(patient_id, document_reference_id) REFERENCES clinical.document_reference (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE admin.release_hold ADD CONSTRAINT fk_release_hold_document_reference_id_tenant FOREIGN KEY(tenant_id, document_reference_id) REFERENCES clinical.document_reference (tenant_id, id);
+
+ALTER TABLE admin.release_hold ADD CONSTRAINT fk_release_hold_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.remittance ADD CONSTRAINT fk_remittance_inbound_message_id_tenant FOREIGN KEY(tenant_id, inbound_message_id) REFERENCES admin.integration_message (tenant_id, id);
 
