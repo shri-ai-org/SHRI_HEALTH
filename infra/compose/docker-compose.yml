@@ -118,6 +118,21 @@ services:
       openbao-init:
         condition: service_completed_successfully
 
+  # The outbox worker (T29, D25): sends what the API queued for partners, with retries and the
+  # dead-letter queue. The API's image, run as shri_integration, never with the API's login.
+  integration-worker:
+    build:
+      context: ../../backend
+      additional_contexts:
+        contracts: ../../contracts/openapi/dist
+    command: ["python", "-m", "app.integration.worker"]
+    environment:
+      ENVIRONMENT: development
+      INTEGRATION_DATABASE_URL: postgresql+asyncpg://shri_integration:${SHRI_INTEGRATION_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   nginx:
     image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
     ports:
