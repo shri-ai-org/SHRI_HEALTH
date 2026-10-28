@@ -138,6 +138,10 @@ def test_support_staff_get_no_phi() -> None:
         ("FD", "note-templates:read", False),
         ("BIL", "note-templates:read", False),
         ("SUP", "note-templates:read", False),
+        # T47 (D96): the front desk's pre-registration queue is FD and ADM only.
+        *((role, f"pre-registrations:{action}", role in ("FD", "ADM"))
+          for role in ("FD", "ADM", "MA", "RN", "MD", "APP", "BIL", "CO", "SUP", "DSP")
+          for action in ("read", "accept", "reject")),
     ],
 )
 def test_matrix_rows(role: str, permission: str, allowed: bool) -> None:
