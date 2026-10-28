@@ -192,6 +192,8 @@ paths:
     $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1check-in'
   /appointments/{appointmentId}/status:
     $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1status'
+  /appointments/{appointmentId}/check-out:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1check-out'
   /status-board:
     $ref: 'modules/scheduling.yaml#/paths/~1status-board'
   /booking/facilities:
@@ -220,6 +222,12 @@ paths:
     $ref: 'modules/encounters.yaml#/paths/~1patients~1{patientId}~1encounters'
   /encounters/{encounterId}/close:
     $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1close'
+  /encounters/{encounterId}/follow-up:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1follow-up'
+  /encounters/{encounterId}/follow-up/decline:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1follow-up~1decline'
+  /encounters/{encounterId}/follow-up/withdraw:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1follow-up~1withdraw'
   /encounters/{encounterId}/entered-in-error:
     $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1entered-in-error'
   /encounters/{encounterId}/vitals:
@@ -254,6 +262,8 @@ paths:
     $ref: 'modules/encounters.yaml#/paths/~1me~1favorites'
   /encounters/{encounterId}/after-visit-summary:
     $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1after-visit-summary'
+  /encounters/{encounterId}/after-visit-summary/download-url:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1after-visit-summary~1download-url'
   /cosign-rules:
     $ref: 'modules/encounters.yaml#/paths/~1cosign-rules'
   /cosign-rules/{cosignRuleId}:

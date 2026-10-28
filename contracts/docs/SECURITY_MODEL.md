@@ -140,6 +140,7 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | Communications and dashboard (Minalini) | `message-templates:read\|create\|update`, `communication-preferences:read\|update`, `communications:read`, `operations-dashboard:read` |
 | Pre-registration (Vimal, D96) | `pre-registrations:read`, `pre-registrations:accept`, `pre-registrations:reject` (FD, ADM; proposed in NOTE_FOR_THULASI T47, joining §4.3 with core) |
 | Patient portal, B8a (Vimal; sign-in, enrollment and factor reset Thulasi; D84, D89) | Role `PAT` only: `portal-profile:read`, `portal-profile:request-change`, `portal-appointments:read\|create\|cancel\|reschedule`, `portal-booking:read`, `portal-records:read`. Staff: `portal-accounts:read`, `portal-invitations:create\|revoke`, `portal-accounts:reset-factors`, `portal-accounts:disable\|enable` (ADM; D92). Proposed grants in NOTE_FOR_THULASI T45; they join §4.3 in the same change as core, as for T42 |
+| Check-out and follow-up (Vimal, D98) | `appointments:check-out` (FD, ADM), `follow-ups:decline` (FD, ADM), `after-visit-summaries:read` (FD, MA, RN, MD, APP, ADM; read the latest after-visit summary to print it). Proposed in NOTE_FOR_THULASI T50; they join §4.3 with core |
 
 ### 4.3 Draft role-to-permission matrix
 

@@ -69,7 +69,12 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 295 | GET | `/pre-registrations/{preRegistrationId}` | V | Ad | `pre-registrations:read` | pr | – | | | FR-PAT-01 | Demo | **New** (D96) |
 | 296 | POST | `/pre-registrations/{preRegistrationId}/accept` | V | Cl+Ad | `pre-registrations:accept` | pw | S | | | FR-PAT-01 | Demo | **New** (D96): records the ID check, then creates (duplicate check, MRN) or links the patient, one transaction; insurance stays a note on the request |
 | 297 | POST | `/pre-registrations/{preRegistrationId}/reject` | V | Ad | `pre-registrations:reject` | pw | – | | | FR-PAT-01 | Demo | **New** (D96): with a reason |
+| 298 | PUT | `/encounters/{encounterId}/follow-up` | V | Cl | `encounters:update` | pw | – | ✓ | | FR-SCH-02 | Demo | **New** (D98): the clinician's follow-up request |
+| 299 | POST | `/encounters/{encounterId}/follow-up/decline` | V | Ad | `follow-ups:decline` | pw | S | ✓ | | FR-SCH-02 | Demo | **New** (D98): the patient didn't book it; reason required; FD and ADM only |
 | 300 | GET | `/portal/me/medications` | T | Cl | `portal-records:read` | pr (patient session) | – | | | §3.8 | Demo | **New** (plan §8.2 E; written for the demo ahead of B8b, together with the staff medications contract in #93, D88): the patient's medication list, with transmission status |
+| 301 | POST | `/appointments/{appointmentId}/check-out` | V | Ad | `appointments:check-out` | pw | S | | | FR-SCH-02 | Demo | **New** (D98): check-out as an action, FD and ADM only; the `409` names what blocks it (open follow-up, wrong visit state); `checked-out` is no longer sent to #57 |
+| 302 | POST | `/encounters/{encounterId}/follow-up/withdraw` | V | Cl | `encounters:update` | pw | – | ✓ | | FR-SCH-02 | Demo | **New** (D98, D67): the clinician who asked withdraws an open follow-up request |
+| 303 | GET | `/encounters/{encounterId}/after-visit-summary/download-url` | V | Cl | `after-visit-summaries:read` | pr | – | | | FR-ENC-06 | Demo | **New** (D98): the front desk prints the latest signed after-visit summary at check-out |
 | 24 | GET | `/admin/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
 | 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |

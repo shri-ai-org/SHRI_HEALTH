@@ -216,6 +216,31 @@ node tests/flows/pre-registration.mjs          # in another; BASE_URL=http://127
   - reject with the `spam` or `other` example.
 - **Today's result:** 16 of 16 calls pass.
 
+## 5f. Check-out with the follow-up and the copay (demo steps 10–11, D98, D100)
+
+`tests/flows/check-out.mjs` runs the end of the visit against the sample-data server: the clinician's follow-up request, then the front desk's check-out.
+
+```bash
+cd contracts
+npm run mock                              # in one terminal
+node tests/flows/check-out.mjs            # in another; BASE_URL=http://127.0.0.1:4020 for another port
+```
+
+- **The follow-up request:** `PUT /encounters/{encounterId}/follow-up` with the encounter's `If-Match`. It answers `412` (`Prefer: code=412`) when the visit changed since it was read. The clinician can withdraw an open one with `POST …/follow-up/withdraw` (`If-Match`, a reason).
+- **At the desk:**
+  - `GET /appointments/{appointmentId}` with `Prefer: example=at-check-out` carries `followUp`, `encounterId` and `visitStatus`;
+  - so does the staff board (`view=staff`, `Prefer: example=staff`); the shared board never does (D47).
+- **The copay** uses Anand's payment operations (D100):
+  - `POST /payments/card-session`, then `POST /patients/{patientId}/payments` with the card session and the appointment;
+  - `Prefer: code=422` gives the refusal for a session captured for another amount.
+- **The after-visit summary:** the clinician generates it (`POST …/after-visit-summary`, MD and APP); the desk prints the latest one with `GET /encounters/{encounterId}/after-visit-summary/download-url` (`Prefer: code=404` until one exists).
+- **The revisit:**
+  - `POST /appointments` with the `revisit` example (`followUpOfEncounterId`) books it;
+  - `Prefer: code=422` gives the refusal when the follow-up isn't open;
+  - `POST /encounters/{encounterId}/follow-up/decline` (FD, ADM; `If-Match`, `Idempotency-Key`) records the patient's no instead.
+- **Check-out:** `POST /appointments/{appointmentId}/check-out` (FD, ADM). The `checked-out` example shows the visit `checked-out` and the follow-up `booked` with `bookedAppointmentId`; `Prefer: code=409` gives the refusal that names what blocks it in `errors`.
+- **Today's result:** 25 of 25 calls pass.
+
 ## 5h. Note templates for clinicians and the portal's medication list (demo steps 8 and 12)
 
 `tests/flows/templates-and-portal-medications.mjs` runs both on the sample-data server:
