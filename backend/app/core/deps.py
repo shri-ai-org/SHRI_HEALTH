@@ -21,10 +21,11 @@ from uuid import UUID
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import audit, permissions
+from app.core import audit, idempotency, permissions
 from app.core.config import Settings
 from app.core.db import Database
 from app.core.errors import Forbidden, ServiceUnavailable, Unauthorized
+from app.core.operations import operation_for
 from app.core.request_id import current_request_id
 
 DEV_USER_HEADER = "X-Dev-User"
@@ -110,15 +111,19 @@ def require(permission: str) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
         )
 
     async def check(request: Request, user: CurrentUser = Depends(current_user)) -> CurrentUser:
-        if not user.can(permission):
-            await audit.record_denial(request, user, permission)
-            raise Forbidden(f"Requires {permission}")
-        setattr(request.state, _PERMISSION_CHECKED, permission)  # tenant_db looks for this
+        await _check_permission(request, user, permission)
         return user
 
     check.__name__ = f"require_{permission.replace(':', '_').replace('-', '_')}"
     check.shri_permission = permission  # type: ignore[attr-defined]  # read by route_problems()
     return check
+
+
+async def _check_permission(request: Request, user: CurrentUser, permission: str) -> None:
+    if not user.can(permission):
+        await audit.record_denial(request, user, permission)
+        raise Forbidden(f"Requires {permission}")
+    setattr(request.state, _PERMISSION_CHECKED, permission)  # tenant_db looks for this
 
 
 def _require_was_checked(request: Request) -> None:
@@ -144,12 +149,23 @@ async def tenant_db(
     and tests, 403 elsewhere).
 
     The operation's audit rows (x-audit) go in with the endpoint's first commit, or are written
-    before the response if it makes none (app/core/audit.py)."""
+    before the response if it makes none (app/core/audit.py).
+
+    For an operation with x-idempotency, the Idempotency-Key is claimed here, before the
+    endpoint runs, and a finished key's stored response is sent instead of running it again
+    (app/core/idempotency.py)."""
     db: Database | None = request.app.state.db
     if db is None:
         raise ServiceUnavailable("Database is not configured")
     # The clinic and user come from the server-side session (current_user), never from
     # request headers or the body (D21).
+    operation = operation_for(request.scope.get("route"))
+    if operation is not None and idempotency.applies(operation, request.method):
+        # Only a caller who may run the operation claims a key, whichever order the endpoint
+        # lists require() and tenant_db in.
+        if getattr(request.state, _PERMISSION_CHECKED, None) != operation.permission:
+            await _check_permission(request, user, operation.permission)
+        await idempotency.claim(request, db, user.organization_id, user.id, operation)
     session = db.tenant_session(
         user.organization_id, user.id, current_request_id(),
         guard=lambda: _require_was_checked(request),
