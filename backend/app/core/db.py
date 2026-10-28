@@ -18,6 +18,7 @@ from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
+from pydantic import SecretStr
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
@@ -49,11 +50,14 @@ DATABASE_INFO_KEY = "shri_database"
 
 
 class Database:
-    def __init__(self, settings: Settings) -> None:
-        if settings.database_url is None:
+    def __init__(self, settings: Settings, url: SecretStr | None = None) -> None:
+        """The API's database (DATABASE_URL, shri_app), or another role's when `url` is given
+        (PUBLIC_DATABASE_URL, shri_public)."""
+        url = url or settings.database_url
+        if url is None:
             raise RuntimeError("DATABASE_URL is not configured")
         self.engine: AsyncEngine = create_async_engine(
-            settings.database_url.get_secret_value(),
+            url.get_secret_value(),
             pool_size=settings.db_pool_size,
             pool_pre_ping=True,
         )
@@ -74,6 +78,18 @@ class Database:
         session.info[_CONTEXT_KEY] = {
             TENANT_SETTING: str(tenant_id),
             USER_SETTING: str(user_id),
+            CORRELATION_SETTING: correlation_id or "",
+        }
+        return session
+
+    def system_session(self, tenant_id: UUID, correlation_id: str | None = None) -> AsyncSession:
+        """A session scoped to one clinic for work no user started (the outbox worker): the
+        clinic is set as for tenant_session, and app.current_user_id is empty."""
+        session = self.sessions()
+        session.info[TENANT_ID_INFO_KEY] = tenant_id
+        session.info[DATABASE_INFO_KEY] = self
+        session.info[_CONTEXT_KEY] = {
+            TENANT_SETTING: str(tenant_id), USER_SETTING: "",
             CORRELATION_SETTING: correlation_id or "",
         }
         return session

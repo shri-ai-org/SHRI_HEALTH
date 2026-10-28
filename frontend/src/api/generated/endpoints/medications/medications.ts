@@ -15,14 +15,35 @@
  * OpenAPI spec version: 1.0.0-draft.1
  */
 import type {
+  AlertOverride,
   BadRequestResponse,
+  ConflictResponse,
+  CreatePrescriptionHeaders,
   ForbiddenResponse,
+  Id,
   InternalErrorResponse,
+  ListMedicationsParams,
   ListPharmaciesParams,
+  Medication,
+  MedicationCreate,
+  MedicationList,
+  NotFoundResponse,
   PharmacyList,
+  PreconditionFailedResponse,
+  PreconditionRequiredResponse,
+  Prescription,
+  PrescriptionCreate,
+  PrescriptionEnteredInError,
+  PrescriptionPatch,
+  Problem,
+  RecordMedicationHeaders,
+  SafetyAlert,
+  SafetyCheckResult,
+  SignAndSendPrescriptionHeaders,
   TooManyRequestsResponse,
   UnauthorizedResponse,
-  UnprocessableContentResponse
+  UnprocessableContentResponse,
+  UpdatePrescriptionHeaders
 } from '../../model';
 
 import { apiFetch } from '../../../client';
@@ -97,6 +118,809 @@ export const listPharmacies = async (params?: ListPharmaciesParams, options?: Pa
     ...options,
     method: 'GET'
 
+
+  }
+);}
+
+
+export type listMedicationsResponse200 = {
+  data: MedicationList
+  status: 200
+}
+
+export type listMedicationsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listMedicationsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listMedicationsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listMedicationsResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listMedicationsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listMedicationsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listMedicationsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listMedicationsResponseSuccess = (listMedicationsResponse200) & {
+  headers: Headers;
+};
+export type listMedicationsResponseError = (listMedicationsResponse400 | listMedicationsResponse401 | listMedicationsResponse403 | listMedicationsResponse404 | listMedicationsResponse422 | listMedicationsResponse429 | listMedicationsResponse500) & {
+  headers: Headers;
+};
+
+export type listMedicationsResponse = (listMedicationsResponseSuccess | listMedicationsResponseError)
+
+export const getListMedicationsUrl = (patientId: Id,
+    params?: ListMedicationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/patients/${patientId}/medications?${stringifiedParams}` : `/patients/${patientId}/medications`
+}
+
+/**
+ * The medication list (inventory #116; D28): what the patient takes, prescribed here or reported, active first. Entered-in-error entries are left out.
+ * @summary List a patient's medications
+ */
+export const listMedications = async (patientId: Id,
+    params?: ListMedicationsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listMedicationsResponse> => {
+
+  return apiFetch<listMedicationsResponse>(getListMedicationsUrl(patientId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type recordMedicationResponse201 = {
+  data: Medication
+  status: 201
+}
+
+export type recordMedicationResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type recordMedicationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type recordMedicationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type recordMedicationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type recordMedicationResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type recordMedicationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type recordMedicationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type recordMedicationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type recordMedicationResponseSuccess = (recordMedicationResponse201) & {
+  headers: Headers;
+};
+export type recordMedicationResponseError = (recordMedicationResponse400 | recordMedicationResponse401 | recordMedicationResponse403 | recordMedicationResponse404 | recordMedicationResponse409 | recordMedicationResponse422 | recordMedicationResponse429 | recordMedicationResponse500) & {
+  headers: Headers;
+};
+
+export type recordMedicationResponse = (recordMedicationResponseSuccess | recordMedicationResponseError)
+
+export const getRecordMedicationUrl = (patientId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/medications`
+}
+
+/**
+ * Adds a medication the patient already takes (inventory #117), e.g. at rooming. Recorded as reported (D28).
+ * @summary Record a current medication
+ */
+export const recordMedication = async (patientId: Id,
+    medicationCreate: MedicationCreate,
+    headers?: RecordMedicationHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<recordMedicationResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<recordMedicationResponse>(getRecordMedicationUrl(patientId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(medicationCreate)
+  }
+);}
+
+
+export type createPrescriptionResponse201 = {
+  data: Prescription
+  status: 201
+}
+
+export type createPrescriptionResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createPrescriptionResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createPrescriptionResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createPrescriptionResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createPrescriptionResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createPrescriptionResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createPrescriptionResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createPrescriptionResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createPrescriptionResponseSuccess = (createPrescriptionResponse201) & {
+  headers: Headers;
+};
+export type createPrescriptionResponseError = (createPrescriptionResponse400 | createPrescriptionResponse401 | createPrescriptionResponse403 | createPrescriptionResponse404 | createPrescriptionResponse409 | createPrescriptionResponse422 | createPrescriptionResponse429 | createPrescriptionResponse500) & {
+  headers: Headers;
+};
+
+export type createPrescriptionResponse = (createPrescriptionResponseSuccess | createPrescriptionResponseError)
+
+export const getCreatePrescriptionUrl = () => {
+
+
+
+
+  return `/prescriptions`
+}
+
+/**
+ * Starts a draft (inventory #120). Drug search is `GET /codes?system=rxnorm`, over RxNorm Current Prescribable Content (D97).
+ * @summary Start a prescription
+ */
+export const createPrescription = async (prescriptionCreate: PrescriptionCreate,
+    headers?: CreatePrescriptionHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<createPrescriptionResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createPrescriptionResponse>(getCreatePrescriptionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(prescriptionCreate)
+  }
+);}
+
+
+export type getPrescriptionResponse200 = {
+  data: Prescription
+  status: 200
+}
+
+export type getPrescriptionResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getPrescriptionResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getPrescriptionResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getPrescriptionResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getPrescriptionResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getPrescriptionResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getPrescriptionResponseSuccess = (getPrescriptionResponse200) & {
+  headers: Headers;
+};
+export type getPrescriptionResponseError = (getPrescriptionResponse401 | getPrescriptionResponse403 | getPrescriptionResponse404 | getPrescriptionResponse422 | getPrescriptionResponse429 | getPrescriptionResponse500) & {
+  headers: Headers;
+};
+
+export type getPrescriptionResponse = (getPrescriptionResponseSuccess | getPrescriptionResponseError)
+
+export const getGetPrescriptionUrl = (prescriptionId: Id,) => {
+
+
+
+
+  return `/prescriptions/${prescriptionId}`
+}
+
+/**
+ * One prescription with its alerts and transmission status (inventory #121).
+ * @summary Get a prescription
+ */
+export const getPrescription = async (prescriptionId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getPrescriptionResponse> => {
+
+  return apiFetch<getPrescriptionResponse>(getGetPrescriptionUrl(prescriptionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type updatePrescriptionResponse200 = {
+  data: Prescription
+  status: 200
+}
+
+export type updatePrescriptionResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type updatePrescriptionResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type updatePrescriptionResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type updatePrescriptionResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type updatePrescriptionResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type updatePrescriptionResponse412 = {
+  data: PreconditionFailedResponse
+  status: 412
+}
+
+export type updatePrescriptionResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type updatePrescriptionResponse428 = {
+  data: PreconditionRequiredResponse
+  status: 428
+}
+
+export type updatePrescriptionResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type updatePrescriptionResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type updatePrescriptionResponseSuccess = (updatePrescriptionResponse200) & {
+  headers: Headers;
+};
+export type updatePrescriptionResponseError = (updatePrescriptionResponse400 | updatePrescriptionResponse401 | updatePrescriptionResponse403 | updatePrescriptionResponse404 | updatePrescriptionResponse409 | updatePrescriptionResponse412 | updatePrescriptionResponse422 | updatePrescriptionResponse428 | updatePrescriptionResponse429 | updatePrescriptionResponse500) & {
+  headers: Headers;
+};
+
+export type updatePrescriptionResponse = (updatePrescriptionResponseSuccess | updatePrescriptionResponseError)
+
+export const getUpdatePrescriptionUrl = (prescriptionId: Id,) => {
+
+
+
+
+  return `/prescriptions/${prescriptionId}`
+}
+
+/**
+ * Changes a draft (inventory #122). A changed draft needs a new safety check before signing. A signed prescription is locked.
+ * @summary Edit a draft prescription
+ */
+export const updatePrescription = async (prescriptionId: Id,
+    prescriptionPatch: PrescriptionPatch,
+    headers: UpdatePrescriptionHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<updatePrescriptionResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<updatePrescriptionResponse>(getUpdatePrescriptionUrl(prescriptionId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(prescriptionPatch)
+  }
+);}
+
+
+export type markPrescriptionEnteredInErrorResponse200 = {
+  data: Prescription
+  status: 200
+}
+
+export type markPrescriptionEnteredInErrorResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type markPrescriptionEnteredInErrorResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type markPrescriptionEnteredInErrorResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type markPrescriptionEnteredInErrorResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type markPrescriptionEnteredInErrorResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type markPrescriptionEnteredInErrorResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type markPrescriptionEnteredInErrorResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type markPrescriptionEnteredInErrorResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type markPrescriptionEnteredInErrorResponseSuccess = (markPrescriptionEnteredInErrorResponse200) & {
+  headers: Headers;
+};
+export type markPrescriptionEnteredInErrorResponseError = (markPrescriptionEnteredInErrorResponse400 | markPrescriptionEnteredInErrorResponse401 | markPrescriptionEnteredInErrorResponse403 | markPrescriptionEnteredInErrorResponse404 | markPrescriptionEnteredInErrorResponse409 | markPrescriptionEnteredInErrorResponse422 | markPrescriptionEnteredInErrorResponse429 | markPrescriptionEnteredInErrorResponse500) & {
+  headers: Headers;
+};
+
+export type markPrescriptionEnteredInErrorResponse = (markPrescriptionEnteredInErrorResponseSuccess | markPrescriptionEnteredInErrorResponseError)
+
+export const getMarkPrescriptionEnteredInErrorUrl = (prescriptionId: Id,) => {
+
+
+
+
+  return `/prescriptions/${prescriptionId}/entered-in-error`
+}
+
+/**
+ * A draft written by mistake (inventory #227): entered-in-error with a reason and its Provenance; nothing is deleted (D14). A signed prescription is cancelled instead (later).
+ * @summary Mark a draft prescription wrong
+ */
+export const markPrescriptionEnteredInError = async (prescriptionId: Id,
+    prescriptionEnteredInError: PrescriptionEnteredInError, options?: Parameters<typeof apiFetch>[1]): Promise<markPrescriptionEnteredInErrorResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<markPrescriptionEnteredInErrorResponse>(getMarkPrescriptionEnteredInErrorUrl(prescriptionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(prescriptionEnteredInError)
+  }
+);}
+
+
+export type checkPrescriptionSafetyResponse200 = {
+  data: SafetyCheckResult
+  status: 200
+}
+
+export type checkPrescriptionSafetyResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type checkPrescriptionSafetyResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type checkPrescriptionSafetyResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type checkPrescriptionSafetyResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type checkPrescriptionSafetyResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type checkPrescriptionSafetyResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type checkPrescriptionSafetyResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type checkPrescriptionSafetyResponseSuccess = (checkPrescriptionSafetyResponse200) & {
+  headers: Headers;
+};
+export type checkPrescriptionSafetyResponseError = (checkPrescriptionSafetyResponse401 | checkPrescriptionSafetyResponse403 | checkPrescriptionSafetyResponse404 | checkPrescriptionSafetyResponse409 | checkPrescriptionSafetyResponse422 | checkPrescriptionSafetyResponse429 | checkPrescriptionSafetyResponse500) & {
+  headers: Headers;
+};
+
+export type checkPrescriptionSafetyResponse = (checkPrescriptionSafetyResponseSuccess | checkPrescriptionSafetyResponseError)
+
+export const getCheckPrescriptionSafetyUrl = (prescriptionId: Id,) => {
+
+
+
+
+  return `/prescriptions/${prescriptionId}/safety-check`
+}
+
+/**
+ * Runs the safety check on a draft (inventory #123; D97): an `allergy` alert for an active allergy to an RxNorm ingredient of the drug, a `duplicate-medication` alert for an active medication with the same ingredient. The alerts are stored on the draft. Both alerts are fixed rules in the medications service, each with its tests; no AI model produces, ranks or suppresses an alert (D99). It doesn't change the draft's version or `ETag`, so an open editor keeps its `If-Match`.
+ * @summary Check a draft for allergy and duplicate alerts
+ */
+export const checkPrescriptionSafety = async (prescriptionId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<checkPrescriptionSafetyResponse> => {
+
+  return apiFetch<checkPrescriptionSafetyResponse>(getCheckPrescriptionSafetyUrl(prescriptionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+export type overrideAlertResponse200 = {
+  data: SafetyAlert
+  status: 200
+}
+
+export type overrideAlertResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type overrideAlertResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type overrideAlertResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type overrideAlertResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type overrideAlertResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type overrideAlertResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type overrideAlertResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type overrideAlertResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type overrideAlertResponseSuccess = (overrideAlertResponse200) & {
+  headers: Headers;
+};
+export type overrideAlertResponseError = (overrideAlertResponse400 | overrideAlertResponse401 | overrideAlertResponse403 | overrideAlertResponse404 | overrideAlertResponse409 | overrideAlertResponse422 | overrideAlertResponse429 | overrideAlertResponse500) & {
+  headers: Headers;
+};
+
+export type overrideAlertResponse = (overrideAlertResponseSuccess | overrideAlertResponseError)
+
+export const getOverrideAlertUrl = (alertId: Id,) => {
+
+
+
+
+  return `/alerts/${alertId}/override`
+}
+
+/**
+ * Records why the prescriber goes ahead despite an alert (inventory #124; D97). Required before signing for a `high` alert; audited. It doesn't change the draft's version or `ETag`, so an open editor keeps its `If-Match`.
+ * @summary Override a safety alert
+ */
+export const overrideAlert = async (alertId: Id,
+    alertOverride: AlertOverride, options?: Parameters<typeof apiFetch>[1]): Promise<overrideAlertResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<overrideAlertResponse>(getOverrideAlertUrl(alertId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(alertOverride)
+  }
+);}
+
+
+export type signAndSendPrescriptionResponse200 = {
+  data: Prescription
+  status: 200
+}
+
+export type signAndSendPrescriptionResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type signAndSendPrescriptionResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type signAndSendPrescriptionResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type signAndSendPrescriptionResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type signAndSendPrescriptionResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type signAndSendPrescriptionResponse412 = {
+  data: PreconditionFailedResponse
+  status: 412
+}
+
+export type signAndSendPrescriptionResponse422 = {
+  data: Problem
+  status: 422
+}
+
+export type signAndSendPrescriptionResponse428 = {
+  data: PreconditionRequiredResponse
+  status: 428
+}
+
+export type signAndSendPrescriptionResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type signAndSendPrescriptionResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type signAndSendPrescriptionResponseSuccess = (signAndSendPrescriptionResponse200) & {
+  headers: Headers;
+};
+export type signAndSendPrescriptionResponseError = (signAndSendPrescriptionResponse400 | signAndSendPrescriptionResponse401 | signAndSendPrescriptionResponse403 | signAndSendPrescriptionResponse404 | signAndSendPrescriptionResponse409 | signAndSendPrescriptionResponse412 | signAndSendPrescriptionResponse422 | signAndSendPrescriptionResponse428 | signAndSendPrescriptionResponse429 | signAndSendPrescriptionResponse500) & {
+  headers: Headers;
+};
+
+export type signAndSendPrescriptionResponse = (signAndSendPrescriptionResponseSuccess | signAndSendPrescriptionResponseError)
+
+export const getSignAndSendPrescriptionUrl = (prescriptionId: Id,) => {
+
+
+
+
+  return `/prescriptions/${prescriptionId}/sign-and-send`
+}
+
+/**
+ * Signs exactly the version read (`If-Match`), locks it, writes its Provenance, adds it to the medication list and queues NewRx for the pharmacy through the outbox, all in one transaction (inventory #125; D8, D25, D97). Refused while the latest safety check is missing or older than the draft, or a `high` alert has no override. Transmission then moves through `sent` to `accepted` or `rejected` (here a simulated pharmacy). Sending always goes through the outbox (`enqueue(db, "erx", "NewRx", …)`), never straight from the request: for the demo the outbox delivers to the simulated pharmacy, and its answer comes back through `/hooks/erx` (D99).
+ * @summary Sign a prescription and send it to the pharmacy
+ */
+export const signAndSendPrescription = async (prescriptionId: Id,
+    headers: SignAndSendPrescriptionHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<signAndSendPrescriptionResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<signAndSendPrescriptionResponse>(getSignAndSendPrescriptionUrl(prescriptionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { ...headers, ...getHeaders(options?.headers) }
 
   }
 );}

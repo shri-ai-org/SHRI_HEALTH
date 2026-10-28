@@ -54,6 +54,14 @@ SESSION_PATIENT = "session"
 # x-permission values that are not a permission: no require() on these routes.
 NO_REQUIRE = frozenset({"public", "partner-signed"})
 
+# Public forms whose own SECURITY DEFINER function writes their `anonymous` audit row, in the same
+# call as the data (D96, migration 0009). public_db starts no trail, so any other audited public
+# form is refused at startup until core writes one for it.
+AUDITED_IN_DATABASE = frozenset({"submitPreRegistration"})
+# Public forms whose Idempotency-Key the same function handles (practice + key, 0009, Option A on
+# #13), so core's staff-session idempotency (#103) isn't needed and isn't refused for them.
+IDEMPOTENT_IN_DATABASE = frozenset({"submitPreRegistration"})
+
 # Audited operations that do not use tenant_db: the sign-in flow audits itself (login, logout
 # and refresh are security events written by the session code, and Keycloak's own events).
 SELF_AUDITED = frozenset({"startLogin", "finishLogin", "refreshSession", "logout"})
@@ -203,7 +211,9 @@ def route_problems(app: FastAPI) -> list[str]:
                                 f"x-permission is {operation.permission!r}")
             if operation.idempotency is not None and method in ("POST", "PUT", "PATCH"):
                 staff = operation.audit.actor == "user" and operation.permission not in NO_REQUIRE
-                if operation.portal or not staff:
+                if operation.operation_id in IDEMPOTENT_IN_DATABASE:
+                    pass
+                elif operation.portal or not staff:
                     problems.append(f"{where}: {operation.operation_id} has x-idempotency, which "
                                     "core handles only for staff sessions so far (not yet for "
                                     "the portal, public forms or partners)")
@@ -222,6 +232,10 @@ def route_problems(app: FastAPI) -> list[str]:
                 if operation.audit.audited and public_db not in calls:
                     problems.append(f"{where}: {operation.operation_id} is audited "
                                     f"({operation.audit.category}), so it needs Depends(public_db)")
+                if operation.audit.audited and operation.operation_id not in AUDITED_IN_DATABASE:
+                    problems.append(f"{where}: {operation.operation_id} is an audited public "
+                                    "form, and core writes no audit trail for public forms: its "
+                                    "database function must (operations.AUDITED_IN_DATABASE)")
                 continue
             if operation.portal:
                 # The patient is the portal session's; a staff session never serves these.

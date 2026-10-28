@@ -1,6 +1,17 @@
 {
  "generatedBy": "npm run bundle (scripts/operations-map.mjs)",
  "operations": {
+  "acceptPreRegistration": {
+   "audit": {
+    "action": "E",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/pre-registrations/{preRegistrationId}/accept",
+   "permission": "pre-registrations:accept"
+  },
   "addAllergy": {
    "audit": {
     "action": "C",
@@ -210,6 +221,28 @@
    "method": "POST",
    "path": "/api/v1/appointments/{appointmentId}/check-in",
    "permission": "appointments:check-in"
+  },
+  "checkOutAppointment": {
+   "audit": {
+    "action": "E",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/appointments/{appointmentId}/check-out",
+   "permission": "appointments:check-out"
+  },
+  "checkPrescriptionSafety": {
+   "audit": {
+    "action": "E",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/prescriptions/{prescriptionId}/safety-check",
+   "permission": "prescriptions:safety-check"
   },
   "closeEncounter": {
    "audit": {
@@ -431,6 +464,17 @@
    "path": "/api/v1/practice-payers",
    "permission": "practice-setup:create"
   },
+  "createPrescription": {
+   "audit": {
+    "action": "C",
+    "category": "phi-write",
+    "patient": "body:/patientId"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/prescriptions",
+   "permission": "prescriptions:create"
+  },
   "createProvider": {
    "audit": {
     "action": "C",
@@ -460,6 +504,17 @@
    "method": "POST",
    "path": "/api/v1/files/upload-url",
    "permission": "files:create"
+  },
+  "declineFollowUpRequest": {
+   "audit": {
+    "action": "E",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/encounters/{encounterId}/follow-up/decline",
+   "permission": "follow-ups:decline"
   },
   "disablePortalAccount": {
    "audit": {
@@ -514,6 +569,17 @@
    "method": "GET",
    "path": "/api/v1/auth/callback",
    "permission": "public"
+  },
+  "getAfterVisitSummaryDownloadUrl": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/encounters/{encounterId}/after-visit-summary/download-url",
+   "permission": "after-visit-summaries:read"
   },
   "getAllergy": {
    "audit": {
@@ -710,7 +776,7 @@
    "idempotency": null,
    "method": "GET",
    "path": "/api/v1/note-templates/{noteTemplateId}",
-   "permission": "practice-setup:read"
+   "permission": "note-templates:read"
   },
   "getOperation": {
    "audit": {
@@ -878,6 +944,27 @@
    "method": "GET",
    "path": "/api/v1/practice-settings",
    "permission": "practice-setup:read"
+  },
+  "getPreRegistration": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/pre-registrations/{preRegistrationId}",
+   "permission": "pre-registrations:read"
+  },
+  "getPrescription": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/prescriptions/{prescriptionId}",
+   "permission": "prescriptions:read"
   },
   "getProblem": {
    "audit": {
@@ -1161,6 +1248,17 @@
    "path": "/api/v1/locations",
    "permission": "practice-setup:read"
   },
+  "listMedications": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/patients/{patientId}/medications",
+   "permission": "medications:read"
+  },
   "listNoteTemplates": {
    "audit": {
     "action": "R",
@@ -1169,7 +1267,7 @@
    "idempotency": null,
    "method": "GET",
    "path": "/api/v1/note-templates",
-   "permission": "practice-setup:read"
+   "permission": "note-templates:read"
   },
   "listNoteVersions": {
    "audit": {
@@ -1326,6 +1424,18 @@
    "path": "/api/v1/portal/me/change-requests",
    "permission": "portal-profile:read"
   },
+  "listPortalMedications": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/medications",
+   "permission": "portal-records:read"
+  },
   "listPortalProblems": {
    "audit": {
     "action": "R",
@@ -1371,6 +1481,16 @@
    "method": "GET",
    "path": "/api/v1/practice-payers",
    "permission": "practice-setup:read"
+  },
+  "listPreRegistrations": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/pre-registrations",
+   "permission": "pre-registrations:read"
   },
   "listProblems": {
    "audit": {
@@ -1522,6 +1642,17 @@
    "path": "/api/v1/notes/{noteId}/entered-in-error",
    "permission": "notes:entered-in-error"
   },
+  "markPrescriptionEnteredInError": {
+   "audit": {
+    "action": "E",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/prescriptions/{prescriptionId}/entered-in-error",
+   "permission": "prescriptions:entered-in-error"
+  },
   "markProblemEnteredInError": {
    "audit": {
     "action": "E",
@@ -1577,6 +1708,17 @@
    "path": "/api/v1/duplicates/{duplicateId}/merge",
    "permission": "duplicates:merge"
   },
+  "overrideAlert": {
+   "audit": {
+    "action": "E",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/alerts/{alertId}/override",
+   "permission": "alerts:override"
+  },
   "receiveKeycloakBackchannelLogout": {
    "audit": {
     "action": "E",
@@ -1598,6 +1740,17 @@
    "method": "POST",
    "path": "/api/v1/patients/{patientId}/consents",
    "permission": "consents:create"
+  },
+  "recordMedication": {
+   "audit": {
+    "action": "C",
+    "category": "phi-write",
+    "patient": "patientId"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/patients/{patientId}/medications",
+   "permission": "medications:create"
   },
   "recordPayment": {
    "audit": {
@@ -1664,6 +1817,16 @@
    "method": "POST",
    "path": "/api/v1/patients",
    "permission": "patients:create"
+  },
+  "rejectPreRegistration": {
+   "audit": {
+    "action": "E",
+    "category": "phi-write"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/pre-registrations/{preRegistrationId}/reject",
+   "permission": "pre-registrations:reject"
   },
   "removeEncounterDiagnosis": {
    "audit": {
@@ -1797,6 +1960,17 @@
    "path": "/api/v1/patients/search",
    "permission": "patients:search"
   },
+  "setFollowUpRequest": {
+   "audit": {
+    "action": "U",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "PUT",
+   "path": "/api/v1/encounters/{encounterId}/follow-up",
+   "permission": "encounters:update"
+  },
   "setPreferredPharmacy": {
    "audit": {
     "action": "U",
@@ -1807,6 +1981,17 @@
    "method": "PUT",
    "path": "/api/v1/patients/{patientId}/preferred-pharmacy",
    "permission": "patients:update"
+  },
+  "signAndSendPrescription": {
+   "audit": {
+    "action": "E",
+    "category": "sign",
+    "patient": "result"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/prescriptions/{prescriptionId}/sign-and-send",
+   "permission": "prescriptions:sign-and-send"
   },
   "signNote": {
    "audit": {
@@ -1861,6 +2046,17 @@
    "method": "GET",
    "path": "/api/v1/events/stream",
    "permission": "authenticated"
+  },
+  "submitPreRegistration": {
+   "audit": {
+    "action": "C",
+    "actor": "anonymous",
+    "category": "phi-write"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/portal/practices/{practiceLinkId}/pre-registrations",
+   "permission": "public"
   },
   "undoCheckIn": {
    "audit": {
@@ -2072,6 +2268,17 @@
    "path": "/api/v1/practice-settings",
    "permission": "practice-setup:update"
   },
+  "updatePrescription": {
+   "audit": {
+    "action": "U",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "PATCH",
+   "path": "/api/v1/prescriptions/{prescriptionId}",
+   "permission": "prescriptions:update"
+  },
   "updateProblem": {
    "audit": {
     "action": "U",
@@ -2113,6 +2320,17 @@
    "method": "PATCH",
    "path": "/api/v1/patients/{patientId}/related-persons/{relatedPersonId}",
    "permission": "patients:update"
+  },
+  "withdrawFollowUpRequest": {
+   "audit": {
+    "action": "E",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/encounters/{encounterId}/follow-up/withdraw",
+   "permission": "encounters:update"
   }
  },
  "source": "contracts/openapi/dist/shri-health.bundled.yaml"
