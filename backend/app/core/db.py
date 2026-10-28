@@ -94,6 +94,12 @@ class Database:
         await self.engine.dispose()
 
 
+def session_user_id(session: AsyncSession | Session) -> UUID | None:
+    """The signed-in user a tenant session was opened for (tenant_session's user_id)."""
+    context = session.info.get(_CONTEXT_KEY)
+    return UUID(context[USER_SETTING]) if context else None
+
+
 @event.listens_for(Session, "after_begin")
 def _set_tenant_context(
     session: Session, transaction: SessionTransaction, connection: Connection
