@@ -35,14 +35,16 @@ from __future__ import annotations
 import enum
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Protocol, TypeIs
 
 from sqlalchemy import delete, func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.errors import db_error_detail
 from app.db.models import systems
 from app.db.models.admin.core import AppUser, MrnCounter
 from app.db.models.admin.rcm import Employer
@@ -110,11 +112,23 @@ class InvalidTransition(Exception):
 
 
 class InvalidInput(ValueError):
-    """Input the API refuses with 422; ``reason`` says why, in words for the problem detail."""
+    """Input the API refuses with 422; ``reason`` says why, in words for the problem detail, and
+    ``field``, when set, names the input it is about (``reason``, ``order``), for the error's
+    pointer."""
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, *, field: str | None = None) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.field = field
+
+
+class CoverageOrderTaken(InvalidInput):
+    """Another coverage of the patient has this order for an overlapping period
+    (``ex_coverage_order_no_overlap``, migration 0012): the API's 422 at ``/order``."""
+
+    def __init__(self) -> None:
+        super().__init__("another coverage has this order for an overlapping period",
+                         field="order")
 
 
 @dataclass(frozen=True)
@@ -767,9 +781,27 @@ async def _nullify_provenance(db: AsyncSession, resource_type: str, written: Wri
     await db.flush()
 
 
-def _require_reason(reason: Reason) -> None:
-    if not reason.text.strip():
-        raise InvalidInput("entered-in-error needs a reason")
+def _require_reason(reason: Reason) -> Reason:
+    """The reason as stored: trimmed, and never blank (InvalidInput at ``reason``)."""
+    trimmed = reason.text.strip()
+    if not trimmed:
+        raise InvalidInput("a reason is required", field="reason")
+    return replace(reason, text=trimmed)
+
+
+_COVERAGE_ORDER = "ex_coverage_order_no_overlap"
+
+
+async def _flush_coverage(db: AsyncSession) -> None:
+    """Flush a coverage row; an order clash with an overlapping period is CoverageOrderTaken."""
+    try:
+        await db.flush()
+    except DBAPIError as exc:
+        constraint = db_error_detail(exc).constraint or getattr(
+            getattr(exc.orig, "__cause__", None), "constraint_name", None)
+        if constraint == _COVERAGE_ORDER:
+            raise CoverageOrderTaken() from exc
+        raise
 
 
 class SqlFhirStore:
@@ -853,7 +885,7 @@ class SqlFhirStore:
                        ext_accept_assignment=data.accept_assignment,
                        **{f: getattr(data, f) for f in _COVERAGE_FIELDS})
         db.add(await _new(db, cov))
-        await db.flush()
+        await _flush_coverage(db)
         db.add(CoveragePayor(coverage_id=cov.id, payer_id=data.payer_id))
         await _coverage_children(db, cov.id, data)
         return await _written(db, cov)
@@ -868,13 +900,14 @@ class SqlFhirStore:
                 setattr(cov, field, getattr(changes, field))
         if _given(changes.accept_assignment):
             cov.ext_accept_assignment = changes.accept_assignment
+        await _flush_coverage(db)
         await _coverage_children(db, coverage_id, changes)
         return await _written(db, cov)
 
     async def coverage_entered_in_error(self, db: AsyncSession, coverage_id: uuid.UUID,
                                         reason: Reason, *, if_version: int | None = None
                                         ) -> Written:
-        _require_reason(reason)
+        reason = _require_reason(reason)
         cov = await _locked(db, Coverage, coverage_id, if_version)
         if cov.status == "entered-in-error":
             raise InvalidTransition(cov.status)
@@ -950,8 +983,8 @@ class SqlFhirStore:
             raise InvalidTransition(enc.status)
         if status == "entered-in-error":
             if reason is None:
-                raise InvalidInput("entered-in-error needs a reason")
-            _require_reason(reason)
+                raise InvalidInput("a reason is required", field="reason")
+            reason = _require_reason(reason)
         when = at or await _db_now(db)
         history = EncounterStatusHistory
         for open_row in (await db.execute(select(history).where(
@@ -1042,7 +1075,7 @@ class SqlFhirStore:
     async def allergy_entered_in_error(self, db: AsyncSession, allergy_id: uuid.UUID,
                                        reason: Reason, *, if_version: int | None = None
                                        ) -> Written:
-        _require_reason(reason)
+        reason = _require_reason(reason)
         allergy = await _locked(db, AllergyIntolerance, allergy_id, if_version)
         if allergy.verification_status == "entered-in-error":
             raise InvalidTransition(allergy.verification_status)
@@ -1083,7 +1116,7 @@ class SqlFhirStore:
 
     async def remove_encounter_diagnosis(self, db: AsyncSession, encounter_id: uuid.UUID,
                                          condition_id: uuid.UUID, reason: Reason) -> Written:
-        _require_reason(reason)
+        reason = _require_reason(reason)
         enc = await _locked(db, Encounter, encounter_id, None)
         link = EncounterDiagnosis
         row = (await db.execute(select(link).where(link.encounter_id == encounter_id,
@@ -1150,6 +1183,7 @@ async def _allergy_children(db: AsyncSession, allergy_id: uuid.UUID,
 
 
 __all__ = [
+    "CoverageOrderTaken",
     "UNSET", "AllergyChanges", "AllergyIn", "ChildWritten", "Coded", "ConsentIn", "CostIn",
     "CoverageChanges", "CoverageClassIn", "CoverageIn", "DiagnosisIn", "DiagnosisWritten",
     "EmployerIn", "EncounterIn", "FhirStore", "IdentifierIn", "InvalidInput", "InvalidTransition",

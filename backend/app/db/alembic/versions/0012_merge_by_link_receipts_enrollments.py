@@ -19,9 +19,14 @@ Changes:
                         clean from the start; any other file is clean only after a clean scan.
   admin.payer_enrollment the unique key includes tenant_id, so each clinic records its own
                         enrollments with a platform payer.
+  clinical.coverage     one coverage per patient per order at any time: same-order periods may
+                        not overlap (ex_coverage_order_no_overlap; an open end is open-ended,
+                        entered-in-error excluded), replacing one active coverage per order, so
+                        an ended coverage frees its order.
 
 Frozen SQL in sql_0012/:
-  01_existing_tables.sql  hand-written: the enrollment key, the payment and file columns
+  01_existing_tables.sql  hand-written: the enrollment key, the payment and file columns,
+                          the coverage order rule
   02_merge_by_link.sql    hand-written: the 0008 rule removed, the link rule and guard
   90_downgrade.sql        all of it back as 0011 left it, with 0008's undo rule and its table
 
