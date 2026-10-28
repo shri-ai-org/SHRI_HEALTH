@@ -19,7 +19,7 @@ import type { Money } from './money';
 import type { PaymentMethod } from './paymentMethod';
 
 /**
- * Body to record a patient payment, usually the copay at check-in (FRS FR-SCH-02, FR-RCM-03).
+ * Body to record a patient payment, usually the copay at check-in or check-out (FRS FR-SCH-02, FR-RCM-03; D100).
  */
 export interface PaymentCreate {
   /** Amount paid. Positive. For `card` it must equal the card session's captured amount. */

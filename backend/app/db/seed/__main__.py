@@ -9,9 +9,10 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
+from app.db.seed.demo import load_demo
 from app.db.seed.starter import load_starter, require_dev_environment
 
-LAYERS = {"starter": load_starter}
+LAYERS = {"starter": load_starter, "demo": load_demo}
 
 
 def bypasses_rls(db: Session) -> bool:

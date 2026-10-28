@@ -16,6 +16,7 @@
  */
 import type { AppointmentStatus } from './appointmentStatus';
 import type { AppointmentTypeRef } from './appointmentTypeRef';
+import type { FollowUpSummary } from './followUpSummary';
 import type { Id } from './id';
 import type { SchedulingPatientRef } from './schedulingPatientRef';
 import type { SchedulingProviderRef } from './schedulingProviderRef';
@@ -59,4 +60,6 @@ export interface StatusBoardItem {
   reasonForVisit?: string;
   /** The encounter, once checked in. Staff view only (D60). */
   encounterId?: Id;
+  /** Staff view only (left out of the shared view, D47): the follow-up asked for in this visit, if any (D98). */
+  followUp?: FollowUpSummary;
 }

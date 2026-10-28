@@ -1,7 +1,10 @@
 title: FieldErrorCode
-description: Why one field failed validation (API_STANDARDS §9.2).
+description: 'Why one field failed validation (API_STANDARDS §9.2). An extensible enum: codes are added (never renamed
+  or reused), so clients must treat a code they do not know as a generic field error (API_STANDARDS §6.5).'
 type: string
-enum:
+maxLength: 64
+# x-extensible-enum (API_STANDARDS §6.5, CONTRACT_GOVERNANCE §4.1): adding a code is not a breaking change; removing one is.
+x-extensible-enum:
   - required
   - unknown-field
   - invalid-format
@@ -13,3 +16,5 @@ enum:
   - invalid-reference
   - conflicting-fields
   - not-editable
+  - safety-check-stale
+  - override-required

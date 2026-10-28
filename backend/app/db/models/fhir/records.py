@@ -331,6 +331,10 @@ class FhirResourceHistory(Base, TenantMixin):
         UniqueConstraint("resource_type", "resource_id", "version_id"),
         Index("ix_fhir_resource_history_time", "tenant_id", "recorded_at"),
         CheckConstraint("version_id >= 1", name="version_positive"),
+        # A version is written by a staff user or, in a portal session, by the patient (ADR-0013
+        # §6), never both.
+        CheckConstraint("recorded_by_user_id IS NULL OR recorded_by_patient_id IS NULL",
+                        name="one_author"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
@@ -339,4 +343,6 @@ class FhirResourceHistory(Base, TenantMixin):
     version_id: Mapped[int] = mapped_column(Integer, nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
     recorded_by_user_id: Mapped[uuid.UUID | None]   # app.current_user_id (no FK: append-only)
+    #: app.current_patient_id, for a version written in a portal session (no FK: append-only).
+    recorded_by_patient_id: Mapped[uuid.UUID | None]
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

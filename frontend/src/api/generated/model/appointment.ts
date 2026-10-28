@@ -17,6 +17,7 @@
 import type { AppointmentCancellation } from './appointmentCancellation';
 import type { AppointmentStatus } from './appointmentStatus';
 import type { AppointmentTypeRef } from './appointmentTypeRef';
+import type { FollowUpSummary } from './followUpSummary';
 import type { Id } from './id';
 import type { SchedulingPatientRef } from './schedulingPatientRef';
 import type { SchedulingProviderRef } from './schedulingProviderRef';
@@ -87,4 +88,6 @@ export interface Appointment {
   createdAt: Timestamp;
   /** Last change. */
   updatedAt: Timestamp;
+  /** The follow-up the clinician asked for in this visit, if any (D98). */
+  followUp?: FollowUpSummary;
 }

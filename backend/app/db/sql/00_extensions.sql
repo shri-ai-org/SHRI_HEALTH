@@ -29,7 +29,8 @@ CREATE SCHEMA IF NOT EXISTS audit AUTHORIZATION shri_migrator;
 DO $$
 DECLARE r text;
 BEGIN
-  FOREACH r IN ARRAY ARRAY['shri_migrator', 'shri_app', 'shri_integration', 'shri_reporting']
+  FOREACH r IN ARRAY ARRAY['shri_migrator', 'shri_app', 'shri_integration', 'shri_reporting',
+                           'shri_portal']
   LOOP
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
       EXECUTE format('ALTER ROLE %I SET search_path = clinical, admin, audit, public', r);
