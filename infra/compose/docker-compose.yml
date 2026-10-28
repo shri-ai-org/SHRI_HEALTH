@@ -118,6 +118,11 @@ services:
       # the migrator's login; migrations run separately as shri_migrator.
       DATABASE_URL: postgresql+asyncpg://shri_app:${SHRI_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
       FHIR_DATABASE_URL: postgresql+asyncpg://shri_fhir_reader:${SHRI_FHIR_READER_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
+      # The public pre-registration form (D96): its own role, shri_public, which can only run the
+      # form's database function. The portal is served from this same host in development.
+      PUBLIC_DATABASE_URL: postgresql+asyncpg://shri_public:${SHRI_PUBLIC_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
+      PORTAL_ORIGIN: https://localhost:8443
+      PUBLIC_FORM_SECRET: ${PUBLIC_FORM_SECRET:?set PUBLIC_FORM_SECRET in infra/compose/.env}
       # Field encryption through OpenBao Transit, with the narrow token only (never the root).
       OPENBAO_TRANSIT_ADDR: http://openbao:8200
       OPENBAO_TRANSIT_TOKEN: ${OPENBAO_API_TOKEN:?set OPENBAO_API_TOKEN in infra/compose/.env}
