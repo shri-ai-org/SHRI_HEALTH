@@ -199,7 +199,14 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   false; nothing is deleted. The contract's `required` and `active` are `is_required` and
   `is_active`; `version` is the ETag.
 - **Payment receipts (D58, D104):** `patient_payment.receipt_file_id`, the receipt PDF, a file in
-  the same clinic, written in the payment transaction. Required (migration 0012).
+  the same clinic, written in the payment transaction. Required (migration 0012). The contract's
+  `checkNumber` and `note` are `check_number` (a check payment only) and `note`.
+- **Files (API_STANDARDS §15, migration 0012):** `admin.binary_object.purpose` is the contract's
+  `FilePurpose`, and `state` its file state: `pending-upload` → `quarantined` → `clean` or
+  `rejected`. Only a clean file is attached or downloaded. An uploaded file is clean only after a
+  clean scan; a receipt or after-visit summary, made by the server, is clean from the start.
+  `wrapped_data_key` is the file's data key as core wraps it, kept only once the file is
+  clean.
 - **Pre-registration (D96, A51, migration 0009):** the public form calls
   `SELECT admin.submit_pre_registration(:practice_code, :idempotency_key, :request_hash,
   :details, :contact_consent, :source_ip, :user_agent, :request_id)` as `shri_public`, with no

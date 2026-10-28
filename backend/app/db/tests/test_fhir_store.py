@@ -399,7 +399,8 @@ async def test_a_consent_with_its_scope_form_performer_and_verification(
     async with session(database, clinic) as s:
         await s.execute(text(
             "INSERT INTO admin.binary_object (id, tenant_id, bucket, storage_key, content_type, "
-            "size_bytes, sha256) VALUES (:i, :t, 'docs', :k, 'application/pdf', 10, :h)"),
+            "size_bytes, sha256, purpose) VALUES (:i, :t, 'docs', :k, 'application/pdf', 10, :h, "
+            "'document')"),
             {"i": form, "t": clinic["tenant"], "k": f"k/{form}.pdf", "h": "a" * 64})
         w = await STORE.create_consent(s, fs.ConsentIn(
             patient_id=patient.id, kind="privacy-notice", status="active",

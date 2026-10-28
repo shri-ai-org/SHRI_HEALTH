@@ -898,6 +898,30 @@ class FaxStatus(StrEnum):
     RECEIVED = "received"
 
 
+class FilePurpose(StrEnum):
+    """What a file is for (files.yaml FilePurpose, API_STANDARDS §15): decides its allowed
+    types and sizes and who may download it."""
+    INSURANCE_CARD = "insurance-card"
+    IDENTITY = "identity"
+    RECEIPT = "receipt"
+    ENCOUNTER_AUDIO = "encounter-audio"
+    AFTER_VISIT_SUMMARY = "after-visit-summary"
+    DOCUMENT = "document"
+    FAX = "fax"
+    CCDA = "ccda"
+    EXPORT = "export"
+    ONBOARDING_IMPORT = "onboarding-import"
+
+
+class FileState(StrEnum):
+    """A file's place in the upload flow (files.yaml FileState): only a clean file is ever
+    attached or downloaded."""
+    PENDING_UPLOAD = "pending-upload"
+    QUARANTINED = "quarantined"
+    CLEAN = "clean"
+    REJECTED = "rejected"
+
+
 class ScanStatus(StrEnum):
     PENDING = "pending"
     CLEAN = "clean"

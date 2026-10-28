@@ -381,6 +381,9 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `scan_status` | varchar(40) | no |  |  | — |
 | `scanned_at` | datetime | yes |  |  | — |
 | `retention_until` | datetime | yes |  |  | — |
+| `purpose` | varchar(40) | no |  |  | — |
+| `state` | varchar(40) | no |  |  | — |
+| `wrapped_data_key` | text | yes |  |  | — |
 | `id` | uuid | no |  |  | — |
 | `tenant_id` | uuid | no |  | admin.tenant.id | — |
 | `created_at` | datetime | no |  |  | — |
@@ -388,7 +391,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_binary_object_scan_status_codes`, `ck_binary_object_scanned_at`, `ck_binary_object_sha256_format`, `ck_binary_object_size`
+Checks: `ck_binary_object_clean_when_scanned`, `ck_binary_object_generated_clean`, `ck_binary_object_key_when_clean`, `ck_binary_object_purpose_codes`, `ck_binary_object_scan_status_codes`, `ck_binary_object_scanned_at`, `ck_binary_object_sha256_format`, `ck_binary_object_size`, `ck_binary_object_state_codes`
 
 Unique: `uq_binary_object_tenant_id_bucket_storage_key_storage_version_id`, `uq_binary_object_tenant_id_id`
 
@@ -2195,6 +2198,8 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `is_refund` | boolean | no |  |  | — |
 | `refund_of_payment_id` | uuid | yes |  | admin.patient_payment.id | — |
 | `receipt_file_id` | uuid | no |  | admin.binary_object.id | — |
+| `check_number` | varchar(40) | yes |  |  | — |
+| `note` | varchar(500) | yes |  |  | — |
 | `id` | uuid | no |  |  | — |
 | `tenant_id` | uuid | no |  | admin.binary_object.tenant_id, admin.patient_payment.tenant_id, admin.tenant.id, clinical.appointment.tenant_id, clinical.encounter.tenant_id, clinical.patient.tenant_id | — |
 | `created_at` | datetime | no |  |  | — |
@@ -2202,7 +2207,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 | `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
 
-Checks: `ck_patient_payment_amount_positive`, `ck_patient_payment_card_has_processor_ref`, `ck_patient_payment_method_codes`, `ck_patient_payment_no_card_number`, `ck_patient_payment_refund_link`
+Checks: `ck_patient_payment_amount_positive`, `ck_patient_payment_card_has_processor_ref`, `ck_patient_payment_check_number_method`, `ck_patient_payment_method_codes`, `ck_patient_payment_no_card_number`, `ck_patient_payment_refund_link`
 
 Unique: `uq_patient_payment_patient_id_id`, `uq_patient_payment_tenant_id_id`
 

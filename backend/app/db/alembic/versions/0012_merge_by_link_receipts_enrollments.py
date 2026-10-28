@@ -1,4 +1,5 @@
-"""Merge by link (D103), required receipts (D104) and the enrollment key's clinic.
+"""Merge by link (D103), the copay's payment and file columns (D104) and the enrollment key's
+clinic.
 
 Changes:
   admin.patient_merge   merge by link: no record moves, so admin.patient_merge_record, the
@@ -9,15 +10,20 @@ Changes:
                         'later-merge'; shri_patient_merge_guard enforces it). The undo moves
                         nothing back, so admin.finish_patient_merge_undo and its commit check go.
   admin.patient_payment receipt_file_id NOT NULL (D104): the receipt is made in the payment's
-                        transaction.
+                        transaction. check_number (a check payment only) and note, for the
+                        contract's checkNumber and note.
+  admin.binary_object   for the file service (API_STANDARDS §15): purpose (files.yaml
+                        FilePurpose), state (pending-upload, quarantined, clean, rejected) and
+                        wrapped_data_key (the data key core wraps, set only on a clean file).
+                        Receipts and after-visit summaries are made by the server, so they are
+                        clean from the start; any other file is clean only after a clean scan.
   admin.payer_enrollment the unique key includes tenant_id, so each clinic records its own
                         enrollments with a platform payer.
 
 Frozen SQL in sql_0012/:
-  01_existing_tables.sql        hand-written: the enrollment key and the required receipt
-  02_merge_by_link.sql          hand-written: the 0008 rule removed, the link rule and guard
-  90_downgrade_merge_record.sql the enrollment key, optional receipt and 0008's undo rule with
-                                its table, for the downgrade
+  01_existing_tables.sql  hand-written: the enrollment key, the payment and file columns
+  02_merge_by_link.sql    hand-written: the 0008 rule removed, the link rule and guard
+  90_downgrade.sql        all of it back as 0011 left it, with 0008's undo rule and its table
 
 Revision ID: 0012
 Revises: 0011
@@ -44,4 +50,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute((SQL_DIR / "90_downgrade_merge_record.sql").read_text())
+    op.execute((SQL_DIR / "90_downgrade.sql").read_text())
