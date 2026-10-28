@@ -68,3 +68,8 @@ ON CONFLICT DO NOTHING;
 INSERT INTO admin.setting_definition (id, key, value_type, default_value, description) VALUES
   (gen_random_uuid(), 'registration.show_sogi_fields', 'boolean', 'false', 'Show sexual orientation and gender identity at registration (D39, A49). Off by default: the practice turns it on.')
 ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO admin.cds_rule (id, tenant_id, code, name, alert_type, rule_source, default_severity, requires_override_reason, is_suppressible, is_active) VALUES
+  (gen_random_uuid(), NULL, 'allergy', 'Allergy to an ingredient of the drug', 'allergy', 'deterministic', 'high', true, false, true),
+  (gen_random_uuid(), NULL, 'duplicate-medication', 'Active medication with the same ingredient', 'duplicate-medication', 'deterministic', 'moderate', false, false, true)
+ON CONFLICT DO NOTHING;

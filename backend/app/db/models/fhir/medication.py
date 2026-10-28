@@ -48,8 +48,12 @@ from app.db.models.enums import (
 )
 
 MED_SYSTEMS = f"('{systems.RXNORM}', '{systems.NDC}')"
+#: An order beyond draft is signed. Exempt: imports and interfaces, and a medication the
+#: patient already takes, recorded on the list (intent plan, reported; D28, migration 0013).
 SIGNED_OR_EXEMPT = ("status IN ('draft', 'cancelled', 'entered-in-error') OR "
                     "entry_source IN ('imported', 'interface') OR "
+                    "(intent = 'plan' AND (reported_boolean IS TRUE OR "
+                    "reported_practitioner_id IS NOT NULL)) OR "
                     "(ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL)")
 
 

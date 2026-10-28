@@ -75,6 +75,7 @@ from app.db.models.fhir.directory import (
     Patient,
     PatientCommunication,
     PatientRaceEthnicity,
+    Practitioner,
     RelatedPerson,
     RelatedPersonRelationship,
 )
@@ -348,8 +349,10 @@ class ConsentIn:
     patient_id: uuid.UUID
     kind: str  # ext_kind: the practice's consent kind (D59)
     status: str  # active | rejected | inactive …
-    categories: tuple[Coded, ...]
     date_time: datetime
+    #: Leave empty: the helper sets the kind's category (_CONSENT_OF_KIND). One given must be
+    #: exactly the kind's.
+    categories: tuple[Coded, ...] = ()
     policy_version: str | None = None  # the version the patient signed (D59)
     signature_method: str | None = None
     provision_type: str | None = None  # permit | deny
@@ -465,6 +468,18 @@ class DiagnosisWritten:
 class DispenseQuantity:
     value: Decimal
     unit: str  # capsule, tablet, mL
+
+
+@dataclass(frozen=True)
+class MedicationIn:
+    """A medication the patient already takes, for the list (MedicationCreate; D28): a
+    MedicationRequest with intent ``plan``, reported. Prescriptions reach the list by signing."""
+    patient_id: uuid.UUID
+    medication: Coded  # RxNorm, or text alone
+    dosage_text: str | None = None
+    status: str = "active"  # active | completed | stopped
+    note: str | None = None
+    encounter_id: uuid.UUID | None = None  # the visit it was recorded at (rooming)
 
 
 @dataclass(frozen=True)
@@ -643,6 +658,9 @@ class FhirStore(Protocol):
         its link goes, freeing its rank; the ranks after it close up. Returns the encounter."""
         ...
 
+    # The medication list: a reported MedicationRequest, intent plan (D28; demo step 7)
+    async def record_medication(self, db: AsyncSession, data: MedicationIn) -> Written: ...
+
     # Prescriptions: MedicationRequest, intent order (medication_request, dosage), D97
     async def create_prescription(self, db: AsyncSession, data: PrescriptionIn) -> Written: ...
 
@@ -696,19 +714,28 @@ class FhirStore(Protocol):
         InvalidTransition (409 record-locked)."""
         ...
 
-    async def sign_note(self, db: AsyncSession, note_id: uuid.UUID, *, if_version: int
-                        ) -> Written:
-        """final, with a legal attester and its Provenance; frozen from then on."""
+    async def sign_note(self, db: AsyncSession, note_id: uuid.UUID, *, if_version: int,
+                        cosigner_practitioner_id: uuid.UUID | None = None) -> Written:
+        """final, with a legal attester and its Provenance; frozen from then on. With the
+        co-signer the matching co-sign rule names, ``cosignStatus`` becomes ``pending``."""
         ...
 
     async def add_note_addendum(self, db: AsyncSession, note_id: uuid.UUID, text: str, *,
                                 if_version: int) -> AddendumWritten:
-        """A new signed Composition that appends to the signed note, which becomes amended."""
+        """A new signed Composition that appends to the signed note, which becomes amended; a
+        returned note is pending again."""
         ...
 
     async def cosign_note(self, db: AsyncSession, note_id: uuid.UUID, *, if_version: int
                           ) -> Written:
-        """A professional attester (never the author) and its Provenance, on a signed note."""
+        """By the named co-signer, while pending: a professional attester and its Provenance;
+        ``cosigned``."""
+        ...
+
+    async def return_note_to_author(self, db: AsyncSession, note_id: uuid.UUID, comment: str,
+                                    *, if_version: int) -> Written:
+        """By the named co-signer, while pending: ``returned`` with the comment. The note stays
+        signed and frozen; the author answers with an addendum (D73)."""
         ...
 
     async def note_entered_in_error(self, db: AsyncSession, note_id: uuid.UUID, reason: Reason,
@@ -722,10 +749,29 @@ _D39 = ("gender_identity", "sexual_orientation", "occupation", "industry", "trib
 #: sensitivity labels (PSY, SUD, …).
 _CONFIDENTIALITY = frozenset({"L", "M", "N", "R", "V"})
 _RESTRICTED = frozenset({"R", "V"})
-#: Consent.scope (required by FHIR) from the practice's consent kind.
-_SCOPE_OF_KIND = {"research": "research", "privacy-notice": "patient-privacy",
-                  "information-sharing": "patient-privacy"}
-_DEFAULT_SCOPE = "treatment"
+#: Consent.scope (consentscope, required by FHIR) and Consent.category (the R4 Consent Category
+#: value set) by the practice's consent kind: one fixed set per kind, agreed on #88 (Vimal).
+#: financial is LOINC 59284-0 only (a release to the payer would be its own kind);
+#: ambient-recording is a privacy consent (information collection).
+_PATIENT_CONSENT = Coded(system=systems.LOINC, code="59284-0", display="Patient Consent")
+_RELEASE_OF_INFORMATION = Coded(system=systems.LOINC, code="64292-6",
+                                display="Release of information consent")
+_CONSENT_OF_KIND: dict[str, tuple[str, tuple[Coded, ...]]] = {
+    "treatment": ("treatment", (_PATIENT_CONSENT,)),
+    "telehealth": ("treatment", (_PATIENT_CONSENT,)),
+    "financial": ("treatment", (_PATIENT_CONSENT,)),
+    "privacy-notice": ("patient-privacy", (
+        Coded(system=systems.CONSENT_CATEGORY, code="npp",
+              display="Notice of Privacy Practices"),
+        Coded(system=systems.LOINC, code="57016-8", display="Privacy policy acknowledgment"))),
+    "information-sharing": ("patient-privacy", (
+        _RELEASE_OF_INFORMATION,
+        Coded(system=systems.V3_ACT_CODE, code="IDSCL", display="information disclosure"))),
+    "ambient-recording": ("patient-privacy", (
+        Coded(system=systems.V3_ACT_CODE, code="ICOL", display="information collection"),)),
+    "research": ("research", (
+        Coded(system=systems.CONSENT_CATEGORY, code="research", display="Research"),)),
+}
 
 def _given[T](value: T | _Unset) -> TypeIs[T]:
     return value is not UNSET
@@ -1128,6 +1174,12 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- Consent
     async def create_consent(self, db: AsyncSession, data: ConsentIn) -> Written:
+        if data.kind not in _CONSENT_OF_KIND:
+            raise InvalidInput(f"unknown consent kind {data.kind!r}")
+        scope, categories = _CONSENT_OF_KIND[data.kind]
+        if data.categories and ({(c.system, c.code) for c in data.categories}
+                                != {(c.system, c.code) for c in categories}):
+            raise InvalidInput(f"a {data.kind} consent's category is set by its kind")
         if data.status == "active":
             # The latest consent of a kind is the one in force (patients.yaml, Consent.status).
             earlier = (await db.execute(
@@ -1139,7 +1191,7 @@ class SqlFhirStore:
         consent = Consent(
             status=data.status, patient_id=data.patient_id, date_time=data.date_time,
             scope_system=systems.CONSENT_SCOPE,
-            scope_code=_SCOPE_OF_KIND.get(data.kind, _DEFAULT_SCOPE),
+            scope_code=scope,
             provision_type=data.provision_type, ext_kind=data.kind,
             ext_signature_method=data.signature_method, ext_policy_version=data.policy_version,
             ext_grantor_related_person_id=data.grantor_related_person_id,
@@ -1150,7 +1202,7 @@ class SqlFhirStore:
         await db.flush()
         db.add_all(ConsentCategory(consent_id=consent.id, category_system=c.system,
                                    category_code=c.code, category_display=c.display,
-                                   category_text=c.text) for c in data.categories)
+                                   category_text=c.text) for c in categories)
         if data.performer_patient_id or data.performer_related_person_id:
             db.add(ConsentPerformer(consent_id=consent.id, patient_id=data.performer_patient_id,
                                     related_person_id=data.performer_related_person_id))
@@ -1348,6 +1400,33 @@ class SqlFhirStore:
             await db.flush()
         return await _written(db, enc)
 
+    # ------------------------------------------------------------------------- Medication list
+    async def record_medication(self, db: AsyncSession, data: MedicationIn) -> Written:
+        _check_medication(data.medication)
+        if data.status not in _LIST_STATUSES:
+            raise InvalidInput(f"a medication on the list is one of {sorted(_LIST_STATUSES)}")
+        if (await db.execute(select(Patient.id).where(Patient.id == data.patient_id))
+                ).scalar_one_or_none() is None:
+            raise ResourceNotFound
+        if data.encounter_id is not None:
+            await _live_visit_of(db, data.encounter_id, data.patient_id)
+        user = await _current_user(db)
+        now = await _db_now(db)
+        # The patient says they take it: reportedBoolean, never signed or sent. FHIR needs a
+        # requester; the prescriber isn't known, so it is the patient, who reported it.
+        mr = MedicationRequest(status=data.status, intent="plan", reported_boolean=True,
+                               subject_patient_id=data.patient_id,
+                               requester_patient_id=data.patient_id,
+                               encounter_id=data.encounter_id, authored_on=now,
+                               recorder_practitioner_id=user.practitioner_id)
+        _apply_prescription(mr, PrescriptionChanges(medication=data.medication))
+        db.add(await _new(db, mr))
+        await db.flush()
+        await _replace_dosage(db, mr.id, data.dosage_text)
+        if data.note and data.note.strip():
+            db.add(Annotation(medication_request_id=mr.id, text=data.note, time=now))
+        return await _written(db, mr)
+
     # ------------------------------------------------------------------------- Prescriptions
     async def create_prescription(self, db: AsyncSession, data: PrescriptionIn) -> Written:
         _check_medication(data.medication)
@@ -1355,12 +1434,7 @@ class SqlFhirStore:
                 ).scalar_one_or_none() is None:
             raise ResourceNotFound
         if data.encounter_id is not None:
-            enc = (await db.execute(select(Encounter).where(Encounter.id == data.encounter_id))
-                   ).scalar_one_or_none()
-            if enc is None:
-                raise ResourceNotFound
-            if enc.subject_patient_id != data.patient_id or enc.status == "entered-in-error":
-                raise InvalidInput("the encounter is not this patient's live visit")
+            await _live_visit_of(db, data.encounter_id, data.patient_id)
         await _check_pharmacy(db, data.pharmacy_id)
         prescriber = await _practitioner(db)
         mr = MedicationRequest(status="draft", intent="order", category=["community"],
@@ -1376,7 +1450,7 @@ class SqlFhirStore:
     async def update_prescription(self, db: AsyncSession, prescription_id: uuid.UUID,
                                   changes: PrescriptionChanges, *, if_version: int
                                   ) -> Written:
-        mr = await _locked(db, MedicationRequest, prescription_id, if_version)
+        mr = await _prescription(db, prescription_id, if_version)
         if mr.status != "draft":
             raise InvalidTransition(mr.status)
         if _given(changes.medication):
@@ -1392,7 +1466,7 @@ class SqlFhirStore:
                                             reason: Reason, *, if_version: int | None = None
                                             ) -> Written:
         _require_reason(reason)
-        mr = await _locked(db, MedicationRequest, prescription_id, if_version)
+        mr = await _prescription(db, prescription_id, if_version)
         if mr.status != "draft":              # a signed prescription is cancelled (later)
             raise InvalidTransition(mr.status)
         mr.status = "entered-in-error"
@@ -1405,7 +1479,7 @@ class SqlFhirStore:
     async def record_safety_check(self, db: AsyncSession, prescription_id: uuid.UUID,
                                   alerts: tuple[AlertIn, ...], *, if_version: int
                                   ) -> SafetyCheckWritten:
-        mr = await _locked(db, MedicationRequest, prescription_id, if_version)
+        mr = await _prescription(db, prescription_id, if_version)
         if mr.status != "draft":
             raise InvalidTransition(mr.status)
         now = await _db_now(db)
@@ -1433,7 +1507,7 @@ class SqlFhirStore:
         if len(reason.strip()) < 3:
             raise InvalidInput("an override needs a reason of at least 3 characters")
         prescription_id = await _alert_prescription(db, alert_id)
-        mr = await _locked(db, MedicationRequest, prescription_id, None)   # as signing does
+        mr = await _prescription(db, prescription_id, None)   # as signing does
         issue = await _locked(db, DetectedIssue, alert_id, None)
         user = await _practitioner(db)
         if mr.status != "draft":
@@ -1454,7 +1528,7 @@ class SqlFhirStore:
     async def sign_prescription(self, db: AsyncSession, prescription_id: uuid.UUID, *,
                                 if_version: int, integration_message_id: uuid.UUID | None = None
                                 ) -> Written:
-        mr = await _locked(db, MedicationRequest, prescription_id, if_version)
+        mr = await _prescription(db, prescription_id, if_version)
         if mr.status != "draft":
             raise InvalidTransition(mr.status)
         signer = await _practitioner(db)
@@ -1555,12 +1629,18 @@ class SqlFhirStore:
         note.date = await _db_now(db)
         return await _written(db, note)
 
-    async def sign_note(self, db: AsyncSession, note_id: uuid.UUID, *, if_version: int
-                        ) -> Written:
+    async def sign_note(self, db: AsyncSession, note_id: uuid.UUID, *, if_version: int,
+                        cosigner_practitioner_id: uuid.UUID | None = None) -> Written:
         note = await _locked(db, Composition, note_id, if_version)
         if note.status != "preliminary":
             raise InvalidTransition(note.status)
         signer = await _practitioner(db)
+        if cosigner_practitioner_id is not None:
+            if cosigner_practitioner_id in await _authors(db, note_id):
+                raise InvalidInput("the co-signer is never the author")
+            if (await db.execute(select(Practitioner.id).where(
+                    Practitioner.id == cosigner_practitioner_id))).scalar_one_or_none() is None:
+                raise ResourceNotFound
         undecided = (await db.execute(
             select(CompositionSection.sequence).join(
                 AISuggestion, AISuggestion.id == CompositionSection.ai_suggestion_id)
@@ -1570,6 +1650,9 @@ class SqlFhirStore:
             raise InvalidInput("an AI-drafted section has no accept or edit decision")
         now = await _db_now(db)
         note.status, note.date = "final", now
+        if cosigner_practitioner_id is not None:          # with the status: a draft has none
+            note.ext_cosign_status = "pending"
+            note.ext_cosigner_practitioner_id = cosigner_practitioner_id
         written = await _attest(db, note, signer, "legal", now)
         await _signed_provenance(db, "Composition", written, _SIGNED, await _note_digest(db, note))
         return written
@@ -1601,26 +1684,31 @@ class SqlFhirStore:
         await _signed_provenance(db, "Composition", added, _ADDENDUM_SIGNED,
                                  await _note_digest(db, add))
         note.status = "amended"
+        if note.ext_cosign_status == "returned":          # the author's answer (D73)
+            note.ext_cosign_status = "pending"
+            note.ext_cosign_return_comment = note.ext_cosign_returned_at = None
         return AddendumWritten(added, await _written(db, note))
 
     async def cosign_note(self, db: AsyncSession, note_id: uuid.UUID, *, if_version: int
                           ) -> Written:
-        note = await _locked(db, Composition, note_id, if_version)
-        if note.status not in ("final", "amended"):
-            raise InvalidTransition(note.status)
-        cosigner = await _practitioner(db)
-        authors = set((await db.execute(select(CompositionAuthor.practitioner_id).where(
-            CompositionAuthor.composition_id == note_id))).scalars())
-        if cosigner.practitioner_id in authors:
-            raise InvalidInput("the co-signer is never the author")
-        if (await db.execute(select(CompositionAttester.id).where(
-                CompositionAttester.composition_id == note_id,
-                CompositionAttester.mode == "professional"))).first() is not None:
-            raise InvalidTransition("cosigned")
+        note, cosigner = await _pending_cosign(db, note_id, if_version)
+        note.ext_cosign_status = "cosigned"
         written = await _attest(db, note, cosigner, "professional", await _db_now(db))
         await _signed_provenance(db, "Composition", written, _COSIGNED,
                                  await _note_digest(db, note))
         return written
+
+    async def return_note_to_author(self, db: AsyncSession, note_id: uuid.UUID, comment: str,
+                                    *, if_version: int) -> Written:
+        if not comment.strip():
+            raise InvalidInput("a return needs a comment")
+        if len(comment) > 2000:
+            raise InvalidInput("a return comment is at most 2,000 characters")
+        note, _ = await _pending_cosign(db, note_id, if_version)
+        now = await _db_now(db)
+        note.ext_cosign_status, note.ext_cosign_return_comment = "returned", comment
+        note.ext_cosign_returned_at = now
+        return await _written(db, note)
 
     async def note_entered_in_error(self, db: AsyncSession, note_id: uuid.UUID, reason: Reason,
                                     *, if_version: int | None = None) -> Written:
@@ -1691,11 +1779,35 @@ _TRANSMISSION = {"queued": {"sent", "accepted", "rejected", "error"},
 _MED_SYSTEMS = (systems.RXNORM, systems.NDC)
 
 
+async def _prescription(db: AsyncSession, prescription_id: uuid.UUID, if_version: int | None
+                        ) -> MedicationRequest:
+    """A prescription (intent order), locked; a medication-list entry the patient reported is
+    not one (ResourceNotFound)."""
+    mr = await _locked(db, MedicationRequest, prescription_id, if_version)
+    if mr.intent != "order":
+        raise ResourceNotFound
+    return mr
+
+
 def _check_medication(code: Coded) -> None:
     if not (code.code or code.text):
         raise InvalidInput("the drug needs an RxNorm code or text")
     if code.code and code.system not in _MED_SYSTEMS:
         raise InvalidInput("the drug's code is RxNorm (or NDC)")
+
+
+#: MedicationCreate.status.
+_LIST_STATUSES = frozenset({"active", "completed", "stopped"})
+
+
+async def _live_visit_of(db: AsyncSession, encounter_id: uuid.UUID, patient_id: uuid.UUID
+                         ) -> None:
+    enc = (await db.execute(select(Encounter).where(Encounter.id == encounter_id))
+           ).scalar_one_or_none()
+    if enc is None:
+        raise ResourceNotFound
+    if enc.subject_patient_id != patient_id or enc.status == "entered-in-error":
+        raise InvalidInput("the encounter is not this patient's live visit")
 
 
 async def _check_pharmacy(db: AsyncSession, pharmacy_id: uuid.UUID | None) -> None:
@@ -1892,6 +2004,26 @@ async def _note_digest(db: AsyncSession, note: Composition) -> str:
                     "sections": [list(s) for s in sections]})
 
 
+async def _authors(db: AsyncSession, note_id: uuid.UUID) -> set[uuid.UUID | None]:
+    return set((await db.execute(select(CompositionAuthor.practitioner_id).where(
+        CompositionAuthor.composition_id == note_id))).scalars())
+
+
+async def _pending_cosign(db: AsyncSession, note_id: uuid.UUID, if_version: int
+                          ) -> tuple[Composition, AppUser]:
+    """The note, locked, waiting for its co-signature, and the current user, who must be the
+    co-signer it names (never its author: checked when it was signed)."""
+    note = await _locked(db, Composition, note_id, if_version)
+    if note.status not in ("final", "amended"):
+        raise InvalidTransition(note.status)
+    if note.ext_cosign_status != "pending":
+        raise InvalidTransition(note.ext_cosign_status)
+    user = await _practitioner(db)
+    if user.practitioner_id != note.ext_cosigner_practitioner_id:
+        raise InvalidInput("only the co-signer the co-sign rule names may decide")
+    return note, user
+
+
 async def _attest(db: AsyncSession, note: Composition, user: AppUser, mode: str,
                   when: datetime) -> Written:
     """An attester (legal: the signature; professional: the co-signature) with the content's
@@ -1908,7 +2040,8 @@ __all__ = [
     "UNSET", "AddendumWritten", "AlertIn", "AllergyChanges", "AllergyIn", "ChildWritten", "Coded",
     "ConsentIn", "CostIn", "CoverageChanges", "CoverageClassIn", "CoverageIn", "DiagnosisIn",
     "DiagnosisWritten", "DispenseQuantity", "EmployerIn", "EncounterIn", "FhirStore",
-    "IdentifierIn", "InvalidInput", "InvalidTransition", "Measured", "Name", "NoteChanges",
+    "IdentifierIn", "InvalidInput", "InvalidTransition", "Measured", "MedicationIn", "Name",
+    "NoteChanges",
     "NoteIn", "ParticipantIn", "PatientChanges", "PatientIn", "PostalAddress",
     "PrescriptionChanges", "PrescriptionIn", "RaceOrEthnicity", "ReactionIn", "Reason",
     "RelatedPersonChanges", "RelatedPersonIn", "ResourceNotFound", "SafetyCheckWritten",

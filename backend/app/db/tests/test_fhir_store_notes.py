@@ -127,16 +127,13 @@ async def _created(database: Database, clinic: dict[str, Any]) -> fs.Written:
     return w
 
 
-# ====================================================================== addendum, co-sign
-async def test_an_addendum_appends_and_the_cosigner_attests(
-        database: Database, clinic: dict[str, Any], cosigner: dict[str, Any],
-        admin_engine: Engine) -> None:
+# ====================================================================== addendum
+async def test_an_addendum_appends_to_the_signed_note(
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
     w = await _created(database, clinic)
     async with session(database, clinic) as s:
         with pytest.raises(fs.InvalidTransition):            # a draft is edited, not amended
             await STORE.add_note_addendum(s, w.id, "Late entry", if_version=w.version)
-        with pytest.raises(fs.InvalidTransition):
-            await STORE.cosign_note(s, w.id, if_version=w.version)
         signed = await STORE.sign_note(s, w.id, if_version=w.version)
         await s.commit()
     async with session(database, clinic) as s:
@@ -153,27 +150,110 @@ async def test_an_addendum_appends_and_the_cosigner_attests(
                 a=added.addendum.id)[0]
     assert (add.status, add.code, add.target_composition_id, fs.section_text(add.text_div),
             add.legal, add.provs) == ("final", "appends", w.id, "BP rechecked: 128/82.", 1, 1)
-    assert _rows(admin_engine, "SELECT status FROM clinical.composition WHERE id = :n",
-                 n=w.id)[0].status == "amended"
-    async with session(database, clinic) as s:
-        with pytest.raises(fs.InvalidInput):                  # the author never co-signs
+    assert tuple(_rows(admin_engine, "SELECT status, ext_cosign_status FROM clinical.composition"
+                       " WHERE id = :n", n=w.id)[0]) == ("amended", "not-required")
+    async with session(database, clinic) as s:              # no co-signature was asked for
+        with pytest.raises(fs.InvalidTransition):
             await STORE.cosign_note(s, w.id, if_version=added.note.version)
+
+
+# ====================================================================== co-sign, return
+async def test_the_cosigner_returns_the_note_then_cosigns_the_answer(
+        database: Database, clinic: dict[str, Any], cosigner: dict[str, Any],
+        admin_engine: Engine) -> None:
+    w = await _created(database, clinic)
+    nid = {"n": w.id}
+
+    def cosign() -> tuple[Any, ...]:
+        return tuple(_rows(admin_engine, "SELECT status, ext_cosign_status, "
+                           "ext_cosigner_practitioner_id, ext_cosign_return_comment, "
+                           "ext_cosign_returned_at IS NOT NULL AS returned FROM "
+                           "clinical.composition WHERE id = :n", **nid)[0])
+
+    async with session(database, clinic) as s:
+        with pytest.raises(fs.InvalidInput):                 # the author never co-signs
+            await STORE.sign_note(s, w.id, if_version=w.version,
+                                  cosigner_practitioner_id=clinic["practitioner"])
+        signed = await STORE.sign_note(s, w.id, if_version=w.version,
+                                       cosigner_practitioner_id=cosigner["practitioner"])
+        await s.commit()
+    assert cosign() == ("final", "pending", cosigner["practitioner"], None, False)
+    async with session(database, clinic) as s:               # only the named co-signer
+        for write in (STORE.cosign_note(s, w.id, if_version=signed.version),
+                      STORE.return_note_to_author(s, w.id, "Add the BP",
+                                                  if_version=signed.version)):
+            with pytest.raises(fs.InvalidInput):
+                await write
     async with session(database, cosigner) as s:
+        with pytest.raises(fs.InvalidInput):
+            await STORE.return_note_to_author(s, w.id, "  ", if_version=signed.version)
         with pytest.raises(fs.StaleVersion):
-            await STORE.cosign_note(s, w.id, if_version=signed.version)
+            await STORE.return_note_to_author(s, w.id, "Add the BP", if_version=1)
+        returned = await STORE.return_note_to_author(s, w.id, "Please add the BP.",
+                                                     if_version=signed.version)
+        await s.commit()
+    assert returned.version == signed.version + 1
+    assert cosign() == ("final", "returned", cosigner["practitioner"], "Please add the BP.", True)
+    # Still signed and frozen (D73): no edit, and no co-signature until the author answers.
+    async with session(database, clinic) as s:
+        with pytest.raises(fs.InvalidTransition):
+            await STORE.update_note(s, w.id, fs.NoteChanges(title="Edited"),
+                                    if_version=returned.version)
+    async with session(database, cosigner) as s:
+        with pytest.raises(fs.InvalidTransition):
+            await STORE.cosign_note(s, w.id, if_version=returned.version)
+    async with session(database, clinic) as s:
+        added = await STORE.add_note_addendum(s, w.id, "BP 128/82.", if_version=returned.version)
+        await s.commit()
+    assert cosign() == ("amended", "pending", cosigner["practitioner"], None, False)
+    async with session(database, cosigner) as s:
         cosigned = await STORE.cosign_note(s, w.id, if_version=added.note.version)
         await s.commit()
+    assert cosign()[:2] == ("amended", "cosigned")
     att = _rows(admin_engine, "SELECT party_practitioner_id FROM clinical.composition_attester "
-                "WHERE composition_id = :n AND mode = 'professional'", n=w.id)
+                "WHERE composition_id = :n AND mode = 'professional'", **nid)
     assert [a.party_practitioner_id for a in att] == [cosigner["practitioner"]]
     prov = _rows(admin_engine, "SELECT p.activity_code, a.type_code, a.who_practitioner_id FROM "
                  "clinical.provenance p JOIN clinical.provenance_agent a ON a.provenance_id = "
-                 "p.id WHERE p.target_id = :n AND p.target_version_id = :v", n=w.id,
-                 v=cosigned.version)
+                 "p.id WHERE p.target_id = :n AND p.target_version_id = :v", v=cosigned.version,
+                 **nid)
     assert [tuple(p) for p in prov] == [("AUTHEN", "attester", cosigner["practitioner"])]
+    # The return is kept in the note's history, and a co-signature is final.
+    returns = _rows(admin_engine, "SELECT snapshot->>'ext_cosign_return_comment' AS c FROM "
+                    "clinical.fhir_resource_history WHERE resource_id = :n AND version_id = :v",
+                    v=returned.version, **nid)
+    assert [r.c for r in returns] == ["Please add the BP."]
     async with session(database, cosigner) as s:
         with pytest.raises(fs.InvalidTransition):
             await STORE.cosign_note(s, w.id, if_version=cosigned.version)
+    async with session(database, cosigner) as s:
+        with pytest.raises(DBAPIError, match="co-signature never change"):
+            await s.execute(text("UPDATE clinical.composition SET ext_cosign_status = 'pending'"
+                                 " WHERE id = :n"), nid)
+
+
+async def test_the_database_keeps_the_cosignature_consistent(
+        database: Database, clinic: dict[str, Any], cosigner: dict[str, Any]) -> None:
+    w = await _created(database, clinic)
+    nid = {"n": w.id}
+    async with session(database, clinic) as s:              # a draft needs no co-signature yet
+        with pytest.raises(DBAPIError, match="draft_not_cosigned"):
+            await s.execute(text("UPDATE clinical.composition SET ext_cosign_status = 'pending',"
+                                 " ext_cosigner_practitioner_id = :c WHERE id = :n"),
+                            {**nid, "c": cosigner["practitioner"]})
+    async with session(database, clinic) as s:
+        signed = await STORE.sign_note(s, w.id, if_version=w.version,
+                                       cosigner_practitioner_id=cosigner["practitioner"])
+        await s.commit()
+    for sql, constraint in (
+            ("ext_cosign_status = 'returned'", "return_comment_while_returned"),
+            ("ext_cosign_return_comment = 'x'", "return_comment_while_returned"),
+            ("ext_cosigner_practitioner_id = :c", "co-signature never change")):
+        async with session(database, clinic) as s:
+            with pytest.raises(DBAPIError, match=constraint):
+                await s.execute(text(f"UPDATE clinical.composition SET {sql} WHERE id = :n"),
+                                {**nid, "c": clinic["practitioner"]})
+    assert signed.version > w.version
 
 
 # ====================================================================== entered in error
@@ -209,6 +289,7 @@ async def test_a_note_of_another_clinic_is_not_found(
                       STORE.sign_note(s, w.id, if_version=1),
                       STORE.add_note_addendum(s, w.id, "x", if_version=1),
                       STORE.cosign_note(s, w.id, if_version=1),
+                      STORE.return_note_to_author(s, w.id, "x", if_version=1),
                       STORE.note_entered_in_error(s, w.id, WHY)):
             with pytest.raises(fs.ResourceNotFound):
                 await write

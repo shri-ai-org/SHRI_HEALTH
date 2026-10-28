@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -102,13 +103,19 @@ async def test_only_generated_purposes(tmp_path: Path) -> None:
                               purpose="insurance-card", content_type="image/jpeg", data=b"x")
 
 
+def _request(environment: str) -> Any:
+    """A request whose app carries only the settings file_store() reads."""
+    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+        settings=SimpleNamespace(environment=environment))))
+
+
 def test_the_store_needs_its_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv(FILE_STORE_DIR_ENV, raising=False)
     monkeypatch.delenv("SHRI_S3_ENDPOINT", raising=False)
     with pytest.raises(ServiceUnavailable):
-        file_store()
+        file_store(_request("test"))
     monkeypatch.setenv(FILE_STORE_DIR_ENV, str(tmp_path))
-    store = file_store()
+    store = file_store(_request("development"))
     assert isinstance(store, LocalFileStore) and store.root == tmp_path
 
 
@@ -153,7 +160,15 @@ def test_the_object_store_when_configured(monkeypatch: pytest.MonkeyPatch,
                         "SHRI_S3_ACCESS_KEY_ID": "TESTKEY", "SHRI_S3_SECRET_ACCESS_KEY": "x",
                         "SHRI_S3_BUCKET_CLEAN": "c", "SHRI_S3_BUCKET_QUARANTINE": "q"}.items():
         monkeypatch.setenv(name, value)
-    assert isinstance(file_store(), S3FileStore)
+    assert isinstance(file_store(_request("test")), S3FileStore)
     monkeypatch.delenv("SHRI_S3_BUCKET_QUARANTINE")
     with pytest.raises(ServiceUnavailable):  # half a configuration fails closed
-        file_store()
+        file_store(_request("test"))
+
+
+@pytest.mark.parametrize("environment", ["staging", "production"])
+def test_no_unencrypted_store_outside_development_and_test(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path, environment: str) -> None:
+    monkeypatch.setenv(FILE_STORE_DIR_ENV, str(tmp_path))
+    with pytest.raises(ServiceUnavailable):
+        file_store(_request(environment))

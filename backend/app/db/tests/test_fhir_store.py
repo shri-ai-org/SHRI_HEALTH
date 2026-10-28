@@ -403,9 +403,8 @@ async def test_a_consent_with_its_scope_form_performer_and_verification(
             "'document')"),
             {"i": form, "t": clinic["tenant"], "k": f"k/{form}.pdf", "h": "a" * 64})
         w = await STORE.create_consent(s, fs.ConsentIn(
-            patient_id=patient.id, kind="privacy-notice", status="active",
-            categories=(fs.Coded(system=systems.LOINC, code="59284-0"),),
-            date_time=b.NOW, policy_version="2026-01", signature_method="electronic",
+            patient_id=patient.id, kind="privacy-notice", status="active", date_time=b.NOW,
+            policy_version="2026-01", signature_method="electronic",
             provision_type="permit", source_attachment_binary_object_id=form,
             performer_patient_id=patient.id, verified=True,
             verified_with_patient_id=patient.id, verification_date=b.NOW))
@@ -415,9 +414,44 @@ async def test_a_consent_with_its_scope_form_performer_and_verification(
                 "WHERE id = :c", c=w.id)[0]
     assert tuple(row) == (systems.CONSENT_SCOPE, "patient-privacy", "privacy-notice", "2026-01",
                           form, w.version)
-    for table in ("consent_category", "consent_performer", "consent_verification"):
+    for table in ("consent_performer", "consent_verification"):
         assert len(_rows(admin_engine, f"SELECT 1 FROM clinical.{table} "  # noqa: S608
                          "WHERE consent_id = :c", c=w.id)) == 1
+    assert {r.category_code for r in _rows(admin_engine, "SELECT category_code FROM clinical."
+                                           "consent_category WHERE consent_id = :c",
+                                           c=w.id)} == {"npp", "57016-8"}
+
+
+async def test_a_consents_scope_and_category_come_from_its_kind(
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
+    """Agreed on #88: financial is LOINC 59284-0 only; ambient recording is a privacy consent."""
+    patient = await _create(database, clinic)
+    written = {}
+    async with session(database, clinic) as s:
+        for kind in ("financial", "ambient-recording", "treatment"):
+            written[kind] = await STORE.create_consent(s, fs.ConsentIn(
+                patient_id=patient.id, kind=kind, status="active", date_time=b.NOW,
+                signature_method="written", provision_type="permit"))
+        for bad in (fs.ConsentIn(patient_id=patient.id, kind="financial", status="active",
+                                 date_time=b.NOW, categories=(fs.Coded(
+                                     system=systems.LOINC, code="64292-6"),)),
+                    fs.ConsentIn(patient_id=patient.id, kind="billing", status="active",
+                                 date_time=b.NOW)):
+            with pytest.raises(fs.InvalidInput):
+                await STORE.create_consent(s, bad)
+        await s.commit()
+
+    def stored(w: fs.Written) -> tuple[str, set[tuple[str, str]]]:
+        scope = _rows(admin_engine, "SELECT scope_code FROM clinical.consent WHERE id = :c",
+                      c=w.id)[0].scope_code
+        return scope, {(r.category_system, r.category_code) for r in _rows(
+            admin_engine, "SELECT category_system, category_code FROM clinical.consent_category"
+            " WHERE consent_id = :c", c=w.id)}
+
+    assert stored(written["financial"]) == ("treatment", {(systems.LOINC, "59284-0")})
+    assert stored(written["ambient-recording"]) == ("patient-privacy",
+                                                    {(systems.V3_ACT_CODE, "ICOL")})
+    assert stored(written["treatment"]) == ("treatment", {(systems.LOINC, "59284-0")})
 
 
 async def test_a_new_consent_of_the_same_kind_retires_the_earlier_one(
@@ -425,9 +459,8 @@ async def test_a_new_consent_of_the_same_kind_retires_the_earlier_one(
     patient = await _create(database, clinic)
 
     def consent(kind: str, version: str) -> fs.ConsentIn:
-        return fs.ConsentIn(patient_id=patient.id, kind=kind, status="active",
-                            categories=(fs.Coded(system=systems.LOINC, code="59284-0"),),
-                            date_time=b.NOW, policy_version=version, provision_type="permit",
+        return fs.ConsentIn(patient_id=patient.id, kind=kind, status="active", date_time=b.NOW,
+                            policy_version=version, provision_type="permit",
                             signature_method="written")
 
     async with session(database, clinic) as s:

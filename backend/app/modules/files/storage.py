@@ -39,6 +39,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 from app.core.db import TENANT_ID_INFO_KEY
 from app.core.errors import ServiceUnavailable
@@ -233,9 +234,18 @@ def configured_store() -> FileStore | None:
     return LocalFileStore(Path(folder)) if folder else None
 
 
-def file_store() -> FileStore:
+#: Until core's data-key encryption is wired in, files are stored unencrypted, so a store is
+#: given out only where the data is synthetic (Thulasi's review of #118).
+UNENCRYPTED_ENVIRONMENTS = frozenset({"development", "test"})
+
+
+def file_store(request: Request) -> FileStore:
     """FastAPI dependency: the file store (``configured_store()``); without one, endpoints that
-    store or link to a file answer ``503 service-unavailable``."""
+    store or link to a file answer ``503 service-unavailable``. Files aren't encrypted yet
+    (core's ``new_data_key()`` is pending), so outside development and test this always answers
+    503: patient data is never stored in the clear."""
+    if request.app.state.settings.environment not in UNENCRYPTED_ENVIRONMENTS:
+        raise ServiceUnavailable("File storage is not available until files are encrypted")
     store = configured_store()
     if store is None:
         raise ServiceUnavailable("File storage is not configured")
