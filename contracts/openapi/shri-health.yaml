@@ -346,6 +346,20 @@ paths:
     $ref: 'modules/practice-setup.yaml#/paths/~1practice-settings'
   /pharmacies:
     $ref: 'modules/medications.yaml#/paths/~1pharmacies'
+  /patients/{patientId}/medications:
+    $ref: 'modules/medications.yaml#/paths/~1patients~1{patientId}~1medications'
+  /prescriptions:
+    $ref: 'modules/medications.yaml#/paths/~1prescriptions'
+  /prescriptions/{prescriptionId}:
+    $ref: 'modules/medications.yaml#/paths/~1prescriptions~1{prescriptionId}'
+  /prescriptions/{prescriptionId}/entered-in-error:
+    $ref: 'modules/medications.yaml#/paths/~1prescriptions~1{prescriptionId}~1entered-in-error'
+  /prescriptions/{prescriptionId}/safety-check:
+    $ref: 'modules/medications.yaml#/paths/~1prescriptions~1{prescriptionId}~1safety-check'
+  /alerts/{alertId}/override:
+    $ref: 'modules/medications.yaml#/paths/~1alerts~1{alertId}~1override'
+  /prescriptions/{prescriptionId}/sign-and-send:
+    $ref: 'modules/medications.yaml#/paths/~1prescriptions~1{prescriptionId}~1sign-and-send'
   /patients/{patientId}/payments:
     $ref: 'modules/billing.yaml#/paths/~1patients~1{patientId}~1payments'
   /payments/card-session:

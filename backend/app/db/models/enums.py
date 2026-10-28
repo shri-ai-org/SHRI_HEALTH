@@ -21,7 +21,7 @@ class SecurityLabel(StrEnum):           # v3 Confidentiality + ActCode sensitivi
     NORMAL = "N"
     RESTRICTED = "R"
     VERY_RESTRICTED = "V"
-    PSYCHOTHERAPY = "PSY"
+    PSYCHOTHERAPY = "PSY"   # our label for psychotherapy notes (D86), not HL7's PSYTHPN
     SUBSTANCE_USE = "SUD"
     ETHANOL = "ETH"
     HIV = "HIV"

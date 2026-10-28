@@ -212,17 +212,17 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 
 | # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 116 | GET | `/patients/{patientId}/medications` | T | Cl | `medications:read` | pr | – | | | FR-MED-01 | B5 | |
-| 117 | POST | `/patients/{patientId}/medications` | T | Cl | `medications:create` | pw | S | | | FR-MED-01 | B5 | |
+| 116 | GET | `/patients/{patientId}/medications` | T | Cl | `medications:read` | pr | – | | | FR-MED-01 | B5 | **Written** for the demo (D97, 2026-10-27) |
+| 117 | POST | `/patients/{patientId}/medications` | T | Cl | `medications:create` | pw | S | | | FR-MED-01 | B5 | **Written** for the demo (D97, 2026-10-27) |
 | 118 | POST | `/medications/{medicationId}/discontinue` | T | Cl | `medications:discontinue` | pw | – | | | FR-MED-01 | B5 | |
 | 119 | POST | `/patients/{patientId}/medication-reconciliation` | T | Cl | `medication-reconciliations:create` | pw | S | | | FR-MED-01, FR-SCH-02 rooming | B5 | |
-| 120 | POST | `/prescriptions` | T | Cl | `prescriptions:create` | pw | S | | | FR-MED-01 | B5 | |
-| 121 | GET | `/prescriptions/{prescriptionId}` | T | Cl | `prescriptions:read` | pr | – | | | FR-MED-01 | B5 | **New** (agreed, T31) |
-| 122 | PATCH | `/prescriptions/{prescriptionId}` | T | Cl | `prescriptions:update` | pw | – | ✓ | | FR-MED-01 | B5 | **New** (agreed, T31): **drafts only**; a signed prescription → `409 record-locked` |
-| 227 | POST | `/prescriptions/{prescriptionId}/entered-in-error` | T | Cl | `prescriptions:entered-in-error` | pw | – | | | FR-MED-01 | B5 | **New** (T34): drafts only; anything already sent uses cancel |
-| 123 | POST | `/prescriptions/{prescriptionId}/safety-check` | T | Cl | `prescriptions:safety-check` | pw | – | | | FR-MED-01, §3.4 CDS layer 1 | B5 | |
-| 124 | POST | `/alerts/{alertId}/override` | T | Cl | `alerts:override` | pw | – | | | §3.4 | B5 | |
-| 125 | POST | `/prescriptions/{prescriptionId}/sign-and-send` | T | Cl | `prescriptions:sign-and-send` | sg | R | ✓ | | FR-MED-01 | B5 | |
+| 120 | POST | `/prescriptions` | T | Cl | `prescriptions:create` | pw | S | | | FR-MED-01 | B5 | **Written** for the demo (D97, 2026-10-27) |
+| 121 | GET | `/prescriptions/{prescriptionId}` | T | Cl | `prescriptions:read` | pr | – | | | FR-MED-01 | B5 | **New** (agreed, T31). **Written** for the demo (D97, 2026-10-27) |
+| 122 | PATCH | `/prescriptions/{prescriptionId}` | T | Cl | `prescriptions:update` | pw | – | ✓ | | FR-MED-01 | B5 | **New** (agreed, T31): **drafts only**; a signed prescription → `409 record-locked`. **Written** for the demo (D97, 2026-10-27) |
+| 227 | POST | `/prescriptions/{prescriptionId}/entered-in-error` | T | Cl | `prescriptions:entered-in-error` | pw | – | | | FR-MED-01 | B5 | **New** (T34): drafts only; anything already sent uses cancel. **Written** for the demo (D97, 2026-10-27) |
+| 123 | POST | `/prescriptions/{prescriptionId}/safety-check` | T | Cl | `prescriptions:safety-check` | pw | – | | | FR-MED-01, §3.4 CDS layer 1 | B5 | **Written** for the demo (D97, 2026-10-27) |
+| 124 | POST | `/alerts/{alertId}/override` | T | Cl | `alerts:override` | pw | – | | | §3.4 | B5 | **Written** for the demo (D97, 2026-10-27) |
+| 125 | POST | `/prescriptions/{prescriptionId}/sign-and-send` | T | Cl | `prescriptions:sign-and-send` | sg | R | ✓ | | FR-MED-01 | B5 | **Written** for the demo (D97, 2026-10-27) |
 | 126 | POST | `/prescriptions/{prescriptionId}/cancel` | T | Cl | `prescriptions:cancel` | pw | R | | | FR-MED-01 | B5 | Sets `transmissionStatus: cancel-requested` until the pharmacy confirms (T35) |
 | 127 | POST | `/prescriptions/{prescriptionId}/change` | T | Cl | `prescriptions:change` | sg | R | ✓ | | FR-MED-01 | B5 | A CancelRx plus a NewRx linked by `replaces` (T35) |
 | 128 | GET | `/refill-requests` | T | Ad | `refill-requests:read` | pr | – | | | FR-MED-01, FR-ENC-05 | B5 | Items carry `type`: `renewal` \| `change` (pharmacy RxChangeRequest via `/hooks/erx`; depends on the e-prescribing vendor; T35) |

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -93,10 +94,24 @@ async def test_only_generated_purposes(tmp_path: Path) -> None:
                               purpose="insurance-card", content_type="image/jpeg", data=b"x")
 
 
+def _request(environment: str) -> Any:
+    """A request whose app carries only the settings file_store() reads."""
+    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+        settings=SimpleNamespace(environment=environment))))
+
+
 def test_the_store_needs_its_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv(FILE_STORE_DIR_ENV, raising=False)
     with pytest.raises(ServiceUnavailable):
-        file_store()
+        file_store(_request("test"))
     monkeypatch.setenv(FILE_STORE_DIR_ENV, str(tmp_path))
-    store = file_store()
+    store = file_store(_request("development"))
     assert isinstance(store, LocalFileStore) and store.root == tmp_path
+
+
+@pytest.mark.parametrize("environment", ["staging", "production"])
+def test_no_unencrypted_store_outside_development_and_test(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path, environment: str) -> None:
+    monkeypatch.setenv(FILE_STORE_DIR_ENV, str(tmp_path))
+    with pytest.raises(ServiceUnavailable):
+        file_store(_request(environment))
