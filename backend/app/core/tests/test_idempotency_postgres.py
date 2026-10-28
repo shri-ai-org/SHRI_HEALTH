@@ -28,6 +28,7 @@ from app.core.deps import CurrentUser, current_user, require, tenant_db
 from app.core.errors import AppError, Conflict, ServiceUnavailable
 from app.core.idempotency import IN_PROGRESS_LEASE, RETENTION, fingerprint
 from app.core.routing import API_PREFIX
+from app.core.tests.stand_ins import include_first
 from app.db.tests import builders as b
 from app.db.tests.conftest import (  # noqa: F401  (fixtures)
     SKIP_WITHOUT_DATABASE,
@@ -164,7 +165,7 @@ def client(stand: Stand) -> Iterator[TestClient]:
                               database_url=TEST_DATABASE_URL))
     switch_to_role(app.state.db.engine.sync_engine, "shri_app")
     app.state.crypto = _crypto()
-    app.include_router(_router(stand), prefix=API_PREFIX)
+    include_first(app, _router(stand), prefix=API_PREFIX)  # ahead of the real module routes
     app.dependency_overrides[current_user] = lambda: stand.user
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
