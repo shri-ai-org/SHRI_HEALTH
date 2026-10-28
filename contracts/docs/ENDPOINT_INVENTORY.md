@@ -64,7 +64,17 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 22 | POST | `/hooks/fax` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | §3.9 | B3 | Same |
 | 23 | POST | `/hooks/sms` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-SCH-01 reminders | B3 | Same |
 | 292 | POST | `/hooks/keycloak/backchannel-logout` (root) | T | Ad | `partner-signed` | sec (partner as actor) | – | | | §6 sessions | B1 | **New** (D94, 2026-10-27): Keycloak's signed `logout_token` (OpenID Connect Back-Channel Logout 1.0); ends matching staff sessions at once; `200`, or `400` for any failure; only from Keycloak |
+| 293 | POST | `/portal/practices/{practiceLinkId}/pre-registrations` | V | Ad | `public` | pw (actor anonymous) | R | | | FR-PAT-01 | Demo | **New** (D96): the public form under the practice's own link (the clinic from the path, never the body); always the same `204`; `Origin`, rate limits (keyed hash of the email), ALTCHA; syntax-only validation; `Idempotency-Key` required; encrypted; deleted after 30 days unless accepted |
+| 294 | GET | `/pre-registrations` | V | Ad | `pre-registrations:read` | pr | – | | | FR-PAT-01 | Demo | **New** (D96): the front desk's queue |
+| 295 | GET | `/pre-registrations/{preRegistrationId}` | V | Ad | `pre-registrations:read` | pr | – | | | FR-PAT-01 | Demo | **New** (D96) |
+| 296 | POST | `/pre-registrations/{preRegistrationId}/accept` | V | Cl+Ad | `pre-registrations:accept` | pw | S | | | FR-PAT-01 | Demo | **New** (D96): records the ID check, then creates (duplicate check, MRN) or links the patient, one transaction; insurance stays a note on the request |
+| 297 | POST | `/pre-registrations/{preRegistrationId}/reject` | V | Ad | `pre-registrations:reject` | pw | – | | | FR-PAT-01 | Demo | **New** (D96): with a reason |
+| 298 | PUT | `/encounters/{encounterId}/follow-up` | V | Cl | `encounters:update` | pw | – | ✓ | | FR-SCH-02 | Demo | **New** (D98): the clinician's follow-up request |
+| 299 | POST | `/encounters/{encounterId}/follow-up/decline` | V | Ad | `follow-ups:decline` | pw | S | ✓ | | FR-SCH-02 | Demo | **New** (D98): the patient didn't book it; reason required; FD and ADM only |
 | 300 | GET | `/portal/me/medications` | T | Cl | `portal-records:read` | pr (patient session) | – | | | §3.8 | Demo | **New** (plan §8.2 E; written for the demo ahead of B8b, together with the staff medications contract in #93, D88): the patient's medication list, with transmission status |
+| 301 | POST | `/appointments/{appointmentId}/check-out` | V | Ad | `appointments:check-out` | pw | S | | | FR-SCH-02 | Demo | **New** (D98): check-out as an action, FD and ADM only; the `409` names what blocks it (open follow-up, wrong visit state); `checked-out` is no longer sent to #57 |
+| 302 | POST | `/encounters/{encounterId}/follow-up/withdraw` | V | Cl | `encounters:update` | pw | – | ✓ | | FR-SCH-02 | Demo | **New** (D98, D67): the clinician who asked withdraws an open follow-up request |
+| 303 | GET | `/encounters/{encounterId}/after-visit-summary/download-url` | V | Cl | `after-visit-summaries:read` | pr | – | | | FR-ENC-06 | Demo | **New** (D98): the front desk prints the latest signed after-visit summary at check-out |
 | 24 | GET | `/admin/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
 | 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |
@@ -97,9 +107,9 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 45 | POST | `/patients/{patientId}/unrestrict` | V | Cl | `patients:restrict` | sec | – | | | FR-PAT-01 | B2 | **New** |
 | 46 | GET | `/patients/{patientId}/timeline` | V | C | `timeline:read` | pr | – | | | FR-PAT-02 | B4 | Moved to B4 (reads clinical data) |
 | 47 | GET | `/duplicates` | V | Ad | `duplicates:read` | pr | – | | | FR-PAT-01 | B2 | |
-| 48 | POST | `/duplicates/{duplicateId}/merge` | V | Ad+Cl | `duplicates:merge` | pw | S | | | FR-PAT-01 | B2 | |
+| 48 | POST | `/duplicates/{duplicateId}/merge` | V | Ad+Cl | `duplicates:merge` | pw | S | | | FR-PAT-01 | B2 |By link, nothing moves (D103) |
 | 233 | POST | `/duplicates/{duplicateId}/dismiss` | V | Ad | `duplicates:dismiss` | sec | S | | | FR-PAT-01 | B2 | **New** (D46, 2026-10-23): dismiss a false match with a required reason; audited as `security` with both patient IDs |
-| 49 | POST | `/patient-merges/{mergeId}/undo` | V | Ad+Cl | `patient-merges:undo` | pw | S | | | FR-PAT-01 | B2 | |
+| 49 | POST | `/patient-merges/{mergeId}/undo` | V | Ad+Cl | `patient-merges:undo` | pw | S | | | FR-PAT-01 | B2 |Deactivates the link (D103) |
 | 240 | GET | `/patient-merges` | V | Ad | `patient-merges:read` | pr | – | | | FR-PAT-01 | B2 | **New** (D51, 2026-10-24): query `patientId`; merge ID, status, `undoAllowed` |
 | 241 | POST | `/patients/summaries` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 | B2 | **New** (D54, 2026-10-24): up to 50 IDs in the body; each ID returned is audited |
 

@@ -191,6 +191,55 @@ curl -s -X POST $B/portal/me/change-requests "${P[@]}" -H "Idempotency-Key: $(uu
 **Against the real API later:** the patient realm and core's portal session aren't built yet (ADR-0013, T45). A development sign-in for the patient role, like the staff `X-Dev-User`, has been asked for, so the portal can be tested against the backend before the realm exists.
 
 **Hidden behind feature switches until their contracts exist (all P1):** Pay bills (payments and the ledger), Video (telehealth) and Immunizations. Hide them, don't delete them. Messages, results, prescriptions, documents, forms and record exports come with B8b (D88, D89); until then they stay on the portal's own in-memory mock.
+## 5e. Pre-registration (demo step 1, D96)
+
+`tests/flows/pre-registration.mjs` runs the pre-registration contract against the sample-data server: the public form, then the front desk's queue with accept and reject.
+
+```bash
+cd contracts
+npm run mock                                   # in one terminal
+node tests/flows/pre-registration.mjs          # in another; BASE_URL=http://127.0.0.1:4020 for another port
+```
+
+- **The public form:**
+  - `POST /portal/practices/{practiceLinkId}/pre-registrations`, with the practice's code from its link. The mock takes any code of 16 to 64 letters, digits, `_` or `-`.
+  - It takes **no cookie at all**: it is `public` (D96). It needs an `Idempotency-Key`.
+  - It always answers `204` with no body. The form screen shows the same "thank you" whatever happens, except for these answers, which say nothing about the person:
+    - `Prefer: code=422`: a failed bot check, or a field error (including neither a phone nor an email);
+    - `Prefer: code=404`: the practice's link is unknown or turned off;
+    - `Prefer: code=403`: a wrong `Origin`;
+    - `Prefer: code=429`: a rate limit.
+- **The bot check:** the mock accepts any `botCheck` string. The real API verifies an ALTCHA payload on the server; the widget is added only after it passes the 7-day rule and the licence check (D75).
+- **The queue** uses the staff mock session (§3):
+  - `GET /pre-registrations?status=pending`, oldest first, with the insurance as typed in `details.insurance`;
+  - accept with the `create` example, or `link` (to an existing patient after a `409 possible-duplicate`). Both carry the ID check (`identityVerified`, `idDocumentType`), and the answer records it in `identityCheck`;
+  - reject with the `spam` or `other` example.
+- **Today's result:** 16 of 16 calls pass.
+
+## 5f. Check-out with the follow-up and the copay (demo steps 10–11, D98, D100)
+
+`tests/flows/check-out.mjs` runs the end of the visit against the sample-data server: the clinician's follow-up request, then the front desk's check-out.
+
+```bash
+cd contracts
+npm run mock                              # in one terminal
+node tests/flows/check-out.mjs            # in another; BASE_URL=http://127.0.0.1:4020 for another port
+```
+
+- **The follow-up request:** `PUT /encounters/{encounterId}/follow-up` with the encounter's `If-Match`. It answers `412` (`Prefer: code=412`) when the visit changed since it was read. The clinician can withdraw an open one with `POST …/follow-up/withdraw` (`If-Match`, a reason).
+- **At the desk:**
+  - `GET /appointments/{appointmentId}` with `Prefer: example=at-check-out` carries `followUp`, `encounterId` and `visitStatus`;
+  - so does the staff board (`view=staff`, `Prefer: example=staff`); the shared board never does (D47).
+- **The copay** uses Anand's payment operations (D100):
+  - `POST /payments/card-session`, then `POST /patients/{patientId}/payments` with the card session and the appointment;
+  - `Prefer: code=422` gives the refusal for a session captured for another amount.
+- **The after-visit summary:** the clinician generates it (`POST …/after-visit-summary`, MD and APP); the desk prints the latest one with `GET /encounters/{encounterId}/after-visit-summary/download-url` (`Prefer: code=404` until one exists).
+- **The revisit:**
+  - `POST /appointments` with the `revisit` example (`followUpOfEncounterId`) books it;
+  - `Prefer: code=422` gives the refusal when the follow-up isn't open;
+  - `POST /encounters/{encounterId}/follow-up/decline` (FD, ADM; `If-Match`, `Idempotency-Key`) records the patient's no instead.
+- **Check-out:** `POST /appointments/{appointmentId}/check-out` (FD, ADM). The `checked-out` example shows the visit `checked-out` and the follow-up `booked` with `bookedAppointmentId`; `Prefer: code=409` gives the refusal that names what blocks it in `errors`.
+- **Today's result:** 25 of 25 calls pass.
 
 ## 5h. Note templates for clinicians and the portal's medication list (demo steps 8 and 12)
 

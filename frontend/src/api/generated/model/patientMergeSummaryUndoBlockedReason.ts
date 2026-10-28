@@ -16,7 +16,7 @@
  */
 
 /**
- * Why undo is not allowed, when `undoAllowed` is false.
+ * Why undo is not allowed, when `undoAllowed` is false: `already-undone` or `later-merge` (a later merge involving either patient still stands).
  */
 export type PatientMergeSummaryUndoBlockedReason = typeof PatientMergeSummaryUndoBlockedReason[keyof typeof PatientMergeSummaryUndoBlockedReason];
 

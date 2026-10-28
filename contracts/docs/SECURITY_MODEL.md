@@ -21,7 +21,7 @@ Every operation's `x-permission` puts it in exactly one class.
 
 | Class | `x-permission` value | Who can call | Examples |
 |---|---|---|---|
-| Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready`; the portal's `GET /portal/auth/login`, `GET /portal/auth/callback` and `POST /portal/enrollments` (ADR-0013 §3, §5; lint allowlist `shri-public-allowlist`) |
+| Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready`; the portal's `GET /portal/auth/login`, `GET /portal/auth/callback` and `POST /portal/enrollments` (ADR-0013 §3, §5); the public pre-registration form `POST /portal/practices/{practiceLinkId}/pre-registrations` (D96; the clinic from the practice's link, `Origin`, rate limits and a bot check; lint allowlist `shri-public-allowlist`) |
 | Authenticated | `authenticated` | Any logged-in user, acting on their own data | `GET /me`, `GET /auth/session`, `POST /auth/logout`, `GET /events/stream`, `GET /operations/{operationId}`; with the portal cookie, `GET /portal/auth/session`, `POST /portal/auth/refresh`, `POST /portal/auth/logout` |
 | Permission | `<resource>:<action>` | Users whose roles include that permission | Almost every endpoint |
 | Partner | `partner-signed` | A partner whose request signature verifies | `POST /hooks/clearinghouse`; Keycloak's `POST /hooks/keycloak/backchannel-logout`, whose signed `logout_token` is the authentication (D94) |
@@ -138,7 +138,9 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | Orders and results (Thulasi) | `lab-compendium:read`, `orders:read`, `orders:create`, `orders:medical-necessity-check`, `orders:sign-and-send`, `orders:cancel`, `orders:entered-in-error` (T13), `results:read`, `results:acknowledge`, `unmatched-results:read`, `unmatched-results:match`, `unmatched-results:reject` (T13/T34), `in-office-results:create` |
 | Files, setup, billing, documents (Anand) | `files:create`, `files:read`, `practice-setup:read\|create\|update`, `payers:read` (payer directory, read-only; added 2026-10-23), `lab-providers:read` (lab providers, read-only; D48), `consent-requirements:read` (D59), `provider-schedules:create\|update` (D66), `note-templates:read\|create-personal` (D73, A46), `onboarding:import`, `superbills:read\|update`, `claims:read\|create\|scrub\|submit\|status-check\|correct\|void`, `payments:create`, `payments:card-session`, `remittances:read\|post`, `billing-reports:read`, `documents:read\|create\|update`, `faxes:create`, `fax-inbox:read`, `fax-inbox:file`, `ccda:import`, `ccda:export`, `inbox:read\|update\|complete`, `messages:create`, `exports:read\|create` |
 | Communications and dashboard (Minalini) | `message-templates:read\|create\|update`, `communication-preferences:read\|update`, `communications:read`, `operations-dashboard:read` |
+| Pre-registration (Vimal, D96) | `pre-registrations:read`, `pre-registrations:accept`, `pre-registrations:reject` (FD, ADM; proposed in NOTE_FOR_THULASI T47, joining §4.3 with core) |
 | Patient portal, B8a (Vimal; sign-in, enrollment and factor reset Thulasi; D84, D89) | Role `PAT` only: `portal-profile:read`, `portal-profile:request-change`, `portal-appointments:read\|create\|cancel\|reschedule`, `portal-booking:read`, `portal-records:read`. Staff: `portal-accounts:read`, `portal-invitations:create\|revoke`, `portal-accounts:reset-factors`, `portal-accounts:disable\|enable` (ADM; D92). Proposed grants in NOTE_FOR_THULASI T45; they join §4.3 in the same change as core, as for T42 |
+| Check-out and follow-up (Vimal, D98) | `appointments:check-out` (FD, ADM), `follow-ups:decline` (FD, ADM), `after-visit-summaries:read` (FD, MA, RN, MD, APP, ADM; read the latest after-visit summary to print it). Proposed in NOTE_FOR_THULASI T50; they join §4.3 with core |
 
 ### 4.3 Draft role-to-permission matrix
 
@@ -303,7 +305,7 @@ x-audit:
 
 Partner callbacks (`/hooks/*`) carry PHI, so they are audited as `phi-write` with the **partner as actor** (agreed, T37).
 
-Portal operations are audited with the **patient as actor** and the patient from the session (`actor: patient`, `patient: session`; ADR-0013 §6, D84). With a portal session, `none` is allowed only on `GET /portal/auth/session`, the three `/portal/booking/*` lists and `GET /portal/me/slots`; every other one, `security` included, names the session patient. Enforced by `shri-x-audit`.
+The public pre-registration form is audited with the actor `anonymous` and no patient (D96); accepting it names the patient it creates or links. Portal operations are audited with the **patient as actor** and the patient from the session (`actor: patient`, `patient: session`; ADR-0013 §6, D84). With a portal session, `none` is allowed only on `GET /portal/auth/session`, the three `/portal/booking/*` lists and `GET /portal/me/slots`; every other one, `security` included, names the session patient. Enforced by `shri-x-audit`.
 
 Audit records contain who, what, which record, which patient, outcome, time, request ID, and break-glass reason. **Never request or response bodies** (TA §6: "do not log unnecessary clinical payloads").
 

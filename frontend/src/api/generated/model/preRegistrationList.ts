@@ -14,9 +14,18 @@
  *
  * OpenAPI spec version: 1.0.0-draft.1
  */
-import type { Operation } from './operation';
+import type { Cursor } from './cursor';
+import type { PreRegistration } from './preRegistration';
 
 /**
- * 202. The work was accepted and runs in the background. `Location` points to the operation; poll it after `Retry-After` seconds, or listen for `operation.completed` on the event stream (API_STANDARDS §13).
+ * Pre-registrations, oldest first.
  */
-export type AcceptedResponse = Operation;
+export interface PreRegistrationList {
+  /**
+     * The items on this page.
+     * @maxItems 100
+     */
+  items: PreRegistration[];
+  /** Cursor for the next page. Absent on the last page. */
+  nextCursor?: Cursor;
+}

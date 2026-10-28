@@ -235,8 +235,8 @@ paths:
                       id: 0a000000-0000-4000-8000-00000000000a
                       name: Test Clinic
                     csrfToken: TEST-csrf-placeholder
-                    idleExpiresAt: '2026-11-03T15:00:00Z'
-                    expiresAt: '2026-11-04T02:00:00Z'
+                    idleExpiresAt: '2035-01-01T15:00:00Z'
+                    expiresAt: '2035-01-02T02:00:00Z'
                     build:
                       version: 0.1.0
                       commit: 7544a31c0d2e
@@ -338,8 +338,8 @@ paths:
                       id: 0a000000-0000-4000-8000-00000000000a
                       name: Test Clinic
                     csrfToken: TEST-csrf-placeholder
-                    idleExpiresAt: '2026-11-03T14:45:00Z'
-                    expiresAt: '2026-11-04T02:00:00Z'
+                    idleExpiresAt: '2035-01-01T14:45:00Z'
+                    expiresAt: '2035-01-02T02:00:00Z'
                     build:
                       version: 0.1.0
                       commit: 7544a31c0d2e
@@ -545,7 +545,7 @@ paths:
                     userId: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
                     reasonCode: continuity-of-care
                     grantedAt: '2026-11-03T14:30:00Z'
-                    expiresAt: '2026-11-03T18:30:00Z'
+                    expiresAt: '2035-01-01T18:30:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -846,7 +846,7 @@ paths:
                     uploadUrl: https://files.company-domain.invalid/quarantine/TEST-upload-1
                     uploadHeaders:
                       Content-Type: image/jpeg
-                    expiresAt: '2026-11-03T14:45:00Z'
+                    expiresAt: '2035-01-01T14:45:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -985,7 +985,7 @@ paths:
                   summary: Download link
                   value:
                     url: https://files.company-domain.invalid/clean/TEST-download-1
-                    expiresAt: '2026-11-03T14:35:00Z'
+                    expiresAt: '2035-01-01T14:35:00Z'
                     contentType: image/jpeg
                     sizeBytes: 348211
         '401':
@@ -3141,7 +3141,7 @@ paths:
                       id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
                       status: active
                       issuedAt: '2026-11-03T14:30:00Z'
-                      expiresAt: '2026-11-06T14:30:00Z'
+                      expiresAt: '2035-01-01T14:30:00Z'
                 active:
                   summary: Enrolled
                   value:
@@ -3239,7 +3239,7 @@ paths:
                     id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
                     code: K7Q2-9MZD-4TXH
                     issuedAt: '2026-11-03T14:30:00Z'
-                    expiresAt: '2026-11-06T14:30:00Z'
+                    expiresAt: '2035-01-01T14:30:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -3692,7 +3692,7 @@ paths:
     post:
       operationId: mergeDuplicate
       summary: Merge a duplicate pair
-      description: 'Merges the other patient of the pair into `survivingPatientId` (inventory #48). Both patients are locked during the merge; every moved record is listed so the merge can be undone; the merged patient gets `mergedIntoId` and becomes inactive. All in one transaction. If either patient is restricted, the user needs a break-glass grant or care-team membership for **each** restricted patient (`403 break-glass-required`), and the surviving record keeps the most restrictive restriction of the pair. Both patient IDs are audited. On the merged chart, in the same transaction: an `active` or `pending-setup` portal account becomes `suspended` (the state it had is kept) and its sessions end, a `disabled` one stays `disabled`, and every active invitation is revoked (ADR-0013). The front desk issues a new invitation for the surviving chart after an ID check.'
+      description: 'Merges the other patient of the pair into `survivingPatientId` by link (inventory #48; D103): the merged patient gets a FHIR `Patient.link` of type `replaced-by` to the surviving one (and the surviving one `replaces`), gets `mergedIntoId` and becomes inactive. **No record moves:** every record stays attached to the patient it was created for, and signed notes and final results are never touched. Reads of the surviving chart follow the link and present one chart (its own records and those of the patients it replaced); patient search returns the surviving patient; new records are written to the surviving patient only, and a write naming the merged one is refused (`409 patient-merged`). Both patients are locked during the merge, all in one transaction. If either patient is restricted, the user needs a break-glass grant or care-team membership for **each** restricted patient (`403 break-glass-required`), and the surviving record keeps the most restrictive restriction of the pair. Both patient IDs are audited. On the merged chart, in the same transaction: an `active` or `pending-setup` portal account becomes `suspended` (the state it had is kept) and its sessions end, a `disabled` one stays `disabled`, and every active invitation is revoked (ADR-0013). The front desk issues a new invitation for the surviving chart after an ID check.'
       tags:
         - patients
       x-owner: vimal
@@ -3882,7 +3882,7 @@ paths:
     post:
       operationId: undoPatientMerge
       summary: Undo a merge
-      description: 'Undoes a merge (inventory #49): moved records go back to the merged patient, which becomes active again. Refused once either record has changed in a way that cannot be split back. Restricted charts need break-glass or care-team membership for each restricted patient, as for a merge. Both patient IDs are audited. A portal account suspended by the merge goes back to exactly the state it had before the merge; one disabled in the meantime stays `disabled`. Invitations revoked by the merge stay revoked.'
+      description: 'Undoes a merge (inventory #49; D103) by deactivating its link: the merged patient becomes active again and loses `mergedIntoId`, and reads stop combining the two charts. Because nothing moved, nothing moves back: each record stays with the patient it was created for, including those written to the surviving patient after the merge. Refused (`409 invalid-state-transition`) when the merge was already undone, or while a later merge involving either patient still stands (undo that one first). Restricted charts need break-glass or care-team membership for each restricted patient, as for a merge. Both patient IDs are audited. A portal account suspended by the merge goes back to exactly the state it had before the merge; one disabled in the meantime stays `disabled`. Invitations revoked by the merge stay revoked.'
       tags:
         - patients
       x-owner: vimal
@@ -3954,7 +3954,7 @@ paths:
           description: 404. `not-found` (no such merge in this clinic or the user's facilities).
         '409':
           $ref: '#/components/responses/Conflict'
-          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (the merge was already undone, or the records cannot be split back).
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (the merge was already undone, or a later merge involving either patient still stands; D103).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
@@ -4119,6 +4119,441 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations:
+    get:
+      operationId: listPreRegistrations
+      summary: List pre-registrations
+      description: 'The front desk''s queue of pre-registrations (D96), oldest first; pending by default. The queue is the clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.'
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: pre-registrations:read
+      x-audit:
+        action: R
+        category: phi-read
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          required: false
+          description: Which ones (default `pending`).
+          schema:
+            type: string
+            enum:
+              - pending
+              - accepted
+              - rejected
+            default: pending
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistrationList'
+              examples:
+                page:
+                  summary: One pending
+                  value:
+                    items:
+                      - id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                        status: pending
+                        details:
+                          name:
+                            given:
+                              - Kaia401
+                            family: Lindgren118
+                          birthDate: '1990-03-14'
+                          gender: female
+                          phones:
+                            - number: '+12175550142'
+                              use: mobile
+                          email: kaia.lindgren@example.com
+                          address:
+                            lines:
+                              - 42 Sample Avenue
+                            city: Springfield
+                            state: IL
+                            postalCode: '62704'
+                            country: US
+                          preferredLanguage: en
+                          insurance:
+                            payerName: Example Health Plan
+                            memberId: TEST-MEMBER-042
+                            groupNumber: TEST-GRP-7
+                          reasonForVisit: New patient, annual checkup.
+                        entrySource: patient-reported
+                        submittedAt: '2026-11-18T09:12:00Z'
+                        deleteAfter: '2026-12-18T09:12:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (a facility the user is not assigned to).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}:
+    parameters:
+      - name: preRegistrationId
+        in: path
+        required: true
+        description: Pre-registration ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getPreRegistration
+      summary: Get a pre-registration
+      description: 'One pre-registration (D96). The queue is the clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.'
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: pre-registrations:read
+      x-audit:
+        action: R
+        category: phi-read
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: The pre-registration.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                pending:
+                  summary: Pending
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: pending
+                    details:
+                      name:
+                        given:
+                          - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                        - number: '+12175550142'
+                          use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                          - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    deleteAfter: '2026-12-18T09:12:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}/accept:
+    parameters:
+      - name: preRegistrationId
+        in: path
+        required: true
+        description: Pre-registration ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: acceptPreRegistration
+      summary: Accept a pre-registration
+      description: 'Creates the patient through the registration rules (duplicate check with `409 possible-duplicate` and the override; the MRN from the practice counter, D41), or links to an existing `patientId` chosen in duplicate review; insurance as typed stays on the request as a note for the front desk (returned by the queue reads), not a coverage, until the card is checked. The request is linked to the patient, all in one transaction (D96). The front-desk user must confirm they checked the person''s ID and say which kind (`identityVerified`, `idDocumentType`); the check is stored with who and when (`identityCheck`). Duplicate matching happens here, never at submit. The queue is the clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.'
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: pre-registrations:accept
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-events:
+        - patient.created
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationAccept'
+            examples:
+              create:
+                summary: Create the patient
+                value:
+                  identityVerified: true
+                  idDocumentType: drivers-license
+              link:
+                summary: Link to an existing patient
+                value:
+                  identityVerified: true
+                  idDocumentType: drivers-license
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      responses:
+        '200':
+          description: The pre-registration, accepted.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                accepted:
+                  summary: Accepted
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: accepted
+                    details:
+                      name:
+                        given:
+                          - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                        - number: '+12175550142'
+                          use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                          - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    decidedAt: '2026-11-20T14:02:00Z'
+                    decidedBy: d0000000-0000-4000-8000-000000000001
+                    identityCheck:
+                      idDocumentType: drivers-license
+                      verifiedBy: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                      verifiedAt: '2026-11-20T14:02:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `pre-registrations:accept`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: '409. `possible-duplicate` (similar patients exist: review them, then link or override); `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`); `patient-merged` (the patient to link was merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}/reject:
+    parameters:
+      - name: preRegistrationId
+        in: path
+        required: true
+        description: Pre-registration ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: rejectPreRegistration
+      summary: Reject a pre-registration
+      description: 'Rejects it with a reason (D96). It is deleted 30 days later. Nothing is sent to the person. The queue is the clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.'
+      tags:
+        - patients
+      x-owner: vimal
+      x-permission: pre-registrations:reject
+      x-audit:
+        action: E
+        category: phi-write
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationReject'
+            examples:
+              spam:
+                summary: Spam
+                value:
+                  reasonCode: spam
+              other:
+                summary: Other
+                value:
+                  reasonCode: other
+                  reasonText: Asked for a practice in another state.
+      responses:
+        '200':
+          description: The pre-registration, rejected.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                rejected:
+                  summary: Rejected
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: rejected
+                    details:
+                      name:
+                        given:
+                          - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                        - number: '+12175550142'
+                          use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                          - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    deleteAfter: '2026-12-18T10:00:00Z'
+                    decidedAt: '2026-11-18T10:00:00Z'
+                    decidedBy: d0000000-0000-4000-8000-000000000001
+                    rejection:
+                      reasonCode: spam
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `pre-registrations:reject`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a field is invalid, or `reasonText` is missing with `other`).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -4383,6 +4818,16 @@ paths:
                   appointmentTypeId: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
                   startAt: '2026-11-03T15:00:00Z'
                   reasonForVisit: Follow-up on blood pressure
+              revisit:
+                summary: The revisit, booked from the follow-up request (D98)
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                  facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                  appointmentTypeId: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                  startAt: '2027-02-02T15:00:00Z'
+                  reasonForVisit: Recheck blood pressure
+                  followUpOfEncounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
       responses:
         '201':
           description: Created. The new appointment.
@@ -4446,7 +4891,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `booking-conflict` (the slot is taken or overlaps another appointment); `patient-merged` (the patient was merged into another record).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (outside the provider's hours, overbooking not allowed for this type, or the type's overbook limit reached; or the provider or location does not belong to the facility (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (outside the provider's hours, overbooking not allowed for this type, or the type's overbook limit reached; or the provider or location does not belong to the facility (field code `invalid-reference`)); `followUpOfEncounterId` is not an open follow-up request for this patient (field code `invalid-reference`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -4519,6 +4964,42 @@ paths:
                     overbook: false
                     createdAt: '2026-11-02T16:05:00Z'
                     updatedAt: '2026-11-02T16:05:00Z'
+                at-check-out:
+                  summary: At check-out, with the visit's follow-up request (D98)
+                  value:
+                    id: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      displayName: Kuhlman72, Ramona980
+                    provider:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    appointmentType:
+                      id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      code: FOLLOWUP
+                      name: Follow-up visit
+                    status: checked-in
+                    startAt: '2026-11-03T15:00:00Z'
+                    endAt: '2026-11-03T15:20:00Z'
+                    durationMinutes: 20
+                    timeZone: America/Chicago
+                    reasonForVisit: Follow-up on blood pressure
+                    sameDayAddOn: false
+                    overbook: false
+                    createdAt: '2026-11-02T16:05:00Z'
+                    updatedAt: '2026-11-03T15:40:00Z'
+                    followUp:
+                      encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                      interval:
+                        value: 3
+                        unit: month
+                      appointmentTypeId: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      note: Recheck blood pressure.
+                      status: open
+                    visitStatus: with-provider
+                    encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
@@ -4654,7 +5135,7 @@ paths:
     post:
       operationId: cancelAppointment
       summary: Cancel an appointment
-      description: 'Cancels with a reason (inventory #55; DATA_OWNERSHIP §5.1): `booked` or `arrived`, or `checked-in` with `left-without-being-seen`, which also cancels the encounter in the same transaction. Frees the slot.'
+      description: 'Cancels with a reason (inventory #55; DATA_OWNERSHIP §5.1): `booked` or `arrived`, or `checked-in` with `left-without-being-seen`, which also cancels the encounter in the same transaction. Frees the slot. If the appointment is the revisit of a follow-up request (D98), the request goes back to `open` in the same transaction, so the front desk sees it again.'
       tags:
         - scheduling
       x-owner: vimal
@@ -4879,7 +5360,7 @@ paths:
     post:
       operationId: recordVisitStatus
       summary: Record a visit step
-      description: 'Records `arrived`, `roomed`, `with-provider`, `checked-out` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment''s `_history`.'
+      description: 'Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment''s `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out` (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names `/status`).'
       tags:
         - scheduling
       x-owner: vimal
@@ -4970,10 +5451,119 @@ paths:
           description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
         '409':
           $ref: '#/components/responses/Conflict'
-          description: 409. `invalid-state-transition` (not allowed in the current state).
+          description: '409. `invalid-state-transition` (not allowed in the current state; or `checked-out`, which goes through `POST /appointments/{appointmentId}/check-out`: `errors` names `/status`).'
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`roomed` without `roomLocationId`, a room that is not in the appointment's facility (field code `invalid-reference`), or `noshow` before the start time).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /appointments/{appointmentId}/check-out:
+    parameters:
+      - name: appointmentId
+        in: path
+        required: true
+        description: Appointment ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: checkOutAppointment
+      summary: Check the patient out
+      description: 'Ends the visit flow at the desk (D98): the visit step becomes `checked-out` (kept with its time in `visit_flow_event`) and the appointment `fulfilled`. Front desk and ADM only (`appointments:check-out`). Refused with `409 invalid-state-transition` while something must be settled first; `errors` names each one, so the screen can point to the step: `/followUp` (the visit''s follow-up request is still `open`: book it or decline it) and `/status` (the patient is not checked in, or is already checked out; the problem carries `currentState`). An unpaid copay and an unsigned note never block check-out: the note is often signed later, and balances are P1. The encounter is closed separately (`POST /encounters/{encounterId}/close`).'
+      tags:
+        - scheduling
+      x-owner: vimal
+      x-permission: appointments:check-out
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-events:
+        - appointment.status-changed
+        - appointment.checked-out
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      responses:
+        '200':
+          description: Checked out.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+              examples:
+                checked-out:
+                  summary: Checked out, with the revisit booked
+                  value:
+                    id: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      displayName: Kuhlman72, Ramona980
+                    provider:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                    appointmentType:
+                      id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      code: FOLLOWUP
+                      name: Follow-up visit
+                    status: fulfilled
+                    startAt: '2026-11-03T15:00:00Z'
+                    endAt: '2026-11-03T15:20:00Z'
+                    durationMinutes: 20
+                    timeZone: America/Chicago
+                    reasonForVisit: Follow-up on blood pressure
+                    sameDayAddOn: false
+                    overbook: false
+                    createdAt: '2026-11-02T16:05:00Z'
+                    updatedAt: '2026-11-03T15:52:00Z'
+                    followUp:
+                      encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                      interval:
+                        value: 3
+                        unit: month
+                      appointmentTypeId: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                      providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      note: Recheck blood pressure.
+                      status: booked
+                      bookedAppointmentId: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    visitStatus: checked-out
+                    encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `appointments:check-out`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such appointment).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: '409. `invalid-state-transition` (`errors` names what must be settled first: `/followUp`, an open follow-up request; `/status`, not checked in or already checked out, with `currentState`); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different request).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -5077,6 +5667,15 @@ paths:
                           name: Follow-up visit
                         reasonForVisit: Follow-up on blood pressure
                         encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                        followUp:
+                          encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                          interval:
+                            value: 3
+                            unit: month
+                          appointmentTypeId: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                          providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          note: Recheck blood pressure.
+                          status: open
                     date: '2026-11-03'
                     timeZone: America/Chicago
                     facilityName: Test Clinic Main Street
@@ -5378,7 +5977,7 @@ paths:
     post:
       operationId: rescheduleAppointment
       summary: Reschedule an appointment
-      description: 'Moves a `booked` or `arrived` appointment (new inventory row #243; D61). In one transaction: the old appointment becomes `cancelled` with the given reason, a new one is booked under the same rules as `POST /appointments` (provider-day lock, overbooking only where the type allows it), and the new one carries `rescheduledFromId`, set by the server. A new date re-queues the eligibility check (D15). Returns the new appointment; the old one keeps its history.'
+      description: 'Moves a `booked` or `arrived` appointment (new inventory row #243; D61). In one transaction: the old appointment becomes `cancelled` with the given reason, a new one is booked under the same rules as `POST /appointments` (provider-day lock, overbooking only where the type allows it), and the new one carries `rescheduledFromId`, set by the server. A new date re-queues the eligibility check (D15). Returns the new appointment; the old one keeps its history. If the appointment is the revisit of a follow-up request (D98), the request stays `booked` and points at the new appointment, in the same transaction.'
       tags:
         - scheduling
       x-owner: vimal
@@ -5761,7 +6360,7 @@ paths:
                           currency: USD
                     requestedAt: '2026-11-03T14:52:00Z'
                     respondedAt: '2026-11-03T14:52:09Z'
-                    expiresAt: '2026-11-04T14:52:09Z'
+                    expiresAt: '2035-01-01T14:52:09Z'
                 pending:
                   summary: Still waiting for the 271
                   value:
@@ -5893,7 +6492,7 @@ paths:
                               currency: USD
                         requestedAt: '2026-11-03T14:52:00Z'
                         respondedAt: '2026-11-03T14:52:09Z'
-                        expiresAt: '2026-11-04T14:52:09Z'
+                        expiresAt: '2035-01-01T14:52:09Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -6519,6 +7118,313 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a close rule is not met; `errors` names it: `/notes` `required` (no signed note), `/notes` `not-allowed-value` (a draft is still open), `/diagnoses` `required` (billable type without a diagnosis)).'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/follow-up:
+    parameters:
+      - name: encounterId
+        in: path
+        required: true
+        description: Encounter ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    put:
+      operationId: setFollowUpRequest
+      summary: Ask for a follow-up visit
+      description: 'The clinician asks the front desk to book a revisit (D98): when, and optionally with whom and for what kind of visit. Replaces an open request; a booked one can no longer change. The front desk sees it at check-out (`followUp` on the appointment and on the staff status board) and books it with `POST /appointments` and `followUpOfEncounterId`.'
+      tags:
+        - encounters
+      x-owner: vimal
+      x-permission: encounters:update
+      x-audit:
+        action: U
+        category: phi-write
+        patient: result
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpRequestPut'
+            examples:
+              threeMonths:
+                summary: In 3 months
+                value:
+                  interval:
+                    value: 3
+                    unit: month
+                  appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                  providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                  note: Recheck blood pressure.
+      responses:
+        '200':
+          description: The follow-up request. The `ETag` is the encounter's.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpRequest'
+              examples:
+                open:
+                  summary: Open
+                  value:
+                    interval:
+                      value: 3
+                      unit: month
+                    appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                    providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    note: Recheck blood pressure.
+                    status: open
+                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedAt: '2026-11-20T15:25:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `encounters:update`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the follow-up is already booked, or the encounter is entered-in-error or cancelled; the problem carries `currentState`).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current `ETag`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (the `If-Match` header is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/follow-up/decline:
+    parameters:
+      - name: encounterId
+        in: path
+        required: true
+        description: Encounter ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: declineFollowUpRequest
+      summary: Record that the follow-up was not booked
+      description: At check-out, when the patient does not book the revisit (D98). Front desk and ADM only (`follow-ups:decline`); the clinician who asked for it withdraws it instead (`…/follow-up/withdraw`, D67). The request becomes `declined` with the reason. `If-Match` carries the encounter's `ETag`, so a decline never overwrites a request the clinician just changed.
+      tags:
+        - encounters
+      x-owner: vimal
+      x-permission: follow-ups:decline
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpDecline'
+            examples:
+              later:
+                summary: Will call later
+                value:
+                  reason: Patient will call to book.
+      responses:
+        '200':
+          description: The follow-up request, declined.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpRequest'
+              examples:
+                declined:
+                  summary: Declined
+                  value:
+                    interval:
+                      value: 3
+                      unit: month
+                    appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                    providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    note: Recheck blood pressure.
+                    status: declined
+                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedAt: '2026-11-20T15:25:00Z'
+                    declinedReason: Patient will call to book.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `follow-ups:decline`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (no open follow-up request on this encounter; the problem carries `currentState`).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current `ETag`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (the `If-Match` header is missing).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+      x-idempotency: supported
+      x-concurrency: if-match-required
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+  /encounters/{encounterId}/follow-up/withdraw:
+    parameters:
+      - name: encounterId
+        in: path
+        required: true
+        description: Encounter ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: withdrawFollowUpRequest
+      summary: Withdraw a follow-up request
+      description: 'The clinician who asked for the follow-up withdraws it (D98, D67): clinicians never change the calendar, so this, not a decline, is how they take it back. Only the requesting clinician, and only while the request is `open`; it becomes `withdrawn` with the reason, and the front desk no longer sees it at check-out.'
+      tags:
+        - encounters
+      x-owner: vimal
+      x-permission: encounters:update
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpWithdraw'
+            examples:
+              notNeeded:
+                summary: Not needed
+                value:
+                  reason: Not needed after the results came back normal.
+      responses:
+        '200':
+          description: Withdrawn.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpRequest'
+              examples:
+                withdrawn:
+                  summary: Withdrawn
+                  value:
+                    interval:
+                      value: 3
+                      unit: month
+                    appointmentTypeId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                    providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    note: Recheck blood pressure.
+                    status: withdrawn
+                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedAt: '2026-11-20T15:25:00Z'
+                    withdrawnReason: Not needed after the results came back normal.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `encounters:update`), or the user is not the clinician who asked for the follow-up; `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such encounter, or no follow-up request on it).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the request is not `open`; the problem carries `currentState`).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current `ETag`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (the `If-Match` header is missing).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -8808,6 +9714,72 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the encounter has no signed note, or `noteId` is not a signed note on it (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/after-visit-summary/download-url:
+    parameters:
+      - name: encounterId
+        in: path
+        required: true
+        description: Encounter ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getAfterVisitSummaryDownloadUrl
+      summary: Get the latest after-visit summary to print
+      description: A short-lived download link to the encounter's latest after-visit summary, generated from a signed note (D98), so the front desk can print it at check-out without generating one (`after-visit-summaries:create` stays with MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists.
+      tags:
+        - encounters
+      x-owner: vimal
+      x-permission: after-visit-summaries:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: The link.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AfterVisitSummaryLink'
+              examples:
+                link:
+                  summary: Link
+                  value:
+                    documentId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                    generatedAt: '2026-11-03T15:41:09Z'
+                    url: https://files.company-domain.invalid/clean/TEST-after-visit-summary-1
+                    expiresAt: '2035-01-01T15:46:09Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `after-visit-summaries:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such encounter, or no after-visit summary has been generated for it yet).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a parameter is invalid).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -15375,7 +16347,7 @@ paths:
     post:
       operationId: recordPayment
       summary: Record a patient payment
-      description: 'Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in, so it works for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`.'
+      description: 'Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in or check-out (D100), so it works for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`. The receipt is created in the same step as the payment, so every recorded payment has one (`receiptFileId` is always present, D104).'
       tags:
         - billing
       x-owner: anand
@@ -15544,7 +16516,7 @@ paths:
                       currency: USD
                     status: pending
                     clientToken: TEST-hosted-fields-placeholder
-                    expiresAt: '2026-11-03T15:10:00Z'
+                    expiresAt: '2035-01-01T15:10:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required Idempotency-Key header is missing).
@@ -16823,8 +17795,8 @@ paths:
                     patient:
                       displayName: Maria712
                     csrfToken: mock-csrf-token-not-a-secret
-                    idleExpiresAt: '2026-10-26T16:15:00Z'
-                    expiresAt: '2026-10-26T20:00:00Z'
+                    idleExpiresAt: '2035-01-01T16:15:00Z'
+                    expiresAt: '2035-01-01T20:00:00Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
@@ -16879,8 +17851,8 @@ paths:
                     patient:
                       displayName: Maria712
                     csrfToken: mock-csrf-token-not-a-secret
-                    idleExpiresAt: '2026-10-26T16:15:00Z'
-                    expiresAt: '2026-10-26T20:00:00Z'
+                    idleExpiresAt: '2035-01-01T16:15:00Z'
+                    expiresAt: '2035-01-01T20:00:00Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
@@ -18290,7 +19262,7 @@ paths:
                   summary: Link
                   value:
                     url: https://portal.company-domain.invalid/files/download/0e1f2a3b-4c5d-4e6f-8a7b-9c0d1e2f3a4b
-                    expiresAt: '2026-10-26T16:05:00Z'
+                    expiresAt: '2035-01-01T16:05:00Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
@@ -18767,6 +19739,106 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /portal/practices/{practiceLinkId}/pre-registrations:
+    parameters:
+      - name: practiceLinkId
+        in: path
+        required: true
+        description: The practice's opaque pre-registration code, from its public pre-registration link (D96). It names the clinic; the clinic is resolved from it on the server, never from the body. Not patient data.
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{16,64}$
+          minLength: 16
+          maxLength: 64
+    post:
+      operationId: submitPreRegistration
+      summary: Pre-register as a new patient
+      description: 'The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice''s own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).'
+      tags:
+        - portal
+      x-owner: vimal
+      x-permission: public
+      x-audit:
+        action: C
+        category: phi-write
+        actor: anonymous
+      x-storage: admin
+      x-events:
+        - pre-registration.received
+      x-release: P1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationCreate'
+            examples:
+              newPatient:
+                summary: A new patient
+                value:
+                  details:
+                    name:
+                      given:
+                        - Kaia401
+                      family: Lindgren118
+                    birthDate: '1990-03-14'
+                    gender: female
+                    phones:
+                      - number: '+12175550142'
+                        use: mobile
+                    email: kaia.lindgren@example.com
+                    address:
+                      lines:
+                        - 42 Sample Avenue
+                      city: Springfield
+                      state: IL
+                      postalCode: '62704'
+                      country: US
+                    preferredLanguage: en
+                    insurance:
+                      payerName: Example Health Plan
+                      memberId: TEST-MEMBER-042
+                      groupNumber: TEST-GRP-7
+                    reasonForVisit: New patient, annual checkup.
+                  contactConsent: true
+                  botCheck: mock-altcha-payload
+      responses:
+        '204':
+          description: Received. Always the same answer, with no body.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required Idempotency-Key header is missing).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the portal host).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (the practice code is unknown, or the practice has turned its pre-registration link off). Says nothing about any person.
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: '422. `validation-failed` (a field is missing or malformed, including neither a phone nor an email); `business-rule-violation` (`errors` names `/botCheck`: the bot check failed or expired); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+      x-idempotency: required
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
 components:
   schemas:
     Address:
@@ -21588,7 +22660,7 @@ components:
           x-phi: internal-id
         mergedPatientId:
           $ref: '#/components/schemas/Id'
-          description: Merged patient; now inactive, with `mergedIntoId`.
+          description: Merged patient; inactive while the merge stands, with `mergedIntoId` and a `replaced-by` link to the surviving patient (D103).
           x-phi: internal-id
         performedAt:
           $ref: '#/components/schemas/Timestamp'
@@ -21672,14 +22744,14 @@ components:
           x-phi: none
         undoAllowed:
           type: boolean
-          description: 'True while the merge can still be undone: it stands, and neither record has changed in a way that cannot be split back.'
+          description: True while the merge stands and no later merge involving either patient still stands (D103). A merge by link changes no records, so edits to either chart never block an undo.
           x-phi: none
         undoBlockedReason:
           type: string
           enum:
             - already-undone
             - records-changed
-          description: Why undo is not allowed, when `undoAllowed` is false.
+          description: 'Why undo is not allowed, when `undoAllowed` is false: `already-undone` or `later-merge` (a later merge involving either patient still stands).'
           x-phi: none
     PatientMergeList:
       description: One page of merges, newest first.
@@ -21726,6 +22798,262 @@ components:
             $ref: '#/components/schemas/PatientSummary'
           description: One summary per found ID, in request order.
           x-phi: identifier
+    PreRegistrationDetails:
+      description: What a person types into the public pre-registration form (D96). Patient-reported until the front desk checks it against ID at the visit (FR-PAT-02).
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - birthDate
+      properties:
+        name:
+          $ref: '#/components/schemas/HumanName'
+          description: Legal name.
+          x-phi: identifier
+        birthDate:
+          $ref: '#/components/schemas/Date'
+          description: Date of birth.
+          x-phi: identifier
+        gender:
+          $ref: '#/components/schemas/AdministrativeGender'
+          description: Administrative gender, if given.
+          x-phi: clinical
+        phones:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/Phone'
+          description: Phone numbers. At least one phone or an email (enforced by the schema).
+          x-phi: identifier
+          minItems: 1
+        email:
+          $ref: '#/components/schemas/EmailAddress'
+          description: Email address.
+          x-phi: identifier
+        address:
+          $ref: '#/components/schemas/Address'
+          description: Home address.
+          x-phi: identifier
+        preferredLanguage:
+          type: string
+          maxLength: 35
+          description: Preferred language as a BCP 47 tag (D39).
+          x-phi: clinical
+          pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
+        insurance:
+          type: object
+          additionalProperties: false
+          description: Insurance as the person typed it. It stays with the request as a note for the front desk, returned by `GET /pre-registrations` and `GET /pre-registrations/{preRegistrationId}`; accepting the request does not create a coverage. The front desk enters the coverage after checking the card.
+          x-phi: identifier
+          properties:
+            payerName:
+              type: string
+              maxLength: 200
+              description: Insurance company, as typed.
+              x-phi: identifier
+            memberId:
+              type: string
+              maxLength: 80
+              description: Member ID.
+              x-phi: identifier
+            groupNumber:
+              type: string
+              maxLength: 80
+              description: Group number.
+              x-phi: identifier
+        reasonForVisit:
+          type: string
+          maxLength: 1000
+          description: Why they want an appointment.
+          x-phi: clinical
+      anyOf:
+        - required:
+            - phones
+        - required:
+            - email
+    PreRegistrationIdentityCheck:
+      description: The identity check the front-desk user recorded when accepting the request (D96).
+      type: object
+      required:
+        - idDocumentType
+        - verifiedBy
+        - verifiedAt
+      properties:
+        idDocumentType:
+          type: string
+          enum:
+            - drivers-license
+            - state-id
+            - passport
+            - military-id
+            - other
+          description: The kind of ID that was checked.
+          x-phi: none
+        verifiedBy:
+          $ref: '#/components/schemas/Id'
+          description: The front-desk user who checked it (from the session).
+          x-phi: internal-id
+        verifiedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When.
+          x-phi: none
+    PreRegistration:
+      description: A pre-registration in the front desk's queue (D96). Stored encrypted at rest; a rejected or never-reviewed one is deleted at `deleteAfter` (30 days).
+      type: object
+      required:
+        - id
+        - status
+        - details
+        - entrySource
+        - submittedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Pre-registration ID.
+          x-phi: none
+        status:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - rejected
+          description: Where it is.
+          x-phi: none
+        details:
+          $ref: '#/components/schemas/PreRegistrationDetails'
+          description: What was submitted.
+          x-phi: identifier
+        entrySource:
+          type: string
+          enum:
+            - patient-reported
+          description: 'Always patient-reported (FR-PAT-02): the details are as the person typed them. Accepting records that the person''s identity was checked against ID (`identityCheck`); each field is corrected on the chart as the front desk verifies it.'
+          x-phi: none
+        submittedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it arrived.
+          x-phi: none
+        decidedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the front desk accepted or rejected it.
+          x-phi: none
+        decidedBy:
+          $ref: '#/components/schemas/Id'
+          description: Who decided.
+          x-phi: none
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient it created or was linked to, once accepted.
+          x-phi: internal-id
+        rejection:
+          type: object
+          required:
+            - reasonCode
+          description: Why it was rejected.
+          x-phi: none
+          properties:
+            reasonCode:
+              type: string
+              enum:
+                - duplicate
+                - incomplete
+                - not-our-practice
+                - spam
+                - other
+              description: Reason.
+              x-phi: none
+            reasonText:
+              type: string
+              maxLength: 500
+              description: More detail; required for `other`.
+              x-phi: clinical
+        deleteAfter:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it will be deleted if still pending or rejected (30 days after it arrived or was rejected).
+          x-phi: none
+        identityCheck:
+          $ref: '#/components/schemas/PreRegistrationIdentityCheck'
+          description: 'Once accepted: the identity check recorded at accept.'
+          x-phi: none
+    PreRegistrationList:
+      description: Pre-registrations, oldest first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PreRegistration'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PreRegistrationAccept:
+      description: 'Body to accept a pre-registration: create the patient through the registration rules, or link to an existing patient found in duplicate review.'
+      type: object
+      additionalProperties: false
+      properties:
+        identityVerified:
+          type: boolean
+          const: true
+          description: The front-desk user confirms they checked the person's ID before accepting. Required, and must be true.
+          x-phi: none
+        idDocumentType:
+          type: string
+          enum:
+            - drivers-license
+            - state-id
+            - passport
+            - military-id
+            - other
+          description: The kind of ID that was checked.
+          x-phi: none
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: Link to this existing patient instead of creating one.
+          x-phi: internal-id
+        duplicateCheck:
+          type: string
+          enum:
+            - default
+            - override
+          default: default
+          description: 'As for `POST /patients`: `override` registers despite similar patients and needs `duplicateOverrideReason`.'
+          x-phi: none
+        duplicateOverrideReason:
+          type: string
+          maxLength: 500
+          description: Why it is not a duplicate.
+          x-phi: clinical
+      required:
+        - identityVerified
+        - idDocumentType
+    PreRegistrationReject:
+      description: Body to reject a pre-registration.
+      type: object
+      additionalProperties: false
+      required:
+        - reasonCode
+      properties:
+        reasonCode:
+          type: string
+          enum:
+            - duplicate
+            - incomplete
+            - not-our-practice
+            - spam
+            - other
+          description: Reason.
+          x-phi: none
+        reasonText:
+          type: string
+          maxLength: 500
+          description: More detail; required for `other`.
+          x-phi: clinical
     Slot:
       description: A free time computed from the provider's availability rules, minus exceptions and booked appointments. Slots are not stored.
       type: object
@@ -22009,6 +23337,75 @@ components:
           maxLength: 2000
           description: Instructions for the patient.
           x-phi: clinical
+        followUpOfEncounterId:
+          $ref: '#/components/schemas/Id'
+          description: 'Books the follow-up asked for in this encounter (D98): it must be an open request for the same patient; it becomes `booked` and points to the new appointment, in the same transaction.'
+          x-phi: internal-id
+    FollowUpInterval:
+      description: 'When the patient should come back, counted from the visit''s date in the facility''s time zone (D40): `{ value: 2, unit: week }` is two weeks after the day of the visit there, whatever day the request is made or booked.'
+      type: object
+      additionalProperties: false
+      required:
+        - value
+        - unit
+      properties:
+        value:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 365
+          description: How many units.
+          x-phi: clinical
+        unit:
+          type: string
+          enum:
+            - day
+            - week
+            - month
+          description: Unit.
+          x-phi: none
+    FollowUpSummary:
+      description: 'The visit''s follow-up request as the front desk needs it at check-out (D98): no clinical note beyond the request itself.'
+      type: object
+      required:
+        - encounterId
+        - interval
+        - status
+      properties:
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit that asked for it.
+          x-phi: internal-id
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: '#/components/schemas/Id'
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: '#/components/schemas/Id'
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: The clinician's note for the front desk.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - open
+            - booked
+            - declined
+            - withdrawn
+          description: '`open` (asked for, not yet booked); `booked` (a revisit is booked: `bookedAppointmentId`); `declined` (the patient did not book it, with the front desk''s reason); `withdrawn` (the clinician who asked for it withdrew it). If the booked revisit is cancelled, the request goes back to `open` and loses `bookedAppointmentId`, in the same transaction; if the revisit is rescheduled, it stays `booked` and points at the new appointment (D98).'
+          x-phi: none
+        bookedAppointmentId:
+          $ref: '#/components/schemas/Id'
+          description: 'Once `booked`: the revisit, so the screen can link it.'
+          x-phi: internal-id
     Appointment:
       description: An appointment (FHIR-shaped `Appointment`). For a restricted patient seen without a break-glass grant or care-team membership, `reasonForVisit`, `comment`, `patientInstruction` and `cancellation.reasonText` are left out (SECURITY_MODEL §5.2).
       type: object
@@ -22139,6 +23536,10 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: Last change.
           x-phi: none
+        followUp:
+          $ref: '#/components/schemas/FollowUpSummary'
+          description: The follow-up the clinician asked for in this visit, if any (D98).
+          x-phi: clinical
     AppointmentPatch:
       description: 'JSON Merge Patch for the room, reason for visit, staff note and patient instructions of a booked appointment. It has no time, provider, facility, type or length fields: those change only through `POST /appointments/{appointmentId}/reschedule`, which requires a reason and sets `rescheduledFromId` (D61). Status never changes here (API_STANDARDS §7.3).'
       type: object
@@ -22299,6 +23700,10 @@ components:
           $ref: '#/components/schemas/Id'
           description: The encounter, once checked in. Staff view only (D60).
           x-phi: internal-id
+        followUp:
+          $ref: '#/components/schemas/FollowUpSummary'
+          description: 'Staff view only (left out of the shared view, D47): the follow-up asked for in this visit, if any (D98).'
+          x-phi: clinical
     StatusBoardList:
       description: One page of the status board, by start time.
       type: object
@@ -23158,6 +24563,63 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: Last change.
           x-phi: none
+    FollowUpRequest:
+      description: 'The clinician''s follow-up request for a visit (D98): `open` until the front desk books the revisit (`booked`) or records that the patient declined (`declined`).'
+      type: object
+      required:
+        - interval
+        - status
+        - requestedBy
+        - requestedAt
+      properties:
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: '#/components/schemas/Id'
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: '#/components/schemas/Id'
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: For the front desk ("recheck blood pressure").
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - open
+            - booked
+            - declined
+            - withdrawn
+          description: '`open` (asked for, not yet booked); `booked` (a revisit is booked: `bookedAppointmentId`); `declined` (the patient did not book it, with the front desk''s reason); `withdrawn` (the clinician who asked for it withdrew it). If the booked revisit is cancelled, the request goes back to `open` and loses `bookedAppointmentId`, in the same transaction; if the revisit is rescheduled, it stays `booked` and points at the new appointment (D98).'
+          x-phi: none
+        requestedBy:
+          $ref: '#/components/schemas/Id'
+          description: Who asked for it.
+          x-phi: none
+        requestedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When.
+          x-phi: none
+        bookedAppointmentId:
+          $ref: '#/components/schemas/Id'
+          description: The revisit, once `booked`.
+          x-phi: internal-id
+        declinedReason:
+          type: string
+          maxLength: 500
+          description: Why the patient declined, once `declined`.
+          x-phi: clinical
+        withdrawnReason:
+          type: string
+          maxLength: 500
+          description: Why the clinician withdrew it.
+          x-phi: clinical
     Encounter:
       description: 'An encounter with its workspace data (inventory #63; FRS FR-ENC-01): its ranked diagnoses, its vitals and a summary of its notes. Problems, allergies, history, medications and results come from their own endpoints, so each owner''s data stays in one place.'
       type: object
@@ -23270,6 +24732,10 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: Last change.
           x-phi: none
+        followUp:
+          $ref: '#/components/schemas/FollowUpRequest'
+          description: The follow-up request, if the clinician made one (D98).
+          x-phi: clinical
     EncounterPatch:
       description: 'JSON Merge Patch for an encounter that is not `finished` or `entered-in-error`: reasons, room and participants. Status changes only through actions (DATA_OWNERSHIP §5).'
       type: object
@@ -23362,6 +24828,56 @@ components:
           $ref: '#/components/schemas/Cursor'
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
+    FollowUpRequestPut:
+      description: Body to set the visit's follow-up request, replacing an open one.
+      type: object
+      additionalProperties: false
+      required:
+        - interval
+      properties:
+        interval:
+          $ref: '#/components/schemas/FollowUpInterval'
+          description: When.
+          x-phi: clinical
+        appointmentTypeId:
+          $ref: '#/components/schemas/Id'
+          description: Kind of visit.
+          x-phi: none
+        providerId:
+          $ref: '#/components/schemas/Id'
+          description: With whom.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: For the front desk.
+          x-phi: clinical
+    FollowUpDecline:
+      description: Body to record that the patient did not book the follow-up.
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: Why ("will call to book").
+          x-phi: clinical
+          minLength: 1
+    FollowUpWithdraw:
+      description: Body to withdraw a follow-up request.
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why ("not needed after the results").
+          x-phi: clinical
     EncounterEnteredInError:
       description: Body to mark an encounter entered in error (D14). The reason is stored in the Provenance record, never in a log.
       type: object
@@ -24048,6 +25564,33 @@ components:
           $ref: '#/components/schemas/Id'
           description: The signed note to build it from. Defaults to the encounter's latest signed note.
           x-phi: internal-id
+    AfterVisitSummaryLink:
+      description: A short-lived download link to the encounter's latest after-visit summary (D98).
+      type: object
+      required:
+        - documentId
+        - generatedAt
+        - url
+        - expiresAt
+      properties:
+        documentId:
+          $ref: '#/components/schemas/Id'
+          description: The summary's document (DocumentReference, origin `generated`).
+          x-phi: internal-id
+        generatedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When this version was generated.
+          x-phi: none
+        url:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: The download link. Short-lived; never logged.
+          x-phi: none
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the link stops working.
+          x-phi: none
     CosignRule:
       description: 'A co-signature rule (FRS FR-ENC-01 [v1.2]): notes, prescriptions or orders by the supervisee (an NP or PA) need the supervising physician''s co-signature, optionally only in one state, within a number of days. A rule ends by setting `effectiveTo`; nothing is deleted.'
       type: object
@@ -27466,7 +29009,7 @@ components:
         - ach
         - other
     PaymentCreate:
-      description: Body to record a patient payment, usually the copay at check-in (FRS FR-SCH-02, FR-RCM-03).
+      description: Body to record a patient payment, usually the copay at check-in or check-out (FRS FR-SCH-02, FR-RCM-03; D100).
       type: object
       additionalProperties: false
       required:
@@ -27547,7 +29090,7 @@ components:
           x-phi: financial
         receiptFileId:
           $ref: '#/components/schemas/Id'
-          description: The receipt (PDF), generated at payment and stored through the file service with purpose `receipt`; download it with `GET /files/{fileId}/download-url`, which needs `payments:create` or `superbills:read` (D58).
+          description: The receipt (PDF), created in the same step and transaction as the payment, so it is always present (D104); stored through the file service with purpose `receipt`; download it with `GET /files/{fileId}/download-url`, which needs `payments:create` or `superbills:read` (D58).
           x-phi: internal-id
         collectedAt:
           $ref: '#/components/schemas/Timestamp'
@@ -29234,6 +30777,29 @@ components:
         nextCursor:
           $ref: '#/components/schemas/Cursor'
           description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PreRegistrationCreate:
+      description: Body of the public pre-registration form (D96).
+      type: object
+      additionalProperties: false
+      required:
+        - details
+        - contactConsent
+        - botCheck
+      properties:
+        details:
+          $ref: '#/components/schemas/PreRegistrationDetails'
+          description: What the person tells the practice.
+          x-phi: identifier
+        contactConsent:
+          type: boolean
+          const: true
+          description: The person agrees to be contacted about their request.
+          x-phi: none
+        botCheck:
+          type: string
+          maxLength: 4000
+          description: The proof-of-work answer from the form's ALTCHA widget (MIT, self-hosted), checked by the server; nothing about the visitor goes to anyone else.
           x-phi: none
   parameters:
     Cursor:

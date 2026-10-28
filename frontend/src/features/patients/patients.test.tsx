@@ -33,9 +33,10 @@ const patient = {
   updatedAt: '2026-10-24T12:00:00Z',
 }
 
-/** The patient page also lists appointments and insurance; these tests don't look at them. */
+/** The patient page also lists appointments, insurance and the portal account; these tests don't look at them. */
 const noCoverages = {
   [`GET /api/v1/patients/${patient.id}/coverages?limit=100`]: [() => json(200, { items: [] })],
+  [`GET /api/v1/patients/${patient.id}/portal-account`]: [() => json(200, { patientId: patient.id, status: 'none' })],
   [`GET /api/v1/appointments?patientId=${patient.id}&limit=100`]: [() => json(200, { items: [] })],
   'GET /api/v1/booking/facilities?limit=100': [() => json(200, { items: [] })],
   'GET /api/v1/booking/appointment-types?limit=100': [() => json(200, { items: [] })],

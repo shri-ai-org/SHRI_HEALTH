@@ -195,7 +195,7 @@ paths:
                         currency: USD
                     requestedAt: '2026-11-03T14:52:00Z'
                     respondedAt: '2026-11-03T14:52:09Z'
-                    expiresAt: '2026-11-04T14:52:09Z'
+                    expiresAt: '2035-01-01T14:52:09Z'
                 pending:
                   summary: Still waiting for the 271
                   value:

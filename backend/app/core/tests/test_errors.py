@@ -14,7 +14,10 @@ from app.core.errors import (
     AppError,
     Conflict,
     Forbidden,
+    InvalidCursor,
     NotFound,
+    PreconditionFailed,
+    PreconditionRequired,
     ValidationFailed,
     field_error,
     problem,
@@ -44,6 +47,9 @@ def _client(make_app: Callable[..., FastAPI]) -> TestClient:
             "booking": Conflict(code="booking-conflict"),
             "merged": Conflict(code="patient-merged", mergedIntoId="m-1"),
             "forbidden": Forbidden(),
+            "cursor": InvalidCursor(),
+            "stale": PreconditionFailed(headers={"ETag": '"7"'}),
+            "no-if-match": PreconditionRequired(),
             "rule": ValidationFailed(
                 "Birth year is in the future.",
                 code="business-rule-violation",
@@ -76,6 +82,9 @@ def _client(make_app: Callable[..., FastAPI]) -> TestClient:
         ("booking", 409, "booking-conflict"),
         ("forbidden", 403, "permission-denied"),
         ("rule", 422, "business-rule-violation"),
+        ("cursor", 400, "invalid-cursor"),
+        ("stale", 412, "precondition-failed"),
+        ("no-if-match", 428, "precondition-required"),
     ],
 )
 def test_app_errors_use_the_problem_shape(
@@ -92,6 +101,32 @@ def test_app_errors_use_the_problem_shape(
     assert body["code"] == code
     assert body["instance"] == f"/raise/{kind}"
     assert body["requestId"] == response.headers["X-Request-ID"]
+
+
+def test_a_stale_version_carries_the_current_etag(make_app: Callable[..., FastAPI]) -> None:
+    response = _client(make_app).get("/raise/stale")
+    assert response.status_code == 412
+    assert response.headers["ETag"] == '"7"'
+
+
+@pytest.mark.parametrize(("error", "code"), [
+    (InvalidCursor, "malformed-request"),  # another 400 code is allowed...
+    (PreconditionFailed, "precondition-failed"),
+    (PreconditionRequired, "precondition-required"),
+])
+def test_the_new_errors_accept_only_codes_of_their_status(
+        error: type[AppError], code: str) -> None:
+    assert error(code=code).code == code
+    with pytest.raises(ValueError, match="needs a"):
+        error(code="not-found")  # ...a code of another status is not
+
+
+@pytest.mark.parametrize(("pointer", "code"), [
+    ("/alerts", "safety-check-stale"), ("/alerts/0", "override-required"),
+])
+def test_the_prescription_signing_field_codes_are_accepted(pointer: str, code: str) -> None:
+    """T51 (#93): sign-and-send names each refusal with these codes."""
+    assert field_error("body", pointer, code) == {"in": "body", "pointer": pointer, "code": code}
 
 
 def test_extensions_are_included(make_app: Callable[..., FastAPI]) -> None:

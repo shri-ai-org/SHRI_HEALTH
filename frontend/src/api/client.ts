@@ -65,14 +65,22 @@ export class ApiError extends Error {
 
 let csrfToken: string | null = null
 let csrfLoading: Promise<string | null> | null = null
+// The staff app reads its token from `GET /auth/session`; the patient portal from
+// `GET /portal/auth/session` (ADR-0013 §5). One page only ever holds one of the two sessions.
+let sessionPath = '/auth/session'
 
 /** Called by the session layer whenever it reads `GET /auth/session` or `POST /auth/refresh`. */
 export function setCsrfToken(token: string | null): void {
   csrfToken = token
 }
 
+/** The patient portal calls this once at start, so a missing or rotated token is re-read from its own session. */
+export function setCsrfSessionPath(path: '/auth/session' | '/portal/auth/session'): void {
+  sessionPath = path
+}
+
 async function loadCsrfToken(): Promise<string | null> {
-  csrfLoading ??= fetch(`${API_BASE}/auth/session`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+  csrfLoading ??= fetch(`${API_BASE}${sessionPath}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
     .then(async (res) => {
       if (!res.ok) return null
       const body: unknown = await res.json()
@@ -131,7 +139,7 @@ export function ifMatch(etag: string): { 'If-Match': string } {
 // ---- The mutator ----------------------------------------------------------------------------
 
 /** URLs that are about the session itself and must not trigger a session re-read. */
-const SESSION_PATHS = ['/auth/session', '/auth/refresh', '/auth/logout']
+const SESSION_PATHS = ['/auth/session', '/auth/refresh', '/auth/logout', '/portal/auth/session', '/portal/auth/refresh', '/portal/auth/logout']
 
 export async function apiFetch<T>(url: string, init: ApiRequestInit = {}): Promise<T> {
   const { background = false, ...requestInit } = init

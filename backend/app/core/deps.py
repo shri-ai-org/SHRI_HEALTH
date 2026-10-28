@@ -21,10 +21,11 @@ from uuid import UUID
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import audit, permissions
+from app.core import audit, idempotency, permissions
 from app.core.config import Settings
 from app.core.db import Database
-from app.core.errors import Forbidden, ServiceUnavailable, Unauthorized
+from app.core.errors import Forbidden, NotFound, ServiceUnavailable, Unauthorized
+from app.core.operations import operation_for
 from app.core.request_id import current_request_id
 
 DEV_USER_HEADER = "X-Dev-User"
@@ -110,15 +111,19 @@ def require(permission: str) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
         )
 
     async def check(request: Request, user: CurrentUser = Depends(current_user)) -> CurrentUser:
-        if not user.can(permission):
-            await audit.record_denial(request, user, permission)
-            raise Forbidden(f"Requires {permission}")
-        setattr(request.state, _PERMISSION_CHECKED, permission)  # tenant_db looks for this
+        await _check_permission(request, user, permission)
         return user
 
     check.__name__ = f"require_{permission.replace(':', '_').replace('-', '_')}"
     check.shri_permission = permission  # type: ignore[attr-defined]  # read by route_problems()
     return check
+
+
+async def _check_permission(request: Request, user: CurrentUser, permission: str) -> None:
+    if not user.can(permission):
+        await audit.record_denial(request, user, permission)
+        raise Forbidden(f"Requires {permission}")
+    setattr(request.state, _PERMISSION_CHECKED, permission)  # tenant_db looks for this
 
 
 def _require_was_checked(request: Request) -> None:
@@ -144,13 +149,26 @@ async def tenant_db(
     and tests, 403 elsewhere).
 
     The operation's audit rows (x-audit) go in with the endpoint's first commit, or are written
-    before the response if it makes none (app/core/audit.py)."""
+    before the response if it makes none (app/core/audit.py).
+
+    For an operation with x-idempotency, the Idempotency-Key is claimed here, before the
+    endpoint runs, and a finished key's stored response is sent instead of running it again
+    (app/core/idempotency.py)."""
     db: Database | None = request.app.state.db
     if db is None:
         raise ServiceUnavailable("Database is not configured")
     # The clinic and user come from the server-side session (current_user), never from
     # request headers or the body (D21).
     from app.core.access import check_facility_query  # access builds on this module
+
+    operation = operation_for(request.scope.get("route"))
+    if operation is not None and idempotency.applies(operation, request.method):
+        # Only a caller who may run the operation, at a facility of theirs, claims a key,
+        # whichever order the endpoint lists require() and tenant_db in (403 before 404).
+        if getattr(request.state, _PERMISSION_CHECKED, None) != operation.permission:
+            await _check_permission(request, user, operation.permission)
+        check_facility_query(user, request.query_params.getlist("facilityId"))
+        await idempotency.claim(request, db, user.organization_id, user.id, operation)
 
     def guard() -> None:
         # Both run at the first query, after all of the endpoint's dependencies, so a missing
@@ -176,6 +194,12 @@ async def tenant_db(
 # audit rows of `x-audit: {patient: session, actor: patient}` operations take it from there.
 # create_app() refuses a route that serves such an operation without portal_session.
 PORTAL_SESSION_STATE = "shri_portal_session"
+PATIENT_ROLE = "PAT"  # own record only, no staff permission (D84)
+
+# The development stand-in for patient sign-in (patient_auth_mode=dev_header, development and
+# test only): the patient and its clinic as UUIDs, synthetic patients only.
+DEV_PATIENT_HEADER = "X-Dev-Patient"
+DEV_PATIENT_CLINIC_HEADER = "X-Dev-Patient-Clinic"
 
 
 @dataclass(frozen=True)
@@ -185,13 +209,35 @@ class PortalPatient:
     patient_id: UUID
     organization_id: UUID
     account_id: UUID | None = None
+    roles: frozenset[str] = frozenset({PATIENT_ROLE})
+
+
+def _header_uuid(request: Request, name: str) -> UUID:
+    value = request.headers.get(name)
+    if not value:
+        raise Unauthorized(f"Send the {name} header with a test patient's UUID")
+    try:
+        return UUID(value)
+    except ValueError:
+        raise Unauthorized(f"{name} must be a UUID") from None
 
 
 async def current_patient(request: Request) -> PortalPatient:
-    """The signed-in patient. Signature final; the body is a placeholder that refuses every
-    request until patient sign-in exists. TODO(ADR-0013, T45): the `__Host-shri_portal` cookie
-    looked up as a portal session (realm `shri-patients`, invitation-code enrolment)."""
+    """The signed-in patient. Signature final. In development and test, patient_auth_mode
+    dev_header takes the patient and its clinic from the X-Dev-Patient headers; otherwise every
+    request is refused until patient sign-in exists. TODO(ADR-0013, T45): the
+    `__Host-shri_portal` cookie looked up as a portal session (realm `shri-patients`)."""
+    if _settings(request).patient_auth_mode == "dev_header":
+        return PortalPatient(patient_id=_header_uuid(request, DEV_PATIENT_HEADER),
+                             organization_id=_header_uuid(request, DEV_PATIENT_CLINIC_HEADER))
     raise Unauthorized("Not signed in to the patient portal")
+
+
+def require_own_record(patient: PortalPatient, record_patient_id: UUID | None) -> None:
+    """A record named in a portal path (an appointment, a result) must be the session patient's;
+    anything else is 404, exactly as for a record that doesn't exist (D84)."""
+    if record_patient_id is None or record_patient_id != patient.patient_id:
+        raise NotFound()
 
 
 async def portal_session(
