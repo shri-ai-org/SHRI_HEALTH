@@ -16,7 +16,15 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AppError, Conflict, NotFound, ValidationFailed, field_error
+from app.core.errors import (
+    Conflict,
+    InvalidCursor,
+    NotFound,
+    PreconditionFailed,
+    PreconditionRequired,
+    ValidationFailed,
+    field_error,
+)
 
 from . import schemas
 from .matching import Person, possible_duplicates
@@ -40,22 +48,6 @@ from .store import (
     Telecom,
     Written,
 )
-
-
-class InvalidCursor(AppError):
-    """400 invalid-cursor (API_STANDARDS §9.3); core has no 400 class yet."""
-
-    default_code = "invalid-cursor"
-
-
-class PreconditionFailed(AppError):
-    """412 precondition-failed, with the current ETag (API_STANDARDS §11)."""
-
-    default_code = "precondition-failed"
-
-
-class PreconditionRequired(AppError):
-    default_code = "precondition-required"
 
 
 def business_rule(location: str, where: str, code: str) -> ValidationFailed:
