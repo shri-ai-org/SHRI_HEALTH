@@ -29,6 +29,7 @@ import type {
   CheckInAppointmentHeaders,
   CheckInRequest,
   CheckInResult,
+  CheckOutAppointmentHeaders,
   ConflictResponse,
   ForbiddenResponse,
   GetStatusBoardParams,
@@ -553,7 +554,7 @@ export const getCancelAppointmentUrl = (appointmentId: Id,) => {
 }
 
 /**
- * Cancels with a reason (inventory #55; DATA_OWNERSHIP §5.1): `booked` or `arrived`, or `checked-in` with `left-without-being-seen`, which also cancels the encounter in the same transaction. Frees the slot.
+ * Cancels with a reason (inventory #55; DATA_OWNERSHIP §5.1): `booked` or `arrived`, or `checked-in` with `left-without-being-seen`, which also cancels the encounter in the same transaction. Frees the slot. If the appointment is the revisit of a follow-up request (D98), the request goes back to `open` in the same transaction, so the front desk sees it again.
  * @summary Cancel an appointment
  */
 export const cancelAppointment = async (appointmentId: Id,
@@ -740,7 +741,7 @@ export const getRecordVisitStatusUrl = (appointmentId: Id,) => {
 }
 
 /**
- * Records `arrived`, `roomed`, `with-provider`, `checked-out` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment's `_history`.
+ * Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment's `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out` (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names `/status`).
  * @summary Record a visit step
  */
 export const recordVisitStatus = async (appointmentId: Id,
@@ -766,6 +767,99 @@ return apiFetch<recordVisitStatusResponse>(getRecordVisitStatusUrl(appointmentId
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(statusChangeRequest)
+  }
+);}
+
+
+export type checkOutAppointmentResponse200 = {
+  data: Appointment
+  status: 200
+}
+
+export type checkOutAppointmentResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type checkOutAppointmentResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type checkOutAppointmentResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type checkOutAppointmentResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type checkOutAppointmentResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type checkOutAppointmentResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type checkOutAppointmentResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type checkOutAppointmentResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type checkOutAppointmentResponseSuccess = (checkOutAppointmentResponse200) & {
+  headers: Headers;
+};
+export type checkOutAppointmentResponseError = (checkOutAppointmentResponse400 | checkOutAppointmentResponse401 | checkOutAppointmentResponse403 | checkOutAppointmentResponse404 | checkOutAppointmentResponse409 | checkOutAppointmentResponse422 | checkOutAppointmentResponse429 | checkOutAppointmentResponse500) & {
+  headers: Headers;
+};
+
+export type checkOutAppointmentResponse = (checkOutAppointmentResponseSuccess | checkOutAppointmentResponseError)
+
+export const getCheckOutAppointmentUrl = (appointmentId: Id,) => {
+
+
+
+
+  return `/appointments/${appointmentId}/check-out`
+}
+
+/**
+ * Ends the visit flow at the desk (D98): the visit step becomes `checked-out` (kept with its time in `visit_flow_event`) and the appointment `fulfilled`. Front desk and ADM only (`appointments:check-out`). Refused with `409 invalid-state-transition` while something must be settled first; `errors` names each one, so the screen can point to the step: `/followUp` (the visit's follow-up request is still `open`: book it or decline it) and `/status` (the patient is not checked in, or is already checked out; the problem carries `currentState`). An unpaid copay and an unsigned note never block check-out: the note is often signed later, and balances are P1. The encounter is closed separately (`POST /encounters/{encounterId}/close`).
+ * @summary Check the patient out
+ */
+export const checkOutAppointment = async (appointmentId: Id,
+    headers?: CheckOutAppointmentHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<checkOutAppointmentResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<checkOutAppointmentResponse>(getCheckOutAppointmentUrl(appointmentId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { ...headers, ...getHeaders(options?.headers) }
+
   }
 );}
 
@@ -1223,7 +1317,7 @@ export const getRescheduleAppointmentUrl = (appointmentId: Id,) => {
 }
 
 /**
- * Moves a `booked` or `arrived` appointment (new inventory row #243; D61). In one transaction: the old appointment becomes `cancelled` with the given reason, a new one is booked under the same rules as `POST /appointments` (provider-day lock, overbooking only where the type allows it), and the new one carries `rescheduledFromId`, set by the server. A new date re-queues the eligibility check (D15). Returns the new appointment; the old one keeps its history.
+ * Moves a `booked` or `arrived` appointment (new inventory row #243; D61). In one transaction: the old appointment becomes `cancelled` with the given reason, a new one is booked under the same rules as `POST /appointments` (provider-day lock, overbooking only where the type allows it), and the new one carries `rescheduledFromId`, set by the server. A new date re-queues the eligibility check (D15). Returns the new appointment; the old one keeps its history. If the appointment is the revisit of a follow-up request (D98), the request stays `booked` and points at the new appointment, in the same transaction.
  * @summary Reschedule an appointment
  */
 export const rescheduleAppointment = async (appointmentId: Id,
