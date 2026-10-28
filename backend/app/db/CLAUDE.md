@@ -335,6 +335,10 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   ETag, holds the window, the notice and the cancel and reschedule cut-offs.
   `admin.online_bookable_type` holds the visit types bookable at each facility; delete a row to
   stop offering one.
+- **Staff sign-in's lookup (migration 0016):** at the login callback core knows only the
+  Keycloak subject, so it calls `SELECT * FROM admin.lookup_staff_user(:sub)` as `shri_app`,
+  with no clinic set. It returns `(user_id, tenant_id, is_active)`, at most one row, or none;
+  core refuses an inactive user or one with no clinic (platform staff), then sets the clinic.
 - **Staff back-channel logout (D94, migration 0011):** after validating the logout token, core
   calls `SELECT * FROM admin.end_backchannel_sessions(:jti, :jti_expires_at, :sid, :sub)` as
   `shri_app`, with no clinic set.
