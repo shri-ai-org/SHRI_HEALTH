@@ -371,7 +371,7 @@ async def test_entered_in_error_writes_its_provenance(
         database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
     _, w = await _coverage(database, clinic)
     async with session(database, clinic) as s:
-        w2 = await STORE.coverage_entered_in_error(s, w.id, fs.Reason(text="Wrong patient"),
+        w2 = await STORE.coverage_entered_in_error(s, w.id, fs.Reason(text="  Wrong patient "),
                                                    if_version=w.version)
         await s.commit()
     prov = _rows(admin_engine, "SELECT p.target_version_id, p.activity_code, p.reason_text, "
@@ -384,11 +384,49 @@ async def test_entered_in_error_writes_its_provenance(
         with pytest.raises(fs.InvalidTransition) as again:
             await STORE.coverage_entered_in_error(s, w.id, fs.Reason(text="Again"))
         assert again.value.current_state == "entered-in-error"
-        with pytest.raises(fs.InvalidInput):
+        with pytest.raises(fs.InvalidInput) as blank:          # stored trimmed, never blank
             await STORE.coverage_entered_in_error(s, w.id, fs.Reason(text="  "))
+        assert blank.value.field == "reason"
         with pytest.raises(fs.InvalidTransition):                    # never used again (D45)
             await STORE.update_coverage(s, w.id, fs.CoverageChanges(member_id="W1"),
                                         if_version=w2.version)
+
+
+async def _second_primary(database: Database, clinic: dict[str, Any], patient: fs.Written,
+                          start: dt.date) -> fs.Written:
+    async with session(database, clinic) as s:
+        w = await STORE.create_coverage(s, fs.CoverageIn(
+            beneficiary_patient_id=patient.id, payer_id=clinic["payer"], member_id="N1",
+            relationship_code="self", subscriber_patient_id=patient.id, order=1,
+            period_start=start))
+        await s.commit()
+    return w
+
+
+async def test_an_order_is_one_coverage_at_a_time_and_an_ended_one_frees_it(
+        database: Database, clinic: dict[str, Any]) -> None:
+    patient, first = await _coverage(database, clinic)          # order 1 from 2026-01-01, open
+    with pytest.raises(fs.CoverageOrderTaken) as taken:         # an open end overlaps
+        await _second_primary(database, clinic, patient, dt.date(2027, 1, 1))
+    assert taken.value.field == "order"
+    async with session(database, clinic) as s:                  # ending it frees the order
+        await STORE.update_coverage(s, first.id, fs.CoverageChanges(
+            period_end=dt.date(2026, 12, 31)), if_version=first.version)
+        await s.commit()
+    second = await _second_primary(database, clinic, patient, dt.date(2027, 1, 1))
+    async with session(database, clinic) as s:                  # moving it back overlaps again
+        with pytest.raises(fs.CoverageOrderTaken):
+            await STORE.update_coverage(s, second.id, fs.CoverageChanges(
+                period_start=dt.date(2026, 6, 1)), if_version=second.version)
+
+
+async def test_an_entered_in_error_coverage_holds_no_order(
+        database: Database, clinic: dict[str, Any]) -> None:
+    patient, first = await _coverage(database, clinic)
+    async with session(database, clinic) as s:
+        await STORE.coverage_entered_in_error(s, first.id, fs.Reason(text="Wrong card"))
+        await s.commit()
+    await _second_primary(database, clinic, patient, dt.date(2026, 3, 1))
 
 
 # ====================================================================== Consent

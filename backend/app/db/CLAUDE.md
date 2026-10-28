@@ -98,9 +98,15 @@ module. Each helper:
 - returns `Written(id, version, last_updated)`, the version this transaction gives the
   resource (the ETag), child rows included;
 - raises `ResourceNotFound` for a row the session can't see.
-- raises `InvalidInput(reason)` (a `ValueError`) for input the API refuses with `422`, and
+- raises `InvalidInput(reason)` (a `ValueError`) for input the API refuses with `422`, with
+  `field` naming the input when there is one (map it to the error's pointer), and
   `InvalidTransition(current_state)` for a change the record's state doesn't allow, such as
-  editing an entered-in-error coverage (D45).
+  editing an entered-in-error coverage (D45);
+- stores every reason trimmed, and refuses a blank one with `InvalidInput` at `field="reason"`;
+- raises `CoverageOrderTaken` (an `InvalidInput` at `field="order"`) when another coverage of
+  the patient has the same order for an overlapping period (`ex_coverage_order_no_overlap`,
+  migration 0012; an open end is open-ended, entered-in-error coverages don't count), so an
+  ended coverage frees its order.
 
 No identifier other than the MR from `admin.next_mrn()` may use the practice's MRN system
 (`InvalidInput`), so a value the counter hasn't reached yet can't block a registration.

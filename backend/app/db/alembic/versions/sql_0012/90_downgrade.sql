@@ -9,6 +9,8 @@ ALTER TABLE admin.payer_enrollment
   ADD CONSTRAINT uq_payer_enrollment_payer_id_practitioner_id_transactio_c010
   UNIQUE NULLS NOT DISTINCT (payer_id, practitioner_id, transaction, clearinghouse);
 ALTER TABLE admin.patient_payment ALTER COLUMN receipt_file_id DROP NOT NULL;
+ALTER TABLE clinical.coverage DROP CONSTRAINT ex_coverage_order_no_overlap;
+CREATE UNIQUE INDEX uq_coverage_active_order ON clinical.coverage (beneficiary_patient_id, "order") WHERE status = 'active';
 ALTER TABLE admin.patient_payment DROP COLUMN check_number;
 ALTER TABLE admin.patient_payment DROP COLUMN note;
 ALTER TABLE admin.binary_object DROP COLUMN purpose;
