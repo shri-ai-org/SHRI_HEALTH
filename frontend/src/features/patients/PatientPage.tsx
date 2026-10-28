@@ -3,6 +3,11 @@ import { Link, useParams } from 'react-router'
 import { ApiError } from '../../api/client'
 import { getPatient } from '../../api/generated/endpoints/patients/patients'
 import type { Patient } from '../../api/generated/model'
+import { PatientAppointmentsPanel } from '../scheduling/PatientAppointmentsPanel'
+import { InsurancePanel } from './insurance/InsurancePanel'
+import { PORTAL_ENABLED } from '../portal/features'
+import { PortalAccountPanel } from './PortalAccountPanel'
+import { birthSexLabel, genderIdentityLabel } from './demographics'
 import { Badge, formatAddressLines, formatDate, formatNameGivenFirst, formatPhone, ProblemAlert, Spinner, type Problem } from '../../design-system'
 
 const GENDER: Record<string, string> = { male: 'Male', female: 'Female', other: 'Other', unknown: 'Unknown' }
@@ -54,6 +59,8 @@ function PatientDetails({ patientId }: { patientId: string }) {
     ['MRN', patient.mrn],
     ['Date of birth', patient.birthDate ? formatDate(patient.birthDate) : '—'],
     ['Legal sex', patient.gender ? (GENDER[patient.gender] ?? patient.gender) : '—'],
+    ['Sex assigned at birth', birthSexLabel(patient.birthSex) ?? '—'],
+    ['Gender identity', genderIdentityLabel(patient.genderIdentity) ?? '—'],
     ['Phone', patient.phones?.[0] ? formatPhone(patient.phones[0].number) : '—'],
     ['Email', patient.emails?.[0]?.address ?? '—'],
     ['Address', patient.address ? formatAddressLines(patient.address).join(', ') : '—'],
@@ -77,6 +84,10 @@ function PatientDetails({ patientId }: { patientId: string }) {
           </div>
         ))}
       </dl>
+      <PatientAppointmentsPanel patientId={patient.id} patientName={formatNameGivenFirst(patient.name)} />
+      <InsurancePanel patientId={patient.id} />
+      {/* Development only, with the portal itself: core doesn't serve the portal-account routes yet. */}
+      {PORTAL_ENABLED ? <PortalAccountPanel patientId={patient.id} /> : null}
     </section>
   )
 }

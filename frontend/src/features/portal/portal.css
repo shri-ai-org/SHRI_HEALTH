@@ -1,0 +1,67 @@
+/*
+ * Patient portal colours. Each area has its own accent, as the old portal's home cards did
+ * (green results, plum health summary, amber appointments…). Every accent and gradient end has at
+ * least 4.5:1 contrast with white text. Tints and dark-mode text are mixed from the accent with
+ * the design-system surface, so dark mode and high contrast keep working.
+ * Components use these through `bg-(--accent)`, `text-(--accent-text)` and similar.
+ */
+
+.portal {
+  --accent: #1e3a8a;
+  --accent-2: #0e7490;
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--color-surface-1));
+  --accent-line: color-mix(in srgb, var(--accent) 28%, var(--color-surface-1));
+  --accent-text: var(--accent);
+}
+
+/* The page background: soft colour washes from the area's accent. */
+.portal-page {
+  background:
+    radial-gradient(1200px 400px at 0% 0%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%),
+    radial-gradient(900px 400px at 100% 0%, color-mix(in srgb, var(--accent-2) 8%, transparent), transparent 70%),
+    var(--color-bg);
+}
+
+.dark .portal,
+.dark.portal {
+  --accent-soft: color-mix(in srgb, var(--accent) 22%, var(--color-surface-1));
+  --accent-line: color-mix(in srgb, var(--accent) 45%, var(--color-surface-1));
+  --accent-text: color-mix(in srgb, var(--accent) 35%, white);
+}
+
+/* One accent per area. */
+.accent-brand { --accent: #1e3a8a; --accent-2: #0e7490; }
+.accent-results { --accent: #00684f; --accent-2: #0f766e; }
+.accent-health { --accent: #5f0f40; --accent-2: #9d174d; }
+.accent-appointments { --accent: #b45309; --accent-2: #c2410c; }
+.accent-messages { --accent: #044254; --accent-2: #0e7490; }
+.accent-prescriptions { --accent: #007c92; --accent-2: #0369a1; }
+.accent-billing { --accent: #984e01; --accent-2: #b45309; }
+.accent-video { --accent: #7b0303; --accent-2: #be123c; }
+.accent-education { --accent: #304d30; --accent-2: #3f6212; }
+.accent-account { --accent: #4338ca; --accent-2: #6d28d9; }
+
+/* The header bar: brand gradient whatever area is open. */
+.portal-header {
+  background: linear-gradient(100deg, #1e3a8a 0%, #4338ca 45%, #0e7490 100%);
+}
+
+/* Soft card lift on hover; none when the user prefers reduced motion. */
+.portal-lift {
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.portal-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-lg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .portal-lift:hover {
+    transform: none;
+  }
+}
+
+/* Keyboard focus stays visible on the coloured header and page banners. */
+.portal-header :focus-visible,
+.portal-banner :focus-visible {
+  outline-color: white;
+}

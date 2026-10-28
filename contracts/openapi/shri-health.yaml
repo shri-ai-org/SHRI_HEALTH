@@ -88,6 +88,9 @@ tags:
   - name: dashboards
     description: Operations dashboard.
     x-owner: minalini
+  - name: portal
+    description: Patient portal, under /portal (P1; D83-D89). The patient comes from the portal session, never the request; each operation keeps its owning module's x-owner.
+    x-owner: vimal
 paths:
   /auth/login:
     $ref: 'modules/platform.yaml#/paths/~1auth~1login'
@@ -105,6 +108,12 @@ paths:
     $ref: 'modules/platform.yaml#/paths/~1events~1stream'
   /patients/{patientId}/break-glass:
     $ref: 'modules/platform.yaml#/paths/~1patients~1{patientId}~1break-glass'
+  /hooks/keycloak/backchannel-logout:
+    $ref: 'modules/platform.yaml#/paths/~1hooks~1keycloak~1backchannel-logout'
+  /operations/{operationId}:
+    $ref: 'modules/platform.yaml#/paths/~1operations~1{operationId}'
+  /operations/{operationId}/cancel:
+    $ref: 'modules/platform.yaml#/paths/~1operations~1{operationId}~1cancel'
   /files/upload-url:
     $ref: 'modules/files.yaml#/paths/~1files~1upload-url'
   /files/{fileId}/complete:
@@ -139,6 +148,18 @@ paths:
     $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1restrict'
   /patients/{patientId}/unrestrict:
     $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1unrestrict'
+  /patients/{patientId}/portal-account:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account'
+  /patients/{patientId}/portal-invitations:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-invitations'
+  /patients/{patientId}/portal-invitations/{invitationId}/revoke:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-invitations~1{invitationId}~1revoke'
+  /patients/{patientId}/portal-account/reset-factors:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account~1reset-factors'
+  /patients/{patientId}/portal-account/disable:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account~1disable'
+  /patients/{patientId}/portal-account/enable:
+    $ref: 'modules/patients.yaml#/paths/~1patients~1{patientId}~1portal-account~1enable'
   /duplicates:
     $ref: 'modules/patients.yaml#/paths/~1duplicates'
   /duplicates/{duplicateId}/merge:
@@ -151,6 +172,14 @@ paths:
     $ref: 'modules/patients.yaml#/paths/~1patient-merges'
   /patients/summaries:
     $ref: 'modules/patients.yaml#/paths/~1patients~1summaries'
+  /pre-registrations:
+    $ref: 'modules/patients.yaml#/paths/~1pre-registrations'
+  /pre-registrations/{preRegistrationId}:
+    $ref: 'modules/patients.yaml#/paths/~1pre-registrations~1{preRegistrationId}'
+  /pre-registrations/{preRegistrationId}/accept:
+    $ref: 'modules/patients.yaml#/paths/~1pre-registrations~1{preRegistrationId}~1accept'
+  /pre-registrations/{preRegistrationId}/reject:
+    $ref: 'modules/patients.yaml#/paths/~1pre-registrations~1{preRegistrationId}~1reject'
   /slots:
     $ref: 'modules/scheduling.yaml#/paths/~1slots'
   /appointments:
@@ -163,6 +192,8 @@ paths:
     $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1check-in'
   /appointments/{appointmentId}/status:
     $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1status'
+  /appointments/{appointmentId}/check-out:
+    $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1check-out'
   /status-board:
     $ref: 'modules/scheduling.yaml#/paths/~1status-board'
   /booking/facilities:
@@ -191,6 +222,12 @@ paths:
     $ref: 'modules/encounters.yaml#/paths/~1patients~1{patientId}~1encounters'
   /encounters/{encounterId}/close:
     $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1close'
+  /encounters/{encounterId}/follow-up:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1follow-up'
+  /encounters/{encounterId}/follow-up/decline:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1follow-up~1decline'
+  /encounters/{encounterId}/follow-up/withdraw:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1follow-up~1withdraw'
   /encounters/{encounterId}/entered-in-error:
     $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1entered-in-error'
   /encounters/{encounterId}/vitals:
@@ -225,6 +262,8 @@ paths:
     $ref: 'modules/encounters.yaml#/paths/~1me~1favorites'
   /encounters/{encounterId}/after-visit-summary:
     $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1after-visit-summary'
+  /encounters/{encounterId}/after-visit-summary/download-url:
+    $ref: 'modules/encounters.yaml#/paths/~1encounters~1{encounterId}~1after-visit-summary~1download-url'
   /cosign-rules:
     $ref: 'modules/encounters.yaml#/paths/~1cosign-rules'
   /cosign-rules/{cosignRuleId}:
@@ -303,12 +342,80 @@ paths:
     $ref: 'modules/practice-setup.yaml#/paths/~1consent-requirements'
   /consent-requirements/{consentRequirementId}:
     $ref: 'modules/practice-setup.yaml#/paths/~1consent-requirements~1{consentRequirementId}'
+  /practice-settings:
+    $ref: 'modules/practice-setup.yaml#/paths/~1practice-settings'
   /pharmacies:
     $ref: 'modules/medications.yaml#/paths/~1pharmacies'
   /patients/{patientId}/payments:
     $ref: 'modules/billing.yaml#/paths/~1patients~1{patientId}~1payments'
   /payments/card-session:
     $ref: 'modules/billing.yaml#/paths/~1payments~1card-session'
+  /inbox:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox'
+  /inbox/summary:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox~1summary'
+  /inbox/{inboxItemId}:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox~1{inboxItemId}'
+  /inbox/{inboxItemId}/complete:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox~1{inboxItemId}~1complete'
+  /inbox/{inboxItemId}/cancel:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox~1{inboxItemId}~1cancel'
+  /inbox/{inboxItemId}/replies:
+    $ref: 'modules/inbox.yaml#/paths/~1inbox~1{inboxItemId}~1replies'
+  /messages:
+    $ref: 'modules/inbox.yaml#/paths/~1messages'
+  /portal/auth/login:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1login'
+  /portal/auth/callback:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1callback'
+  /portal/auth/session:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1session'
+  /portal/auth/refresh:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1refresh'
+  /portal/auth/logout:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1logout'
+  /portal/enrollments:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1enrollments'
+  /portal/me:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me'
+  /portal/me/change-requests:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1change-requests'
+  /portal/me/appointments:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1appointments'
+  /portal/me/appointments/{appointmentId}:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1appointments~1{appointmentId}'
+  /portal/me/appointments/{appointmentId}/cancel:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1appointments~1{appointmentId}~1cancel'
+  /portal/me/appointments/{appointmentId}/reschedule:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1appointments~1{appointmentId}~1reschedule'
+  /portal/booking/facilities:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1booking~1facilities'
+  /portal/booking/appointment-types:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1booking~1appointment-types'
+  /portal/booking/providers:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1booking~1providers'
+  /portal/me/slots:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1slots'
+  /portal/me/visit-summaries:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1visit-summaries'
+  /portal/me/visit-summaries/{visitSummaryId}:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1visit-summaries~1{visitSummaryId}'
+  /portal/me/visit-summaries/{visitSummaryId}/download-url:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1visit-summaries~1{visitSummaryId}~1download-url'
+  /portal/me/problems:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1problems'
+  /portal/me/problems/{problemId}:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1problems~1{problemId}'
+  /portal/me/allergies:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1allergies'
+  /portal/me/allergies/{allergyId}:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1allergies~1{allergyId}'
+  /portal/me/medications:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1medications'
+  /portal/me/vitals:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1vitals'
+  /portal/practices/{practiceLinkId}/pre-registrations:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1practices~1{practiceLinkId}~1pre-registrations'
 components:
   schemas:
     Address:
@@ -431,6 +538,8 @@ components:
       $ref: 'components/securitySchemes/csrfHeader.yaml'
     delegatedToken:
       $ref: 'components/securitySchemes/delegatedToken.yaml'
+    portalSessionCookie:
+      $ref: 'components/securitySchemes/portalSessionCookie.yaml'
     sessionCookie:
       $ref: 'components/securitySchemes/sessionCookie.yaml'
   examples:

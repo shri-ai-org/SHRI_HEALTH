@@ -238,6 +238,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `token_hash` | varchar(64) | no |  |  | — |
 | `keycloak_access_token_enc` | text | no |  |  | — |
 | `keycloak_refresh_token_enc` | text | no |  |  | — |
+| `keycloak_sid` | varchar(100) | yes |  |  | — |
 | `last_activity_at` | datetime | no |  |  | — |
 | `tokens_refreshed_at` | datetime | no |  |  | — |
 | `idle_expires_at` | datetime | no |  |  | — |
@@ -2380,6 +2381,41 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
 Unique: `uq_practice_payer_tenant_id_payer_id`
 
+## `admin.pre_registration`
+
+Admin (normalized). A request from the public pre-registration form (D96, A51), in the practice's queue.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `idempotency_key` | uuid | no |  |  | — |
+| `request_hash` | varchar(64) | no |  |  | — |
+| `details` | jsonb | no |  |  | — |
+| `contact_consent` | boolean | no |  |  | — |
+| `entry_source` | varchar(40) | no |  |  | — |
+| `status` | varchar(40) | no |  |  | — |
+| `decided_at` | datetime | yes |  |  | — |
+| `decided_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `patient_id` | uuid | yes |  | clinical.patient.id | — |
+| `id_document_type` | varchar(40) | yes |  |  | — |
+| `rejection_reason_code` | varchar(40) | yes |  |  | — |
+| `rejection_reason_text` | varchar(500) | yes |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.tenant.id, clinical.patient.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+| `created_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+| `updated_by_user_id` | uuid | yes |  | admin.app_user.id | — |
+
+Checks: `ck_pre_registration_decision_matches_status`, `ck_pre_registration_details_shape`, `ck_pre_registration_details_size`, `ck_pre_registration_entry_source_codes`, `ck_pre_registration_id_document_type_codes`, `ck_pre_registration_other_reason_has_text`, `ck_pre_registration_patient_reported`, `ck_pre_registration_rejection_reason_code_codes`, `ck_pre_registration_request_hash_format`, `ck_pre_registration_status_codes`
+
+Unique: `uq_pre_registration_tenant_id_idempotency_key`
+
+Composite foreign keys: `fk_pre_registration_patient_id_tenant`
+
 ## `admin.prescription_favorite`
 
 Admin (normalized). Saved prescription (drug + sig) for quick prescribing; owner NULL = practice-wide.
@@ -2826,13 +2862,15 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `timezone` | varchar(64) | no |  |  | — |
 | `ai_enabled` | boolean | no |  |  | — |
 | `is_active` | boolean | no |  |  | — |
+| `pre_registration_code` | varchar(64) | yes |  |  | — |
+| `pre_registration_enabled` | boolean | no |  |  | — |
 | `id` | uuid | no |  |  | — |
 | `created_at` | datetime | no |  |  | — |
 | `updated_at` | datetime | no |  |  | — |
 
-Checks: `ck_tenant_market_profile`, `ck_tenant_slug_format`
+Checks: `ck_tenant_market_profile`, `ck_tenant_pre_registration_code_format`, `ck_tenant_pre_registration_needs_code`, `ck_tenant_slug_format`
 
-Unique: `uq_tenant_organization_id`, `uq_tenant_slug`
+Unique: `uq_tenant_organization_id`, `uq_tenant_pre_registration_code`, `uq_tenant_slug`
 
 ## `admin.tenant_setting`
 
@@ -3157,7 +3195,7 @@ Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 | `hash_version` | smallint | no |  |  | — |
 | `tenant_id` | uuid | yes |  | admin.tenant.id | — |
 
-Checks: `ck_audit_event_action_codes`, `ck_audit_event_actor_type_codes`, `ck_audit_event_break_glass_reason`, `ck_audit_event_category_codes`, `ck_audit_event_hash_version_known`, `ck_audit_event_outcome_codes`, `ck_audit_event_user_actor`
+Checks: `ck_audit_event_action_codes`, `ck_audit_event_actor_type_codes`, `ck_audit_event_anonymous_actor`, `ck_audit_event_break_glass_reason`, `ck_audit_event_category_codes`, `ck_audit_event_hash_version_known`, `ck_audit_event_outcome_codes`, `ck_audit_event_user_actor`
 
 Unique: `uq_audit_event_event_uuid`, `uq_audit_event_patient_id_id`, `uq_audit_event_tenant_id_chain_seq`
 
@@ -4719,7 +4757,7 @@ FHIR resource `Encounter`. US Core Encounter. Rooming = an active encounter_loca
 
 Patient-owned via `subject_patient_id` (same-patient foreign keys apply).
 
-Child tables: `clinical.encounter_diagnosis`, `clinical.encounter_location`, `clinical.encounter_participant`, `clinical.encounter_reason`, `clinical.encounter_status_history`, `clinical.encounter_type`, `clinical.identifier`
+Child tables: `clinical.encounter_diagnosis`, `clinical.encounter_follow_up`, `clinical.encounter_location`, `clinical.encounter_participant`, `clinical.encounter_reason`, `clinical.encounter_status_history`, `clinical.encounter_type`, `clinical.identifier`
 
 Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
 
@@ -4792,6 +4830,39 @@ Checks: `ck_encounter_diagnosis_fhir_use_coding`, `ck_encounter_diagnosis_fhir_u
 Unique: `uq_encounter_diagnosis_encounter_id_condition_id`, `uq_encounter_diagnosis_encounter_id_rank`
 
 Composite foreign keys: `fk_encounter_diagnosis_condition_id_tenant`, `fk_encounter_diagnosis_encounter_id_tenant`
+
+## `clinical.encounter_follow_up`
+
+FHIR child / datatype table. The clinician's request for a revisit, one per visit (D98, A52; migration 0010). A child of the encounter, so every change moves the encounter's version, the ETag that decline's If-Match carries, and is kept in its history. Not part of the FHIR Encounter: /fhir never serves it.
+
+Patient-owned via `patient_id` (same-patient foreign keys apply).
+
+Contract: not mapped to a contract resource in DATA_OWNERSHIP.md.
+
+| Column | Type | Null | FHIR | References | Contract name |
+|---|---|---|---|---|---|
+| `encounter_id` | uuid | no | parent | clinical.encounter.id | — |
+| `patient_id` | uuid | no |  | clinical.appointment.subject_patient_id, clinical.encounter.subject_patient_id, clinical.patient.id | — |
+| `interval_value` | integer | no |  |  | — |
+| `interval_unit` | varchar(40) | no |  |  | — |
+| `appointment_type_id` | uuid | yes |  | admin.appointment_type.id | — |
+| `practitioner_id` | uuid | yes |  | clinical.practitioner.id | — |
+| `note` | varchar(500) | yes |  |  | — |
+| `status` | varchar(40) | no |  |  | — |
+| `requested_by_user_id` | uuid | no |  | admin.app_user.id | — |
+| `requested_at` | datetime | no |  |  | — |
+| `booked_appointment_id` | uuid | yes |  | clinical.appointment.id | — |
+| `status_reason` | varchar(500) | yes |  |  | — |
+| `id` | uuid | no |  |  | — |
+| `tenant_id` | uuid | no |  | admin.appointment_type.tenant_id, admin.tenant.id, clinical.appointment.tenant_id, clinical.encounter.tenant_id, clinical.patient.tenant_id, clinical.practitioner.tenant_id | — |
+| `created_at` | datetime | no |  |  | — |
+| `updated_at` | datetime | no |  |  | — |
+
+Checks: `ck_encounter_follow_up_booked_has_appointment`, `ck_encounter_follow_up_interval_range`, `ck_encounter_follow_up_interval_unit_codes`, `ck_encounter_follow_up_reason_matches_status`, `ck_encounter_follow_up_status_codes`
+
+Unique: `uq_encounter_follow_up_booked_appointment_id`, `uq_encounter_follow_up_encounter_id`
+
+Composite foreign keys: `fk_encounter_follow_up_appointment_type_id_tenant`, `fk_encounter_follow_up_booked_appointment_id_same_patient`, `fk_encounter_follow_up_booked_appointment_id_tenant`, `fk_encounter_follow_up_encounter_id_same_patient`, `fk_encounter_follow_up_encounter_id_tenant`, `fk_encounter_follow_up_patient_id_tenant`, `fk_encounter_follow_up_practitioner_id_tenant`
 
 ## `clinical.encounter_location`
 

@@ -3,7 +3,8 @@
 New tables, all clinic-scoped with forced RLS (models in app/db/models/admin/runtime.py):
   admin.app_session         one row per sign-in; session and CSRF tokens as SHA-256 hashes,
                             Keycloak tokens encrypted by core; tokens_refreshed_at records the
-                            last Keycloak refresh (#35)
+                            last Keycloak refresh (#35); keycloak_sid, Keycloak's session ID,
+                            for back-channel logout (D94)
   admin.idempotency_record  Idempotency-Key results for 24 hours (T21, ADR-0007)
   admin.operation           long-running 202 work (API_STANDARDS §13)
   admin.event_log           thin events for SSE replay (T28)
@@ -19,7 +20,7 @@ Changes to existing tables:
 
 Three SECURITY DEFINER functions cross clinics, each for one role: admin.lookup_session
 (cookie to session, shri_app), admin.claim_outbound_messages (the outbox worker,
-shri_integration) and admin.purge_expired_runtime_rows (the retention clean-up, shri_app; no
+shri_integration) and admin.purge_expired_runtime_rows (the retention clean-up, shri_maintenance; no
 role has DELETE on the runtime tables). The partner worker may insert events and complete the
 operations assigned to it. No role gets BYPASSRLS (D23).
 
@@ -58,6 +59,7 @@ FILES = ["01_tables.sql", "02_existing_tables.sql", "03_rls_grants.sql", "04_pol
 
 DOWNGRADE = [
     "DROP FUNCTION admin.purge_expired_runtime_rows()",
+    "REVOKE USAGE ON SCHEMA admin FROM shri_maintenance",
     "DROP FUNCTION admin.claim_outbound_messages(integer)",
     "DROP FUNCTION admin.lookup_session(text)",
     "DROP POLICY migrator_outbox_claim ON admin.integration_message",
@@ -90,6 +92,9 @@ DOWNGRADE = [
     "ALTER TABLE audit.break_glass_access ADD CONSTRAINT ck_break_glass_access_reason_stated "
     "CHECK (length(trim(reason)) >= 10)",
     "ALTER TABLE audit.break_glass_access DROP COLUMN reason_code",
+    "ALTER TABLE audit.audit_event DROP CONSTRAINT ck_audit_event_break_glass_reason",
+    "ALTER TABLE audit.audit_event ADD CONSTRAINT ck_audit_event_break_glass_reason "
+    "CHECK (action <> 'break-glass' OR reason IS NOT NULL)",
     "ALTER TABLE audit.audit_event DROP CONSTRAINT ck_audit_event_actor_type_codes",
     "ALTER TABLE audit.audit_event ADD CONSTRAINT ck_audit_event_actor_type_codes "
     "CHECK (actor_type IN ('user', 'system', 'ai', 'integration', 'patient'))",

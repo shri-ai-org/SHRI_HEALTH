@@ -35,10 +35,12 @@ CREATE POLICY migrator_outbox_claim ON admin.integration_message FOR UPDATE TO s
 -- admin.purge_expired_runtime_rows: the only way rows leave the four runtime tables (no role has
 -- DELETE on them; Thulasi's and Vimal's reviews of #52). The migrator sees and deletes, across
 -- clinics, only rows past retention; a live session or a stored response is never in reach.
+-- A session ends at the earliest of logout, idle timeout and absolute expiry (least() skips a
+-- NULL revoked_at), and goes 24 hours after that (Vimal's review of #52).
 CREATE POLICY migrator_purge_read ON admin.app_session FOR SELECT TO shri_migrator
-  USING (least(coalesce(revoked_at, expires_at), expires_at) < now() - interval '24 hours');
+  USING (least(revoked_at, idle_expires_at, expires_at) < now() - interval '24 hours');
 CREATE POLICY migrator_purge ON admin.app_session FOR DELETE TO shri_migrator
-  USING (least(coalesce(revoked_at, expires_at), expires_at) < now() - interval '24 hours');
+  USING (least(revoked_at, idle_expires_at, expires_at) < now() - interval '24 hours');
 CREATE POLICY migrator_purge_read ON admin.idempotency_record FOR SELECT TO shri_migrator
   USING (expires_at < now());
 CREATE POLICY migrator_purge ON admin.idempotency_record FOR DELETE TO shri_migrator

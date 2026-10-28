@@ -16,3 +16,35 @@ paths:
       description: Patient-scoped, but x-audit does not say where the patient ID comes from.
       responses:
         '200': { description: OK }
+  /portal/me/problems:
+    get:
+      operationId: listPortalProblems
+      tags: [portal]
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit: { action: R, category: phi-read }
+      security: [{ portalSessionCookie: [] }]
+      description: A portal read of patient data with neither actor patient nor the patient from the session.
+      responses:
+        '200': { description: OK }
+  /portal/me/allergies:
+    get:
+      operationId: listPortalAllergies
+      tags: [portal]
+      x-owner: vimal
+      x-permission: portal-records:read
+      x-audit: { action: R, category: none, actor: patient }
+      security: [{ portalSessionCookie: [] }]
+      description: A portal read of patient data marked "none", so it would never be audited.
+      responses:
+        '200': { description: OK }
+  /patients/{patientId}/consents:
+    get:
+      operationId: listConsents
+      tags: [patients]
+      x-owner: vimal
+      x-permission: consents:read
+      x-audit: { action: R, category: phi-read, patient: patientId, actor: anonymous }
+      description: A signed-in operation that claims an anonymous actor.
+      responses:
+        '200': { description: OK }

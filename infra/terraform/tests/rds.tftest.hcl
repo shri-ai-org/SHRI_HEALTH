@@ -1,5 +1,5 @@
 # Plans against a mock AWS provider (no account or credentials needed), so CI can check that the
-# controls ADR-0012 requires stay switched on. Run: terraform init -backend=false && terraform test
+# controls ADR-0012 requires stay switched on. Run: tofu init -backend=false && tofu test
 
 mock_provider "aws" {
   mock_data "aws_caller_identity" {
@@ -11,10 +11,25 @@ mock_provider "aws" {
   mock_data "aws_iam_policy_document" {
     defaults = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
   }
+  # OpenTofu's mocks fill computed attributes with random strings, which the provider's own ARN
+  # validation then refuses; these are fixed, well-formed fakes in a fake account.
+  mock_resource "aws_kms_key" {
+    defaults = { arn = "arn:aws:kms:us-east-1:123456789012:key/00000000-0000-4000-8000-000000000001" }
+  }
+  mock_resource "aws_iam_role" {
+    defaults = { arn = "arn:aws:iam::123456789012:role/shri-staging-rds-monitoring" }
+  }
+  mock_resource "aws_db_instance" {
+    defaults = { arn = "arn:aws:rds:us-east-1:123456789012:db:shri-staging-postgres" }
+  }
 }
 
 mock_provider "aws" {
   alias = "backup"
+
+  mock_resource "aws_kms_key" {
+    defaults = { arn = "arn:aws:kms:us-west-2:123456789012:key/00000000-0000-4000-8000-000000000002" }
+  }
 }
 
 variables {

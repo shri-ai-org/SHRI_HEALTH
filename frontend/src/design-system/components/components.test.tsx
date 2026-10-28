@@ -6,7 +6,7 @@ import { Button } from './Button'
 import { DataTable } from './DataTable'
 import { Field } from './Field'
 import { Alert, Badge, ErrorState } from './feedback'
-import { DateInput, MoneyInput, PhoneInput, StateSelect, Textarea } from './inputs'
+import { DateInput, MoneyInput, PhoneInput, StateSelect, Textarea, TextInput } from './inputs'
 import { ConfirmDialog } from './Modal'
 import { Tabs } from './Tabs'
 
@@ -49,6 +49,23 @@ describe('form fields', () => {
   it('lists states by name with USPS codes as values', () => {
     render(<Form onDate={() => {}} onPhone={() => {}} />)
     expect(screen.getByRole('option', { name: 'Illinois (IL)' })).toHaveValue('IL')
+  })
+
+  it('uses a given id, so an error summary can link to the control', () => {
+    render(
+      <>
+        <Field id="email" label="Email" hint="name@example.com" error="Enter an email address">
+          {(p) => <TextInput {...p} />}
+        </Field>
+        <Field label="City">{(p) => <TextInput {...p} />}</Field>
+      </>,
+    )
+    const email = screen.getByLabelText('Email')
+    expect(email).toHaveAttribute('id', 'email')
+    expect(email).toHaveAttribute('aria-describedby', 'email-hint email-error')
+    expect(email).toHaveAccessibleDescription('name@example.com Enter an email address')
+    // Without an id, one is generated and still links the label.
+    expect(screen.getByLabelText('City').id).not.toBe('')
   })
 })
 

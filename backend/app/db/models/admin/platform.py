@@ -64,11 +64,15 @@ class AuditEvent(Base, OptionalTenantMixin):
         # Platform security events with no clinic (A47), for the later platform reviewer role.
         Index("ix_audit_event_platform_time", "recorded_at",
               postgresql_where=text("tenant_id IS NULL")),
-        CheckConstraint("action <> 'break-glass' OR reason IS NOT NULL",
-                        name="break_glass_reason"),
+        # A break-glass row carries the grant's reason; empty or blank is no reason (D53, D5).
+        CheckConstraint("action <> 'break-glass' OR (reason IS NOT NULL "
+                        "AND length(trim(reason)) > 0)", name="break_glass_reason"),
         # 1: the original payload; 2 (every new row, set by the chain trigger) adds category.
         CheckConstraint("hash_version IN (1, 2)", name="hash_version_known"),
         CheckConstraint("actor_type <> 'user' OR actor_user_id IS NOT NULL", name="user_actor"),
+        # Nobody is signed in on the public pre-registration form (D96).
+        CheckConstraint("actor_type <> 'anonymous' OR actor_user_id IS NULL",
+                        name="anonymous_actor"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)

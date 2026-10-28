@@ -73,6 +73,9 @@ CATALOGUE: frozenset[str] = _expand(
     "lab-providers:read",  # lab providers, read-only (D48, T40)
     "consent-requirements:read",  # D59 (T41); writing them stays under practice-setup:*
     "provider-schedules:create|update",  # schedule blocks, split from practice-setup:* (D66, T41)
+    # Note templates (D73, A46, T42): clinicians read the practice's templates to start a note and
+    # keep personal ones; practice templates are still written under practice-setup:*.
+    "note-templates:read|create-personal",
     "superbills:read|update", "claims:read|create|scrub|submit|status-check|correct|void",
     "payments:create|card-session", "remittances:read|post", "billing-reports:read",
     "documents:read|create|update", "faxes:create", "fax-inbox:read|file", "ccda:import|export",
@@ -138,7 +141,8 @@ _MD = frozenset().union(
     _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
             "encounters:entered-in-error", "codes:read", "favorites:read|update",
             "superbills:read", "ccda:import|export", "patients:break-glass",
-            "operations-dashboard:read", "notes:cosign"),
+            "operations-dashboard:read", "notes:cosign",
+            "note-templates:read|create-personal"),
 )
 
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
@@ -161,7 +165,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         _ORDER_READ, _DOCUMENTS, _INBOX, _COMMS, _FILES,
         _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
                 "codes:read", "medication-reconciliations:create", "medications:create",
-                "medication-history:fetch", "in-office-results:create", "patients:break-glass"),
+                "medication-history:fetch", "in-office-results:create", "patients:break-glass",
+                "note-templates:read"),
     ),
     # Nurse
     "RN": frozenset().union(
@@ -169,7 +174,10 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         _CLINICAL_ENTERED_IN_ERROR,
         _MED_READ, _RX_DRAFT, _ORDER_DRAFT, _UNMATCHED, _DOCUMENTS, _INBOX, _COMMS, _FILES,
         _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
-                "notes:create|update", "codes:read", "favorites:read|update",
+                # Nursing notes only: the notes service refuses other note types for RN (T42).
+                "notes:create|update|sign", "note-addenda:create",
+                "note-templates:read|create-personal",
+                "codes:read", "favorites:read|update",
                 "ccda:import|export", "patients:break-glass", "operations-dashboard:read"),
     ),
     # Physician
@@ -197,7 +205,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "duplicates:read|merge|dismiss", "patient-merges:read|undo",
                 "lab-providers:read", "encounters:entered-in-error",
                 "codes:read", "ai-settings:read|update", "cosign-rules:read|create|update",
-                "practice-setup:read|create|update", "payers:read", "onboarding:import",
+                "practice-setup:read|create|update", "note-templates:read", "payers:read",
+                "onboarding:import",
                 "message-templates:read|create|update", "users:read|create|update",
                 "roles:read", "user-roles:update", "superbills:read", "claims:read",
                 "remittances:read", "billing-reports:read", "exports:read|create",
@@ -211,7 +220,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         _PATIENT_LOOKUP, _CHART_READ,
         _expand("patients:restrict", "consents:read", "duplicates:read", "patient-merges:read",
                 "consent-requirements:read", "ai-settings:read",
-                "cosign-rules:read", "practice-setup:read", "lab-providers:read",
+                "cosign-rules:read", "practice-setup:read", "note-templates:read",
+                "lab-providers:read",
                 "message-templates:read",
                 "users:read", "roles:read", "exports:read|create", "audit-events:read",
                 "chart-access-reports:read", "patients:break-glass",

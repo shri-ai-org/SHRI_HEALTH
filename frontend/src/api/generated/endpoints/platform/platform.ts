@@ -27,6 +27,7 @@ import type {
   InternalErrorResponse,
   Me,
   NotFoundResponse,
+  Operation,
   ServiceUnavailableResponse,
   Session,
   StreamEventsHeaders,
@@ -550,6 +551,147 @@ return apiFetch<breakGlassResponse>(getBreakGlassUrl(patientId),
     method: 'POST',
     headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(breakGlassRequest)
+  }
+);}
+
+
+export type getOperationResponse200 = {
+  data: Operation
+  status: 200
+}
+
+export type getOperationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getOperationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getOperationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getOperationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getOperationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getOperationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getOperationResponseSuccess = (getOperationResponse200) & {
+  headers: Headers;
+};
+export type getOperationResponseError = (getOperationResponse401 | getOperationResponse403 | getOperationResponse404 | getOperationResponse422 | getOperationResponse429 | getOperationResponse500) & {
+  headers: Headers;
+};
+
+export type getOperationResponse = (getOperationResponseSuccess | getOperationResponseError)
+
+export const getGetOperationUrl = (operationId: Id,) => {
+
+
+
+
+  return `/operations/${operationId}`
+}
+
+/**
+ * The state of long-running work started with a `202` (inventory #15; API_STANDARDS §13): IDs and status only, never PHI. Only its creator sees it (T26). While it is `queued` or `running`, the response carries `Retry-After`; once `succeeded`, `result` names the resource to fetch with its own permission. Polling does not reset the idle timer (SECURITY_MODEL §2.1). Kept for 7 days.
+ * @summary Read an operation
+ */
+export const getOperation = async (operationId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getOperationResponse> => {
+
+  return apiFetch<getOperationResponse>(getGetOperationUrl(operationId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type cancelOperationResponse200 = {
+  data: Operation
+  status: 200
+}
+
+export type cancelOperationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type cancelOperationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type cancelOperationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type cancelOperationResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type cancelOperationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type cancelOperationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type cancelOperationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type cancelOperationResponseSuccess = (cancelOperationResponse200) & {
+  headers: Headers;
+};
+export type cancelOperationResponseError = (cancelOperationResponse401 | cancelOperationResponse403 | cancelOperationResponse404 | cancelOperationResponse409 | cancelOperationResponse422 | cancelOperationResponse429 | cancelOperationResponse500) & {
+  headers: Headers;
+};
+
+export type cancelOperationResponse = (cancelOperationResponseSuccess | cancelOperationResponseError)
+
+export const getCancelOperationUrl = (operationId: Id,) => {
+
+
+
+
+  return `/operations/${operationId}/cancel`
+}
+
+/**
+ * Stops long-running work that has not finished, where its kind allows it (the AI kinds; inventory #16, API_STANDARDS §13). Only its creator can cancel it. Repeating it on a cancelled operation changes nothing.
+ * @summary Cancel an operation
+ */
+export const cancelOperation = async (operationId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<cancelOperationResponse> => {
+
+  return apiFetch<cancelOperationResponse>(getCancelOperationUrl(operationId),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 );}
 

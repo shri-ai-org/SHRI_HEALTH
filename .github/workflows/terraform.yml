@@ -1,7 +1,9 @@
-# Terraform checks: fmt, validate and the mock-provider tests in infra/terraform/tests/. No cloud
-# credentials: nothing here plans against or changes a real account. Runs only when infra/terraform/
+# OpenTofu checks (D75: OpenTofu, MPL-2.0, replaces Terraform): fmt, validate and the mock-provider
+# tests in infra/terraform/tests/. No cloud credentials: nothing here plans against or changes a
+# real account. Runs only when infra/terraform/
 # or this workflow changes, to save Free-plan minutes. Every Action is pinned by commit SHA, and
-# Terraform itself by version and SHA-256 (checked against HashiCorp's signed SHA256SUMS).
+# OpenTofu itself by version and SHA-256 (checked against OpenTofu's GPG-signed SHA256SUMS, key
+# E3E6E43D84CB852EADB0051D0C0AF313E5FD9F80).
 name: terraform
 
 on:
@@ -20,8 +22,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  TERRAFORM_VERSION: "1.16.6"
-  TERRAFORM_SHA256: "38034b38d03096399a7a1264a14561a8029b2b496fd1f169452656e53968f1b7"
+  TOFU_VERSION: "1.13.1"
+  TOFU_SHA256: "8ccbc6f8ee21d2827715f3c6e08a9b3e0209b1e62057c05067ef117e047c1a80"
   TF_IN_AUTOMATION: "1"
   TF_INPUT: "0"
 
@@ -37,24 +39,24 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Terraform (checksum-verified)
+      - name: Install OpenTofu (checksum-verified)
         working-directory: ${{ runner.temp }}
         run: |
-          zip="terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
-          curl -sSfLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/${zip}"
-          echo "${TERRAFORM_SHA256}  ${zip}" | sha256sum -c -
-          unzip -q "${zip}" terraform
+          zip="tofu_${TOFU_VERSION}_linux_amd64.zip"
+          curl -sSfLO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/${zip}"
+          echo "${TOFU_SHA256}  ${zip}" | sha256sum -c -
+          unzip -q "${zip}" tofu
           echo "${RUNNER_TEMP}" >> "$GITHUB_PATH"
 
       - name: Format
-        run: terraform fmt -check -recursive -diff
+        run: tofu fmt -check -recursive -diff
 
       # Providers only from the committed lock file's hashes; no backend, so no state is read.
       - name: Init
-        run: terraform init -backend=false -lockfile=readonly
+        run: tofu init -backend=false -lockfile=readonly
 
       - name: Validate
-        run: terraform validate
+        run: tofu validate
 
       - name: Tests (mock AWS provider)
-        run: terraform test
+        run: tofu test

@@ -6,10 +6,12 @@ name: frontend
 
 on:
   pull_request:
-    paths: ["frontend/**", "contracts/openapi/dist/**", ".github/workflows/frontend.yml"]
+    paths: ["frontend/**", "contracts/openapi/dist/**", ".github/workflows/frontend.yml",
+            ".github/licences/**"]
   push:
     branches: [main]
-    paths: ["frontend/**", "contracts/openapi/dist/**", ".github/workflows/frontend.yml"]
+    paths: ["frontend/**", "contracts/openapi/dist/**", ".github/workflows/frontend.yml",
+            ".github/licences/**"]
 
 permissions:
   contents: read
@@ -52,6 +54,11 @@ jobs:
       # frontend/.npmrc), so @scarf/scarf and similar never execute.
       - name: Install pinned packages
         run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # D75: every installed package's licence must be on the allowlist (issue #55). Standard
+      # library only; reads the lockfile, and package.json where the lockfile has no licence.
+      - name: Licences (D75)
+        run: node ../.github/licences/check-npm.mjs
 
       - name: Lint
         run: npm run lint

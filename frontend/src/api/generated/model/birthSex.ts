@@ -16,7 +16,7 @@
  */
 
 /**
- * Sex assigned at birth, US Core `birthsex` codes: `F`, `M`, `UNK`. The US Core version (Open Decisions Q6) may replace this with the newer US Core `sex` element.
+ * Sex assigned at birth (D39), US Core 9.0.0 Birth Sex extension, value set Birth Sex (VSAC 2.16.840.1.113762.1.4.1021.24, version 2024-03-30, required binding): codes `F`, `M` and `UNK` (`http://terminology.hl7.org/CodeSystem/v3-AdministrativeGender` for `F` and `M`, `http://terminology.hl7.org/CodeSystem/v3-NullFlavor` for `UNK`). The value set also has `asked-declined`, `ASKU` and `OTH`; adding them here is an additive change if a practice needs "declined" told apart from "unknown". USCDI no longer requires birth sex (Q6, D82).
  */
 export type BirthSex = typeof BirthSex[keyof typeof BirthSex];
 

@@ -40,7 +40,7 @@ export interface Payment {
      * @maxLength 100
      */
   processorReference?: string;
-  /** The receipt (PDF), generated at payment and stored through the file service with purpose `receipt`; download it with `GET /files/{fileId}/download-url`, which needs `payments:create` or `superbills:read` (D58). */
+  /** The receipt (PDF), created in the same step and transaction as the payment, so it is always present (D104); stored through the file service with purpose `receipt`; download it with `GET /files/{fileId}/download-url`, which needs `payments:create` or `superbills:read` (D58). */
   receiptFileId: Id;
   /** When it was collected. */
   collectedAt: Timestamp;

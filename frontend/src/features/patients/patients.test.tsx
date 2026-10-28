@@ -5,16 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setCsrfToken } from '../../api/client'
 import { ToastProvider } from '../../design-system'
 import { axeViolations } from '../../test/axe'
+import { json, problem, serve } from '../../test/fakeServer'
 import { PatientPage } from './PatientPage'
 import { criteriaProblem, PatientSearchPage } from './PatientSearchPage'
 import { RegisterPatientPage } from './RegisterPatientPage'
 import { RegisterPrefillProvider } from './registerPrefill'
 
 // Synthetic data only.
-const json = (status: number, body: unknown, type = 'application/json') =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': type } })
-const problem = (status: number, code: string, extra: object = {}) =>
-  json(status, { type: 'about:blank', title: code, status, code, ...extra }, 'application/problem+json')
 
 const summary = (n: number) => ({
   id: `00000000-0000-4000-8000-00000000000${n}`,
@@ -36,20 +33,13 @@ const patient = {
   updatedAt: '2026-10-24T12:00:00Z',
 }
 
-/** A fake server: answers by "METHOD /path"; each route's last response repeats. */
-function serve(routes: Record<string, Array<() => Response>>) {
-  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    const key = `${init?.method ?? 'GET'} ${url}`
-    const list = routes[key]
-    if (!list) throw new Error(`unexpected ${key}`)
-    return (list.length > 1 ? list.shift()! : list[0]!)()
-  })
-  vi.stubGlobal('fetch', fetchMock)
-  const bodies = (key: string) =>
-    fetchMock.mock.calls
-      .filter(([url, init]) => `${init?.method ?? 'GET'} ${url}` === key)
-      .map(([, init]) => ({ body: JSON.parse(String(init?.body)) as Record<string, unknown>, headers: new Headers(init?.headers) }))
-  return { bodies }
+/** The patient page also lists appointments, insurance and the portal account; these tests don't look at them. */
+const noCoverages = {
+  [`GET /api/v1/patients/${patient.id}/coverages?limit=100`]: [() => json(200, { items: [] })],
+  [`GET /api/v1/patients/${patient.id}/portal-account`]: [() => json(200, { patientId: patient.id, status: 'none' })],
+  [`GET /api/v1/appointments?patientId=${patient.id}&limit=100`]: [() => json(200, { items: [] })],
+  'GET /api/v1/booking/facilities?limit=100': [() => json(200, { items: [] })],
+  'GET /api/v1/booking/appointment-types?limit=100': [() => json(200, { items: [] })],
 }
 
 function renderAt(path: string) {
@@ -179,6 +169,7 @@ describe('RegisterPatientPage', () => {
     const server = serve({
       'POST /api/v1/patients': [() => json(201, patient)],
       [`GET /api/v1/patients/${patient.id}`]: [() => json(200, patient)],
+      ...noCoverages,
     })
     const router = renderAt('/patients/new')
     await fillRequired(user)
@@ -203,6 +194,7 @@ describe('RegisterPatientPage', () => {
     const server = serve({
       'POST /api/v1/patients': [() => json(201, patient)],
       [`GET /api/v1/patients/${patient.id}`]: [() => json(200, patient)],
+      ...noCoverages,
     })
     renderAt('/patients/new')
     await fillRequired(user)
@@ -218,6 +210,7 @@ describe('RegisterPatientPage', () => {
     const server = serve({
       'POST /api/v1/patients': [() => problem(409, 'possible-duplicate'), () => json(201, patient)],
       [`GET /api/v1/patients/${patient.id}`]: [() => json(200, patient)],
+      ...noCoverages,
     })
     renderAt('/patients/new')
     await fillRequired(user)
@@ -254,7 +247,7 @@ describe('RegisterPatientPage', () => {
 
 describe('PatientPage', () => {
   it('shows demographics', async () => {
-    serve({ [`GET /api/v1/patients/${patient.id}`]: [() => json(200, { ...patient, phones: [{ number: '+16175550123' }] })] })
+    serve({ [`GET /api/v1/patients/${patient.id}`]: [() => json(200, { ...patient, phones: [{ number: '+16175550123' }] })], ...noCoverages })
     renderAt(`/patients/${patient.id}`)
     expect(await screen.findByRole('heading', { name: 'Ana Testperson' })).toBeInTheDocument()
     expect(screen.getByText('SH-2001')).toBeInTheDocument()
@@ -267,5 +260,30 @@ describe('PatientPage', () => {
     renderAt(`/patients/${patient.id}`)
     expect(await screen.findByText('Reference: r-9')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to patient search' })).toBeInTheDocument()
+  })
+})
+
+describe('RegisterPatientPage demographics (D39)', () => {
+  it('sends sex assigned at birth and gender identity only when chosen', async () => {
+    const user = userEvent.setup()
+    const server = serve({
+      'POST /api/v1/patients': [() => json(201, patient)],
+      [`GET /api/v1/patients/${patient.id}`]: [() => json(200, { ...patient, birthSex: 'F', genderIdentity: { system: 'http://snomed.info/sct', code: '33791000087105' } })],
+      ...noCoverages,
+    })
+    renderAt('/patients/new')
+    await user.type(screen.getByLabelText(/First name/), 'Ana')
+    await user.type(screen.getByLabelText(/Last name/), 'Testperson')
+    await user.type(screen.getByLabelText(/Date of birth/), '07/19/1984')
+    await user.selectOptions(screen.getByLabelText(/Sex assigned at birth/), 'F')
+    await user.selectOptions(screen.getByLabelText(/Gender identity/), 'Nonbinary')
+    await user.click(screen.getByRole('button', { name: 'Register patient' }))
+
+    await screen.findByRole('heading', { name: 'Ana Testperson' })
+    expect(server.bodies('POST /api/v1/patients')[0]?.body).toMatchObject({
+      birthSex: 'F',
+      genderIdentity: { system: 'http://snomed.info/sct', code: '33791000087105', display: 'Identifies as nonbinary gender' },
+    })
+    expect(screen.getByText('Nonbinary')).toBeInTheDocument()
   })
 })

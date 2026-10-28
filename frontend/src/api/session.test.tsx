@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
+import { useLayoutEffect } from 'react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch, setCsrfToken } from './client'
@@ -191,5 +192,23 @@ describe('SessionProvider', () => {
     })
     expect(await screen.findByRole('heading', { name: 'You were signed out' })).toBeInTheDocument()
     expect(assign).not.toHaveBeenCalled()
+  })
+
+  it('ends the session for a 401 that arrives right after sign-in, before effects have run', async () => {
+    serve({
+      'GET /api/v1/auth/session': [() => ok(session(15))],
+      'GET /api/v1/events/poll': [() => problem(401, 'session-expired')],
+    })
+    // A screen that calls the API as soon as it is shown signed in. Its layout effect runs before
+    // the provider's passive effects, so the 401 lands in the gap the flaky test hit by chance.
+    function PollOnSignIn() {
+      const { state } = useSession()
+      useLayoutEffect(() => {
+        if (state.status === 'signed-in') void apiFetch('/events/poll', { background: true }).catch(() => {})
+      }, [state.status])
+      return <Who />
+    }
+    render(<SessionProvider><PollOnSignIn /></SessionProvider>)
+    expect(await screen.findByRole('heading', { name: 'You were signed out' })).toBeInTheDocument()
   })
 })

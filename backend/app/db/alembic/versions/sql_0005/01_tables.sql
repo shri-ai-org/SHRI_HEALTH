@@ -6,6 +6,7 @@ CREATE TABLE admin.app_session (
 	token_hash VARCHAR(64) NOT NULL, 
 	keycloak_access_token_enc TEXT NOT NULL, 
 	keycloak_refresh_token_enc TEXT NOT NULL, 
+	keycloak_sid VARCHAR(100), 
 	last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	tokens_refreshed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	idle_expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
@@ -29,6 +30,7 @@ CREATE TABLE admin.app_session (
 );
 
 CREATE INDEX ix_app_session_expires ON admin.app_session (expires_at);
+CREATE INDEX ix_app_session_keycloak_sid ON admin.app_session (keycloak_sid);
 CREATE INDEX ix_app_session_tenant_id ON admin.app_session (tenant_id);
 CREATE INDEX ix_app_session_user ON admin.app_session (tenant_id, user_id);
 
@@ -116,10 +118,7 @@ CREATE TABLE admin.event_log (
 );
 
 CREATE INDEX ix_event_log_created ON admin.event_log (created_at);
-CREATE INDEX ix_event_log_patient_id ON admin.event_log (patient_id);
 CREATE INDEX ix_event_log_replay ON admin.event_log (tenant_id, seq);
-CREATE INDEX ix_event_log_target_role_code ON admin.event_log (target_role_code);
-CREATE INDEX ix_event_log_target_user_id ON admin.event_log (target_user_id);
 CREATE INDEX ix_event_log_tenant_id ON admin.event_log (tenant_id);
 
 -- Clinic-carrying foreign keys (app/db/constraints.py).

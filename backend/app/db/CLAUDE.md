@@ -50,7 +50,7 @@ A role never bypasses RLS: `shri_app`, `shri_fhir_reader`, `shri_integration` an
 `shri_reporting` are all `NOBYPASSRLS`. Only `shri_migrator` has elevated rights, and only for
 schema changes, never for serving a request.
 
-## The five database roles (D23)
+## The database roles (D23)
 
 | Role | Use | Access |
 |---|---|---|
@@ -58,7 +58,8 @@ schema changes, never for serving a request.
 | `shri_fhir_reader` | `/fhir` (read-only, machine-token access) | `clinical` schema, `SELECT` only; `audit.audit_event` `INSERT` only (migration 0003) |
 | `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into (select, insert, update; never delete; 0004), the three `integration_*` admin tables, and `audit.audit_event` `INSERT` only (0004) |
 | `shri_reporting` | approved reports | nothing yet — no reporting views exist; grants come when they do |
-| `shri_migrator` | migrations only | owns all three schemas |
+| `shri_migrator` | migrations only, and the development and test seed (`app.db.seed`); never production onboarding, which needs its own design | owns all three schemas |
+| `shri_public` | the public pre-registration form (D96), the only write without a sign-in | `USAGE` on `admin` and `EXECUTE` on `admin.submit_pre_registration()`; no table privileges (0009) |
 
 `shri_app`, `shri_integration` and `shri_fhir_reader` also have `USAGE` (never `CREATE`) on
 schema `public`, where the rule functions that every trigger calls live (migration 0003). The
@@ -85,9 +86,49 @@ from app.db.constraints import patient_column      # which column says "this row
 from app.db.errors import db_error_detail          # map a caught DBAPIError to (status, detail)
 ```
 
-A full `fhir_store.create/update/entered_in_error/history` helper layer (as sketched in the
-original Implementation Guide) is not built yet — this adoption PR is the schema and the
-read-only `/fhir` facade only. Flag it if you need it before it exists.
+**The write helpers, `app.db.fhir_store`** (batch 1 plan §7.3, the interface Vimal posted on
+#13): `SqlFhirStore` writes Patient, RelatedPerson, Coverage and Consent with all their child
+rows, through the request's session; the data types and exceptions are importable from the same
+module. Each helper:
+- never commits; the endpoint's transaction holds the whole request;
+- replaces a list it is given, leaves a field left `UNSET` alone, and clears one set to `None`;
+- checks `if_version` under `SELECT … FOR UPDATE` and raises `StaleVersion(current_version)`;
+- returns `Written(id, version, last_updated)`, the version this transaction gives the
+  resource (the ETag), child rows included;
+- raises `ResourceNotFound` for a row the session can't see.
+- raises `InvalidInput(reason)` (a `ValueError`) for input the API refuses with `422`, and
+  `InvalidTransition(current_state)` for a change the record's state doesn't allow, such as
+  editing an entered-in-error coverage (D45).
+
+No identifier other than the MR from `admin.next_mrn()` may use the practice's MRN system
+(`InvalidInput`), so a value the counter hasn't reached yet can't block a registration.
+
+`create_consent` makes the patient's earlier active consent of the same kind `inactive` in the
+same transaction, so the latest one of a kind is the one in force.
+
+Every resource row a helper writes records `created_by_user_id` (a new row) and
+`updated_by_user_id` from `app.current_user_id`. Times the helpers set themselves (Provenance
+`recorded`, a default start, `recordedDate`, a note's time) are the database's `now()`, the
+transaction's time, which `meta_last_updated` also uses.
+
+`coverage_entered_in_error` writes its Provenance (agent: the current user's practitioner, or
+their name). `create_consent` sets the FHIR scope from the kind (`research`; `patient-privacy`
+for `privacy-notice` and `information-sharing`; otherwise `treatment`).
+
+The visit helpers (batch 2), on the same rules:
+- `create_encounter` and `set_encounter_status`: every status change is a status-history row;
+  starting sets the start time, finishing the end time; `entered-in-error` needs a reason and
+  writes its Provenance, and nothing changes after it;
+- `record_vitals`: one vital-signs Observation per entry, with the contract's LOINC code, the
+  value and UCUM unit as entered (D69), blood pressure as two components; at most one per type,
+  never in the future;
+- `create_allergy`, `update_allergy`, `allergy_entered_in_error`: reactions with their
+  manifestations, and a note;
+- `add_encounter_diagnosis` and `remove_encounter_diagnosis`: a Condition (category
+  `encounter-diagnosis`) and its ranked link, inserted or closed up in a safe order; removal is
+  D24's (entered-in-error with Provenance, the link deleted, the Condition kept).
+
+Notes, prescriptions and the rest follow.
 
 ## Conventions for the repositories (Vimal's review of #45)
 
@@ -125,9 +166,10 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   status. `visit_flow_event` stays insert-only: the steps before the undo stay as history.
 - **Roles and permissions:** core's `ROLE_PERMISSIONS` (`backend/app/core/permissions.py`) is the
   only catalogue. `admin.role`, `admin.permission` and `admin.role_permission` are not seeded.
-- **MRN (D41, migration 0007):** registration calls `SELECT system, value FROM admin.next_mrn()`
-  in its own transaction and writes the patient's `identifier` row (type `MR`) with that system
-  and value. The value is the prefix plus a six-digit number (`TEST-000123`). The counter row
+- **MRN (D41, migration 0007):** `create_patient` calls `SELECT system, value FROM
+  admin.next_mrn()` in the registration's transaction and writes the patient's `identifier` row
+  (type `MR`) with that system and value; only an import (`entry_source` `imported`) supplies
+  its own MR instead, in its source system. A patient has exactly one. The value is the prefix plus a six-digit number (`TEST-000123`). The counter row
   stays locked until the registration commits, and a rollback gives the number back. A practice
   without an `mrn_counter` row gets `P0001`; practice setup creates it. The number only grows,
   and the prefix and system are fixed once the first MRN is issued.
@@ -157,6 +199,31 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   `is_active`; `version` is the ETag.
 - **Payment receipts (D58):** `patient_payment.receipt_file_id`, the receipt PDF, a file in the
   same clinic, written in the payment transaction.
+- **Pre-registration (D96, A51, migration 0009):** the public form calls
+  `SELECT admin.submit_pre_registration(:practice_code, :idempotency_key, :request_hash,
+  :details, :contact_consent, :source_ip, :user_agent, :request_id)` as `shri_public`, with no
+  clinic set. `request_hash` is the SHA-256 (hex) of the body and `details` is the contract's
+  `PreRegistrationDetails`. It returns nothing. `P0002` is an unknown or turned-off code (the
+  `404`); `P0001` with constraint `idempotency_key_reused` is the `422`; the same key and body
+  again is a success that stores nothing. The function writes the `anonymous` audit row, so
+  core writes none for this route and skips its own idempotency store. The queue is
+  `admin.pre_registration`, read and decided as `shri_app`: accept sets `status`, `decided_at`,
+  `decided_by_user_id`, `patient_id` and `id_document_type` in one update (the identity
+  check's who and when are the decision's); reject sets the reason code, with text for `other`.
+  A decided request never changes. The contract's `submittedAt` is `created_at`; `deleteAfter`
+  is 30 days after `created_at` while pending, or after `decided_at` once rejected, and absent
+  once accepted. The practice's link is `tenant.pre_registration_code` and
+  `pre_registration_enabled`.
+- **Follow-up requests (D98, A52, migration 0010):** `clinical.encounter_follow_up`, one per
+  visit, a child of the encounter: every change moves the encounter's version, so decline's
+  `If-Match` is the encounter's ETag, and the encounter's history keeps each state. /fhir never
+  serves it. The contract's `interval` is `interval_value` and `interval_unit`; `providerId` is
+  `practitioner_id`; `requestedBy` is `requested_by_user_id`; `declinedReason` and
+  `withdrawnReason` are both `status_reason`, by status. Booking sets `status` `booked` and
+  `booked_appointment_id` in the appointment's transaction; cancelling the revisit sets `open`
+  and clears it; rescheduling moves it to the new appointment. The request changes only while
+  open, and a declined or withdrawn one is final (`shri_follow_up_guard`). Nothing is deleted.
+  That only the requesting clinician withdraws is the service's check.
 - **Merge undo (D51):** `undoAllowed` and `undoBlockedReason` come from
   `SELECT admin.patient_merge_undo_blocked_reason(:merge_id)`: `already-undone`,
   `records-changed`, or NULL when the merge can still be undone. The rule compares versions,
@@ -171,6 +238,21 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     created or linked since the merge that points at a moved record (a new result on a moved
     visit) isn't seen by the rule; `finish` refuses that undo with `records-changed` instead
     of a key error. An undo that skips `finish` is refused at commit.
+
+## Terminology (`app.db.terminology`)
+
+`python -m app.db.terminology rxnorm <RxNorm_full_prescribe_MMDDYYYY.zip>` loads NLM's RxNorm
+Current Prescribable Content (no licence needed) into `admin.concept` and
+`admin.concept_property`, as `shri_migrator`. It loads the products a prescriber can pick (SCD,
+SBD, GPCK, BPCK) and the ingredients (IN, PIN, MIN). A product's properties:
+- `tty`, `name`, `strength`, `dose_form` and `route`;
+- `ingredient` (each IN's RxCUI) and `precise_ingredient`;
+- `brand_name` for a branded product;
+- `dea_schedule` (CII to CV, from the subset's DCSA label attribute).
+
+The drug search and the safety checks read these. The allergy and duplicate checks match on
+`ingredient`. A re-run of the same release changes nothing. A concept a later release drops
+is made inactive, never deleted.
 
 ## Rules that never bend
 

@@ -43,6 +43,12 @@ ALTER TABLE audit.audit_event ALTER COLUMN hash_version SET DEFAULT 2;
 ALTER TABLE audit.audit_event ADD CONSTRAINT ck_audit_event_hash_version_known
   CHECK (hash_version IN (1, 2));
 
+-- A break-glass audit row carries the grant's reason, which core copies in (code, plus text
+-- when given). An empty or blank reason is no reason (Vimal's review of #52, D5).
+ALTER TABLE audit.audit_event DROP CONSTRAINT ck_audit_event_break_glass_reason;
+ALTER TABLE audit.audit_event ADD CONSTRAINT ck_audit_event_break_glass_reason
+  CHECK (action <> 'break-glass' OR (reason IS NOT NULL AND length(trim(reason)) > 0));
+
 -- A partner callback (/hooks/*) is audited with the partner as actor (T37, SECURITY_MODEL §6).
 ALTER TABLE audit.audit_event DROP CONSTRAINT ck_audit_event_actor_type_codes;
 ALTER TABLE audit.audit_event ADD CONSTRAINT ck_audit_event_actor_type_codes

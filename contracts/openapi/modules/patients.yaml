@@ -740,6 +740,81 @@ paths:
       description: Related person ID.
       schema:
         $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getRelatedPerson
+      summary: Get one related person
+      description: One related person, with the strong `ETag` that `PATCH` needs. List items carry no ETag (API_STANDARDS
+        §11).
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: patients:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The related person.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelatedPerson'
+              examples:
+                one:
+                  summary: One related person
+                  value:
+                    id: 6d7e8f9a-0b1c-4d2e-8f3a-4b5c6d7e8f9a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    name:
+                      given:
+                      - Darius71
+                      family: Kuhlman72
+                    relationships:
+                    - system: http://terminology.hl7.org/CodeSystem/v2-0131
+                      code: C
+                      display: Emergency Contact
+                    - system: http://terminology.hl7.org/CodeSystem/v3-RoleCode
+                      code: SPS
+                      display: spouse
+                    phones:
+                    - number: '+16175550145'
+                      use: mobile
+                    active: true
+                    createdAt: '2026-11-03T14:30:00Z'
+                    updatedAt: '2026-11-03T14:30:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `patients:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such related person of this patient in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
     patch:
       operationId: updateRelatedPerson
       summary: Update a related person
@@ -1012,6 +1087,80 @@ paths:
       description: Coverage ID.
       schema:
         $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getCoverage
+      summary: Get one coverage
+      description: One coverage, with the strong `ETag` that `PATCH` needs, for example to end it with `endDate` (D45). List
+        items carry no ETag (API_STANDARDS §11). Entered-in-error coverages are returned too, marked by `status`.
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: coverages:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      responses:
+        '200':
+          description: The coverage.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coverage'
+              examples:
+                one:
+                  summary: One coverage
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    order: 1
+                    payerId: 4b5c6d7e-8f9a-4b0c-8d1e-2f3a4b5c6d7e
+                    payerName: Test Health Plan
+                    memberId: TEST-M0012345
+                    groupNumber: TEST-G778
+                    planName: Test PPO
+                    relationshipToSubscriber: self
+                    startDate: '2026-01-01'
+                    status: active
+                    cardImages:
+                    - side: front
+                      fileId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                      addedAt: '2026-11-03T14:30:00Z'
+                    createdAt: '2026-11-03T14:30:00Z'
+                    updatedAt: '2026-11-03T14:30:00Z'
+                    endDate: '2026-12-31'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `coverages:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such coverage of this patient in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
     patch:
       operationId: updateCoverage
       summary: Update a coverage
@@ -1717,6 +1866,507 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/portal-account:
+    parameters: *id006
+    get:
+      operationId: getPortalAccount
+      summary: Get the patient's portal account
+      description: Whether the patient has a portal account or an active invitation, and the sign-in email (ADR-0013 §3, §4).
+        Batch B8a (D89).
+      x-owner: vimal
+      x-permission: portal-accounts:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                invited:
+                  summary: Invitation active
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: invited
+                    invitation:
+                      id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
+                      status: active
+                      issuedAt: '2026-11-03T14:30:00Z'
+                      expiresAt: '2035-01-01T14:30:00Z'
+                active:
+                  summary: Enrolled
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: active
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+                    factorsResetAt: '2026-12-01T15:00:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-accounts:read`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+      tags:
+      - patients
+  /patients/{patientId}/portal-invitations:
+    parameters: *id006
+    post:
+      operationId: createPortalInvitation
+      summary: Issue a portal invitation
+      description: 'Issues a single-use invitation code after the front desk has checked the patient''s photo ID in person
+        (ADR-0013 §3, D85). One active invitation per patient: issuing a new one revokes the old one. The code is in the response
+        only. Refused while the patient already has an account (one account per chart in P1). Batch B8a (D89).'
+      x-owner: vimal
+      x-permission: portal-invitations:create
+      x-audit:
+        action: C
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - idChecked
+              description: Body to issue an invitation.
+              properties:
+                idChecked:
+                  type: boolean
+                  const: true
+                  description: The user confirms they checked the patient's photo ID in person.
+                  x-phi: none
+            examples:
+              issue:
+                summary: Issue
+                value:
+                  idChecked: true
+      responses:
+        '201':
+          description: Created. The invitation with its code, shown once.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalInvitation'
+              examples:
+                issued:
+                  summary: Issued
+                  value:
+                    id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
+                    code: K7Q2-9MZD-4TXH
+                    issuedAt: '2026-11-03T14:30:00Z'
+                    expiresAt: '2035-01-01T14:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-invitations:create`); `break-glass-required` (the
+            patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `patient-merged` (the patient was merged into another record); `invalid-state-transition` (the
+            patient already has a portal account; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+      tags:
+      - patients
+  /patients/{patientId}/portal-invitations/{invitationId}/revoke:
+    parameters:
+    - *id011
+    - name: invitationId
+      in: path
+      required: true
+      description: Invitation ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: revokePortalInvitation
+      summary: Revoke a portal invitation
+      description: Revokes an unused invitation, for example when the printout was lost. Repeating it changes nothing. Batch
+        B8a (D89).
+      x-owner: vimal
+      x-permission: portal-invitations:revoke
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                revoked:
+                  summary: Revoked
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: none
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-invitations:revoke`); `break-glass-required` (the
+            patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient, or no such invitation for this patient).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the invitation was already used; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+      tags:
+      - patients
+  /patients/{patientId}/portal-account/reset-factors:
+    parameters: *id006
+    post:
+      operationId: resetPortalSignInFactors
+      summary: Reset the patient's sign-in factors
+      description: For a patient who has lost every second factor and come to the desk with photo ID (ADR-0013 §2). Removes
+        the realm account's second factors and recovery codes; the patient sets up new ones at the next sign-in. The password
+        is unchanged and our API never sees it (D3). Never done on the strength of a phone call or email. Implemented in core.
+        Batch B8a (D89).
+      x-owner: thulasi
+      x-permission: portal-accounts:reset-factors
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalFactorResetRequest'
+            examples:
+              reset:
+                summary: After an ID check
+                value:
+                  idChecked: true
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                reset:
+                  summary: Reset
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: active
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+                    factorsResetAt: '2026-12-01T15:00:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-accounts:reset-factors`); `break-glass-required` (the
+            patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the patient has no `active` or `pending-setup` portal account, for
+            example it is `suspended` or `disabled`; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the patient realm is unavailable).
+      tags:
+      - patients
+  /patients/{patientId}/portal-account/disable:
+    parameters: *id006
+    post:
+      operationId: disablePortalAccount
+      summary: Disable the patient's portal account
+      description: Stops the patient from signing in to the portal, for example when the account is misused or the patient
+        asks to close it. Every portal session of the patient ends at once, with its realm session (back channel), and the
+        realm account is disabled; nothing is deleted. A reason is required and audited. Amends ADR-0013 (D92). Implemented
+        in core. Batch B8a (D89).
+      tags:
+      - patients
+      x-owner: thulasi
+      x-permission: portal-accounts:disable
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAccountStatusChange'
+            examples:
+              disable:
+                summary: Disable
+                value:
+                  reason: Patient asked to close their portal account.
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                done:
+                  summary: Disabled
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: disabled
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+                    disabledAt: '2026-12-02T16:40:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-accounts:disable`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the account is not `active`, `pending-setup` or `suspended`; the problem
+            carries `currentState`). A suspended account that is disabled stays `disabled` if the merge is undone.
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the patient realm is unavailable).
+  /patients/{patientId}/portal-account/enable:
+    parameters: *id006
+    post:
+      operationId: enablePortalAccount
+      summary: Enable the patient's portal account
+      description: Lets a disabled account sign in again; its password and second factors are unchanged. A reason is required
+        and audited. Amends ADR-0013 (D92). Implemented in core. Batch B8a (D89).
+      tags:
+      - patients
+      x-owner: thulasi
+      x-permission: portal-accounts:enable
+      x-audit:
+        action: E
+        category: security
+        patient: patientId
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAccountStatusChange'
+            examples:
+              enable:
+                summary: Enable
+                value:
+                  reason: Patient confirmed their identity at the desk and asked to reopen it.
+      responses:
+        '200':
+          description: The account state.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountStatus'
+              examples:
+                done:
+                  summary: Enabled
+                  value:
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    status: active
+                    email: maria.ortiz@example.com
+                    enrolledAt: '2026-11-03T20:12:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `portal-accounts:enable`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the account is not `disabled`, or its chart has been merged into another;
+            the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (the patient realm is unavailable).
   /duplicates:
     get:
       operationId: listDuplicates
@@ -1803,11 +2453,18 @@ paths:
     post:
       operationId: mergeDuplicate
       summary: Merge a duplicate pair
-      description: 'Merges the other patient of the pair into `survivingPatientId` (inventory #48). Both patients are locked
-        during the merge; every moved record is listed so the merge can be undone; the merged patient gets `mergedIntoId`
-        and becomes inactive. All in one transaction. If either patient is restricted, the user needs a break-glass grant
-        or care-team membership for **each** restricted patient (`403 break-glass-required`), and the surviving record keeps
-        the most restrictive restriction of the pair. Both patient IDs are audited.'
+      description: 'Merges the other patient of the pair into `survivingPatientId` by link (inventory #48; D103): the merged
+        patient gets a FHIR `Patient.link` of type `replaced-by` to the surviving one (and the surviving one `replaces`),
+        gets `mergedIntoId` and becomes inactive. **No record moves:** every record stays attached to the patient it was created
+        for, and signed notes and final results are never touched. Reads of the surviving chart follow the link and present
+        one chart (its own records and those of the patients it replaced); patient search returns the surviving patient; new
+        records are written to the surviving patient only, and a write naming the merged one is refused (`409 patient-merged`).
+        Both patients are locked during the merge, all in one transaction. If either patient is restricted, the user needs
+        a break-glass grant or care-team membership for **each** restricted patient (`403 break-glass-required`), and the
+        surviving record keeps the most restrictive restriction of the pair. Both patient IDs are audited. On the merged chart,
+        in the same transaction: an `active` or `pending-setup` portal account becomes `suspended` (the state it had is kept)
+        and its sessions end, a `disabled` one stays `disabled`, and every active invitation is revoked (ADR-0013). The front
+        desk issues a new invitation for the surviving chart after an ID check.'
       tags:
       - patients
       x-owner: vimal
@@ -2000,9 +2657,14 @@ paths:
     post:
       operationId: undoPatientMerge
       summary: Undo a merge
-      description: 'Undoes a merge (inventory #49): moved records go back to the merged patient, which becomes active again.
-        Refused once either record has changed in a way that cannot be split back. Restricted charts need break-glass or care-team
-        membership for each restricted patient, as for a merge. Both patient IDs are audited.'
+      description: 'Undoes a merge (inventory #49; D103) by deactivating its link: the merged patient becomes active again
+        and loses `mergedIntoId`, and reads stop combining the two charts. Because nothing moved, nothing moves back: each
+        record stays with the patient it was created for, including those written to the surviving patient after the merge.
+        Refused (`409 invalid-state-transition`) when the merge was already undone, or while a later merge involving either
+        patient still stands (undo that one first). Restricted charts need break-glass or care-team membership for each restricted
+        patient, as for a merge. Both patient IDs are audited. A portal account suspended by the merge goes back to exactly
+        the state it had before the merge; one disabled in the meantime stays `disabled`. Invitations revoked by the merge
+        stay revoked.'
       tags:
       - patients
       x-owner: vimal
@@ -2072,8 +2734,8 @@ paths:
           description: 404. `not-found` (no such merge in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
-            (the merge was already undone, or the records cannot be split back).
+          description: '409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the merge was already undone, or a later merge involving either patient still stands; D103).'
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
@@ -2245,6 +2907,459 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /pre-registrations:
+    get:
+      operationId: listPreRegistrations
+      summary: List pre-registrations
+      description: 'The front desk''s queue of pre-registrations (D96), oldest first; pending by default. The queue is the
+        clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a
+        request of another clinic is `404`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: pre-registrations:read
+      x-audit:
+        action: R
+        category: phi-read
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: status
+        in: query
+        required: false
+        description: Which ones (default `pending`).
+        schema:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - rejected
+          default: pending
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistrationList'
+              examples:
+                page:
+                  summary: One pending
+                  value:
+                    items:
+                    - id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                      status: pending
+                      details:
+                        name:
+                          given:
+                          - Kaia401
+                          family: Lindgren118
+                        birthDate: '1990-03-14'
+                        gender: female
+                        phones:
+                        - number: '+12175550142'
+                          use: mobile
+                        email: kaia.lindgren@example.com
+                        address:
+                          lines:
+                          - 42 Sample Avenue
+                          city: Springfield
+                          state: IL
+                          postalCode: '62704'
+                          country: US
+                        preferredLanguage: en
+                        insurance:
+                          payerName: Example Health Plan
+                          memberId: TEST-MEMBER-042
+                          groupNumber: TEST-GRP-7
+                        reasonForVisit: New patient, annual checkup.
+                      entrySource: patient-reported
+                      submittedAt: '2026-11-18T09:12:00Z'
+                      deleteAfter: '2026-12-18T09:12:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (a facility the user is not assigned to).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}:
+    parameters:
+    - name: preRegistrationId
+      in: path
+      required: true
+      description: Pre-registration ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getPreRegistration
+      summary: Get a pre-registration
+      description: 'One pre-registration (D96). The queue is the clinic''s: every FD and ADM user of the clinic the request
+        was submitted to (through its practice code) sees it; a request of another clinic is `404`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: pre-registrations:read
+      x-audit:
+        action: R
+        category: phi-read
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: The pre-registration.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                pending:
+                  summary: Pending
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: pending
+                    details:
+                      name:
+                        given:
+                        - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                      - number: '+12175550142'
+                        use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                        - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    deleteAfter: '2026-12-18T09:12:00Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned
+            to).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}/accept:
+    parameters:
+    - name: preRegistrationId
+      in: path
+      required: true
+      description: Pre-registration ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: acceptPreRegistration
+      summary: Accept a pre-registration
+      description: 'Creates the patient through the registration rules (duplicate check with `409 possible-duplicate` and
+        the override; the MRN from the practice counter, D41), or links to an existing `patientId` chosen in duplicate review;
+        insurance as typed stays on the request as a note for the front desk (returned by the queue reads), not a coverage,
+        until the card is checked. The request is linked to the patient, all in one transaction (D96). The front-desk user
+        must confirm they checked the person''s ID and say which kind (`identityVerified`, `idDocumentType`); the check is
+        stored with who and when (`identityCheck`). Duplicate matching happens here, never at submit. The queue is the clinic''s:
+        every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of
+        another clinic is `404`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: pre-registrations:accept
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: supported
+      x-events:
+      - patient.created
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationAccept'
+            examples:
+              create:
+                summary: Create the patient
+                value: { identityVerified: true, idDocumentType: drivers-license }
+              link:
+                summary: Link to an existing patient
+                value:
+                  identityVerified: true
+                  idDocumentType: drivers-license
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      responses:
+        '200':
+          description: The pre-registration, accepted.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                accepted:
+                  summary: Accepted
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: accepted
+                    details:
+                      name:
+                        given:
+                        - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                      - number: '+12175550142'
+                        use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                        - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    decidedAt: '2026-11-20T14:02:00Z'
+                    decidedBy: d0000000-0000-4000-8000-000000000001
+                    identityCheck:
+                      idDocumentType: drivers-license
+                      verifiedBy: 7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f
+                      verifiedAt: 2026-11-20T14:02:00Z
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `pre-registrations:accept`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned
+            to).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `possible-duplicate` (similar patients exist: review them, then link or override); `invalid-state-transition`
+            (already accepted or rejected; the problem carries `currentState`); `patient-merged` (the patient to link was
+            merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`);
+            `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /pre-registrations/{preRegistrationId}/reject:
+    parameters:
+    - name: preRegistrationId
+      in: path
+      required: true
+      description: Pre-registration ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: rejectPreRegistration
+      summary: Reject a pre-registration
+      description: 'Rejects it with a reason (D96). It is deleted 30 days later. Nothing is sent to the person. The queue
+        is the clinic''s: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees
+        it; a request of another clinic is `404`.'
+      tags:
+      - patients
+      x-owner: vimal
+      x-permission: pre-registrations:reject
+      x-audit:
+        action: E
+        category: phi-write
+      x-storage: admin
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistrationReject'
+            examples:
+              spam:
+                summary: Spam
+                value:
+                  reasonCode: spam
+              other:
+                summary: Other
+                value:
+                  reasonCode: other
+                  reasonText: Asked for a practice in another state.
+      responses:
+        '200':
+          description: The pre-registration, rejected.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistration'
+              examples:
+                rejected:
+                  summary: Rejected
+                  value:
+                    id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                    status: rejected
+                    details:
+                      name:
+                        given:
+                        - Kaia401
+                        family: Lindgren118
+                      birthDate: '1990-03-14'
+                      gender: female
+                      phones:
+                      - number: '+12175550142'
+                        use: mobile
+                      email: kaia.lindgren@example.com
+                      address:
+                        lines:
+                        - 42 Sample Avenue
+                        city: Springfield
+                        state: IL
+                        postalCode: '62704'
+                        country: US
+                      preferredLanguage: en
+                      insurance:
+                        payerName: Example Health Plan
+                        memberId: TEST-MEMBER-042
+                        groupNumber: TEST-GRP-7
+                      reasonForVisit: New patient, annual checkup.
+                    entrySource: patient-reported
+                    submittedAt: '2026-11-18T09:12:00Z'
+                    deleteAfter: '2026-12-18T10:00:00Z'
+                    decidedAt: '2026-11-18T10:00:00Z'
+                    decidedBy: d0000000-0000-4000-8000-000000000001
+                    rejection:
+                      reasonCode: spam
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `pre-registrations:reject`); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned
+            to).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid, or `reasonText` is missing with `other`).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     AdministrativeGender:
@@ -2256,8 +3371,11 @@ components:
       - other
       - unknown
     BirthSex:
-      description: 'Sex assigned at birth, US Core `birthsex` codes: `F`, `M`, `UNK`. The US Core version (Open Decisions
-        Q6) may replace this with the newer US Core `sex` element.'
+      description: 'Sex assigned at birth (D39), US Core 9.0.0 Birth Sex extension, value set Birth Sex (VSAC 2.16.840.1.113762.1.4.1021.24,
+        version 2024-03-30, required binding): codes `F`, `M` and `UNK` (`http://terminology.hl7.org/CodeSystem/v3-AdministrativeGender`
+        for `F` and `M`, `http://terminology.hl7.org/CodeSystem/v3-NullFlavor` for `UNK`). The value set also has `asked-declined`,
+        `ASKU` and `OTH`; adding them here is an additive change if a practice needs "declined" told apart from "unknown".
+        USCDI no longer requires birth sex (Q6, D82).'
       type: string
       enum:
       - F
@@ -2412,8 +3530,8 @@ components:
           type: string
           format: uri
           maxLength: 300
-          description: Namespace of the value, e.g. a state's driver's license OID. The MRN system is per practice (D41);
-            `identifier.system` is at most 300 characters.
+          description: 'Namespace of the value, e.g. a state''s driver''s license OID. The MRN system is per practice: `mrnSystem`
+            in `GET /practice-settings` (D41); `identifier.system` is at most 300 characters.'
           x-phi: none
         value:
           type: string
@@ -2543,8 +3661,11 @@ components:
           x-phi: identifier
         gender: &id024
           $ref: '#/components/schemas/AdministrativeGender'
-          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender`
-            is NOT NULL).
+          description: 'Administrative gender, labelled "Legal sex" on screens (as on ID and insurance). Optional for the
+            patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). On `/fhir` (US Core 9.0.0, D82)
+            it is `Patient.gender` and, for `female` and `male`, the US Core Individual Sex extension with the Federal Administrative
+            Sex value set (VSAC 2.16.840.1.113762.1.4.1021.121, version 2025-02-28): SNOMED CT `248152002` female, `248153007`
+            male; `other` and `unknown` send no Individual Sex extension.'
           x-phi: clinical
         birthSex: &id025
           $ref: '#/components/schemas/BirthSex'
@@ -2552,12 +3673,18 @@ components:
           x-phi: clinical
         genderIdentity: &id026
           $ref: '#/components/schemas/CodedValue'
-          description: Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration
-            item A45 (Anand).
+          description: 'Gender identity (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`,
+            D39). Pinned to US Core 9.0.0 (D82): the HL7 `individual-genderIdentity` extension and the HL7 Gender Identity
+            value set (`http://terminology.hl7.org/ValueSet/gender-identity`): SNOMED CT (`http://snomed.info/sct`) `446141000124107`
+            identifies as female gender, `446151000124109` identifies as male gender, `33791000087105` identifies as nonbinary
+            gender; `http://terminology.hl7.org/CodeSystem/data-absent-reason` `asked-declined` ("prefer not to say"); `http://terminology.hl7.org/CodeSystem/v3-NullFlavor`
+            `UNK`. Any other code is refused (`422 business-rule-violation`, `errors` naming `/genderIdentity/code` `not-allowed-value`).
+            Its column is migration item A45 (Anand).'
           x-phi: clinical
         sexualOrientation: &id027
           $ref: '#/components/schemas/CodedValue'
-          description: Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration
+          description: Sexual orientation (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`).
+            US Core 9.0.0 has no Patient extension for it; it stays a coded value with its source system. Its column is migration
             item A45 (Anand).
           x-phi: clinical
         race: &id028
@@ -2738,8 +3865,11 @@ components:
           oneOf:
           - $ref: '#/components/schemas/AdministrativeGender'
           - type: 'null'
-          description: Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender`
-            is NOT NULL). Send `null` to clear it.
+          description: 'Administrative gender, labelled "Legal sex" on screens (as on ID and insurance). Optional for the
+            patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). On `/fhir` (US Core 9.0.0, D82)
+            it is `Patient.gender` and, for `female` and `male`, the US Core Individual Sex extension with the Federal Administrative
+            Sex value set (VSAC 2.16.840.1.113762.1.4.1021.121, version 2025-02-28): SNOMED CT `248152002` female, `248153007`
+            male; `other` and `unknown` send no Individual Sex extension.'
           x-phi: clinical
         birthSex:
           oneOf:
@@ -2751,15 +3881,21 @@ components:
           oneOf:
           - $ref: '#/components/schemas/CodedValue'
           - type: 'null'
-          description: Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration
-            item A45 (Anand). Send `null` to clear it.
+          description: 'Gender identity (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`,
+            D39). Pinned to US Core 9.0.0 (D82): the HL7 `individual-genderIdentity` extension and the HL7 Gender Identity
+            value set (`http://terminology.hl7.org/ValueSet/gender-identity`): SNOMED CT (`http://snomed.info/sct`) `446141000124107`
+            identifies as female gender, `446151000124109` identifies as male gender, `33791000087105` identifies as nonbinary
+            gender; `http://terminology.hl7.org/CodeSystem/data-absent-reason` `asked-declined` ("prefer not to say"); `http://terminology.hl7.org/CodeSystem/v3-NullFlavor`
+            `UNK`. Any other code is refused (`422 business-rule-violation`, `errors` naming `/genderIdentity/code` `not-allowed-value`).
+            Its column is migration item A45 (Anand).'
           x-phi: clinical
         sexualOrientation:
           oneOf:
           - $ref: '#/components/schemas/CodedValue'
           - type: 'null'
-          description: Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration
-            item A45 (Anand). Send `null` to clear it.
+          description: Sexual orientation (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`).
+            US Core 9.0.0 has no Patient extension for it; it stays a coded value with its source system. Its column is migration
+            item A45 (Anand).
           x-phi: clinical
         race:
           oneOf:
@@ -3777,7 +4913,8 @@ components:
           x-phi: internal-id
         mergedPatientId:
           $ref: ../components/schemas/Id.yaml
-          description: Merged patient; now inactive, with `mergedIntoId`.
+          description: 'Merged patient; inactive while the merge stands, with `mergedIntoId` and a `replaced-by` link to the
+            surviving patient (D103).'
           x-phi: internal-id
         performedAt:
           $ref: ../components/schemas/Timestamp.yaml
@@ -3895,15 +5032,16 @@ components:
           x-phi: none
         undoAllowed:
           type: boolean
-          description: 'True while the merge can still be undone: it stands, and neither record has changed in a way that
-            cannot be split back.'
+          description: 'True while the merge stands and no later merge involving either patient still stands (D103). A merge
+            by link changes no records, so edits to either chart never block an undo.'
           x-phi: none
         undoBlockedReason:
           type: string
           enum:
           - already-undone
           - records-changed
-          description: Why undo is not allowed, when `undoAllowed` is false.
+          description: 'Why undo is not allowed, when `undoAllowed` is false: `already-undone` or `later-merge` (a later merge
+            involving either patient still stands).'
           x-phi: none
     PatientMergeList:
       description: One page of merges, newest first.
@@ -3952,3 +5090,400 @@ components:
             $ref: '#/components/schemas/PatientSummary'
           description: One summary per found ID, in request order.
           x-phi: identifier
+    PortalInvitationSummary:
+      description: An invitation, without its code (the code is shown once, when issued).
+      type: object
+      required:
+      - id
+      - status
+      - issuedAt
+      - expiresAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Invitation ID.
+          x-phi: internal-id
+        status:
+          type: string
+          enum:
+          - active
+          - used
+          - expired
+          - revoked
+          description: Where it is.
+          x-phi: none
+        issuedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was issued.
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it stops working (72 hours after issue).
+          x-phi: none
+    PortalInvitation:
+      description: 'A new invitation with its code. The code is in this response only: it is stored as an HMAC, never logged,
+        and can''t be read again. Print it or read it out at the desk; never email or text it (ADR-0013 §3).'
+      type: object
+      required:
+      - id
+      - code
+      - issuedAt
+      - expiresAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Invitation ID.
+          x-phi: internal-id
+        code:
+          type: string
+          maxLength: 14
+          pattern: ^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$
+          description: 'The invitation code: 12 Crockford base32 characters in three groups.'
+          x-phi: identifier
+        issuedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was issued.
+          x-phi: none
+        expiresAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it stops working (72 hours, single use).
+          x-phi: none
+    PortalAccountStatus:
+      description: 'The patient''s portal account as the front desk sees it: never a password, factor or code. `none`: no
+        account and no active invitation; `invited`: an invitation is active; `pending-setup`: enrolled, but the patient hasn''t
+        finished the realm''s set-up (verify email, password, second factor); `active`; `disabled`: ADM disabled it (D92),
+        and `enable` reopens it; `suspended`: the chart was merged into another (ADR-0013) while the account was `active`
+        or `pending-setup`; its sessions ended and nobody can sign in. Undoing the merge restores exactly the earlier state,
+        unless ADM disabled the account meanwhile (then it stays `disabled`). `enable` and `reset-factors` refuse it.'
+      type: object
+      required:
+      - patientId
+      - status
+      properties:
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Patient ID.
+          x-phi: internal-id
+        status:
+          type: string
+          enum:
+          - none
+          - invited
+          - pending-setup
+          - active
+          - disabled
+          - suspended
+          description: Account state.
+          x-phi: none
+        email:
+          $ref: ../components/schemas/EmailAddress.yaml
+          description: 'The sign-in email, once enrolled (ADR-0013 §4: the front desk can tell a patient which email they
+            used).'
+          x-phi: identifier
+        invitation:
+          $ref: '#/components/schemas/PortalInvitationSummary'
+          description: The active invitation, if any.
+          x-phi: none
+        enrolledAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the patient enrolled.
+          x-phi: none
+        factorsResetAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the second factors were last reset by staff.
+          x-phi: none
+        disabledAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the account was disabled; present only while `disabled`.
+          x-phi: none
+    PortalFactorResetRequest:
+      description: Body to reset a patient's sign-in factors after an ID check at the desk (ADR-0013 §2).
+      type: object
+      additionalProperties: false
+      required:
+      - idChecked
+      properties:
+        idChecked:
+          type: boolean
+          const: true
+          description: The user confirms they checked the patient's photo ID in person.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: Anything worth recording (never the ID number).
+          x-phi: clinical
+    PortalAccountStatusChange:
+      description: Body to disable or enable a portal account (D92).
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why; audited, never shown to the patient.
+          x-phi: clinical
+    PreRegistrationDetails:
+      description: What a person types into the public pre-registration form (D96). Patient-reported until the front desk
+        checks it against ID at the visit (FR-PAT-02).
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - birthDate
+      properties:
+        name:
+          $ref: ../components/schemas/HumanName.yaml
+          description: Legal name.
+          x-phi: identifier
+        birthDate:
+          $ref: ../components/schemas/Date.yaml
+          description: Date of birth.
+          x-phi: identifier
+        gender:
+          $ref: '#/components/schemas/AdministrativeGender'
+          description: Administrative gender, if given.
+          x-phi: clinical
+        phones:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/Phone'
+          description: Phone numbers. At least one phone or an email (enforced by the schema).
+          x-phi: identifier
+          minItems: 1
+        email:
+          $ref: ../components/schemas/EmailAddress.yaml
+          description: Email address.
+          x-phi: identifier
+        address:
+          $ref: ../components/schemas/Address.yaml
+          description: Home address.
+          x-phi: identifier
+        preferredLanguage:
+          type: string
+          maxLength: 35
+          description: Preferred language as a BCP 47 tag (D39).
+          x-phi: clinical
+          pattern: ^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$
+        insurance:
+          type: object
+          additionalProperties: false
+          description: Insurance as the person typed it. It stays with the request as a note for the front desk, returned
+            by `GET /pre-registrations` and `GET /pre-registrations/{preRegistrationId}`; accepting the request does not create
+            a coverage. The front desk enters the coverage after checking the card.
+          x-phi: identifier
+          properties:
+            payerName:
+              type: string
+              maxLength: 200
+              description: Insurance company, as typed.
+              x-phi: identifier
+            memberId:
+              type: string
+              maxLength: 80
+              description: Member ID.
+              x-phi: identifier
+            groupNumber:
+              type: string
+              maxLength: 80
+              description: Group number.
+              x-phi: identifier
+        reasonForVisit:
+          type: string
+          maxLength: 1000
+          description: Why they want an appointment.
+          x-phi: clinical
+      anyOf:
+      - required:
+        - phones
+      - required:
+        - email
+    PreRegistration:
+      description: A pre-registration in the front desk's queue (D96). Stored encrypted at rest; a rejected or never-reviewed
+        one is deleted at `deleteAfter` (30 days).
+      type: object
+      required:
+      - id
+      - status
+      - details
+      - entrySource
+      - submittedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Pre-registration ID.
+          x-phi: none
+        status:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - rejected
+          description: Where it is.
+          x-phi: none
+        details:
+          $ref: '#/components/schemas/PreRegistrationDetails'
+          description: What was submitted.
+          x-phi: identifier
+        entrySource:
+          type: string
+          enum:
+          - patient-reported
+          description: "Always patient-reported (FR-PAT-02): the details are as the person typed them. Accepting records that the person's identity was checked against ID (`identityCheck`); each field is corrected on the chart as the front desk verifies it."
+          x-phi: none
+        submittedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it arrived.
+          x-phi: none
+        decidedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the front desk accepted or rejected it.
+          x-phi: none
+        decidedBy:
+          $ref: ../components/schemas/Id.yaml
+          description: Who decided.
+          x-phi: none
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient it created or was linked to, once accepted.
+          x-phi: internal-id
+        rejection:
+          type: object
+          required:
+          - reasonCode
+          description: Why it was rejected.
+          x-phi: none
+          properties:
+            reasonCode:
+              type: string
+              enum:
+              - duplicate
+              - incomplete
+              - not-our-practice
+              - spam
+              - other
+              description: Reason.
+              x-phi: none
+            reasonText:
+              type: string
+              maxLength: 500
+              description: More detail; required for `other`.
+              x-phi: clinical
+        deleteAfter:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it will be deleted if still pending or rejected (30 days after it arrived or was rejected).
+          x-phi: none
+        identityCheck:
+          $ref: "#/components/schemas/PreRegistrationIdentityCheck"
+          description: "Once accepted: the identity check recorded at accept."
+          x-phi: none
+    PreRegistrationList:
+      description: Pre-registrations, oldest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PreRegistration'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PreRegistrationAccept:
+      description: 'Body to accept a pre-registration: create the patient through the registration rules, or link to an existing
+        patient found in duplicate review.'
+      type: object
+      additionalProperties: false
+      properties:
+        identityVerified:
+          type: boolean
+          const: true
+          description: The front-desk user confirms they checked the person's ID before accepting. Required, and must be true.
+          x-phi: none
+        idDocumentType:
+          type: string
+          enum:
+          - drivers-license
+          - state-id
+          - passport
+          - military-id
+          - other
+          description: The kind of ID that was checked.
+          x-phi: none
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Link to this existing patient instead of creating one.
+          x-phi: internal-id
+        duplicateCheck:
+          type: string
+          enum:
+          - default
+          - override
+          default: default
+          description: 'As for `POST /patients`: `override` registers despite similar patients and needs `duplicateOverrideReason`.'
+          x-phi: none
+        duplicateOverrideReason:
+          type: string
+          maxLength: 500
+          description: Why it is not a duplicate.
+          x-phi: clinical
+      required:
+      - identityVerified
+      - idDocumentType
+    PreRegistrationReject:
+      description: Body to reject a pre-registration.
+      type: object
+      additionalProperties: false
+      required:
+      - reasonCode
+      properties:
+        reasonCode:
+          type: string
+          enum:
+          - duplicate
+          - incomplete
+          - not-our-practice
+          - spam
+          - other
+          description: Reason.
+          x-phi: none
+        reasonText:
+          type: string
+          maxLength: 500
+          description: More detail; required for `other`.
+          x-phi: clinical
+    PreRegistrationIdentityCheck:
+      description: The identity check the front-desk user recorded when accepting the request (D96).
+      type: object
+      required:
+      - idDocumentType
+      - verifiedBy
+      - verifiedAt
+      properties:
+        idDocumentType:
+          type: string
+          enum:
+          - drivers-license
+          - state-id
+          - passport
+          - military-id
+          - other
+          description: The kind of ID that was checked.
+          x-phi: none
+        verifiedBy:
+          $ref: ../components/schemas/Id.yaml
+          description: The front-desk user who checked it (from the session).
+          x-phi: internal-id
+        verifiedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When.
+          x-phi: none

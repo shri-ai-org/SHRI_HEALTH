@@ -28,9 +28,11 @@ paths:
       summary: Record a patient payment
       description: 'Records a copay or other patient payment and generates the receipt (inventory #198; D58). Cash, check
         and ACH are recorded directly; a card payment needs a completed card session (`POST /payments/card-session`), so card
-        numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in, so it works
-        for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded only when the card session
-        is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`.'
+        numbers never touch our servers. Moves money, so `Idempotency-Key` is required. Collected at check-in or check-out
+        (D100), so it works for a restricted patient like check-in does (SECURITY_MODEL §5.2). A card payment is recorded
+        only when the card session is this patient''s and was captured for the same amount; a mismatch is `422 business-rule-violation`.
+        The receipt is created in the same step as the payment, so every recorded payment has one (`receiptFileId` is always
+        present, D104).'
       tags:
       - billing
       x-owner: anand
@@ -204,7 +206,7 @@ paths:
                       currency: USD
                     status: pending
                     clientToken: TEST-hosted-fields-placeholder
-                    expiresAt: '2026-11-03T15:10:00Z'
+                    expiresAt: '2035-01-01T15:10:00Z'
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the required
@@ -243,7 +245,8 @@ components:
       - ach
       - other
     PaymentCreate:
-      description: Body to record a patient payment, usually the copay at check-in (FRS FR-SCH-02, FR-RCM-03).
+      description: Body to record a patient payment, usually the copay at check-in or check-out (FRS FR-SCH-02, FR-RCM-03;
+        D100).
       type: object
       additionalProperties: false
       required:
@@ -327,8 +330,9 @@ components:
           x-phi: financial
         receiptFileId:
           $ref: ../components/schemas/Id.yaml
-          description: The receipt (PDF), generated at payment and stored through the file service with purpose `receipt`;
-            download it with `GET /files/{fileId}/download-url`, which needs `payments:create` or `superbills:read` (D58).
+          description: 'The receipt (PDF), created in the same step and transaction as the payment, so it is always present
+            (D104); stored through the file service with purpose `receipt`; download it with `GET /files/{fileId}/download-url`,
+            which needs `payments:create` or `superbills:read` (D58).'
           x-phi: internal-id
         collectedAt:
           $ref: ../components/schemas/Timestamp.yaml

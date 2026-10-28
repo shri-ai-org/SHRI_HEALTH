@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # It is refused outside development and test; see _dev_auth_only_in_dev below.
     auth_mode: AuthMode = "keycloak"
 
+    # The patient portal's sign-in. "dev_header" is the development stand-in (X-Dev-Patient and
+    # X-Dev-Patient-Clinic headers), refused outside development and test like auth_mode's, so
+    # screens and portal reads can be built before patient sign-in exists (ADR-0013, T45).
+    patient_auth_mode: AuthMode = "keycloak"
+
     # One database role per service (DECISIONS D23); each URL carries that role's login.
     database_url: SecretStr | None = None  # shri_app: the API (no RLS bypass)
     fhir_database_url: SecretStr | None = None  # shri_fhir_reader: read-only /fhir API
@@ -55,6 +60,14 @@ class Settings(BaseSettings):
     openbao_token: SecretStr | None = None
     openbao_kv_mount: str = "secret"
     openbao_secret_path: str = "shri-health/api"  # noqa: S105 (a path, not a secret)
+
+    # OpenBao Transit, for field encryption (core/crypto.py). The token is the API's narrow one:
+    # encrypt and decrypt with openbao_transit_key only, never a root token. Unset: anything that
+    # needs encryption fails with a 500 (fail closed).
+    openbao_transit_addr: str | None = None
+    openbao_transit_token: SecretStr | None = None
+    openbao_transit_mount: str = "transit"
+    openbao_transit_key: str = "shri-fields"
 
     # Q31: the build this API runs, stamped by CI as image build arguments, never typed by hand.
     # Shown to signed-in users only (GET /auth/session), never on /health. Local builds keep the
@@ -85,6 +98,10 @@ class Settings(BaseSettings):
     def _dev_auth_only_in_dev(self) -> "Settings":
         if self.auth_mode == "dev_header" and self.environment not in ("development", "test"):
             raise ValueError("auth_mode=dev_header is only allowed in development and test")
+        if (self.patient_auth_mode == "dev_header"
+                and self.environment not in ("development", "test")):
+            raise ValueError(
+                "patient_auth_mode=dev_header is only allowed in development and test")
         return self
 
     @property

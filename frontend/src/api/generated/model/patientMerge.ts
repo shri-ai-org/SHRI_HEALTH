@@ -27,7 +27,7 @@ export interface PatientMerge {
   duplicateId?: Id;
   /** Kept patient. */
   survivingPatientId: Id;
-  /** Merged patient; now inactive, with `mergedIntoId`. */
+  /** Merged patient; inactive while the merge stands, with `mergedIntoId` and a `replaced-by` link to the surviving patient (D103). */
   mergedPatientId: Id;
   /** When it was merged. */
   performedAt: Timestamp;

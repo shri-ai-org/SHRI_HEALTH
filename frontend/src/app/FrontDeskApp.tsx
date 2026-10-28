@@ -6,6 +6,7 @@ import { PatientPage } from '../features/patients/PatientPage'
 import { PatientSearchPage } from '../features/patients/PatientSearchPage'
 import { RegisterPatientPage } from '../features/patients/RegisterPatientPage'
 import { RegisterPrefillProvider } from '../features/patients/registerPrefill'
+import { SchedulePage } from '../features/scheduling/SchedulePage'
 import { DesignSystemPreview } from './DesignSystemPreview'
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
@@ -21,6 +22,9 @@ function Shell() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-3">
           <span className="font-semibold text-ink">Shri Health</span>
           <nav aria-label="Front desk" className="flex gap-1">
+            <NavLink to="/schedule" className={navClass}>
+              Schedule
+            </NavLink>
             <NavLink to="/patients/search" className={navClass}>
               Patients
             </NavLink>
@@ -56,6 +60,7 @@ export const routes: RouteObject[] = [
     ),
     children: [
       { index: true, element: <Navigate to="/patients/search" replace /> },
+      { path: 'schedule', element: <SchedulePage /> },
       { path: 'patients/search', element: <PatientSearchPage /> },
       { path: 'patients/new', element: <RegisterPatientPage /> },
       { path: 'patients/:patientId', element: <PatientPage /> },
