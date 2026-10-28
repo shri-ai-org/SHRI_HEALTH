@@ -108,6 +108,51 @@ e.g. `postgresql+asyncpg://postgres:postgres@localhost:5432/postgres`; otherwise
 Add `TEST_DATABASE_IMAGE=shri` when that database is our image (below) to also check its setup.
 CI (`.github/workflows/backend.yml`) runs all of them.
 
+### Run the checks in Docker
+
+No Python 3.13 on your machine (Ubuntu 24.04 has 3.12), and `uv` isn't in a lockfile? Run CI's
+steps in the API's own image instead, so nothing is installed on the host. It runs as your user, so
+no root-owned files land in the checkout, and the virtualenv lives in a Docker volume.
+
+1. Start the compose database and OpenBao (with `infra/compose/.env` filled in), and add the
+   extensions, as CI does:
+
+   ```bash
+   docker compose -f infra/compose/docker-compose.yml up -d postgres openbao openbao-init
+   set -a; . infra/compose/.env; set +a   # the password reaches psql through the environment
+   PGPASSWORD="$POSTGRES_PASSWORD" docker compose -f infra/compose/docker-compose.yml exec -T \
+     -e PGPASSWORD postgres psql -v ON_ERROR_STOP=1 -U shri -d shri_health \
+     < backend/app/db/sql/00_extensions.sql
+   ```
+
+2. Put the test settings in a private env file **outside the repository**
+   (`chmod 600`), never on a command line. It needs:
+   - `TEST_DATABASE_URL=postgresql+asyncpg://shri:<POSTGRES_PASSWORD>@postgres:5432/shri_health`
+     and `TEST_DATABASE_IMAGE=shri`;
+   - `MIGRATION_DATABASE_URL=postgresql+psycopg://shri_migrator:<SHRI_MIGRATOR_PASSWORD>@postgres:5432/shri_health`;
+   - `OPENBAO_TRANSIT_ADDR=http://openbao:8200`, `OPENBAO_TRANSIT_TOKEN=<OPENBAO_API_TOKEN>` and
+     `REQUIRE_OPENBAO=1`.
+
+3. Run the checks in the image `backend/Dockerfile` pins (keep the two in step). The first line
+   gives the virtualenv volume to your user, once:
+
+   ```bash
+   IMAGE=python:3.13.17-slim-trixie@sha256:fe14fd57a4c0361110eaa0c284112b189750bcb43fb04bb5d1ee7b7744027ccf
+   docker run --rm -v shri-py313-venv:/venv "$IMAGE" chown "$(id -u):$(id -g)" /venv
+   docker run --rm --network shri-health_default --user "$(id -u):$(id -g)" -e HOME=/tmp \
+     --env-file ~/.shri-health-test.env -v "$PWD":/repo -v shri-py313-venv:/venv \
+     -w /repo/backend "$IMAGE" bash -c '
+       { test -x /venv/bin/python || python -m venv /venv; } &&
+       /venv/bin/pip install -q --require-hashes --no-deps -r requirements-dev.lock &&
+       /venv/bin/ruff check . && /venv/bin/mypy app &&
+       /venv/bin/alembic -c app/db/alembic.ini upgrade head &&
+       /venv/bin/alembic -c app/db/alembic.ini check &&
+       /venv/bin/pytest -p no:cacheprovider -q -rs'
+   ```
+
+If the passwords in `.env` change, run `docker compose -f infra/compose/docker-compose.yml down -v`
+once, so the database is created again with them. Synthetic data only.
+
 ## Run the whole stack locally
 
 ```bash
