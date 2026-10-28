@@ -23,7 +23,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base, ClinicalResourceMixin, FhirChildMixin, FhirResourceMixin
+from app.db.base import (
+    Base,
+    ClinicalResourceMixin,
+    FhirChildMixin,
+    FhirResourceMixin,
+    enum_type,
+)
 from app.db.fhir_types import (
     boolean,
     cc,
@@ -46,6 +52,8 @@ from app.db.models.enums import (
     EncounterClass,
     EncounterLocationStatus,
     EncounterStatus,
+    FollowUpStatus,
+    FollowUpUnit,
     ParticipantRequired,
     ParticipationStatus,
 )
@@ -324,6 +332,55 @@ class EncounterDiagnosis(Base, FhirChildMixin):
     condition_id: Mapped[uuid.UUID] = ref("condition", "condition", "Condition", required=True)
     use_system, use_code, use_display, use_text = cc("use")   # diagnosis-role: AD, DD, billing
     rank: Mapped[int] = integer("rank", required=True, fhir_type="positiveInt")
+
+
+class EncounterFollowUp(Base, FhirChildMixin):
+    """The clinician's request for a revisit, one per visit (D98, A52; migration 0010). A child
+    of the encounter, so every change moves the encounter's version, the ETag that decline's
+    If-Match carries, and is kept in its history. Not part of the FHIR Encounter: /fhir never
+    serves it.
+
+    ``open`` until the front desk books the revisit (``booked``, with the appointment, in the
+    same transaction) or records that the patient declined (``declined``, with the reason); the
+    clinician who asked may withdraw it while it is open (``withdrawn``, with the reason).
+    Cancelling the revisit puts it back to ``open`` and clears the link; rescheduling moves the
+    link to the new appointment. The request itself changes only while it is open, and a
+    declined or withdrawn one is final (``shri_follow_up_guard``). Nothing is deleted."""
+    __tablename__ = "encounter_follow_up"
+    fhir_parent = ("encounter_id",)
+    __extra_args__ = (
+        UniqueConstraint("encounter_id"),
+        UniqueConstraint("booked_appointment_id"),
+        CheckConstraint("interval_value BETWEEN 1 AND 365", name="interval_range"),
+        CheckConstraint("(status = 'booked') = (booked_appointment_id IS NOT NULL)",
+                        name="booked_has_appointment"),
+        # coalesce: length(trim(NULL)) is NULL, which a CHECK would let through.
+        CheckConstraint("CASE WHEN status IN ('declined', 'withdrawn') "
+                        "THEN coalesce(length(trim(status_reason)), 0) > 0 "
+                        "ELSE status_reason IS NULL END", name="reason_matches_status"),
+    )
+
+    encounter_id: Mapped[uuid.UUID] = parent("encounter")
+    #: The visit's patient (same-patient keys to the encounter and the booked appointment).
+    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"),
+                                                  nullable=False, index=True)
+    interval_value: Mapped[int] = mapped_column(nullable=False)
+    interval_unit: Mapped[FollowUpUnit] = mapped_column(enum_type(FollowUpUnit), nullable=False)
+    appointment_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("admin.appointment_type.id"))
+    practitioner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clinical.practitioner.id"))
+    note: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[FollowUpStatus] = mapped_column(
+        enum_type(FollowUpStatus), nullable=False, default=FollowUpStatus.OPEN.value,
+        server_default=FollowUpStatus.OPEN.value)
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.app_user.id"),
+                                                            nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(nullable=False, server_default=text("now()"))
+    booked_appointment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clinical.appointment.id"))
+    #: Why the patient declined, or why the clinician withdrew it.
+    status_reason: Mapped[str | None] = mapped_column(String(500))
 
 
 class EncounterLocation(Base, FhirChildMixin):

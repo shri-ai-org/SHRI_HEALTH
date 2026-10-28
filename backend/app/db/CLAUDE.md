@@ -50,7 +50,7 @@ A role never bypasses RLS: `shri_app`, `shri_fhir_reader`, `shri_integration` an
 `shri_reporting` are all `NOBYPASSRLS`. Only `shri_migrator` has elevated rights, and only for
 schema changes, never for serving a request.
 
-## The five database roles (D23)
+## The database roles (D23)
 
 | Role | Use | Access |
 |---|---|---|
@@ -59,6 +59,7 @@ schema changes, never for serving a request.
 | `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into (select, insert, update; never delete; 0004), the three `integration_*` admin tables, and `audit.audit_event` `INSERT` only (0004) |
 | `shri_reporting` | approved reports | nothing yet — no reporting views exist; grants come when they do |
 | `shri_migrator` | migrations only, and the development and test seed (`app.db.seed`); never production onboarding, which needs its own design | owns all three schemas |
+| `shri_public` | the public pre-registration form (D96), the only write without a sign-in | `USAGE` on `admin` and `EXECUTE` on `admin.submit_pre_registration()`; no table privileges (0009) |
 
 `shri_app`, `shri_integration` and `shri_fhir_reader` also have `USAGE` (never `CREATE`) on
 schema `public`, where the rule functions that every trigger calls live (migration 0003). The
@@ -179,6 +180,31 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   `is_active`; `version` is the ETag.
 - **Payment receipts (D58):** `patient_payment.receipt_file_id`, the receipt PDF, a file in the
   same clinic, written in the payment transaction.
+- **Pre-registration (D96, A51, migration 0009):** the public form calls
+  `SELECT admin.submit_pre_registration(:practice_code, :idempotency_key, :request_hash,
+  :details, :contact_consent, :source_ip, :user_agent, :request_id)` as `shri_public`, with no
+  clinic set. `request_hash` is the SHA-256 (hex) of the body and `details` is the contract's
+  `PreRegistrationDetails`. It returns nothing. `P0002` is an unknown or turned-off code (the
+  `404`); `P0001` with constraint `idempotency_key_reused` is the `422`; the same key and body
+  again is a success that stores nothing. The function writes the `anonymous` audit row, so
+  core writes none for this route and skips its own idempotency store. The queue is
+  `admin.pre_registration`, read and decided as `shri_app`: accept sets `status`, `decided_at`,
+  `decided_by_user_id`, `patient_id` and `id_document_type` in one update (the identity
+  check's who and when are the decision's); reject sets the reason code, with text for `other`.
+  A decided request never changes. The contract's `submittedAt` is `created_at`; `deleteAfter`
+  is 30 days after `created_at` while pending, or after `decided_at` once rejected, and absent
+  once accepted. The practice's link is `tenant.pre_registration_code` and
+  `pre_registration_enabled`.
+- **Follow-up requests (D98, A52, migration 0010):** `clinical.encounter_follow_up`, one per
+  visit, a child of the encounter: every change moves the encounter's version, so decline's
+  `If-Match` is the encounter's ETag, and the encounter's history keeps each state. /fhir never
+  serves it. The contract's `interval` is `interval_value` and `interval_unit`; `providerId` is
+  `practitioner_id`; `requestedBy` is `requested_by_user_id`; `declinedReason` and
+  `withdrawnReason` are both `status_reason`, by status. Booking sets `status` `booked` and
+  `booked_appointment_id` in the appointment's transaction; cancelling the revisit sets `open`
+  and clears it; rescheduling moves it to the new appointment. The request changes only while
+  open, and a declined or withdrawn one is final (`shri_follow_up_guard`). Nothing is deleted.
+  That only the requesting clinician withdraws is the service's check.
 - **Merge undo (D51):** `undoAllowed` and `undoBlockedReason` come from
   `SELECT admin.patient_merge_undo_blocked_reason(:merge_id)`: `already-undone`,
   `records-changed`, or NULL when the merge can still be undone. The rule compares versions,

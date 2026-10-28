@@ -130,6 +130,7 @@ CREATE CONSTRAINT TRIGGER trg_document_reference_history AFTER INSERT OR UPDATE 
 CREATE OR REPLACE FUNCTION clinical.shri_snapshot_encounter(p_id uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$
   SELECT to_jsonb(r) || jsonb_build_object('_children', jsonb_build_object(
       'encounter_diagnosis', coalesce((SELECT jsonb_agg(to_jsonb(c1) ORDER BY c1.created_at, c1.id) FROM clinical.encounter_diagnosis c1 WHERE c1.encounter_id = r.id), '[]'::jsonb),
+      'encounter_follow_up', coalesce((SELECT jsonb_agg(to_jsonb(c1) ORDER BY c1.created_at, c1.id) FROM clinical.encounter_follow_up c1 WHERE c1.encounter_id = r.id), '[]'::jsonb),
       'encounter_location', coalesce((SELECT jsonb_agg(to_jsonb(c1) ORDER BY c1.created_at, c1.id) FROM clinical.encounter_location c1 WHERE c1.encounter_id = r.id), '[]'::jsonb),
       'encounter_participant', coalesce((SELECT jsonb_agg(to_jsonb(c1) ORDER BY c1.created_at, c1.id) FROM clinical.encounter_participant c1 WHERE c1.encounter_id = r.id), '[]'::jsonb),
       'encounter_reason', coalesce((SELECT jsonb_agg(to_jsonb(c1) ORDER BY c1.created_at, c1.id) FROM clinical.encounter_reason c1 WHERE c1.encounter_id = r.id), '[]'::jsonb),
@@ -466,6 +467,8 @@ CREATE TRIGGER trg_document_reference_relates_to_touch AFTER INSERT OR UPDATE OR
 CREATE TRIGGER trg_dosage_touch AFTER INSERT OR UPDATE OR DELETE ON clinical.dosage
   FOR EACH ROW EXECUTE FUNCTION shri_fhir_touch_parent('medication_request_id', 'medication_request', 'meta_last_updated', 'medication_statement_id', 'medication_statement', 'meta_last_updated', 'medication_dispense_id', 'medication_dispense', 'meta_last_updated');
 CREATE TRIGGER trg_encounter_diagnosis_touch AFTER INSERT OR UPDATE OR DELETE ON clinical.encounter_diagnosis
+  FOR EACH ROW EXECUTE FUNCTION shri_fhir_touch_parent('encounter_id', 'encounter', 'meta_last_updated');
+CREATE TRIGGER trg_encounter_follow_up_touch AFTER INSERT OR UPDATE OR DELETE ON clinical.encounter_follow_up
   FOR EACH ROW EXECUTE FUNCTION shri_fhir_touch_parent('encounter_id', 'encounter', 'meta_last_updated');
 CREATE TRIGGER trg_encounter_location_touch AFTER INSERT OR UPDATE OR DELETE ON clinical.encounter_location
   FOR EACH ROW EXECUTE FUNCTION shri_fhir_touch_parent('encounter_id', 'encounter', 'meta_last_updated');
