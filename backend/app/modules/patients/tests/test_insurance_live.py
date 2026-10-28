@@ -219,18 +219,24 @@ def test_consents_latest_of_a_kind_grantor_and_signed_form(client: Any,  # noqa:
     assert signed.status_code == 201 and signed.json()["grantorRelatedPersonId"] == guardian["id"]
     missing_file = client("fd").post(base, json=_consent(signedFormFileId=str(uuid.uuid4())))
     assert missing_file.status_code == 422 and missing_file.json()["code"] == "file-not-ready"
-    clean = uuid.uuid4()
+    clean, card = uuid.uuid4(), uuid.uuid4()
     admin = create_engine(sync_url(), poolclass=NullPool)
     with admin.begin() as c:
-        c.execute(text("INSERT INTO admin.binary_object (id, tenant_id, bucket, storage_key, "
-                       "content_type, size_bytes, sha256, scan_status, scanned_at) VALUES (:i, "
-                       ":t, 'docs', :k, 'application/pdf', 10, :h, 'clean', now())"),
-                  {"i": clean, "t": clinics[CLINIC_A], "k": f"k/{clean}.pdf", "h": "c" * 64})
+        insert = text("INSERT INTO admin.binary_object (id, tenant_id, bucket, storage_key, "
+                      "content_type, size_bytes, sha256, scan_status, scanned_at, purpose, state) "
+                      "VALUES (:i, :t, 'docs', :k, 'application/pdf', 10, :h, 'clean', now(), "
+                      ":p, 'clean')")
+        for file_id, purpose in ((clean, "document"), (card, "insurance-card")):
+            c.execute(insert, {"i": file_id, "t": clinics[CLINIC_A], "k": f"k/{file_id}.pdf",
+                               "h": "c" * 64, "p": purpose})
     admin.dispose()
     with_form = client("fd").post(base, json=_consent(kind="privacy-notice",
                                                       signedFormFileId=str(clean)))
     assert with_form.status_code == 201, with_form.text
     assert with_form.json()["signedFormFileId"] == str(clean)
+    wrong_purpose = client("fd").post(base, json=_consent(kind="privacy-notice",
+                                                          signedFormFileId=str(card)))
+    assert wrong_purpose.status_code == 422 and wrong_purpose.json()["code"] == "file-not-ready"
 
 
 @OPENBAO

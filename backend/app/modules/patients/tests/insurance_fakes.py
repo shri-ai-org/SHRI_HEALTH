@@ -63,8 +63,8 @@ class FakeInsuranceRepository:
         found = self.world.related_of(db).get(related_person_id)
         return found is not None and found.data.patient_id == patient_id
 
-    async def file_ready(self, db: Any, file_id: UUID) -> bool:
-        return file_id in self.world.clean_files
+    async def file_ready(self, db: Any, file_id: UUID, purpose: str) -> bool:
+        return purpose == "document" and file_id in self.world.clean_files
 
     def _consent(self, consent_id: UUID, c: _Consent) -> Versioned[schemas.Consent]:
         d = c.data

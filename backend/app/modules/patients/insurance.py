@@ -225,7 +225,7 @@ async def record_consent(db: AsyncSession, repo: InsuranceRepository, store: Fhi
     if grantor is not None and not await repo.is_related_person(db, patient.id, grantor):
         raise business_rule("body", "/grantorRelatedPersonId", "invalid-reference")
     if body.signed_form_file_id is not None and not await repo.file_ready(
-            db, body.signed_form_file_id):
+            db, body.signed_form_file_id, "document"):
         raise ValidationFailed(code="file-not-ready", fileId=str(body.signed_form_file_id))
     written = await store.create_consent(db, ConsentIn(
         patient_id=patient.id, kind=body.kind, status="active", categories=CATEGORIES[body.kind],

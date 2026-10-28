@@ -41,8 +41,8 @@ class InsuranceRepository(Protocol):
     async def is_related_person(self, db: AsyncSession, patient_id: UUID,
                                 related_person_id: UUID) -> bool: ...
 
-    async def file_ready(self, db: AsyncSession, file_id: UUID) -> bool:
-        """A file of this clinic that scanned clean."""
+    async def file_ready(self, db: AsyncSession, file_id: UUID, purpose: str) -> bool:
+        """A clean file of this clinic with this purpose (API_STANDARDS §15 step 4)."""
         ...
 
     async def list_consents(self, db: AsyncSession, patient_id: UUID, kind: str | None, *,
@@ -88,7 +88,9 @@ WHERE py.id = :id
 _RELATED = text("""
 SELECT 1 FROM clinical.related_person WHERE id = :id AND patient_id = :patient_id
 """)
-_FILE = text("SELECT scan_status FROM admin.binary_object WHERE id = :id")
+_FILE = text("""
+SELECT 1 FROM admin.binary_object WHERE id = :id AND state = 'clean' AND purpose = :purpose
+""")
 _CONSENTS = text("""
 SELECT id, patient_id, status, ext_kind, provision_type, ext_signature_method, date_time,
        ext_policy_version, ext_grantor_related_person_id, source_attachment_binary_object_id,
@@ -173,9 +175,9 @@ class SqlInsuranceRepository:
         found = await db.execute(_RELATED, {"id": related_person_id, "patient_id": patient_id})
         return found.first() is not None
 
-    async def file_ready(self, db: AsyncSession, file_id: UUID) -> bool:
-        status = (await db.execute(_FILE, {"id": file_id})).scalar_one_or_none()
-        return status == "clean"
+    async def file_ready(self, db: AsyncSession, file_id: UUID, purpose: str) -> bool:
+        found = await db.execute(_FILE, {"id": file_id, "purpose": purpose})
+        return found.first() is not None
 
     async def list_consents(self, db: AsyncSession, patient_id: UUID, kind: str | None, *,
                             limit: int, offset: int) -> list[schemas.Consent]:
