@@ -26,9 +26,15 @@ CREATE TRIGGER trg_observation_guard BEFORE UPDATE ON clinical.observation FOR E
 CREATE TRIGGER trg_patient_merge_versions BEFORE INSERT ON admin.patient_merge FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_versions();
 CREATE TRIGGER trg_patient_merge_guard BEFORE UPDATE ON admin.patient_merge FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_guard();
 CREATE TRIGGER trg_patient_merge_record_version BEFORE INSERT ON admin.patient_merge_record FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_record_version();
+CREATE TRIGGER trg_portal_account_fixed BEFORE UPDATE ON admin.portal_account FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('keycloak_user_id', 'patient_id');
+CREATE TRIGGER trg_portal_change_request_fixed BEFORE UPDATE ON admin.portal_change_request FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('patient_id', 'changes', 'note');
+CREATE TRIGGER trg_portal_change_request_decided BEFORE UPDATE ON admin.portal_change_request FOR EACH ROW EXECUTE FUNCTION shri_final_once_decided();
+CREATE TRIGGER trg_portal_invitation_fixed BEFORE UPDATE ON admin.portal_invitation FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('patient_id', 'code_hmac', 'issued_by_user_id', 'expires_at');
 CREATE TRIGGER trg_pre_registration_fixed BEFORE UPDATE ON admin.pre_registration FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('idempotency_key', 'request_hash', 'details', 'contact_consent', 'entry_source');
 CREATE TRIGGER trg_pre_registration_decided BEFORE UPDATE ON admin.pre_registration FOR EACH ROW EXECUTE FUNCTION shri_pre_registration_guard();
 CREATE TRIGGER trg_provenance_target BEFORE INSERT ON clinical.provenance FOR EACH ROW EXECUTE FUNCTION shri_provenance_target_check();
+CREATE TRIGGER trg_release_hold_fixed BEFORE UPDATE ON admin.release_hold FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('patient_id', 'document_reference_id', 'diagnostic_report_id', 'condition_id', 'reason', 'held_by_user_id', 'held_at');
+CREATE TRIGGER trg_release_hold_lifted BEFORE UPDATE ON admin.release_hold FOR EACH ROW EXECUTE FUNCTION shri_release_hold_guard();
 CREATE TRIGGER trg_service_request_guard BEFORE UPDATE ON clinical.service_request FOR EACH ROW EXECUTE FUNCTION shri_service_request_guard();
 CREATE TRIGGER trg_tenant_timezone BEFORE INSERT OR UPDATE OF timezone ON admin.tenant FOR EACH ROW EXECUTE FUNCTION shri_timezone_check();
 CREATE CONSTRAINT TRIGGER trg_composition_signed AFTER INSERT OR UPDATE ON clinical.composition DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION shri_composition_signed_check();
@@ -83,6 +89,7 @@ CREATE TRIGGER trg_fee_schedule_version BEFORE UPDATE ON admin.fee_schedule FOR 
 CREATE TRIGGER trg_lab_account_version BEFORE UPDATE ON admin.lab_account FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
 CREATE TRIGGER trg_lab_provider_version BEFORE UPDATE ON admin.lab_provider FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
 CREATE TRIGGER trg_note_template_version BEFORE UPDATE ON admin.note_template FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
+CREATE TRIGGER trg_online_booking_setting_version BEFORE UPDATE ON admin.online_booking_setting FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
 CREATE TRIGGER trg_patient_pharmacy_version BEFORE UPDATE ON admin.patient_pharmacy FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
 CREATE TRIGGER trg_payer_version BEFORE UPDATE ON admin.payer FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
 CREATE TRIGGER trg_practice_payer_version BEFORE UPDATE ON admin.practice_payer FOR EACH ROW EXECUTE FUNCTION shri_bump_version();

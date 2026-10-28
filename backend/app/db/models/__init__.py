@@ -20,6 +20,7 @@ from .admin import (  # noqa: F401
     medication,
     orders,
     platform,
+    portal,
     practice,
     rcm,
     runtime,  # noqa: F401  (imported to register its tables)

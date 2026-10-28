@@ -1119,3 +1119,21 @@ class FollowUpUnit(StrEnum):
     DAY = "day"
     WEEK = "week"
     MONTH = "month"
+
+
+class PortalAccountStatus(StrEnum):     # ADR-0013 §3, D92
+    PENDING_SETUP = "pending-setup"     # enrolled; the realm's required actions not done yet
+    ACTIVE = "active"
+    DISABLED = "disabled"               # by ADM, with a reason (D92)
+    SUSPENDED = "suspended"             # the chart was merged into another (ADR-0013 §6)
+
+
+class ChangeRequestStatus(StrEnum):     # D91: a patient's edit waits for the front desk
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+
+
+class HoldReason(StrEnum):              # D90: the only two reasons to hold an item
+    RISK_OF_HARM = "risk-of-harm"
+    PATIENT_REQUEST = "patient-request"

@@ -60,6 +60,7 @@ schema changes, never for serving a request.
 | `shri_reporting` | approved reports | nothing yet — no reporting views exist; grants come when they do |
 | `shri_migrator` | migrations only, and the development and test seed (`app.db.seed`); never production onboarding, which needs its own design | owns all three schemas |
 | `shri_public` | the public pre-registration form (D96), the only write without a sign-in | `USAGE` on `admin` and `EXECUTE` on `admin.submit_pre_registration()`; no table privileges (0009) |
+| `shri_portal` | the patient portal's requests (`portal_db`, D93) | the chart in `app.current_patient_id` only, through generated RESTRICTIVE policies (`gen_db_rules.portal_sql`); bookings, cancellations and change requests; `audit_event` insert-only; no DELETE anywhere (0011) |
 
 `shri_app`, `shri_integration` and `shri_fhir_reader` also have `USAGE` (never `CREATE`) on
 schema `public`, where the rule functions that every trigger calls live (migration 0003). The
@@ -224,6 +225,57 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   and clears it; rescheduling moves it to the new appointment. The request changes only while
   open, and a declined or withdrawn one is final (`shri_follow_up_guard`). Nothing is deleted.
   That only the requesting clinician withdraws is the service's check.
+- **Portal sign-in (ADR-0013 §3 and §5, D92, migration 0011):**
+  - **Before a clinic is known**, core calls three functions as `shri_app`:
+    - `admin.lookup_portal_session(token_hash)` gives the session, clinic and patient of a
+      live session of an active account;
+    - `admin.lookup_portal_account(keycloak_user_id)` at `/callback` gives a pending-setup or
+      active account;
+    - `admin.redeem_portal_invitation(code_hmac, birth_date)` gives the clinic, patient and
+      invitation, or nothing. Commit even when it returns nothing, so the failed try counts;
+      the fifth revokes the invitation.
+  - **Invitations:** the code is stored only as its HMAC, and a patient has at most one open
+    invitation: revoke the old one before issuing a new one, in the same transaction.
+  - **Accounts:** one per patient and Keycloak user.
+    - `disabled` needs `disabled_at` and a reason.
+    - `suspended` (a merged chart) needs `status_before_suspension` (pending-setup or active)
+      and `suspended_by_merge_id`. The undo restores that status.
+  - **Portal sessions** mirror `app_session`.
+- **The portal's database role (D93, migration 0011):** `portal_db` sets
+  `app.current_tenant_id` and `app.current_patient_id` (no user) and runs as `shri_portal`.
+  - **What it sees:** the session patient's chart only. It never sees drafts,
+    entered-in-error records, non-final results (only `final`, `amended`, `corrected` and
+    `appended`, until non-final results are decided on #13), notes or documents labelled
+    `PSY`, or held items.
+  - **Shared and staff data:** practitioners, locations and organizations by clinic. A
+    practitioner's name is visible, never their date of birth, gender or personal address,
+    phone or identifiers.
+  - **Never:** history, provenance, alerts or record notes.
+  - **A new clinical table** gets a policy from the generator (`portal_rules`), or goes in
+    `PORTAL_NEVER` or `PORTAL_REFERENCE`.
+  - **Held items (D90):** a hold is an `admin.release_hold` row. The portal lists held items
+    with `SELECT * FROM admin.portal_held_items()` (type, ID and date only) and shows them as
+    held.
+  - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
+    provider's busy times without anyone's appointment.
+  - **Who wrote a version:** a version the portal writes records the patient in
+    `fhir_resource_history.recorded_by_patient_id`.
+- **Change requests (D91):** `admin.portal_change_request`. The patient inserts it pending; the
+  front desk sets `status`, `decided_at`, `decided_by_user_id` and `decision_note`. What was
+  asked never changes, and a decided request is final.
+- **Online booking (A50 (3)):** `admin.online_booking_setting`, one per practice, `version` the
+  ETag, holds the window, the notice and the cancel and reschedule cut-offs.
+  `admin.online_bookable_type` holds the visit types bookable at each facility; delete a row to
+  stop offering one.
+- **Staff back-channel logout (D94, migration 0011):** after validating the logout token, core
+  calls `SELECT * FROM admin.end_backchannel_sessions(:jti, :jti_expires_at, :sid, :sub)` as
+  `shri_app`, with no clinic set.
+  - With a `sid`, it ends that Keycloak session; with only a `sub`, it ends every live session
+    of that user.
+  - It returns `(session_id, tenant_id, user_id)` for each session it ended, so core can write
+    each session's audit row in its own clinic.
+  - A reused `jti` raises `P0001` with constraint `logout_token_replayed`, and a token naming
+    neither a session nor a user raises `22023`. Core answers 400 to both.
 - **Merge undo (D51):** `undoAllowed` and `undoBlockedReason` come from
   `SELECT admin.patient_merge_undo_blocked_reason(:merge_id)`: `already-undone`,
   `records-changed`, or NULL when the merge can still be undone. The rule compares versions,
