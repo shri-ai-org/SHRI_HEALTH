@@ -36,17 +36,27 @@ import enum
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Protocol, TypeIs
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import systems
 from app.db.models.admin.core import AppUser, MrnCounter
 from app.db.models.admin.rcm import Employer
-from app.db.models.fhir.datatypes import Address, ContactPoint, HumanName, Identifier
+from app.db.models.fhir.clinical import (
+    AllergyIntolerance,
+    AllergyIntoleranceReaction,
+    AllergyReactionManifestation,
+    Condition,
+    ConditionCategory,
+    Observation,
+    ObservationCategory,
+    ObservationComponent,
+)
+from app.db.models.fhir.datatypes import Address, Annotation, ContactPoint, HumanName, Identifier
 from app.db.models.fhir.directory import (
     Patient,
     PatientCommunication,
@@ -65,6 +75,13 @@ from app.db.models.fhir.records import (
     CoveragePayor,
     Provenance,
     ProvenanceAgent,
+)
+from app.db.models.fhir.workflow import (
+    Encounter,
+    EncounterDiagnosis,
+    EncounterParticipant,
+    EncounterReason,
+    EncounterStatusHistory,
 )
 
 
@@ -326,6 +343,95 @@ class Reason:
     code: Coded | None = None
 
 
+# ------------------------------------------------------- visit data types (batch 2, Thu 5 Nov)
+@dataclass(frozen=True)
+class ParticipantIn:
+    practitioner_id: uuid.UUID
+    role: str = "PPRF"  # v3 ParticipationType: PPRF primary performer, ATND attender, SPRF …
+
+
+@dataclass(frozen=True)
+class EncounterIn:
+    patient_id: uuid.UUID
+    facility_id: uuid.UUID
+    class_code: str = "AMB"  # v3 ActCode: AMB ambulatory, VR virtual
+    status: str = "arrived"  # check-in creates it arrived (D16)
+    appointment_id: uuid.UUID | None = None
+    started_at: datetime | None = None
+    service_provider_organization_id: uuid.UUID | None = None
+    participants: tuple[ParticipantIn, ...] = ()
+    reasons: tuple[Coded, ...] = ()
+    self_pay: bool = False  # CheckInRequest.selfPay (#74)
+    place_of_service_code: str | None = None
+
+
+@dataclass(frozen=True)
+class Measured:
+    value: Decimal
+    unit: str  # UCUM code as entered, e.g. mm[Hg], [degF], [lb_av] (D69: never converted)
+
+
+@dataclass(frozen=True)
+class VitalIn:
+    type: str  # the contract's VitalType: blood-pressure, heart-rate, …
+    value: Measured | None = None
+    systolic: Measured | None = None  # blood-pressure only
+    diastolic: Measured | None = None
+
+
+@dataclass(frozen=True)
+class ReactionIn:
+    manifestations: tuple[Coded, ...]
+    severity: str | None = None  # mild | moderate | severe
+    description: str | None = None
+    onset: datetime | None = None
+
+
+@dataclass(frozen=True)
+class AllergyIn:
+    patient_id: uuid.UUID
+    code: Coded
+    clinical_status: str = "active"
+    verification_status: str = "confirmed"
+    encounter_id: uuid.UUID | None = None
+    type: str | None = None  # allergy | intolerance
+    categories: tuple[str, ...] = ()  # food | medication | environment | biologic
+    criticality: str | None = None  # low | high | unable-to-assess
+    onset_date_time: datetime | None = None
+    reactions: tuple[ReactionIn, ...] = ()
+    note: str | None = None
+    entry_source: str = "clinician"
+
+
+@dataclass(frozen=True)
+class AllergyChanges:
+    code: Coded | _Unset = UNSET
+    clinical_status: str | _Unset = UNSET
+    verification_status: str | _Unset = UNSET
+    type: str | None | _Unset = UNSET
+    categories: tuple[str, ...] | _Unset = UNSET
+    criticality: str | None | _Unset = UNSET
+    onset_date_time: datetime | None | _Unset = UNSET
+    reactions: tuple[ReactionIn, ...] | _Unset = UNSET
+    note: str | None | _Unset = UNSET
+
+
+@dataclass(frozen=True)
+class DiagnosisIn:
+    code: Coded  # ICD-10-CM or SNOMED CT (the database refuses other systems)
+    rank: int | None = None  # None: after the encounter's last diagnosis
+    verification_status: str = "confirmed"
+    onset_date_time: datetime | None = None
+    entry_source: str = "clinician"
+
+
+@dataclass(frozen=True)
+class DiagnosisWritten:
+    condition: Written
+    encounter: Written  # the encounter's new version: the link is its child row
+    rank: int
+
+
 # ---------------------------------------------------------------- the helpers
 class FhirStore(Protocol):
     # Patient (and its child rows: human_name, contact_point, address, identifier,
@@ -374,6 +480,41 @@ class FhirStore(Protocol):
     # a revocation is a new Consent (DATA_OWNERSHIP §2.1), so there is no update.
     async def create_consent(self, db: AsyncSession, data: ConsentIn) -> Written: ...
 
+    # Encounter (encounter, encounter_participant, encounter_reason, encounter_status_history)
+    async def create_encounter(self, db: AsyncSession, data: EncounterIn) -> Written: ...
+
+    async def set_encounter_status(self, db: AsyncSession, encounter_id: uuid.UUID, status: str,
+                                   *, at: datetime | None = None, reason: Reason | None = None,
+                                   if_version: int | None = None) -> Written:
+        """Records the change in the status history. Starting sets the start time, finishing
+        the end time. entered-in-error needs a reason and writes its Provenance (D55)."""
+        ...
+
+    # Vitals: one vital-signs Observation per entry, all in one transaction (VitalsCreate)
+    async def record_vitals(self, db: AsyncSession, patient_id: uuid.UUID,
+                            encounter_id: uuid.UUID | None, vitals: tuple[VitalIn, ...], *,
+                            effective_at: datetime | None = None) -> list[Written]: ...
+
+    # AllergyIntolerance (allergy_intolerance, its reactions and manifestations, a note)
+    async def create_allergy(self, db: AsyncSession, data: AllergyIn) -> Written: ...
+
+    async def update_allergy(self, db: AsyncSession, allergy_id: uuid.UUID,
+                             changes: AllergyChanges, *, if_version: int) -> Written: ...
+
+    async def allergy_entered_in_error(self, db: AsyncSession, allergy_id: uuid.UUID,
+                                       reason: Reason, *, if_version: int | None = None
+                                       ) -> Written: ...
+
+    # Encounter diagnoses: a Condition (encounter-diagnosis) and its ranked link (D24)
+    async def add_encounter_diagnosis(self, db: AsyncSession, encounter_id: uuid.UUID,
+                                      data: DiagnosisIn) -> DiagnosisWritten: ...
+
+    async def remove_encounter_diagnosis(self, db: AsyncSession, encounter_id: uuid.UUID,
+                                         condition_id: uuid.UUID, reason: Reason) -> Written:
+        """Before signing (D24): the Condition becomes entered-in-error with its Provenance, and
+        its link goes, freeing its rank; the ranks after it close up. Returns the encounter."""
+        ...
+
 
 # ---------------------------------------------------------------- the implementation
 #: The D39 coded demographics, each patient.ext_<name>_{system,code,display,text}.
@@ -391,7 +532,7 @@ def _given[T](value: T | _Unset) -> TypeIs[T]:
     return value is not UNSET
 
 
-async def _locked[R: (Patient, RelatedPerson, Coverage)](
+async def _locked[R: (Patient, RelatedPerson, Coverage, Encounter, Condition, AllergyIntolerance)](
         db: AsyncSession, model: type[R], row_id: uuid.UUID, if_version: int | None) -> R:
     row = (await db.execute(select(model).where(model.id == row_id).with_for_update()
                             .execution_options(populate_existing=True))).scalar_one_or_none()
@@ -402,9 +543,17 @@ async def _locked[R: (Patient, RelatedPerson, Coverage)](
     return row
 
 
-async def _written(db: AsyncSession, row: Patient | RelatedPerson | Coverage | Consent) -> Written:
-    """Flushes, then reads back the version the database gave the row in this transaction
-    (child rows bump their parent through its touch trigger)."""
+type _Resource = (Patient | RelatedPerson | Coverage | Consent | Encounter | Condition
+                  | AllergyIntolerance | Observation)
+
+
+async def _written(db: AsyncSession, row: _Resource) -> Written:
+    """Records who changed the row last (``app.current_user_id``), flushes, then reads back the
+    version the database gave the row in this transaction (child rows bump their parent through
+    its touch trigger)."""
+    user_id = await _user_id(db)
+    if user_id is not None:
+        row.updated_by_user_id = user_id
     await db.flush()
     await db.refresh(row, attribute_names=["meta_version_id", "meta_last_updated"])
     return Written(row.id, row.meta_version_id, row.meta_last_updated)
@@ -568,6 +717,26 @@ async def _refuse_mrn_system(db: AsyncSession, identifiers: Sequence[IdentifierI
         raise InvalidInput("only an MR identifier uses the practice's MRN system (D41)")
 
 
+async def _user_id(db: AsyncSession) -> uuid.UUID | None:
+    value = (await db.execute(text(
+        "SELECT NULLIF(current_setting('app.current_user_id', true), '')"))).scalar_one()
+    return uuid.UUID(value) if value else None
+
+
+async def _new[R: (Patient, RelatedPerson, Coverage, Consent, Encounter, Condition, Observation,
+                  AllergyIntolerance)](db: AsyncSession, row: R) -> R:
+    """A new resource row records who created it (``app.current_user_id``)."""
+    row.created_by_user_id = await _user_id(db)
+    return row
+
+
+async def _db_now(db: AsyncSession) -> datetime:
+    """The transaction's time, as the database records it (``now()``, the time the triggers
+    give ``meta_last_updated``), so times this module writes compare with the database's."""
+    now: datetime = (await db.execute(text("SELECT now()"))).scalar_one()
+    return now
+
+
 async def _current_user(db: AsyncSession) -> AppUser:
     user_id = (await db.execute(text(
         "SELECT NULLIF(current_setting('app.current_user_id', true), '')"))).scalar_one()
@@ -576,6 +745,31 @@ async def _current_user(db: AsyncSession) -> AppUser:
     if user is None:
         raise RuntimeError("no current user to record in the Provenance")
     return user
+
+
+async def _nullify_provenance(db: AsyncSession, resource_type: str, written: Written,
+                              reason: Reason) -> None:
+    """The Provenance of an entered-in-error change: who (the current user's practitioner, or
+    their name), why, and the version it applies to."""
+    user = await _current_user(db)
+    code = reason.code or Coded()
+    prov = Provenance(target_resource_type=resource_type, target_id=written.id,
+                      target_version_id=written.version, recorded=await _db_now(db),
+                      created_by_user_id=user.id, updated_by_user_id=user.id,
+                      activity_system=systems.V3_DATA_OPERATION, activity_code="NULLIFY",
+                      reason_system=code.system, reason_code=code.code,
+                      reason_display=code.display, reason_text=reason.text)
+    db.add(prov)
+    await db.flush()
+    db.add(ProvenanceAgent(provenance_id=prov.id, type_system=systems.PROVENANCE_AGENT_TYPE,
+                           type_code="author", who_practitioner_id=user.practitioner_id,
+                           who_display=None if user.practitioner_id else user.display_name))
+    await db.flush()
+
+
+def _require_reason(reason: Reason) -> None:
+    if not reason.text.strip():
+        raise InvalidInput("entered-in-error needs a reason")
 
 
 class SqlFhirStore:
@@ -599,7 +793,7 @@ class SqlFhirStore:
                                             use="usual"))
         pt = Patient(active=data.active, entry_source=data.entry_source)
         _apply_patient_fields(pt, data)
-        db.add(pt)
+        db.add(await _new(db, pt))
         await db.flush()
         await _patient_children(db, pt.id, data)
         db.add_all(_identifier({"patient_id": pt.id}, i) for i in identifiers)
@@ -638,7 +832,7 @@ class SqlFhirStore:
     async def create_related_person(self, db: AsyncSession, data: RelatedPersonIn) -> Written:
         person = RelatedPerson(patient_id=data.patient_id, active=data.active, gender=data.gender,
                                birth_date=data.birth_date)
-        db.add(person)
+        db.add(await _new(db, person))
         await db.flush()
         await _person_children(db, person.id, data)
         return await _written(db, person)
@@ -658,7 +852,7 @@ class SqlFhirStore:
         cov = Coverage(status=data.status, beneficiary_patient_id=data.beneficiary_patient_id,
                        ext_accept_assignment=data.accept_assignment,
                        **{f: getattr(data, f) for f in _COVERAGE_FIELDS})
-        db.add(cov)
+        db.add(await _new(db, cov))
         await db.flush()
         db.add(CoveragePayor(coverage_id=cov.id, payer_id=data.payer_id))
         await _coverage_children(db, cov.id, data)
@@ -680,26 +874,13 @@ class SqlFhirStore:
     async def coverage_entered_in_error(self, db: AsyncSession, coverage_id: uuid.UUID,
                                         reason: Reason, *, if_version: int | None = None
                                         ) -> Written:
-        if not reason.text.strip():
-            raise InvalidInput("entered-in-error needs a reason")
+        _require_reason(reason)
         cov = await _locked(db, Coverage, coverage_id, if_version)
         if cov.status == "entered-in-error":
             raise InvalidTransition(cov.status)
         cov.status = "entered-in-error"
         written = await _written(db, cov)
-        user = await _current_user(db)
-        code = reason.code or Coded()
-        prov = Provenance(target_resource_type="Coverage", target_id=coverage_id,
-                          target_version_id=written.version, recorded=datetime.now(UTC),
-                          activity_system=systems.V3_DATA_OPERATION, activity_code="NULLIFY",
-                          reason_system=code.system, reason_code=code.code,
-                          reason_display=code.display, reason_text=reason.text)
-        db.add(prov)
-        await db.flush()
-        db.add(ProvenanceAgent(provenance_id=prov.id, type_system=systems.PROVENANCE_AGENT_TYPE,
-                               type_code="author", who_practitioner_id=user.practitioner_id,
-                               who_display=None if user.practitioner_id else user.display_name))
-        await db.flush()
+        await _nullify_provenance(db, "Coverage", written, reason)
         return written
 
     # ------------------------------------------------------------------------- Consent
@@ -722,7 +903,7 @@ class SqlFhirStore:
             source_attachment_binary_object_id=data.source_attachment_binary_object_id,
             source_document_reference_id=data.source_document_reference_id,
             entry_source=data.entry_source)
-        db.add(consent)
+        db.add(await _new(db, consent))
         await db.flush()
         db.add_all(ConsentCategory(consent_id=consent.id, category_system=c.system,
                                    category_code=c.code, category_display=c.display,
@@ -738,11 +919,241 @@ class SqlFhirStore:
                 verification_date=data.verification_date))
         return await _written(db, consent)
 
+    # ------------------------------------------------------------------------- Encounter
+    async def create_encounter(self, db: AsyncSession, data: EncounterIn) -> Written:
+        start = data.started_at or await _db_now(db)
+        enc = Encounter(status=data.status, class_=data.class_code,
+                        subject_patient_id=data.patient_id, appointment_id=data.appointment_id,
+                        period_start=start, ext_facility_id=data.facility_id,
+                        service_provider_organization_id=data.service_provider_organization_id,
+                        ext_self_pay=data.self_pay,
+                        ext_place_of_service_code=data.place_of_service_code)
+        db.add(await _new(db, enc))
+        await db.flush()
+        db.add(EncounterStatusHistory(encounter_id=enc.id, status=data.status,
+                                      period_start=start))
+        db.add_all(EncounterParticipant(encounter_id=enc.id,
+                                        type_system=systems.V3_PARTICIPATION_TYPE,
+                                        type_code=p.role,
+                                        individual_practitioner_id=p.practitioner_id)
+                   for p in data.participants)
+        db.add_all(EncounterReason(encounter_id=enc.id, reason_code_system=r.system,
+                                   reason_code_code=r.code, reason_code_display=r.display,
+                                   reason_code_text=r.text) for r in data.reasons)
+        return await _written(db, enc)
+
+    async def set_encounter_status(self, db: AsyncSession, encounter_id: uuid.UUID, status: str,
+                                   *, at: datetime | None = None, reason: Reason | None = None,
+                                   if_version: int | None = None) -> Written:
+        enc = await _locked(db, Encounter, encounter_id, if_version)
+        if enc.status == "entered-in-error":
+            raise InvalidTransition(enc.status)
+        if status == "entered-in-error":
+            if reason is None:
+                raise InvalidInput("entered-in-error needs a reason")
+            _require_reason(reason)
+        when = at or await _db_now(db)
+        history = EncounterStatusHistory
+        for open_row in (await db.execute(select(history).where(
+                history.encounter_id == encounter_id, history.period_end.is_(None)))).scalars():
+            open_row.period_end = when
+        db.add(EncounterStatusHistory(encounter_id=encounter_id, status=status,
+                                      period_start=when))
+        enc.status = status
+        if status in ("in-progress", "finished") and enc.period_start is None:
+            enc.period_start = when
+        if status == "finished":
+            enc.period_end = when
+        written = await _written(db, enc)
+        if status == "entered-in-error" and reason is not None:
+            await _nullify_provenance(db, "Encounter", written, reason)
+        return written
+
+    # ------------------------------------------------------------------------- Vitals
+    async def record_vitals(self, db: AsyncSession, patient_id: uuid.UUID,
+                            encounter_id: uuid.UUID | None, vitals: tuple[VitalIn, ...], *,
+                            effective_at: datetime | None = None) -> list[Written]:
+        now = await _db_now(db)
+        effective = effective_at or now
+        if effective > now:
+            raise InvalidInput("vitals are never measured in the future")
+        types = [v.type for v in vitals]
+        if len(set(types)) != len(types):
+            raise InvalidInput("at most one entry per vital type")
+        rows = []
+        for v in vitals:
+            if v.type not in _VITALS:
+                raise InvalidInput(f"unknown vital type {v.type!r}")
+            loinc, display = _VITALS[v.type]
+            obs = Observation(status="final", code_system=systems.LOINC, code_code=loinc,
+                              code_display=display, subject_patient_id=patient_id,
+                              encounter_id=encounter_id, effective_date_time=effective,
+                              issued=now)
+            obs.category = [ObservationCategory(category_system=systems.OBSERVATION_CATEGORY,
+                                                category_code="vital-signs")]
+            if v.type == "blood-pressure":
+                if v.systolic is None or v.diastolic is None:
+                    raise InvalidInput("blood-pressure needs systolic and diastolic")
+                obs.component = [
+                    _component(1, "8480-6", "Systolic blood pressure", v.systolic),
+                    _component(2, "8462-4", "Diastolic blood pressure", v.diastolic)]
+            else:
+                if v.value is None:
+                    raise InvalidInput(f"{v.type} needs a value")
+                obs.value_quantity_value = v.value.value
+                obs.value_quantity_unit = obs.value_quantity_code = v.value.unit
+                obs.value_quantity_system = systems.UCUM
+            db.add(await _new(db, obs))
+            rows.append(obs)
+        return [await _written(db, obs) for obs in rows]
+
+    # ------------------------------------------------------------------------- Allergy
+    async def create_allergy(self, db: AsyncSession, data: AllergyIn) -> Written:
+        allergy = AllergyIntolerance(
+            patient_id=data.patient_id, encounter_id=data.encounter_id,
+            clinical_status=data.clinical_status, verification_status=data.verification_status,
+            code_system=data.code.system, code_code=data.code.code,
+            code_display=data.code.display, code_text=data.code.text, type=data.type,
+            category=list(data.categories), criticality=data.criticality,
+            onset_date_time=data.onset_date_time, recorded_date=await _db_now(db),
+            entry_source=data.entry_source)
+        db.add(await _new(db, allergy))
+        await db.flush()
+        await _allergy_children(db, allergy.id, data)
+        return await _written(db, allergy)
+
+    async def update_allergy(self, db: AsyncSession, allergy_id: uuid.UUID,
+                             changes: AllergyChanges, *, if_version: int) -> Written:
+        allergy = await _locked(db, AllergyIntolerance, allergy_id, if_version)
+        if allergy.verification_status == "entered-in-error":
+            raise InvalidTransition(allergy.verification_status)
+        if _given(changes.code):
+            allergy.code_system, allergy.code_code = changes.code.system, changes.code.code
+            allergy.code_display, allergy.code_text = changes.code.display, changes.code.text
+        for field in ("clinical_status", "verification_status", "type", "criticality",
+                      "onset_date_time"):
+            if _given(getattr(changes, field)):
+                setattr(allergy, field, getattr(changes, field))
+        if _given(changes.categories):
+            allergy.category = list(changes.categories)
+        await _allergy_children(db, allergy_id, changes)
+        return await _written(db, allergy)
+
+    async def allergy_entered_in_error(self, db: AsyncSession, allergy_id: uuid.UUID,
+                                       reason: Reason, *, if_version: int | None = None
+                                       ) -> Written:
+        _require_reason(reason)
+        allergy = await _locked(db, AllergyIntolerance, allergy_id, if_version)
+        if allergy.verification_status == "entered-in-error":
+            raise InvalidTransition(allergy.verification_status)
+        allergy.verification_status, allergy.clinical_status = "entered-in-error", None
+        written = await _written(db, allergy)
+        await _nullify_provenance(db, "AllergyIntolerance", written, reason)
+        return written
+
+    # ------------------------------------------------------------------------- Diagnoses
+    async def add_encounter_diagnosis(self, db: AsyncSession, encounter_id: uuid.UUID,
+                                      data: DiagnosisIn) -> DiagnosisWritten:
+        enc = await _locked(db, Encounter, encounter_id, None)
+        link = EncounterDiagnosis
+        last = (await db.execute(select(func.coalesce(func.max(link.rank), 0))
+                                 .where(link.encounter_id == encounter_id))).scalar_one()
+        rank = data.rank if data.rank is not None else last + 1
+        if not 1 <= rank <= last + 1:
+            raise InvalidInput(f"rank must be between 1 and {last + 1}")
+        # Make room, highest first: UNIQUE (encounter_id, rank) is checked row by row.
+        for row in (await db.execute(select(link).where(
+                link.encounter_id == encounter_id, link.rank >= rank)
+                .order_by(link.rank.desc()))).scalars():
+            row.rank += 1
+            await db.flush()
+        cond = Condition(clinical_status="active", verification_status=data.verification_status,
+                         code_system=data.code.system, code_code=data.code.code,
+                         code_display=data.code.display, code_text=data.code.text,
+                         subject_patient_id=enc.subject_patient_id, encounter_id=encounter_id,
+                         onset_date_time=data.onset_date_time, recorded_date=await _db_now(db),
+                         entry_source=data.entry_source)
+        cond.category = [ConditionCategory(category_system=systems.CONDITION_CATEGORY,
+                                           category_code="encounter-diagnosis")]
+        db.add(await _new(db, cond))
+        await db.flush()
+        db.add(EncounterDiagnosis(encounter_id=encounter_id, condition_id=cond.id, rank=rank))
+        condition = await _written(db, cond)
+        return DiagnosisWritten(condition, await _written(db, enc), rank)
+
+    async def remove_encounter_diagnosis(self, db: AsyncSession, encounter_id: uuid.UUID,
+                                         condition_id: uuid.UUID, reason: Reason) -> Written:
+        _require_reason(reason)
+        enc = await _locked(db, Encounter, encounter_id, None)
+        link = EncounterDiagnosis
+        row = (await db.execute(select(link).where(link.encounter_id == encounter_id,
+                                                   link.condition_id == condition_id)
+                                )).scalar_one_or_none()
+        if row is None:
+            raise ResourceNotFound
+        cond = await _locked(db, Condition, condition_id, None)
+        cond.verification_status, cond.clinical_status = "entered-in-error", None
+        await _nullify_provenance(db, "Condition", await _written(db, cond), reason)
+        removed = row.rank
+        await db.delete(row)
+        await db.flush()
+        # Close the gap, lowest first, for the same reason.
+        for later in (await db.execute(select(link).where(
+                link.encounter_id == encounter_id, link.rank > removed)
+                .order_by(link.rank))).scalars():
+            later.rank -= 1
+            await db.flush()
+        return await _written(db, enc)
+
+
+#: The contract's VitalType: its US Core vital-sign LOINC code (checked against the NLM LOINC
+#: tables) and display.
+_VITALS = {
+    "blood-pressure": ("85354-9", "Blood pressure panel"),
+    "heart-rate": ("8867-4", "Heart rate"),
+    "respiratory-rate": ("9279-1", "Respiratory rate"),
+    "body-temperature": ("8310-5", "Body temperature"),
+    "body-height": ("8302-2", "Body height"),
+    "body-weight": ("29463-7", "Body weight"),
+    "bmi": ("39156-5", "Body mass index (BMI)"),
+    "oxygen-saturation": ("59408-5", "Oxygen saturation by pulse oximetry"),
+    "head-circumference": ("9843-4", "Head occipital-frontal circumference"),
+}
+
+
+def _component(sequence: int, loinc: str, display: str, m: Measured) -> ObservationComponent:
+    return ObservationComponent(sequence=sequence, code_system=systems.LOINC, code_code=loinc,
+                                code_display=display, value_quantity_value=m.value,
+                                value_quantity_unit=m.unit, value_quantity_code=m.unit,
+                                value_quantity_system=systems.UCUM)
+
+
+async def _allergy_children(db: AsyncSession, allergy_id: uuid.UUID,
+                            data: AllergyIn | AllergyChanges) -> None:
+    owner = {"allergy_intolerance_id": allergy_id}
+    if _given(data.reactions):
+        reactions = []
+        for r in data.reactions:
+            reaction = AllergyIntoleranceReaction(allergy_intolerance_id=allergy_id,
+                                                  severity=r.severity,
+                                                  description=r.description, onset=r.onset)
+            reaction.manifestation = [AllergyReactionManifestation(
+                manifestation_system=m.system, manifestation_code=m.code,
+                manifestation_display=m.display, manifestation_text=m.text)
+                for m in r.manifestations]
+            reactions.append(reaction)
+        await _replace(db, AllergyIntoleranceReaction, owner, reactions)
+    if _given(data.note):
+        await _replace(db, Annotation, owner,
+                       [Annotation(allergy_intolerance_id=allergy_id, text=data.note,
+                                   time=await _db_now(db))] if data.note else [])
+
 
 __all__ = [
-    "UNSET", "ChildWritten", "Coded", "ConsentIn", "CostIn", "CoverageChanges", "CoverageClassIn",
-    "CoverageIn", "EmployerIn", "FhirStore", "IdentifierIn", "InvalidInput", "InvalidTransition",
-    "Name", "PatientChanges", "PatientIn", "PostalAddress", "RaceOrEthnicity", "Reason",
-    "RelatedPersonChanges", "RelatedPersonIn", "ResourceNotFound", "SqlFhirStore", "StaleVersion",
-    "Telecom", "Written",
+    "UNSET", "AllergyChanges", "AllergyIn", "ChildWritten", "Coded", "ConsentIn", "CostIn",
+    "CoverageChanges", "CoverageClassIn", "CoverageIn", "DiagnosisIn", "DiagnosisWritten",
+    "EmployerIn", "EncounterIn", "FhirStore", "IdentifierIn", "InvalidInput", "InvalidTransition",
+    "Measured", "Name", "ParticipantIn", "PatientChanges", "PatientIn", "PostalAddress",
+    "RaceOrEthnicity", "ReactionIn", "Reason", "RelatedPersonChanges", "RelatedPersonIn",
+    "ResourceNotFound", "SqlFhirStore", "StaleVersion", "Telecom", "VitalIn", "Written",
 ]
