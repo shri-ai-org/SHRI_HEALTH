@@ -2953,6 +2953,7 @@ CREATE TABLE clinical.coverage (
 	ai_suggestion_id UUID, 
 	CONSTRAINT pk_coverage PRIMARY KEY (id), 
 	CONSTRAINT ck_coverage_order_range CHECK ("order" IS NULL OR "order" BETWEEN 1 AND 9), 
+	CONSTRAINT ex_coverage_order_no_overlap EXCLUDE USING gist (beneficiary_patient_id WITH =, "order" WITH =, daterange(period_start, period_end, '[]') WITH &&) WHERE (status <> 'entered-in-error' AND "order" IS NOT NULL), 
 	CONSTRAINT ck_coverage_self_has_no_related_subscriber CHECK (relationship_code <> 'self' OR subscriber_related_person_id IS NULL), 
 	CONSTRAINT ck_coverage_period_order CHECK (period_end IS NULL OR period_start IS NULL OR period_end >= period_start), 
 	CONSTRAINT ck_coverage_meta_security_codes CHECK (meta_security <@ ARRAY['L', 'M', 'N', 'R', 'V', 'PSY', 'SUD', 'ETH', 'HIV', 'SEX', 'SOC', 'CEL']::varchar[]), 
@@ -2981,8 +2982,6 @@ CREATE TABLE clinical.coverage (
 );
 
 CREATE INDEX ix_coverage_tenant_id ON clinical.coverage (tenant_id);
-
-CREATE UNIQUE INDEX uq_coverage_active_order ON clinical.coverage (beneficiary_patient_id, "order") WHERE status = 'active';
 
 CREATE TABLE clinical.schedule (
 	active BOOLEAN DEFAULT true NOT NULL, 

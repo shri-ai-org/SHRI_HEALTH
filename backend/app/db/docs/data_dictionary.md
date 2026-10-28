@@ -4343,7 +4343,7 @@ Composite foreign keys: `fk_contact_point_location_id_tenant`, `fk_contact_point
 
 ## `clinical.coverage`
 
-FHIR resource `Coverage`. US Core Coverage: a patient's insurance, in priority order (``order``). Member ID is an identifier (type MB); group number and plan name are coverage_class rows. Card images (front / back) are coverage_card_image rows. entry_source 'ai-generated' when captured by card OCR (P1). At most one active coverage per patient per order.
+FHIR resource `Coverage`. US Core Coverage: a patient's insurance, in priority order (``order``). Member ID is an identifier (type MB); group number and plan name are coverage_class rows. Card images (front / back) are coverage_card_image rows. entry_source 'ai-generated' when captured by card OCR (P1). A patient's coverages with the same order never overlap in time.
 
 Patient-owned via `beneficiary_patient_id` (same-patient foreign keys apply).
 
