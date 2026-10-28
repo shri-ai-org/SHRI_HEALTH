@@ -19,6 +19,7 @@ import type { EncounterClass } from './encounterClass';
 import type { EncounterDiagnosis } from './encounterDiagnosis';
 import type { EncounterParticipant } from './encounterParticipant';
 import type { EncounterStatus } from './encounterStatus';
+import type { FollowUpRequest } from './followUpRequest';
 import type { Id } from './id';
 import type { NoteSummary } from './noteSummary';
 import type { Timestamp } from './timestamp';
@@ -86,4 +87,6 @@ export interface Encounter {
   createdAt: Timestamp;
   /** Last change. */
   updatedAt: Timestamp;
+  /** The follow-up request, if the clinician made one (D98). */
+  followUp?: FollowUpRequest;
 }
