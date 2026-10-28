@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -12,7 +13,15 @@ import pytest
 from app.core.db import TENANT_ID_INFO_KEY
 from app.core.errors import ServiceUnavailable
 
-from ..storage import FILE_STORE_DIR_ENV, LocalFileStore, file_store, store_generated
+from ..s3 import S3FileStore
+from ..storage import (
+    CLEAN_BUCKET,
+    FILE_STORE_DIR_ENV,
+    QUARANTINE_BUCKET,
+    LocalFileStore,
+    file_store,
+    store_generated,
+)
 
 TENANT = UUID("0a000000-0000-4000-8000-00000000000a")
 
@@ -95,8 +104,56 @@ async def test_only_generated_purposes(tmp_path: Path) -> None:
 
 def test_the_store_needs_its_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv(FILE_STORE_DIR_ENV, raising=False)
+    monkeypatch.delenv("SHRI_S3_ENDPOINT", raising=False)
     with pytest.raises(ServiceUnavailable):
         file_store()
     monkeypatch.setenv(FILE_STORE_DIR_ENV, str(tmp_path))
     store = file_store()
     assert isinstance(store, LocalFileStore) and store.root == tmp_path
+
+
+async def test_buckets_are_separate_folders(tmp_path: Path) -> None:
+    store, key = LocalFileStore(tmp_path), _key()
+    await store.put(key, b"quarantined", "image/jpeg", bucket=QUARANTINE_BUCKET)
+    await store.put(key, b"clean", "image/jpeg")  # the same key in the other bucket
+
+    assert (tmp_path / "quarantine" / key).read_bytes() == b"quarantined"
+    assert (tmp_path / key).read_bytes() == b"clean"  # the clean bucket is the root, as before
+    await store.delete(key, bucket=QUARANTINE_BUCKET)
+    with pytest.raises(FileNotFoundError):
+        await store.get(key, bucket=QUARANTINE_BUCKET)
+    assert await store.get(key, bucket=CLEAN_BUCKET) == b"clean"
+    for call in (store.put(key, b"x", "image/jpeg", bucket="elsewhere"),
+                 store.get(key, bucket="../etc")):
+        with pytest.raises(ValueError):
+            await call
+
+
+def test_local_links_are_file_urls(tmp_path: Path) -> None:
+    store, key = LocalFileStore(tmp_path), _key()
+    before = datetime.now(UTC)
+    put = store.presign_put(key, bucket=QUARANTINE_BUCKET, content_type="image/png",
+                            size_bytes=10, expires=timedelta(minutes=15))
+    get = store.presign_get(key, bucket=CLEAN_BUCKET, content_type="image/png",
+                            expires=timedelta(minutes=5))
+    assert put.url == (tmp_path.resolve() / "quarantine" / key).as_uri()
+    assert put.headers == {"Content-Type": "image/png"}
+    assert get.url == (tmp_path.resolve() / key).as_uri() and get.headers == {}
+    assert before + timedelta(minutes=4) < get.expires_at <= before + timedelta(minutes=5)
+    assert "url" not in repr(put) and key not in repr(put)  # a link is never in a repr
+    with pytest.raises(ValueError):
+        store.presign_get("../x", bucket=CLEAN_BUCKET, content_type="image/png",
+                          expires=timedelta(minutes=5))
+
+
+def test_the_object_store_when_configured(monkeypatch: pytest.MonkeyPatch,
+                                          tmp_path: Path) -> None:
+    monkeypatch.setenv(FILE_STORE_DIR_ENV, str(tmp_path))
+    for name, value in {"SHRI_S3_ENDPOINT": "http://seaweedfs:8333",
+                        "SHRI_S3_ACCESS_KEY_ID": "TESTKEY", "SHRI_S3_SECRET_ACCESS_KEY": "x",
+                        "SHRI_S3_BUCKET_CLEAN": "c", "SHRI_S3_BUCKET_QUARANTINE": "q"}.items():
+        monkeypatch.setenv(name, value)
+    assert isinstance(file_store(), S3FileStore)
+    monkeypatch.delenv("SHRI_S3_BUCKET_QUARANTINE")
+    with pytest.raises(ServiceUnavailable):  # half a configuration fails closed
+        file_store()
