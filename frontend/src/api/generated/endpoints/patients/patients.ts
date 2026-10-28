@@ -15,6 +15,7 @@
  * OpenAPI spec version: 1.0.0-draft.1
  */
 import type {
+  AcceptPreRegistrationHeaders,
   AddCoverageHeaders,
   AddPatientIdentifierHeaders,
   AddRelatedPersonHeaders,
@@ -43,6 +44,7 @@ import type {
   ListDuplicatesParams,
   ListPatientIdentifiersParams,
   ListPatientMergesParams,
+  ListPreRegistrationsParams,
   ListRelatedPersonsParams,
   MergeDuplicateHeaders,
   MergeRequest,
@@ -64,6 +66,10 @@ import type {
   PortalAccountStatusChange,
   PortalFactorResetRequest,
   PortalInvitation,
+  PreRegistration,
+  PreRegistrationAccept,
+  PreRegistrationList,
+  PreRegistrationReject,
   PreconditionFailedResponse,
   PreconditionRequiredResponse,
   PreferredPharmacy,
@@ -784,6 +790,76 @@ return apiFetch<addRelatedPersonResponse>(getAddRelatedPersonUrl(patientId),
 );}
 
 
+export type getRelatedPersonResponse200 = {
+  data: RelatedPerson
+  status: 200
+}
+
+export type getRelatedPersonResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getRelatedPersonResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getRelatedPersonResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getRelatedPersonResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getRelatedPersonResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getRelatedPersonResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getRelatedPersonResponseSuccess = (getRelatedPersonResponse200) & {
+  headers: Headers;
+};
+export type getRelatedPersonResponseError = (getRelatedPersonResponse401 | getRelatedPersonResponse403 | getRelatedPersonResponse404 | getRelatedPersonResponse422 | getRelatedPersonResponse429 | getRelatedPersonResponse500) & {
+  headers: Headers;
+};
+
+export type getRelatedPersonResponse = (getRelatedPersonResponseSuccess | getRelatedPersonResponseError)
+
+export const getGetRelatedPersonUrl = (patientId: Id,
+    relatedPersonId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/related-persons/${relatedPersonId}`
+}
+
+/**
+ * One related person, with the strong `ETag` that `PATCH` needs. List items carry no ETag (API_STANDARDS §11).
+ * @summary Get one related person
+ */
+export const getRelatedPerson = async (patientId: Id,
+    relatedPersonId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getRelatedPersonResponse> => {
+
+  return apiFetch<getRelatedPersonResponse>(getGetRelatedPersonUrl(patientId,relatedPersonId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
 export type updateRelatedPersonResponse200 = {
   data: RelatedPerson
   status: 200
@@ -1062,6 +1138,76 @@ return apiFetch<addCoverageResponse>(getAddCoverageUrl(patientId),
     method: 'POST',
     headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(coverageCreate)
+  }
+);}
+
+
+export type getCoverageResponse200 = {
+  data: Coverage
+  status: 200
+}
+
+export type getCoverageResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getCoverageResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getCoverageResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getCoverageResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getCoverageResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getCoverageResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getCoverageResponseSuccess = (getCoverageResponse200) & {
+  headers: Headers;
+};
+export type getCoverageResponseError = (getCoverageResponse401 | getCoverageResponse403 | getCoverageResponse404 | getCoverageResponse422 | getCoverageResponse429 | getCoverageResponse500) & {
+  headers: Headers;
+};
+
+export type getCoverageResponse = (getCoverageResponseSuccess | getCoverageResponseError)
+
+export const getGetCoverageUrl = (patientId: Id,
+    coverageId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/coverages/${coverageId}`
+}
+
+/**
+ * One coverage, with the strong `ETag` that `PATCH` needs, for example to end it with `endDate` (D45). List items carry no ETag (API_STANDARDS §11). Entered-in-error coverages are returned too, marked by `status`.
+ * @summary Get one coverage
+ */
+export const getCoverage = async (patientId: Id,
+    coverageId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getCoverageResponse> => {
+
+  return apiFetch<getCoverageResponse>(getGetCoverageUrl(patientId,coverageId),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 
@@ -2869,6 +3015,341 @@ return apiFetch<getPatientSummariesResponse>(getGetPatientSummariesUrl(),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(patientSummariesRequest)
+  }
+);}
+
+
+export type listPreRegistrationsResponse200 = {
+  data: PreRegistrationList
+  status: 200
+}
+
+export type listPreRegistrationsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listPreRegistrationsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listPreRegistrationsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listPreRegistrationsResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listPreRegistrationsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listPreRegistrationsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listPreRegistrationsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listPreRegistrationsResponseSuccess = (listPreRegistrationsResponse200) & {
+  headers: Headers;
+};
+export type listPreRegistrationsResponseError = (listPreRegistrationsResponse400 | listPreRegistrationsResponse401 | listPreRegistrationsResponse403 | listPreRegistrationsResponse404 | listPreRegistrationsResponse422 | listPreRegistrationsResponse429 | listPreRegistrationsResponse500) & {
+  headers: Headers;
+};
+
+export type listPreRegistrationsResponse = (listPreRegistrationsResponseSuccess | listPreRegistrationsResponseError)
+
+export const getListPreRegistrationsUrl = (params?: ListPreRegistrationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/pre-registrations?${stringifiedParams}` : `/pre-registrations`
+}
+
+/**
+ * The front desk's queue of pre-registrations (D96), oldest first; pending by default. The queue is the clinic's: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.
+ * @summary List pre-registrations
+ */
+export const listPreRegistrations = async (params?: ListPreRegistrationsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listPreRegistrationsResponse> => {
+
+  return apiFetch<listPreRegistrationsResponse>(getListPreRegistrationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type getPreRegistrationResponse200 = {
+  data: PreRegistration
+  status: 200
+}
+
+export type getPreRegistrationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getPreRegistrationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getPreRegistrationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getPreRegistrationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getPreRegistrationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getPreRegistrationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getPreRegistrationResponseSuccess = (getPreRegistrationResponse200) & {
+  headers: Headers;
+};
+export type getPreRegistrationResponseError = (getPreRegistrationResponse401 | getPreRegistrationResponse403 | getPreRegistrationResponse404 | getPreRegistrationResponse422 | getPreRegistrationResponse429 | getPreRegistrationResponse500) & {
+  headers: Headers;
+};
+
+export type getPreRegistrationResponse = (getPreRegistrationResponseSuccess | getPreRegistrationResponseError)
+
+export const getGetPreRegistrationUrl = (preRegistrationId: Id,) => {
+
+
+
+
+  return `/pre-registrations/${preRegistrationId}`
+}
+
+/**
+ * One pre-registration (D96). The queue is the clinic's: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.
+ * @summary Get a pre-registration
+ */
+export const getPreRegistration = async (preRegistrationId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getPreRegistrationResponse> => {
+
+  return apiFetch<getPreRegistrationResponse>(getGetPreRegistrationUrl(preRegistrationId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type acceptPreRegistrationResponse200 = {
+  data: PreRegistration
+  status: 200
+}
+
+export type acceptPreRegistrationResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type acceptPreRegistrationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type acceptPreRegistrationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type acceptPreRegistrationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type acceptPreRegistrationResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type acceptPreRegistrationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type acceptPreRegistrationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type acceptPreRegistrationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type acceptPreRegistrationResponseSuccess = (acceptPreRegistrationResponse200) & {
+  headers: Headers;
+};
+export type acceptPreRegistrationResponseError = (acceptPreRegistrationResponse400 | acceptPreRegistrationResponse401 | acceptPreRegistrationResponse403 | acceptPreRegistrationResponse404 | acceptPreRegistrationResponse409 | acceptPreRegistrationResponse422 | acceptPreRegistrationResponse429 | acceptPreRegistrationResponse500) & {
+  headers: Headers;
+};
+
+export type acceptPreRegistrationResponse = (acceptPreRegistrationResponseSuccess | acceptPreRegistrationResponseError)
+
+export const getAcceptPreRegistrationUrl = (preRegistrationId: Id,) => {
+
+
+
+
+  return `/pre-registrations/${preRegistrationId}/accept`
+}
+
+/**
+ * Creates the patient through the registration rules (duplicate check with `409 possible-duplicate` and the override; the MRN from the practice counter, D41), or links to an existing `patientId` chosen in duplicate review; insurance as typed stays on the request as a note for the front desk (returned by the queue reads), not a coverage, until the card is checked. The request is linked to the patient, all in one transaction (D96). The front-desk user must confirm they checked the person's ID and say which kind (`identityVerified`, `idDocumentType`); the check is stored with who and when (`identityCheck`). Duplicate matching happens here, never at submit. The queue is the clinic's: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.
+ * @summary Accept a pre-registration
+ */
+export const acceptPreRegistration = async (preRegistrationId: Id,
+    preRegistrationAccept?: PreRegistrationAccept,
+    headers?: AcceptPreRegistrationHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<acceptPreRegistrationResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<acceptPreRegistrationResponse>(getAcceptPreRegistrationUrl(preRegistrationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(preRegistrationAccept)
+  }
+);}
+
+
+export type rejectPreRegistrationResponse200 = {
+  data: PreRegistration
+  status: 200
+}
+
+export type rejectPreRegistrationResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type rejectPreRegistrationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type rejectPreRegistrationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type rejectPreRegistrationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type rejectPreRegistrationResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type rejectPreRegistrationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type rejectPreRegistrationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type rejectPreRegistrationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type rejectPreRegistrationResponseSuccess = (rejectPreRegistrationResponse200) & {
+  headers: Headers;
+};
+export type rejectPreRegistrationResponseError = (rejectPreRegistrationResponse400 | rejectPreRegistrationResponse401 | rejectPreRegistrationResponse403 | rejectPreRegistrationResponse404 | rejectPreRegistrationResponse409 | rejectPreRegistrationResponse422 | rejectPreRegistrationResponse429 | rejectPreRegistrationResponse500) & {
+  headers: Headers;
+};
+
+export type rejectPreRegistrationResponse = (rejectPreRegistrationResponseSuccess | rejectPreRegistrationResponseError)
+
+export const getRejectPreRegistrationUrl = (preRegistrationId: Id,) => {
+
+
+
+
+  return `/pre-registrations/${preRegistrationId}/reject`
+}
+
+/**
+ * Rejects it with a reason (D96). It is deleted 30 days later. Nothing is sent to the person. The queue is the clinic's: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.
+ * @summary Reject a pre-registration
+ */
+export const rejectPreRegistration = async (preRegistrationId: Id,
+    preRegistrationReject: PreRegistrationReject, options?: Parameters<typeof apiFetch>[1]): Promise<rejectPreRegistrationResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<rejectPreRegistrationResponse>(getRejectPreRegistrationUrl(preRegistrationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(preRegistrationReject)
   }
 );}
 

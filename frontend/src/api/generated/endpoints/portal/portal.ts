@@ -30,6 +30,7 @@ import type {
   ListPortalBookingProvidersParams,
   ListPortalBookingSlotsParams,
   ListPortalChangeRequestsParams,
+  ListPortalMedicationsParams,
   ListPortalProblemsParams,
   ListPortalVisitSummariesParams,
   ListPortalVitalsParams,
@@ -47,6 +48,7 @@ import type {
   PortalChangeRequestCreate,
   PortalChangeRequestList,
   PortalDownloadUrl,
+  PortalMedicationList,
   PortalProblem,
   PortalProblemList,
   PortalProfile,
@@ -56,9 +58,11 @@ import type {
   PortalVisitSummary,
   PortalVisitSummaryList,
   PortalVitalList,
+  PreRegistrationCreate,
   RequestPortalChangeHeaders,
   ReschedulePortalAppointmentHeaders,
   ServiceUnavailableResponse,
+  SubmitPreRegistrationHeaders,
   TooManyRequestsResponse,
   UnauthorizedResponse,
   UnprocessableContentResponse
@@ -1866,6 +1870,81 @@ export const getPortalAllergy = async (allergyId: Id, options?: Parameters<typeo
 );}
 
 
+export type listPortalMedicationsResponse200 = {
+  data: PortalMedicationList
+  status: 200
+}
+
+export type listPortalMedicationsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listPortalMedicationsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listPortalMedicationsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listPortalMedicationsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listPortalMedicationsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listPortalMedicationsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listPortalMedicationsResponseSuccess = (listPortalMedicationsResponse200) & {
+  headers: Headers;
+};
+export type listPortalMedicationsResponseError = (listPortalMedicationsResponse400 | listPortalMedicationsResponse401 | listPortalMedicationsResponse403 | listPortalMedicationsResponse422 | listPortalMedicationsResponse429 | listPortalMedicationsResponse500) & {
+  headers: Headers;
+};
+
+export type listPortalMedicationsResponse = (listPortalMedicationsResponseSuccess | listPortalMedicationsResponseError)
+
+export const getListPortalMedicationsUrl = (params?: ListPortalMedicationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/portal/me/medications?${stringifiedParams}` : `/portal/me/medications`
+}
+
+/**
+ * The patient's medication list (§8.2 E of the batch 1 plan): what the practice prescribed, with where it is on its way to the pharmacy, and what the patient reported taking. Active first; entered-in-error entries never appear. No prescriber-only notes.
+ * @summary List my medications
+ */
+export const listPortalMedications = async (params?: ListPortalMedicationsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listPortalMedicationsResponse> => {
+
+  return apiFetch<listPortalMedicationsResponse>(getListPortalMedicationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
 export type listPortalVitalsResponse200 = {
   data: PortalVitalList
   status: 200
@@ -1937,6 +2016,95 @@ export const listPortalVitals = async (params?: ListPortalVitalsParams, options?
     method: 'GET'
 
 
+  }
+);}
+
+
+export type submitPreRegistrationResponse204 = {
+  data: void
+  status: 204
+}
+
+export type submitPreRegistrationResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type submitPreRegistrationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type submitPreRegistrationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type submitPreRegistrationResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type submitPreRegistrationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type submitPreRegistrationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type submitPreRegistrationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type submitPreRegistrationResponseSuccess = (submitPreRegistrationResponse204) & {
+  headers: Headers;
+};
+export type submitPreRegistrationResponseError = (submitPreRegistrationResponse400 | submitPreRegistrationResponse403 | submitPreRegistrationResponse404 | submitPreRegistrationResponse409 | submitPreRegistrationResponse422 | submitPreRegistrationResponse429 | submitPreRegistrationResponse500) & {
+  headers: Headers;
+};
+
+export type submitPreRegistrationResponse = (submitPreRegistrationResponseSuccess | submitPreRegistrationResponseError)
+
+export const getSubmitPreRegistrationUrl = (practiceLinkId: string,) => {
+
+
+
+
+  return `/portal/practices/${practiceLinkId}/pre-registrations`
+}
+
+/**
+ * The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice's own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can't be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can't be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice's queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).
+ * @summary Pre-register as a new patient
+ */
+export const submitPreRegistration = async (practiceLinkId: string,
+    preRegistrationCreate: PreRegistrationCreate,
+    headers: SubmitPreRegistrationHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<submitPreRegistrationResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<submitPreRegistrationResponse>(getSubmitPreRegistrationUrl(practiceLinkId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(preRegistrationCreate)
   }
 );}
 

@@ -14,6 +14,7 @@
  *
  * OpenAPI spec version: 1.0.0-draft.1
  */
+import type { MePracticeSettings } from './mePracticeSettings';
 import type { SessionOrganization } from './sessionOrganization';
 import type { SessionUser } from './sessionUser';
 
@@ -31,4 +32,6 @@ export interface Me {
      * @items.maxLength 80
      */
   permissions: string[];
+  /** The practice settings screens need (D39), the same values as `GET /practice-settings`, so no extra permission is needed to read them. */
+  practiceSettings?: MePracticeSettings;
 }
