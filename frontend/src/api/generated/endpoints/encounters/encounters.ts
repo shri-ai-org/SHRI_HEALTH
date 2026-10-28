@@ -18,6 +18,7 @@ import type {
   AddEncounterDiagnosisHeaders,
   AddNoteAddendumHeaders,
   AddendumCreate,
+  AfterVisitSummaryLink,
   AfterVisitSummaryRequest,
   BadRequestResponse,
   CodeMatchList,
@@ -32,6 +33,7 @@ import type {
   CreateCosignRuleHeaders,
   CreateEncounterHeaders,
   CreateNoteHeaders,
+  DeclineFollowUpRequestHeaders,
   DiagnosisCreate,
   DiagnosisEnteredInError,
   DiagnosisRemove,
@@ -43,6 +45,10 @@ import type {
   EncounterPatch,
   Favorites,
   FavoritesUpdate,
+  FollowUpDecline,
+  FollowUpRequest,
+  FollowUpRequestPut,
+  FollowUpWithdraw,
   ForbiddenResponse,
   Id,
   InternalErrorResponse,
@@ -65,6 +71,7 @@ import type {
   RecordVitalsHeaders,
   ReplaceMyFavoritesHeaders,
   SearchCodesParams,
+  SetFollowUpRequestHeaders,
   SignNoteHeaders,
   TooManyRequestsResponse,
   UnauthorizedResponse,
@@ -75,7 +82,8 @@ import type {
   Vital,
   VitalList,
   VitalsCreate,
-  VitalsRecorded
+  VitalsRecorded,
+  WithdrawFollowUpRequestHeaders
 } from '../../model';
 
 import { apiFetch } from '../../../client';
@@ -491,6 +499,318 @@ export const closeEncounter = async (encounterId: Id, options?: Parameters<typeo
     method: 'POST'
 
 
+  }
+);}
+
+
+export type setFollowUpRequestResponse200 = {
+  data: FollowUpRequest
+  status: 200
+}
+
+export type setFollowUpRequestResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type setFollowUpRequestResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type setFollowUpRequestResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type setFollowUpRequestResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type setFollowUpRequestResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type setFollowUpRequestResponse412 = {
+  data: PreconditionFailedResponse
+  status: 412
+}
+
+export type setFollowUpRequestResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type setFollowUpRequestResponse428 = {
+  data: PreconditionRequiredResponse
+  status: 428
+}
+
+export type setFollowUpRequestResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type setFollowUpRequestResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type setFollowUpRequestResponseSuccess = (setFollowUpRequestResponse200) & {
+  headers: Headers;
+};
+export type setFollowUpRequestResponseError = (setFollowUpRequestResponse400 | setFollowUpRequestResponse401 | setFollowUpRequestResponse403 | setFollowUpRequestResponse404 | setFollowUpRequestResponse409 | setFollowUpRequestResponse412 | setFollowUpRequestResponse422 | setFollowUpRequestResponse428 | setFollowUpRequestResponse429 | setFollowUpRequestResponse500) & {
+  headers: Headers;
+};
+
+export type setFollowUpRequestResponse = (setFollowUpRequestResponseSuccess | setFollowUpRequestResponseError)
+
+export const getSetFollowUpRequestUrl = (encounterId: Id,) => {
+
+
+
+
+  return `/encounters/${encounterId}/follow-up`
+}
+
+/**
+ * The clinician asks the front desk to book a revisit (D98): when, and optionally with whom and for what kind of visit. Replaces an open request; a booked one can no longer change. The front desk sees it at check-out (`followUp` on the appointment and on the staff status board) and books it with `POST /appointments` and `followUpOfEncounterId`.
+ * @summary Ask for a follow-up visit
+ */
+export const setFollowUpRequest = async (encounterId: Id,
+    followUpRequestPut: FollowUpRequestPut,
+    headers: SetFollowUpRequestHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<setFollowUpRequestResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<setFollowUpRequestResponse>(getSetFollowUpRequestUrl(encounterId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(followUpRequestPut)
+  }
+);}
+
+
+export type declineFollowUpRequestResponse200 = {
+  data: FollowUpRequest
+  status: 200
+}
+
+export type declineFollowUpRequestResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type declineFollowUpRequestResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type declineFollowUpRequestResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type declineFollowUpRequestResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type declineFollowUpRequestResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type declineFollowUpRequestResponse412 = {
+  data: PreconditionFailedResponse
+  status: 412
+}
+
+export type declineFollowUpRequestResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type declineFollowUpRequestResponse428 = {
+  data: PreconditionRequiredResponse
+  status: 428
+}
+
+export type declineFollowUpRequestResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type declineFollowUpRequestResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type declineFollowUpRequestResponseSuccess = (declineFollowUpRequestResponse200) & {
+  headers: Headers;
+};
+export type declineFollowUpRequestResponseError = (declineFollowUpRequestResponse400 | declineFollowUpRequestResponse401 | declineFollowUpRequestResponse403 | declineFollowUpRequestResponse404 | declineFollowUpRequestResponse409 | declineFollowUpRequestResponse412 | declineFollowUpRequestResponse422 | declineFollowUpRequestResponse428 | declineFollowUpRequestResponse429 | declineFollowUpRequestResponse500) & {
+  headers: Headers;
+};
+
+export type declineFollowUpRequestResponse = (declineFollowUpRequestResponseSuccess | declineFollowUpRequestResponseError)
+
+export const getDeclineFollowUpRequestUrl = (encounterId: Id,) => {
+
+
+
+
+  return `/encounters/${encounterId}/follow-up/decline`
+}
+
+/**
+ * At check-out, when the patient does not book the revisit (D98). Front desk and ADM only (`follow-ups:decline`); the clinician who asked for it withdraws it instead (`…/follow-up/withdraw`, D67). The request becomes `declined` with the reason. `If-Match` carries the encounter's `ETag`, so a decline never overwrites a request the clinician just changed.
+ * @summary Record that the follow-up was not booked
+ */
+export const declineFollowUpRequest = async (encounterId: Id,
+    followUpDecline: FollowUpDecline,
+    headers: DeclineFollowUpRequestHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<declineFollowUpRequestResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<declineFollowUpRequestResponse>(getDeclineFollowUpRequestUrl(encounterId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(followUpDecline)
+  }
+);}
+
+
+export type withdrawFollowUpRequestResponse200 = {
+  data: FollowUpRequest
+  status: 200
+}
+
+export type withdrawFollowUpRequestResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type withdrawFollowUpRequestResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type withdrawFollowUpRequestResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type withdrawFollowUpRequestResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type withdrawFollowUpRequestResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type withdrawFollowUpRequestResponse412 = {
+  data: PreconditionFailedResponse
+  status: 412
+}
+
+export type withdrawFollowUpRequestResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type withdrawFollowUpRequestResponse428 = {
+  data: PreconditionRequiredResponse
+  status: 428
+}
+
+export type withdrawFollowUpRequestResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type withdrawFollowUpRequestResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type withdrawFollowUpRequestResponseSuccess = (withdrawFollowUpRequestResponse200) & {
+  headers: Headers;
+};
+export type withdrawFollowUpRequestResponseError = (withdrawFollowUpRequestResponse400 | withdrawFollowUpRequestResponse401 | withdrawFollowUpRequestResponse403 | withdrawFollowUpRequestResponse404 | withdrawFollowUpRequestResponse409 | withdrawFollowUpRequestResponse412 | withdrawFollowUpRequestResponse422 | withdrawFollowUpRequestResponse428 | withdrawFollowUpRequestResponse429 | withdrawFollowUpRequestResponse500) & {
+  headers: Headers;
+};
+
+export type withdrawFollowUpRequestResponse = (withdrawFollowUpRequestResponseSuccess | withdrawFollowUpRequestResponseError)
+
+export const getWithdrawFollowUpRequestUrl = (encounterId: Id,) => {
+
+
+
+
+  return `/encounters/${encounterId}/follow-up/withdraw`
+}
+
+/**
+ * The clinician who asked for the follow-up withdraws it (D98, D67): clinicians never change the calendar, so this, not a decline, is how they take it back. Only the requesting clinician, and only while the request is `open`; it becomes `withdrawn` with the reason, and the front desk no longer sees it at check-out.
+ * @summary Withdraw a follow-up request
+ */
+export const withdrawFollowUpRequest = async (encounterId: Id,
+    followUpWithdraw: FollowUpWithdraw,
+    headers: WithdrawFollowUpRequestHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<withdrawFollowUpRequestResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<withdrawFollowUpRequestResponse>(getWithdrawFollowUpRequestUrl(encounterId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(followUpWithdraw)
   }
 );}
 
@@ -2288,6 +2608,74 @@ return apiFetch<createAfterVisitSummaryResponse>(getCreateAfterVisitSummaryUrl(e
     method: 'POST',
     headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(afterVisitSummaryRequest)
+  }
+);}
+
+
+export type getAfterVisitSummaryDownloadUrlResponse200 = {
+  data: AfterVisitSummaryLink
+  status: 200
+}
+
+export type getAfterVisitSummaryDownloadUrlResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getAfterVisitSummaryDownloadUrlResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getAfterVisitSummaryDownloadUrlResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getAfterVisitSummaryDownloadUrlResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getAfterVisitSummaryDownloadUrlResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getAfterVisitSummaryDownloadUrlResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getAfterVisitSummaryDownloadUrlResponseSuccess = (getAfterVisitSummaryDownloadUrlResponse200) & {
+  headers: Headers;
+};
+export type getAfterVisitSummaryDownloadUrlResponseError = (getAfterVisitSummaryDownloadUrlResponse401 | getAfterVisitSummaryDownloadUrlResponse403 | getAfterVisitSummaryDownloadUrlResponse404 | getAfterVisitSummaryDownloadUrlResponse422 | getAfterVisitSummaryDownloadUrlResponse429 | getAfterVisitSummaryDownloadUrlResponse500) & {
+  headers: Headers;
+};
+
+export type getAfterVisitSummaryDownloadUrlResponse = (getAfterVisitSummaryDownloadUrlResponseSuccess | getAfterVisitSummaryDownloadUrlResponseError)
+
+export const getGetAfterVisitSummaryDownloadUrlUrl = (encounterId: Id,) => {
+
+
+
+
+  return `/encounters/${encounterId}/after-visit-summary/download-url`
+}
+
+/**
+ * A short-lived download link to the encounter's latest after-visit summary, generated from a signed note (D98), so the front desk can print it at check-out without generating one (`after-visit-summaries:create` stays with MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists.
+ * @summary Get the latest after-visit summary to print
+ */
+export const getAfterVisitSummaryDownloadUrl = async (encounterId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getAfterVisitSummaryDownloadUrlResponse> => {
+
+  return apiFetch<getAfterVisitSummaryDownloadUrlResponse>(getGetAfterVisitSummaryDownloadUrlUrl(encounterId),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 

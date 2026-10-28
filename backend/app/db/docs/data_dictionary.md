@@ -726,7 +726,7 @@ Contract (from DATA_OWNERSHIP.md):
 | `created_at` | datetime | no |  |  | no same-named property |
 | `updated_at` | datetime | no |  |  | no same-named property |
 
-Contract properties with no column of the same name: `billable`, `display`, `system`
+Contract properties with no column of the same name: `billable`, `display`, `drug`, `system`
 
 Unique: `uq_code_system_code`, `uq_code_system_uri`
 
@@ -937,7 +937,7 @@ Contract (from DATA_OWNERSHIP.md):
 | `created_at` | datetime | no |  |  | no same-named property |
 | `updated_at` | datetime | no |  |  | no same-named property |
 
-Contract properties with no column of the same name: `billable`, `system`
+Contract properties with no column of the same name: `billable`, `drug`, `system`
 
 Checks: `ck_concept_period`
 
@@ -957,7 +957,7 @@ Contract (from DATA_OWNERSHIP.md):
 | `value` | varchar(500) | no |  |  | no same-named property |
 | `id` | uuid | no |  |  | no same-named property |
 
-Contract properties with no column of the same name: `billable`, `code`, `display`, `system`
+Contract properties with no column of the same name: `billable`, `code`, `display`, `drug`, `system`
 
 Unique: `uq_concept_property_concept_id_property_value`
 
@@ -7347,35 +7347,35 @@ Paths: `/patients`, `/patients/{patientId}`
 | Property | Stored in | How |
 |---|---|---|
 | `active` | `patient.active` | same name |
-| `address` | — | not mapped yet |
+| `address` | `address.line`, `address.city`, `address.state`, `address.postal_code`, `address.country`, `address.use` | mapped: lines is line, postalCode is postal_code, use home |
 | `birthDate` | `patient.birth_date` | same name |
-| `birthSex` | — | not mapped yet |
+| `birthSex` | `patient.ext_birthsex` | mapped |
 | `createdAt` | `patient.created_at` | same name |
-| `duplicateCheck` | — | not mapped yet |
-| `duplicateOverrideReason` | — | not mapped yet |
-| `emails` | — | not mapped yet |
+| `duplicateCheck` | — | computed: a request flag, not stored: default refuses with 409 possible-duplicate when the duplicate check finds similar patients; override registers anyway |
+| `duplicateOverrideReason` | `audit_event.reason` | mapped: not stored on the patient; written as the reason of the registration's audit row, by core's audit writer (not on main yet) |
+| `emails` | `contact_point.value`, `contact_point.system`, `contact_point.use` | mapped: one contact_point row per address, system email; address is value |
 | `employer` | `employer.name`, `employer.phone`, `employer.address_lines`, `employer.address_city`, `employer.address_state`, `employer.address_postal_code`, `employer.address_country` | mapped: one admin row with patient_id (D38); clearing the employer deletes the row |
-| `ethnicity` | — | not mapped yet |
+| `ethnicity` | `patient_race_ethnicity.kind`, `patient_race_ethnicity.level`, `patient_race_ethnicity.code`, `patient.ext_ethnicity_text` | mapped: as race, with kind ethnicity and text in ext_ethnicity_text |
 | `gender` | `patient.gender` | same name |
 | `genderIdentity` | `patient.ext_gender_identity_system`, `patient.ext_gender_identity_code`, `patient.ext_gender_identity_display`, `patient.ext_gender_identity_text` | mapped: shown at registration only where the practice's setting registration.show_sogi_fields is true (A49) |
 | `id` | `patient.id` | same name |
-| `identifiers` | — | not mapped yet |
+| `identifiers` | `identifier.type_code`, `identifier.system`, `identifier.value`, `identifier.assigner_display`, `identifier.supporting_document_id` | mapped: the patient's current identifier rows (use not old), as "Patient identifiers", including the MR row. PatientCreate.identifiers never carries an MR: the MRN comes only from admin.next_mrn() (D41) |
 | `industry` | `patient.ext_industry_system`, `patient.ext_industry_code`, `patient.ext_industry_display`, `patient.ext_industry_text` | mapped |
-| `maritalStatus` | — | not mapped yet |
-| `mergedIntoId` | — | not mapped yet |
+| `maritalStatus` | `patient.marital_status_code` | mapped: v3 MaritalStatus; the system is fixed |
+| `mergedIntoId` | `patient_link.other_patient_id`, `patient_link.type` | computed: the other_patient_id of the patient's patient_link row with type replaced-by |
 | `mrn` | `identifier.value`, `identifier.system`, `identifier.patient_id`, `identifier.type_code` | mapped: an identifier row with type_code MR, its system and value from admin.next_mrn() (the practice's mrn_counter, D41), written in the registration transaction |
-| `name` | — | not mapped yet |
+| `name` | `human_name.family`, `human_name.given`, `human_name.prefix`, `human_name.suffix`, `human_name.use` | mapped: the human_name row with use official; prefix and suffix are one-element lists |
 | `occupation` | `patient.ext_occupation_system`, `patient.ext_occupation_code`, `patient.ext_occupation_display`, `patient.ext_occupation_text` | mapped |
-| `phones` | — | not mapped yet |
-| `preferredLanguage` | — | not mapped yet |
-| `preferredName` | — | not mapped yet |
-| `preferredPharmacy` | — | not mapped yet |
-| `previousNames` | — | not mapped yet |
-| `race` | — | not mapped yet |
-| `restricted` | — | not mapped yet |
+| `phones` | `contact_point.value`, `contact_point.system`, `contact_point.use` | mapped: one contact_point row per number; number is value, in E.164. system is sms when textMessages is true, otherwise phone (both are searched as phones) |
+| `preferredLanguage` | `patient_communication.language_code`, `patient_communication.preferred` | mapped: the patient_communication row with preferred true; a BCP 47 tag (system urn:ietf:bcp:47) |
+| `preferredName` | `human_name.text`, `human_name.use` | mapped: a human_name row with use nickname, its text the name (D57) |
+| `preferredPharmacy` | `patient_pharmacy.pharmacy_id`, `patient_pharmacy.is_default`, `pharmacy.name`, `pharmacy.address_line`, `pharmacy.city`, `pharmacy.state`, `pharmacy.postal_code` | mapped: the patient_pharmacy row with is_default true, and its pharmacy (D50) |
+| `previousNames` | `human_name.family`, `human_name.given`, `human_name.prefix`, `human_name.suffix`, `human_name.use` | mapped: human_name rows with use old or maiden (D57). The contract has no use, so new ones are written as old; both are read back and searched. A PATCH resends the whole list: a name sent back unchanged keeps its stored use, so a maiden name stays maiden |
+| `race` | `patient_race_ethnicity.kind`, `patient_race_ethnicity.level`, `patient_race_ethnicity.code`, `patient.ext_race_text` | mapped: patient_race_ethnicity rows with kind race: ombCategories at level ombCategory, detailed at level detailed; text in ext_race_text |
+| `restricted` | `patient.meta_security` | computed: true when patient.meta_security holds R or V (SECURITY_MODEL 5.2) |
 | `sexualOrientation` | `patient.ext_sexual_orientation_system`, `patient.ext_sexual_orientation_code`, `patient.ext_sexual_orientation_display`, `patient.ext_sexual_orientation_text` | mapped: shown at registration only where the practice's setting registration.show_sogi_fields is true (A49) |
 | `tribalAffiliation` | `patient.ext_tribal_affiliation_system`, `patient.ext_tribal_affiliation_code`, `patient.ext_tribal_affiliation_display`, `patient.ext_tribal_affiliation_text` | mapped |
-| `updatedAt` | `patient.updated_at` | same name |
+| `updatedAt` | `patient.meta_last_updated` | mapped: moves with every change, child rows included (the touch triggers), as the ETag does; updated_at moves only when the ORM updates the patient row itself |
 
 ### Patient identifiers (MRN, driver's license)
 
@@ -7383,12 +7383,12 @@ Paths: `/patients/{patientId}/identifiers`
 
 | Property | Stored in | How |
 |---|---|---|
-| `assigner` | — | not mapped yet |
+| `assigner` | `identifier.assigner_display` | mapped |
 | `createdAt` | `identifier.created_at` | same name |
 | `documentId` | `identifier.supporting_document_id` | mapped: the scanned document behind the identifier, e.g. a driver's license image filed with category identity (D56); the same patient's document |
 | `id` | `identifier.id` | same name |
 | `system` | `identifier.system` | same name |
-| `type` | — | not mapped yet |
+| `type` | `identifier.type_code` | mapped: v2-0203 (type_system fixed); DL or PI here, MR only from the counter (D41) |
 | `use` | `identifier.use` | same name |
 | `value` | `identifier.value` | same name |
 
@@ -7399,18 +7399,18 @@ Paths: `/patients/{patientId}/related-persons`
 | Property | Stored in | How |
 |---|---|---|
 | `active` | `related_person.active` | same name |
-| `address` | — | not mapped yet |
+| `address` | `address.line`, `address.city`, `address.state`, `address.postal_code`, `address.country`, `address.use` | mapped: lines is line, postalCode is postal_code |
 | `birthDate` | `related_person.birth_date` | same name |
 | `createdAt` | `related_person.created_at` | same name |
-| `emails` | — | not mapped yet |
+| `emails` | `contact_point.value`, `contact_point.system`, `contact_point.use` | mapped: one contact_point row per address, system email; address is value |
 | `employer` | `employer.name`, `employer.phone`, `employer.address_lines`, `employer.address_city`, `employer.address_state`, `employer.address_postal_code`, `employer.address_country` | mapped: one admin row with related_person_id (D38); clearing the employer deletes the row |
 | `gender` | `related_person.gender` | same name |
 | `id` | `related_person.id` | same name |
-| `name` | — | not mapped yet |
+| `name` | `human_name.family`, `human_name.given`, `human_name.prefix`, `human_name.suffix`, `human_name.use` | mapped: the related person's human_name row with use official |
 | `patientId` | `related_person.patient_id` | same name |
-| `phones` | — | not mapped yet |
-| `relationships` | — | not mapped yet |
-| `updatedAt` | `related_person.updated_at` | same name |
+| `phones` | `contact_point.value`, `contact_point.system`, `contact_point.use` | mapped: one contact_point row per number; number is value, in E.164. system is sms when textMessages is true, otherwise phone (both are searched as phones) |
+| `relationships` | `related_person_relationship.code_system`, `related_person_relationship.code_code`, `related_person_relationship.code_display`, `related_person_relationship.code_text` | mapped: one related_person_relationship row per CodedValue |
+| `updatedAt` | `related_person.meta_last_updated` | mapped: moves with every change, child rows included, as the ETag does (see Patient) |
 
 ### Coverage (insurance)
 
@@ -7418,24 +7418,24 @@ Paths: `/patients/{patientId}/coverages`
 
 | Property | Stored in | How |
 |---|---|---|
-| `cardImages` | — | not mapped yet |
+| `cardImages` | `coverage_card_image.side`, `coverage_card_image.binary_object_id`, `coverage_card_image.created_at` | mapped: one row per side; fileId is binary_object_id, addedAt is created_at |
 | `createdAt` | `coverage.created_at` | same name |
-| `endDate` | — | not mapped yet |
-| `groupName` | — | not mapped yet |
-| `groupNumber` | — | not mapped yet |
+| `endDate` | `coverage.period_end` | mapped: setting it ends the coverage (D45) |
+| `groupName` | `coverage_class.name`, `coverage_class.type` | mapped: the name of the same group row; a group needs its number, so groupName without groupNumber is refused with 422 (the contract rule Vimal adds) |
+| `groupNumber` | `coverage_class.value`, `coverage_class.type` | mapped: the coverage_class row with type group |
 | `id` | `coverage.id` | same name |
 | `memberId` | `identifier.value`, `identifier.coverage_id`, `identifier.type_code` | mapped: an identifier row of the coverage with type_code MB |
 | `order` | `coverage.order` | same name |
-| `patientId` | — | not mapped yet |
-| `payerId` | — | not mapped yet |
-| `payerName` | — | not mapped yet |
-| `planName` | — | not mapped yet |
-| `relationshipToSubscriber` | `coverage.relationship_code` | mapped |
-| `startDate` | — | not mapped yet |
+| `patientId` | `coverage.beneficiary_patient_id` | mapped |
+| `payerId` | `coverage_payor.payer_id` | mapped: the coverage's coverage_payor row, pointing at the payer directory (admin.payer) |
+| `payerName` | `payer.name` | computed: the name of that payer, read with it |
+| `planName` | `coverage_class.value`, `coverage_class.name`, `coverage_class.type` | mapped: a coverage_class row with type plan; the contract has no plan ID and FHIR requires a value, so value and name are both the plan name |
+| `relationshipToSubscriber` | `coverage.relationship_code`, `coverage.subscriber_patient_id` | mapped: when it is self, coverage.subscriber_patient_id is the beneficiary and there is no subscriber related person (self_has_no_related_subscriber) |
+| `startDate` | `coverage.period_start` | mapped |
 | `status` | `coverage.status` | same name |
 | `subscriberId` | `coverage.subscriber_id` | same name |
 | `subscriberRelatedPersonId` | `coverage.subscriber_related_person_id` | same name |
-| `updatedAt` | `coverage.updated_at` | same name |
+| `updatedAt` | `coverage.meta_last_updated` | mapped: moves with every change, child rows included, as the ETag does (see Patient) |
 
 ### Card images
 
@@ -7449,14 +7449,14 @@ Paths: `/patients/{patientId}/consents`
 | Property | Stored in | How |
 |---|---|---|
 | `createdAt` | `consent.created_at` | same name |
-| `decision` | — | not mapped yet |
-| `grantorRelatedPersonId` | — | not mapped yet |
+| `decision` | `consent.provision_type` | mapped |
+| `grantorRelatedPersonId` | `consent.ext_grantor_related_person_id` | mapped: a related person of the same patient (same-patient key) |
 | `id` | `consent.id` | same name |
-| `kind` | — | not mapped yet |
+| `kind` | `consent.ext_kind` | mapped |
 | `patientId` | `consent.patient_id` | same name |
-| `policyVersion` | — | not mapped yet |
-| `signatureMethod` | — | not mapped yet |
-| `signedAt` | — | not mapped yet |
+| `policyVersion` | `consent.ext_policy_version` | mapped: the consent requirement's version the patient saw (D59) |
+| `signatureMethod` | `consent.ext_signature_method` | mapped |
+| `signedAt` | `consent.date_time` | mapped |
 | `signedFormFileId` | `consent.source_attachment_binary_object_id` | mapped |
 | `status` | `consent.status` | same name |
 
@@ -7466,13 +7466,13 @@ Paths: `/patients/{patientId}/preferred-pharmacy`
 
 | Property | Stored in | How |
 |---|---|---|
-| `city` | — | not mapped yet |
-| `name` | — | not mapped yet |
-| `ncpdpId` | — | not mapped yet |
+| `city` | `pharmacy.city` | mapped |
+| `name` | `pharmacy.name` | mapped: the patient_pharmacy row with is_default true, and its pharmacy (D50) |
+| `ncpdpId` | `pharmacy.ncpdp_id` | mapped |
 | `patientId` | `patient_pharmacy.patient_id` | same name |
 | `pharmacyId` | `patient_pharmacy.pharmacy_id` | same name |
-| `phone` | — | not mapped yet |
-| `state` | — | not mapped yet |
+| `phone` | `pharmacy.phone` | mapped |
+| `state` | `pharmacy.state` | mapped |
 | `updatedAt` | `patient_pharmacy.updated_at` | same name |
 
 ### Restriction flag
@@ -7481,11 +7481,11 @@ Paths: `/patients/{patientId}/restrict`, `/unrestrict`
 
 | Property | Stored in | How |
 |---|---|---|
-| `category` | — | not mapped yet |
-| `changedAt` | — | not mapped yet |
-| `patientId` | — | not mapped yet |
-| `reason` | — | not mapped yet |
-| `restricted` | — | not mapped yet |
+| `category` | `patient.meta_security` | mapped: sensitive is the label R, vip is V; absent when the chart holds neither |
+| `changedAt` | `fhir_resource_history.recorded_at`, `fhir_resource_history.snapshot`, `fhir_resource_history.resource_id`, `fhir_resource_history.version_id` | computed: from the patient's version history: the recorded_at of the first version since the label last changed, that is, the earliest of the latest run of versions whose snapshot has the same R or V label (or none) as the chart has now. A change to anything else on the chart doesn't move it |
+| `patientId` | `patient.id` | mapped |
+| `reason` | `audit_event.reason` | mapped: not stored on the patient; the reason of the restrict or unrestrict audit row (category security), as for duplicateOverrideReason |
+| `restricted` | `patient.meta_security` | computed: true when patient.meta_security holds R or V (SECURITY_MODEL 5.2) |
 
 ### Duplicates, merges
 
@@ -7556,7 +7556,7 @@ Paths: `/appointments`, `/appointments/{appointmentId}`
 | `startAt` | — | not mapped yet |
 | `status` | `appointment.status` | same name |
 | `timeZone` | — | not mapped yet |
-| `updatedAt` | `appointment.updated_at` | same name |
+| `updatedAt` | `appointment.meta_last_updated` | mapped: moves with every change, child rows included, as the ETag does (see Patient) |
 | `visitStatus` | `visit_flow_event.step`, `visit_flow_event.occurred_at` | computed: the latest visit_flow_event step of the appointment recorded after its last undone check-in (the recorded time of the Provenance that set the check-in encounter to entered-in-error, D55); with no step after it, the appointment is booked again and has no visit status |
 
 ### Eligibility check
@@ -7616,7 +7616,7 @@ Paths: `/encounters`, `/encounters/{encounterId}`
 | `timeZone` | — | not mapped yet |
 | `types` | — | not mapped yet |
 | `unscheduledType` | — | not mapped yet |
-| `updatedAt` | `encounter.updated_at` | same name |
+| `updatedAt` | `encounter.meta_last_updated` | mapped: moves with every change, child rows included, as the ETag does (see Patient) |
 | `vitals` | — | not mapped yet |
 | `participants[].role` | `encounter_participant.type_code` | mapped |
 | `selfPay` | `encounter.ext_self_pay` | mapped: set at check-in on the encounter it creates; no insurance claim for a self-pay visit (from `/appointments/{appointmentId}/check-in`) |
@@ -7669,6 +7669,7 @@ Paths: `/codes`
 | `billable` | — | not mapped yet |
 | `code` | `code_system.code` | same name |
 | `display` | — | not mapped yet |
+| `drug` | — | not mapped yet |
 | `system` | — | not mapped yet |
 
 ### Note (draft, versions, signed)
@@ -7698,7 +7699,7 @@ Paths: `/encounters/{encounterId}/notes`, `/notes/{noteId}`, `/notes/{noteId}/ve
 | `status` | `composition.status` | same name |
 | `templateId` | — | not mapped yet |
 | `title` | `composition.title` | same name |
-| `updatedAt` | `composition.updated_at` | same name |
+| `updatedAt` | `composition.meta_last_updated` | mapped: moves with every change, child rows included, as the ETag does (see Patient) |
 | `versionId` | — | not mapped yet |
 | `sections[].text` | `composition_section.text_div` | mapped: the text as typed, escaped in one XHTML div (app.db.fhir_store writes it; fhir_store.section_text() reads it back); no text is no div |
 
@@ -7728,7 +7729,7 @@ Paths: `/notes/{noteId}/addenda`
 | `templateId` | — | not mapped yet |
 | `text` | — | not mapped yet |
 | `title` | `composition.title` | same name |
-| `updatedAt` | `composition.updated_at` | same name |
+| `updatedAt` | `composition.meta_last_updated` | mapped: moves with every change, child rows included, as the ETag does (see Patient) |
 
 ### Co-signature
 
@@ -7801,7 +7802,7 @@ Paths: `/encounters/{encounterId}/after-visit-summary`
 | `noteId` | — | not mapped yet |
 | `result` | — | not mapped yet |
 | `status` | `document_reference.status` | same name |
-| `updatedAt` | `document_reference.updated_at` | same name |
+| `updatedAt` | `document_reference.meta_last_updated` | mapped: moves with every change, child rows included, as the ETag does (see Patient) |
 
 ### Problem list
 

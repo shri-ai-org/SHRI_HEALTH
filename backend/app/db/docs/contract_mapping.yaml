@@ -42,8 +42,113 @@
     note: >-
       an identifier row with type_code MR, its system and value from admin.next_mrn() (the
       practice's mrn_counter, D41), written in the registration transaction
+  name:
+    columns: [human_name.family, human_name.given, human_name.prefix, human_name.suffix,
+              human_name.use]
+    note: the human_name row with use official; prefix and suffix are one-element lists
+  preferredName:
+    columns: [human_name.text, human_name.use]
+    note: a human_name row with use nickname, its text the name (D57)
+  previousNames:
+    columns: [human_name.family, human_name.given, human_name.prefix, human_name.suffix,
+              human_name.use]
+    note: >-
+      human_name rows with use old or maiden (D57). The contract has no use, so new ones are
+      written as old; both are read back and searched. A PATCH resends the whole list: a name
+      sent back unchanged keeps its stored use, so a maiden name stays maiden
+  phones:
+    columns: [contact_point.value, contact_point.system, contact_point.use]
+    note: >-
+      one contact_point row per number; number is value, in E.164. system is sms when
+      textMessages is true, otherwise phone (both are searched as phones)
+  emails:
+    columns: [contact_point.value, contact_point.system, contact_point.use]
+    note: one contact_point row per address, system email; address is value
+  address:
+    columns: [address.line, address.city, address.state, address.postal_code, address.country,
+              address.use]
+    note: lines is line, postalCode is postal_code, use home
+  birthSex:
+    columns: [patient.ext_birthsex]
+  maritalStatus:
+    columns: [patient.marital_status_code]
+    note: v3 MaritalStatus; the system is fixed
+  preferredLanguage:
+    columns: [patient_communication.language_code, patient_communication.preferred]
+    note: >-
+      the patient_communication row with preferred true; a BCP 47 tag (system
+      urn:ietf:bcp:47)
+  race:
+    columns: [patient_race_ethnicity.kind, patient_race_ethnicity.level,
+              patient_race_ethnicity.code, patient.ext_race_text]
+    note: >-
+      patient_race_ethnicity rows with kind race: ombCategories at level ombCategory, detailed
+      at level detailed; text in ext_race_text
+  ethnicity:
+    columns: [patient_race_ethnicity.kind, patient_race_ethnicity.level,
+              patient_race_ethnicity.code, patient.ext_ethnicity_text]
+    note: as race, with kind ethnicity and text in ext_ethnicity_text
+  identifiers:
+    columns: [identifier.type_code, identifier.system, identifier.value,
+              identifier.assigner_display, identifier.supporting_document_id]
+    note: >-
+      the patient's current identifier rows (use not old), as "Patient identifiers", including
+      the MR row. PatientCreate.identifiers never carries an MR: the MRN comes only from
+      admin.next_mrn() (D41)
+  restricted:
+    computed: true when patient.meta_security holds R or V (SECURITY_MODEL 5.2)
+    columns: [patient.meta_security]
+  mergedIntoId:
+    computed: the other_patient_id of the patient's patient_link row with type replaced-by
+    columns: [patient_link.other_patient_id, patient_link.type]
+  preferredPharmacy:
+    columns: [patient_pharmacy.pharmacy_id, patient_pharmacy.is_default, pharmacy.name,
+              pharmacy.address_line, pharmacy.city, pharmacy.state, pharmacy.postal_code]
+    note: the patient_pharmacy row with is_default true, and its pharmacy (D50)
+  duplicateCheck:
+    computed: >-
+      a request flag, not stored: default refuses with 409 possible-duplicate when the
+      duplicate check finds similar patients; override registers anyway
+  duplicateOverrideReason:
+    columns: [audit_event.reason]
+    note: >-
+      not stored on the patient; written as the reason of the registration's audit row, by
+      core's audit writer (not on main yet)
+  updatedAt:
+    columns: [patient.meta_last_updated]
+    note: >-
+      moves with every change, child rows included (the touch triggers), as the ETag does;
+      updated_at moves only when the ORM updates the patient row itself
+
+"Restriction flag":
+  patientId:
+    columns: [patient.id]
+  restricted:
+    computed: true when patient.meta_security holds R or V (SECURITY_MODEL 5.2)
+    columns: [patient.meta_security]
+  category:
+    columns: [patient.meta_security]
+    note: sensitive is the label R, vip is V; absent when the chart holds neither
+  changedAt:
+    computed: >-
+      from the patient's version history: the recorded_at of the first version since the
+      label last changed, that is, the earliest of the latest run of versions whose snapshot
+      has the same R or V label (or none) as the chart has now. A change to anything else
+      on the chart doesn't move it
+    columns: [fhir_resource_history.recorded_at, fhir_resource_history.snapshot,
+              fhir_resource_history.resource_id, fhir_resource_history.version_id]
+  reason:
+    columns: [audit_event.reason]
+    note: >-
+      not stored on the patient; the reason of the restrict or unrestrict audit row (category
+      security), as for duplicateOverrideReason
 
 "Patient identifiers (MRN, driver's license)":
+  type:
+    columns: [identifier.type_code]
+    note: v2-0203 (type_system fixed); DL or PI here, MR only from the counter (D41)
+  assigner:
+    columns: [identifier.assigner_display]
   documentId:
     columns: [identifier.supporting_document_id]
     note: >-
@@ -51,21 +156,107 @@
       category identity (D56); the same patient's document
 
 "Related persons, emergency contacts":
+  name:
+    columns: [human_name.family, human_name.given, human_name.prefix, human_name.suffix,
+              human_name.use]
+    note: the related person's human_name row with use official
+  relationships:
+    columns: [related_person_relationship.code_system, related_person_relationship.code_code,
+              related_person_relationship.code_display, related_person_relationship.code_text]
+    note: one related_person_relationship row per CodedValue
+  phones:
+    columns: [contact_point.value, contact_point.system, contact_point.use]
+    note: >-
+      one contact_point row per number; number is value, in E.164. system is sms when
+      textMessages is true, otherwise phone (both are searched as phones)
+  emails:
+    columns: [contact_point.value, contact_point.system, contact_point.use]
+    note: one contact_point row per address, system email; address is value
+  address:
+    columns: [address.line, address.city, address.state, address.postal_code, address.country,
+              address.use]
+    note: lines is line, postalCode is postal_code
   employer:
     columns: [employer.name, employer.phone, employer.address_lines, employer.address_city,
               employer.address_state, employer.address_postal_code, employer.address_country]
     note: one admin row with related_person_id (D38); clearing the employer deletes the row
+  updatedAt:
+    columns: [related_person.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
+
+"Preferred pharmacy":
+  name:
+    columns: [pharmacy.name]
+    note: the patient_pharmacy row with is_default true, and its pharmacy (D50)
+  ncpdpId:
+    columns: [pharmacy.ncpdp_id]
+  phone:
+    columns: [pharmacy.phone]
+  city:
+    columns: [pharmacy.city]
+  state:
+    columns: [pharmacy.state]
 
 "Coverage (insurance)":
   memberId:
     columns: [identifier.value, identifier.coverage_id, identifier.type_code]
     note: an identifier row of the coverage with type_code MB
   relationshipToSubscriber:
-    columns: [coverage.relationship_code]
+    columns: [coverage.relationship_code, coverage.subscriber_patient_id]
+    note: >-
+      when it is self, coverage.subscriber_patient_id is the beneficiary and there is no
+      subscriber related person (self_has_no_related_subscriber)
+  patientId:
+    columns: [coverage.beneficiary_patient_id]
+  payerId:
+    columns: [coverage_payor.payer_id]
+    note: the coverage's coverage_payor row, pointing at the payer directory (admin.payer)
+  payerName:
+    computed: the name of that payer, read with it
+    columns: [payer.name]
+  groupNumber:
+    columns: [coverage_class.value, coverage_class.type]
+    note: the coverage_class row with type group
+  groupName:
+    columns: [coverage_class.name, coverage_class.type]
+    note: >-
+      the name of the same group row; a group needs its number, so groupName without
+      groupNumber is refused with 422 (the contract rule Vimal adds)
+  planName:
+    columns: [coverage_class.value, coverage_class.name, coverage_class.type]
+    note: >-
+      a coverage_class row with type plan; the contract has no plan ID and FHIR requires a
+      value, so value and name are both the plan name
+  startDate:
+    columns: [coverage.period_start]
+  endDate:
+    columns: [coverage.period_end]
+    note: setting it ends the coverage (D45)
+  cardImages:
+    columns: [coverage_card_image.side, coverage_card_image.binary_object_id,
+              coverage_card_image.created_at]
+    note: one row per side; fileId is binary_object_id, addedAt is created_at
+  updatedAt:
+    columns: [coverage.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
 
 "Consents":
   signedFormFileId:
     columns: [consent.source_attachment_binary_object_id]
+  kind:
+    columns: [consent.ext_kind]
+  decision:
+    columns: [consent.provision_type]
+  signatureMethod:
+    columns: [consent.ext_signature_method]
+  signedAt:
+    columns: [consent.date_time]
+  policyVersion:
+    columns: [consent.ext_policy_version]
+    note: the consent requirement's version the patient saw (D59)
+  grantorRelatedPersonId:
+    columns: [consent.ext_grantor_related_person_id]
+    note: a related person of the same patient (same-patient key)
 
 "Duplicates, merges":
   undoneAt:
@@ -74,6 +265,9 @@
 "Appointment":
   sameDayAddOn:
     columns: [appointment.ext_same_day_add_on]
+  updatedAt:
+    columns: [appointment.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
   visitStatus:
     computed: >-
       the latest visit_flow_event step of the appointment recorded after its last undone
@@ -89,6 +283,9 @@
     note: set at check-in on the encounter it creates; no insurance claim for a self-pay visit
   startedAt:
     columns: [encounter.period_start]
+  updatedAt:
+    columns: [encounter.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
   participants[].role:
     columns: [encounter_participant.type_code]
 
@@ -98,6 +295,14 @@
     note: >-
       the text as typed, escaped in one XHTML div (app.db.fhir_store writes it;
       fhir_store.section_text() reads it back); no text is no div
+  updatedAt:
+    columns: [composition.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
+
+"After-visit summary":
+  updatedAt:
+    columns: [document_reference.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
 
 "Co-signature rules":
   superviseeProviderId:
@@ -114,3 +319,8 @@
   facilityIds:
     columns: [practitioner_role_location.location_id, facility.location_id]
     note: the facilities whose location_id is one of the provider's role locations
+
+"Addendum":
+  updatedAt:
+    columns: [composition.meta_last_updated]
+    note: moves with every change, child rows included, as the ETag does (see Patient)
