@@ -282,12 +282,15 @@ def test_a_public_form_with_public_db_passes(use_map: Callable[..., Path]) -> No
 def test_pre_registrations_idempotency_is_its_database_functions(
         use_map: Callable[..., Path]) -> None:
     """x-idempotency: required on the public form is handled by 0009's function (practice + key),
-    so the staff-only idempotency rule (#103) doesn't refuse it; another public form still is."""
+    so the staff-only idempotency rule (#103) doesn't refuse it."""
     required = {"submitPreRegistration": {**PRE_REGISTRATION_OP["submitPreRegistration"],
                                           "idempotency": "required"}}
     use_map(required)
     assert route_problems(_app(("POST", "/portal/practices/{practiceLinkId}/pre-registrations",
                                 "submitPreRegistration", [PUBLIC_DB]))) == []
+
+
+def test_another_public_forms_idempotency_is_still_refused(use_map: Callable[..., Path]) -> None:
     other = {"submitTestForm": {**ANONYMOUS_OP["submitTestForm"], "idempotency": "required"}}
     use_map(other)
     problems = route_problems(_app(("POST", "/portal/test-forms", "submitTestForm", [PUBLIC_DB])))
