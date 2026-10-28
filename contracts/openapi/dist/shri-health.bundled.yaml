@@ -984,7 +984,7 @@ paths:
                 link:
                   summary: Download link
                   value:
-                    url: https://app.company-domain.invalid/api/v1/files/7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f/content?ticket=TEST-download-ticket-0000000000000000000001
+                    url: https://app.company-domain.invalid/api/v1/files/7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f/content?token=TEST-download-token-0000000000000000000001
                     expiresAt: '2035-01-01T14:35:00Z'
                     contentType: image/jpeg
                     sizeBytes: 348211
@@ -1020,7 +1020,7 @@ paths:
     get:
       operationId: downloadFileContent
       summary: Download a file
-      description: 'Where a download link points (D105): our own API, never the object store, because files are encrypted at rest. The token was issued, with the permission and chart checks, by the operation that gave out the link (`GET /files/{fileId}/download-url`, or a module''s own link such as the after-visit summary''s). Here core checks that the token is for the signed-in user and this file, has not expired (about one minute) and has not been used: it is accepted once. The API then decrypts the file as it streams it, with `Content-Disposition: attachment` and `Cache-Control: no-store`. Every download is audited as an export, naming the file''s patient where it has one. The token is a bearer secret: it never appears in logs (the query string is dropped from access logs on this path), events or audit rows. Any problem with the token gets the same `404`, so a token can''t be probed; the screen asks for a new link.'
+      description: 'Where a download link points (D105): our own API, never the object store, because files are encrypted at rest. The token was issued, with the permission and chart checks, by the operation that gave out the link (`GET /files/{fileId}/download-url`, or a module''s own link such as the after-visit summary''s). **The token is not enough on its own:** the request must also carry the session of the same user it was issued to (the browser sends the session cookie with the link). Core checks that the token is for this user and this file, has not expired (about one minute) and has not been used: it is accepted once. **Every invalid, expired, reused or other-user token gets the same `404`**, so a token can''t be probed; the screen asks for a new link. The API then decrypts the file as it streams it, with `Content-Disposition: attachment`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. **The query string is never logged on this route**, neither by nginx nor by the API, and the token never appears in events or audit rows. Every download is audited as an export, naming the file''s patient where it has one. The token is the one query parameter the credentials-in-URL lint rule allows, and only on this operation (CONTRACT_GOVERNANCE §5).'
       tags:
         - files
       x-owner: anand
@@ -1030,11 +1030,13 @@ paths:
         category: export
       x-storage: files
       x-release: P0
+      security:
+        - sessionCookie: []
       parameters:
-        - name: ticket
+        - name: token
           in: query
           required: true
-          description: The one-time download token from the link. Not enough on its own (the user's session is needed too), but still a bearer secret; never log it.
+          description: 'The one-time download token from the link. Not enough on its own: the same user''s session must come with it. Never logged; on this route the query string is dropped from nginx and API logs.'
           schema:
             type: string
             pattern: ^[A-Za-z0-9_-]{32,512}$
@@ -1058,6 +1060,11 @@ paths:
               $ref: '#/components/headers/RateLimit'
             RateLimit-Policy:
               $ref: '#/components/headers/RateLimitPolicy'
+            Referrer-Policy:
+              description: Always `no-referrer`, so the link and its token are never sent on as a Referer.
+              schema:
+                type: string
+                const: no-referrer
           content:
             application/octet-stream:
               schema:
@@ -1067,19 +1074,19 @@ paths:
                 description: The file. Its real media type is in `Content-Type` (the file's own, as in the download link).
         '401':
           $ref: '#/components/responses/Unauthorized'
-          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+          description: '401. `unauthenticated` (no valid session: the token alone is never enough); `session-expired` (the session ended).'
         '403':
           $ref: '#/components/responses/Forbidden'
           description: 403. `permission-denied` (no signed-in staff user).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such file in this clinic, or the token is unknown, expired, already used, for another user or for another file).
+          description: '404. `not-found` (no such file in this clinic, or the token is invalid, expired, already used, another user''s or for another file: always the same answer).'
         '409':
           $ref: '#/components/responses/Conflict'
           description: 409. `invalid-state-transition` (the file is no longer `clean`).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (`ticket` is missing or malformed).
+          description: 422. `validation-failed` (`token` is missing or malformed).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -21924,7 +21931,7 @@ components:
           type: string
           format: uri
           maxLength: 2000
-          description: 'A link to `GET /files/{fileId}/content` on our own API with a one-time token (`ticket`): for this user and this file only, valid for about one minute, accepted once (D105). A bearer secret: never log or store it.'
+          description: 'A link to `GET /files/{fileId}/content` on our own API with a one-time token: for this user and this file only, and only with their session; valid for about one minute, accepted once (D105). A bearer secret: never log or store it.'
           x-phi: none
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
