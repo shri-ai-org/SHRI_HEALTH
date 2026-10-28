@@ -1,100 +1,71 @@
-"""The ``file.scan`` operation that ``completeUpload`` answers with (``202``; API_STANDARDS §13).
+"""The ``file.scan`` operation and the ``file.scanned`` event, through core (#115).
 
-``Operations`` is the module's interface for creating and finishing an operation.
-``TransientOperations``, the TEMPORARY SEAM, builds the operation in memory only: core's
-``create_operation()`` and ``GET /operations/{operationId}`` (PR #115, #80) are not on main
-yet, and ``admin.operation`` is core's table, which no module writes by hand. So for now:
+``completeUpload`` answers ``202`` with an operation of kind ``file.scan`` (API_STANDARDS §13).
+``CoreOperations`` records it with core's ``long_running`` API, in the request's transaction:
 
-- the scan runs inside the request (``service.complete_upload``, the synchronous runner), and the
-  ``202`` body is the finished operation (``succeeded`` with ``result {type: file, id}``, or
-  ``failed`` with a Problem for a rejected file);
-- ``Location`` names ``/api/v1/operations/{id}``, which can't be polled until #80 lands; the
-  client has the outcome in the body already.
+- ``create_operation(db, "file.scan")``: queued, for the request's user, who alone may read it
+  (``GET /operations/{operationId}``);
+- ``finish_operation(...)``: ``succeeded`` with result ``{type: file, id}``, or ``failed`` with a
+  Problem (``422 file-not-ready``) for a rejected file. Core publishes ``operation.completed`` to
+  the creator in the same transaction;
+- ``publish(db, "file.scanned", "file/<id>", {"status": "clean" | "rejected"})`` (EVENTS.md §4,
+  internal only), also in the same transaction.
 
-**What changes when #115 lands:**
+**The scan still runs inside the request.** Core has no worker for a module's own jobs: the
+outbox is for partners only (D25) and ``assigned_to_integration`` hands an operation to the
+partner worker. So the operation is created, the file scanned and the operation finished before
+the one commit, and the ``202`` carries the finished operation (core's ``accepted()``, with
+``Location`` and ``Retry-After``). When core offers a job runner for modules, ``completeUpload``
+commits the ``queued`` operation, the runner calls ``service.scan_upload()`` in the file's clinic
+and finishes the operation with this same interface; nothing else changes.
 
-1. ``operations()`` returns an implementation over core's ``create_operation(db, kind=...)``
-   (created ``queued`` in the request's transaction, visible to its creator only) and core's
-   completion call (``succeeded`` with the result, or ``failed`` with the Problem). The
-   ``Operations`` interface stays.
-2. ``completeUpload`` stops scanning in the request: it marks the file ``quarantined``, creates
-   the operation and hands the file to a worker, then commits and answers ``202`` with the
-   ``queued`` operation and ``Retry-After``. The worker runs ``service.scan_upload()`` in the
-   file's clinic, in its own transaction, and finishes the operation. ``file.scanned``
-   (EVENTS.md) is published then, once core's ``events.publish()`` exists.
-3. The synchronous path stays for tests and local development.
+``Operations`` is the interface, so the API tests (no database) use the fake in
+``tests/fakes.py``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from datetime import UTC, datetime
 from typing import Any, Protocol
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import CurrentUser
+from app.core.events import publish
+from app.core.long_running import Final, Operation, create_operation, finish_operation
 
 FILE_SCAN = "file.scan"
-FINAL = frozenset({"succeeded", "failed", "cancelled"})
-
-
-@dataclass(frozen=True)
-class OperationRecord:
-    id: UUID
-    kind: str
-    status: str  # queued, running, succeeded, failed, cancelled
-    created_at: datetime
-    updated_at: datetime
-    completed_at: datetime | None = None
-    result_type: str | None = None
-    result_id: UUID | None = None
-    error: dict[str, Any] | None = None  # a Problem, never patient data
-
-    @property
-    def finished(self) -> bool:
-        return self.status in FINAL
+FILE_SCANNED = "file.scanned"
 
 
 class Operations(Protocol):
-    async def create(self, db: AsyncSession, user: CurrentUser, kind: str) -> OperationRecord:
+    async def start(self, db: AsyncSession, kind: str) -> Operation:
+        """A queued operation for the session's user (no commit)."""
         ...
 
-    async def succeed(self, db: AsyncSession, operation: OperationRecord, *, result_type: str,
-                      result_id: UUID) -> OperationRecord:
+    async def finish(self, db: AsyncSession, operation: Operation, status: Final, *,
+                     result: tuple[str, UUID] | None = None,
+                     error: dict[str, Any] | None = None) -> Operation:
+        """End it and tell its creator (no commit)."""
         ...
 
-    async def fail(self, db: AsyncSession, operation: OperationRecord,
-                   error: dict[str, Any]) -> OperationRecord:
+    async def file_scanned(self, db: AsyncSession, file_id: UUID, status: str) -> None:
+        """Publish ``file.scanned`` with ``status`` ``clean`` or ``rejected`` (no commit)."""
         ...
 
 
-def _now() -> datetime:
-    return datetime.now(UTC).replace(microsecond=0)
+class CoreOperations:
+    async def start(self, db: AsyncSession, kind: str) -> Operation:
+        return await create_operation(db, kind)
 
+    async def finish(self, db: AsyncSession, operation: Operation, status: Final, *,
+                     result: tuple[str, UUID] | None = None,
+                     error: dict[str, Any] | None = None) -> Operation:
+        return await finish_operation(db, operation.id, status, result=result, error=error)
 
-class TransientOperations:
-    """In memory only, never stored (module docstring)."""
-
-    async def create(self, db: AsyncSession, user: CurrentUser, kind: str) -> OperationRecord:
-        now = _now()
-        return OperationRecord(id=uuid4(), kind=kind, status="queued", created_at=now,
-                               updated_at=now)
-
-    async def succeed(self, db: AsyncSession, operation: OperationRecord, *, result_type: str,
-                      result_id: UUID) -> OperationRecord:
-        now = _now()
-        return replace(operation, status="succeeded", updated_at=now, completed_at=now,
-                       result_type=result_type, result_id=result_id)
-
-    async def fail(self, db: AsyncSession, operation: OperationRecord,
-                   error: dict[str, Any]) -> OperationRecord:
-        now = _now()
-        return replace(operation, status="failed", updated_at=now, completed_at=now,
-                       error=error)
+    async def file_scanned(self, db: AsyncSession, file_id: UUID, status: str) -> None:
+        await publish(db, FILE_SCANNED, f"file/{file_id}", {"status": status})
 
 
 def operations() -> Operations:
-    """FastAPI dependency: how the module creates and finishes operations (seam)."""
-    return TransientOperations()
+    """FastAPI dependency: core's operations and events."""
+    return CoreOperations()

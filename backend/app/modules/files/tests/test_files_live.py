@@ -37,8 +37,8 @@ from app.db.tests.conftest import (
 )
 from app.main import create_app
 
-from .. import crypto, scanner, storage
-from .fakes import EICAR, JPEG, FakeFileCrypto, FakeScanner
+from .. import crypto, scanner, storage, tokens
+from .fakes import EICAR, JPEG, FakeDownloadTokens, FakeFileCrypto, FakeScanner
 
 pytestmark = [
     pytest.mark.db,
@@ -108,8 +108,13 @@ def fake_crypto() -> FakeFileCrypto:
 
 
 @pytest.fixture
+def fake_tokens() -> FakeDownloadTokens:
+    return FakeDownloadTokens()
+
+
+@pytest.fixture
 def app(users: dict[str, CurrentUser], tmp_path: Path, fake_scanner: FakeScanner,
-        fake_crypto: FakeFileCrypto) -> Iterator[FastAPI]:
+        fake_crypto: FakeFileCrypto, fake_tokens: FakeDownloadTokens) -> Iterator[FastAPI]:
     application = create_app(Settings(environment="test", auth_mode="dev_header",
                                       database_url=TEST_DATABASE_URL))
     switch_to_role(application.state.db.engine.sync_engine, "shri_app")
@@ -122,6 +127,7 @@ def app(users: dict[str, CurrentUser], tmp_path: Path, fake_scanner: FakeScanner
         lambda: storage.LocalFileStore(tmp_path / "files"))
     application.dependency_overrides[scanner.scanner] = lambda: fake_scanner
     application.dependency_overrides[crypto.file_crypto] = lambda: fake_crypto
+    application.dependency_overrides[tokens.download_tokens] = lambda: fake_tokens
     yield application
 
 
@@ -165,7 +171,8 @@ def _upload(client: TestClient, data: bytes, *, sent: bytes | None = None,
 
 def test_upload_complete_clean_download(client: Callable[[str], TestClient], admin: Engine,
                                         clinics: dict[UUID, UUID], users: dict[str, CurrentUser],
-                                        tmp_path: Path, fake_crypto: FakeFileCrypto) -> None:
+                                        tmp_path: Path, fake_crypto: FakeFileCrypto,
+                                        fake_tokens: FakeDownloadTokens) -> None:
     fd = client("fd")
     file_id = _upload(fd, JPEG)
     pending = _row(admin, file_id)
@@ -178,7 +185,27 @@ def test_upload_complete_clean_download(client: Callable[[str], TestClient], adm
     completed = fd.post(f"/api/v1/files/{file_id}/complete")
 
     assert completed.status_code == 202, completed.text
-    assert completed.json()["status"] == "succeeded"
+    operation = completed.json()
+    assert operation["status"] == "succeeded" and completed.headers["Retry-After"]
+    assert completed.headers["Location"] == f"/api/v1/operations/{operation['id']}"
+    with admin.connect() as c:
+        stored_op = c.execute(text("SELECT * FROM admin.operation WHERE id = :i"),
+                              {"i": operation["id"]}).one()
+        events = c.execute(text(
+            "SELECT type, subject, data, target_user_id FROM admin.event_log "
+            "WHERE tenant_id = :t AND subject IN (:f, :o) ORDER BY seq"),
+            {"t": clinics[CLINIC_A], "f": f"file/{file_id}",
+             "o": f"operation/{operation['id']}"}).all()
+    assert (stored_op.kind, stored_op.status, stored_op.result_type, stored_op.result_id) == (
+        "file.scan", "succeeded", "file", file_id)
+    assert stored_op.created_by_user_id == users["fd"].id
+    assert [(e.type, e.data) for e in events] == [
+        ("operation.completed", {"kind": "file.scan", "status": "succeeded",
+                                 "resultType": "file", "resultId": str(file_id)}),
+        ("file.scanned", {"status": "clean"})]
+    # The creator polls it through core.
+    polled = fd.get(f"/api/v1/operations/{operation['id']}")
+    assert polled.status_code == 200 and polled.json()["status"] == "succeeded"
     clean = _row(admin, file_id)
     assert (clean.state, clean.bucket, clean.scan_status) == ("clean", "clean", "clean")
     assert clean.scanned_at is not None and clean.wrapped_data_key == fake_crypto.wrapped[-1]
@@ -188,7 +215,12 @@ def test_upload_complete_clean_download(client: Callable[[str], TestClient], adm
     link = fd.get(f"/api/v1/files/{file_id}/download-url")
 
     assert link.status_code == 200, link.text
-    assert _path(link.json()["url"]).read_bytes() == b"SEALED:" + JPEG
+    # An encrypted file: a link to the decrypting endpoint (#128), never to the ciphertext.
+    url = urlsplit(link.json()["url"])
+    assert url.path == f"/api/v1/files/{file_id}/content"
+    (claims,) = fake_tokens.issued.values()
+    assert (claims.file_id, claims.user_id) == (file_id, users["fd"].id)
+    assert (tmp_path / "files" / clean.storage_key).read_bytes() == b"SEALED:" + JPEG
     with admin.connect() as c:
         audited = c.execute(text(
             "SELECT action, category FROM audit.audit_event WHERE tenant_id = :t "
@@ -209,6 +241,13 @@ def test_an_infected_file_is_rejected_and_never_downloaded(
     assert completed.status_code == 202, completed.text
     assert completed.json()["status"] == "failed"
     assert completed.json()["error"]["code"] == "file-not-ready"
+    with admin.connect() as c:
+        stored_op = c.execute(text("SELECT status, error FROM admin.operation WHERE id = :i"),
+                              {"i": completed.json()["id"]}).one()
+        scanned = c.execute(text("SELECT data FROM admin.event_log WHERE type = 'file.scanned' "
+                                 "AND subject = :s"), {"s": f"file/{file_id}"}).scalar_one()
+    assert stored_op.status == "failed" and stored_op.error["fileId"] == str(file_id)
+    assert scanned == {"status": "rejected"}
     row = _row(admin, file_id)
     assert (row.state, row.scan_status, row.bucket) == ("rejected", "infected", "quarantine")
     assert row.scanned_at is not None and row.wrapped_data_key is None
@@ -230,12 +269,16 @@ def test_a_hash_mismatch_is_rejected_unscanned(client: Callable[[str], TestClien
 
 
 def test_scanner_down_rolls_back_to_pending(client: Callable[[str], TestClient],
-                                            admin: Engine, fake_scanner: FakeScanner) -> None:
+                                            admin: Engine, fake_scanner: FakeScanner,
+                                            users: dict[str, CurrentUser]) -> None:
     fd = client("fd")
     file_id = _upload(fd, JPEG)
     fake_scanner.unavailable = True
     assert fd.post(f"/api/v1/files/{file_id}/complete").status_code == 503
     assert _row(admin, file_id).state == "pending-upload"
+    with admin.connect() as c:  # the operation rolled back with it
+        assert c.execute(text("SELECT count(*) FROM admin.operation WHERE created_by_user_id = :u"),
+                         {"u": users["fd"].id}).scalar_one() == 0
     fake_scanner.unavailable = False
     assert fd.post(f"/api/v1/files/{file_id}/complete").status_code == 202  # finished later
     assert _row(admin, file_id).state == "clean"

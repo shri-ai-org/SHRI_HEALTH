@@ -6,27 +6,35 @@
 - ``FakeScanner``: a ``Scanner`` (replaces clamd until ClamAV is in compose): infected when the
   bytes contain ``EICAR``, the test marker below, or unavailable when told to be.
 - ``FakeFileCrypto``: a ``FileCrypto`` (replaces core's ``new_data_key()``). It does **not**
-  encrypt: it prefixes the bytes with ``SEALED:`` so tests can tell sealed from plain bytes, and
-  records each wrapped key it hands out.
+  encrypt: it prefixes the bytes with ``SEALED:`` so tests can tell sealed from plain bytes,
+  records each wrapped key it hands out, and opens only bytes it sealed with a key it issued.
+- ``FakeOperations``: core's operations and ``file.scanned``, in memory (the live tests use
+  core's own).
+- ``FakeDownloadTokens``: ``DownloadTokens`` (replaces core's ``sign_download_token``): random
+  opaque tokens remembered with their claims. Nothing is signed.
 
 Synthetic data only.
 """
 
 from __future__ import annotations
 
+import secrets
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field, replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.core.db import TENANT_ID_INFO_KEY
 from app.core.deps import CurrentUser
 from app.core.errors import Forbidden, ServiceUnavailable
+from app.core.long_running import FINAL, Operation
 
 from ..crypto import SealedFile
 from ..repository import Attachment, FileRecord, NewUpload
 from ..scanner import ScanResult
 from ..storage import CLEAN_BUCKET, SignedLink, check_key, expiry
+from ..tokens import DownloadClaims
 
 # The marker the fake scanner treats as malware (synthetic; not the real EICAR test string).
 EICAR = b"EICAR-SYNTHETIC-TEST-MARKER"
@@ -89,7 +97,8 @@ class FakeRepository:
 
     async def mark_clean(self, db: Any, file_id: UUID, *, bucket: str,
                          wrapped_data_key: str) -> None:
-        self._set(db, file_id, "quarantined", state="clean", bucket=bucket)
+        self._set(db, file_id, "quarantined", state="clean", bucket=bucket,
+                  wrapped_data_key=wrapped_data_key)
         self.world.wrapped_keys[file_id] = wrapped_data_key
         self.world.scan_status[file_id] = "clean"
 
@@ -168,3 +177,50 @@ class FakeFileCrypto:
         key = f"test-wrapped-key-{len(self.wrapped) + 1}"
         self.wrapped.append(key)
         return SealedFile(data=b"SEALED:" + data, wrapped_data_key=key)
+
+    async def open(self, sealed: bytes, wrapped_data_key: str) -> AsyncIterator[bytes]:
+        if wrapped_data_key not in self.wrapped or not sealed.startswith(b"SEALED:"):
+            raise ValueError("not sealed by this fake")
+        plain = sealed.removeprefix(b"SEALED:")
+        for start in range(0, len(plain), 16):
+            yield plain[start:start + 16]
+
+
+class FakeOperations:
+    def __init__(self) -> None:
+        self.operations: dict[UUID, Operation] = {}
+        self.events: list[tuple[UUID, str]] = []  # file.scanned: (file, status)
+
+    async def start(self, db: Any, kind: str) -> Operation:
+        now = datetime.now(UTC)
+        operation = Operation(id=uuid4(), kind=kind, status="queued",
+                              created_by_user_id=uuid4(), created_at=now, updated_at=now)
+        self.operations[operation.id] = operation
+        return operation
+
+    async def finish(self, db: Any, operation: Operation, status: Any, *,
+                     result: tuple[str, UUID] | None = None,
+                     error: dict[str, Any] | None = None) -> Operation:
+        assert operation.status not in FINAL and status in FINAL
+        now = datetime.now(UTC)
+        done = replace(operation, status=status, updated_at=now, completed_at=now,
+                       result_type=result[0] if result else None,
+                       result_id=result[1] if result else None, error=error)
+        self.operations[done.id] = done
+        return done
+
+    async def file_scanned(self, db: Any, file_id: UUID, status: str) -> None:
+        self.events.append((file_id, status))
+
+
+class FakeDownloadTokens:
+    def __init__(self) -> None:
+        self.issued: dict[str, DownloadClaims] = {}
+
+    def sign(self, claims: DownloadClaims) -> str:
+        token = secrets.token_urlsafe(24)
+        self.issued[token] = claims
+        return token
+
+    def verify(self, token: str) -> DownloadClaims | None:
+        return self.issued.get(token)

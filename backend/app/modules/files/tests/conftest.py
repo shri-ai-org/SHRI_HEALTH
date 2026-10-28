@@ -1,5 +1,6 @@
-"""An app per test with the in-memory session, repository, store, scanner and encryption
-(fakes.py), and a client per development user (X-Dev-User; core/deps.py). Synthetic data only."""
+"""An app per test with the in-memory session, repository, store, scanner, encryption,
+operations and download tokens (fakes.py), and a client per development user (X-Dev-User;
+core/deps.py). Synthetic data only."""
 
 from collections.abc import Callable, Iterator
 
@@ -11,8 +12,17 @@ from app.core.config import Settings
 from app.core.deps import CurrentUser, current_user, tenant_db
 from app.main import create_app
 
-from .. import api, crypto, scanner, storage
-from .fakes import FakeFileCrypto, FakeRepository, FakeScanner, FakeSession, MemoryFileStore, World
+from .. import api, crypto, operations, scanner, storage, tokens
+from .fakes import (
+    FakeDownloadTokens,
+    FakeFileCrypto,
+    FakeOperations,
+    FakeRepository,
+    FakeScanner,
+    FakeSession,
+    MemoryFileStore,
+    World,
+)
 
 
 @pytest.fixture
@@ -36,8 +46,19 @@ def fake_crypto() -> FakeFileCrypto:
 
 
 @pytest.fixture
+def fake_operations() -> FakeOperations:
+    return FakeOperations()
+
+
+@pytest.fixture
+def fake_tokens() -> FakeDownloadTokens:
+    return FakeDownloadTokens()
+
+
+@pytest.fixture
 def app(world: World, store: MemoryFileStore, fake_scanner: FakeScanner,
-        fake_crypto: FakeFileCrypto) -> Iterator[FastAPI]:
+        fake_crypto: FakeFileCrypto, fake_operations: FakeOperations,
+        fake_tokens: FakeDownloadTokens) -> Iterator[FastAPI]:
     application = create_app(Settings(environment="test", auth_mode="dev_header"))
 
     async def fake_db(user: CurrentUser = Depends(current_user)) -> FakeSession:
@@ -50,6 +71,8 @@ def app(world: World, store: MemoryFileStore, fake_scanner: FakeScanner,
     application.dependency_overrides[storage.file_store] = lambda: store
     application.dependency_overrides[scanner.scanner] = lambda: fake_scanner
     application.dependency_overrides[crypto.file_crypto] = lambda: fake_crypto
+    application.dependency_overrides[operations.operations] = lambda: fake_operations
+    application.dependency_overrides[tokens.download_tokens] = lambda: fake_tokens
     yield application
     application.dependency_overrides.clear()
 

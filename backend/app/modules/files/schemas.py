@@ -1,7 +1,7 @@
-"""Request and response shapes for the file service, from contracts/openapi/modules/files.yaml
-and the shared ``Operation`` (components/schemas/Operation.yaml).
+"""Request and response shapes for the file service, from contracts/openapi/modules/files.yaml.
 
-Field names are the contract's camelCase (aliases). ``UploadUrlRequest`` is closed
+Field names are the contract's camelCase (aliases). The ``Operation`` of ``completeUpload`` is
+core's (``app.core.long_running.Operation.as_json``). ``UploadUrlRequest`` is closed
 (``additionalProperties: false``), so an unknown field (a client file name, say) is ``422
 validation-failed``: client file names are never stored.
 """
@@ -9,7 +9,7 @@ validation-failed``: client file names are never stored.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
@@ -18,7 +18,6 @@ from pydantic.alias_generators import to_camel
 FilePurpose = Literal["insurance-card", "identity", "receipt", "encounter-audio",
                       "after-visit-summary", "document", "fax", "ccda", "export",
                       "onboarding-import"]
-OperationStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 
 
 class Closed(BaseModel):
@@ -54,19 +53,3 @@ class DownloadLink(Out):
     expires_at: datetime
     content_type: str
     size_bytes: int | None = None
-
-
-class OperationResult(Out):
-    type: str
-    id: UUID
-
-
-class Operation(Out):
-    id: UUID
-    kind: str
-    status: OperationStatus
-    created_at: datetime
-    updated_at: datetime
-    completed_at: datetime | None = None
-    result: OperationResult | None = None
-    error: dict[str, Any] | None = None

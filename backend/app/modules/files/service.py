@@ -18,10 +18,12 @@ in the quarantine bucket, with the declared size and SHA-256, and the answer is 
    (``scan_upload``) checks the bytes against the declared size and SHA-256 and the declared
    media type against the content, runs the malware scan, and either seals the bytes with a
    fresh data key into the clean bucket (``clean``, with ``wrapped_data_key``) or marks the file
-   ``rejected``. The operation ends ``succeeded`` (result: the file) or ``failed`` (``422
-   file-not-ready``). Until core's operations exist this runs inside the request (operations.py
-   says what changes); the scanner or the encryption being unavailable is ``503`` and leaves the
-   file ``pending-upload`` (the transaction rolls back), so the upload can be finished later.
+   ``rejected``. The operation, core's (``admin.operation``), ends ``succeeded`` (result: the
+   file) or ``failed`` (``422 file-not-ready``), and ``file.scanned`` is published, all in the
+   request's one commit. The scan runs inside the request, as core has no job runner for a
+   module (operations.py); the scanner or the encryption being unavailable is ``503`` and leaves
+   the file ``pending-upload`` with no operation (the transaction rolls back), so the upload can
+   be finished later.
 
 **Get a download link** (``createDownloadUrl``), in this order:
 
@@ -38,16 +40,21 @@ in the quarantine bucket, with the declared size and SHA-256, and the answer is 
    invalid-state-transition`` with ``currentState``, the contract's code for "not clean yet, or
    rejected". Checked last, so the state is told only to someone who may read the file.
 
-The link is valid for ``DOWNLOAD_LINK_LIFETIME`` (the contract's "at most 5 minutes").
+The link is valid for ``DOWNLOAD_LINK_LIFETIME`` (the contract's "at most 5 minutes"). An
+encrypted file's link points at the decrypting endpoint with a signed token (tokens.py), since
+the store holds ciphertext; ``serve_content`` is that endpoint's service, which repeats these
+checks. A file stored as it is (a generated receipt, for now) gets a pre-signed store link.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
-from dataclasses import dataclass
-from datetime import timedelta
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,13 +62,13 @@ from starlette.requests import Request
 
 from app.core import audit
 from app.core.deps import CurrentUser
-from app.core.errors import CATALOGUE, Conflict, Forbidden, NotFound, ValidationFailed, field_error
-from app.core.request_id import current_request_id
+from app.core.errors import Conflict, Forbidden, NotFound, ValidationFailed, field_error
+from app.core.long_running import Operation, problem_body
 from app.core.routing import API_PREFIX
 
 from . import schemas
 from .crypto import FileCrypto
-from .operations import FILE_SCAN, OperationRecord, Operations
+from .operations import FILE_SCAN, Operations
 from .repository import FileRecord, FileRepository, NewUpload
 from .scanner import Scanner
 from .storage import (
@@ -69,13 +76,16 @@ from .storage import (
     GENERATED_PURPOSES,
     QUARANTINE_BUCKET,
     FileStore,
+    expiry,
     storage_key,
 )
+from .tokens import DownloadClaims, DownloadTokens
 
 log = logging.getLogger(__name__)
 
 UPLOAD_LINK_LIFETIME = timedelta(minutes=15)
 DOWNLOAD_LINK_LIFETIME = timedelta(minutes=5)
+CONTENT_CHUNK_BYTES = 64 * 1024
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 IMAGE_TYPES = frozenset({"image/jpeg", "image/png"})
 
@@ -191,24 +201,15 @@ async def scan_upload(db: AsyncSession, repo: FileRepository, store: FileStore,
     return None
 
 
-def operation_problem(type_base: str, instance: str, file_id: UUID, detail: str
-                      ) -> dict[str, Any]:
-    """The ``failed`` operation's Problem for a rejected file: ``422 file-not-ready``."""
-    code = "file-not-ready"
-    problem: dict[str, Any] = {"type": f"{type_base}{code}", "title": CATALOGUE[code].title,
-                               "status": CATALOGUE[code].status, "detail": detail,
-                               "instance": instance, "code": code}
-    request_id = current_request_id()
-    if request_id:
-        problem["requestId"] = request_id
-    problem["fileId"] = str(file_id)
-    return problem
+def operation_problem(file_id: UUID, detail: str) -> dict[str, Any]:
+    """The ``failed`` operation's Problem for a rejected file: ``422 file-not-ready``, built as
+    core builds an operation's error (catalogue only), with the file's ID (§9.3)."""
+    return problem_body("file-not-ready", detail) | {"fileId": str(file_id)}
 
 
 async def complete_upload(db: AsyncSession, repo: FileRepository, store: FileStore,
                           scanner: Scanner, crypto: FileCrypto, ops: Operations,
-                          user: CurrentUser, file_id: UUID, *, type_base: str
-                          ) -> OperationRecord:
+                          user: CurrentUser, file_id: UUID) -> Operation:
     file = await repo.get(db, file_id, lock=True)
     if file is None or file.created_by_user_id != user.id:
         raise NotFound("File not found")
@@ -219,14 +220,15 @@ async def complete_upload(db: AsyncSession, repo: FileRepository, store: FileSto
     except FileNotFoundError:
         raise Conflict("No bytes were uploaded", currentState=file.state) from None
     await repo.mark_quarantined(db, file.id)
-    operation = await ops.create(db, user, FILE_SCAN)
-    # The synchronous runner (operations.py): the scan, inside the request.
+    operation = await ops.start(db, FILE_SCAN)
+    # Inside the request: core has no job runner for a module's own work (operations.py).
     rejection = await scan_upload(db, repo, store, scanner, crypto, file, data)
     if rejection is None:
-        operation = await ops.succeed(db, operation, result_type="file", result_id=file.id)
+        operation = await ops.finish(db, operation, "succeeded", result=("file", file.id))
     else:
-        operation = await ops.fail(db, operation, operation_problem(
-            type_base, f"{API_PREFIX}/files/{file.id}/complete", file.id, rejection.detail))
+        operation = await ops.finish(db, operation, "failed",
+                                     error=operation_problem(file.id, rejection.detail))
+    await ops.file_scanned(db, file.id, "clean" if rejection is None else "rejected")
     await db.commit()
     if rejection is None:
         try:
@@ -238,10 +240,10 @@ async def complete_upload(db: AsyncSession, repo: FileRepository, store: FileSto
     return operation
 
 
-# ================================================================================ download link
-async def create_download_url(request: Request, db: AsyncSession, repo: FileRepository,
-                              store: FileStore, user: CurrentUser, file_id: UUID
-                              ) -> schemas.DownloadLink:
+# ================================================================================ reading a file
+async def _readable(request: Request, db: AsyncSession, repo: FileRepository,
+                    user: CurrentUser, file_id: UUID) -> FileRecord:
+    """The checks before anyone gets a file's bytes, in order (module docstring)."""
     file = await repo.get(db, file_id)
     if file is None:
         raise NotFound("File not found")
@@ -259,19 +261,79 @@ async def create_download_url(request: Request, db: AsyncSession, repo: FileRepo
             await repo.ensure_chart_access(db, user, patient_id)
     if file.state != "clean" or file.bucket != CLEAN_BUCKET:
         raise Conflict("Only a clean file can be downloaded", currentState=file.state)
+    return file
+
+
+def content_path(file_id: UUID) -> str:
+    """The decrypting endpoint proposed on #128 (not mounted until the contract has it)."""
+    return f"{API_PREFIX}/files/{file_id}/content"
+
+
+async def create_download_url(request: Request, db: AsyncSession, repo: FileRepository,
+                              store: FileStore, tokens: DownloadTokens, user: CurrentUser,
+                              file_id: UUID) -> schemas.DownloadLink:
+    """An encrypted file (an upload, with its wrapped key) gets a link to the decrypting
+    endpoint with a signed token; a file stored as it is (a generated receipt, until it is
+    encrypted too) gets a pre-signed link to the store."""
+    file = await _readable(request, db, repo, user, file_id)
+    if file.wrapped_data_key is not None:
+        expires_at = expiry(DOWNLOAD_LINK_LIFETIME)
+        token = tokens.sign(DownloadClaims(file_id=file.id, user_id=user.id,
+                                           tenant_id=user.organization_id,
+                                           expires_at=expires_at))
+        return schemas.DownloadLink(url=f"{content_path(file.id)}?{urlencode({'token': token})}",
+                                    expires_at=expires_at, content_type=file.content_type,
+                                    size_bytes=file.size_bytes)
     link = store.presign_get(file.storage_key, bucket=CLEAN_BUCKET,
                              content_type=file.content_type, expires=DOWNLOAD_LINK_LIFETIME)
     return schemas.DownloadLink(url=link.url, expires_at=link.expires_at,
                                 content_type=file.content_type, size_bytes=file.size_bytes)
 
 
-def to_operation(record: OperationRecord) -> schemas.Operation:
-    result = (schemas.OperationResult(type=record.result_type, id=record.result_id)
-              if record.result_type is not None and record.result_id is not None else None)
-    return schemas.Operation(id=record.id, kind=record.kind, status=record.status,
-                             created_at=record.created_at, updated_at=record.updated_at,
-                             completed_at=record.completed_at, result=result, error=record.error)
+@dataclass(frozen=True)
+class FileContent:
+    """What the decrypting endpoint sends: these headers, then ``body`` as it streams."""
+
+    content_type: str
+    size_bytes: int
+    body: AsyncIterator[bytes] = field(repr=False)
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return {"Content-Type": self.content_type, "Content-Length": str(self.size_bytes),
+                "Content-Disposition": "attachment", "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff"}
 
 
-def operation_location(operation_id: UUID) -> str:
-    return f"{API_PREFIX}/operations/{operation_id}"
+async def _plain(data: bytes) -> AsyncIterator[bytes]:
+    for start in range(0, len(data), CONTENT_CHUNK_BYTES):
+        yield data[start:start + CONTENT_CHUNK_BYTES]
+
+
+async def serve_content(request: Request, db: AsyncSession, repo: FileRepository,
+                        store: FileStore, crypto: FileCrypto, tokens: DownloadTokens,
+                        user: CurrentUser, file_id: UUID, token: str) -> FileContent:
+    """The decrypting download (proposed ``GET /files/{fileId}/content?token=…``, #128).
+
+    The token must be genuine, unexpired and issued for this file, this user and this clinic,
+    or the answer is ``404 not-found``, the same as for a file that doesn't exist. Then every
+    check of ``createDownloadUrl`` runs again (``_readable``: 404, 403, 403
+    break-glass-required, 409), since a permission or a grant may have ended since the link
+    was made. The bytes are decrypted as they stream (``FileCrypto.open``); a file stored as it
+    is streams as it is. The route, once mounted, gets its audit row from core's x-audit, as
+    every download is audited; this function writes none and never commits.
+    """
+    claims = tokens.verify(token)
+    if (claims is None or claims.file_id != file_id or claims.user_id != user.id
+            or claims.tenant_id != user.organization_id
+            or claims.expires_at <= datetime.now(UTC)):
+        raise NotFound("File not found")
+    file = await _readable(request, db, repo, user, file_id)
+    try:
+        stored = await store.get(file.storage_key, bucket=CLEAN_BUCKET)
+    except FileNotFoundError:
+        log.error("Clean file %s has no stored bytes", file.id)
+        raise NotFound("File not found") from None
+    body = (_plain(stored) if file.wrapped_data_key is None
+            else crypto.open(stored, file.wrapped_data_key))
+    return FileContent(content_type=file.content_type, size_bytes=file.size_bytes, body=body)

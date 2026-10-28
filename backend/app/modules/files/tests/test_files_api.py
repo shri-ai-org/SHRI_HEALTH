@@ -8,6 +8,7 @@ import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
 import pytest
@@ -16,10 +17,20 @@ from fastapi.testclient import TestClient
 
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS
 
-from .. import crypto, service
+from .. import crypto, service, tokens
 from ..repository import FileRecord
 from ..storage import CLEAN_BUCKET, QUARANTINE_BUCKET
-from .fakes import EICAR, JPEG, PNG, FakeFileCrypto, FakeScanner, MemoryFileStore, World
+from .fakes import (
+    EICAR,
+    JPEG,
+    PNG,
+    FakeDownloadTokens,
+    FakeFileCrypto,
+    FakeOperations,
+    FakeScanner,
+    MemoryFileStore,
+    World,
+)
 
 Client = Callable[[str], TestClient]
 PATIENT = UUID("5a000000-0000-4000-8000-000000000001")
@@ -139,7 +150,8 @@ def test_malformed_bodies(as_user: Client, world: World, overrides: dict[str, An
 
 # ================================================================================ completeUpload
 def test_a_clean_upload(as_user: Client, world: World, store: MemoryFileStore,
-                        fake_scanner: FakeScanner, fake_crypto: FakeFileCrypto) -> None:
+                        fake_scanner: FakeScanner, fake_crypto: FakeFileCrypto,
+                        fake_operations: FakeOperations) -> None:
     fd = as_user("fd")
     file_id = _uploaded(fd, store)
 
@@ -151,6 +163,9 @@ def test_a_clean_upload(as_user: Client, world: World, store: MemoryFileStore,
     assert operation["result"] == {"type": "file", "id": str(file_id)}
     assert "error" not in operation and operation["completedAt"]
     assert response.headers["Location"] == f"/api/v1/operations/{operation['id']}"
+    assert response.headers["Retry-After"] == "2"  # core's accepted()
+    assert fake_operations.operations[UUID(operation["id"])].status == "succeeded"
+    assert fake_operations.events == [(file_id, "clean")]
     record = world.file(CLINIC_A, file_id)
     assert (record.state, record.bucket) == ("clean", CLEAN_BUCKET)
     assert world.scan_status[file_id] == "clean"
@@ -208,7 +223,8 @@ def test_only_the_uploader_completes(as_user: Client, store: MemoryFileStore, wo
     (JPEG + EICAR, {"data": JPEG + EICAR}, "infected", True),     # malware
 ])
 def test_rejected_uploads(as_user: Client, world: World, store: MemoryFileStore,
-                          fake_scanner: FakeScanner, fake_crypto: FakeFileCrypto, sent: bytes,
+                          fake_scanner: FakeScanner, fake_crypto: FakeFileCrypto,
+                          fake_operations: FakeOperations, sent: bytes,
                           body: dict[str, Any], scan_status: str, scanned: bool) -> None:
     fd = as_user("fd")
     file_id = _uploaded(fd, store, sent=sent, **body)
@@ -222,7 +238,8 @@ def test_rejected_uploads(as_user: Client, world: World, store: MemoryFileStore,
     assert error["code"] == "file-not-ready" and error["status"] == 422
     assert error["fileId"] == str(file_id)
     assert error["type"].endswith("problem/file-not-ready")
-    assert error["instance"] == f"/api/v1/files/{file_id}/complete" and error["requestId"]
+    assert fake_operations.operations[UUID(operation["id"])].status == "failed"
+    assert fake_operations.events == [(file_id, "rejected")]
     assert world.file(CLINIC_A, file_id).state == "rejected"
     assert world.scan_status[file_id] == scan_status
     assert bool(fake_scanner.scanned) is scanned
@@ -237,7 +254,8 @@ def test_rejected_uploads(as_user: Client, world: World, store: MemoryFileStore,
 
 def test_scanner_down_leaves_the_upload_pending(as_user: Client, world: World,
                                                 store: MemoryFileStore,
-                                                fake_scanner: FakeScanner) -> None:
+                                                fake_scanner: FakeScanner,
+                                                fake_operations: FakeOperations) -> None:
     fd = as_user("fd")
     file_id = _uploaded(fd, store)
     fake_scanner.unavailable = True
@@ -246,6 +264,7 @@ def test_scanner_down_leaves_the_upload_pending(as_user: Client, world: World,
     # was committed and nothing reached the clean bucket.
     assert world.sessions[-1].commits == 0
     assert (CLEAN_BUCKET, f"{CLINIC_A}/{file_id}") not in store.objects
+    assert not fake_operations.events
 
 
 def test_no_encryption_no_clean_file(app: FastAPI, as_user: Client, world: World,
@@ -260,8 +279,9 @@ def test_no_encryption_no_clean_file(app: FastAPI, as_user: Client, world: World
 
 
 # ============================================================================= createDownloadUrl
-def test_the_uploader_downloads_an_unattached_clean_file(as_user: Client, world: World,
-                                                         store: MemoryFileStore) -> None:
+def test_an_encrypted_file_links_to_the_decrypting_endpoint(
+        as_user: Client, world: World, store: MemoryFileStore,
+        fake_tokens: FakeDownloadTokens) -> None:
     fd = as_user("fd")
     file_id = _uploaded(fd, store)
     assert _complete(fd, file_id).status_code == 202
@@ -271,10 +291,34 @@ def test_the_uploader_downloads_an_unattached_clean_file(as_user: Client, world:
 
     assert response.status_code == 200, response.text
     link = response.json()
-    assert link["url"] == f"memory://clean/{CLINIC_A}/{file_id}?get"
+    url = urlsplit(link["url"])
+    assert url.path == f"/api/v1/files/{file_id}/content"
+    (token,) = parse_qs(url.query)["token"]
+    claims = fake_tokens.issued[token]
+    assert (claims.file_id, claims.user_id, claims.tenant_id) == (
+        file_id, DEV_USERS["fd"].id, CLINIC_A)
     assert link["contentType"] == "image/jpeg" and link["sizeBytes"] == len(JPEG)
     expires = datetime.fromisoformat(link["expiresAt"])
-    assert expires <= before + timedelta(minutes=5, seconds=1)
+    assert expires == claims.expires_at <= before + timedelta(minutes=5, seconds=1)
+
+
+def test_a_file_stored_as_it_is_gets_a_store_link(as_user: Client, world: World,
+                                                  store: MemoryFileStore,
+                                                  fake_tokens: FakeDownloadTokens) -> None:
+    receipt = _file(world, store, purpose="receipt", owner="fd")  # no wrapped key
+    link = _download(as_user("fd"), receipt.id).json()
+    assert link["url"] == f"memory://clean/{CLINIC_A}/{receipt.id}?get"
+    assert not fake_tokens.issued
+
+
+def test_no_tokens_no_encrypted_download(app: FastAPI, as_user: Client, store: MemoryFileStore
+                                         ) -> None:
+    """Until core signs download tokens, the real seam refuses (503)."""
+    app.dependency_overrides[tokens.download_tokens] = tokens.download_tokens
+    fd = as_user("fd")
+    file_id = _uploaded(fd, store)
+    assert _complete(fd, file_id).status_code == 202
+    _problem(_download(fd, file_id), 503, "service-unavailable")
 
 
 @pytest.mark.parametrize("name", ["none", "dsp", "sup"])

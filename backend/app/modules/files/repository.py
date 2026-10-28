@@ -25,7 +25,7 @@ Where a file is attached, which says whose chart it is part of (``attachment_pat
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 from uuid import UUID
 
@@ -50,6 +50,7 @@ class FileRecord:
     purpose: str
     state: str
     created_by_user_id: UUID | None
+    wrapped_data_key: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -102,7 +103,7 @@ class FileRepository(Protocol):
 
 _SELECT = """
 SELECT id, tenant_id, bucket, storage_key, content_type, size_bytes, sha256, purpose,
-       state, created_by_user_id
+       state, created_by_user_id, wrapped_data_key
 FROM admin.binary_object WHERE id = :id
 """
 _GET = text(_SELECT)
@@ -167,7 +168,8 @@ class SqlFileRepository:
         return FileRecord(id=row.id, tenant_id=row.tenant_id, bucket=row.bucket,
                           storage_key=row.storage_key, content_type=row.content_type,
                           size_bytes=row.size_bytes, sha256=row.sha256, purpose=row.purpose,
-                          state=row.state, created_by_user_id=row.created_by_user_id)
+                          state=row.state, created_by_user_id=row.created_by_user_id,
+                          wrapped_data_key=row.wrapped_data_key)
 
     @staticmethod
     async def _update_one(db: AsyncSession, statement: TextClause, params: dict[str, object]
