@@ -15,6 +15,7 @@
  * OpenAPI spec version: 1.0.0-draft.1
  */
 import type {
+  AcceptPreRegistrationHeaders,
   AddCoverageHeaders,
   AddPatientIdentifierHeaders,
   AddRelatedPersonHeaders,
@@ -29,6 +30,7 @@ import type {
   CoverageCreate,
   CoverageList,
   CoveragePatch,
+  CreatePortalInvitationBody,
   DismissDuplicateHeaders,
   DismissRequest,
   DuplicateCandidate,
@@ -42,6 +44,7 @@ import type {
   ListDuplicatesParams,
   ListPatientIdentifiersParams,
   ListPatientMergesParams,
+  ListPreRegistrationsParams,
   ListRelatedPersonsParams,
   MergeDuplicateHeaders,
   MergeRequest,
@@ -59,6 +62,14 @@ import type {
   PatientSummariesRequest,
   PatientSummaryBatch,
   PatientSummaryList,
+  PortalAccountStatus,
+  PortalAccountStatusChange,
+  PortalFactorResetRequest,
+  PortalInvitation,
+  PreRegistration,
+  PreRegistrationAccept,
+  PreRegistrationList,
+  PreRegistrationReject,
   PreconditionFailedResponse,
   PreconditionRequiredResponse,
   PreferredPharmacy,
@@ -70,6 +81,7 @@ import type {
   RelatedPersonList,
   RelatedPersonPatch,
   RestrictRequest,
+  ServiceUnavailableResponse,
   SetPreferredPharmacyHeaders,
   TooManyRequestsResponse,
   UnauthorizedResponse,
@@ -778,6 +790,76 @@ return apiFetch<addRelatedPersonResponse>(getAddRelatedPersonUrl(patientId),
 );}
 
 
+export type getRelatedPersonResponse200 = {
+  data: RelatedPerson
+  status: 200
+}
+
+export type getRelatedPersonResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getRelatedPersonResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getRelatedPersonResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getRelatedPersonResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getRelatedPersonResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getRelatedPersonResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getRelatedPersonResponseSuccess = (getRelatedPersonResponse200) & {
+  headers: Headers;
+};
+export type getRelatedPersonResponseError = (getRelatedPersonResponse401 | getRelatedPersonResponse403 | getRelatedPersonResponse404 | getRelatedPersonResponse422 | getRelatedPersonResponse429 | getRelatedPersonResponse500) & {
+  headers: Headers;
+};
+
+export type getRelatedPersonResponse = (getRelatedPersonResponseSuccess | getRelatedPersonResponseError)
+
+export const getGetRelatedPersonUrl = (patientId: Id,
+    relatedPersonId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/related-persons/${relatedPersonId}`
+}
+
+/**
+ * One related person, with the strong `ETag` that `PATCH` needs. List items carry no ETag (API_STANDARDS §11).
+ * @summary Get one related person
+ */
+export const getRelatedPerson = async (patientId: Id,
+    relatedPersonId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getRelatedPersonResponse> => {
+
+  return apiFetch<getRelatedPersonResponse>(getGetRelatedPersonUrl(patientId,relatedPersonId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
 export type updateRelatedPersonResponse200 = {
   data: RelatedPerson
   status: 200
@@ -1056,6 +1138,76 @@ return apiFetch<addCoverageResponse>(getAddCoverageUrl(patientId),
     method: 'POST',
     headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(coverageCreate)
+  }
+);}
+
+
+export type getCoverageResponse200 = {
+  data: Coverage
+  status: 200
+}
+
+export type getCoverageResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getCoverageResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getCoverageResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getCoverageResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getCoverageResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getCoverageResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getCoverageResponseSuccess = (getCoverageResponse200) & {
+  headers: Headers;
+};
+export type getCoverageResponseError = (getCoverageResponse401 | getCoverageResponse403 | getCoverageResponse404 | getCoverageResponse422 | getCoverageResponse429 | getCoverageResponse500) & {
+  headers: Headers;
+};
+
+export type getCoverageResponse = (getCoverageResponseSuccess | getCoverageResponseError)
+
+export const getGetCoverageUrl = (patientId: Id,
+    coverageId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/coverages/${coverageId}`
+}
+
+/**
+ * One coverage, with the strong `ETag` that `PATCH` needs, for example to end it with `endDate` (D45). List items carry no ETag (API_STANDARDS §11). Entered-in-error coverages are returned too, marked by `status`.
+ * @summary Get one coverage
+ */
+export const getCoverage = async (patientId: Id,
+    coverageId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getCoverageResponse> => {
+
+  return apiFetch<getCoverageResponse>(getGetCoverageUrl(patientId,coverageId),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 
@@ -1823,6 +1975,536 @@ return apiFetch<unrestrictPatientResponse>(getUnrestrictPatientUrl(patientId),
 );}
 
 
+export type getPortalAccountResponse200 = {
+  data: PortalAccountStatus
+  status: 200
+}
+
+export type getPortalAccountResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getPortalAccountResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getPortalAccountResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getPortalAccountResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getPortalAccountResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getPortalAccountResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getPortalAccountResponseSuccess = (getPortalAccountResponse200) & {
+  headers: Headers;
+};
+export type getPortalAccountResponseError = (getPortalAccountResponse401 | getPortalAccountResponse403 | getPortalAccountResponse404 | getPortalAccountResponse422 | getPortalAccountResponse429 | getPortalAccountResponse500) & {
+  headers: Headers;
+};
+
+export type getPortalAccountResponse = (getPortalAccountResponseSuccess | getPortalAccountResponseError)
+
+export const getGetPortalAccountUrl = (patientId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/portal-account`
+}
+
+/**
+ * Whether the patient has a portal account or an active invitation, and the sign-in email (ADR-0013 §3, §4). Batch B8a (D89).
+ * @summary Get the patient's portal account
+ */
+export const getPortalAccount = async (patientId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getPortalAccountResponse> => {
+
+  return apiFetch<getPortalAccountResponse>(getGetPortalAccountUrl(patientId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type createPortalInvitationResponse201 = {
+  data: PortalInvitation
+  status: 201
+}
+
+export type createPortalInvitationResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createPortalInvitationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createPortalInvitationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createPortalInvitationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createPortalInvitationResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createPortalInvitationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createPortalInvitationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createPortalInvitationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createPortalInvitationResponseSuccess = (createPortalInvitationResponse201) & {
+  headers: Headers;
+};
+export type createPortalInvitationResponseError = (createPortalInvitationResponse400 | createPortalInvitationResponse401 | createPortalInvitationResponse403 | createPortalInvitationResponse404 | createPortalInvitationResponse409 | createPortalInvitationResponse422 | createPortalInvitationResponse429 | createPortalInvitationResponse500) & {
+  headers: Headers;
+};
+
+export type createPortalInvitationResponse = (createPortalInvitationResponseSuccess | createPortalInvitationResponseError)
+
+export const getCreatePortalInvitationUrl = (patientId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/portal-invitations`
+}
+
+/**
+ * Issues a single-use invitation code after the front desk has checked the patient's photo ID in person (ADR-0013 §3, D85). One active invitation per patient: issuing a new one revokes the old one. The code is in the response only. Refused while the patient already has an account (one account per chart in P1). Batch B8a (D89).
+ * @summary Issue a portal invitation
+ */
+export const createPortalInvitation = async (patientId: Id,
+    createPortalInvitationBody: CreatePortalInvitationBody, options?: Parameters<typeof apiFetch>[1]): Promise<createPortalInvitationResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createPortalInvitationResponse>(getCreatePortalInvitationUrl(patientId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPortalInvitationBody)
+  }
+);}
+
+
+export type revokePortalInvitationResponse200 = {
+  data: PortalAccountStatus
+  status: 200
+}
+
+export type revokePortalInvitationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type revokePortalInvitationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type revokePortalInvitationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type revokePortalInvitationResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type revokePortalInvitationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type revokePortalInvitationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type revokePortalInvitationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type revokePortalInvitationResponseSuccess = (revokePortalInvitationResponse200) & {
+  headers: Headers;
+};
+export type revokePortalInvitationResponseError = (revokePortalInvitationResponse401 | revokePortalInvitationResponse403 | revokePortalInvitationResponse404 | revokePortalInvitationResponse409 | revokePortalInvitationResponse422 | revokePortalInvitationResponse429 | revokePortalInvitationResponse500) & {
+  headers: Headers;
+};
+
+export type revokePortalInvitationResponse = (revokePortalInvitationResponseSuccess | revokePortalInvitationResponseError)
+
+export const getRevokePortalInvitationUrl = (patientId: Id,
+    invitationId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/portal-invitations/${invitationId}/revoke`
+}
+
+/**
+ * Revokes an unused invitation, for example when the printout was lost. Repeating it changes nothing. Batch B8a (D89).
+ * @summary Revoke a portal invitation
+ */
+export const revokePortalInvitation = async (patientId: Id,
+    invitationId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<revokePortalInvitationResponse> => {
+
+  return apiFetch<revokePortalInvitationResponse>(getRevokePortalInvitationUrl(patientId,invitationId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+export type resetPortalSignInFactorsResponse200 = {
+  data: PortalAccountStatus
+  status: 200
+}
+
+export type resetPortalSignInFactorsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type resetPortalSignInFactorsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type resetPortalSignInFactorsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type resetPortalSignInFactorsResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type resetPortalSignInFactorsResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type resetPortalSignInFactorsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type resetPortalSignInFactorsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type resetPortalSignInFactorsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type resetPortalSignInFactorsResponse503 = {
+  data: ServiceUnavailableResponse
+  status: 503
+}
+
+export type resetPortalSignInFactorsResponseSuccess = (resetPortalSignInFactorsResponse200) & {
+  headers: Headers;
+};
+export type resetPortalSignInFactorsResponseError = (resetPortalSignInFactorsResponse400 | resetPortalSignInFactorsResponse401 | resetPortalSignInFactorsResponse403 | resetPortalSignInFactorsResponse404 | resetPortalSignInFactorsResponse409 | resetPortalSignInFactorsResponse422 | resetPortalSignInFactorsResponse429 | resetPortalSignInFactorsResponse500 | resetPortalSignInFactorsResponse503) & {
+  headers: Headers;
+};
+
+export type resetPortalSignInFactorsResponse = (resetPortalSignInFactorsResponseSuccess | resetPortalSignInFactorsResponseError)
+
+export const getResetPortalSignInFactorsUrl = (patientId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/portal-account/reset-factors`
+}
+
+/**
+ * For a patient who has lost every second factor and come to the desk with photo ID (ADR-0013 §2). Removes the realm account's second factors and recovery codes; the patient sets up new ones at the next sign-in. The password is unchanged and our API never sees it (D3). Never done on the strength of a phone call or email. Implemented in core. Batch B8a (D89).
+ * @summary Reset the patient's sign-in factors
+ */
+export const resetPortalSignInFactors = async (patientId: Id,
+    portalFactorResetRequest: PortalFactorResetRequest, options?: Parameters<typeof apiFetch>[1]): Promise<resetPortalSignInFactorsResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<resetPortalSignInFactorsResponse>(getResetPortalSignInFactorsUrl(patientId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalFactorResetRequest)
+  }
+);}
+
+
+export type disablePortalAccountResponse200 = {
+  data: PortalAccountStatus
+  status: 200
+}
+
+export type disablePortalAccountResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type disablePortalAccountResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type disablePortalAccountResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type disablePortalAccountResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type disablePortalAccountResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type disablePortalAccountResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type disablePortalAccountResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type disablePortalAccountResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type disablePortalAccountResponse503 = {
+  data: ServiceUnavailableResponse
+  status: 503
+}
+
+export type disablePortalAccountResponseSuccess = (disablePortalAccountResponse200) & {
+  headers: Headers;
+};
+export type disablePortalAccountResponseError = (disablePortalAccountResponse400 | disablePortalAccountResponse401 | disablePortalAccountResponse403 | disablePortalAccountResponse404 | disablePortalAccountResponse409 | disablePortalAccountResponse422 | disablePortalAccountResponse429 | disablePortalAccountResponse500 | disablePortalAccountResponse503) & {
+  headers: Headers;
+};
+
+export type disablePortalAccountResponse = (disablePortalAccountResponseSuccess | disablePortalAccountResponseError)
+
+export const getDisablePortalAccountUrl = (patientId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/portal-account/disable`
+}
+
+/**
+ * Stops the patient from signing in to the portal, for example when the account is misused or the patient asks to close it. Every portal session of the patient ends at once, with its realm session (back channel), and the realm account is disabled; nothing is deleted. A reason is required and audited. Amends ADR-0013 (D92). Implemented in core. Batch B8a (D89).
+ * @summary Disable the patient's portal account
+ */
+export const disablePortalAccount = async (patientId: Id,
+    portalAccountStatusChange: PortalAccountStatusChange, options?: Parameters<typeof apiFetch>[1]): Promise<disablePortalAccountResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<disablePortalAccountResponse>(getDisablePortalAccountUrl(patientId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalAccountStatusChange)
+  }
+);}
+
+
+export type enablePortalAccountResponse200 = {
+  data: PortalAccountStatus
+  status: 200
+}
+
+export type enablePortalAccountResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type enablePortalAccountResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type enablePortalAccountResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type enablePortalAccountResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type enablePortalAccountResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type enablePortalAccountResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type enablePortalAccountResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type enablePortalAccountResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type enablePortalAccountResponse503 = {
+  data: ServiceUnavailableResponse
+  status: 503
+}
+
+export type enablePortalAccountResponseSuccess = (enablePortalAccountResponse200) & {
+  headers: Headers;
+};
+export type enablePortalAccountResponseError = (enablePortalAccountResponse400 | enablePortalAccountResponse401 | enablePortalAccountResponse403 | enablePortalAccountResponse404 | enablePortalAccountResponse409 | enablePortalAccountResponse422 | enablePortalAccountResponse429 | enablePortalAccountResponse500 | enablePortalAccountResponse503) & {
+  headers: Headers;
+};
+
+export type enablePortalAccountResponse = (enablePortalAccountResponseSuccess | enablePortalAccountResponseError)
+
+export const getEnablePortalAccountUrl = (patientId: Id,) => {
+
+
+
+
+  return `/patients/${patientId}/portal-account/enable`
+}
+
+/**
+ * Lets a disabled account sign in again; its password and second factors are unchanged. A reason is required and audited. Amends ADR-0013 (D92). Implemented in core. Batch B8a (D89).
+ * @summary Enable the patient's portal account
+ */
+export const enablePortalAccount = async (patientId: Id,
+    portalAccountStatusChange: PortalAccountStatusChange, options?: Parameters<typeof apiFetch>[1]): Promise<enablePortalAccountResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<enablePortalAccountResponse>(getEnablePortalAccountUrl(patientId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalAccountStatusChange)
+  }
+);}
+
+
 export type listDuplicatesResponse200 = {
   data: DuplicateCandidateList
   status: 200
@@ -1961,7 +2643,7 @@ export const getMergeDuplicateUrl = (duplicateId: Id,) => {
 }
 
 /**
- * Merges the other patient of the pair into `survivingPatientId` (inventory #48). Both patients are locked during the merge; every moved record is listed so the merge can be undone; the merged patient gets `mergedIntoId` and becomes inactive. All in one transaction. If either patient is restricted, the user needs a break-glass grant or care-team membership for **each** restricted patient (`403 break-glass-required`), and the surviving record keeps the most restrictive restriction of the pair. Both patient IDs are audited.
+ * Merges the other patient of the pair into `survivingPatientId` by link (inventory #48; D103): the merged patient gets a FHIR `Patient.link` of type `replaced-by` to the surviving one (and the surviving one `replaces`), gets `mergedIntoId` and becomes inactive. **No record moves:** every record stays attached to the patient it was created for, and signed notes and final results are never touched. Reads of the surviving chart follow the link and present one chart (its own records and those of the patients it replaced); patient search returns the surviving patient; new records are written to the surviving patient only, and a write naming the merged one is refused (`409 patient-merged`). Both patients are locked during the merge, all in one transaction. If either patient is restricted, the user needs a break-glass grant or care-team membership for **each** restricted patient (`403 break-glass-required`), and the surviving record keeps the most restrictive restriction of the pair. Both patient IDs are audited. On the merged chart, in the same transaction: an `active` or `pending-setup` portal account becomes `suspended` (the state it had is kept) and its sessions end, a `disabled` one stays `disabled`, and every active invitation is revoked (ADR-0013). The front desk issues a new invitation for the surviving chart after an ID check.
  * @summary Merge a duplicate pair
  */
 export const mergeDuplicate = async (duplicateId: Id,
@@ -2149,7 +2831,7 @@ export const getUndoPatientMergeUrl = (mergeId: Id,) => {
 }
 
 /**
- * Undoes a merge (inventory #49): moved records go back to the merged patient, which becomes active again. Refused once either record has changed in a way that cannot be split back. Restricted charts need break-glass or care-team membership for each restricted patient, as for a merge. Both patient IDs are audited.
+ * Undoes a merge (inventory #49; D103) by deactivating its link: the merged patient becomes active again and loses `mergedIntoId`, and reads stop combining the two charts. Because nothing moved, nothing moves back: each record stays with the patient it was created for, including those written to the surviving patient after the merge. Refused (`409 invalid-state-transition`) when the merge was already undone, or while a later merge involving either patient still stands (undo that one first). Restricted charts need break-glass or care-team membership for each restricted patient, as for a merge. Both patient IDs are audited. A portal account suspended by the merge goes back to exactly the state it had before the merge; one disabled in the meantime stays `disabled`. Invitations revoked by the merge stay revoked.
  * @summary Undo a merge
  */
 export const undoPatientMerge = async (mergeId: Id,
@@ -2333,6 +3015,341 @@ return apiFetch<getPatientSummariesResponse>(getGetPatientSummariesUrl(),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(patientSummariesRequest)
+  }
+);}
+
+
+export type listPreRegistrationsResponse200 = {
+  data: PreRegistrationList
+  status: 200
+}
+
+export type listPreRegistrationsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listPreRegistrationsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listPreRegistrationsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listPreRegistrationsResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listPreRegistrationsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listPreRegistrationsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listPreRegistrationsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listPreRegistrationsResponseSuccess = (listPreRegistrationsResponse200) & {
+  headers: Headers;
+};
+export type listPreRegistrationsResponseError = (listPreRegistrationsResponse400 | listPreRegistrationsResponse401 | listPreRegistrationsResponse403 | listPreRegistrationsResponse404 | listPreRegistrationsResponse422 | listPreRegistrationsResponse429 | listPreRegistrationsResponse500) & {
+  headers: Headers;
+};
+
+export type listPreRegistrationsResponse = (listPreRegistrationsResponseSuccess | listPreRegistrationsResponseError)
+
+export const getListPreRegistrationsUrl = (params?: ListPreRegistrationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/pre-registrations?${stringifiedParams}` : `/pre-registrations`
+}
+
+/**
+ * The front desk's queue of pre-registrations (D96), oldest first; pending by default. The queue is the clinic's: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.
+ * @summary List pre-registrations
+ */
+export const listPreRegistrations = async (params?: ListPreRegistrationsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listPreRegistrationsResponse> => {
+
+  return apiFetch<listPreRegistrationsResponse>(getListPreRegistrationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type getPreRegistrationResponse200 = {
+  data: PreRegistration
+  status: 200
+}
+
+export type getPreRegistrationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getPreRegistrationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getPreRegistrationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getPreRegistrationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getPreRegistrationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getPreRegistrationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getPreRegistrationResponseSuccess = (getPreRegistrationResponse200) & {
+  headers: Headers;
+};
+export type getPreRegistrationResponseError = (getPreRegistrationResponse401 | getPreRegistrationResponse403 | getPreRegistrationResponse404 | getPreRegistrationResponse422 | getPreRegistrationResponse429 | getPreRegistrationResponse500) & {
+  headers: Headers;
+};
+
+export type getPreRegistrationResponse = (getPreRegistrationResponseSuccess | getPreRegistrationResponseError)
+
+export const getGetPreRegistrationUrl = (preRegistrationId: Id,) => {
+
+
+
+
+  return `/pre-registrations/${preRegistrationId}`
+}
+
+/**
+ * One pre-registration (D96). The queue is the clinic's: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.
+ * @summary Get a pre-registration
+ */
+export const getPreRegistration = async (preRegistrationId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getPreRegistrationResponse> => {
+
+  return apiFetch<getPreRegistrationResponse>(getGetPreRegistrationUrl(preRegistrationId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type acceptPreRegistrationResponse200 = {
+  data: PreRegistration
+  status: 200
+}
+
+export type acceptPreRegistrationResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type acceptPreRegistrationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type acceptPreRegistrationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type acceptPreRegistrationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type acceptPreRegistrationResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type acceptPreRegistrationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type acceptPreRegistrationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type acceptPreRegistrationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type acceptPreRegistrationResponseSuccess = (acceptPreRegistrationResponse200) & {
+  headers: Headers;
+};
+export type acceptPreRegistrationResponseError = (acceptPreRegistrationResponse400 | acceptPreRegistrationResponse401 | acceptPreRegistrationResponse403 | acceptPreRegistrationResponse404 | acceptPreRegistrationResponse409 | acceptPreRegistrationResponse422 | acceptPreRegistrationResponse429 | acceptPreRegistrationResponse500) & {
+  headers: Headers;
+};
+
+export type acceptPreRegistrationResponse = (acceptPreRegistrationResponseSuccess | acceptPreRegistrationResponseError)
+
+export const getAcceptPreRegistrationUrl = (preRegistrationId: Id,) => {
+
+
+
+
+  return `/pre-registrations/${preRegistrationId}/accept`
+}
+
+/**
+ * Creates the patient through the registration rules (duplicate check with `409 possible-duplicate` and the override; the MRN from the practice counter, D41), or links to an existing `patientId` chosen in duplicate review; insurance as typed stays on the request as a note for the front desk (returned by the queue reads), not a coverage, until the card is checked. The request is linked to the patient, all in one transaction (D96). The front-desk user must confirm they checked the person's ID and say which kind (`identityVerified`, `idDocumentType`); the check is stored with who and when (`identityCheck`). Duplicate matching happens here, never at submit. The queue is the clinic's: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.
+ * @summary Accept a pre-registration
+ */
+export const acceptPreRegistration = async (preRegistrationId: Id,
+    preRegistrationAccept?: PreRegistrationAccept,
+    headers?: AcceptPreRegistrationHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<acceptPreRegistrationResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<acceptPreRegistrationResponse>(getAcceptPreRegistrationUrl(preRegistrationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(preRegistrationAccept)
+  }
+);}
+
+
+export type rejectPreRegistrationResponse200 = {
+  data: PreRegistration
+  status: 200
+}
+
+export type rejectPreRegistrationResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type rejectPreRegistrationResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type rejectPreRegistrationResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type rejectPreRegistrationResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type rejectPreRegistrationResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type rejectPreRegistrationResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type rejectPreRegistrationResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type rejectPreRegistrationResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type rejectPreRegistrationResponseSuccess = (rejectPreRegistrationResponse200) & {
+  headers: Headers;
+};
+export type rejectPreRegistrationResponseError = (rejectPreRegistrationResponse400 | rejectPreRegistrationResponse401 | rejectPreRegistrationResponse403 | rejectPreRegistrationResponse404 | rejectPreRegistrationResponse409 | rejectPreRegistrationResponse422 | rejectPreRegistrationResponse429 | rejectPreRegistrationResponse500) & {
+  headers: Headers;
+};
+
+export type rejectPreRegistrationResponse = (rejectPreRegistrationResponseSuccess | rejectPreRegistrationResponseError)
+
+export const getRejectPreRegistrationUrl = (preRegistrationId: Id,) => {
+
+
+
+
+  return `/pre-registrations/${preRegistrationId}/reject`
+}
+
+/**
+ * Rejects it with a reason (D96). It is deleted 30 days later. Nothing is sent to the person. The queue is the clinic's: every FD and ADM user of the clinic the request was submitted to (through its practice code) sees it; a request of another clinic is `404`.
+ * @summary Reject a pre-registration
+ */
+export const rejectPreRegistration = async (preRegistrationId: Id,
+    preRegistrationReject: PreRegistrationReject, options?: Parameters<typeof apiFetch>[1]): Promise<rejectPreRegistrationResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<rejectPreRegistrationResponse>(getRejectPreRegistrationUrl(preRegistrationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(preRegistrationReject)
   }
 );}
 

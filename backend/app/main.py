@@ -63,6 +63,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if problems:
         raise RuntimeError("Routes do not match the contract:\n  " + "\n  ".join(problems))
 
+    if settings.patient_auth_mode == "dev_header":
+        log.warning("STAND-IN PATIENT LOGIN ACTIVE: patients come from the X-Dev-Patient "
+                    "headers (%s)", settings.environment)
     if settings.auth_mode == "dev_header":
         log.warning("STAND-IN LOGIN ACTIVE: users come from the X-Dev-User header (%s)",
                     settings.environment)

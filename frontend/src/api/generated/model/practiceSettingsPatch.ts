@@ -14,8 +14,12 @@
  *
  * OpenAPI spec version: 1.0.0-draft.1
  */
+import type { PracticeSettingsPatchRegistration } from './practiceSettingsPatchRegistration';
 
 /**
- * Optional W3C Trace Context, propagated (API_STANDARDS §18).
+ * Settings to change (JSON merge patch).
  */
-export type TraceparentParameter = string;
+export interface PracticeSettingsPatch {
+  /** Registration settings to change. */
+  registration?: PracticeSettingsPatchRegistration;
+}

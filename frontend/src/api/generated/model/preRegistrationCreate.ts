@@ -14,6 +14,19 @@
  *
  * OpenAPI spec version: 1.0.0-draft.1
  */
-import type { Id } from './id';
+import type { PreRegistrationDetails } from './preRegistrationDetails';
 
-export type XRequestIdParameter = Id;
+/**
+ * Body of the public pre-registration form (D96).
+ */
+export interface PreRegistrationCreate {
+  /** What the person tells the practice. */
+  details: PreRegistrationDetails;
+  /** The person agrees to be contacted about their request. */
+  contactConsent: true;
+  /**
+     * The proof-of-work answer from the form's ALTCHA widget (MIT, self-hosted), checked by the server; nothing about the visitor goes to anyone else.
+     * @maxLength 4000
+     */
+  botCheck: string;
+}

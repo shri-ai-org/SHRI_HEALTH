@@ -20,6 +20,7 @@ SQLSTATE_HTTP = {
     "23502": 422,   # not_null_violation
     "23P01": 409,   # exclusion_violation (double booking)
     "P0001": 422,   # raise_exception from a safety rule trigger
+    "P0002": 404,   # no_data_found from a function that looked the row up (0008, 0009)
     "42501": 403,   # insufficient_privilege / row-level security
 }
 

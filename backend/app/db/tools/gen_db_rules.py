@@ -67,6 +67,17 @@ NO_APP_WRITE = {"fhir_resource_history"}
 RUNTIME = {"app_session", "event_log", "idempotency_record", "operation"}
 # Written once and never changed: no UPDATE.
 WRITE_ONCE = {"event_log"}
+#: shri_app privileges that replace the defaults below. pre_registration (D96, A51): rows come
+#: only from admin.submit_pre_registration() (shri_public, migration 0009); the front desk
+#: reads the queue and records its decision, nothing else.
+APP_PRIVS = {
+    "pre_registration": ["SELECT", "UPDATE (status, decided_at, decided_by_user_id, patient_id, "
+                         "id_document_type, rejection_reason_code, rejection_reason_text, "
+                         "updated_at, updated_by_user_id)"],
+    # encounter_follow_up (D98, migration 0010): a child row, but never deleted; it changes
+    # status instead.
+    "encounter_follow_up": ["SELECT", "INSERT", "UPDATE"],
+}
 
 #: shri_app on the two audit tables: D23/ADR-0011 condition 4 says "audit insert only" for
 #: shri_app overall. audit_event: insert only, no read-back (matches INSERT_ONLY's no-UPDATE
@@ -130,6 +141,16 @@ GUARDS = {
     # Migration 0008 (A43): a consent requirement keeps its kind (D59); a merge records the
     # versions it starts from, and is undone only while nothing it touched has changed (D51).
     "consent_requirement": [("kind", "BEFORE UPDATE OF kind", "shri_fixed_columns('kind')")],
+    # Migration 0009 (D96, A51): what the person submitted never changes, and a decided request
+    # is final.
+    "pre_registration": [("fixed", "BEFORE UPDATE", "shri_fixed_columns('idempotency_key', "
+                          "'request_hash', 'details', 'contact_consent', 'entry_source')"),
+                         ("decided", "BEFORE UPDATE", "shri_pre_registration_guard()")],
+    # Migration 0010 (D98): a follow-up request changes only while open, and a declined or
+    # withdrawn one is final.
+    "encounter_follow_up": [("fixed", "BEFORE UPDATE",
+                             "shri_fixed_columns('encounter_id', 'patient_id')"),
+                            ("guard", "BEFORE UPDATE", "shri_follow_up_guard()")],
     "patient_merge": [("versions", "BEFORE INSERT", "shri_patient_merge_versions()"),
                       ("guard", "BEFORE UPDATE", "shri_patient_merge_guard()")],
     "patient_merge_record": [("version", "BEFORE INSERT", "shri_patient_merge_record_version()")],
@@ -363,8 +384,9 @@ def rls_sql(only: set[str] | None = None) -> str:
             out += [f"ALTER TABLE {qt} ENABLE ROW LEVEL SECURITY;",
                     f"ALTER TABLE {qt} FORCE ROW LEVEL SECURITY;",
                     f"CREATE POLICY tenant_self ON {qt} USING (id = {TENANT});",
-                    f"GRANT SELECT, UPDATE (name, legal_name, timezone, ai_enabled) "
-                    f"ON {qt} TO shri_app;", ""]
+                    f"GRANT SELECT, UPDATE (name, legal_name, timezone, ai_enabled, "
+                    f"pre_registration_code, pre_registration_enabled) ON {qt} TO shri_app;",
+                    ""]
             continue
         if name in GLOBAL_TABLES:
             out.append(f"GRANT SELECT ON {qt} TO shri_app;")
@@ -390,8 +412,8 @@ def rls_sql(only: set[str] | None = None) -> str:
             out.append("")
             continue
 
-        privs = ["SELECT"]
-        if name not in NO_APP_WRITE:
+        privs = list(APP_PRIVS.get(name, ["SELECT"]))
+        if name not in NO_APP_WRITE and name not in APP_PRIVS:
             privs.append("INSERT")
             if name not in INSERT_ONLY and name not in WRITE_ONCE:
                 privs.append("UPDATE")

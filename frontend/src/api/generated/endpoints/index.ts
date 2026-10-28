@@ -7,5 +7,6 @@ export * from './inbox/inbox';
 export * from './medications/medications';
 export * from './patients/patients';
 export * from './platform/platform';
+export * from './portal/portal';
 export * from './practice-setup/practice-setup';
 export * from './scheduling/scheduling';

@@ -42,13 +42,13 @@ export interface PatientPatch {
   previousNames?: HumanName[] | null;
   /** Date of birth. Required at registration (D44): matching, eligibility and claims need it. */
   birthDate?: Date;
-  /** Administrative gender. Optional for the patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). Send `null` to clear it. */
+  /** Administrative gender, labelled "Legal sex" on screens (as on ID and insurance). Optional for the patient (D39); stored as `unknown` when not given (`patient.gender` is NOT NULL). On `/fhir` (US Core 9.0.0, D82) it is `Patient.gender` and, for `female` and `male`, the US Core Individual Sex extension with the Federal Administrative Sex value set (VSAC 2.16.840.1.113762.1.4.1021.121, version 2025-02-28): SNOMED CT `248152002` female, `248153007` male; `other` and `unknown` send no Individual Sex extension. */
   gender?: AdministrativeGender | null;
   /** Sex assigned at birth (D39). Send `null` to clear it. */
   birthSex?: BirthSex | null;
-  /** Gender identity, US Core gender-identity value set (D39). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it. */
+  /** Gender identity (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`, D39). Pinned to US Core 9.0.0 (D82): the HL7 `individual-genderIdentity` extension and the HL7 Gender Identity value set (`http://terminology.hl7.org/ValueSet/gender-identity`): SNOMED CT (`http://snomed.info/sct`) `446141000124107` identifies as female gender, `446151000124109` identifies as male gender, `33791000087105` identifies as nonbinary gender; `http://terminology.hl7.org/CodeSystem/data-absent-reason` `asked-declined` ("prefer not to say"); `http://terminology.hl7.org/CodeSystem/v3-NullFlavor` `UNK`. Any other code is refused (`422 business-rule-violation`, `errors` naming `/genderIdentity/code` `not-allowed-value`). Its column is migration item A45 (Anand). */
   genderIdentity?: CodedValue | null;
-  /** Sexual orientation, US Core sexual-orientation value set (D39). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it. */
+  /** Sexual orientation (D39, optional; shown at registration only where the practice turns it on, `registration.showSexualOrientationAndGenderIdentity`). US Core 9.0.0 has no Patient extension for it; it stays a coded value with its source system. Its column is migration item A45 (Anand). */
   sexualOrientation?: CodedValue | null;
   /** Race (D39). Send `null` to clear it. */
   race?: RaceEthnicity | null;
