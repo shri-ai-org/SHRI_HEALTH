@@ -58,4 +58,6 @@ export interface AppointmentCreate {
      * @maxLength 2000
      */
   patientInstruction?: string;
+  /** Books the follow-up asked for in this encounter (D98): it must be an open request for the same patient; it becomes `booked` and points to the new appointment, in the same transaction. */
+  followUpOfEncounterId?: Id;
 }
