@@ -33,6 +33,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 from app.core.db import TENANT_ID_INFO_KEY
 from app.core.errors import ServiceUnavailable
@@ -150,14 +151,23 @@ async def store_generated(db: AsyncSession, store: FileStore, *, purpose: str,
     return file_id
 
 
-def file_store() -> FileStore:
+#: Until core's data-key encryption is wired in, files are stored unencrypted, so a store is
+#: given out only where the data is synthetic (Thulasi's review of #118).
+UNENCRYPTED_ENVIRONMENTS = frozenset({"development", "test"})
+
+
+def file_store(request: Request) -> FileStore:
     """FastAPI dependency: the store for generated files.
 
     TEMPORARY SEAM. Core has no file-store setting yet (asked of Thulasi on #13), so the folder
     comes from the ``SHRI_FILE_STORE_DIR`` environment variable; without it, endpoints that
-    store a file answer ``503 service-unavailable``. When core's setting (and the real object
-    store) lands, only this function changes; endpoints and tests that override it do not.
+    store a file answer ``503 service-unavailable``. Files aren't encrypted yet (core's
+    ``new_data_key()`` is pending), so outside development and test this always answers 503:
+    patient data is never stored in the clear. When core's setting, its encryption and the real
+    object store land, only this function changes; endpoints and tests that override it do not.
     """
+    if request.app.state.settings.environment not in UNENCRYPTED_ENVIRONMENTS:
+        raise ServiceUnavailable("File storage is not available until files are encrypted")
     folder = os.environ.get(FILE_STORE_DIR_ENV)
     if not folder:
         raise ServiceUnavailable("File storage is not configured")
