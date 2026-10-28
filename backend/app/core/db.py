@@ -18,6 +18,7 @@ from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
+from pydantic import SecretStr
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
@@ -49,11 +50,14 @@ DATABASE_INFO_KEY = "shri_database"
 
 
 class Database:
-    def __init__(self, settings: Settings) -> None:
-        if settings.database_url is None:
+    def __init__(self, settings: Settings, url: SecretStr | None = None) -> None:
+        """The API's database (DATABASE_URL, shri_app), or another role's when `url` is given
+        (PUBLIC_DATABASE_URL, shri_public)."""
+        url = url or settings.database_url
+        if url is None:
             raise RuntimeError("DATABASE_URL is not configured")
         self.engine: AsyncEngine = create_async_engine(
-            settings.database_url.get_secret_value(),
+            url.get_secret_value(),
             pool_size=settings.db_pool_size,
             pool_pre_ping=True,
         )

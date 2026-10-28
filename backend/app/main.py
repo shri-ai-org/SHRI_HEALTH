@@ -14,6 +14,8 @@ from app.core.db import Database
 from app.core.errors import install_error_handlers
 from app.core.idempotency import IdempotencyMiddleware, Replay, replay_response
 from app.core.operations import OperationsMapError, load_operations, route_problems
+from app.core.public_form import STATE as PUBLIC_FORM_GUARDS
+from app.core.public_form import PublicFormGuards
 from app.core.request_id import RequestIdMiddleware
 from app.core.response_headers import NoStoreMiddleware
 from app.core.routing import API_PREFIX, include_module_routers
@@ -34,6 +36,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
         if application.state.db is not None:
             await application.state.db.dispose()
+        if application.state.public_db is not None:
+            await application.state.public_db.dispose()
         if application.state.crypto is not None:
             await application.state.crypto.aclose()
 
@@ -48,6 +52,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = settings
     application.state.db = Database(settings) if settings.database_url else None
     application.state.crypto = FieldCrypto(settings) if settings.openbao_transit_addr else None
+    # Public forms (D96): their own database role, and the guards. Half-configured stops startup.
+    application.state.public_db = (Database(settings, settings.public_database_url)
+                                   if settings.public_database_url else None)
+    setattr(application.state, PUBLIC_FORM_GUARDS,
+            PublicFormGuards(settings)
+            if settings.portal_origin or settings.public_form_secret else None)
 
     application.add_middleware(AuditMiddleware)  # innermost: sees the final status
     application.add_middleware(IdempotencyMiddleware)  # stores it, audit 500s included

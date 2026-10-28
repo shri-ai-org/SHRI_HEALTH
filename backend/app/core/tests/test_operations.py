@@ -49,6 +49,13 @@ ANONYMOUS_OP = {"submitTestForm": {
     "idempotency": None,
 }}
 
+# The pre-registration form itself (#89): its database function writes its audit row (D96).
+PRE_REGISTRATION_OP = {"submitPreRegistration": {
+    "method": "POST", "path": f"{API_PREFIX}/portal/practices/{{practiceLinkId}}/pre-registrations",
+    "permission": "public", "audit": {"action": "C", "category": "phi-write", "actor": "anonymous"},
+    "idempotency": None,
+}}
+
 
 @pytest.fixture
 def use_map(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[..., Path]:
@@ -267,9 +274,19 @@ PUBLIC_DB = Depends(public_db)
 
 
 def test_a_public_form_with_public_db_passes(use_map: Callable[..., Path]) -> None:
+    use_map(PRE_REGISTRATION_OP)
+    assert route_problems(_app(("POST", "/portal/practices/{practiceLinkId}/pre-registrations",
+                                "submitPreRegistration", [PUBLIC_DB]))) == []
+
+
+def test_an_audited_public_form_must_be_audited_by_its_database_function(
+        use_map: Callable[..., Path]) -> None:
+    """public_db starts no audit trail, so an audited public form other than pre-registration
+    (whose function writes the row) would go unaudited: refused at startup."""
     use_map(ANONYMOUS_OP)
-    assert route_problems(_app(("POST", "/portal/test-forms", "submitTestForm",
-                                [PUBLIC_DB]))) == []
+    problems = route_problems(_app(("POST", "/portal/test-forms", "submitTestForm",
+                                    [PUBLIC_DB])))
+    assert any("core writes no audit trail for public forms" in p for p in problems), problems
 
 
 @pytest.mark.parametrize(("dependencies", "expected"), [

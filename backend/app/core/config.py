@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     integration_database_url: SecretStr | None = None  # shri_integration: partner worker
     reporting_database_url: SecretStr | None = None  # shri_reporting: read-only reports
     migration_database_url: SecretStr | None = None  # shri_migrator: migrations only, never the API
+    # shri_public: the public pre-registration form only (D96). The role has no table privileges;
+    # it can only run admin.submit_pre_registration(). Unset: public forms answer 503.
+    public_database_url: SecretStr | None = None
     db_pool_size: int = 5
 
     # Problem Details `type` = this prefix + code (API_STANDARDS §9.1). Same placeholder as the
@@ -68,6 +71,19 @@ class Settings(BaseSettings):
     openbao_transit_token: SecretStr | None = None
     openbao_transit_mount: str = "transit"
     openbao_transit_key: str = "shri-fields"
+
+    # Public forms (D96; core/public_form.py). portal_origin is the only `Origin` they accept,
+    # exactly (scheme, host and port), e.g. "https://portal.example.org". public_form_secret keys
+    # the email rate limit's hash and signs the bot-check challenges; at least 32 characters, from
+    # OpenBao or the environment, never in code. Either unset: public forms answer 503.
+    portal_origin: str | None = None
+    public_form_secret: SecretStr | None = None
+    public_form_ip_limit: int = 20  # requests per IP per window
+    public_form_ip_window_seconds: int = 3600
+    public_form_email_limit: int = 5  # requests per email address (as its keyed hash) per window
+    public_form_email_window_seconds: int = 86400
+    bot_check_max_number: int = 100_000  # the proof of work: about a second on a slow phone
+    bot_check_ttl_seconds: int = 600  # a challenge expires after this
 
     # Q31: the build this API runs, stamped by CI as image build arguments, never typed by hand.
     # Shown to signed-in users only (GET /auth/session), never on /health. Local builds keep the

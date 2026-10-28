@@ -43,6 +43,18 @@ async def ready(request: Request) -> dict[str, Any] | JSONResponse:
         # D23: the API's role may never bypass row-level security. Refuse traffic instead.
         log.error("Readiness check: the API's database role bypasses row-level security")
         return _not_ready(request)
+    public: Database | None = getattr(request.app.state, "public_db", None)
+    if public is not None:
+        try:
+            public_bypasses = await asyncio.wait_for(public.role_bypasses_rls(),
+                                                     READY_TIMEOUT_SECONDS)
+        except Exception:
+            log.warning("Readiness check: the public forms' database unavailable", exc_info=True)
+            return _not_ready(request)
+        if public_bypasses:
+            log.error("Readiness check: the public forms' database role bypasses row-level "
+                      "security")
+            return _not_ready(request)
     return {"status": "ready"}
 
 

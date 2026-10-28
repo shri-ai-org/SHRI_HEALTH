@@ -54,6 +54,11 @@ SESSION_PATIENT = "session"
 # x-permission values that are not a permission: no require() on these routes.
 NO_REQUIRE = frozenset({"public", "partner-signed"})
 
+# Public forms whose own SECURITY DEFINER function writes their `anonymous` audit row, in the same
+# call as the data (D96, migration 0009). public_db starts no trail, so any other audited public
+# form is refused at startup until core writes one for it.
+AUDITED_IN_DATABASE = frozenset({"submitPreRegistration"})
+
 # Audited operations that do not use tenant_db: the sign-in flow audits itself (login, logout
 # and refresh are security events written by the session code, and Keycloak's own events).
 SELF_AUDITED = frozenset({"startLogin", "finishLogin", "refreshSession", "logout"})
@@ -222,6 +227,10 @@ def route_problems(app: FastAPI) -> list[str]:
                 if operation.audit.audited and public_db not in calls:
                     problems.append(f"{where}: {operation.operation_id} is audited "
                                     f"({operation.audit.category}), so it needs Depends(public_db)")
+                if operation.audit.audited and operation.operation_id not in AUDITED_IN_DATABASE:
+                    problems.append(f"{where}: {operation.operation_id} is an audited public "
+                                    "form, and core writes no audit trail for public forms: its "
+                                    "database function must (operations.AUDITED_IN_DATABASE)")
                 continue
             if operation.portal:
                 # The patient is the portal session's; a staff session never serves these.
