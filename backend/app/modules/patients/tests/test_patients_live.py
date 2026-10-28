@@ -34,7 +34,7 @@ pytestmark = [
     pytest.mark.db,
     pytest.mark.skipif(not TEST_DATABASE_URL, reason="needs a test database"),
 ]
-SIGNS_IN_AS = ("fd", "ma", "md", "adm", "md-b")
+SIGNS_IN_AS = ("fd", "ma", "md", "adm", "bil", "none", "md-b")
 
 MRN_SYSTEM = "urn:oid:2.16.840.1.113883.3.0000.7"
 
