@@ -550,7 +550,7 @@ def code_refused() -> ValidationFailed:
     """The one answer for every reason a code can't be used (§3): unknown, expired, used,
     revoked, a wrong date of birth, a chart that already has an account, an email in use."""
     return ValidationFailed("We couldn't use that code", code="business-rule-violation",
-                            errors=[field_error("body", "invitationCode", "not-allowed-value")])
+                            errors=[field_error("body", "/invitationCode", "not-allowed-value")])
 
 
 class EnrollmentGuard:
