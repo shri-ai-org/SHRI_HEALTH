@@ -7,3 +7,7 @@ a81fad2902498c0d31378d8ea66e84bb663a032d:backend/app/core/tests/test_errors.py:g
 # The published SHA-256 of keycloak-26.8.1.tar.gz in an ARG named KEYCLOAK_SHA256 (PR #61). It's a
 # public checksum, not a secret; "KEY" in the name trips generic-api-key. Renamed on #61's branch.
 ac6db91bbdfc85dd8ef4dc2f635cd22c17b34cb5:infra/keycloak/Dockerfile:generic-api-key:13
+
+# A made-up download-token shape in a log-filter test (base64 of {"f":"synthetic"}), not a
+# secret; replaced by a value made at run time in the next commit on the same branch.
+4e01775e341260bde889e81a8b3137cb0dc236f2:backend/app/core/tests/test_access_log.py:generic-api-key:10

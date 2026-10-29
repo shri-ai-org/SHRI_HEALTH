@@ -1,13 +1,14 @@
 """uvicorn's access log never shows a download link's token (core/access_log.py, T53)."""
 
 import logging
+import secrets
 
 from fastapi import FastAPI
 
 from app.core.access_log import ACCESS_LOGGER, DropSecretQueries, register
 from app.core.config import Settings
 
-TOKEN = "eyJmIjoic3ludGhldGljIn0.c2lnbmF0dXJl"  # synthetic shape, not a real token
+TOKEN = f"{secrets.token_urlsafe(24)}.{secrets.token_urlsafe(32)}"  # made at run time
 
 
 def _record(path: str) -> logging.LogRecord:
