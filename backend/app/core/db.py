@@ -18,6 +18,7 @@ from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
+from fastapi import FastAPI
 from pydantic import SecretStr
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
@@ -30,6 +31,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import Session, SessionTransaction
 
 from app.core.config import Settings
+from app.core.lifecycle import on_shutdown
 
 TENANT_SETTING = "app.current_tenant_id"
 USER_SETTING = "app.current_user_id"
@@ -136,3 +138,11 @@ def _set_tenant_context(
                 "c_name": CORRELATION_SETTING, "c": context[CORRELATION_SETTING],
             },
         )
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """The API's database (DATABASE_URL, shri_app); none configured: endpoints that need it
+    answer 503."""
+    app.state.db = Database(settings) if settings.database_url else None
+    if app.state.db is not None:
+        on_shutdown(app, app.state.db.dispose)
