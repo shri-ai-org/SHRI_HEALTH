@@ -1786,7 +1786,8 @@ paths:
         form solves it in the browser and sends the solution as `botCheck` with `POST /portal/practices/{practiceLinkId}/pre-registrations`.
         **Each solved challenge is accepted only once:** core records it when a submission uses it and refuses it after that,
         until it expires (Thulasi). `Cache-Control: no-store`, so no cache hands one challenge to two visitors. Rate-limited
-        per IP. Not audited: no session, no person, nothing stored until a submission uses it.'
+        per IP. Not audited: no session and no person. Nothing is stored in the database: core keeps the used challenges in
+        the API''s memory until they expire (one API process).'
       tags:
       - portal
       x-owner: thulasi
@@ -1795,7 +1796,6 @@ paths:
         action: R
         category: none
         actor: anonymous
-      x-storage: admin
       x-release: P1
       security: []
       responses:

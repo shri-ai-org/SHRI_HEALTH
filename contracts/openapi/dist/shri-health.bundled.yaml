@@ -954,7 +954,7 @@ paths:
     get:
       operationId: createDownloadUrl
       summary: Get a download link
-      description: 'A one-time, audited link to a clean file (inventory #150; API_STANDARDS §15; D105). Besides `files:read`, the caller needs the read permission mapped to the file''s purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient''s files need a break-glass grant or care-team membership. A purpose with no mapping is denied. The link points at `GET /files/{fileId}/content` on our own API, with a token bound to this user and this file, valid for about one minute and accepted once. Files are encrypted at rest, so the link never points into the object store. Audited as an export, and the download itself is audited again.'
+      description: 'A one-time, audited link to a clean file (inventory #150; API_STANDARDS §15; D105). Besides `files:read`, the caller needs the read permission mapped to the file''s purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient''s files need a break-glass grant or care-team membership. A purpose with no mapping is denied. The link points at `GET /files/{fileId}/content` on our own API, with a token bound to this user and this file, valid for about one minute and accepted once. Files are encrypted at rest, so the link never points into the object store. Audited as an export naming the file''s patient (none for an unattached upload), and the download itself is audited again.'
       tags:
         - files
       x-owner: anand
@@ -962,6 +962,7 @@ paths:
       x-audit:
         action: R
         category: export
+        patient: result
       x-storage: files
       x-release: P0
       responses:
@@ -1020,7 +1021,7 @@ paths:
     get:
       operationId: downloadFileContent
       summary: Download a file
-      description: 'Where a download link points (D105): our own API, never the object store, because files are encrypted at rest. The token was issued, with the permission and chart checks, by the operation that gave out the link (`GET /files/{fileId}/download-url`, or a module''s own link such as the after-visit summary''s). **The token is not enough on its own:** the request must also carry the session of the same user it was issued to (the browser sends the session cookie with the link). Core checks that the token is for this user and this file, has not expired (about one minute) and has not been used: it is accepted once. **Every invalid, expired, reused or other-user token gets the same `404`**, so a token can''t be probed; the screen asks for a new link. The API then decrypts the file as it streams it, with `Content-Disposition: attachment`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. **The query string is never logged on this route**, neither by nginx nor by the API, and the token never appears in events or audit rows. Every download is audited as an export, naming the file''s patient where it has one. The token is the one query parameter the credentials-in-URL lint rule allows, and only on this operation (CONTRACT_GOVERNANCE §5).'
+      description: 'Where a download link points (D105): our own API, never the object store, because files are encrypted at rest. The token was issued, with the permission and chart checks, by the operation that gave out the link (`GET /files/{fileId}/download-url`, or a module''s own link such as the after-visit summary''s). **The token is not enough on its own:** the request must also carry the session of the same user it was issued to (the browser sends the session cookie with the link). Core checks that the token is for this user and this file, has not expired (about one minute) and has not been used: it is accepted once. **Every invalid, expired, reused or other-user token gets the same `404`**, so a token can''t be probed; the screen asks for a new link. The API then decrypts the file as it streams it, with `Content-Disposition: attachment`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. **The query string is never logged on this route**, neither by nginx nor by the API, and the token never appears in events or audit rows. Every download is audited as an export, naming the file''s patient (`x-audit` `patient: result`; none for an unattached upload). The token is the one query parameter the credentials-in-URL lint rule allows, and only on this operation (CONTRACT_GOVERNANCE §5).'
       tags:
         - files
       x-owner: anand
@@ -1028,6 +1029,7 @@ paths:
       x-audit:
         action: R
         category: export
+        patient: result
       x-storage: files
       x-release: P0
       security:
@@ -1086,7 +1088,7 @@ paths:
           description: 409. `invalid-state-transition` (the file is no longer `clean`).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (`token` is missing or malformed).
+          description: 422. `validation-failed` (`token` is missing, or doesn't match its pattern). A well-formed token that core refuses is `404`.
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -20971,7 +20973,7 @@ paths:
     get:
       operationId: getBotChallenge
       summary: Get a bot-check challenge
-      description: 'A fresh proof-of-work challenge for the ALTCHA widget on the public pre-registration form (D96; ALTCHA is MIT and self-hosted). Public: no session and no practice code, so it can''t be used to test practice codes, and it says nothing about any person. The salt carries an expiry a few minutes ahead (`?expires=`, Unix seconds) and the signature (an HMAC with a key only the server holds) covers it, so a challenge can''t be made up or stretched. The form solves it in the browser and sends the solution as `botCheck` with `POST /portal/practices/{practiceLinkId}/pre-registrations`. **Each solved challenge is accepted only once:** core records it when a submission uses it and refuses it after that, until it expires (Thulasi). `Cache-Control: no-store`, so no cache hands one challenge to two visitors. Rate-limited per IP. Not audited: no session, no person, nothing stored until a submission uses it.'
+      description: 'A fresh proof-of-work challenge for the ALTCHA widget on the public pre-registration form (D96; ALTCHA is MIT and self-hosted). Public: no session and no practice code, so it can''t be used to test practice codes, and it says nothing about any person. The salt carries an expiry a few minutes ahead (`?expires=`, Unix seconds) and the signature (an HMAC with a key only the server holds) covers it, so a challenge can''t be made up or stretched. The form solves it in the browser and sends the solution as `botCheck` with `POST /portal/practices/{practiceLinkId}/pre-registrations`. **Each solved challenge is accepted only once:** core records it when a submission uses it and refuses it after that, until it expires (Thulasi). `Cache-Control: no-store`, so no cache hands one challenge to two visitors. Rate-limited per IP. Not audited: no session and no person. Nothing is stored in the database: core keeps the used challenges in the API''s memory until they expire (one API process).'
       tags:
         - portal
       x-owner: thulasi
@@ -20980,7 +20982,6 @@ paths:
         action: R
         category: none
         actor: anonymous
-      x-storage: admin
       x-release: P1
       security: []
       responses:

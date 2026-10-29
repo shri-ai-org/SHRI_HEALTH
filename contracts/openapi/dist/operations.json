@@ -353,7 +353,8 @@
   "createDownloadUrl": {
    "audit": {
     "action": "R",
-    "category": "export"
+    "category": "export",
+    "patient": "result"
    },
    "idempotency": null,
    "method": "GET",
@@ -541,7 +542,8 @@
   "downloadFileContent": {
    "audit": {
     "action": "R",
-    "category": "export"
+    "category": "export",
+    "patient": "result"
    },
    "idempotency": null,
    "method": "GET",

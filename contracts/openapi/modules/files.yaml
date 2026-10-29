@@ -176,8 +176,8 @@ paths:
         record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient''s
         files need a break-glass grant or care-team membership. A purpose with no mapping is denied. The link points at `GET
         /files/{fileId}/content` on our own API, with a token bound to this user and this file, valid for about one minute
-        and accepted once. Files are encrypted at rest, so the link never points into the object store. Audited as an export,
-        and the download itself is audited again.'
+        and accepted once. Files are encrypted at rest, so the link never points into the object store. Audited as an export
+        naming the file''s patient (none for an unattached upload), and the download itself is audited again.'
       tags:
       - files
       x-owner: anand
@@ -185,6 +185,7 @@ paths:
       x-audit:
         action: R
         category: export
+        patient: result
       x-storage: files
       x-release: P0
       responses:
@@ -249,8 +250,9 @@ paths:
         so a token can''t be probed; the screen asks for a new link. The API then decrypts the file as it streams it, with
         `Content-Disposition: attachment`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. **The query string
         is never logged on this route**, neither by nginx nor by the API, and the token never appears in events or audit rows.
-        Every download is audited as an export, naming the file''s patient where it has one. The token is the one query parameter
-        the credentials-in-URL lint rule allows, and only on this operation (CONTRACT_GOVERNANCE §5).'
+        Every download is audited as an export, naming the file''s patient (`x-audit` `patient: result`; none for an unattached
+        upload). The token is the one query parameter the credentials-in-URL lint rule allows, and only on this operation
+        (CONTRACT_GOVERNANCE §5).'
       tags:
       - files
       x-owner: anand
@@ -258,6 +260,7 @@ paths:
       x-audit:
         action: R
         category: export
+        patient: result
       x-storage: files
       x-release: P0
       security:
@@ -320,7 +323,8 @@ paths:
           description: 409. `invalid-state-transition` (the file is no longer `clean`).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (`token` is missing or malformed).
+          description: '422. `validation-failed` (`token` is missing, or doesn''t match its pattern). A well-formed token
+            that core refuses is `404`.'
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
