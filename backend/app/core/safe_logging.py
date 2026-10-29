@@ -19,6 +19,14 @@ import traceback
 from types import TracebackType
 from typing import Any
 
+from fastapi import FastAPI
+
+from app.core.config import Settings
+
+# uvicorn logs an exception that reaches the server ("Exception in ASGI application") with its
+# message; Starlette re-raises after core's 500 handler so that it does (Vimal's review of #144).
+SERVER_ERROR_LOGGER = "uvicorn.error"
+
 
 def _sqlstate(error: BaseException) -> tuple[str | None, str | None]:
     """(SQLSTATE, constraint name) of a database error, from SQLAlchemy's wrapper or the
@@ -64,3 +72,25 @@ def log_failure(logger: logging.Logger, message: str, *args: Any) -> None:
         return
     logger.error(message + "\n%s\nTraceback (values left out):\n%s", *args, describe(error),
                  _frames(error.__traceback__))
+
+
+class DropExceptionMessages(logging.Filter):
+    """On a logger we don't call ourselves (uvicorn.error): a record carrying an exception keeps
+    its own message and gains what failed and where (describe() and the frames), but never the
+    exception's message, which may quote a row."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info and record.exc_info[1] is not None:
+            error = record.exc_info[1]
+            record.msg = (f"{record.getMessage()}\n{describe(error)}\n"
+                          f"Traceback (values left out):\n{_frames(error.__traceback__)}")
+            record.args = None
+            record.exc_info = None
+            record.exc_text = None
+        return True
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    logger = logging.getLogger(SERVER_ERROR_LOGGER)
+    if not any(isinstance(f, DropExceptionMessages) for f in logger.filters):
+        logger.addFilter(DropExceptionMessages())
