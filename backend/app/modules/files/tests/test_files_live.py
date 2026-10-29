@@ -364,6 +364,14 @@ def test_attached_files_follow_their_patient(
     # Attached: no longer the uploader's only. md and bil may read these purposes.
     assert client("md").get(f"/api/v1/files/{identity}/download-url").status_code == 200
     assert client("bil").get(f"/api/v1/files/{receipt}/download-url").status_code == 200
+    # Each link's audit row names its file's patient (x-audit patient: result, Q34).
+    with admin.connect() as c:
+        named = c.execute(text(
+            "SELECT entity_id, patient_id FROM audit.audit_event WHERE tenant_id = :t "
+            "AND entity_id IN (:i, :r) AND category = 'export'"),
+            {"t": clinic, "i": str(identity), "r": str(receipt)}).all()
+    assert sorted((str(e), p) for e, p in named) == sorted(
+        [(str(identity), open_patient.id), (str(receipt), open_patient.id)])
     # The card is the restricted patient's: break-glass, even for its uploader.
     for name in ("fd", "bil"):
         refused = client(name).get(f"/api/v1/files/{card}/download-url")
