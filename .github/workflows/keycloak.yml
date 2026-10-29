@@ -43,9 +43,15 @@ jobs:
       - name: Staff realm file
         run: python3 infra/keycloak/tests/check_realm.py
 
+      # The patient realm file (ADR-0013 §1-§4): no self-registration, the code on every sign-in
+      # and after a reset, and a service account limited to managing users.
+      - name: Patient realm file
+        run: python3 infra/keycloak/tests/check_patient_realm.py
+
       - name: Starts, imports the staff realm and reports ready
         run: |
-          for name in KC_ADMIN_PASSWORD SHRI_WEB_CLIENT_SECRET; do
+          for name in KC_ADMIN_PASSWORD SHRI_WEB_CLIENT_SECRET SHRI_PORTAL_CLIENT_SECRET \
+                      SHRI_PORTAL_ADMIN_CLIENT_SECRET; do
             value="$(openssl rand -hex 24)"
             echo "::add-mask::$value"
             echo "$name=$value" >> "$GITHUB_ENV"
@@ -55,10 +61,11 @@ jobs:
             -v "$PWD/infra/keycloak/realms:/opt/keycloak/data/import:ro" \
             -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD="$KC_ADMIN_PASSWORD" \
             -e KC_HTTP_RELATIVE_PATH=/kc -e KC_HTTP_HOST=0.0.0.0 -e KC_HEALTH_ENABLED=true \
-            -e SHRI_WEB_CLIENT_SECRET \
+            -e SHRI_WEB_CLIENT_SECRET -e SHRI_PORTAL_CLIENT_SECRET -e SHRI_PORTAL_ADMIN_CLIENT_SECRET \
             shri-health/keycloak:ci start-dev --import-realm
           for _ in $(seq 1 90); do
             if curl -sf http://127.0.0.1:8080/kc/realms/shri-staff/.well-known/openid-configuration >/dev/null \
+              && curl -sf http://127.0.0.1:8080/kc/realms/shri-patients/.well-known/openid-configuration >/dev/null \
               && curl -sf http://127.0.0.1:9000/kc/health/ready >/dev/null; then
               docker logs kc 2>&1 | grep -E "started in|imported" || true
               exit 0
