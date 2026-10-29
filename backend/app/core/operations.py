@@ -64,7 +64,13 @@ IDEMPOTENT_IN_DATABASE = frozenset({"submitPreRegistration"})
 
 # Audited operations that do not use tenant_db: the sign-in flow audits itself (login, logout
 # and refresh are security events written by the session code, and Keycloak's own events).
-SELF_AUDITED = frozenset({"startLogin", "finishLogin", "refreshSession", "logout"})
+SELF_AUDITED = frozenset({"startLogin", "finishLogin", "refreshSession", "logout",
+                          # The patient portal's sign-in and enrolment (portal_sign_in.py).
+                          "startPortalLogin", "completePortalLogin", "refreshPortalSession",
+                          "signOutOfPortal", "enrollInPortal"})
+# Idempotency-Key handled by the route itself, for a caller with no session yet: enrolment
+# replays a finished request's 204 for the same key and body (portal_sign_in.EnrollmentGuard).
+IDEMPOTENT_IN_ROUTE = frozenset({"enrollInPortal"})
 
 
 class OperationsMapError(RuntimeError):
@@ -211,7 +217,7 @@ def route_problems(app: FastAPI) -> list[str]:
                                 f"x-permission is {operation.permission!r}")
             if operation.idempotency is not None and method in ("POST", "PUT", "PATCH"):
                 staff = operation.audit.actor == "user" and operation.permission not in NO_REQUIRE
-                if operation.operation_id in IDEMPOTENT_IN_DATABASE:
+                if operation.operation_id in IDEMPOTENT_IN_DATABASE | IDEMPOTENT_IN_ROUTE:
                     pass
                 elif operation.portal or not staff:
                     problems.append(f"{where}: {operation.operation_id} has x-idempotency, which "
@@ -245,7 +251,8 @@ def route_problems(app: FastAPI) -> list[str]:
                 if tenant_db in calls:
                     problems.append(f"{where}: {operation.operation_id} is a portal operation, so "
                                     "it never uses the staff tenant_db")
-                if operation.audit.audited and portal_db not in calls:
+                if (operation.audit.audited and portal_db not in calls
+                        and operation.operation_id not in SELF_AUDITED):
                     problems.append(f"{where}: {operation.operation_id} is audited "
                                     f"({operation.audit.category}), so it needs Depends(portal_db)")
                 continue

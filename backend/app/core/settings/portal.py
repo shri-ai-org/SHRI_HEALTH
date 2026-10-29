@@ -31,7 +31,7 @@ class PortalFields(BaseSettings):
     portal_invitation_secret: SecretStr | None = None
 
     # Portal requests read and write as shri_portal (D93), never shri_app.
-    portal_database_url: str | None = None
+    portal_database_url: SecretStr | None = None
 
     # Idle 15 minutes, absolute 4 hours (ADR-0013 §5; Q20).
     portal_idle_minutes: int = 15

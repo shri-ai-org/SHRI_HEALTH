@@ -43,11 +43,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import audit
 from app.core.config import Settings
 from app.core.crypto import decrypt_field, encrypt_field
-from app.core.db import CORRELATION_SETTING, TENANT_SETTING, USER_SETTING, Database
+from app.core.db import (
+    CORRELATION_SETTING,
+    TENANT_ID_INFO_KEY,
+    TENANT_SETTING,
+    USER_SETTING,
+    Database,
+)
 from app.core.errors import (
+    AppError,
+    Conflict,
     Forbidden,
     NotFound,
-    RateLimited,
     ServiceUnavailable,
     Unauthorized,
     ValidationFailed,
@@ -83,6 +90,10 @@ _LOOK_ALIKES = str.maketrans({"I": "1", "L": "1", "O": "0"})
 
 # Requests that never move a portal session's idle timer (as for staff, ADR-0006 §3).
 _NOT_ACTIVITY = (("GET", "/api/v1/portal/auth/session"),)
+
+
+class TooManyEnrollments(AppError):
+    default_code = "rate-limited"
 
 
 def _secret(value: Any, name: str) -> bytes:
@@ -200,7 +211,7 @@ class PatientAccounts:
         if response.status_code == 409:
             raise EmailInUse()
         self._expect(response, 201)
-        user_id = response.headers.get("location", "").rstrip("/").rsplit("/", 1)[-1]
+        user_id = str(response.headers.get("location", "")).rstrip("/").rsplit("/", 1)[-1]
         if not user_id or len(user_id) > 100:
             raise ServiceUnavailable("The patient realm is unavailable")
         return user_id
@@ -290,16 +301,16 @@ def check_csrf(request: Request, settings: Settings, session_token: str) -> None
     the portal session's HMAC."""
     if request.method not in UNSAFE_METHODS:
         return
-    origin = request.headers.get("origin", "")
-    wanted = (settings.portal_origin or "").rstrip("/")
+    from app.core.public_form import origin_matches  # one rule for the portal host's Origin
+
     sent = request.headers.get("x-csrf-token", "")
-    if not (origin and wanted and hmac.compare_digest(origin.lower().encode(),
-                                                      wanted.lower().encode())
+    if not (settings.portal_origin
+            and origin_matches(request.headers.get("origin"), settings.portal_origin)
             and hmac.compare_digest(sent.encode(), csrf_token(settings, session_token).encode())):
         raise Forbidden("Send the session's CSRF token from the portal", code="csrf-check-failed")
 
 
-def security_row(request: Request, tenant_id: UUID, patient_id: UUID | None, action: str,
+def security_row(request: Request, tenant_id: UUID | None, patient_id: UUID | None, action: str,
                  entity: str | None, entity_id: UUID | None, *, outcome: str = "success",
                  reason: str | None = None) -> dict[str, Any]:
     """An audit row with the patient as the actor (§6); never a code, a date of birth, an email
@@ -470,8 +481,11 @@ _REVOKE_INVITATION = text(
     "UPDATE admin.portal_invitation SET revoked_at = now(), updated_at = now(), "
     "updated_by_user_id = :user WHERE id = :id AND patient_id = :patient AND used_at IS NULL "
     "AND revoked_at IS NULL RETURNING id")
-_INVITATION_EXISTS = text(
-    "SELECT 1 FROM admin.portal_invitation WHERE id = :id AND patient_id = :patient")
+_INVITATION_STATE = text(
+    "SELECT used_at IS NOT NULL AS used FROM admin.portal_invitation "
+    "WHERE id = :id AND patient_id = :patient")
+_ACCOUNT_STATE = text("SELECT status FROM admin.portal_account WHERE patient_id = :patient "
+                      "AND status IN ('pending-setup', 'active')")
 
 
 @dataclass(frozen=True)
@@ -483,15 +497,23 @@ class IssuedInvitation:
 
 async def issue_invitation(db: AsyncSession, settings: Settings, patient_id: UUID,
                            user_id: UUID) -> IssuedInvitation:
-    """In the staff request's tenant session (tenant_db): revoke the patient's open invitation,
-    if any, and make a new one (one open per patient, §3). The caller has checked the chart and
-    commits."""
+    """For createPortalInvitation (x-owner Vimal), in the staff request's tenant session
+    (tenant_db): revoke the patient's open invitation, if any, and make a new one (one open per
+    patient, §3). 409 `invalid-state-transition` if the chart already has a live account. The
+    caller has checked the chart (ensure_chart_access, not merged), audits and commits; the code
+    is in the response only, never logged."""
     key = _secret(settings.portal_invitation_secret, "PORTAL_INVITATION_SECRET")
+    tenant_id = db.info.get(TENANT_ID_INFO_KEY)
+    if not isinstance(tenant_id, UUID):
+        raise RuntimeError("issue_invitation needs a clinic session (tenant_db)")
+    account = (await db.execute(_ACCOUNT_STATE, {"patient": patient_id})).scalar_one_or_none()
+    if account is not None:
+        raise Conflict("This patient already has a portal account", currentState=account)
     code = new_code()
     invitation_id = uuid4()
     await db.execute(_OPEN_INVITATIONS, {"patient": patient_id, "user": user_id})
     expires = (await db.execute(_NEW_INVITATION, {
-        "id": invitation_id, "tenant": None, "patient": patient_id,
+        "id": invitation_id, "tenant": tenant_id, "patient": patient_id,
         "hmac": code_hmac(key, normalize_code(code) or ""), "user": user_id,
         "hours": INVITATION_HOURS})).scalar_one()
     return IssuedInvitation(invitation_id, code, expires)
@@ -499,13 +521,19 @@ async def issue_invitation(db: AsyncSession, settings: Settings, patient_id: UUI
 
 async def revoke_invitation(db: AsyncSession, patient_id: UUID, invitation_id: UUID,
                             user_id: UUID) -> None:
-    """404 for an invitation that isn't this patient's; nothing changes for one already used or
-    revoked (the call is safe to repeat)."""
+    """For revokePortalInvitation (x-owner Vimal): 404 for an invitation that isn't this
+    patient's, 409 for one already used; one already revoked or expired stays as it is (safe to
+    repeat)."""
     revoked = (await db.execute(_REVOKE_INVITATION, {"id": invitation_id, "patient": patient_id,
                                                      "user": user_id})).first()
-    if revoked is None and (await db.execute(_INVITATION_EXISTS, {
-            "id": invitation_id, "patient": patient_id})).first() is None:
+    if revoked is not None:
+        return
+    state = (await db.execute(_INVITATION_STATE, {"id": invitation_id, "patient": patient_id})
+             ).one_or_none()
+    if state is None:
         raise NotFound()
+    if state.used:
+        raise Conflict("This invitation was already used", currentState="used")
 
 
 # ---------------------------------------------------------------------------- enrolment
@@ -542,8 +570,9 @@ class EnrollmentGuard:
         while window and window[0] <= now - ENROLLMENT_WINDOW_SECONDS:
             window.popleft()
         if len(window) >= self._limit:
-            raise RateLimited("Too many attempts; try again later",
-                              retry_after=int(window[0] + ENROLLMENT_WINDOW_SECONDS - now) + 1)
+            wait = int(window[0] + ENROLLMENT_WINDOW_SECONDS - now) + 1
+            raise TooManyEnrollments("Too many attempts; try again later",
+                                     headers={"Retry-After": str(wait)})
         window.append(now)
         if len(self._attempts) > 10_000:
             self._attempts.pop(next(iter(self._attempts)))
@@ -632,8 +661,9 @@ async def audit_refused_enrollment(request: Request) -> None:
     db: Database | None = request.app.state.db
     if db is None:
         return
-    row = security_row(request, None, None, "create", "portal-account", None,  # type: ignore[arg-type]
-                       outcome="failure", reason="enrolment-refused")
+    # A clinic-less row may only be a security event, `login` or `access-denied` (A47, 0005).
+    row = security_row(request, None, None, "access-denied", "portal-invitation", None,
+                       outcome="denied", reason="enrolment-refused")
     row["actor_type"] = "anonymous"
     try:
         async with db.sessions() as s:
@@ -656,5 +686,9 @@ def register(app: FastAPI, settings: Settings) -> None:
     if settings.portal_client_secret or settings.portal_admin_client_secret:
         _secret(settings.portal_session_secret, "PORTAL_SESSION_SECRET")
         _secret(settings.portal_invitation_secret, "PORTAL_INVITATION_SECRET")
+    app.state.portal_db = (Database(settings, settings.portal_database_url)
+                           if settings.portal_database_url else None)
+    if app.state.portal_db is not None:
+        on_shutdown(app, app.state.portal_db.dispose)
     app.state.portal_login_states = LoginStates()
     app.state.enrollment_guard = EnrollmentGuard(settings.portal_enrollment_ip_limit)
