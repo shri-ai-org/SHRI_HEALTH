@@ -28,3 +28,12 @@ for that owner instead of editing it.
 - Never edit frontend/src/api/generated/ by hand.
 - Never run npx, npm install, pip install, uv pip install or uvx for a package that is not already in a project lockfile. New dependencies are added only through a pull request that changes the lockfile, follows the 7-day rule, and is reviewed by that folder's owner; Python dependencies go through pyproject.toml plus regenerated hashed locks (backend/README.md).
 - Only add dependencies and tools under an allowed licence (DECISIONS.md D75); anything else needs a recorded exception first.
+
+## GitHub Actions minutes
+Actions minutes are limited (D74 amendment, D106):
+- run lint, the type check, the tests and gitleaks locally before every push;
+- batch pushes, one per review round;
+- keep PRs as drafts until ready, since drafts don't run CI;
+- re-run only a failed job, after fixing its cause;
+- don't close and reopen PRs to trigger CI;
+- rebase only right before merging.
