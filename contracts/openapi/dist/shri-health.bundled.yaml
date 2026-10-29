@@ -954,7 +954,7 @@ paths:
     get:
       operationId: createDownloadUrl
       summary: Get a download link
-      description: 'A short-lived, audited link to a clean file (inventory #150; API_STANDARDS §15). Besides `files:read`, the caller needs the read permission mapped to the file''s purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient''s files need a break-glass grant or care-team membership. A purpose with no mapping is denied. Audited as an export.'
+      description: 'A one-time, audited link to a clean file (inventory #150; API_STANDARDS §15; D105). Besides `files:read`, the caller needs the read permission mapped to the file''s purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient''s files need a break-glass grant or care-team membership. A purpose with no mapping is denied. The link points at `GET /files/{fileId}/content` on our own API, with a token bound to this user and this file, valid for about one minute and accepted once. Files are encrypted at rest, so the link never points into the object store. Audited as an export, and the download itself is audited again. Naming the file''s patient on this audit row comes with the file service reporting it (#145; Still open Q34, required before the pilot).'
       tags:
         - files
       x-owner: anand
@@ -966,7 +966,7 @@ paths:
       x-release: P0
       responses:
         '200':
-          description: The download link, valid for at most 5 minutes.
+          description: 'The download link: for this user only, valid for about one minute, accepted once.'
           headers:
             X-Request-ID:
               $ref: '#/components/headers/XRequestId'
@@ -984,7 +984,7 @@ paths:
                 link:
                   summary: Download link
                   value:
-                    url: https://files.company-domain.invalid/clean/TEST-download-1
+                    url: https://app.company-domain.invalid/api/v1/files/7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f/content?token=TEST-download-token-0000000000000000000001
                     expiresAt: '2035-01-01T14:35:00Z'
                     contentType: image/jpeg
                     sizeBytes: 348211
@@ -1009,6 +1009,94 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /files/{fileId}/content:
+    parameters:
+      - name: fileId
+        in: path
+        required: true
+        description: File ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: downloadFileContent
+      summary: Download a file
+      description: 'Where a download link points (D105): our own API, never the object store, because files are encrypted at rest. The token was issued, with the permission and chart checks, by the operation that gave out the link (`GET /files/{fileId}/download-url`, or a module''s own link such as the after-visit summary''s). **The token is not enough on its own:** the request must also carry the session of the same user it was issued to (the browser sends the session cookie with the link). Core checks that the token is for this user and this file, has not expired (about one minute) and has not been used: it is accepted once. **Every invalid, expired, reused or other-user token gets the same `404`**, so a token can''t be probed; the screen asks for a new link. The API then decrypts the file as it streams it, with `Content-Disposition: attachment`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. **The query string is never logged on this route**, neither by nginx nor by the API, and the token never appears in events or audit rows. Every download is audited as an export, naming the file''s patient (`x-audit` `patient: result`; none for an unattached upload). The token is the one query parameter the credentials-in-URL lint rule allows, and only on this operation (CONTRACT_GOVERNANCE §5).'
+      tags:
+        - files
+      x-owner: anand
+      x-permission: authenticated
+      x-audit:
+        action: R
+        category: export
+        patient: result
+      x-storage: files
+      x-release: P0
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: 'The one-time download token from the link. Not enough on its own: the same user''s session must come with it. Never logged; on this route the query string is dropped from nginx and API logs.'
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9_-]{32,512}$
+            minLength: 32
+            maxLength: 512
+          x-phi: none
+      responses:
+        '200':
+          description: The file's bytes, decrypted, with its own media type.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            Content-Disposition:
+              description: Always `attachment`, with a file name made from the purpose and the file ID, never from patient data or the uploader's file name.
+              schema:
+                type: string
+                maxLength: 200
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+            Referrer-Policy:
+              description: Always `no-referrer`, so the link and its token are never sent on as a Referer.
+              schema:
+                type: string
+                const: no-referrer
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+                maxLength: 2147483648
+                description: The file. Its real media type is in `Content-Type` (the file's own, as in the download link).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: '401. `unauthenticated` (no valid session: the token alone is never enough); `session-expired` (the session ended).'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (no signed-in staff user).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: '404. `not-found` (no such file in this clinic, or the token is invalid, expired, already used, another user''s or for another file: always the same answer).'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the file is no longer `clean`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (`token` is missing, or doesn't match its pattern). A well-formed token that core refuses is `404`.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (the file can't be decrypted right now, because the key service or the object store is unavailable).
   /patients/search:
     post:
       operationId: searchPatients
@@ -4214,9 +4302,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
           description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
-        '404':
-          $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (a facility the user is not assigned to).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -4306,7 +4391,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+          description: 404. `not-found` (no such pre-registration in this clinic).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -4427,16 +4512,16 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `pre-registrations:accept`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: '403. `permission-denied` (the role lacks `pre-registrations:accept`); `break-glass-required` (linking: `patientId` names a restricted chart and the user holds no break-glass grant and is not on the care team, D37); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+          description: 404. `not-found` (no such pre-registration in this clinic).
         '409':
           $ref: '#/components/responses/Conflict'
           description: '409. `possible-duplicate` (similar patients exist: review them, then link or override); `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`); `patient-merged` (the patient to link was merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: '422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`); `business-rule-violation` (`errors` names `/patientId` with `invalid-reference`: no such patient in this clinic); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -4547,7 +4632,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `pre-registrations:reject`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+          description: 404. `not-found` (no such pre-registration in this clinic).
         '409':
           $ref: '#/components/responses/Conflict'
           description: 409. `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`).
@@ -6747,7 +6832,7 @@ paths:
     patch:
       operationId: updateEncounter
       summary: Edit an encounter
-      description: 'Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error` (inventory #64). Status changes only through actions.'
+      description: 'Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error` (inventory #64). Status changes only through actions. MA and RN hold `encounters:update` for rooming and may change only `reasons` (the reason for visit, recorded at rooming, #114); a request from them that changes anything else is `403 permission-denied`. MD and APP may change every field here. The role matrix row lands with core''s change (NOTE_FOR_THULASI T52), and it is a clinical row (‡, Q21).'
       tags:
         - encounters
       x-owner: vimal
@@ -6870,7 +6955,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `encounters:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+          description: 403. `permission-denied` (the role lacks `encounters:update`, or an MA or RN changes a field other than `reasons`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
@@ -20797,7 +20882,7 @@ paths:
     post:
       operationId: submitPreRegistration
       summary: Pre-register as a new patient
-      description: 'The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice''s own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).'
+      description: 'The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice''s own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81). The checks run in this order, and the first that fails answers: the `Origin` (403 `csrf-check-failed`), the rate limit (429), the ALTCHA bot check (422, `errors` names `/botCheck`), then the body''s fields (422 `validation-failed`). A body that is not JSON at all is refused before any of them, with 400 `malformed-request`.'
       tags:
         - portal
       x-owner: vimal
@@ -20883,6 +20968,55 @@ paths:
       x-idempotency: required
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+  /portal/bot-challenge:
+    get:
+      operationId: getBotChallenge
+      summary: Get a bot-check challenge
+      description: 'A fresh proof-of-work challenge for the ALTCHA widget on the public pre-registration form (D96; ALTCHA is MIT and self-hosted). Public: no session and no practice code, so it can''t be used to test practice codes, and it says nothing about any person. The salt carries an expiry a few minutes ahead (`?expires=`, Unix seconds) and the signature (an HMAC with a key only the server holds) covers it, so a challenge can''t be made up or stretched. The form solves it in the browser and sends the solution as `botCheck` with `POST /portal/practices/{practiceLinkId}/pre-registrations`. **Each solved challenge is accepted only once:** core records it when a submission uses it and refuses it after that, until it expires (Thulasi). `Cache-Control: no-store`, so no cache hands one challenge to two visitors. Rate-limited per IP. Not audited: no session and no person. Nothing is stored in the database: core keeps the used challenges in the API''s memory until they expire (one API process).'
+      tags:
+        - portal
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: R
+        category: none
+        actor: anonymous
+      x-release: P1
+      security: []
+      responses:
+        '200':
+          description: A new challenge, valid until the expiry in its salt.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BotChallenge'
+              examples:
+                challenge:
+                  summary: A challenge (synthetic values)
+                  value:
+                    algorithm: SHA-256
+                    challenge: '0000000000000000000000000000000000000000000000000000000000000001'
+                    maxnumber: 100000
+                    salt: TEST-salt-1?expires=2051222400
+                    signature: '0000000000000000000000000000000000000000000000000000000000000002'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (the server can't sign challenges right now, for example its key is unavailable).
 components:
   schemas:
     Address:
@@ -21786,7 +21920,7 @@ components:
           description: When the link stops working.
           x-phi: none
     DownloadLink:
-      description: A short-lived link to a clean file.
+      description: A one-time link to a clean file (D105).
       type: object
       required:
         - url
@@ -21797,7 +21931,7 @@ components:
           type: string
           format: uri
           maxLength: 2000
-          description: 'Pre-signed download link, valid for at most 5 minutes. A bearer secret: never log or store it.'
+          description: 'A link to `GET /files/{fileId}/content` on our own API with a one-time token: for this user and this file only, and only with their session; valid for about one minute, accepted once (D105). A bearer secret: never log or store it.'
           x-phi: none
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
@@ -23797,7 +23931,7 @@ components:
           type: string
           enum:
             - already-undone
-            - records-changed
+            - later-merge
           description: 'Why undo is not allowed, when `undoAllowed` is false: `already-undone` or `later-merge` (a later merge involving either patient still stands).'
           x-phi: none
     PatientMergeList:
@@ -26698,7 +26832,7 @@ components:
           type: string
           format: uri
           maxLength: 2000
-          description: The download link. Short-lived; never logged.
+          description: 'A one-time link to `GET /files/{fileId}/content` (D105): for this user only, valid for about one minute, accepted once. Never logged.'
           x-phi: none
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
@@ -28267,11 +28401,11 @@ components:
           x-phi: none
         facilityIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 50
           items:
             $ref: '#/components/schemas/Id'
-          description: Facilities where the provider works (one PractitionerRole each).
+          description: Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such a provider.
           x-phi: internal-id
         phone:
           $ref: '#/components/schemas/PhoneNumber'
@@ -28354,11 +28488,11 @@ components:
           x-phi: none
         facilityIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 50
           items:
             $ref: '#/components/schemas/Id'
-          description: Facilities where the provider works (one PractitionerRole each).
+          description: Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such a provider.
           x-phi: internal-id
         phone:
           $ref: '#/components/schemas/PhoneNumber'
@@ -28408,11 +28542,11 @@ components:
           x-phi: none
         facilityIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 50
           items:
             $ref: '#/components/schemas/Id'
-          description: Facilities where the provider works (one PractitionerRole each).
+          description: Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such a provider.
           x-phi: internal-id
         phone:
           $ref: '#/components/schemas/PhoneNumber'
@@ -32399,7 +32533,47 @@ components:
         botCheck:
           type: string
           maxLength: 4000
-          description: The proof-of-work answer from the form's ALTCHA widget (MIT, self-hosted), checked by the server; nothing about the visitor goes to anyone else.
+          description: The solved challenge from the form's ALTCHA widget (MIT, self-hosted), for a challenge from `GET /portal/bot-challenge`. Checked by the server, and accepted only once; nothing about the visitor goes to anyone else.
+          x-phi: none
+    BotChallenge:
+      description: An ALTCHA proof-of-work challenge (D96). Nothing about a person. The browser finds the number, up to `maxnumber`, whose hash with the salt matches `challenge`, and sends the result as `botCheck`.
+      type: object
+      required:
+        - algorithm
+        - challenge
+        - maxnumber
+        - salt
+        - signature
+      properties:
+        algorithm:
+          type: string
+          enum:
+            - SHA-256
+          description: The hash function.
+          x-phi: none
+        challenge:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          maxLength: 64
+          description: The hash to find, in lowercase hex.
+          x-phi: none
+        maxnumber:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 10000000
+          description: The largest number the search may need; sets how much work the browser does.
+          x-phi: none
+        salt:
+          type: string
+          maxLength: 200
+          description: Random salt that carries the challenge's expiry, a few minutes ahead (`?expires=`, Unix seconds).
+          x-phi: none
+        signature:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          maxLength: 64
+          description: The server's HMAC over the challenge, in lowercase hex. Only the server can check it.
           x-phi: none
   parameters:
     Cursor:

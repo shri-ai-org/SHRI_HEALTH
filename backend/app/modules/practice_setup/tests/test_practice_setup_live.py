@@ -1,6 +1,7 @@
-"""The six practice-setup lists against a live database, as shri_app, with nothing replaced but
-the sign-in: core's tenant_db (row-level security, the `facilityId` check, audit) and the real
-reads (repository.py). Each test gets two fresh clinics and its own platform payers. Runs where
+"""The six practice-setup lists and the note-template reads against a live database, as
+shri_app, with nothing replaced but the sign-in: core's tenant_db (row-level security, the
+`facilityId` check, audit) and the real reads (repository.py). Each test gets two fresh clinics
+and its own platform payers. Runs where
 ``TEST_DATABASE_URL`` is set. Synthetic data only.
 """
 
@@ -217,22 +218,30 @@ def world(engines: tuple[Engine, Engine]) -> dict[str, Any]:
               _payer(admin, f"Live {tag} Retired Plan", f"R{tag}", active=False)]
     return {"tag": tag, "payers": payers,
             "a": _clinic(admin, app_engine, tag, payers[:2]),
-            # Another clearinghouse in clinic B: see test_two_clinics_enroll_with_the_same_payer.
             "b": _clinic(admin, app_engine, tag, payers[:1], clearinghouse="availity")}
 
 
-@pytest.fixture
-def client(world: dict[str, Any]) -> Iterator[Any]:
-    """One app per test on the test database as shri_app. Only the sign-in is replaced: an ADM,
-    a front-desk user and an MD in clinic A, and an ADM in clinic B, each assigned to all of
-    their clinic's facilities."""
-    def user(clinic: dict[str, Any], roles: set[str]) -> CurrentUser:
-        return CurrentUser(id=clinic["user"], organization_id=clinic["tenant"],
-                           roles=frozenset(roles), facility_ids=frozenset(clinic["facilities"]),
-                           display_name="Live test user")
+def _signed_in(clinic: dict[str, Any], roles: set[str], user_id: UUID | None = None
+               ) -> CurrentUser:
+    return CurrentUser(id=user_id or clinic["user"], organization_id=clinic["tenant"],
+                       roles=frozenset(roles), facility_ids=frozenset(clinic["facilities"]),
+                       display_name="Live test user")
 
-    users = {"adm": user(world["a"], {"ADM"}), "fd": user(world["a"], {"FD"}),
-             "md": user(world["a"], {"MD"}), "adm-b": user(world["b"], {"ADM"})}
+
+@pytest.fixture
+def users(world: dict[str, Any]) -> dict[str, CurrentUser]:
+    """The sign-ins: an ADM, front-desk, MD, CO and biller in clinic A (one app user) and an ADM
+    in clinic B, each assigned to all of their clinic's facilities. A fixture may add more."""
+    a = world["a"]
+    return {"adm": _signed_in(a, {"ADM"}), "fd": _signed_in(a, {"FD"}),
+            "md": _signed_in(a, {"MD"}), "co": _signed_in(a, {"CO"}),
+            "bil": _signed_in(a, {"BIL"}), "adm-b": _signed_in(world["b"], {"ADM"})}
+
+
+@pytest.fixture
+def client(users: dict[str, CurrentUser]) -> Iterator[Any]:
+    """One app per test on the test database as shri_app. Only the sign-in is replaced, by
+    `users`."""
     app: FastAPI = create_app(Settings(environment="test", auth_mode="dev_header",
                                        database_url=TEST_DATABASE_URL))
     switch_to_role(app.state.db.engine.sync_engine, "shri_app")
@@ -320,10 +329,6 @@ def test_permissions(client: Any) -> None:
     assert client("md").get("/api/v1/payers").status_code == 403
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "admin.payer_enrollment's unique key (payer_id, practitioner_id, transaction, "
-    "clearinghouse) has no tenant_id, so a second clinic cannot record the same practice-wide "
-    "enrollment with a platform payer (backend/app/db, a migration)"))
 def test_two_clinics_enroll_with_the_same_payer(world: dict[str, Any],
                                                 engines: tuple[Engine, Engine]) -> None:
     _, app_engine = engines
@@ -511,3 +516,178 @@ def test_provider_paging_is_stable_when_rows_are_inserted(
 
     seen = _walk(client, "adm", "/api/v1/providers", 2, between=insert)
     assert seen == [str(i) for i in sorted(a["providers"])] + [str(added["new"])]
+
+
+# ----------------------------------------------------------------------------------- templates
+TEMPLATES = "/api/v1/note-templates"
+
+
+def _template(db: Session, code: str, name: str, sections: list[tuple[int, str, str]], *,
+              owner: UUID | None = None, active: bool = True) -> Any:
+    template = M["note_template"](code=code, name=name, specialty_code="207R00000X",
+                                  note_type_loinc="11506-3", owner_user_id=owner,
+                                  is_active=active)
+    db.add(template)
+    db.flush()
+    for sequence, section_code, title in sections:
+        db.add(M["note_template_section"](
+            template_id=template.id, sequence=sequence, section_code=section_code, title=title,
+            is_required=sequence == 1,
+            default_text="Test starting text." if sequence == 1 else None))
+    db.flush()
+    return template
+
+
+@pytest.fixture
+def templates(world: dict[str, Any], engines: tuple[Engine, Engine],
+              users: dict[str, CurrentUser]) -> dict[str, Any]:
+    """Clinic A: a practice template (its sections added out of order, then renamed, so at
+    version 2), the clinic user's personal template, an inactive one, and a second MD
+    (`md-2`, another app user) with a personal template of their own; clinic B: one template
+    with the same code as A's."""
+    _, app_engine = engines
+    out: dict[str, Any] = {}
+    db = open_session(app_engine, world["a"]["tenant"])
+    try:
+        follow_up = _template(db, "IM-FOLLOWUP", "Internal medicine visit",
+                              [(3, "18776-5", "Plan"), (1, "10164-2", "History of present illness"),
+                               (2, "51848-0", "Assessment")])
+        db.commit()
+        follow_up.name = "Internal medicine follow-up"  # an UPDATE: the trigger bumps version
+        db.commit()
+        personal = _template(db, "MY-NOTE", "My follow-up", [(1, "10164-2", "HPI")],
+                             owner=world["a"]["user"])
+        retired = _template(db, "OLD", "Retired template", [(1, "10164-2", "HPI")],
+                            active=False)
+        second = b.practitioner(db, "Okafor", "Test")["user"]
+        db.flush()
+        theirs = _template(db, "MY-NOTE-2", "Second MD note", [(1, "10164-2", "HPI")],
+                           owner=second.id)
+        db.commit()
+        users["md-2"] = _signed_in(world["a"], {"MD"}, second.id)
+        out["a"] = [follow_up.id, personal.id, retired.id]  # what the first user sees, by name
+        out["follow_up"], out["personal"] = follow_up.id, personal.id
+        out["second_user"], out["theirs"] = second.id, theirs.id
+    finally:
+        db.close()
+    db = open_session(app_engine, world["b"]["tenant"])
+    try:
+        other = _template(db, "IM-FOLLOWUP", "Other clinic follow-up", [(1, "10164-2", "HPI")])
+        db.commit()
+        out["b"] = [other.id]
+    finally:
+        db.close()
+    return out
+
+
+def test_note_templates_show_only_their_clinics(client: Any, templates: dict[str, Any]) -> None:
+    mine = [t["id"] for t in _get(client, "adm", TEMPLATES)["items"]]
+    theirs = [t["id"] for t in _get(client, "adm-b", TEMPLATES)["items"]]
+    assert mine == [str(i) for i in templates["a"]]  # by name
+    assert theirs == [str(i) for i in templates["b"]]
+    for template_id in (templates["b"][0], uuid.uuid4()):
+        response = client("md").get(f"{TEMPLATES}/{template_id}")
+        assert response.status_code == 404, response.text
+        assert response.json()["code"] == "not-found"
+    assert client("adm-b").get(f"{TEMPLATES}/{templates['b'][0]}").status_code == 200
+    assert client("adm-b").get(f"{TEMPLATES}/{templates['follow_up']}").status_code == 404
+
+
+def test_a_note_template_with_its_sections_and_etag(client: Any, world: dict[str, Any],
+                                                    templates: dict[str, Any]) -> None:
+    response = client("md").get(f"{TEMPLATES}/{templates['follow_up']}")
+    assert response.status_code == 200, response.text
+    assert response.headers["ETag"] == '"2"'
+    body = response.json()
+    assert {k: v for k, v in body.items() if k not in ("createdAt", "updatedAt")} == {
+        "id": str(templates["follow_up"]), "code": "IM-FOLLOWUP", "version": 2,
+        "name": "Internal medicine follow-up", "specialtyCode": "207R00000X",
+        "noteTypeLoinc": "11506-3", "personal": False, "active": True,
+        "sections": [
+            {"sequence": 1, "sectionCode": "10164-2", "title": "History of present illness",
+             "defaultText": "Test starting text.", "required": True},
+            {"sequence": 2, "sectionCode": "51848-0", "title": "Assessment", "required": False},
+            {"sequence": 3, "sectionCode": "18776-5", "title": "Plan", "required": False}],
+    }
+    assert body["createdAt"].endswith("Z") and body["updatedAt"] >= body["createdAt"]
+    listed = {t["id"]: t for t in _get(client, "md", TEMPLATES)["items"]}
+    assert listed[str(templates["follow_up"])] == body
+    personal = listed[str(templates["personal"])]
+    assert (personal["personal"], personal["ownerUserId"]) == (True, str(world["a"]["user"]))
+    assert [s["title"] for s in personal["sections"]] == ["HPI"]
+
+
+def test_note_template_reads_are_audited(client: Any, world: dict[str, Any],
+                                         templates: dict[str, Any],
+                                         engines: tuple[Engine, Engine]) -> None:
+    admin, _ = engines
+    template_id = str(templates["follow_up"])
+    assert client("co").get(f"{TEMPLATES}/{template_id}").status_code == 200
+    assert client("co").get(TEMPLATES).status_code == 200
+    with admin.connect() as c:
+        rows = c.execute(text(
+            "SELECT entity_type, entity_id, action, category FROM audit.audit_event "
+            "WHERE tenant_id = :t AND entity_type = 'note-templates' ORDER BY id"),
+            {"t": world["a"]["tenant"]}).all()
+    assert [(r.entity_type, r.entity_id, r.action, r.category) for r in rows] == [
+        ("note-templates", template_id, "read", "admin"),
+        ("note-templates", None, "read", "admin")]
+
+
+def test_note_template_permissions(client: Any, templates: dict[str, Any]) -> None:
+    one = f"{TEMPLATES}/{templates['follow_up']}"
+    for user in ("md", "co", "adm"):
+        assert client(user).get(TEMPLATES).status_code == 200
+        assert client(user).get(one).status_code == 200
+    for user in ("fd", "bil"):
+        assert client(user).get(TEMPLATES).status_code == 403
+        assert client(user).get(one).status_code == 403
+
+
+def test_note_template_filters(client: Any, world: dict[str, Any],
+                               templates: dict[str, Any]) -> None:
+    def ids(**params: Any) -> list[str]:
+        return [t["id"] for t in _get(client, "md", TEMPLATES, **params)["items"]]
+
+    assert ids(ownerUserId=str(world["a"]["user"])) == [str(templates["personal"])]
+    assert ids(ownerUserId=str(world["b"]["user"])) == []
+    assert ids(ownerUserId=str(templates["second_user"])) == []  # someone else's: empty page
+    assert ids(active="false") == [str(templates["a"][2])]
+    assert ids(active="true") == [str(i) for i in templates["a"][:2]]
+
+
+def test_note_template_paging_walks_every_row_once(
+        client: Any, world: dict[str, Any], templates: dict[str, Any],
+        engines: tuple[Engine, Engine]) -> None:
+    for limit in (1, 2):
+        assert _walk(client, "md", TEMPLATES, limit) == [str(i) for i in templates["a"]]
+    _, app_engine = engines
+    added: dict[str, UUID] = {}
+
+    def insert() -> None:
+        db = open_session(app_engine, world["a"]["tenant"])
+        added["before"] = _template(db, "AAA", "Aardvark template", [(1, "10164-2", "HPI")]).id
+        added["after"] = _template(db, "ZZZ", "Zebra template", [(1, "10164-2", "HPI")]).id
+        db.commit()
+        db.close()
+
+    seen = _walk(client, "md", TEMPLATES, 1, between=insert)
+    assert seen == [str(i) for i in templates["a"]] + [str(added["after"])]
+
+
+def test_each_user_sees_shared_templates_and_only_their_own(
+        client: Any, world: dict[str, Any], templates: dict[str, Any]) -> None:
+    follow_up, mine, retired = (str(i) for i in templates["a"])
+    theirs = str(templates["theirs"])
+    first = [t["id"] for t in _get(client, "md", TEMPLATES)["items"]]
+    second = [t["id"] for t in _get(client, "md-2", TEMPLATES)["items"]]
+    assert first == [follow_up, mine, retired]
+    assert second == [follow_up, retired, theirs]  # by name: "Second MD note" sorts after
+    for user, other in (("md", theirs), ("md-2", mine)):
+        response = client(user).get(f"{TEMPLATES}/{other}")
+        assert response.status_code == 404, response.text
+        assert response.json()["code"] == "not-found"
+    own = _get(client, "md-2", f"{TEMPLATES}/{theirs}")
+    assert (own["personal"], own["ownerUserId"]) == (True, str(templates["second_user"]))
+    assert [t["id"] for t in _get(client, "md-2", TEMPLATES,
+                                  ownerUserId=str(world["a"]["user"]))["items"]] == []

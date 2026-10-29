@@ -7,7 +7,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "bundle": "REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_UPDATE_NOTICE=true redocly bundle openapi/shri-health.yaml --output openapi/dist/shri-health.bundled.yaml",
+    "bundle": "REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_UPDATE_NOTICE=true redocly bundle openapi/shri-health.yaml --output openapi/dist/shri-health.bundled.yaml && node scripts/operations-map.mjs",
+    "check:operations": "node scripts/operations-map.mjs --check",
     "check:bundle-fresh": "npm run bundle && git diff --exit-code -- openapi/dist/",
     "check:layout": "node scripts/check-layout.mjs",
     "validate": "REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_UPDATE_NOTICE=true redocly lint openapi/dist/shri-health.bundled.yaml --config openapi/redocly.yaml",
@@ -18,9 +19,10 @@
     "links": "node scripts/check-links.mjs",
     "test:links": "node --test tests/check-links.test.mjs",
     "test:examples": "node --test tests/example-dates.test.mjs",
+    "test:rules": "node --test tests/no-credentials-in-url.test.mjs",
     "test:yaml": "node scripts/yaml-io.mjs",
     "matrix": "python3 scripts/role_matrix.py",
-    "test": "npm run lint && npm run lint:fixtures && npm run test:yaml && npm run test:examples && npm run test:links && npm run links",
+    "test": "npm run lint && npm run lint:fixtures && npm run test:yaml && npm run test:examples && npm run test:rules && npm run test:links && npm run links",
     "mock:sample": "node scripts/build-sample.mjs && node scripts/mock.mjs tests/.tmp/sample.bundled.yaml"
   },
   "devDependencies": {

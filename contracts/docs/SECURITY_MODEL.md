@@ -21,7 +21,7 @@ Every operation's `x-permission` puts it in exactly one class.
 
 | Class | `x-permission` value | Who can call | Examples |
 |---|---|---|---|
-| Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready`; the portal's `GET /portal/auth/login`, `GET /portal/auth/callback` and `POST /portal/enrollments` (ADR-0013 §3, §5); the public pre-registration form `POST /portal/practices/{practiceLinkId}/pre-registrations` (D96; the clinic from the practice's link, `Origin`, rate limits and a bot check; lint allowlist `shri-public-allowlist`) |
+| Public | `public` | Anyone; no session | `GET /auth/login`, `GET /auth/callback`, `GET /health`, `GET /ready`; the portal's `GET /portal/auth/login`, `GET /portal/auth/callback` and `POST /portal/enrollments` (ADR-0013 §3, §5); the public pre-registration form `POST /portal/practices/{practiceLinkId}/pre-registrations` and its bot-check challenge `GET /portal/bot-challenge` (D96; the clinic from the practice's link, `Origin`, rate limits and a bot check whose solved challenge is accepted once; the challenge needs no practice code; lint allowlist `shri-public-allowlist`) |
 | Authenticated | `authenticated` | Any logged-in user, acting on their own data | `GET /me`, `GET /auth/session`, `POST /auth/logout`, `GET /events/stream`, `GET /operations/{operationId}`; with the portal cookie, `GET /portal/auth/session`, `POST /portal/auth/refresh`, `POST /portal/auth/logout` |
 | Permission | `<resource>:<action>` | Users whose roles include that permission | Almost every endpoint |
 | Partner | `partner-signed` | A partner whose request signature verifies | `POST /hooks/clearinghouse`; Keycloak's `POST /hooks/keycloak/backchannel-logout`, whose signed `logout_token` is the authentication (D94) |
@@ -138,7 +138,7 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | Orders and results (Thulasi) | `lab-compendium:read`, `orders:read`, `orders:create`, `orders:medical-necessity-check`, `orders:sign-and-send`, `orders:cancel`, `orders:entered-in-error` (T13), `results:read`, `results:acknowledge`, `unmatched-results:read`, `unmatched-results:match`, `unmatched-results:reject` (T13/T34), `in-office-results:create` |
 | Files, setup, billing, documents (Anand) | `files:create`, `files:read`, `practice-setup:read\|create\|update`, `payers:read` (payer directory, read-only; added 2026-10-23), `lab-providers:read` (lab providers, read-only; D48), `consent-requirements:read` (D59), `provider-schedules:create\|update` (D66), `note-templates:read\|create-personal` (D73, A46), `onboarding:import`, `superbills:read\|update`, `claims:read\|create\|scrub\|submit\|status-check\|correct\|void`, `payments:create`, `payments:card-session`, `remittances:read\|post`, `billing-reports:read`, `documents:read\|create\|update`, `faxes:create`, `fax-inbox:read`, `fax-inbox:file`, `ccda:import`, `ccda:export`, `inbox:read\|update\|complete`, `messages:create`, `exports:read\|create` |
 | Communications and dashboard (Minalini) | `message-templates:read\|create\|update`, `communication-preferences:read\|update`, `communications:read`, `operations-dashboard:read` |
-| Pre-registration (Vimal, D96) | `pre-registrations:read`, `pre-registrations:accept`, `pre-registrations:reject` (FD, ADM; proposed in NOTE_FOR_THULASI T47, joining §4.3 with core) |
+| Pre-registration (Vimal, D96) | `pre-registrations:read`, `pre-registrations:accept`, `pre-registrations:reject` (FD, ADM; T47, in §4.3 with core since #110) |
 | Patient portal, B8a (Vimal; sign-in, enrollment and factor reset Thulasi; D84, D89) | Role `PAT` only: `portal-profile:read`, `portal-profile:request-change`, `portal-appointments:read\|create\|cancel\|reschedule`, `portal-booking:read`, `portal-records:read`. Staff: `portal-accounts:read`, `portal-invitations:create\|revoke`, `portal-accounts:reset-factors`, `portal-accounts:disable\|enable` (ADM; D92). Proposed grants in NOTE_FOR_THULASI T45; they join §4.3 in the same change as core, as for T42 |
 | Check-out and follow-up (Vimal, D98) | `appointments:check-out` (FD, ADM), `follow-ups:decline` (FD, ADM), `after-visit-summaries:read` (FD, MA, RN, MD, APP, ADM; read the latest after-visit summary to print it). Proposed in NOTE_FOR_THULASI T50; they join §4.3 with core |
 
@@ -179,6 +179,7 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `timeline:read`, `encounters:read`, `notes:read`, `vitals:read`, history `:read` ‡ | – | ✓ | ✓ | ✓ | ✓ | R (signed notes, diagnoses) | – | R (investigations) | – | – |
 | `vitals:create`, `allergies:create\|update` ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
 | ‡ `encounters:create\|update\|close`, `diagnoses:*`, `notes:create\|update\|sign`, `note-addenda:create`, `after-visit-summaries:create`, other history writes | – | – | R (`notes:create\|update\|sign`, `note-addenda:create` for nursing notes; T42) | ✓ | ✓ | – | – | – | – | – |
+| ‡ `encounters:update` (MA and RN: the encounter's `reasons` only, at rooming; anything else is `403 permission-denied`; T52, #129) | – | ✓ | ✓ | – | – | – | – | – | – | – |
 | `notes:cosign` ‡ | – | – | – | ✓ | – | – | – | – | – | – |
 | `*:entered-in-error` (clinical) ‡ | – | – | ✓ (own entries) | ✓ | ✓ | – | – | – | – | – |
 | `encounters:entered-in-error` ‡ | – | – | – | ✓ | ✓ | – | ✓ (only encounters with no signed note) | – | – | – |
@@ -202,6 +203,7 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `duplicates:dismiss` (D46; in core since #7) | – | – | – | – | – | – | ✓ | – | – | – |
 | `lab-providers:read` (D48; in core since #7) | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | – | – |
 | `consent-requirements:read` (D59; in core since #21) | ✓ | – | – | – | – | – | ✓ | R | – | – |
+| `pre-registrations:read`, `pre-registrations:accept`, `pre-registrations:reject` (D96; in core since T47, #110) | ✓ | – | – | – | – | – | ✓ | – | – | – |
 | `provider-schedules:create\|update` (D66: split from `practice-setup:*`; in core since #21) | ✓ | – | – | – | – | – | ✓ | – | – | – |
 | `documents:*`, `fax-inbox:*`, `faxes:create` | ✓ | ✓ | ✓ | ✓ | ✓ | R (`documents:read` only; D71) | – | – | – | – |
 | `ccda:import\|export` | ✓ | – | ✓ | ✓ | ✓ | – | – | – | – | – |
@@ -301,7 +303,7 @@ x-audit:
 | `security` | Login, logout, failed login, permission and CSRF denials, break-glass, restriction changes, role changes | Yes |
 | `ai` | AI requests (metadata only), and accept, edit, reject decisions | Yes (FRS §3.4) |
 | `admin` | Practice setup, AI settings, templates, co-sign rules | Yes |
-| `none` | Only: health checks, code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49) and the portal's (`/portal/booking/*`, `/portal/me/slots`), inbox badge counts (`GET /inbox/summary`, counts only; D77), session reads (`GET /auth/session`, `GET /portal/auth/session`, `/me`, the event stream), and a user's own operations (`GET /operations/{operationId}` and its cancel: IDs and status only) | No |
+| `none` | Only: health checks, the pre-registration form's bot-check challenge (`GET /portal/bot-challenge`, public, nothing about a person; D96), code search, a user's own favorites (`GET /me/favorites`; batch 2 plan Q9), pharmacy directory, payer directory, lab providers, lab compendium, slots, the booking reference lists (D49) and the portal's (`/portal/booking/*`, `/portal/me/slots`), inbox badge counts (`GET /inbox/summary`, counts only; D77), session reads (`GET /auth/session`, `GET /portal/auth/session`, `/me`, the event stream), and a user's own operations (`GET /operations/{operationId}` and its cancel: IDs and status only) | No |
 
 Partner callbacks (`/hooks/*`) carry PHI, so they are audited as `phi-write` with the **partner as actor** (agreed, T37).
 
