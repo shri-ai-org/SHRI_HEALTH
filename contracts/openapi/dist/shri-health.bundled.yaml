@@ -954,7 +954,7 @@ paths:
     get:
       operationId: createDownloadUrl
       summary: Get a download link
-      description: 'A one-time, audited link to a clean file (inventory #150; API_STANDARDS §15; D105). Besides `files:read`, the caller needs the read permission mapped to the file''s purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient''s files need a break-glass grant or care-team membership. A purpose with no mapping is denied. The link points at `GET /files/{fileId}/content` on our own API, with a token bound to this user and this file, valid for about one minute and accepted once. Files are encrypted at rest, so the link never points into the object store. Audited as an export naming the file''s patient (none for an unattached upload), and the download itself is audited again.'
+      description: 'A one-time, audited link to a clean file (inventory #150; API_STANDARDS §15; D105). Besides `files:read`, the caller needs the read permission mapped to the file''s purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient''s files need a break-glass grant or care-team membership. A purpose with no mapping is denied. The link points at `GET /files/{fileId}/content` on our own API, with a token bound to this user and this file, valid for about one minute and accepted once. Files are encrypted at rest, so the link never points into the object store. Audited as an export, and the download itself is audited again. Naming the file''s patient on this audit row comes with the file service reporting it (#145; Still open Q34, required before the pilot).'
       tags:
         - files
       x-owner: anand
@@ -962,7 +962,6 @@ paths:
       x-audit:
         action: R
         category: export
-        patient: result
       x-storage: files
       x-release: P0
       responses:
