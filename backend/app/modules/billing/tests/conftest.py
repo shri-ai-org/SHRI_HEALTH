@@ -1,4 +1,5 @@
-"""An app per test with the in-memory session, repository and file store (fakes.py), and a client
+"""An app per test with the in-memory session, repository and file store (fakes.py), the file
+service's real AES-256-GCM over in-memory data keys, and a client
 per development user (X-Dev-User; core/deps.py). Synthetic data only."""
 
 from collections.abc import Callable, Iterator
@@ -11,7 +12,8 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.deps import CurrentUser, current_user, tenant_db
 from app.main import create_app
-from app.modules.files import storage
+from app.modules.files import crypto, storage
+from app.modules.files.tests.fakes import FakeFileCrypto
 
 from .. import api
 from .fakes import FakeRepository, FakeSession, MemoryFileStore, World
@@ -28,7 +30,12 @@ def store() -> MemoryFileStore:
 
 
 @pytest.fixture
-def app(world: World, store: MemoryFileStore) -> Iterator[FastAPI]:
+def fake_crypto() -> FakeFileCrypto:
+    return FakeFileCrypto()
+
+
+@pytest.fixture
+def app(world: World, store: MemoryFileStore, fake_crypto: FakeFileCrypto) -> Iterator[FastAPI]:
     application = create_app(Settings(environment="test", auth_mode="dev_header"))
 
     async def fake_db(user: CurrentUser = Depends(current_user)) -> FakeSession:
@@ -39,6 +46,7 @@ def app(world: World, store: MemoryFileStore) -> Iterator[FastAPI]:
     application.dependency_overrides[tenant_db] = fake_db
     application.dependency_overrides[api.repository] = lambda: FakeRepository(world)
     application.dependency_overrides[storage.file_store] = lambda: store
+    application.dependency_overrides[crypto.file_crypto] = lambda: fake_crypto
     yield application
     application.dependency_overrides.clear()
 

@@ -1,5 +1,6 @@
-"""createUploadUrl, completeUpload and createDownloadUrl with the in-memory fakes (fakes.py):
-every route's success, permission refusal and main 4xx. test_files_live.py runs them on a real
+"""createUploadUrl, completeUpload, createDownloadUrl and downloadFileContent with the in-memory
+fakes (fakes.py), real AES-256-GCM and core's download tokens: every route's success, permission
+refusal and main 4xx. test_files_live.py runs them on a real
 database. Synthetic data only."""
 
 from __future__ import annotations
@@ -15,21 +16,23 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.core import download_tokens as core_tokens
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS
+from app.core.download_tokens import TTL_SECONDS, DownloadTokens
 
-from .. import crypto, service, tokens
+from .. import crypto, service
 from ..repository import FileRecord
 from ..storage import CLEAN_BUCKET, QUARANTINE_BUCKET
 from .fakes import (
     EICAR,
     JPEG,
     PNG,
-    FakeDownloadTokens,
     FakeFileCrypto,
     FakeOperations,
     FakeScanner,
     MemoryFileStore,
     World,
+    download_tokens,
 )
 
 Client = Callable[[str], TestClient]
@@ -171,7 +174,8 @@ def test_a_clean_upload(as_user: Client, world: World, store: MemoryFileStore,
     assert world.scan_status[file_id] == "clean"
     assert world.wrapped_keys[file_id] == fake_crypto.wrapped[-1]   # only through FileCrypto
     key = f"{CLINIC_A}/{file_id}"
-    assert store.objects[(CLEAN_BUCKET, key)][0] == b"SEALED:" + JPEG  # sealed, never plain
+    stored = store.objects[(CLEAN_BUCKET, key)][0]
+    assert stored.startswith(b"SHF1") and JPEG not in stored  # sealed, never plain
     assert (QUARANTINE_BUCKET, key) not in store.objects
     assert fake_scanner.scanned == [JPEG]
     assert world.sessions[-1].commits == 1
@@ -267,10 +271,22 @@ def test_scanner_down_leaves_the_upload_pending(as_user: Client, world: World,
     assert not fake_operations.events
 
 
-def test_no_encryption_no_clean_file(app: FastAPI, as_user: Client, world: World,
-                                     store: MemoryFileStore) -> None:
-    """Until core's new_data_key(), the real seam refuses: never a clean file in clear."""
-    app.dependency_overrides[crypto.file_crypto] = crypto.file_crypto
+def test_no_data_key_leaves_the_upload_pending(as_user: Client, world: World,
+                                               store: MemoryFileStore,
+                                               fake_crypto: FakeFileCrypto) -> None:
+    fd = as_user("fd")
+    file_id = _uploaded(fd, store)
+    fake_crypto.data_keys.unavailable = True
+    _problem(_complete(fd, file_id), 503, "service-unavailable")
+    assert world.sessions[-1].commits == 0
+    assert (CLEAN_BUCKET, f"{CLINIC_A}/{file_id}") not in store.objects
+
+
+def test_without_the_key_service_no_clean_file(app: FastAPI, as_user: Client, world: World,
+                                               store: MemoryFileStore) -> None:
+    """The real dependency, with OpenBao Transit not configured: core fails closed, and the
+    file service answers 503, never a clean file in clear."""
+    app.dependency_overrides.pop(crypto.file_crypto)
     fd = as_user("fd")
     file_id = _uploaded(fd, store)
     _problem(_complete(fd, file_id), 503, "service-unavailable")
@@ -279,9 +295,8 @@ def test_no_encryption_no_clean_file(app: FastAPI, as_user: Client, world: World
 
 
 # ============================================================================= createDownloadUrl
-def test_an_encrypted_file_links_to_the_decrypting_endpoint(
-        as_user: Client, world: World, store: MemoryFileStore,
-        fake_tokens: FakeDownloadTokens) -> None:
+def test_a_link_to_the_decrypting_endpoint(as_user: Client, store: MemoryFileStore,
+                                           fake_tokens: DownloadTokens) -> None:
     fd = as_user("fd")
     file_id = _uploaded(fd, store)
     assert _complete(fd, file_id).status_code == 202
@@ -292,29 +307,28 @@ def test_an_encrypted_file_links_to_the_decrypting_endpoint(
     assert response.status_code == 200, response.text
     link = response.json()
     url = urlsplit(link["url"])
-    assert url.path == f"/api/v1/files/{file_id}/content"
+    assert url.path == f"/api/v1/files/{file_id}/content" and not url.netloc
     (token,) = parse_qs(url.query)["token"]
-    claims = fake_tokens.issued[token]
+    claims = fake_tokens.verify(token, user_id=DEV_USERS["fd"].id, file_id=file_id,
+                                tenant_id=CLINIC_A)
+    assert claims is not None
     assert (claims.file_id, claims.user_id, claims.tenant_id) == (
         file_id, DEV_USERS["fd"].id, CLINIC_A)
     assert link["contentType"] == "image/jpeg" and link["sizeBytes"] == len(JPEG)
     expires = datetime.fromisoformat(link["expiresAt"])
-    assert expires == claims.expires_at <= before + timedelta(minutes=5, seconds=1)
+    assert expires == claims.expires_at <= before + timedelta(seconds=TTL_SECONDS + 1)
 
 
-def test_a_file_stored_as_it_is_gets_a_store_link(as_user: Client, world: World,
-                                                  store: MemoryFileStore,
-                                                  fake_tokens: FakeDownloadTokens) -> None:
-    receipt = _file(world, store, purpose="receipt", owner="fd")  # no wrapped key
+def test_a_generated_file_links_the_same_way(as_user: Client, world: World,
+                                             store: MemoryFileStore) -> None:
+    receipt = _file(world, store, purpose="receipt", owner="fd")
     link = _download(as_user("fd"), receipt.id).json()
-    assert link["url"] == f"memory://clean/{CLINIC_A}/{receipt.id}?get"
-    assert not fake_tokens.issued
+    assert urlsplit(link["url"]).path == f"/api/v1/files/{receipt.id}/content"
 
 
-def test_no_tokens_no_encrypted_download(app: FastAPI, as_user: Client, store: MemoryFileStore
-                                         ) -> None:
-    """Until core signs download tokens, the real seam refuses (503)."""
-    app.dependency_overrides[tokens.download_tokens] = tokens.download_tokens
+def test_no_tokens_no_download(app: FastAPI, as_user: Client, store: MemoryFileStore) -> None:
+    """Core's own dependency, without a SESSION_SECRET: no link is made (503)."""
+    app.dependency_overrides.pop(core_tokens.download_tokens)
     fd = as_user("fd")
     file_id = _uploaded(fd, store)
     assert _complete(fd, file_id).status_code == 202
@@ -397,4 +411,123 @@ def test_an_attached_file_is_checked_before_its_state(as_user: Client, world: Wo
 
 def test_the_lifetimes() -> None:
     assert service.UPLOAD_LINK_LIFETIME == timedelta(minutes=15)
-    assert service.DOWNLOAD_LINK_LIFETIME <= timedelta(minutes=5)
+    assert TTL_SECONDS <= 60  # a download link: about a minute (D105)
+
+
+
+# =========================================================================== downloadFileContent
+def _clean_upload(client: TestClient, store: MemoryFileStore, data: bytes = JPEG) -> UUID:
+    file_id = _uploaded(client, store, data)
+    assert _complete(client, file_id).json()["status"] == "succeeded"
+    return file_id
+
+
+def _link(client: TestClient, file_id: UUID) -> str:
+    response = _download(client, file_id)
+    assert response.status_code == 200, response.text
+    url = urlsplit(response.json()["url"])
+    return f"{url.path}?{url.query}"
+
+
+def test_the_link_downloads_the_file_once(as_user: Client, world: World,
+                                          store: MemoryFileStore) -> None:
+    fd = as_user("fd")
+    file_id = _clean_upload(fd, store)
+    link = _link(fd, file_id)
+
+    response = fd.get(link)
+
+    assert response.status_code == 200, response.text
+    assert response.content == JPEG  # decrypted
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.headers["content-length"] == str(len(JPEG))
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="insurance-card-{file_id}.jpg"')
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert world.audited == [[], []]  # the link and the download; unattached: no patient
+    # Accepted once: the same link again is not found, as for any bad token.
+    _problem(fd.get(link), 404, "not-found")
+    # A new link works.
+    assert fd.get(_link(fd, file_id)).content == JPEG
+
+
+def test_an_expired_link_is_not_found(app: FastAPI, as_user: Client,
+                                      store: MemoryFileStore) -> None:
+    now = [datetime.now(UTC).timestamp()]
+    app.dependency_overrides[core_tokens.download_tokens] = (
+        lambda tokens=download_tokens(lambda: now[0]): tokens)
+    fd = as_user("fd")
+    link = _link(fd, _clean_upload(fd, store))
+    now[0] += TTL_SECONDS + 1
+    _problem(fd.get(link), 404, "not-found")
+
+
+def test_the_token_is_not_enough_on_its_own(as_user: Client, store: MemoryFileStore) -> None:
+    fd = as_user("fd")
+    file_id = _clean_upload(fd, store)
+    link = _link(fd, file_id)
+    anonymous = as_user("fd")
+    del anonymous.headers["X-Dev-User"]
+    _problem(anonymous.get(link), 401, "unauthenticated")
+    _problem(as_user("bil").get(link), 404, "not-found")  # another user's token
+    assert fd.get(link).content == JPEG  # and neither refusal used it up
+
+
+def test_a_token_for_another_file_is_not_found(as_user: Client, store: MemoryFileStore) -> None:
+    fd = as_user("fd")
+    first, second = _clean_upload(fd, store), _clean_upload(fd, store, JPEG + b"2")
+    token = parse_qs(urlsplit(_link(fd, first)).query)["token"][0]
+    _problem(fd.get(f"/api/v1/files/{second}/content", params={"token": token}),
+             404, "not-found")
+
+
+@pytest.mark.parametrize("token", ["", "short", "x" * 513, "not a token with spaces" * 3,
+                                   "a.b" * 20])
+def test_a_malformed_token(as_user: Client, store: MemoryFileStore, token: str) -> None:
+    fd = as_user("fd")
+    file_id = _clean_upload(fd, store)
+    _problem(fd.get(f"/api/v1/files/{file_id}/content", params={"token": token}),
+             422, "validation-failed")
+
+
+def test_a_tampered_file_is_refused(as_user: Client, store: MemoryFileStore) -> None:
+    fd = as_user("fd")
+    file_id = _clean_upload(fd, store)
+    key = (CLEAN_BUCKET, f"{CLINIC_A}/{file_id}")
+    sealed, content_type = store.objects[key]
+    flipped = bytes([sealed[-1] ^ 1])
+    store.objects[key] = (sealed[:-1] + flipped, content_type)
+
+    response = fd.get(_link(fd, file_id))
+
+    _problem(response, 500, "internal-error")
+    assert JPEG not in response.content
+
+
+def test_another_files_bytes_do_not_open(as_user: Client, store: MemoryFileStore) -> None:
+    """Ciphertext is bound to its file: moved under another file's key, it doesn't verify."""
+    fd = as_user("fd")
+    first, second = _clean_upload(fd, store), _clean_upload(fd, store, JPEG + b"2")
+    store.objects[(CLEAN_BUCKET, f"{CLINIC_A}/{second}")] = (
+        store.objects[(CLEAN_BUCKET, f"{CLINIC_A}/{first}")])
+    _problem(fd.get(_link(fd, second)), 500, "internal-error")
+
+
+def test_the_checks_run_again(as_user: Client, world: World, store: MemoryFileStore) -> None:
+    fd = as_user("fd")
+    file_id = _clean_upload(fd, store)
+    link = _link(fd, file_id)
+    world.attachments[file_id] = {PATIENT}
+    world.restricted.add(PATIENT)  # restricted after the link was made
+    _problem(fd.get(link), 403, "break-glass-required")
+
+
+def test_the_download_names_the_files_patient(as_user: Client, world: World,
+                                              store: MemoryFileStore) -> None:
+    fd = as_user("fd")
+    file_id = _clean_upload(fd, store)
+    world.attachments[file_id] = {PATIENT}
+    assert fd.get(_link(fd, file_id)).status_code == 200
+    assert world.audited == [[PATIENT], [PATIENT]]  # the link, then the download

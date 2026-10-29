@@ -253,7 +253,8 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   `rejected`. Only a clean file is attached or downloaded. An uploaded file is clean only after a
   clean scan; a receipt or after-visit summary, made by the server, is clean from the start.
   `wrapped_data_key` is the file's data key as core wraps it, kept only once the file is
-  clean. An upload's row is written `pending-upload` in bucket `quarantine` with the declared
+  clean, and every clean file has one: its stored bytes are AES-256-GCM ciphertext
+  (`app.modules.files.crypto`), and `size_bytes` and `sha256` are the plaintext's. An upload's row is written `pending-upload` in bucket `quarantine` with the declared
   `size_bytes` and `sha256`; the scan checks the bytes against them, and a clean file moves to
   bucket `clean` under the same `storage_key` (`<clinic>/<file>`). `shri_app` never deletes a
   file.
