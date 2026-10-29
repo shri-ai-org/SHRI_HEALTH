@@ -19,3 +19,6 @@ class OpenBaoFields(BaseSettings):
     openbao_transit_token: SecretStr | None = None
     openbao_transit_mount: str = "transit"
     openbao_transit_key: str = "shri-fields"
+    # The files' key-encryption key (envelope encryption, crypto.new_data_key): the token may make
+    # data keys with it and unwrap them, nothing else.
+    openbao_transit_files_key: str = "shri-files"

@@ -20,6 +20,9 @@ POLICY = json.loads((ROOT / ".github/licences/allowed.json").read_text(encoding=
 ALLOWED = set(POLICY["allowed"])
 ALIASES = POLICY["aliases"]
 IMAGES: dict[str, dict[str, str]] = POLICY.get("images", {})
+# D75's scope: a separate program may use any OSI-approved licence, so an image entry marked
+# "scope": "separate-program" may also use these.
+SEPARATE = set(POLICY.get("separate_programs", {}).get("licences", []))
 
 FILES = [ROOT / "infra/compose/docker-compose.yml", *sorted((ROOT / ".github/workflows").glob("*.yml"))]
 OWN = "shri-health/"
@@ -46,7 +49,8 @@ def problems() -> list[str]:
     found: list[str] = []
     for name, entry in IMAGES.items():
         licence = ALIASES.get(entry.get("licence", ""), entry.get("licence", ""))
-        if licence not in ALLOWED:
+        separate = entry.get("scope") == "separate-program"
+        if licence not in ALLOWED and not (separate and licence in SEPARATE):
             found.append(f"images[{name}]: licence {entry.get('licence')!r} is not allowed by D75")
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", entry.get("digest", "")):
             found.append(f"images[{name}]: needs the sha256 digest it is pinned to")

@@ -20,10 +20,12 @@ from collections.abc import Callable
 from fastapi import FastAPI
 
 from app.core import (
+    access_log,
     audit,
     auth_api,
     crypto,
     db,
+    download_tokens,
     errors,
     events,
     health,
@@ -45,6 +47,8 @@ FEATURES: tuple[tuple[str, Register], ...] = (
     ("field encryption", crypto.register),
     ("public forms", public_form.register),
     ("staff sessions", session.register),
+    ("download tokens", download_tokens.register),
+    ("access log", access_log.register),
     # Middleware, innermost first
     ("audit", audit.register),
     ("idempotency", idempotency.register),
