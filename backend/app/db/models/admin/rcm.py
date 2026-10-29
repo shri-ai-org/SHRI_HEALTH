@@ -140,7 +140,8 @@ class PayerEnrollment(Base, AdminMixin):
     """Provider enrollment for claims / ERA / EFT with a payer (lead time is weeks)."""
     __tablename__ = "payer_enrollment"
     __table_args__ = (
-        UniqueConstraint("payer_id", "practitioner_id", "transaction", "clearinghouse",
+        UniqueConstraint("tenant_id", "payer_id", "practitioner_id", "transaction",
+                         "clearinghouse",
                          postgresql_nulls_not_distinct=True),
         CheckConstraint("status <> 'approved' OR approved_at IS NOT NULL", name="approved_at"),
     )
@@ -619,6 +620,7 @@ class PatientPayment(Base, AdminMixin):
                         name="no_card_number"),
         CheckConstraint("method <> 'card' OR processor_reference IS NOT NULL",
                         name="card_has_processor_ref"),
+        CheckConstraint("check_number IS NULL OR method = 'check'", name="check_number_method"),
     )
 
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"), nullable=False,
@@ -633,4 +635,9 @@ class PatientPayment(Base, AdminMixin):
     is_refund: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     refund_of_payment_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("admin.patient_payment.id"))
-    receipt_file_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.binary_object.id"))
+    #: Required (D104): the receipt is made in the same transaction as the payment.
+    receipt_file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("admin.binary_object.id"),
+                                                       nullable=False)
+    check_number: Mapped[str | None] = mapped_column(String(40))   # for a check payment
+    #: A note for the receipt or the ledger. May name people, so it is patient data.
+    note: Mapped[str | None] = mapped_column(String(500))
