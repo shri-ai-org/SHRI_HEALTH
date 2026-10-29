@@ -12,6 +12,7 @@ https://testserver/api/v1/portal/auth/callback. The one-time codes are computed 
 standard library (RFC 6238); synthetic data only.
 """
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -21,6 +22,7 @@ import re
 import secrets
 import struct
 import time
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qs, urljoin, urlparse
 from uuid import uuid4
@@ -114,7 +116,8 @@ class Browser:
             if target.startswith(ORIGIN):
                 return response
             response = self.http.get(target)
-        return response
+        result: httpx.Response = response
+        return result
 
 
 def _callback_query(response: httpx.Response) -> dict[str, str]:
@@ -125,7 +128,7 @@ def _callback_query(response: httpx.Response) -> dict[str, str]:
 
 
 def _sign_in_with_our_api(client: TestClient, browser: Browser, email: str, password: str,
-                          code_for: Any) -> httpx.Response:
+                          code_for: Callable[[httpx.Response], httpx.Response]) -> httpx.Response:
     """From our /portal/auth/login through the realm's pages back to our callback."""
     login = client.get("/api/v1/portal/auth/login", follow_redirects=False)
     page = browser.go(login.headers["location"])
@@ -143,15 +146,30 @@ def chart(db: Session, tenant: Any) -> dict[str, Any]:  # noqa: F811
     return {"tenant": tenant, "patient": me.id, "birth": me.birth_date, "staff": staff.id}
 
 
-async def test_a_patient_sets_up_the_code_then_a_wrong_code_is_refused(
-        chart: dict[str, Any]) -> None:
-    settings = _settings()
+async def _invite(settings: Settings, chart: dict[str, Any]) -> str:
     staff_db = Database(settings)
     switch_to_role(staff_db.engine.sync_engine, "shri_app")
-    async with staff_db.tenant_session(chart["tenant"], chart["staff"]) as s:
-        code = (await portal.issue_invitation(s, settings, chart["patient"], chart["staff"])).code
-        await s.commit()
-    await staff_db.dispose()
+    try:
+        async with staff_db.tenant_session(chart["tenant"], chart["staff"]) as s:
+            issued = await portal.issue_invitation(s, settings, chart["patient"], chart["staff"])
+            await s.commit()
+    finally:
+        await staff_db.dispose()
+    return issued.code
+
+
+def _service_token() -> str:
+    """The service account's token, as PatientAccounts gets it (client credentials)."""
+    response = httpx.post(f"{KC}/realms/shri-patients/protocol/openid-connect/token", data={
+        "grant_type": "client_credentials", "client_id": "shri-portal-admin",
+        "client_secret": ADMIN_SECRET}, timeout=10)
+    assert response.status_code == 200
+    return str(response.json()["access_token"])
+
+
+def test_a_patient_sets_up_the_code_then_a_wrong_code_is_refused(chart: dict[str, Any]) -> None:
+    settings = _settings()
+    code = asyncio.run(_invite(settings, chart))
 
     app = create_app(settings)
     switch_to_role(app.state.db.engine.sync_engine, "shri_app")
@@ -166,10 +184,8 @@ async def test_a_patient_sets_up_the_code_then_a_wrong_code_is_refused(
 
         # The set-up email would do this; the test has no mailbox, so the service account sets
         # the password and the verified email, and leaves the one-time code to the patient.
-        accounts: portal.PatientAccounts = app.state.patient_accounts
-        token = await accounts._access_token()  # noqa: SLF001
         admin = httpx.Client(base_url=f"{KC}/admin/realms/shri-patients",
-                             headers={"Authorization": f"Bearer {token}"}, timeout=10)
+                             headers={"Authorization": f"Bearer {_service_token()}"}, timeout=10)
         (user,) = admin.get("/users", params={"email": email, "exact": "true"}).json()
         assert set(user["requiredActions"]) == {"VERIFY_EMAIL", "UPDATE_PASSWORD",
                                                 "CONFIGURE_TOTP"}
