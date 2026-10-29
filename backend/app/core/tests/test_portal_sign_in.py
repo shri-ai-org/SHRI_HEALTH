@@ -67,8 +67,9 @@ def test_anything_else_is_no_code(typed: str) -> None:
 
 def test_the_codes_hmac_is_keyed() -> None:
     key_a, key_b = secrets.token_bytes(32), secrets.token_bytes(32)
-    assert portal.code_hmac(key_a, "K7Q29MZD4TXH") != portal.code_hmac(key_b, "K7Q29MZD4TXH")
-    assert re.fullmatch(r"[0-9a-f]{64}", portal.code_hmac(key_a, "K7Q29MZD4TXH"))
+    code = portal.normalize_code(portal.new_code()) or ""
+    assert portal.code_hmac(key_a, code) != portal.code_hmac(key_b, code)
+    assert re.fullmatch(r"[0-9a-f]{64}", portal.code_hmac(key_a, code))
 
 
 def test_every_refusal_is_the_same_answer() -> None:
