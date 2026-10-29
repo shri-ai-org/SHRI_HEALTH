@@ -262,16 +262,24 @@ def content_path(file_id: UUID) -> str:
     return f"{API_PREFIX}/files/{file_id}/content"
 
 
+@dataclass(frozen=True)
+class IssuedLink:
+    link: schemas.DownloadLink
+    patient_ids: frozenset[UUID]  # for the link's audit row (x-audit patient: result)
+
+
 async def create_download_url(request: Request, db: AsyncSession, repo: FileRepository,
                               tokens: DownloadTokens, user: CurrentUser,
-                              file_id: UUID) -> schemas.DownloadLink:
-    """A link to the decrypting endpoint with core's one-time token (module docstring)."""
-    file, _ = await _readable(request, db, repo, user, file_id)
+                              file_id: UUID) -> IssuedLink:
+    """A link to the decrypting endpoint with core's one-time token (module docstring), and the
+    file's patients, which the route reports for its audit row."""
+    file, patient_ids = await _readable(request, db, repo, user, file_id)
     claims = tokens.claims(file.id, user.id, user.organization_id)
     token = tokens.sign(claims)
-    return schemas.DownloadLink(url=f"{content_path(file.id)}?{urlencode({'token': token})}",
-                                expires_at=claims.expires_at, content_type=file.content_type,
-                                size_bytes=file.size_bytes)
+    return IssuedLink(schemas.DownloadLink(
+        url=f"{content_path(file.id)}?{urlencode({'token': token})}",
+        expires_at=claims.expires_at, content_type=file.content_type,
+        size_bytes=file.size_bytes), patient_ids)
 
 
 #: The file name's extension for each media type a file can have; anything else gets none.
@@ -323,8 +331,9 @@ async def serve_content(request: Request, db: AsyncSession, repo: FileRepository
     (x-audit), naming ``patient_ids``, which the route reports; this function writes none and
     never commits.
     """
-    claims = tokens.verify(token, user_id=user.id)
-    if claims is None or claims.file_id != file_id or claims.tenant_id != user.organization_id:
+    claims = tokens.verify(token, user_id=user.id, file_id=file_id,
+                           tenant_id=user.organization_id)
+    if claims is None:
         raise NotFound("File not found")
     file, patient_ids = await _readable(request, db, repo, user, file_id)
     try:

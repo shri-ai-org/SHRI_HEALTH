@@ -309,7 +309,8 @@ def test_a_link_to_the_decrypting_endpoint(as_user: Client, store: MemoryFileSto
     url = urlsplit(link["url"])
     assert url.path == f"/api/v1/files/{file_id}/content" and not url.netloc
     (token,) = parse_qs(url.query)["token"]
-    claims = fake_tokens.verify(token, user_id=DEV_USERS["fd"].id)
+    claims = fake_tokens.verify(token, user_id=DEV_USERS["fd"].id, file_id=file_id,
+                                tenant_id=CLINIC_A)
     assert claims is not None
     assert (claims.file_id, claims.user_id, claims.tenant_id) == (
         file_id, DEV_USERS["fd"].id, CLINIC_A)
@@ -445,7 +446,7 @@ def test_the_link_downloads_the_file_once(as_user: Client, world: World,
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["x-content-type-options"] == "nosniff"
-    assert world.audited == [[]]  # unattached: the audit row names no patient
+    assert world.audited == [[], []]  # the link and the download; unattached: no patient
     # Accepted once: the same link again is not found, as for any bad token.
     _problem(fd.get(link), 404, "not-found")
     # A new link works.
@@ -482,7 +483,8 @@ def test_a_token_for_another_file_is_not_found(as_user: Client, store: MemoryFil
              404, "not-found")
 
 
-@pytest.mark.parametrize("token", ["", "short", "x" * 513, "not a token with spaces" * 3])
+@pytest.mark.parametrize("token", ["", "short", "x" * 513, "not a token with spaces" * 3,
+                                   "a.b" * 20])
 def test_a_malformed_token(as_user: Client, store: MemoryFileStore, token: str) -> None:
     fd = as_user("fd")
     file_id = _clean_upload(fd, store)
@@ -528,4 +530,4 @@ def test_the_download_names_the_files_patient(as_user: Client, world: World,
     file_id = _clean_upload(fd, store)
     world.attachments[file_id] = {PATIENT}
     assert fd.get(_link(fd, file_id)).status_code == 200
-    assert world.audited == [[PATIENT]]
+    assert world.audited == [[PATIENT], [PATIENT]]  # the link, then the download

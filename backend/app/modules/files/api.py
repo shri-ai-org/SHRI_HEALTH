@@ -14,8 +14,9 @@ crypto.py); the operations and the download tokens are core's (operations.py,
 ``app.core.download_tokens``). Tests override them all.
 
 ``downloadFileContent`` serves a file only through its one-time link: the token, and the same
-user's session (``require("authenticated")``). It reports the file's patients for its audit row
-(x-audit ``patient: result``); core keeps the query string, with its token, out of the logs.
+user's session (``require("authenticated")``). It and ``createDownloadUrl`` report the file's
+patients for their audit rows (x-audit ``patient: result``; none for an unattached upload);
+core keeps the query string, with its token, out of the logs.
 """
 
 from __future__ import annotations
@@ -89,9 +90,12 @@ async def complete_upload(
             response_model=schemas.DownloadLink, response_model_exclude_none=True)
 async def create_download_url(
     user: Annotated[CurrentUser, Depends(require("files:read"))],
-    file_id: FileId, request: Request, repo: Repo, tokens: Tokens, db: DB,
+    file_id: FileId, request: Request, repo: Repo, tokens: Tokens,
+    audit_patients: Annotated[PatientAudit, Depends(patient_audit)], db: DB,
 ) -> schemas.DownloadLink:
-    return await service.create_download_url(request, db, repo, tokens, user, file_id)
+    issued = await service.create_download_url(request, db, repo, tokens, user, file_id)
+    audit_patients(request, sorted(issued.patient_ids))
+    return issued.link
 
 
 @router.get("/files/{fileId}/content", operation_id="downloadFileContent",
@@ -99,7 +103,7 @@ async def create_download_url(
 async def download_file_content(
     user: Annotated[CurrentUser, Depends(require("authenticated"))],
     file_id: FileId,
-    token: Annotated[str, Query(min_length=32, max_length=512, pattern=r"^[A-Za-z0-9_.-]+$")],
+    token: Annotated[str, Query(min_length=32, max_length=512, pattern=r"^[A-Za-z0-9_-]+$")],
     request: Request, repo: Repo, store: Store, crypto: Crypto, tokens: Tokens,
     audit_patients: Annotated[PatientAudit, Depends(patient_audit)], db: DB,
 ) -> StreamingResponse:
