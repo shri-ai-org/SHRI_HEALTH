@@ -32,8 +32,8 @@ from app.core.events import publish
 
 from ..eligibility import service as eligibility
 from ..encounters import service as encounters
+from . import events, schemas, slots
 from . import repository as repo
-from . import schemas, slots
 from .reference import AppointmentTypeRow, FacilityRow, PracticeSetupReads
 
 MAX_RANGE_DAYS = 31  # D62
@@ -248,6 +248,8 @@ async def book(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
     appointment_id = await _insert(db, new)
     if follow_up is not None:
         await repo.book_follow_up(db, follow_up, appointment_id)  # D98, same transaction
+    await events.booked(db, appointment_id, patient_id=new.patient_id, provider_id=new.provider_id,
+                        facility_id=new.facility_id, start=new.start)
     return appointment_id
 
 
@@ -286,6 +288,8 @@ async def reschedule(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
                   rescheduled_from_id=old.id)
     new_id = await _insert(db, new)
     await repo.move_follow_up(db, old.id, new_id)
+    await events.booked(db, new_id, patient_id=new.patient_id, provider_id=new.provider_id,
+                        facility_id=new.facility_id, start=new.start, rescheduled=True)
     return new_id
 
 
@@ -298,6 +302,8 @@ async def cancel(db: AsyncSession, user: CurrentUser, appointment_id: UUID,
         raise Conflict(code="invalid-state-transition", currentState=row.status)
     await repo.cancel(db, row, body.reason_code, body.reason_text)
     await repo.reopen_follow_up(db, appointment_id)  # D98: the revisit is open again
+    await events.cancelled(db, appointment_id, patient_id=current.patient_id,
+                           facility_id=current.facility_id, reason_code=body.reason_code)
 
 
 # ------------------------------------------------------------------------------------ views
@@ -503,6 +509,8 @@ async def check_in(db: AsyncSession, user: CurrentUser, appointment_id: UUID, se
         check_id = await eligibility.record_check(
             db, coverage_id=coverage, patient_id=current.patient_id,
             appointment_id=appointment_id, encounter_id=encounter_id, trigger="check-in")
+    await events.checked_in(db, appointment_id, patient_id=current.patient_id,
+                            facility_id=current.facility_id, encounter_id=encounter_id)
     return encounter_id, check_id
 
 
@@ -527,6 +535,8 @@ async def undo_check_in(db: AsyncSession, user: CurrentUser, appointment_id: UUI
                        code="invalid-state-transition", currentState=row.status)
     await encounters.mark_entered_in_error(db, encounter_id, reason)
     await repo.set_status(db, row, "booked")
+    await events.check_in_undone(db, appointment_id, patient_id=current.patient_id,
+                                 facility_id=current.facility_id, encounter_id=encounter_id)
 
 
 # --------------------------------------------------------------------------------- visit steps
