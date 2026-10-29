@@ -371,7 +371,7 @@ async def test_entered_in_error_writes_its_provenance(
         database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
     _, w = await _coverage(database, clinic)
     async with session(database, clinic) as s:
-        w2 = await STORE.coverage_entered_in_error(s, w.id, fs.Reason(text="Wrong patient"),
+        w2 = await STORE.coverage_entered_in_error(s, w.id, fs.Reason(text="  Wrong patient "),
                                                    if_version=w.version)
         await s.commit()
     prov = _rows(admin_engine, "SELECT p.target_version_id, p.activity_code, p.reason_text, "
@@ -384,11 +384,49 @@ async def test_entered_in_error_writes_its_provenance(
         with pytest.raises(fs.InvalidTransition) as again:
             await STORE.coverage_entered_in_error(s, w.id, fs.Reason(text="Again"))
         assert again.value.current_state == "entered-in-error"
-        with pytest.raises(fs.InvalidInput):
+        with pytest.raises(fs.InvalidInput) as blank:          # stored trimmed, never blank
             await STORE.coverage_entered_in_error(s, w.id, fs.Reason(text="  "))
+        assert blank.value.field == "reason"
         with pytest.raises(fs.InvalidTransition):                    # never used again (D45)
             await STORE.update_coverage(s, w.id, fs.CoverageChanges(member_id="W1"),
                                         if_version=w2.version)
+
+
+async def _second_primary(database: Database, clinic: dict[str, Any], patient: fs.Written,
+                          start: dt.date) -> fs.Written:
+    async with session(database, clinic) as s:
+        w = await STORE.create_coverage(s, fs.CoverageIn(
+            beneficiary_patient_id=patient.id, payer_id=clinic["payer"], member_id="N1",
+            relationship_code="self", subscriber_patient_id=patient.id, order=1,
+            period_start=start))
+        await s.commit()
+    return w
+
+
+async def test_an_order_is_one_coverage_at_a_time_and_an_ended_one_frees_it(
+        database: Database, clinic: dict[str, Any]) -> None:
+    patient, first = await _coverage(database, clinic)          # order 1 from 2026-01-01, open
+    with pytest.raises(fs.CoverageOrderTaken) as taken:         # an open end overlaps
+        await _second_primary(database, clinic, patient, dt.date(2027, 1, 1))
+    assert taken.value.field == "order"
+    async with session(database, clinic) as s:                  # ending it frees the order
+        await STORE.update_coverage(s, first.id, fs.CoverageChanges(
+            period_end=dt.date(2026, 12, 31)), if_version=first.version)
+        await s.commit()
+    second = await _second_primary(database, clinic, patient, dt.date(2027, 1, 1))
+    async with session(database, clinic) as s:                  # moving it back overlaps again
+        with pytest.raises(fs.CoverageOrderTaken):
+            await STORE.update_coverage(s, second.id, fs.CoverageChanges(
+                period_start=dt.date(2026, 6, 1)), if_version=second.version)
+
+
+async def test_an_entered_in_error_coverage_holds_no_order(
+        database: Database, clinic: dict[str, Any]) -> None:
+    patient, first = await _coverage(database, clinic)
+    async with session(database, clinic) as s:
+        await STORE.coverage_entered_in_error(s, first.id, fs.Reason(text="Wrong card"))
+        await s.commit()
+    await _second_primary(database, clinic, patient, dt.date(2026, 3, 1))
 
 
 # ====================================================================== Consent
@@ -403,9 +441,8 @@ async def test_a_consent_with_its_scope_form_performer_and_verification(
             "'document')"),
             {"i": form, "t": clinic["tenant"], "k": f"k/{form}.pdf", "h": "a" * 64})
         w = await STORE.create_consent(s, fs.ConsentIn(
-            patient_id=patient.id, kind="privacy-notice", status="active",
-            categories=(fs.Coded(system=systems.LOINC, code="59284-0"),),
-            date_time=b.NOW, policy_version="2026-01", signature_method="electronic",
+            patient_id=patient.id, kind="privacy-notice", status="active", date_time=b.NOW,
+            policy_version="2026-01", signature_method="electronic",
             provision_type="permit", source_attachment_binary_object_id=form,
             performer_patient_id=patient.id, verified=True,
             verified_with_patient_id=patient.id, verification_date=b.NOW))
@@ -415,9 +452,44 @@ async def test_a_consent_with_its_scope_form_performer_and_verification(
                 "WHERE id = :c", c=w.id)[0]
     assert tuple(row) == (systems.CONSENT_SCOPE, "patient-privacy", "privacy-notice", "2026-01",
                           form, w.version)
-    for table in ("consent_category", "consent_performer", "consent_verification"):
+    for table in ("consent_performer", "consent_verification"):
         assert len(_rows(admin_engine, f"SELECT 1 FROM clinical.{table} "  # noqa: S608
                          "WHERE consent_id = :c", c=w.id)) == 1
+    assert {r.category_code for r in _rows(admin_engine, "SELECT category_code FROM clinical."
+                                           "consent_category WHERE consent_id = :c",
+                                           c=w.id)} == {"npp", "57016-8"}
+
+
+async def test_a_consents_scope_and_category_come_from_its_kind(
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
+    """Agreed on #88: financial is LOINC 59284-0 only; ambient recording is a privacy consent."""
+    patient = await _create(database, clinic)
+    written = {}
+    async with session(database, clinic) as s:
+        for kind in ("financial", "ambient-recording", "treatment"):
+            written[kind] = await STORE.create_consent(s, fs.ConsentIn(
+                patient_id=patient.id, kind=kind, status="active", date_time=b.NOW,
+                signature_method="written", provision_type="permit"))
+        for bad in (fs.ConsentIn(patient_id=patient.id, kind="financial", status="active",
+                                 date_time=b.NOW, categories=(fs.Coded(
+                                     system=systems.LOINC, code="64292-6"),)),
+                    fs.ConsentIn(patient_id=patient.id, kind="billing", status="active",
+                                 date_time=b.NOW)):
+            with pytest.raises(fs.InvalidInput):
+                await STORE.create_consent(s, bad)
+        await s.commit()
+
+    def stored(w: fs.Written) -> tuple[str, set[tuple[str, str]]]:
+        scope = _rows(admin_engine, "SELECT scope_code FROM clinical.consent WHERE id = :c",
+                      c=w.id)[0].scope_code
+        return scope, {(r.category_system, r.category_code) for r in _rows(
+            admin_engine, "SELECT category_system, category_code FROM clinical.consent_category"
+            " WHERE consent_id = :c", c=w.id)}
+
+    assert stored(written["financial"]) == ("treatment", {(systems.LOINC, "59284-0")})
+    assert stored(written["ambient-recording"]) == ("patient-privacy",
+                                                    {(systems.V3_ACT_CODE, "ICOL")})
+    assert stored(written["treatment"]) == ("treatment", {(systems.LOINC, "59284-0")})
 
 
 async def test_a_new_consent_of_the_same_kind_retires_the_earlier_one(
@@ -425,9 +497,8 @@ async def test_a_new_consent_of_the_same_kind_retires_the_earlier_one(
     patient = await _create(database, clinic)
 
     def consent(kind: str, version: str) -> fs.ConsentIn:
-        return fs.ConsentIn(patient_id=patient.id, kind=kind, status="active",
-                            categories=(fs.Coded(system=systems.LOINC, code="59284-0"),),
-                            date_time=b.NOW, policy_version=version, provision_type="permit",
+        return fs.ConsentIn(patient_id=patient.id, kind=kind, status="active", date_time=b.NOW,
+                            policy_version=version, provision_type="permit",
                             signature_method="written")
 
     async with session(database, clinic) as s:
