@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (
@@ -48,8 +48,12 @@ from app.db.models.enums import (
 )
 
 MED_SYSTEMS = f"('{systems.RXNORM}', '{systems.NDC}')"
+#: An order beyond draft is signed. Exempt: imports and interfaces, and a medication the
+#: patient already takes, recorded on the list (intent plan, reported; D28, migration 0013).
 SIGNED_OR_EXEMPT = ("status IN ('draft', 'cancelled', 'entered-in-error') OR "
                     "entry_source IN ('imported', 'interface') OR "
+                    "(intent = 'plan' AND (reported_boolean IS TRUE OR "
+                    "reported_practitioner_id IS NOT NULL)) OR "
                     "(ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL)")
 
 
@@ -92,6 +96,7 @@ class MedicationRequest(Base, ClinicalResourceMixin):
     never become a prescription without the signing clinician (FR-MED-02)."""
     __tablename__ = "medication_request"
     fhir_type = "MedicationRequest"
+    fhir_unversioned_columns = ("ext_safety_checked_at", "ext_safety_checked_version")
     __fhir_choices__ = {
         "reported": (False, ["reportedBoolean", "reportedReference"]),
         "medication": (True, ["medicationCodeableConcept", "medicationReference"]),
@@ -176,6 +181,11 @@ class MedicationRequest(Base, ClinicalResourceMixin):
     ext_signed_by_practitioner_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("clinical.practitioner.id"))
     ext_signed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
+    # The latest safety check (D97, A58, migration 0013): when it ran and on which version of
+    # the draft. Recording a check is not a new version of the prescription, so an open
+    # editor's If-Match keeps working (fhir_unversioned_columns).
+    ext_safety_checked_at: Mapped[datetime | None]
+    ext_safety_checked_version: Mapped[int | None] = mapped_column(Integer)
 
     reason = children("MedicationRequestReason", "medication_request_id", None, spread=True)
     dosage_instruction = children("Dosage", "medication_request_id", "dosageInstruction",

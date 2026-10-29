@@ -405,3 +405,38 @@ async def reopen_follow_up(db: AsyncSession, appointment_id: UUID) -> None:
 
 async def move_follow_up(db: AsyncSession, old: UUID, new: UUID) -> None:
     await db.execute(_FOLLOW_UP_MOVE, {"old": old, "new": new})
+
+
+# ------------------------------------------------------------------------- check-in, visit steps
+# A visit step after the last undone check-in that means the patient was roomed (D55).
+_ROOMED = text("""
+SELECT EXISTS (
+  SELECT 1 FROM admin.visit_flow_event v
+   WHERE v.appointment_id = :appointment
+     AND v.step IN ('roomed', 'with-provider', 'checked-out')
+     AND v.created_at > coalesce(
+       (SELECT max(pv.recorded) FROM clinical.provenance pv
+          JOIN clinical.encounter e ON pv.target_resource_type = 'Encounter'
+                                   AND pv.target_id = e.id
+         WHERE e.appointment_id = :appointment AND e.status = 'entered-in-error'
+           AND pv.activity_code = 'NULLIFY'), '-infinity'::timestamptz))
+""")
+
+
+async def set_status(db: AsyncSession, row: Any, status: str) -> None:
+    row.status = status
+    row.updated_by_user_id = await _user_id(db)
+    await db.flush()
+
+
+async def add_visit_step(db: AsyncSession, appointment_id: UUID, step: str,
+                         at: datetime, location_id: UUID | None = None) -> None:
+    """Insert-only visit history (the status board's source)."""
+    db.add(M["visit_flow_event"](appointment_id=appointment_id, step=step, occurred_at=at,
+                                 user_id=await _user_id(db), location_id=location_id))
+    await db.flush()
+
+
+async def roomed(db: AsyncSession, appointment_id: UUID) -> bool:
+    found: bool = (await db.execute(_ROOMED, {"appointment": appointment_id})).scalar_one()
+    return found

@@ -1,7 +1,9 @@
-"""Practice setup API (contracts/openapi/modules/practice-setup.yaml): the six list reads.
+"""Practice setup API (contracts/openapi/modules/practice-setup.yaml): the six list reads and the
+note-template reads.
 
 Each route's operation_id is the contract's operationId, with require() on its x-permission
-(`payers:read` for the payer directory, `practice-setup:read` for the rest) and tenant_db, which
+(`payers:read` for the payer directory, `note-templates:read` for the note templates (D73, A54),
+`practice-setup:read` for the rest) and tenant_db, which
 also writes the operation's x-audit rows and refuses a `facilityId` that is not one of the
 user's facilities (404). The permission is the first dependency, so a caller without it gets
 401 or 403 before anything else is resolved, an invalid cursor included.
@@ -12,7 +14,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser, require, tenant_db
@@ -31,6 +33,7 @@ Repo = Annotated[SetupRepository, Depends(repository)]
 DB = Annotated[AsyncSession, Depends(tenant_db)]
 SetupRead = Annotated[CurrentUser, Depends(require("practice-setup:read"))]
 PayersRead = Annotated[CurrentUser, Depends(require("payers:read"))]
+TemplatesRead = Annotated[CurrentUser, Depends(require("note-templates:read"))]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Cursor = Annotated[str | None, Query(max_length=512, pattern=r"^[A-Za-z0-9_-]+$")]
 Active = Annotated[bool | None, Query()]
@@ -39,6 +42,8 @@ ProviderId = Annotated[UUID | None, Query(alias="providerId")]
 PayerName = Annotated[str | None, Query(alias="payerName", min_length=2, max_length=200)]
 ExternalPayerId = Annotated[str | None, Query(alias="externalPayerId", max_length=40)]
 PayerTypeQuery = Annotated[schemas.PayerType | None, Query(alias="payerType")]
+OwnerUserId = Annotated[UUID | None, Query(alias="ownerUserId")]
+NoteTemplateId = Annotated[UUID, Path(alias="noteTemplateId")]
 
 DEFAULT_LIMIT = 25  # API_STANDARDS §8.1
 
@@ -99,3 +104,22 @@ async def list_practice_payers(user: SetupRead, db: DB, repo: Repo, active: Acti
                                ) -> schemas.PracticePayerList:
     return await service.list_practice_payers(db, repo, active=active, cursor_value=cursor,
                                               limit=limit)
+
+
+@router.get("/note-templates", operation_id="listNoteTemplates",
+            response_model=schemas.NoteTemplateList, response_model_exclude_none=True)
+async def list_note_templates(user: TemplatesRead, db: DB, repo: Repo,
+                              owner_user_id: OwnerUserId = None, active: Active = None,
+                              limit: Limit = DEFAULT_LIMIT, cursor: Cursor = None
+                              ) -> schemas.NoteTemplateList:
+    return await service.list_note_templates(db, repo, owner_user_id=owner_user_id,
+                                             active=active, cursor_value=cursor, limit=limit)
+
+
+@router.get("/note-templates/{noteTemplateId}", operation_id="getNoteTemplate",
+            response_model=schemas.NoteTemplate, response_model_exclude_none=True)
+async def get_note_template(user: TemplatesRead, note_template_id: NoteTemplateId,
+                            response: Response, db: DB, repo: Repo) -> schemas.NoteTemplate:
+    found = await service.get_note_template(db, repo, note_template_id)
+    response.headers["ETag"] = service.etag(found.version)
+    return found

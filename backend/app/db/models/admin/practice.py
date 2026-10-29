@@ -305,6 +305,16 @@ class UserFavorite(Base, AdminMixin):
 
 
 # =========================================================================== decision support
+#: The platform's fixed prescription rules (D97, D99; migration 0013), tenant_id NULL, which the
+#: safety check names by code: (code, name, alert_type, severity, requires_override_reason,
+#: is_suppressible).
+PLATFORM_CDS_RULES = [
+    ("allergy", "Allergy to an ingredient of the drug", "allergy", "high", True, False),
+    ("duplicate-medication", "Active medication with the same ingredient",
+     "duplicate-medication", "moderate", False, False),
+]
+
+
 class CdsRule(Base, UUIDPKMixin, OptionalTenantMixin, TimestampMixin):
     """Rule-based CDS catalogue (layer 1-2). tenant_id NULL = platform rule. High-severity
     rules can never be suppressed (FRS §3.4: override reason required instead)."""

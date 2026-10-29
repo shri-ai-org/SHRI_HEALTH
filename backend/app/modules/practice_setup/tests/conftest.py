@@ -25,7 +25,7 @@ def app(world: World) -> Iterator[FastAPI]:
     application = create_app(Settings(environment="test", auth_mode="dev_header"))
 
     async def fake_db(user: CurrentUser = Depends(current_user)) -> FakeSession:
-        return FakeSession(user.organization_id)
+        return FakeSession(user.organization_id, user.id)
 
     application.dependency_overrides[tenant_db] = fake_db
     application.dependency_overrides[api.repository] = lambda: FakeRepository(world)

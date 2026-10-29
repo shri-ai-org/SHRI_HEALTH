@@ -28,6 +28,8 @@ from app.core.errors import (
     field_error,
 )
 
+from ..eligibility import service as eligibility
+from ..encounters import service as encounters
 from . import repository as repo
 from . import schemas, slots
 from .reference import AppointmentTypeRow, FacilityRow, PracticeSetupReads
@@ -457,3 +459,69 @@ async def board(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
                 encounter_id=r.encounter_id))
     return schemas.StatusBoardList(items=items, next_cursor=next_cursor, date=when,
                                    time_zone=fac.time_zone, facility_name=fac.name), named
+
+
+# ----------------------------------------------------------------------- check-in and its undo
+CHECK_IN_FROM = ("booked", "arrived")  # DATA_OWNERSHIP §5.1
+
+
+async def check_in(db: AsyncSession, user: CurrentUser, appointment_id: UUID, self_pay: bool,
+                   now: datetime) -> tuple[UUID, UUID | None]:
+    """In one transaction (ADR-0011, D16): the appointment becomes checked-in, the visit step is
+    recorded, the encounter is opened (status arrived) and, unless self-pay, an eligibility check
+    is recorded for the primary coverage (D15). Returns the encounter and the check."""
+    current = await repo.get(db, appointment_id)
+    require_facility(user, current.facility_id)
+    row = await repo.locked(db, appointment_id)
+    if row.status not in CHECK_IN_FROM:
+        raise Conflict(code="invalid-state-transition", currentState=row.status)
+    person = (await repo.people(db, [current.patient_id])).get(current.patient_id)
+    if person is not None and person.merged:
+        raise Conflict(code="patient-merged")
+    today = slots.local_day(now, current.time_zone)
+    if slots.local_day(current.start, current.time_zone) != today:
+        raise business_rule("appointmentId", "out-of-range", location="path")  # same day only
+    coverage = None
+    if not self_pay:
+        coverage = await eligibility.primary_coverage(db, current.patient_id, today)
+        if coverage is None:  # no active coverage and not self-pay (DATA_OWNERSHIP §5.1)
+            raise business_rule("/selfPay", "required")
+    at = await repo.db_now(db)
+    await repo.set_status(db, row, "checked-in")
+    await repo.add_visit_step(db, appointment_id, "checked-in", at)
+    try:
+        encounter_id = await encounters.open_for_check_in(
+            db, patient_id=current.patient_id, facility_id=current.facility_id,
+            appointment_id=appointment_id, provider_id=current.provider_id,
+            reason_for_visit=current.reason, self_pay=self_pay, at=at)
+    except IntegrityError as twice:  # one live encounter per appointment (A42)
+        raise Conflict(code="invalid-state-transition", currentState="checked-in") from twice
+    check_id = None
+    if coverage is not None:
+        check_id = await eligibility.record_check(
+            db, coverage_id=coverage, patient_id=current.patient_id,
+            appointment_id=appointment_id, encounter_id=encounter_id, trigger="check-in")
+    return encounter_id, check_id
+
+
+async def undo_check_in(db: AsyncSession, user: CurrentUser, appointment_id: UUID,
+                        reason: str) -> None:
+    """D55: only before rooming and before any clinical data. The appointment goes back to
+    booked and the check-in encounter becomes entered-in-error with its Provenance; the visit
+    steps and the eligibility check stay as history."""
+    current = await repo.get(db, appointment_id)
+    require_facility(user, current.facility_id)
+    row = await repo.locked(db, appointment_id)
+    if row.status != "checked-in":
+        raise Conflict(code="invalid-state-transition", currentState=row.status)
+    encounter_id = await encounters.live_for_appointment(db, appointment_id)
+    if encounter_id is None:
+        raise Conflict(code="invalid-state-transition", currentState=row.status)
+    if await repo.roomed(db, appointment_id):
+        raise Conflict("The patient has been roomed", code="invalid-state-transition",
+                       currentState="roomed")
+    if await encounters.has_clinical_data(db, encounter_id):
+        raise Conflict("The encounter has vitals, notes or diagnoses",
+                       code="invalid-state-transition", currentState=row.status)
+    await encounters.mark_entered_in_error(db, encounter_id, reason)
+    await repo.set_status(db, row, "booked")
