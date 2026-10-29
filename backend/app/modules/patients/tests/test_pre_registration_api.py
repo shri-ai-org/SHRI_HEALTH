@@ -218,14 +218,14 @@ def test_another_origin_is_refused_before_the_body_is_checked(
 
 
 def test_rate_limits_per_ip_and_per_email_hash(public: TestClient, guards: FakeGuards) -> None:
-    guards.limits["pre-registration:email"] = 1
+    guards.limits["email"] = 1
     assert send(public, form()).status_code == 204
     again = send(public, form(email="Saga.LINDQVIST@Example.com"))  # the same address
     assert again.status_code == 429 and again.json()["code"] == "rate-limited"
     assert again.headers["Retry-After"] == "60"
-    email_keys = [k for scope, k in guards.keys_seen if scope == "pre-registration:email"]
+    email_keys = [k for scope, k in guards.keys_seen if scope == "email"]
     assert len(set(email_keys)) == 1 and all("@" not in k for k in email_keys)  # hashed only
-    guards.limits["pre-registration:ip"] = 2
+    guards.limits["ip"] = 2
     assert send(public, form(email="other.person@example.com")).status_code == 429
 
 
@@ -237,6 +237,39 @@ def test_a_failed_bot_check_is_422_naming_bot_check(public: TestClient,
     assert r.status_code == 422 and r.json()["code"] == "business-rule-violation"
     assert r.json()["errors"][0]["pointer"] == "/botCheck"
     assert table.submissions == []
+
+
+def test_the_bot_check_comes_before_the_body(public: TestClient,
+                                            table: FakePreRegistrations) -> None:
+    """The contract's order: Origin (403), rate limit (429), bot check (422 at /botCheck), then
+    the body's fields (422 validation-failed)."""
+    bad_body = form()
+    del bad_body["details"]["name"]
+    bad_body["botCheck"] = "mock-altcha-failed"
+    first = send(public, bad_body)
+    assert first.status_code == 422 and first.json()["errors"][0]["pointer"] == "/botCheck"
+    no_answer = form()
+    del no_answer["botCheck"]
+    del no_answer["details"]["name"]
+    missing = send(public, no_answer)
+    assert missing.status_code == 422 and missing.json()["errors"][0]["pointer"] == "/botCheck"
+    good_answer = form()
+    del good_answer["details"]["name"]
+    then_body = send(public, good_answer)
+    assert then_body.status_code == 422 and then_body.json()["code"] == "validation-failed"
+    assert table.submissions == []
+
+
+def test_the_bot_check_is_given_the_idempotency_key(public: TestClient,
+                                                    guards: FakeGuards) -> None:
+    """Core accepts an answer once, but again for a retry of the same request (same key)."""
+    key = str(uuid4())
+    assert send(public, form(), key=key).status_code == 204
+    assert send(public, form(), key=key).status_code == 204  # the retry
+    assert [k for _, k in guards.bot_checks] == [key, key]
+    quoted = send(public, form(), key=f'"{uuid4()}"')
+    assert quoted.status_code == 204 and guards.bot_checks[-1][1] is not None
+    assert '"' not in str(guards.bot_checks[-1][1])  # bare UUID, as core keys it
 
 
 def test_validation_and_the_idempotency_key(public: TestClient) -> None:
@@ -261,19 +294,12 @@ def test_a_reused_key_with_another_body_is_422(public: TestClient) -> None:
     assert r.status_code == 422 and r.json()["code"] == "idempotency-key-reused"
 
 
-def test_without_cores_guards_the_form_fails_closed(pre_app: FastAPI,
-                                                    public: TestClient) -> None:
+def test_unconfigured_guards_fail_closed(pre_app: FastAPI, public: TestClient) -> None:
+    """Core's real guards, with no PORTAL_ORIGIN or PUBLIC_FORM_SECRET in this app: 503, never
+    an unguarded form."""
     del pre_app.dependency_overrides[public_form.public_form_guards]
     r = send(public, form())
-    assert r.status_code == 503  # no Origin check, rate limit or bot check yet: take nothing
-
-
-def test_without_cores_encryption_the_form_fails_closed(pre_app: FastAPI,
-                                                        public: TestClient) -> None:
-    if importlib.util.find_spec("app.core.crypto") is not None:
-        pytest.skip("core's field encryption (#102) is on this branch")
-    del pre_app.dependency_overrides[public_form.field_cipher]
-    assert send(public, form()).status_code == 503  # never stored in clear
+    assert r.status_code == 503
 
 
 # ------------------------------------------------------------------------------- the staff queue

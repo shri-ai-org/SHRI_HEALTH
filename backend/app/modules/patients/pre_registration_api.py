@@ -60,9 +60,21 @@ async def portal_origin_only(request: Request, guards: Guards) -> None:
     await rules.check_ip_limit(guards, request.client.host if request.client else None)
 
 
+async def bot_check_first(request: Request, guards: Guards) -> None:
+    """Then the ALTCHA answer, before the body's fields are validated (the contract's order:
+    Origin, rate limit, bot check, body). FastAPI has already refused a body that isn't JSON."""
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    payload = body.get("botCheck") if isinstance(body, dict) else None
+    await rules.check_bot(guards, payload, request.headers.get("idempotency-key"))
+
+
 @router.post("/portal/practices/{practiceLinkId}/pre-registrations",
              operation_id="submitPreRegistration", status_code=status.HTTP_204_NO_CONTENT,
-             response_class=Response, dependencies=[Depends(portal_origin_only)])
+             response_class=Response,
+             dependencies=[Depends(portal_origin_only), Depends(bot_check_first)])
 async def submit_pre_registration(
     practice_link_id: PracticeLinkId, idempotency_key: IdempotencyKey,
     body: schemas.PreRegistrationCreate, request: Request,

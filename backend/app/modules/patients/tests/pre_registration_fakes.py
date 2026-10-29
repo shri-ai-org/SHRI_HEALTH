@@ -98,12 +98,14 @@ class FakeCipher:
 
 @dataclass
 class FakeGuards:
-    """Core's public-form guards (T47): the portal origin, limits per scope and key, the bot
-    check. ``limits`` sets how many requests a scope allows per key."""
+    """Core's public-form guards (#110, T47): the portal origin, limits per scope (core's `ip`
+    and `email`) and key, the bot check. ``limits`` sets how many requests a scope allows per key;
+    ``bot_checks`` records each bot check with the Idempotency-Key it was given."""
 
     limits: dict[str, int] = field(default_factory=dict)
     counts: Counter[tuple[str, str]] = field(default_factory=Counter)
     keys_seen: list[tuple[str, str]] = field(default_factory=list)
+    bot_checks: list[tuple[str, str | None]] = field(default_factory=list)
 
     def origin_allowed(self, origin: str | None) -> bool:
         return origin == PORTAL_ORIGIN
@@ -117,7 +119,8 @@ class FakeGuards:
         allowed = self.limits.get(scope)
         return 60 if allowed is not None and self.counts[(scope, key)] > allowed else None
 
-    async def bot_check_passes(self, payload: str) -> bool:
+    async def bot_check_passes(self, payload: str, idempotency_key: str | None = None) -> bool:
+        self.bot_checks.append((payload, idempotency_key))
         return payload != "mock-altcha-failed"
 
 

@@ -49,6 +49,26 @@ class RateLimited(AppError):
 
 
 # --------------------------------------------------------------------------------- the public form
+# Core's rate-limit scopes (core/public_form.py): per client IP, and per email's keyed hash.
+IP_SCOPE = "ip"
+EMAIL_SCOPE = "email"
+MAX_BOT_CHECK = 4000  # PreRegistrationCreate.botCheck's maxLength
+
+
+async def check_bot(guards: PublicFormGuards, payload: object, idempotency_key: str | None) -> None:
+    """The ALTCHA answer, before the body's fields: missing, malformed, forged, expired or used by
+    another request is 422 at /botCheck. A retry with the same Idempotency-Key may send it again."""
+    key = None
+    if idempotency_key:
+        try:
+            key = str(parse_idempotency_key(idempotency_key))
+        except ValueError:
+            key = None  # the header's own validation answers it
+    if (not isinstance(payload, str) or not payload or len(payload) > MAX_BOT_CHECK
+            or not await guards.bot_check_passes(payload, idempotency_key=key)):
+        raise service.business_rule("body", "/botCheck", "not-allowed-value")
+
+
 def check_origin(guards: PublicFormGuards, origin: str | None) -> None:
     if not guards.origin_allowed(origin):
         raise Forbidden(code="csrf-check-failed", detail="This form only accepts requests from "
@@ -62,7 +82,7 @@ async def _limit(guards: PublicFormGuards, scope: str, key: str) -> None:
 
 
 async def check_ip_limit(guards: PublicFormGuards, source_ip: str | None) -> None:
-    await _limit(guards, "pre-registration:ip", source_ip or "unknown")
+    await _limit(guards, IP_SCOPE, source_ip or "unknown")
 
 
 def request_hash(body: schemas.PreRegistrationCreate) -> str:
@@ -88,11 +108,10 @@ async def submit(db: AsyncSession, repo: PreRegistrationRepository, guards: Publ
                  cipher: FieldCipher, body: schemas.PreRegistrationCreate, *, practice_code: str,
                  idempotency_key: UUID, source_ip: str | None, user_agent: str | None,
                  correlation_id: str | None) -> None:
-    """The Origin and the per-IP limit are checked before the body (api.py); this runs the rest."""
-    if not await guards.bot_check_passes(body.bot_check):
-        raise service.business_rule("body", "/botCheck", "not-allowed-value")
+    """The Origin, the per-IP limit and the bot check run before the body is validated
+    (pre_registration_api.py, the contract's order); this runs the rest."""
     if body.details.email:
-        await _limit(guards, "pre-registration:email",
+        await _limit(guards, EMAIL_SCOPE,
                      guards.email_key(normalize_email(body.details.email)))
     submission = Submission(
         practice_code=practice_code, idempotency_key=idempotency_key,

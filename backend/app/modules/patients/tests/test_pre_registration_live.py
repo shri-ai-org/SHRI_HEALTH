@@ -3,7 +3,9 @@
 queue as ``shri_app`` through core's tenant_db, chart check and audit, and PR-1's registration
 with the real FHIR write helpers.
 
-Core's public-form guards (T47) and field encryption (#102) are the in-memory stand-ins, and the
+Field encryption (#102) is the in-memory stand-in. Core's public-form guards (#110) run for real in
+the ``guarded`` tests (a challenge from ``GET /portal/bot-challenge``, solved by proof of work);
+elsewhere they are the stand-in. The
 contract (#89) and the permissions (T47) are added as in test_pre_registration_api.py; ``public_db``
 (core's placeholder) is replaced by a session as ``shri_public``. Skipped where the database has no
 ``admin.submit_pre_registration`` (before #101). Synthetic data only.
@@ -11,7 +13,10 @@ contract (#89) and the permissions (T47) are added as in test_pre_registration_a
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import importlib
+import json
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
@@ -21,6 +26,7 @@ from uuid import UUID
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -71,12 +77,17 @@ def link(clinics: dict[UUID, UUID]) -> Iterator[str]:  # noqa: F811
     yield code
 
 
-@pytest.fixture
-def live(users: dict[str, CurrentUser], monkeypatch: pytest.MonkeyPatch,  # noqa: F811
-         tmp_path: Path) -> Iterator[Any]:
+def _running(users: dict[str, CurrentUser], monkeypatch: pytest.MonkeyPatch,  # noqa: F811
+             tmp_path: Path, *, real_guards: bool) -> Iterator[Any]:
+    """The app against the live database. With ``real_guards``, core's own public-form guards
+    (Origin, rate limits, ALTCHA) run, configured as on a server; otherwise the stand-ins do."""
     contract_and_permissions(monkeypatch, tmp_path, roles=("FD", "ADM", "MD"))
+    guarded: dict[str, Any] = {}
+    if real_guards:
+        guarded = {"portal_origin": PORTAL_ORIGIN, "public_form_secret": SecretStr("t" * 40),
+                   "bot_check_max_number": 2000}
     app: FastAPI = create_app(Settings(environment="test", auth_mode="dev_header",
-                                       database_url=TEST_DATABASE_URL))
+                                       database_url=TEST_DATABASE_URL, **guarded))
     switch_to_role(app.state.db.engine.sync_engine, "shri_app")
     module = importlib.import_module("app.modules.patients.pre_registration_api")
     app.include_router(module.router, prefix=API_PREFIX)
@@ -92,8 +103,9 @@ def live(users: dict[str, CurrentUser], monkeypatch: pytest.MonkeyPatch,  # noqa
 
     app.dependency_overrides[current_user] = signed_in
     app.dependency_overrides[deps.public_db] = as_shri_public
-    guards = FakeGuards()
-    app.dependency_overrides[public_form.public_form_guards] = lambda: guards
+    if not real_guards:
+        guards = FakeGuards()
+        app.dependency_overrides[public_form.public_form_guards] = lambda: guards
     app.dependency_overrides[public_form.field_cipher] = FakeCipher
     with TestClient(app, raise_server_exceptions=False) as client:
         def as_user(name: str | None) -> TestClient:
@@ -107,6 +119,18 @@ def live(users: dict[str, CurrentUser], monkeypatch: pytest.MonkeyPatch,  # noqa
         assert client.portal is not None
         client.portal.call(app.state.db.dispose)
         client.portal.call(public_engine.dispose)
+
+
+@pytest.fixture
+def live(users: dict[str, CurrentUser], monkeypatch: pytest.MonkeyPatch,  # noqa: F811
+         tmp_path: Path) -> Iterator[Any]:
+    yield from _running(users, monkeypatch, tmp_path, real_guards=False)
+
+
+@pytest.fixture
+def guarded(users: dict[str, CurrentUser], monkeypatch: pytest.MonkeyPatch,  # noqa: F811
+            tmp_path: Path) -> Iterator[Any]:
+    yield from _running(users, monkeypatch, tmp_path, real_guards=True)
 
 
 def _rows(tenant: UUID) -> list[Any]:
@@ -204,3 +228,59 @@ def test_reject_and_another_clinic(live: Any, link: str,
     assert rejected.json()["rejection"]["reasonCode"] == "other"
     (row,) = _rows(clinics[CLINIC_A])
     assert row.status == "rejected" and row.rejection_reason_code == "other"
+
+
+# ------------------------------------------------ core's real guards: Origin, limits and ALTCHA
+def _solved(client: TestClient) -> str:
+    """A challenge from GET /portal/bot-challenge, solved as the browser's widget does."""
+    issued = client.get(f"{API_PREFIX}/portal/bot-challenge")
+    assert issued.status_code == 200, issued.text
+    assert issued.headers["Cache-Control"] == "no-store"
+    challenge = issued.json()
+    number = next(n for n in range(challenge["maxnumber"] + 1)
+                  if hashlib.sha256(f"{challenge['salt']}{n}".encode()).hexdigest()
+                  == challenge["challenge"])
+    answer = {"algorithm": challenge["algorithm"], "challenge": challenge["challenge"],
+              "number": number, "salt": challenge["salt"], "signature": challenge["signature"]}
+    return base64.b64encode(json.dumps(answer).encode()).decode()
+
+
+def _with_answer(answer: str, **details: Any) -> dict[str, Any]:
+    body = form(**details)
+    body["botCheck"] = answer
+    return body
+
+
+def test_core_guards_accept_a_solved_challenge_once_per_request(
+        guarded: Any, link: str, clinics: dict[UUID, UUID]) -> None:  # noqa: F811
+    client = guarded(None)
+    answer = _solved(client)
+    key = str(uuid.uuid4())
+    first = _send(client, link, _with_answer(answer), key)
+    assert first.status_code == 204, first.text
+    retry = _send(client, link, _with_answer(answer), key)  # the same request again: same key
+    assert retry.status_code == 204
+    assert len(_rows(clinics[CLINIC_A])) == 1
+    reused = _send(client, link, _with_answer(answer, family="Okafor73"))  # another request
+    assert reused.status_code == 422 and reused.json()["errors"][0]["pointer"] == "/botCheck"
+    assert len(_rows(clinics[CLINIC_A])) == 1
+
+
+def test_core_guards_refuse_in_the_agreed_order(guarded: Any, link: str,
+                                                clinics: dict[UUID, UUID]) -> None:  # noqa: F811
+    """Origin (403), then the bot check (422 at /botCheck) before the body's fields."""
+    client = guarded(None)
+    elsewhere = client.post(f"{API_PREFIX}/portal/practices/{link}/pre-registrations",
+                            json=form(), headers={"Origin": "https://evil.example.test",
+                                                  "Idempotency-Key": str(uuid.uuid4())})
+    assert elsewhere.status_code == 403 and elsewhere.json()["code"] == "csrf-check-failed"
+    unsolved = _with_answer(base64.b64encode(b'{"number": 1}').decode())
+    del unsolved["details"]["name"]
+    bot_first = _send(client, link, unsolved)
+    assert bot_first.status_code == 422
+    assert bot_first.json()["errors"][0]["pointer"] == "/botCheck"
+    solved = _with_answer(_solved(client))
+    del solved["details"]["name"]
+    then_body = _send(client, link, solved)
+    assert then_body.status_code == 422 and then_body.json()["code"] == "validation-failed"
+    assert _rows(clinics[CLINIC_A]) == []
