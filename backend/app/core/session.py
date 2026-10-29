@@ -43,7 +43,7 @@ from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 import httpx
-from fastapi import Request
+from fastapi import FastAPI, Request
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -52,6 +52,7 @@ from app.core.config import Settings
 from app.core.crypto import decrypt_field, encrypt_field
 from app.core.db import Database
 from app.core.errors import Forbidden, ServiceUnavailable, Unauthorized, ValidationFailed
+from app.core.lifecycle import on_shutdown
 from app.core.request_id import current_request_id
 
 log = logging.getLogger(__name__)
@@ -153,7 +154,9 @@ class Keycloak:
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
         if not (settings.keycloak_public_url and settings.keycloak_internal_url
                 and settings.keycloak_client_secret and settings.keycloak_redirect_uri):
-            raise ValueError("Keycloak sign-in is not configured")
+            missing = settings.missing("keycloak_public_url", "keycloak_internal_url",
+                                       "keycloak_client_secret", "keycloak_redirect_uri")
+            raise ValueError(f"Keycloak sign-in is not configured: set {', '.join(missing)}")
         if settings.session_secret is None or len(settings.session_secret.get_secret_value()) < 32:
             raise ValueError("SESSION_SECRET (at least 32 characters) is needed for sign-in")
         realm = f"/realms/{settings.keycloak_realm}"
@@ -473,3 +476,11 @@ def set_session_cookie(response: Any, token: str) -> None:
 def clear_session_cookie(response: Any) -> None:
     response.delete_cookie(SESSION_COOKIE, httponly=True, secure=True, samesite="strict",
                            path="/")
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """Staff sign-in; unconfigured, the sign-in routes answer 503."""
+    app.state.keycloak = Keycloak(settings) if settings.keycloak_public_url else None
+    if app.state.keycloak is not None:
+        on_shutdown(app, app.state.keycloak.aclose)
+    app.state.login_states = LoginStates()

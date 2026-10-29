@@ -1,8 +1,11 @@
-"""The six practice-setup lists (practice-setup.yaml) on the in-memory repository (fakes.py).
+"""The six practice-setup lists and the note-template reads (practice-setup.yaml) on the
+in-memory repository (fakes.py).
 
 Every route: success with the contract's field names, 401 and 403, an invalid cursor (400
 `invalid-cursor`), the `active` filter, keyset paging with `nextCursor` absent on the last page,
-and its own filters (`facilityId`, `providerId`, the payer search). The real SQL, row-level
+and its own filters (`facilityId`, `providerId`, the payer search, `ownerUserId`); the single
+note-template GET with its ETag and 404; each user sees the shared templates and only their
+own personal ones. The real SQL, row-level
 security and tenant_db's `facilityId` check are in test_practice_setup_live.py. Synthetic data only.
 """
 
@@ -13,7 +16,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.deps import CLINIC_A, CLINIC_B
+from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS
 
 from .. import cursor
 from ..cursor import Position
@@ -22,8 +25,9 @@ from .fakes import World
 
 Client = Callable[[str], TestClient]
 
+TEMPLATES = "/api/v1/note-templates"
 # path, a user with its permission, the cursor kind
-ROUTES = [
+SETUP_ROUTES = [
     ("/api/v1/facilities", "adm", "facilities"),
     ("/api/v1/providers", "adm", "providers"),
     ("/api/v1/appointment-types", "co", "appointment-types"),
@@ -31,7 +35,12 @@ ROUTES = [
     ("/api/v1/payers", "fd", "payers"),
     ("/api/v1/practice-payers", "adm", "practice-payers"),
 ]
+ROUTES = [*SETUP_ROUTES, (TEMPLATES, "md", "note-templates")]
 PATHS = [path for path, _, _ in ROUTES]
+SETUP_PATHS = [path for path, _, _ in SETUP_ROUTES]
+# A user without each list's permission: clinicians lack practice-setup:read (and MD
+# payers:read); front desk and billing lack note-templates:read (D73, A54).
+REFUSED = {path: "md" for path in SETUP_PATHS} | {TEMPLATES: "fd"}
 
 
 @pytest.fixture
@@ -57,6 +66,12 @@ def seeded(world: World) -> dict[str, Any]:
                     fakes.payer("Retired Test Plan", active=False)]
     a.practice_payers = [fakes.practice_payer(p, active=p.active) for p in world.payers]
     b.practice_payers = [fakes.practice_payer(world.payers[0])]
+    a.note_templates = [
+        fakes.note_template("Internal medicine follow-up", version=3, n=1),
+        fakes.note_template("My follow-up", owner_user_id=DEV_USERS["md"].id, n=2),
+        fakes.note_template("Retired template", active=False, n=3),
+        fakes.note_template("Nursing note", owner_user_id=DEV_USERS["rn"].id, n=4)]
+    b.note_templates = [fakes.note_template("Other clinic template")]
     return {"a": a, "b": b}
 
 
@@ -186,9 +201,10 @@ def test_without_a_session_is_401(as_user: Client, path: str) -> None:
     assert response.status_code == 401 and code(response) == "unauthenticated"
 
 
-@pytest.mark.parametrize("path, user", [(p, u) for p in PATHS for u in ("md", "none")]
+@pytest.mark.parametrize("path, user", [(p, u) for p in SETUP_PATHS for u in ("md", "none")]
                          + [("/api/v1/payers", "co"), ("/api/v1/facilities", "fd"),
-                            ("/api/v1/practice-payers", "bil")])
+                            ("/api/v1/practice-payers", "bil")]
+                         + [(TEMPLATES, u) for u in ("fd", "bil", "sup", "dsp", "none")])
 def test_a_role_without_the_permission_is_403(as_user: Client, seeded: dict[str, Any],
                                               path: str, user: str) -> None:
     response = as_user(user).get(path)
@@ -197,7 +213,7 @@ def test_a_role_without_the_permission_is_403(as_user: Client, seeded: dict[str,
 
 @pytest.mark.parametrize("path", PATHS)
 def test_the_permission_is_checked_before_the_cursor(as_user: Client, path: str) -> None:
-    response = as_user("md").get(path, params={"cursor": "bm90LWEtY3Vyc29y"})
+    response = as_user(REFUSED[path]).get(path, params={"cursor": "bm90LWEtY3Vyc29y"})
     assert response.status_code == 403
 
 
@@ -307,3 +323,105 @@ def test_payer_search(as_user: Client, seeded: dict[str, Any]) -> None:
     for bad in ({"payerName": "x"}, {"payerType": "medical"}, {"externalPayerId": "x" * 41}):
         response = as_user("bil").get("/api/v1/payers", params=bad)
         assert response.status_code == 422, bad
+
+
+# ----------------------------------------------------------------------------------- templates
+def test_note_templates_in_the_contracts_shape(as_user: Client, seeded: dict[str, Any]) -> None:
+    body = as_user("md").get(TEMPLATES).json()
+    assert "nextCursor" not in body
+    assert [t["name"] for t in body["items"]] == ["Internal medicine follow-up", "My follow-up",
+                                                  "Retired template"]
+    first = body["items"][0]
+    assert first == {
+        "id": str(seeded["a"].note_templates[0].id), "code": "INTERNAL-M", "version": 3,
+        "name": "Internal medicine follow-up", "specialtyCode": "207R00000X",
+        "noteTypeLoinc": "11506-3", "personal": False,
+        "sections": [
+            {"sequence": 1, "sectionCode": "10164-2", "title": "History of present illness",
+             "defaultText": "Test starting text.", "required": True},
+            {"sequence": 2, "sectionCode": "51848-0", "title": "Assessment",
+             "required": False}],
+        "active": True, "createdAt": "2026-10-26T13:01:00Z",
+        "updatedAt": "2026-10-26T13:01:00Z",
+    }
+    mine = body["items"][1]
+    assert (mine["personal"], mine["ownerUserId"]) == (True, str(DEV_USERS["md"].id))
+
+
+@pytest.mark.parametrize("user", ["md", "app", "rn", "ma", "adm", "co"])
+def test_every_role_with_note_templates_read_reads_them(as_user: Client,
+                                                        seeded: dict[str, Any],
+                                                        user: str) -> None:
+    template = seeded["a"].note_templates[0]
+    assert as_user(user).get(TEMPLATES).status_code == 200
+    assert as_user(user).get(f"{TEMPLATES}/{template.id}").status_code == 200
+
+
+def test_one_note_template_with_its_etag(as_user: Client, seeded: dict[str, Any]) -> None:
+    template = seeded["a"].note_templates[0]
+    response = as_user("rn").get(f"{TEMPLATES}/{template.id}")
+    assert response.status_code == 200, response.text
+    assert response.headers["ETag"] == '"3"'
+    listed = as_user("rn").get(TEMPLATES).json()["items"][0]
+    assert response.json() == listed
+
+
+def test_note_templates_by_owner(as_user: Client, seeded: dict[str, Any]) -> None:
+    def names(user: str, **params: str) -> list[str]:
+        response = as_user(user).get(TEMPLATES, params=params)
+        assert response.status_code == 200, response.text
+        return [t["name"] for t in response.json()["items"]]
+
+    md, rn = str(DEV_USERS["md"].id), str(DEV_USERS["rn"].id)
+    assert names("md", ownerUserId=md) == ["My follow-up"]
+    assert names("md", ownerUserId=md, active="false") == []
+    assert names("rn", ownerUserId=rn) == ["Nursing note"]
+    # Someone else's personal templates are never returned: an empty page.
+    assert names("md", ownerUserId=rn) == [] and names("adm", ownerUserId=md) == []
+    assert names("md", ownerUserId=str(uuid4())) == []
+    response = as_user("adm").get(TEMPLATES, params={"ownerUserId": "not-a-uuid"})
+    assert response.status_code == 422 and code(response) == "validation-failed"
+
+
+def test_an_unknown_or_another_clinics_note_template_is_404(as_user: Client,
+                                                            seeded: dict[str, Any]) -> None:
+    other = seeded["b"].note_templates[0].id
+    for template_id in (uuid4(), other):
+        response = as_user("md").get(f"{TEMPLATES}/{template_id}")
+        assert response.status_code == 404, response.text
+        assert code(response) == "not-found" and "ETag" not in response.headers
+    assert as_user("md-b").get(f"{TEMPLATES}/{other}").status_code == 200
+    mine = seeded["a"].note_templates[0].id
+    assert as_user("md-b").get(f"{TEMPLATES}/{mine}").status_code == 404
+    assert [t["id"] for t in as_user("md-b").get(TEMPLATES).json()["items"]] == [str(other)]
+
+
+def test_one_note_template_refusals(as_user: Client, seeded: dict[str, Any]) -> None:
+    path = f"{TEMPLATES}/{seeded['a'].note_templates[0].id}"
+    for user in ("fd", "bil", "none"):
+        response = as_user(user).get(path)
+        assert response.status_code == 403 and code(response) == "permission-denied"
+    client = as_user("md")
+    del client.headers["X-Dev-User"]
+    assert code(client.get(path)) == "unauthenticated"
+    response = as_user("md").get(f"{TEMPLATES}/not-a-uuid")
+    assert response.status_code == 422 and code(response) == "validation-failed"
+    assert as_user("fd").get(f"{TEMPLATES}/not-a-uuid").status_code == 403
+
+
+def test_each_user_sees_shared_templates_and_only_their_own(as_user: Client,
+                                                            seeded: dict[str, Any]) -> None:
+    shared, mine, retired, nursing = (str(t.id) for t in seeded["a"].note_templates)
+
+    def ids(user: str) -> set[str]:
+        return {t["id"] for t in as_user(user).get(TEMPLATES).json()["items"]}
+
+    assert ids("md") == {shared, mine, retired}
+    assert ids("rn") == {shared, retired, nursing}
+    assert ids("adm") == {shared, retired}
+    for user, theirs in (("md", nursing), ("rn", mine), ("adm", mine)):
+        response = as_user(user).get(f"{TEMPLATES}/{theirs}")
+        assert response.status_code == 404 and code(response) == "not-found"
+    assert as_user("md").get(f"{TEMPLATES}/{mine}").json()["ownerUserId"] == str(
+        DEV_USERS["md"].id)
+    assert as_user("rn").get(f"{TEMPLATES}/{nursing}").status_code == 200

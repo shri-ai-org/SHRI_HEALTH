@@ -8,9 +8,10 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.core.config import Settings
 from app.core.db import Database
 from app.core.errors import problem
 
@@ -62,3 +63,8 @@ def _not_ready(request: Request) -> JSONResponse:
     return problem(
         request, "service-unavailable", "Not ready", headers={"Retry-After": RETRY_AFTER_SECONDS}
     )
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """At the root: /health, /ready."""
+    app.include_router(router)

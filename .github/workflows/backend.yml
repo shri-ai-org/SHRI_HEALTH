@@ -8,14 +8,18 @@ name: backend
 
 on:
   pull_request:
-    paths: ["backend/**", "infra/compose/**", ".github/workflows/backend.yml",
+    # No CI on drafts: a PR runs only once it's ready for review, and again on each push to it.
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Markdown alone doesn't run this (docs.yml checks its links); a file listed after the
+    # exclusion, such as SECURITY_MODEL.md for the backend, still does.
+    paths: ["backend/**", "infra/compose/**", "!**/*.md", ".github/workflows/backend.yml",
             "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**",
-            "contracts/openapi/dist/**"]
+            "contracts/openapi/dist/**", "scripts/check_env.py"]
   push:
     branches: [main]
-    paths: ["backend/**", "infra/compose/**", ".github/workflows/backend.yml",
+    paths: ["backend/**", "infra/compose/**", "!**/*.md", ".github/workflows/backend.yml",
             "contracts/docs/SECURITY_MODEL.md", "contracts/scripts/role_matrix.py", ".github/licences/**",
-            "contracts/openapi/dist/**"]
+            "contracts/openapi/dist/**", "scripts/check_env.py"]
 
 permissions:
   contents: read
@@ -27,6 +31,8 @@ concurrency:
 
 jobs:
   test:
+    # Skipped on a draft PR (it runs when the PR is marked ready for review); always on main.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

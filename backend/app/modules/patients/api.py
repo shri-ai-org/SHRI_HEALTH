@@ -3,9 +3,11 @@ PR by PR, following contracts/docs/IMPL_BATCH1_PLAN.md; each route's operation_i
 contract's operationId.
 
 PR-1: search, register, read, update, summaries, restrict and unrestrict, identifiers and related
-persons. Every route that touches one chart runs the restricted-chart check first (D37), and patient
-data never reaches a response without it. Operations whose x-audit names the patient from the result
-or the body hand those patients to core's audit hook (#79) before they commit or return.
+persons. PR-2: coverages (add, list, read one, edit or end with `endDate`, entered-in-error;
+D45) and consents (record, list). Every route that touches one chart runs the restricted-chart
+check first (D37), and patient data never reaches a response without it. Operations whose
+x-audit names the patient from the result or the body hand those patients to core's audit hook
+(#79) before they commit or return.
 The permission (`require`) is the first dependency, so a caller without it gets 401 or 403 before
 anything else is resolved.
 """
@@ -19,8 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser, require, tenant_db
 
-from . import schemas, service
+from . import insurance, schemas, service
 from .access import AuditHooks, ChartCheck, audit_hooks, chart_check, fhir_store
+from .insurance_repository import InsuranceRepository, SqlInsuranceRepository
 from .repository import PatientRepository, SqlPatientRepository, Versioned
 from .store import FhirStore
 
@@ -33,12 +36,18 @@ def repository() -> PatientRepository:
     return SqlPatientRepository()
 
 
+def insurance_repository() -> InsuranceRepository:
+    return SqlInsuranceRepository()
+
+
 Repo = Annotated[PatientRepository, Depends(repository)]
+Insurance = Annotated[InsuranceRepository, Depends(insurance_repository)]
 Store = Annotated[FhirStore, Depends(fhir_store)]
 Check = Annotated[ChartCheck, Depends(chart_check)]
 DB = Annotated[AsyncSession, Depends(tenant_db)]
 PatientId = Annotated[UUID, Path(alias="patientId")]
 RelatedPersonId = Annotated[UUID, Path(alias="relatedPersonId")]
+CoverageId = Annotated[UUID, Path(alias="coverageId")]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Cursor = Annotated[str | None, Query(max_length=512, pattern=r"^[A-Za-z0-9_-]+$")]
 IfMatch = Annotated[str | None, Header(alias="If-Match")]
@@ -215,3 +224,108 @@ async def update_related_person(
                                            body, if_match)
     response.headers["ETag"] = service.etag(updated.version)
     return updated.value
+
+
+# ------------------------------------------------------------------------ coverages (PR-2, D45)
+@router.get(f"{PATIENT}/coverages", operation_id="listCoverages",
+            response_model=schemas.CoverageList, response_model_exclude_none=True)
+async def list_coverages(
+    user: Annotated[CurrentUser, Depends(require("coverages:read"))],
+    patient_id: PatientId, db: DB, repo: Repo, insurance_repo: Insurance, check: Check,
+    limit: Limit = 50, cursor: Cursor = None,
+) -> schemas.CoverageList:
+    await _chart(db, repo, check, user, patient_id)
+    offset = service.decode_cursor(cursor)
+    found = await insurance_repo.list_coverages(db, patient_id, limit=limit + 1, offset=offset)
+    items, next_cursor = service.page(found, limit, offset)
+    return schemas.CoverageList(items=items, next_cursor=next_cursor)
+
+
+@router.post(f"{PATIENT}/coverages", operation_id="addCoverage",
+             status_code=status.HTTP_201_CREATED, response_model=schemas.Coverage,
+             response_model_exclude_none=True)
+async def add_coverage(
+    user: Annotated[CurrentUser, Depends(require("coverages:create"))],
+    patient_id: PatientId, body: schemas.CoverageCreate, response: Response, db: DB, repo: Repo,
+    insurance_repo: Insurance, store: Store, check: Check,
+) -> schemas.Coverage:
+    patient = await _chart(db, repo, check, user, patient_id)
+    created = await insurance.add_coverage(db, insurance_repo, store, patient.value, body)
+    response.headers["ETag"] = service.etag(created.version)
+    response.headers["Location"] = f"/api/v1/patients/{patient_id}/coverages/{created.value.id}"
+    return created.value
+
+
+@router.get(f"{PATIENT}/coverages/{{coverageId}}", operation_id="getCoverage",
+            response_model=schemas.Coverage, response_model_exclude_none=True)
+async def get_coverage(
+    user: Annotated[CurrentUser, Depends(require("coverages:read"))],
+    patient_id: PatientId, coverage_id: CoverageId, response: Response, db: DB, repo: Repo,
+    insurance_repo: Insurance, check: Check,
+) -> schemas.Coverage:
+    await _chart(db, repo, check, user, patient_id)
+    found = await insurance_repo.get_coverage(db, patient_id, coverage_id)
+    response.headers["ETag"] = service.etag(found.version)
+    return found.value
+
+
+@router.patch(f"{PATIENT}/coverages/{{coverageId}}", operation_id="updateCoverage",
+              response_model=schemas.Coverage, response_model_exclude_none=True)
+async def update_coverage(
+    user: Annotated[CurrentUser, Depends(require("coverages:update"))],
+    patient_id: PatientId, coverage_id: CoverageId, body: schemas.CoveragePatch,
+    response: Response, db: DB, repo: Repo, insurance_repo: Insurance, store: Store,
+    check: Check, if_match: IfMatch = None,
+) -> schemas.Coverage:
+    patient = await _chart(db, repo, check, user, patient_id)
+    updated = await insurance.update_coverage(db, insurance_repo, store, patient.value,
+                                              coverage_id, body, if_match)
+    response.headers["ETag"] = service.etag(updated.version)
+    return updated.value
+
+
+@router.post(f"{PATIENT}/coverages/{{coverageId}}/entered-in-error",
+             operation_id="markCoverageEnteredInError", response_model=schemas.Coverage,
+             response_model_exclude_none=True)
+async def mark_coverage_entered_in_error(
+    user: Annotated[CurrentUser, Depends(require("coverages:entered-in-error"))],
+    patient_id: PatientId, coverage_id: CoverageId, body: schemas.EnteredInErrorRequest,
+    response: Response, db: DB, repo: Repo, insurance_repo: Insurance, store: Store,
+    check: Check,
+) -> schemas.Coverage:
+    patient = await _chart(db, repo, check, user, patient_id)
+    marked = await insurance.coverage_entered_in_error(db, insurance_repo, store, patient.value,
+                                                       coverage_id, body)
+    response.headers["ETag"] = service.etag(marked.version)
+    return marked.value
+
+
+# ------------------------------------------------------------------------------- consents (PR-2)
+@router.get(f"{PATIENT}/consents", operation_id="listConsents",
+            response_model=schemas.ConsentList, response_model_exclude_none=True)
+async def list_consents(
+    user: Annotated[CurrentUser, Depends(require("consents:read"))],
+    patient_id: PatientId, db: DB, repo: Repo, insurance_repo: Insurance, check: Check,
+    limit: Limit = 50, cursor: Cursor = None, kind: schemas.ConsentKind | None = None,
+) -> schemas.ConsentList:
+    await _chart(db, repo, check, user, patient_id)
+    offset = service.decode_cursor(cursor)
+    found = await insurance_repo.list_consents(db, patient_id, kind, limit=limit + 1,
+                                               offset=offset)
+    items, next_cursor = service.page(found, limit, offset)
+    return schemas.ConsentList(items=items, next_cursor=next_cursor)
+
+
+@router.post(f"{PATIENT}/consents", operation_id="recordConsent",
+             status_code=status.HTTP_201_CREATED, response_model=schemas.Consent,
+             response_model_exclude_none=True)
+async def record_consent(
+    user: Annotated[CurrentUser, Depends(require("consents:create"))],
+    patient_id: PatientId, body: schemas.ConsentCreate, response: Response, db: DB, repo: Repo,
+    insurance_repo: Insurance, store: Store, check: Check,
+) -> schemas.Consent:
+    patient = await _chart(db, repo, check, user, patient_id)
+    recorded = await insurance.record_consent(db, insurance_repo, store, patient.value, body)
+    response.headers["ETag"] = service.etag(recorded.version)
+    response.headers["Location"] = f"/api/v1/patients/{patient_id}/consents"
+    return recorded.value

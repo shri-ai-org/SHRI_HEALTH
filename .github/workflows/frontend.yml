@@ -6,11 +6,14 @@ name: frontend
 
 on:
   pull_request:
-    paths: ["frontend/**", "contracts/openapi/dist/**", ".github/workflows/frontend.yml",
+    # No CI on drafts: a PR runs only once it's ready for review, and again on each push to it.
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Markdown alone doesn't run this; docs.yml checks its links.
+    paths: ["frontend/**", "!**/*.md", "contracts/openapi/dist/**", ".github/workflows/frontend.yml",
             ".github/licences/**"]
   push:
     branches: [main]
-    paths: ["frontend/**", "contracts/openapi/dist/**", ".github/workflows/frontend.yml",
+    paths: ["frontend/**", "!**/*.md", "contracts/openapi/dist/**", ".github/workflows/frontend.yml",
             ".github/licences/**"]
 
 permissions:
@@ -23,6 +26,8 @@ concurrency:
 
 jobs:
   check:
+    # Skipped on a draft PR (it runs when the PR is marked ready for review); always on main.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:

@@ -75,6 +75,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 301 | POST | `/appointments/{appointmentId}/check-out` | V | Ad | `appointments:check-out` | pw | S | | | FR-SCH-02 | Demo | **New** (D98): check-out as an action, FD and ADM only; the `409` names what blocks it (open follow-up, wrong visit state); `checked-out` is no longer sent to #57 |
 | 302 | POST | `/encounters/{encounterId}/follow-up/withdraw` | V | Cl | `encounters:update` | pw | – | ✓ | | FR-SCH-02 | Demo | **New** (D98, D67): the clinician who asked withdraws an open follow-up request |
 | 303 | GET | `/encounters/{encounterId}/after-visit-summary/download-url` | V | Cl | `after-visit-summaries:read` | pr | – | | | FR-ENC-06 | Demo | **New** (D98): the front desk prints the latest signed after-visit summary at check-out |
+| 304 | GET | `/portal/bot-challenge` | T | C | `public` | – | – | | | FR-PAT-02 | Demo | **New** (D96, amended 2026-10-28): the ALTCHA challenge for the public pre-registration form; no session and no practice code; each solved challenge is accepted once |
+| 305 | GET | `/files/{fileId}/content` | A | F | `authenticated` | ex | – | | | §3.9 | Demo | **New** (D105): where every download link points; a one-time token bound to the user and the file, about one minute; decrypts as it streams; every download audited |
 | 24 | GET | `/admin/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
 | 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |

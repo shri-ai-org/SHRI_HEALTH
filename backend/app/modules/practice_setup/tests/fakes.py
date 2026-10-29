@@ -4,6 +4,7 @@
 It behaves like the real one where the API depends on it:
 - each clinic sees only its own rows, as forced row-level security does; payers are
   platform-wide, the same for every clinic;
+- note templates are the clinic's shared ones plus the signed-in user's own personal ones;
 - every list is keyset-paginated on the same sort key plus ID as the SQL, fetching one row more
   than the page to know whether another page exists.
 Synthetic data only.
@@ -28,9 +29,11 @@ T0 = datetime(2026, 10, 26, 13, 0, tzinfo=UTC)
 
 @dataclass
 class FakeSession:
-    """What tenant_db yields in these tests: the clinic it is scoped to."""
+    """What tenant_db yields in these tests: the clinic and the signed-in user it is scoped to
+    (app.current_user_id)."""
 
     tenant_id: UUID
+    user_id: UUID | None = None
 
 
 @dataclass
@@ -40,6 +43,7 @@ class Clinic:
     appointment_types: list[schemas.AppointmentType] = field(default_factory=list)
     schedules: list[schemas.ProviderSchedule] = field(default_factory=list)
     practice_payers: list[schemas.PracticePayer] = field(default_factory=list)
+    note_templates: list[schemas.NoteTemplate] = field(default_factory=list)
 
 
 @dataclass
@@ -128,6 +132,25 @@ class FakeRepository:
         return _page(self._clinic(db).practice_payers, _active(active), lambda p: p.payer.name,
                      "practice-payers", after, limit)
 
+    def _visible_templates(self, db: AsyncSession) -> list[schemas.NoteTemplate]:
+        session: FakeSession = db  # type: ignore[assignment]
+        return [t for t in self._clinic(db).note_templates
+                if t.owner_user_id is None or t.owner_user_id == session.user_id]
+
+    async def list_note_templates(self, db: AsyncSession, *, owner_user_id: UUID | None,
+                                  active: bool | None, after: Position | None, limit: int
+                                  ) -> Page[schemas.NoteTemplate]:
+        def keep(t: schemas.NoteTemplate) -> bool:
+            return _active(active)(t) and (owner_user_id is None
+                                           or t.owner_user_id == owner_user_id)
+        return _page(self._visible_templates(db), keep, lambda t: t.name, "note-templates",
+                     after, limit)
+
+    async def get_note_template(self, db: AsyncSession, note_template_id: UUID
+                                ) -> schemas.NoteTemplate | None:
+        return next((t for t in self._visible_templates(db) if t.id == note_template_id),
+                    None)
+
 
 # ----------------------------------------------------------------------------------- builders
 def _at(n: int) -> datetime:
@@ -202,5 +225,21 @@ def practice_payer(of: schemas.Payer, *, active: bool = True, n: int = 0
                                     status="not-required"),
             schemas.PayerEnrollment(transaction="837P", clearinghouse="waystar",
                                     status="approved", submitted_at=_at(1), approved_at=_at(2)),
+        ],
+        active=active, created_at=_at(n), updated_at=_at(n))
+
+
+def note_template(name: str, *, owner_user_id: UUID | None = None, active: bool = True,
+                  version: int = 1, n: int = 0) -> schemas.NoteTemplate:
+    return schemas.NoteTemplate(
+        id=uuid4(), code=name[:10].upper().replace(" ", "-"), version=version, name=name,
+        specialty_code="207R00000X", note_type_loinc="11506-3",
+        personal=owner_user_id is not None, owner_user_id=owner_user_id,
+        sections=[
+            schemas.NoteTemplateSection(sequence=1, section_code="10164-2",
+                                        title="History of present illness", required=True,
+                                        default_text="Test starting text."),
+            schemas.NoteTemplateSection(sequence=2, section_code="51848-0", title="Assessment",
+                                        required=False),
         ],
         active=active, created_at=_at(n), updated_at=_at(n))
