@@ -5,7 +5,8 @@ name: contracts
 on:
   pull_request:
     # labeled/unlabeled: re-run when the breaking-change-approved label is added or removed.
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    # ready_for_review: a draft runs nothing; marking it ready runs it once (team CI rules, D74).
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
     paths: ["contracts/**", ".github/workflows/contracts.yml", ".github/licences/**"]
   push:
     branches: [main]
@@ -21,10 +22,12 @@ concurrency:
 
 jobs:
   lint-and-breaking:
+    # Skipped on a draft PR (it runs when the PR is marked ready for review); always on main.
     # Label changes other than breaking-change-approved don't spend minutes.
     if: >-
-      (github.event.action != 'labeled' && github.event.action != 'unlabeled')
-      || github.event.label.name == 'breaking-change-approved'
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+      && ((github.event.action != 'labeled' && github.event.action != 'unlabeled')
+          || github.event.label.name == 'breaking-change-approved')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
