@@ -3,7 +3,8 @@ added PR by PR, following contracts/docs/IMPL_BATCH1_PLAN.md; each route's opera
 contract's operationId.
 
 PR-3/PR-4 (demo step 2): the booking lists, free times, book, reschedule, cancel, the appointment
-list and one appointment, and the status board. The permission (`require`) is the first
+list and one appointment, and the status board.
+PR-5 (demo step 3): check-in and its undo. The permission (`require`) is the first
 dependency. A `facilityId` the user isn't assigned to is 404 (core's facility filter): in the
 query core checks it, in a body or a stored appointment the service does. Operations whose x-audit
 takes the patient from the result or the body hand those patients to core's audit hook.
@@ -188,6 +189,38 @@ async def cancel_appointment(
     await db.commit()
     response.headers["ETag"] = service.etag(version)
     return cancelled
+
+
+# ----------------------------------------------------------------------- check-in and its undo
+@router.post(APPOINTMENT + "/check-in", operation_id="checkInAppointment",
+             response_model=schemas.CheckInResult, response_model_exclude_none=True)
+async def check_in_appointment(
+    user: Annotated[CurrentUser, Depends(require("appointments:check-in"))],
+    appointment_id: AppointmentId, body: schemas.CheckInRequest, request: Request,
+    response: Response, db: DB,
+) -> schemas.CheckInResult:
+    """The Idempotency-Key is required (x-idempotency: required): core claims and replays it."""
+    encounter_id, check_id = await service.check_in(db, user, appointment_id, body.self_pay,
+                                                    _now())
+    found, version = await service.one(db, user, appointment_id)
+    audit_patients(request, [found.patient.id])  # x-audit patient "result"
+    await db.commit()
+    response.headers["ETag"] = service.etag(version)
+    return schemas.CheckInResult(appointment=found, encounter_id=encounter_id,
+                                 eligibility_check_id=check_id)
+
+
+@router.post(APPOINTMENT + "/undo-check-in", operation_id="undoCheckIn",
+             response_model=schemas.Appointment, response_model_exclude_none=True)
+async def undo_check_in(
+    user: Annotated[CurrentUser, Depends(require("appointments:undo-check-in"))],
+    appointment_id: AppointmentId, body: schemas.UndoCheckInRequest, request: Request, db: DB,
+) -> schemas.Appointment:
+    await service.undo_check_in(db, user, appointment_id, body.reason)
+    found, _ = await service.one(db, user, appointment_id)
+    audit_patients(request, [found.patient.id])  # x-audit patient "result"
+    await db.commit()
+    return found
 
 
 # --------------------------------------------------------------------------------- status board

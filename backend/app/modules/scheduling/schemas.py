@@ -232,3 +232,18 @@ class StatusBoardList(Out):
     date: dt.date | None = None
     time_zone: str | None = None
     facility_name: str | None = None
+
+
+# ----------------------------------------------------------------------- check-in and its undo
+class CheckInRequest(Closed):
+    self_pay: bool = False
+
+
+class CheckInResult(Out):
+    appointment: Appointment
+    encounter_id: UUID
+    eligibility_check_id: UUID | None = None
+
+
+class UndoCheckInRequest(Closed):
+    reason: Annotated[str, _text(500, min_length=1)]
