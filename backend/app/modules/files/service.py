@@ -40,10 +40,10 @@ in the quarantine bucket, with the declared size and SHA-256, and the answer is 
    invalid-state-transition`` with ``currentState``, the contract's code for "not clean yet, or
    rejected". Checked last, so the state is told only to someone who may read the file.
 
-The link is valid for ``DOWNLOAD_LINK_LIFETIME`` (the contract's "at most 5 minutes"). An
-encrypted file's link points at the decrypting endpoint with a signed token (tokens.py), since
-the store holds ciphertext; ``serve_content`` is that endpoint's service, which repeats these
-checks. A file stored as it is (a generated receipt, for now) gets a pre-signed store link.
+The link points at our own API, ``GET /files/{fileId}/content`` (D105), never into the store,
+which holds only ciphertext. Its token is core's (``app.core.download_tokens``): bound to this
+user, this file and this clinic, valid for about a minute and accepted once.
+``serve_content`` is that endpoint's service: it repeats these checks, then decrypts.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ import hashlib
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
@@ -62,29 +62,21 @@ from starlette.requests import Request
 
 from app.core import audit
 from app.core.deps import CurrentUser
+from app.core.download_tokens import DownloadTokens
 from app.core.errors import Conflict, Forbidden, NotFound, ValidationFailed, field_error
 from app.core.long_running import Operation, problem_body
 from app.core.routing import API_PREFIX
 
 from . import schemas
-from .crypto import FileCrypto
+from .crypto import FileCrypto, FileTampered
 from .operations import FILE_SCAN, Operations
 from .repository import FileRecord, FileRepository, NewUpload
 from .scanner import Scanner
-from .storage import (
-    CLEAN_BUCKET,
-    GENERATED_PURPOSES,
-    QUARANTINE_BUCKET,
-    FileStore,
-    expiry,
-    storage_key,
-)
-from .tokens import DownloadClaims, DownloadTokens
+from .storage import CLEAN_BUCKET, GENERATED_PURPOSES, QUARANTINE_BUCKET, FileStore, storage_key
 
 log = logging.getLogger(__name__)
 
 UPLOAD_LINK_LIFETIME = timedelta(minutes=15)
-DOWNLOAD_LINK_LIFETIME = timedelta(minutes=5)
 CONTENT_CHUNK_BYTES = 64 * 1024
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 IMAGE_TYPES = frozenset({"image/jpeg", "image/png"})
@@ -188,7 +180,7 @@ async def scan_upload(db: AsyncSession, repo: FileRepository, store: FileStore,
     if rejection is not None:
         await repo.mark_rejected(db, file.id, scan_status=rejection.scan_status)
         return rejection
-    sealed = await crypto.seal(data)
+    sealed = await crypto.seal(data, context=file.storage_key)
     try:
         await store.put(file.storage_key, sealed.data, file.content_type, bucket=CLEAN_BUCKET)
     except FileExistsError:
@@ -242,8 +234,9 @@ async def complete_upload(db: AsyncSession, repo: FileRepository, store: FileSto
 
 # ================================================================================ reading a file
 async def _readable(request: Request, db: AsyncSession, repo: FileRepository,
-                    user: CurrentUser, file_id: UUID) -> FileRecord:
-    """The checks before anyone gets a file's bytes, in order (module docstring)."""
+                    user: CurrentUser, file_id: UUID) -> tuple[FileRecord, frozenset[UUID]]:
+    """The checks before anyone gets a file's bytes, in order (module docstring). Returns the
+    file and the patients of the records it is attached to."""
     file = await repo.get(db, file_id)
     if file is None:
         raise NotFound("File not found")
@@ -261,51 +254,56 @@ async def _readable(request: Request, db: AsyncSession, repo: FileRepository,
             await repo.ensure_chart_access(db, user, patient_id)
     if file.state != "clean" or file.bucket != CLEAN_BUCKET:
         raise Conflict("Only a clean file can be downloaded", currentState=file.state)
-    return file
+    return file, attachment.patient_ids
 
 
 def content_path(file_id: UUID) -> str:
-    """The decrypting endpoint proposed on #128 (not mounted until the contract has it)."""
+    """Where a download link points (downloadFileContent, D105)."""
     return f"{API_PREFIX}/files/{file_id}/content"
 
 
 async def create_download_url(request: Request, db: AsyncSession, repo: FileRepository,
-                              store: FileStore, tokens: DownloadTokens, user: CurrentUser,
+                              tokens: DownloadTokens, user: CurrentUser,
                               file_id: UUID) -> schemas.DownloadLink:
-    """An encrypted file (an upload, with its wrapped key) gets a link to the decrypting
-    endpoint with a signed token; a file stored as it is (a generated receipt, until it is
-    encrypted too) gets a pre-signed link to the store."""
-    file = await _readable(request, db, repo, user, file_id)
-    if file.wrapped_data_key is not None:
-        expires_at = expiry(DOWNLOAD_LINK_LIFETIME)
-        token = tokens.sign(DownloadClaims(file_id=file.id, user_id=user.id,
-                                           tenant_id=user.organization_id,
-                                           expires_at=expires_at))
-        return schemas.DownloadLink(url=f"{content_path(file.id)}?{urlencode({'token': token})}",
-                                    expires_at=expires_at, content_type=file.content_type,
-                                    size_bytes=file.size_bytes)
-    link = store.presign_get(file.storage_key, bucket=CLEAN_BUCKET,
-                             content_type=file.content_type, expires=DOWNLOAD_LINK_LIFETIME)
-    return schemas.DownloadLink(url=link.url, expires_at=link.expires_at,
-                                content_type=file.content_type, size_bytes=file.size_bytes)
+    """A link to the decrypting endpoint with core's one-time token (module docstring)."""
+    file, _ = await _readable(request, db, repo, user, file_id)
+    claims = tokens.claims(file.id, user.id, user.organization_id)
+    token = tokens.sign(claims)
+    return schemas.DownloadLink(url=f"{content_path(file.id)}?{urlencode({'token': token})}",
+                                expires_at=claims.expires_at, content_type=file.content_type,
+                                size_bytes=file.size_bytes)
+
+
+#: The file name's extension for each media type a file can have; anything else gets none.
+EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "application/pdf": "pdf"}
 
 
 @dataclass(frozen=True)
 class FileContent:
     """What the decrypting endpoint sends: these headers, then ``body`` as it streams."""
 
+    file_id: UUID
+    purpose: str
     content_type: str
     size_bytes: int
+    patient_ids: frozenset[UUID]  # for the download's audit row (x-audit patient: result)
     body: AsyncIterator[bytes] = field(repr=False)
+
+    @property
+    def filename(self) -> str:
+        """From the purpose and the file ID only: never patient data or the uploader's name."""
+        extension = EXTENSIONS.get(self.content_type)
+        return f"{self.purpose}-{self.file_id}" + (f".{extension}" if extension else "")
 
     @property
     def headers(self) -> dict[str, str]:
         return {"Content-Type": self.content_type, "Content-Length": str(self.size_bytes),
-                "Content-Disposition": "attachment", "Cache-Control": "no-store",
+                "Content-Disposition": f'attachment; filename="{self.filename}"',
+                "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
                 "X-Content-Type-Options": "nosniff"}
 
 
-async def _plain(data: bytes) -> AsyncIterator[bytes]:
+async def _chunks(data: bytes) -> AsyncIterator[bytes]:
     for start in range(0, len(data), CONTENT_CHUNK_BYTES):
         yield data[start:start + CONTENT_CHUNK_BYTES]
 
@@ -313,27 +311,31 @@ async def _plain(data: bytes) -> AsyncIterator[bytes]:
 async def serve_content(request: Request, db: AsyncSession, repo: FileRepository,
                         store: FileStore, crypto: FileCrypto, tokens: DownloadTokens,
                         user: CurrentUser, file_id: UUID, token: str) -> FileContent:
-    """The decrypting download (proposed ``GET /files/{fileId}/content?token=…``, #128).
+    """The decrypting download, ``GET /files/{fileId}/content?token=…`` (D105).
 
-    The token must be genuine, unexpired and issued for this file, this user and this clinic,
-    or the answer is ``404 not-found``, the same as for a file that doesn't exist. Then every
-    check of ``createDownloadUrl`` runs again (``_readable``: 404, 403, 403
-    break-glass-required, 409), since a permission or a grant may have ended since the link
-    was made. The bytes are decrypted as they stream (``FileCrypto.open``); a file stored as it
-    is streams as it is. The route, once mounted, gets its audit row from core's x-audit, as
-    every download is audited; this function writes none and never commits.
+    Core's token check comes first: the token must be genuine, unexpired, unused and this
+    user's (core uses it up), and name this file and this clinic, or the answer is ``404
+    not-found``, the same as for a file that doesn't exist. Then every check of
+    ``createDownloadUrl`` runs again (``_readable``: 404, 403, 403 break-glass-required, 409),
+    since a permission or a grant may have ended since the link was made. The whole file is
+    decrypted and verified before the first byte is sent, so a file that doesn't verify is a
+    ``500`` and nothing of it is served; then it streams in chunks. The audit row is core's
+    (x-audit), naming ``patient_ids``, which the route reports; this function writes none and
+    never commits.
     """
-    claims = tokens.verify(token)
-    if (claims is None or claims.file_id != file_id or claims.user_id != user.id
-            or claims.tenant_id != user.organization_id
-            or claims.expires_at <= datetime.now(UTC)):
+    claims = tokens.verify(token, user_id=user.id)
+    if claims is None or claims.file_id != file_id or claims.tenant_id != user.organization_id:
         raise NotFound("File not found")
-    file = await _readable(request, db, repo, user, file_id)
+    file, patient_ids = await _readable(request, db, repo, user, file_id)
     try:
         stored = await store.get(file.storage_key, bucket=CLEAN_BUCKET)
     except FileNotFoundError:
         log.error("Clean file %s has no stored bytes", file.id)
         raise NotFound("File not found") from None
-    body = (_plain(stored) if file.wrapped_data_key is None
-            else crypto.open(stored, file.wrapped_data_key))
-    return FileContent(content_type=file.content_type, size_bytes=file.size_bytes, body=body)
+    try:
+        plain = await crypto.open(stored, file.wrapped_data_key, context=file.storage_key)
+    except FileTampered:
+        log.error("Clean file %s failed its integrity check; nothing was served", file.id)
+        raise
+    return FileContent(file_id=file.id, purpose=file.purpose, content_type=file.content_type,
+                       size_bytes=len(plain), patient_ids=patient_ids, body=_chunks(plain))

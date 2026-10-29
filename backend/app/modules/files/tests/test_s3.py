@@ -20,7 +20,7 @@ import pytest
 from app.core.errors import ServiceUnavailable
 
 from .. import s3
-from ..storage import CLEAN_BUCKET, QUARANTINE_BUCKET
+from ..storage import QUARANTINE_BUCKET
 
 AWS_KEY = "AKIAIOSFODNN7EXAMPLE"
 AWS_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
@@ -172,7 +172,7 @@ async def test_an_unreachable_store_is_service_unavailable() -> None:
         await store.get(_key())
 
 
-def test_presigned_links_on_the_public_endpoint() -> None:
+def test_upload_links_on_the_public_endpoint() -> None:
     store, key = _store(FakeS3()), _key()
     put = store.presign_put(key, bucket=QUARANTINE_BUCKET, content_type="image/png",
                             size_bytes=348211, expires=timedelta(minutes=15))
@@ -191,14 +191,7 @@ def test_presigned_links_on_the_public_endpoint() -> None:
                         headers={"content-length": "348211", "content-type": "image/png"})
     assert url.query == signed
 
-    get = store.presign_get(key, bucket=CLEAN_BUCKET, content_type="image/png",
-                            expires=timedelta(minutes=5))
-    query = {k: v[0] for k, v in parse_qs(urlsplit(get.url).query).items()}
-    assert urlsplit(get.url).path == f"/shri-clean/{key}"
-    assert query["response-content-disposition"] == "attachment"
-    assert query["response-content-type"] == "image/png"
-    assert query["X-Amz-SignedHeaders"] == "host" and query["X-Amz-Expires"] == "300"
-    assert "test-secret" not in get.url and "test-secret" not in repr(store.config)
+    assert "test-secret" not in put.url and "test-secret" not in repr(store.config)
 
 
 def test_configuration() -> None:
@@ -213,5 +206,5 @@ def test_configuration() -> None:
                                    if k != "SHRI_S3_PUBLIC_ENDPOINT"})
     assert config is not None and config.public_endpoint == "http://seaweedfs:8333"
     with pytest.raises(ValueError):
-        _store(FakeS3()).presign_get("../escape", bucket=CLEAN_BUCKET, content_type="x/y",
-                                     expires=timedelta(minutes=5))
+        _store(FakeS3()).presign_put("../escape", bucket=QUARANTINE_BUCKET, content_type="x/y",
+                                     size_bytes=1, expires=timedelta(minutes=5))

@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser
 from app.core.errors import Conflict, NotFound, ValidationFailed, field_error
+from app.modules.files.crypto import FileCrypto
 from app.modules.files.storage import FileStore, store_generated
 
 from . import receipt, schemas
@@ -85,8 +86,8 @@ def _now() -> datetime:
 
 
 async def record_payment(db: AsyncSession, repo: PaymentRepository, store: FileStore,
-                         user: CurrentUser, patient_id: UUID, body: schemas.PaymentCreate
-                         ) -> schemas.Payment:
+                         crypto: FileCrypto, user: CurrentUser, patient_id: UUID,
+                         body: schemas.PaymentCreate) -> schemas.Payment:
     patient = await repo.patient(db, patient_id)
     if patient is None:
         raise NotFound("Patient not found")
@@ -106,7 +107,7 @@ async def record_payment(db: AsyncSession, repo: PaymentRepository, store: FileS
         collected_at=collected_at, amount=amount, currency=body.amount.currency,
         method=body.method, check_number=body.check_number, note=body.note,
         time_zone=practice.time_zone))
-    receipt_file_id = await store_generated(db, store, purpose=RECEIPT_PURPOSE,
+    receipt_file_id = await store_generated(db, store, crypto, purpose=RECEIPT_PURPOSE,
                                             content_type=receipt.CONTENT_TYPE, data=pdf)
     await repo.insert_payment(db, NewPayment(
         id=payment_id, patient_id=patient_id, appointment_id=body.appointment_id,

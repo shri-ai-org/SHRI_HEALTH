@@ -1,9 +1,10 @@
 """Where file bytes live, and storing the files the server makes itself.
 
-- ``FileStore``, where the bytes live, by bucket and key, and the links a browser uses to
-  ``PUT`` an upload or ``GET`` a download without the bytes passing through the API
-  (API_STANDARDS §15). ``LocalFileStore`` is a folder on disk, for tests and local development;
-  ``s3.S3FileStore`` is the object store (SeaweedFS), with SigV4 pre-signed links.
+- ``FileStore``, where the bytes live, by bucket and key, and the link a browser uses to ``PUT``
+  an upload without the bytes passing through the API (API_STANDARDS §15). There is no download
+  link into the store: stored files are encrypted, so they are served by the API (D105,
+  service.serve_content). ``LocalFileStore`` is a folder on disk, for tests and local
+  development; ``s3.S3FileStore`` is the object store (SeaweedFS), with SigV4 pre-signed links.
 - ``store_generated()``, which writes a file the server made (a receipt, later the after-visit
   summary) and records its ``admin.binary_object`` row in the request's own transaction.
 - ``file_store()``, the FastAPI dependency that gives an endpoint its store.
@@ -11,11 +12,12 @@
 Two buckets (``admin.binary_object.bucket``): an upload's bytes land in ``quarantine`` and move
 to ``clean`` once the scan passes (service.py); a generated file is written to ``clean`` at once.
 
-**Encryption.** An upload is sealed with its own data key before it reaches the clean bucket
-(``crypto.FileCrypto``, a seam until core's ``new_data_key()``). Generated files are not yet:
-``store_generated()`` writes the bytes as they are and ``wrapped_data_key`` stays NULL. When core
-provides ``new_data_key()``, ``store_generated()`` seals the bytes the same way and records the
-wrapped key; nothing here invents encryption meanwhile (D3: encryption is core's).
+**Encryption.** Every file in the clean bucket is sealed with its own data key
+(``crypto.FileCrypto``, AES-256-GCM with core's data keys): an upload when its scan passes, a
+generated file before it is written. Its ``wrapped_data_key`` is always set. The quarantine
+bucket holds an upload as the browser sent it, until the scan; the object store encrypts that
+bucket at rest (#140), so outside development and test only the object store is used, never a
+folder (``file_store()``).
 
 **Orphans.** ``store_generated()`` writes the bytes before the row, and the row commits with the
 caller's transaction. If that transaction then rolls back, the object stays in the store with no
@@ -43,6 +45,8 @@ from starlette.requests import Request
 
 from app.core.db import TENANT_ID_INFO_KEY
 from app.core.errors import ServiceUnavailable
+
+from .crypto import FileCrypto
 
 #: The bucket of a clean file: a scanned upload, or a generated file from the start (0012).
 CLEAN_BUCKET = "clean"
@@ -103,10 +107,6 @@ class FileStore(Protocol):
         store refuses a body of any other length than ``size_bytes`` where it can."""
         ...
 
-    def presign_get(self, key: str, *, bucket: str, content_type: str,
-                    expires: timedelta) -> SignedLink:
-        """A link the browser ``GET``s the bytes from."""
-        ...
 
 
 def expiry(expires: timedelta, now: datetime | None = None) -> datetime:
@@ -115,7 +115,8 @@ def expiry(expires: timedelta, now: datetime | None = None) -> datetime:
 
 
 class LocalFileStore:
-    """A ``FileStore`` in a folder: each key is a file. For tests and local development only.
+    """A ``FileStore`` in a folder: each key is a file. For tests and local development only
+    (``file_store()`` refuses it anywhere else).
 
     The clean bucket is ``root`` itself (where generated receipts have always been written);
     any other bucket is the folder of its name under ``root`` (``root/quarantine``), which no
@@ -125,9 +126,9 @@ class LocalFileStore:
     never sees half a file, and are readable by the owner only. The content type is not kept:
     the ``binary_object`` row holds it.
 
-    Its "pre-signed" links are plain ``file://`` URLs to that path: nothing signs or expires
-    them, and only a process on this machine can follow one. Tests write an upload's bytes with
-    ``put(..., bucket=QUARANTINE_BUCKET)`` instead of following the link.
+    Its "pre-signed" upload link is a plain ``file://`` URL to that path: nothing signs or
+    expires it, and only a process on this machine can follow one. Tests write an upload's bytes
+    with ``put(..., bucket=QUARANTINE_BUCKET)`` instead of following the link.
     """
 
     def __init__(self, root: Path) -> None:
@@ -157,10 +158,6 @@ class LocalFileStore:
         return SignedLink(url=self.path_for(key, bucket).as_uri(), expires_at=expiry(expires),
                           headers={"Content-Type": content_type})
 
-    def presign_get(self, key: str, *, bucket: str, content_type: str,
-                    expires: timedelta) -> SignedLink:
-        return SignedLink(url=self.path_for(key, bucket).as_uri(), expires_at=expiry(expires))
-
     @staticmethod
     def _put(path: Path, data: bytes) -> None:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -180,22 +177,25 @@ class LocalFileStore:
 _INSERT = text("""
     INSERT INTO admin.binary_object
         (id, tenant_id, bucket, storage_key, content_type, size_bytes, sha256, purpose, state,
-         created_by_user_id, updated_by_user_id)
+         wrapped_data_key, created_by_user_id, updated_by_user_id)
     VALUES (:id, :tenant_id, :bucket, :storage_key, :content_type, :size_bytes, :sha256,
-            :purpose, 'clean', NULLIF(current_setting('app.current_user_id', true), '')::uuid,
+            :purpose, 'clean', :wrapped_data_key,
+            NULLIF(current_setting('app.current_user_id', true), '')::uuid,
             NULLIF(current_setting('app.current_user_id', true), '')::uuid)
 """)
 
 
-async def store_generated(db: AsyncSession, store: FileStore, *, purpose: str,
-                          content_type: str, data: bytes) -> UUID:
+async def store_generated(db: AsyncSession, store: FileStore, crypto: FileCrypto, *,
+                          purpose: str, content_type: str, data: bytes) -> UUID:
     """Store a file the server made and return its file ID.
 
-    Writes the bytes under ``<tenant>/<file-uuid>``, then inserts its ``admin.binary_object``
-    row (bucket ``clean``, state ``clean``, with its size and SHA-256) through the request's
-    session, so the row commits or rolls back with the caller's other writes. It does not
-    commit. If the insert fails, the bytes are removed again; if the caller's transaction rolls
-    back later, they stay as an orphan (module docstring).
+    Seals the bytes with a new data key, writes them under ``<tenant>/<file-uuid>``, then
+    inserts its ``admin.binary_object`` row (bucket ``clean``, state ``clean``, with the
+    plaintext's size and SHA-256 and the wrapped key) through the request's session, so the row
+    commits or rolls back with the caller's other writes. It does not commit. No key, no file:
+    ``ServiceUnavailable`` from the encryption propagates and nothing is written. If the insert
+    fails, the bytes are removed again; if the caller's transaction rolls back later, they stay
+    as an orphan (module docstring).
     """
     if purpose not in GENERATED_PURPOSES:
         raise ValueError(f"{purpose!r} is not a purpose the server generates")
@@ -204,12 +204,14 @@ async def store_generated(db: AsyncSession, store: FileStore, *, purpose: str,
         raise RuntimeError("store_generated needs a clinic session (tenant_db)")
     file_id = uuid4()
     key = storage_key(tenant_id, file_id)
-    await store.put(key, data, content_type)
+    sealed = await crypto.seal(data, context=key)
+    await store.put(key, sealed.data, content_type)
     try:
         await db.execute(_INSERT, {
             "id": file_id, "tenant_id": tenant_id, "bucket": CLEAN_BUCKET, "storage_key": key,
             "content_type": content_type, "size_bytes": len(data),
-            "sha256": hashlib.sha256(data).hexdigest(), "purpose": purpose})
+            "sha256": hashlib.sha256(data).hexdigest(), "purpose": purpose,
+            "wrapped_data_key": sealed.wrapped_data_key})
     except Exception:
         await store.delete(key)
         raise
@@ -234,19 +236,18 @@ def configured_store() -> FileStore | None:
     return LocalFileStore(Path(folder)) if folder else None
 
 
-#: Until core's data-key encryption is wired in, files are stored unencrypted, so a store is
-#: given out only where the data is synthetic (Thulasi's review of #118).
-UNENCRYPTED_ENVIRONMENTS = frozenset({"development", "test"})
+#: Where a folder may hold files: its quarantined uploads aren't encrypted at rest (the class).
+FOLDER_ENVIRONMENTS = frozenset({"development", "test"})
 
 
 def file_store(request: Request) -> FileStore:
     """FastAPI dependency: the file store (``configured_store()``); without one, endpoints that
-    store or link to a file answer ``503 service-unavailable``. Files aren't encrypted yet
-    (core's ``new_data_key()`` is pending), so outside development and test this always answers
-    503: patient data is never stored in the clear."""
-    if request.app.state.settings.environment not in UNENCRYPTED_ENVIRONMENTS:
-        raise ServiceUnavailable("File storage is not available until files are encrypted")
+    store or link to a file answer ``503 service-unavailable``. Outside development and test
+    only the object store is given out, never a folder."""
     store = configured_store()
     if store is None:
         raise ServiceUnavailable("File storage is not configured")
+    if (isinstance(store, LocalFileStore)
+            and request.app.state.settings.environment not in FOLDER_ENVIRONMENTS):
+        raise ServiceUnavailable("A file folder is for development and test only")
     return store

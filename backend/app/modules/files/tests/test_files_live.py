@@ -24,8 +24,10 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
+from app.core import download_tokens as core_tokens
 from app.core.config import Settings
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USER_HEADER, DEV_USERS, CurrentUser, current_user
+from app.core.download_tokens import DownloadTokens
 from app.db.models import MAPPERS
 from app.db.tests import builders as b
 from app.db.tests.conftest import (
@@ -37,8 +39,8 @@ from app.db.tests.conftest import (
 )
 from app.main import create_app
 
-from .. import crypto, scanner, storage, tokens
-from .fakes import EICAR, JPEG, FakeDownloadTokens, FakeFileCrypto, FakeScanner
+from .. import crypto, scanner, storage
+from .fakes import EICAR, JPEG, FakeFileCrypto, FakeScanner, download_tokens
 
 pytestmark = [
     pytest.mark.db,
@@ -108,13 +110,13 @@ def fake_crypto() -> FakeFileCrypto:
 
 
 @pytest.fixture
-def fake_tokens() -> FakeDownloadTokens:
-    return FakeDownloadTokens()
+def fake_tokens() -> DownloadTokens:
+    return download_tokens()
 
 
 @pytest.fixture
 def app(users: dict[str, CurrentUser], tmp_path: Path, fake_scanner: FakeScanner,
-        fake_crypto: FakeFileCrypto, fake_tokens: FakeDownloadTokens) -> Iterator[FastAPI]:
+        fake_crypto: FakeFileCrypto, fake_tokens: DownloadTokens) -> Iterator[FastAPI]:
     application = create_app(Settings(environment="test", auth_mode="dev_header",
                                       database_url=TEST_DATABASE_URL))
     switch_to_role(application.state.db.engine.sync_engine, "shri_app")
@@ -127,7 +129,7 @@ def app(users: dict[str, CurrentUser], tmp_path: Path, fake_scanner: FakeScanner
         lambda: storage.LocalFileStore(tmp_path / "files"))
     application.dependency_overrides[scanner.scanner] = lambda: fake_scanner
     application.dependency_overrides[crypto.file_crypto] = lambda: fake_crypto
-    application.dependency_overrides[tokens.download_tokens] = lambda: fake_tokens
+    application.dependency_overrides[core_tokens.download_tokens] = lambda: fake_tokens
     yield application
 
 
@@ -172,7 +174,7 @@ def _upload(client: TestClient, data: bytes, *, sent: bytes | None = None,
 def test_upload_complete_clean_download(client: Callable[[str], TestClient], admin: Engine,
                                         clinics: dict[UUID, UUID], users: dict[str, CurrentUser],
                                         tmp_path: Path, fake_crypto: FakeFileCrypto,
-                                        fake_tokens: FakeDownloadTokens) -> None:
+                                        fake_tokens: DownloadTokens) -> None:
     fd = client("fd")
     file_id = _upload(fd, JPEG)
     pending = _row(admin, file_id)
@@ -215,19 +217,27 @@ def test_upload_complete_clean_download(client: Callable[[str], TestClient], adm
     link = fd.get(f"/api/v1/files/{file_id}/download-url")
 
     assert link.status_code == 200, link.text
-    # An encrypted file: a link to the decrypting endpoint (#128), never to the ciphertext.
+    # A link to the decrypting endpoint (D105), never to the ciphertext.
     url = urlsplit(link.json()["url"])
     assert url.path == f"/api/v1/files/{file_id}/content"
-    (claims,) = fake_tokens.issued.values()
-    assert (claims.file_id, claims.user_id) == (file_id, users["fd"].id)
-    assert (tmp_path / "files" / clean.storage_key).read_bytes() == b"SEALED:" + JPEG
+    stored = (tmp_path / "files" / clean.storage_key).read_bytes()
+    assert stored.startswith(b"SHF1") and JPEG not in stored  # only ciphertext at rest
+
+    content = fd.get(f"{url.path}?{url.query}")
+
+    assert content.status_code == 200, content.text
+    assert content.content == JPEG and content.headers["cache-control"] == "no-store"
+    assert fd.get(f"{url.path}?{url.query}").status_code == 404  # accepted once
     with admin.connect() as c:
         audited = c.execute(text(
-            "SELECT action, category FROM audit.audit_event WHERE tenant_id = :t "
+            "SELECT action, category, patient_id FROM audit.audit_event WHERE tenant_id = :t "
             "AND actor_user_id = :u AND entity_id = :f ORDER BY chain_seq"),
             {"t": clinics[CLINIC_A], "u": users["fd"].id, "f": str(file_id)}).all()
-    # completeUpload (U, phi-write) and createDownloadUrl (R, export) name the file in the path.
-    assert [tuple(r) for r in audited] == [("update", "phi-write"), ("export", "export")]
+    # completeUpload (U, phi-write), createDownloadUrl and the download (R, export) name the
+    # file in the path; an unattached upload has no patient. The refused reuse writes none.
+    assert [tuple(r) for r in audited] == [
+        ("update", "phi-write", None), ("export", "export", None),
+        ("export", "export", None)]
 
 
 def test_an_infected_file_is_rejected_and_never_downloaded(
@@ -314,7 +324,7 @@ def _clean_file(admin: Engine, clinic: UUID, owner: UUID, purpose: str, tmp_path
             "size_bytes, sha256, purpose, state, scan_status, scanned_at, wrapped_data_key, "
             "created_by_user_id) VALUES (:i, :t, 'clean', :k, 'image/jpeg', :n, :h, :p, "
             "'clean', :s, CASE WHEN :g THEN NULL ELSE now() END, "
-            "CASE WHEN :g THEN NULL ELSE 'test-wrapped-key' END, :u)"),
+            "'vault:v1:test-wrapped-key', :u)"),
             {"i": file_id, "t": clinic, "k": key, "n": len(JPEG),
              "h": hashlib.sha256(JPEG).hexdigest(), "p": purpose,
              "s": "pending" if generated else "clean", "g": generated, "u": owner})
