@@ -54,3 +54,18 @@ Every run also weakens a copy of the realm file four ways (reset on, code CONDIT
 **Two runtime settings this needs:**
 - `KC_HTTP_HOST=0.0.0.0`: Keycloak 26.8 binds `start-dev` to localhost only, which Nginx couldn't reach.
 - `data/` and `data/import/` are created in the image, so mounting the realm folder doesn't leave `data/` owned by root, where Keycloak couldn't write.
+
+## Demo accounts (D95)
+
+`reset-demo-users.sh` puts the demo's synthetic users back, with fixed Keycloak user IDs that the
+database seed refers to (#85): `demo.frontdesk`, `demo.ma`, `demo.doctor` and `demo.admin` in
+`shri-staff`, and `demo.patient@example.com` in `shri-patients` (once that realm exists). Safe to
+run again; each run resets the password to `DEMO_PASSWORD` and asks for the one-time code to be
+set up again at the next sign-in.
+
+```bash
+KC_URL=https://localhost:8443/kc KC_INSECURE=1 KC_ADMIN=admin KC_ADMIN_PASSWORD=... \
+  DEMO_PASSWORD="$(openssl rand -base64 18)" sh infra/keycloak/reset-demo-users.sh
+```
+
+The password comes from the environment only; never write it into a file in the repository.
