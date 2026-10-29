@@ -92,11 +92,11 @@ class DownloadTokens:
             raise ValueError("A download token must match the contract's pattern")
         return token
 
-    def verify(self, token: str, *, user_id: UUID | None = None, file_id: UUID | None = None,
-               tenant_id: UUID | None = None) -> DownloadClaims | None:
-        """The claims of a genuine, unexpired, unused token, and it is used up; else None.
-        Each of `user_id`, `file_id` and `tenant_id` given must match the token: a token for
-        another user, file or clinic is refused and not used up."""
+    def verify(self, token: str, *, user_id: UUID, file_id: UUID,
+               tenant_id: UUID) -> DownloadClaims | None:
+        """The claims of a genuine, unexpired, unused token for this user, file and clinic, and
+        it is used up; else None. All three are required (no default), so no caller can skip
+        the binding: a token for another user, file or clinic is refused and not used up."""
         if not token or not TOKEN.fullmatch(token) or len(token) <= SIGNATURE_LENGTH:
             return None
         payload, signature = token[:-SIGNATURE_LENGTH], token[-SIGNATURE_LENGTH:]
@@ -111,9 +111,8 @@ class DownloadTokens:
             return None
         now = self._clock()
         expires = claims.expires_at.timestamp()
-        wanted = ((user_id, claims.user_id), (file_id, claims.file_id),
-                  (tenant_id, claims.tenant_id))
-        if expires <= now or any(want is not None and want != got for want, got in wanted):
+        if expires <= now or (claims.user_id, claims.file_id, claims.tenant_id) != (
+                user_id, file_id, tenant_id):
             return None
         self._forget_expired(now)
         if nonce in self._used:
