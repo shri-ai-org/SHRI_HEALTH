@@ -73,3 +73,16 @@ INSERT INTO admin.cds_rule (id, tenant_id, code, name, alert_type, rule_source, 
   (gen_random_uuid(), NULL, 'allergy', 'Allergy to an ingredient of the drug', 'allergy', 'deterministic', 'high', true, false, true),
   (gen_random_uuid(), NULL, 'duplicate-medication', 'Active medication with the same ingredient', 'duplicate-medication', 'deterministic', 'moderate', false, false, true)
 ON CONFLICT DO NOTHING;
+
+INSERT INTO admin.role (id, tenant_id, code, name, description, is_system) VALUES
+  (gen_random_uuid(), NULL, 'ADM', 'ADM', 'Staff role from core (app/core/permissions.py ROLE_PERMISSIONS)', true),
+  (gen_random_uuid(), NULL, 'APP', 'APP', 'Staff role from core (app/core/permissions.py ROLE_PERMISSIONS)', true),
+  (gen_random_uuid(), NULL, 'BIL', 'BIL', 'Staff role from core (app/core/permissions.py ROLE_PERMISSIONS)', true),
+  (gen_random_uuid(), NULL, 'CO', 'CO', 'Staff role from core (app/core/permissions.py ROLE_PERMISSIONS)', true),
+  (gen_random_uuid(), NULL, 'DSP', 'DSP', 'Staff role from core (app/core/permissions.py ROLE_PERMISSIONS)', true),
+  (gen_random_uuid(), NULL, 'FD', 'FD', 'Staff role from core (app/core/permissions.py ROLE_PERMISSIONS)', true),
+  (gen_random_uuid(), NULL, 'MA', 'MA', 'Staff role from core (app/core/permissions.py ROLE_PERMISSIONS)', true),
+  (gen_random_uuid(), NULL, 'MD', 'MD', 'Staff role from core (app/core/permissions.py ROLE_PERMISSIONS)', true),
+  (gen_random_uuid(), NULL, 'RN', 'RN', 'Staff role from core (app/core/permissions.py ROLE_PERMISSIONS)', true),
+  (gen_random_uuid(), NULL, 'SUP', 'SUP', 'Staff role from core (app/core/permissions.py ROLE_PERMISSIONS)', true)
+ON CONFLICT DO NOTHING;
