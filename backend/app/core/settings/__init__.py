@@ -27,7 +27,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 from app.core.settings.auth import AuthFields, AuthMode
 from app.core.settings.base import BaseFields, Environment
 from app.core.settings.events import EventsFields
-from app.core.settings.files import FilesFields
+from app.core.settings.files import OBJECT_STORE_FIELDS, FilesFields
 from app.core.settings.openbao import OpenBaoFields
 from app.core.settings.outbox import OutboxFields
 from app.core.settings.portal import PortalFields
@@ -48,6 +48,13 @@ class Settings(BaseFields, AuthFields, PortalFields, OpenBaoFields, PublicFormFi
                 and self.environment not in ("development", "test")):
             raise ValueError(
                 "patient_auth_mode=dev_header is only allowed in development and test")
+        return self
+
+    @model_validator(mode="after")
+    def _object_store_complete(self) -> "Settings":
+        missing = self.missing(*OBJECT_STORE_FIELDS)
+        if missing and len(missing) < len(OBJECT_STORE_FIELDS):
+            raise ValueError(f"The file store is not configured: set {', '.join(missing)}")
         return self
 
     def missing(self, *fields: str) -> list[str]:

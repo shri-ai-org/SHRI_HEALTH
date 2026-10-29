@@ -1,8 +1,9 @@
 """The registry builds the same app as create_app() did before it (main.py at 2d4a897): the
 same middleware stack in the same order, the same routes in matching order, the same error
 handlers and the same app state, for an unconfigured, a development and a fully configured app.
-`_legacy_app` is that create_app() body, copied once; it is never changed, only deleted with
-this test when nobody needs the comparison any more. Synthetic values only."""
+`_legacy_app` is that create_app() body, copied once. A feature added after the registry adds
+its own line there too ("added after the registry"), so the order stays checked. Synthetic
+values only."""
 
 import secrets
 from typing import Any
@@ -11,7 +12,15 @@ import pytest
 from fastapi import FastAPI
 from pydantic import SecretStr
 
-from app.core import auth_api, events, health, long_running, public_form
+from app.core import (
+    access_log,
+    auth_api,
+    download_tokens,
+    events,
+    health,
+    long_running,
+    public_form,
+)
 from app.core.audit import AuditMiddleware
 from app.core.config import Settings
 from app.core.crypto import FieldCrypto
@@ -51,6 +60,9 @@ def _legacy_app(settings: Settings) -> FastAPI:
             if settings.portal_origin or settings.public_form_secret else None)
     application.state.keycloak = Keycloak(settings) if settings.keycloak_public_url else None
     application.state.login_states = LoginStates()
+    # Added after the registry:
+    download_tokens.register(application, settings)
+    access_log.register(application, settings)
     application.add_middleware(AuditMiddleware)
     application.add_middleware(IdempotencyMiddleware)
     application.add_middleware(NoStoreMiddleware)
