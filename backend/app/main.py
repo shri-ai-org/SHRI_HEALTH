@@ -6,17 +6,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.core import health
-from app.core.audit import AuditMiddleware
 from app.core.config import Settings, get_settings
-from app.core.crypto import FieldCrypto
-from app.core.db import Database
-from app.core.errors import install_error_handlers
-from app.core.idempotency import IdempotencyMiddleware, Replay, replay_response
+from app.core.lifecycle import shut_down
 from app.core.operations import OperationsMapError, load_operations, route_problems
-from app.core.request_id import RequestIdMiddleware
-from app.core.response_headers import NoStoreMiddleware
-from app.core.routing import API_PREFIX, include_module_routers
+from app.core.registry import register_all
+from app.core.routing import API_PREFIX
 
 log = logging.getLogger(__name__)
 
@@ -32,10 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         yield
-        if application.state.db is not None:
-            await application.state.db.dispose()
-        if application.state.crypto is not None:
-            await application.state.crypto.aclose()
+        await shut_down(application)
 
     application = FastAPI(
         title="Shri Health API",
@@ -46,17 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=f"{API_PREFIX}/openapi.json" if settings.show_docs else None,
     )
     application.state.settings = settings
-    application.state.db = Database(settings) if settings.database_url else None
-    application.state.crypto = FieldCrypto(settings) if settings.openbao_transit_addr else None
-
-    application.add_middleware(AuditMiddleware)  # innermost: sees the final status
-    application.add_middleware(IdempotencyMiddleware)  # stores it, audit 500s included
-    application.add_middleware(NoStoreMiddleware)
-    application.add_middleware(RequestIdMiddleware)
-    install_error_handlers(application)
-    application.add_exception_handler(Replay, replay_response)
-    application.include_router(health.router)  # root: /health, /ready
-    modules = include_module_routers(application)
+    register_all(application, settings)  # every feature, in order (app/core/registry.py)
     # Every /api/v1 route is a contract operation with its x-permission and, where it is
     # audited, tenant_db (app/core/operations.py). A mismatch never starts.
     problems = route_problems(application)
@@ -69,7 +50,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.auth_mode == "dev_header":
         log.warning("STAND-IN LOGIN ACTIVE: users come from the X-Dev-User header (%s)",
                     settings.environment)
-    log.info("Modules with routes: %s", ", ".join(modules) or "none")
     return application
 
 

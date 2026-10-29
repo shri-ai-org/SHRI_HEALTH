@@ -16,9 +16,10 @@ core writes it:
   audit rows, a further commit that carries changes is refused with a 500 and its changes are
   never saved, so no change can go in without its audit row. A commit with nothing to save is
   allowed.
-- **Public forms.** `actor: anonymous` (D96) records actor type `anonymous`, with no user, no
-  patient and the clinic deps.public_db resolved from the portal host; a request without one
-  fails (500).
+- **Public forms.** The pre-registration form's database function writes its own `anonymous`
+  audit row in the same call as the request (D96, migration 0009), so deps.public_db starts no
+  trail (operations.AUDITED_IN_DATABASE). start_public_trail() remains for a later form whose
+  clinic core resolves: actor type `anonymous`, no user, no patient.
 - **The portal.** For x-audit `patient: session` the patient comes only from the portal
   session (deps.portal_session), never from the path, body or query, and a request without a
   portal session fails (500). `actor: patient` records the patient as the actor: actor type
@@ -46,6 +47,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from fastapi import FastAPI
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,6 +56,7 @@ from sqlalchemy.sql.elements import TextClause
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.core.config import Settings
 from app.core.errors import InternalError, problem
 from app.core.operations import Operation, operation_for
 from app.core.request_id import current_request_id
@@ -140,7 +143,7 @@ class AuditTrail:
     source_ip: str | None
     user_agent: str | None
     portal: "PortalPatient | None" = None  # the signed-in patient (deps.portal_session)
-    clinic_id: UUID | None = None  # a public form's clinic, from the portal host (public_db)
+    clinic_id: UUID | None = None  # a public form's clinic (start_public_trail)
     patient_ids: list[UUID] | None = None
     action: str | None = None
     reason: str | None = None
@@ -223,7 +226,8 @@ def start_portal_trail(request: Request, patient: "PortalPatient", session: Asyn
 
 
 def start_public_trail(request: Request, clinic_id: UUID, session: AsyncSession) -> None:
-    """Called by deps.public_db, with the clinic resolved from the portal host (D96)."""
+    """For a later public form whose clinic core resolves. deps.public_db doesn't call it: the
+    pre-registration form's database function writes its own audit row (D96)."""
     _start(request, session, user=None, portal=None, clinic_id=clinic_id)
 
 
@@ -427,3 +431,8 @@ class AuditMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_after_audit)
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """AuditMiddleware (innermost: it sees the final status)."""
+    app.add_middleware(AuditMiddleware)

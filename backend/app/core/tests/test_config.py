@@ -1,8 +1,9 @@
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from app.core.config import Settings
 
@@ -88,3 +89,19 @@ def test_openbao_without_token_stops_startup(monkeypatch: pytest.MonkeyPatch) ->
 
     with pytest.raises(RuntimeError, match="OPENBAO_TOKEN is missing"):
         Settings()
+
+
+def test_a_half_configured_file_store_stops_startup_naming_what_to_set() -> None:
+    with pytest.raises(ValidationError, match="FILE_STORE_ACCESS_KEY_ID, "
+                       "FILE_STORE_SECRET_ACCESS_KEY, FILE_STORE_CLEAN_BUCKET, "
+                       "FILE_STORE_QUARANTINE_BUCKET"):
+        Settings(environment="test", file_store_url="http://seaweedfs.test:8333")
+
+
+def test_a_file_store_is_all_or_nothing() -> None:
+    assert Settings(environment="test").file_store_url is None
+    full = Settings(environment="test", file_store_url="http://seaweedfs.test:8333",
+                    file_store_access_key_id="shri-api",
+                    file_store_secret_access_key=SecretStr(uuid4().hex),
+                    file_store_clean_bucket="clean", file_store_quarantine_bucket="quarantine")
+    assert full.file_store_region == "us-east-1" and full.file_store_public_url is None

@@ -6,6 +6,8 @@ import { PatientPage } from '../features/patients/PatientPage'
 import { PatientSearchPage } from '../features/patients/PatientSearchPage'
 import { RegisterPatientPage } from '../features/patients/RegisterPatientPage'
 import { RegisterPrefillProvider } from '../features/patients/registerPrefill'
+import { RoomingPage } from '../features/clinical/RoomingPage'
+import { TodayPage } from '../features/clinical/TodayPage'
 import { SchedulePage } from '../features/scheduling/SchedulePage'
 import { DesignSystemPreview } from './DesignSystemPreview'
 
@@ -21,7 +23,10 @@ function Shell() {
       <header className="border-b border-border bg-surface-1">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-3">
           <span className="font-semibold text-ink">Shri Health</span>
-          <nav aria-label="Front desk" className="flex gap-1">
+          <nav aria-label="Main" className="flex gap-1">
+            <NavLink to="/today" className={navClass}>
+              Today
+            </NavLink>
             <NavLink to="/schedule" className={navClass}>
               Schedule
             </NavLink>
@@ -60,6 +65,8 @@ export const routes: RouteObject[] = [
     ),
     children: [
       { index: true, element: <Navigate to="/patients/search" replace /> },
+      { path: 'today', element: <TodayPage /> },
+      { path: 'visits/:encounterId/rooming', element: <RoomingPage /> },
       { path: 'schedule', element: <SchedulePage /> },
       { path: 'patients/search', element: <PatientSearchPage /> },
       { path: 'patients/new', element: <RegisterPatientPage /> },

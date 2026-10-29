@@ -33,6 +33,7 @@ functions:
   - descriptions
   - infraServer
   - noDevUser
+  - noCredentialsInUrl
 
 aliases:
   Operation:
@@ -61,21 +62,17 @@ rules:
   owasp:api2:2023-write-restricted: off
   # OWASP's rule uses the JSONPath "$..parameters[?(@.in.match(...))]", which also visits schema
   # properties named "in" (our Problem FieldError.in, API_STANDARDS §9.1) and crashes Spectral.
-  # Same check and message, limited to real parameter lists.
+  # Same check and message on real parameter lists, in rules/noCredentialsInUrl.js, with one exception:
+  # the one-time download token of GET /files/{fileId}/content (D105), allowed only while that operation
+  # needs the session cookie and sends Referrer-Policy: no-referrer. Tested in tests/no-credentials-in-url.test.mjs.
   owasp:api2:2023-no-credentials-in-url:
-    message: "Security credentials detected in path parameter: {{value}}."
-    description: URL parameters must not contain credentials such as API keys, passwords or secrets (OWASP API2:2023; same check as the OWASP ruleset, narrower JSONPath).
+    message: "{{error}}"
+    description: URL parameters must not contain credentials such as API keys, passwords or secrets (OWASP API2:2023; same check as the OWASP ruleset, real parameter lists only, one documented exception for D105).
     severity: error
     formats: [oas3]
-    given:
-      - "$.paths[*].parameters[?(@.in == 'query' || @.in == 'path')]"
-      - "$.paths[*][get,put,post,patch,delete,head,options,trace].parameters[?(@.in == 'query' || @.in == 'path')]"
-      - "$.components.parameters[?(@.in == 'query' || @.in == 'path')]"
+    given: "$"
     then:
-      field: name
-      function: pattern
-      functionOptions:
-        notMatch: "/^.*(client_?secret|token|access_?token|refresh_?token|id_?token|password|secret|api-?key).*$/i"
+      function: noCredentialsInUrl
 
   # ---- Shri Health rules (CONTRACT_GOVERNANCE §5) ------------------------------------------
   shri-x-owner:

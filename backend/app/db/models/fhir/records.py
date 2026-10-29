@@ -17,7 +17,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (
@@ -142,13 +142,18 @@ class Coverage(Base, ClinicalResourceMixin):
     """US Core Coverage: a patient's insurance, in priority order (``order``). Member ID is an
     identifier (type MB); group number and plan name are coverage_class rows. Card images
     (front / back) are coverage_card_image rows. entry_source 'ai-generated' when captured by
-    card OCR (P1). At most one active coverage per patient per order."""
+    card OCR (P1). A patient's coverages with the same order never overlap in time."""
     __tablename__ = "coverage"
     fhir_type = "Coverage"
     __extra_args__ = (
         CheckConstraint('"order" IS NULL OR "order" BETWEEN 1 AND 9', name="order_range"),
-        Index("uq_coverage_active_order", "beneficiary_patient_id", "order", unique=True,
-              postgresql_where=text("status = 'active'")),
+        # One coverage per patient per order at any time: periods with the same order may not
+        # overlap, an open end being open-ended; entered-in-error coverages don't count (D45).
+        ExcludeConstraint(
+            ("beneficiary_patient_id", "="), ("order", "="),
+            (text("daterange(period_start, period_end, '[]')"), "&&"),
+            where=text("status <> 'entered-in-error' AND \"order\" IS NOT NULL"),
+            using="gist", name="ex_coverage_order_no_overlap"),
         CheckConstraint("relationship_code <> 'self' OR subscriber_related_person_id IS NULL",
                         name="self_has_no_related_subscriber"),
         CheckConstraint("period_end IS NULL OR period_start IS NULL OR period_end >= period_start",
@@ -331,6 +336,10 @@ class FhirResourceHistory(Base, TenantMixin):
         UniqueConstraint("resource_type", "resource_id", "version_id"),
         Index("ix_fhir_resource_history_time", "tenant_id", "recorded_at"),
         CheckConstraint("version_id >= 1", name="version_positive"),
+        # A version is written by a staff user or, in a portal session, by the patient (ADR-0013
+        # §6), never both.
+        CheckConstraint("recorded_by_user_id IS NULL OR recorded_by_patient_id IS NULL",
+                        name="one_author"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
@@ -339,4 +348,6 @@ class FhirResourceHistory(Base, TenantMixin):
     version_id: Mapped[int] = mapped_column(Integer, nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
     recorded_by_user_id: Mapped[uuid.UUID | None]   # app.current_user_id (no FK: append-only)
+    #: app.current_patient_id, for a version written in a portal session (no FK: append-only).
+    recorded_by_patient_id: Mapped[uuid.UUID | None]
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

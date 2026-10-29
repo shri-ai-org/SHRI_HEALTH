@@ -233,6 +233,9 @@ class FhirResourceMixin(UUIDPKMixin, TenantMixin, TimestampMixin, ActorMixin):
     into ``fhir_resource_history`` at commit, which backs ``_history`` and ``vread``.
     """
     fhir_type: ClassVar[str]
+    #: Columns whose change alone is not a new version (no meta_version_id bump, no history
+    #: row): the trigger shri_fhir_version() gets them as arguments (migration 0013).
+    fhir_unversioned_columns: ClassVar[tuple[str, ...]] = ()
 
     meta_version_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1,
                                                  server_default=text("1"))

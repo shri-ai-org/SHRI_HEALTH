@@ -8,9 +8,10 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.core.config import Settings
 from app.core.db import Database
 from app.core.errors import problem
 
@@ -43,6 +44,18 @@ async def ready(request: Request) -> dict[str, Any] | JSONResponse:
         # D23: the API's role may never bypass row-level security. Refuse traffic instead.
         log.error("Readiness check: the API's database role bypasses row-level security")
         return _not_ready(request)
+    public: Database | None = getattr(request.app.state, "public_db", None)
+    if public is not None:
+        try:
+            public_bypasses = await asyncio.wait_for(public.role_bypasses_rls(),
+                                                     READY_TIMEOUT_SECONDS)
+        except Exception:
+            log.warning("Readiness check: the public forms' database unavailable", exc_info=True)
+            return _not_ready(request)
+        if public_bypasses:
+            log.error("Readiness check: the public forms' database role bypasses row-level "
+                      "security")
+            return _not_ready(request)
     return {"status": "ready"}
 
 
@@ -50,3 +63,8 @@ def _not_ready(request: Request) -> JSONResponse:
     return problem(
         request, "service-unavailable", "Not ready", headers={"Retry-After": RETRY_AFTER_SECONDS}
     )
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """At the root: /health, /ready."""
+    app.include_router(router)

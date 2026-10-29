@@ -18,6 +18,8 @@ from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
+from fastapi import FastAPI
+from pydantic import SecretStr
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
@@ -29,6 +31,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import Session, SessionTransaction
 
 from app.core.config import Settings
+from app.core.lifecycle import on_shutdown
 
 TENANT_SETTING = "app.current_tenant_id"
 USER_SETTING = "app.current_user_id"
@@ -49,11 +52,14 @@ DATABASE_INFO_KEY = "shri_database"
 
 
 class Database:
-    def __init__(self, settings: Settings) -> None:
-        if settings.database_url is None:
+    def __init__(self, settings: Settings, url: SecretStr | None = None) -> None:
+        """The API's database (DATABASE_URL, shri_app), or another role's when `url` is given
+        (PUBLIC_DATABASE_URL, shri_public)."""
+        url = url or settings.database_url
+        if url is None:
             raise RuntimeError("DATABASE_URL is not configured")
         self.engine: AsyncEngine = create_async_engine(
-            settings.database_url.get_secret_value(),
+            url.get_secret_value(),
             pool_size=settings.db_pool_size,
             pool_pre_ping=True,
         )
@@ -78,6 +84,18 @@ class Database:
         }
         return session
 
+    def system_session(self, tenant_id: UUID, correlation_id: str | None = None) -> AsyncSession:
+        """A session scoped to one clinic for work no user started (the outbox worker): the
+        clinic is set as for tenant_session, and app.current_user_id is empty."""
+        session = self.sessions()
+        session.info[TENANT_ID_INFO_KEY] = tenant_id
+        session.info[DATABASE_INFO_KEY] = self
+        session.info[_CONTEXT_KEY] = {
+            TENANT_SETTING: str(tenant_id), USER_SETTING: "",
+            CORRELATION_SETTING: correlation_id or "",
+        }
+        return session
+
     async def ping(self) -> None:
         async with self.engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -92,6 +110,12 @@ class Database:
 
     async def dispose(self) -> None:
         await self.engine.dispose()
+
+
+def session_user_id(session: AsyncSession | Session) -> UUID | None:
+    """The signed-in user a tenant session was opened for (tenant_session's user_id)."""
+    context = session.info.get(_CONTEXT_KEY)
+    return UUID(context[USER_SETTING]) if context else None
 
 
 @event.listens_for(Session, "after_begin")
@@ -114,3 +138,11 @@ def _set_tenant_context(
                 "c_name": CORRELATION_SETTING, "c": context[CORRELATION_SETTING],
             },
         )
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """The API's database (DATABASE_URL, shri_app); none configured: endpoints that need it
+    answer 503."""
+    app.state.db = Database(settings) if settings.database_url else None
+    if app.state.db is not None:
+        on_shutdown(app, app.state.db.dispose)

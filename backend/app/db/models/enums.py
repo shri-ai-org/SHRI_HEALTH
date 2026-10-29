@@ -21,7 +21,7 @@ class SecurityLabel(StrEnum):           # v3 Confidentiality + ActCode sensitivi
     NORMAL = "N"
     RESTRICTED = "R"
     VERY_RESTRICTED = "V"
-    PSYCHOTHERAPY = "PSY"
+    PSYCHOTHERAPY = "PSY"   # our label for psychotherapy notes (D86), not HL7's PSYTHPN
     SUBSTANCE_USE = "SUD"
     ETHANOL = "ETH"
     HIV = "HIV"
@@ -477,6 +477,13 @@ class CompositionStatus(StrEnum):       # also DocumentReference.docStatus
     ENTERED_IN_ERROR = "entered-in-error"
 
 
+class CosignStatus(StrEnum):           # D73, migration 0013: the contract's cosignStatus
+    NOT_REQUIRED = "not-required"       # no co-sign rule matched (and every draft)
+    PENDING = "pending"                 # waiting for the supervising physician
+    RETURNED = "returned"               # sent back with a comment; the author adds an addendum
+    COSIGNED = "cosigned"
+
+
 class DocumentRelationshipType(StrEnum):
     REPLACES = "replaces"
     TRANSFORMS = "transforms"
@@ -898,6 +905,30 @@ class FaxStatus(StrEnum):
     RECEIVED = "received"
 
 
+class FilePurpose(StrEnum):
+    """What a file is for (files.yaml FilePurpose, API_STANDARDS §15): decides its allowed
+    types and sizes and who may download it."""
+    INSURANCE_CARD = "insurance-card"
+    IDENTITY = "identity"
+    RECEIPT = "receipt"
+    ENCOUNTER_AUDIO = "encounter-audio"
+    AFTER_VISIT_SUMMARY = "after-visit-summary"
+    DOCUMENT = "document"
+    FAX = "fax"
+    CCDA = "ccda"
+    EXPORT = "export"
+    ONBOARDING_IMPORT = "onboarding-import"
+
+
+class FileState(StrEnum):
+    """A file's place in the upload flow (files.yaml FileState): only a clean file is ever
+    attached or downloaded."""
+    PENDING_UPLOAD = "pending-upload"
+    QUARANTINED = "quarantined"
+    CLEAN = "clean"
+    REJECTED = "rejected"
+
+
 class ScanStatus(StrEnum):
     PENDING = "pending"
     CLEAN = "clean"
@@ -1119,3 +1150,21 @@ class FollowUpUnit(StrEnum):
     DAY = "day"
     WEEK = "week"
     MONTH = "month"
+
+
+class PortalAccountStatus(StrEnum):     # ADR-0013 §3, D92
+    PENDING_SETUP = "pending-setup"     # enrolled; the realm's required actions not done yet
+    ACTIVE = "active"
+    DISABLED = "disabled"               # by ADM, with a reason (D92)
+    SUSPENDED = "suspended"             # the chart was merged into another (ADR-0013 §6)
+
+
+class ChangeRequestStatus(StrEnum):     # D91: a patient's edit waits for the front desk
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+
+
+class HoldReason(StrEnum):              # D90: the only two reasons to hold an item
+    RISK_OF_HARM = "risk-of-harm"
+    PATIENT_REQUEST = "patient-request"

@@ -38,6 +38,7 @@ CATALOGUE: frozenset[str] = _expand(
     "coverages:read|create|update|entered-in-error",  # entered-in-error: D45 (T40)
     "consents:read|create", "timeline:read", "duplicates:read|merge|dismiss",  # dismiss: D46
     "patient-merges:read|undo",  # read: D51 (T41)
+    "pre-registrations:read|accept|reject",  # the front desk's queue (D96, T47)
     # Scheduling, eligibility (Vimal)
     "slots:read", "status-board:read",
     "appointments:read|create|update|cancel|check-in|undo-check-in|reschedule|status",  # D55, D61
@@ -131,7 +132,10 @@ _CLINICIAN_WRITE = _expand(
 _AI_CLINICAL = _expand("encounter-audio:create", "transcriptions:read|create",
                        "note-drafts:create", "chart-summaries:read|create",
                        "ai-suggestions:decision")
-_ROOMING = _expand("vitals:create", "allergies:create|update", "appointments:status")
+# encounters:update: MA and RN record the encounter's reasons at rooming (T52, Minalini on #114);
+# the encounters service lets them change `reasons` only, anything else is 403.
+_ROOMING = _expand("vitals:create", "allergies:create|update", "appointments:status",
+                   "encounters:update")
 
 _MD = frozenset().union(
     _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _CHART_READ, _CLINICIAN_WRITE,
@@ -157,7 +161,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "eligibility-checks:read|create", "consents:read|create",
                 "appointments:status", "codes:read",
                 "payments:create|card-session", "ccda:import|export",
-                "operations-dashboard:read"),
+                "operations-dashboard:read",
+                "pre-registrations:read|accept|reject"),  # D96, T47
     ),
     # Medical assistant (rooming). Orders: point-of-care results only, as in §4.3; no order entry.
     "MA": frozenset().union(
@@ -203,6 +208,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "coverages:read|create|update|entered-in-error",
                 "eligibility-checks:read|create", "consents:read|create",
                 "duplicates:read|merge|dismiss", "patient-merges:read|undo",
+                "pre-registrations:read|accept|reject",  # D96, T47
                 "lab-providers:read", "encounters:entered-in-error",
                 "codes:read", "ai-settings:read|update", "cosign-rules:read|create|update",
                 "practice-setup:read|create|update", "note-templates:read", "payers:read",

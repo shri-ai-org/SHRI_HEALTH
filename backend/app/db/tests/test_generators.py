@@ -157,6 +157,26 @@ def test_contract_mapping_overrides_name_real_things() -> None:
     assert "| `visitStatus` |" in section and "computed:" in section
 
 
+def test_updated_at_of_a_fhir_resource_is_its_meta_last_updated() -> None:
+    """A change to child rows only (a phone, a coverage class) moves meta_last_updated, through
+    the touch triggers, and leaves updated_at alone, so the contract's updatedAt must come from
+    meta_last_updated, as the ETag and Written.last_updated do (Vimal's review of #87)."""
+    from app.db.models import MAPPERS
+    from app.db.tools import gen_docs
+
+    resources, contract = gen_docs.ownership(), gen_docs.Contract()
+    mapped = gen_docs.overrides(resources, contract)
+    checked = []
+    for r in resources:
+        table = r.tables[0] if r.tables else None
+        if (table in MAPPERS and "meta_last_updated" in MAPPERS[table].__table__.c
+                and "updatedAt" in gen_docs._properties(r, contract)):
+            checked.append(r.name)
+            assert mapped.get(r.name, {}).get("updatedAt", {}).get("columns") == [
+                f"{table}.meta_last_updated"], r.name
+    assert "Patient (demographics, contacts)" in checked
+
+
 @pytest.mark.parametrize(("entry", "complaint"), [
     ('"Consents":\n  signedFormFileId:\n    columns: [consent.no_such_column]\n', "no column"),
     ('"Consents":\n  noSuchProperty:\n    columns: [consent.id]\n', "no contract property"),

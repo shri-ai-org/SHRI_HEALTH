@@ -32,6 +32,7 @@ from app.db.base import ADMIN_SCHEMA, AUDIT_SCHEMA, CLINICAL_SCHEMA, Base
 from app.db.constraints import patient_column, referenced_table
 from app.db.models import FHIR_RESOURCES, GLOBAL_TABLES, MAPPERS, systems
 from app.db.models.admin.core import SETTINGS
+from app.db.models.admin.practice import PLATFORM_CDS_RULES
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]   # backend/app/db
 TENANT = "NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"
@@ -48,7 +49,7 @@ DELETABLE_ADMIN = {
     "order_set_item", "patient_pharmacy", "picklist_item", "prescription_favorite",
     "role_permission", "schedule_availability_rule", "schedule_exception",
     "service_request_aoe_answer", "smart_phrase", "tenant_setting", "user_alert_suppression",
-    "user_favorite", "user_role",
+    "user_favorite", "user_role", "online_bookable_type",
 }
 # Nullable tenant_id, but tenants only ever see their own rows.
 TENANT_ONLY = {"audit_event"}
@@ -56,7 +57,7 @@ TENANT_ONLY = {"audit_event"}
 INSERT_ONLY = {
     "audit_event", "fhir_resource_history", "work_item_event", "result_acknowledgement",
     "claim_status_event", "service_request_status_event", "visit_flow_event",
-    "patient_merge_record", "ai_suggestion_evidence", "ai_suggestion_unknown",
+    "ai_suggestion_evidence", "ai_suggestion_unknown",
     "detected_issue_mitigation", "composition_attester", "provenance", "provenance_agent",
     "provenance_entity", "provenance_signature", "eligibility_benefit",
 }
@@ -67,6 +68,9 @@ NO_APP_WRITE = {"fhir_resource_history"}
 RUNTIME = {"app_session", "event_log", "idempotency_record", "operation"}
 # Written once and never changed: no UPDATE.
 WRITE_ONCE = {"event_log"}
+#: Platform-wide tables no service role may read or write; only a SECURITY DEFINER function
+#: touches them. consumed_logout_token (D94, migration 0011): end_backchannel_sessions().
+NO_ROLE_ACCESS = {"consumed_logout_token"}
 #: shri_app privileges that replace the defaults below. pre_registration (D96, A51): rows come
 #: only from admin.submit_pre_registration() (shri_public, migration 0009); the front desk
 #: reads the queue and records its decision, nothing else.
@@ -77,6 +81,12 @@ APP_PRIVS = {
     # encounter_follow_up (D98, migration 0010): a child row, but never deleted; it changes
     # status instead.
     "encounter_follow_up": ["SELECT", "INSERT", "UPDATE"],
+    # Migration 0011: the patient files a change request (shri_portal); the front desk decides.
+    "portal_change_request": ["SELECT", "UPDATE (status, decided_at, decided_by_user_id, "
+                              "decision_note, work_item_id, updated_at, updated_by_user_id)"],
+    # A clinician holds an item, and lifts the hold later; nothing else changes (D90).
+    "release_hold": ["SELECT", "INSERT", "UPDATE (lifted_at, lifted_by_user_id, updated_at, "
+                     "updated_by_user_id)"],
 }
 
 #: shri_app on the two audit tables: D23/ADR-0011 condition 4 says "audit insert only" for
@@ -115,6 +125,10 @@ GUARDS = {
     ],
     "composition_attester": [("guard", "BEFORE INSERT", "shri_composition_attester_guard()")],
     "medication_request": [("guard", "BEFORE UPDATE", "shri_medication_request_guard()")],
+    # Migration 0013 (D28, D97): only a prescription (intent order) is ever sent to a pharmacy;
+    # a medication the patient reported never is.
+    "erx_transaction": [("order_only", "BEFORE INSERT OR UPDATE OF medication_request_id",
+                         "shri_erx_order_only()")],
     "service_request": [("guard", "BEFORE UPDATE", "shri_service_request_guard()")],
     "observation": [("guard", "BEFORE UPDATE", "shri_final_result_guard()")],
     "diagnostic_report": [("guard", "BEFORE UPDATE", "shri_final_result_guard("
@@ -148,12 +162,24 @@ GUARDS = {
                          ("decided", "BEFORE UPDATE", "shri_pre_registration_guard()")],
     # Migration 0010 (D98): a follow-up request changes only while open, and a declined or
     # withdrawn one is final.
+    # Migration 0011 (D90, D91): what a patient asked for, and what a hold is on and why,
+    # never change; a decided request and a lifted hold are final.
+    "portal_change_request": [("fixed", "BEFORE UPDATE",
+                               "shri_fixed_columns('patient_id', 'changes', 'note')"),
+                              ("decided", "BEFORE UPDATE", "shri_final_once_decided()")],
+    "release_hold": [("fixed", "BEFORE UPDATE", "shri_fixed_columns('patient_id', "
+                      "'document_reference_id', 'diagnostic_report_id', 'condition_id', "
+                      "'reason', 'held_by_user_id', 'held_at')"),
+                     ("lifted", "BEFORE UPDATE", "shri_release_hold_guard()")],
+    # Migration 0011 (ADR-0013 §5): who an account or invitation is for never changes.
+    "portal_account": [("fixed", "BEFORE UPDATE",
+                        "shri_fixed_columns('keycloak_user_id', 'patient_id')")],
+    "portal_invitation": [("fixed", "BEFORE UPDATE", "shri_fixed_columns('patient_id', "
+                           "'code_hmac', 'issued_by_user_id', 'expires_at')")],
     "encounter_follow_up": [("fixed", "BEFORE UPDATE",
                              "shri_fixed_columns('encounter_id', 'patient_id')"),
                             ("guard", "BEFORE UPDATE", "shri_follow_up_guard()")],
-    "patient_merge": [("versions", "BEFORE INSERT", "shri_patient_merge_versions()"),
-                      ("guard", "BEFORE UPDATE", "shri_patient_merge_guard()")],
-    "patient_merge_record": [("version", "BEFORE INSERT", "shri_patient_merge_record_version()")],
+    "patient_merge": [("guard", "BEFORE UPDATE", "shri_patient_merge_guard()")],
     "break_glass_access": [("guard", "BEFORE UPDATE",
                             "shri_freeze_except('reviewed_by_user_id', 'reviewed_at')")],
     "composition_section": [("content", "BEFORE INSERT OR UPDATE OR DELETE",
@@ -168,15 +194,14 @@ GUARDS = {
 DEFERRED = {
     "composition": ("signed", "shri_composition_signed_check()"),
     "medication_request": ("alerts", "shri_medication_request_alert_check()"),
-    # An undo that would leave a record pointing at another patient's (0008, D51).
-    "patient_merge": ("undo", "shri_patient_merge_undo_check()"),
 }
 #: Admin tables with VersionedMixin (A41/issue #13): practice-setup resources and
 #: patient_pharmacy, none of which have a FHIR meta_version_id of their own; tenant_setting for
 #: PATCH /practice-settings (A49, migration 0007); consent_requirement (D59, migration 0008).
 VERSIONED_TABLES = {"facility", "appointment_type", "note_template", "lab_provider",
                     "lab_account", "patient_pharmacy", "payer", "fee_schedule",
-                    "practice_payer", "tenant_setting", "consent_requirement"}
+                    "practice_payer", "tenant_setting", "consent_requirement",
+                    "online_booking_setting"}
 # child table -> (fk column, parent table, editable parent statuses)
 FROZEN_CHILDREN = {
     "dosage": ("medication_request_id", "medication_request", "draft"),
@@ -246,6 +271,7 @@ def versioning_sql() -> str:
     for rtype, cls in sorted(FHIR_RESOURCES.items()):
         t = cls.__tablename__
         qt = _q(CLINICAL_SCHEMA, t)
+        unversioned = ", ".join(f"'{c}'" for c in cls.fhir_unversioned_columns)
         out += [
             f"CREATE OR REPLACE FUNCTION {CLINICAL_SCHEMA}.shri_snapshot_{t}(p_id uuid) "
             "RETURNS jsonb LANGUAGE sql STABLE AS $$",
@@ -253,7 +279,7 @@ def versioning_sql() -> str:
             f"  FROM {qt} r WHERE r.id = p_id",
             "$$;",
             f"CREATE TRIGGER trg_{t}_version BEFORE INSERT OR UPDATE ON {qt}",
-            "  FOR EACH ROW EXECUTE FUNCTION shri_fhir_version();",
+            f"  FOR EACH ROW EXECUTE FUNCTION shri_fhir_version({unversioned});",
             f"CREATE CONSTRAINT TRIGGER trg_{t}_history AFTER INSERT OR UPDATE ON {qt}",
             "  DEFERRABLE INITIALLY DEFERRED",
             f"  FOR EACH ROW EXECUTE FUNCTION shri_fhir_history('{rtype}');",
@@ -388,6 +414,10 @@ def rls_sql(only: set[str] | None = None) -> str:
                     f"pre_registration_code, pre_registration_enabled) ON {qt} TO shri_app;",
                     ""]
             continue
+        if name in NO_ROLE_ACCESS:
+            out += [f"ALTER TABLE {qt} ENABLE ROW LEVEL SECURITY;",
+                    f"ALTER TABLE {qt} FORCE ROW LEVEL SECURITY;", ""]
+            continue
         if name in GLOBAL_TABLES:
             out.append(f"GRANT SELECT ON {qt} TO shri_app;")
             continue
@@ -503,6 +533,182 @@ def fhir_visibility_rules() -> dict[str, str]:
     return rules
 
 
+# --------------------------------------------------------------------------- the portal
+#: The session's patient (ADR-0013 §5): core's portal_db sets it with the clinic.
+PORTAL_PATIENT = "NULLIF(current_setting('app.current_patient_id', true), '')::uuid"
+#: Clinical tables the portal never reads: version history and provenance, clinicians' alerts,
+#: notes on records (a prescriber's notes among them, #94), qualifications, and merge links,
+#: which name the other chart.
+PORTAL_NEVER = {"fhir_resource_history", "provenance", "provenance_agent", "provenance_entity",
+                "provenance_signature", "detected_issue", "detected_issue_implicated",
+                "detected_issue_mitigation", "annotation", "practitioner_qualification",
+                "patient_link"}
+#: Shared practice data the portal reads by clinic only: who and where (booking, the names on
+#: a visit), never a chart.
+PORTAL_REFERENCE = {"location", "organization", "practitioner", "practitioner_role", "schedule",
+                    "medication"}
+#: A practitioner as the portal sees them: never date of birth, gender or the DEA reference.
+PORTAL_PRACTITIONER_COLUMNS = ("id", "tenant_id", "active", "meta_version_id",
+                               "meta_last_updated", "meta_security")
+#: Columns of the patient's own rows the portal never reads; it gets every other column. The
+#: co-signer's return-to-author comment, and when, is between clinicians (D73, migration 0013).
+PORTAL_HIDDEN_COLUMNS = {"composition": ("ext_cosign_return_comment", "ext_cosign_returned_at")}
+
+
+def portal_select(name: str) -> str:
+    """The portal's SELECT on one of the patient's tables: the whole row, or every column but
+    PORTAL_HIDDEN_COLUMNS, in table order."""
+    hidden = PORTAL_HIDDEN_COLUMNS.get(name, ())
+    if not hidden:
+        return "SELECT"
+    shown = [c.name for c in MAPPERS[name].__table__.columns if c.name not in hidden]
+    return f"SELECT ({', '.join(shown)})"
+
+
+#: Owner columns of shared datatype rows the portal never reads: a practitioner's own address,
+#: phone, email and identifiers. Their names stay visible.
+PORTAL_DENY_OWNER = {"address": {"practitioner_id"}, "contact_point": {"practitioner_id"},
+                     "identifier": {"practitioner_id"}}
+#: Results the portal shows: final ones only, until non-final results are decided (#13).
+PORTAL_RESULT_STATUSES = "'final', 'amended', 'corrected', 'appended'"
+#: Notes and documents, which are never shown when labelled psychotherapy (D86: SecurityLabel
+#: PSY). Other records with the label (a problem, a medication) stay the patient's to see.
+PORTAL_NOTES = {"composition", "document_reference"}
+#: Items a clinician may hold (D90), by the hold's column for them.
+PORTAL_HOLDABLE = {"document_reference": "document_reference_id",
+                   "diagnostic_report": "diagnostic_report_id", "condition": "condition_id"}
+#: Admin tables the portal reads (the clinic policy applies; those with a patient also get the
+#: own-chart policy below), with the columns it may read where not all.
+PORTAL_ADMIN_READ: dict[str, tuple[str, ...] | None] = {
+    "facility": ("id", "tenant_id", "location_id", "code", "name", "timezone", "is_active"),
+    "appointment_type": None, "tenant_setting": None,
+    "online_booking_setting": None, "online_bookable_type": None,
+    "schedule_availability_rule": None, "schedule_exception": None,
+    "availability_rule_appointment_type": None, "portal_change_request": None,
+    # A held item's marker only: never the reason or the clinician (D90).
+    "release_hold": ("id", "tenant_id", "patient_id", "document_reference_id",
+                     "diagnostic_report_id", "condition_id", "lifted_at"),
+}
+#: What a patient may write (D93): bookings and their cancellation, and change requests.
+PORTAL_INSERT = {"appointment", "appointment_participant", "appointment_reason",
+                 "portal_change_request"}
+PORTAL_UPDATE = {
+    "appointment": ("status", "cancelation_reason_system", "cancelation_reason_code",
+                    "cancelation_reason_display", "cancelation_reason_text", "ext_cancelled_at",
+                    "meta_last_updated", "updated_at"),
+    # Moved with its appointment (shri_appointment_sync).
+    "appointment_participant": ("updated_at",),
+}
+
+
+def _portal_shown(name: str, table: Table) -> list[str]:
+    """What the portal never shows of a resource row (D86, D90): drafts, entered-in-error,
+    non-final results, psychotherapy notes and documents, and held items."""
+    cols, out = table.c, []
+    if name in ("diagnostic_report", "observation"):
+        out.append(f"{name}.status IN ({PORTAL_RESULT_STATUSES})")
+    elif name == "composition":
+        out.append("composition.status IN ('final', 'amended')")
+    elif "status" in cols and getattr(MAPPERS[name], "fhir_type", None):
+        out.append(f"{name}.status NOT IN ('draft', 'entered-in-error')")
+    if "verification_status" in cols:
+        out.append(f"{name}.verification_status IS DISTINCT FROM 'entered-in-error'")
+    if name in PORTAL_NOTES:
+        out.append(f"NOT ({name}.meta_security && ARRAY['PSY']::varchar[])")
+    if name in PORTAL_HOLDABLE:
+        out.append(f"NOT EXISTS (SELECT 1 FROM {_q(ADMIN_SCHEMA, 'release_hold')} h "  # noqa: S608
+                   f"WHERE h.{PORTAL_HOLDABLE[name]} = {name}.id AND h.lifted_at IS NULL)")
+    return out
+
+
+def portal_rules() -> dict[str, str]:
+    """Clinical table -> the rows shri_portal may see (D93): the session patient's chart, built
+    as fhir_visibility_rules is. A row is visible only if its patient is the session's and each
+    row it hangs off is visible to the same role, so a hidden note hides its sections too."""
+    rules: dict[str, str] = {}
+    for name, cls in sorted(MAPPERS.items()):
+        table = cls.__table__
+        if (_schema_of(table) != CLINICAL_SCHEMA or name in PORTAL_NEVER
+                or name in PORTAL_REFERENCE):
+            continue
+        if name == "patient":
+            rules[name] = f"id = {PORTAL_PATIENT}"
+            continue
+        pcol = patient_column(table)
+        parts: list[str] = []
+        if pcol is not None:
+            parts.append(f"{name}.{pcol.name} = {PORTAL_PATIENT}")
+        for col in getattr(cls, "fhir_parent", ()):
+            if pcol is not None and col == pcol.name:
+                continue
+            if col in PORTAL_DENY_OWNER.get(name, ()):
+                parts.append(f"{name}.{col} IS NULL")
+                continue
+            check = _visible(referenced_table(table.c[col]).name, "v", f"{name}.{col}")
+            parts.append(check if not table.c[col].nullable
+                         else f"({name}.{col} IS NULL OR {check})")
+        if not parts:
+            continue                        # patientless and not reference data: no grant
+        rules[name] = " AND ".join(parts + _portal_shown(name, table))
+    for name, rule in rules.items():
+        if f"FROM {_q(CLINICAL_SCHEMA, name)} " in rule:
+            raise ValueError(f"the portal policy on {name} reads {name}: it would recurse")
+    return rules
+
+
+def portal_sql() -> str:
+    """shri_portal's grants and policies (D93, migration 0011). RLS stays forced; the clinic
+    policies apply to it as to every role, and these RESTRICTIVE ones add the patient."""
+    out = ["-- Generated by tools/gen_db_rules.py - what the patient portal's role may read and",
+           "-- write (D93). RESTRICTIVE policies, for shri_portal only, on top of the clinic",
+           "-- policies. Do not edit by hand.", ""]
+    for schema in (CLINICAL_SCHEMA, ADMIN_SCHEMA, AUDIT_SCHEMA, "public"):
+        out.append(f"GRANT USAGE ON SCHEMA {schema} TO shri_portal;")
+    out.append("")
+    rules = portal_rules()
+    for name in sorted(PORTAL_REFERENCE):
+        limited = (f" ({', '.join(PORTAL_PRACTITIONER_COLUMNS)})" if name == "practitioner"
+                   else "")
+        out.append(f"GRANT SELECT{limited} ON {_q(CLINICAL_SCHEMA, name)} TO shri_portal;")
+    for name, rule in rules.items():
+        qt = _q(CLINICAL_SCHEMA, name)
+        out += [f"GRANT {portal_select(name)} ON {qt} TO shri_portal;",
+                f"CREATE POLICY portal_own_chart ON {qt} AS RESTRICTIVE FOR SELECT "
+                f"TO shri_portal USING ({rule});"]
+    out.append("")
+    for name, readable in sorted(PORTAL_ADMIN_READ.items()):
+        table = MAPPERS[name].__table__
+        qt = _q(ADMIN_SCHEMA, name)
+        columns = f" ({', '.join(readable)})" if readable else ""
+        out.append(f"GRANT SELECT{columns} ON {qt} TO shri_portal;")
+        if "patient_id" in table.c:
+            out.append(f"CREATE POLICY portal_own_chart ON {qt} AS RESTRICTIVE FOR SELECT "
+                       f"TO shri_portal USING (patient_id = {PORTAL_PATIENT});")
+    out.append(f"GRANT SELECT ON {_q(ADMIN_SCHEMA, 'setting_definition')} TO shri_portal;")
+    out.append("")
+    own = {"appointment": f"subject_patient_id = {PORTAL_PATIENT}",
+           "portal_change_request": f"patient_id = {PORTAL_PATIENT} AND status = 'pending'"}
+    for name in sorted(PORTAL_INSERT):
+        table = MAPPERS[name].__table__
+        qt = _q(_schema_of(table), name)
+        check = own.get(name) or _visible("appointment", "v", f"{name}.appointment_id")
+        if name == "appointment":
+            check += " AND status IN ('proposed', 'booked')"
+        out += [f"GRANT INSERT ON {qt} TO shri_portal;",
+                f"CREATE POLICY portal_own_insert ON {qt} AS RESTRICTIVE FOR INSERT "
+                f"TO shri_portal WITH CHECK ({check});"]
+    for name, writable in sorted(PORTAL_UPDATE.items()):
+        qt = _q(CLINICAL_SCHEMA, name)
+        mine = own.get(name) or _visible("appointment", "v", f"{name}.appointment_id")
+        check = mine + (" AND status IN ('proposed', 'booked', 'cancelled')"
+                        if name == "appointment" else "")
+        out += [f"GRANT UPDATE ({', '.join(writable)}) ON {qt} TO shri_portal;",
+                f"CREATE POLICY portal_own_update ON {qt} AS RESTRICTIVE FOR UPDATE "
+                f"TO shri_portal USING ({mine}) WITH CHECK ({check});"]
+    out += ["", f"GRANT INSERT ON {_q(AUDIT_SCHEMA, 'audit_event')} TO shri_portal;", ""]
+    return "\n".join(out)
+
+
 def fhir_lookup_denied_sql() -> str:
     """audit.record_fhir_lookup_denied: Thulasi's shape (#13, D22). Returns nothing and writes
     its own audit row, so /fhir never learns whether a chart was restricted or missing."""
@@ -612,7 +818,23 @@ def seed_sql() -> str:
     out.append(f"INSERT INTO {cs} (id, code, uri, name) VALUES")
     out.append(",\n".join(f"  (gen_random_uuid(), {_lit(c)}, {_lit(u)}, {_lit(n)})"
                           for c, u, n in systems.SEED) + "\nON CONFLICT DO NOTHING;")
-    return "\n".join(out) + "\n\n" + settings_seed_sql()
+    return ("\n".join(out) + "\n\n" + settings_seed_sql() + "\n"
+            + platform_cds_rules_sql())
+
+
+def platform_cds_rules_sql() -> str:
+    """The platform's fixed rules (admin/practice.py PLATFORM_CDS_RULES; migration 0013). The
+    table's RLS lets no role write a platform row (tenant_id NULL), so a migration inserts them
+    as the owner with RLS not forced, inside its own transaction (sql_0013)."""
+    out = [f"INSERT INTO {_q(ADMIN_SCHEMA, 'cds_rule')} (id, tenant_id, code, name, alert_type, "
+           "rule_source, default_severity, requires_override_reason, is_suppressible, "
+           "is_active) VALUES"]
+    out.append(",\n".join(
+        f"  (gen_random_uuid(), NULL, {_lit(c)}, {_lit(n)}, {_lit(t)}, 'deterministic', "
+        f"{_lit(sev)}, {str(reason).lower()}, {str(supp).lower()}, true)"
+        for c, n, t, sev, reason, supp in PLATFORM_CDS_RULES)
+        + "\nON CONFLICT DO NOTHING;")
+    return "\n".join(out) + "\n"
 
 
 def schema_sql() -> str:
@@ -651,6 +873,7 @@ def main() -> None:
     files = {"01_schema.sql": schema_sql(), "20_fhir_versioning.sql": versioning_sql(),
              "30_guards.sql": guards_sql(),
              "90_rls_grants.sql": rls_sql(), "92_fhir_visibility.sql": fhir_visibility_sql(),
+             "93_portal.sql": portal_sql(),
              "95_seed.sql": seed_sql()}
     for name, body in files.items():
         (ROOT / "sql" / name).write_text(body)

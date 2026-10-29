@@ -211,7 +211,7 @@ CREATE OR REPLACE FUNCTION clinical.shri_snapshot_medication_request(p_id uuid) 
   FROM clinical.medication_request r WHERE r.id = p_id
 $$;
 CREATE TRIGGER trg_medication_request_version BEFORE INSERT OR UPDATE ON clinical.medication_request
-  FOR EACH ROW EXECUTE FUNCTION shri_fhir_version();
+  FOR EACH ROW EXECUTE FUNCTION shri_fhir_version('ext_safety_checked_at', 'ext_safety_checked_version');
 CREATE CONSTRAINT TRIGGER trg_medication_request_history AFTER INSERT OR UPDATE ON clinical.medication_request
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION shri_fhir_history('MedicationRequest');
