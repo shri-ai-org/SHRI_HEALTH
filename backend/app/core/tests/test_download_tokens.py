@@ -36,13 +36,28 @@ def _signed(tokens: DownloadTokens) -> tuple[str, Any]:
     return tokens.sign(claims), claims
 
 
+def _bound(claims: Any) -> dict[str, Any]:
+    return {"user_id": claims.user_id, "file_id": claims.file_id, "tenant_id": claims.tenant_id}
+
+
+@pytest.mark.parametrize("left_out", ["user_id", "file_id", "tenant_id"])
+def test_the_binding_cannot_be_skipped(left_out: str) -> None:
+    """Vimal's review of #140: every caller names the user, file and clinic."""
+    tokens = _tokens()
+    token, claims = _signed(tokens)
+    partial = {k: v for k, v in _bound(claims).items() if k != left_out}
+    with pytest.raises(TypeError):
+        tokens.verify(token, **partial)
+    assert tokens.verify(token, **_bound(claims)) == claims  # and nothing was used up
+
+
 def test_a_token_round_trips_to_its_claims_once() -> None:
     tokens = _tokens()
     token, claims = _signed(tokens)
     # The contract's pattern (contracts/openapi/modules/files.yaml, `token`), checked here too.
     assert re.fullmatch(r"^[A-Za-z0-9_-]{32,512}$", token)
-    assert tokens.verify(token, user_id=claims.user_id) == claims
-    assert tokens.verify(token, user_id=claims.user_id) is None  # used
+    assert tokens.verify(token, **_bound(claims)) == claims
+    assert tokens.verify(token, **_bound(claims)) is None  # used
 
 
 def test_it_expires_after_a_minute() -> None:
@@ -51,7 +66,7 @@ def test_it_expires_after_a_minute() -> None:
     token, claims = _signed(tokens)
     assert claims.expires_at == datetime.fromtimestamp(clock.now + TTL_SECONDS, UTC)
     clock.now += TTL_SECONDS
-    assert tokens.verify(token, user_id=claims.user_id) is None
+    assert tokens.verify(token, **_bound(claims)) is None
 
 
 @pytest.mark.parametrize("other", ["user_id", "file_id", "tenant_id"])
@@ -81,8 +96,8 @@ def test_a_changed_or_forged_token_is_refused() -> None:
                 _tokens(secret=secrets.token_hex(32)).sign(claims),  # another key
                 payload, signature, token + "x", token[1:], token + ".x", "", "a" * 2000,
                 "not a token"):
-        assert tokens.verify(bad, user_id=claims.user_id) is None, bad[:20]
-    assert tokens.verify(token, user_id=claims.user_id) == claims  # the real one still works
+        assert tokens.verify(bad, **_bound(claims)) is None, bad[:20]
+    assert tokens.verify(token, **_bound(claims)) == claims  # the real one still works
 
 
 def test_a_valid_signature_over_junk_is_still_none() -> None:
@@ -90,7 +105,8 @@ def test_a_valid_signature_over_junk_is_still_none() -> None:
     import base64
 
     payload = base64.urlsafe_b64encode(b'{"f":"x"}').decode().rstrip("=")
-    assert tokens.verify(payload + tokens._signature(payload)) is None  # noqa: SLF001
+    forged = payload + tokens._signature(payload)  # noqa: SLF001
+    assert tokens.verify(forged, user_id=uuid4(), file_id=uuid4(), tenant_id=uuid4()) is None
 
 
 @pytest.mark.parametrize("seconds", [-1, 0, TTL_SECONDS + 5, 3600])

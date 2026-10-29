@@ -23,9 +23,7 @@ CREATE TRIGGER trg_facility_timezone BEFORE INSERT OR UPDATE OF timezone ON admi
 CREATE TRIGGER trg_medication_request_guard BEFORE UPDATE ON clinical.medication_request FOR EACH ROW EXECUTE FUNCTION shri_medication_request_guard();
 CREATE TRIGGER trg_mrn_counter_guard BEFORE UPDATE ON admin.mrn_counter FOR EACH ROW EXECUTE FUNCTION shri_mrn_counter_guard();
 CREATE TRIGGER trg_observation_guard BEFORE UPDATE ON clinical.observation FOR EACH ROW EXECUTE FUNCTION shri_final_result_guard();
-CREATE TRIGGER trg_patient_merge_versions BEFORE INSERT ON admin.patient_merge FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_versions();
 CREATE TRIGGER trg_patient_merge_guard BEFORE UPDATE ON admin.patient_merge FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_guard();
-CREATE TRIGGER trg_patient_merge_record_version BEFORE INSERT ON admin.patient_merge_record FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_record_version();
 CREATE TRIGGER trg_portal_account_fixed BEFORE UPDATE ON admin.portal_account FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('keycloak_user_id', 'patient_id');
 CREATE TRIGGER trg_portal_change_request_fixed BEFORE UPDATE ON admin.portal_change_request FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('patient_id', 'changes', 'note');
 CREATE TRIGGER trg_portal_change_request_decided BEFORE UPDATE ON admin.portal_change_request FOR EACH ROW EXECUTE FUNCTION shri_final_once_decided();
@@ -39,7 +37,6 @@ CREATE TRIGGER trg_service_request_guard BEFORE UPDATE ON clinical.service_reque
 CREATE TRIGGER trg_tenant_timezone BEFORE INSERT OR UPDATE OF timezone ON admin.tenant FOR EACH ROW EXECUTE FUNCTION shri_timezone_check();
 CREATE CONSTRAINT TRIGGER trg_composition_signed AFTER INSERT OR UPDATE ON clinical.composition DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION shri_composition_signed_check();
 CREATE CONSTRAINT TRIGGER trg_medication_request_alerts AFTER INSERT OR UPDATE ON clinical.medication_request DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION shri_medication_request_alert_check();
-CREATE CONSTRAINT TRIGGER trg_patient_merge_undo AFTER INSERT OR UPDATE ON admin.patient_merge DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_undo_check();
 CREATE TRIGGER trg_charge_frozen BEFORE INSERT OR UPDATE OR DELETE ON admin.charge FOR EACH ROW EXECUTE FUNCTION shri_child_frozen_guard('superbill_id', 'superbill', 'status', 'draft,ready-for-review');
 CREATE TRIGGER trg_diagnostic_report_based_on_frozen BEFORE INSERT OR UPDATE OR DELETE ON clinical.diagnostic_report_based_on FOR EACH ROW EXECUTE FUNCTION shri_child_frozen_guard('diagnostic_report_id', 'diagnostic_report', 'status', 'registered,partial,preliminary,amended,corrected,appended,cancelled,unknown');
 CREATE TRIGGER trg_diagnostic_report_category_frozen BEFORE INSERT OR UPDATE OR DELETE ON clinical.diagnostic_report_category FOR EACH ROW EXECUTE FUNCTION shri_child_frozen_guard('diagnostic_report_id', 'diagnostic_report', 'status', 'registered,partial,preliminary,amended,corrected,appended,cancelled,unknown');
@@ -73,7 +70,6 @@ CREATE TRIGGER trg_composition_attester_insert_only BEFORE UPDATE OR DELETE ON c
 CREATE TRIGGER trg_detected_issue_mitigation_insert_only BEFORE UPDATE OR DELETE ON clinical.detected_issue_mitigation FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
 CREATE TRIGGER trg_eligibility_benefit_insert_only BEFORE UPDATE OR DELETE ON admin.eligibility_benefit FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
 CREATE TRIGGER trg_fhir_resource_history_insert_only BEFORE UPDATE OR DELETE ON clinical.fhir_resource_history FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
-CREATE TRIGGER trg_patient_merge_record_insert_only BEFORE UPDATE OR DELETE ON admin.patient_merge_record FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
 CREATE TRIGGER trg_provenance_insert_only BEFORE UPDATE OR DELETE ON clinical.provenance FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
 CREATE TRIGGER trg_provenance_agent_insert_only BEFORE UPDATE OR DELETE ON clinical.provenance_agent FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
 CREATE TRIGGER trg_provenance_entity_insert_only BEFORE UPDATE OR DELETE ON clinical.provenance_entity FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
