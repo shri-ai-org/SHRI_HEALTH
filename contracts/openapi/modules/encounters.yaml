@@ -4665,7 +4665,8 @@ components:
           type: string
           format: uri
           maxLength: 2000
-          description: The download link. Short-lived; never logged.
+          description: 'A one-time link to `GET /files/{fileId}/content` (D105): for this user only, valid for about one minute,
+            accepted once. Never logged.'
           x-phi: none
         expiresAt:
           $ref: ../components/schemas/Timestamp.yaml

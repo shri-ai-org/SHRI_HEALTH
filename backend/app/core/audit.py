@@ -47,6 +47,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from fastapi import FastAPI
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +56,7 @@ from sqlalchemy.sql.elements import TextClause
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.core.config import Settings
 from app.core.errors import InternalError, problem
 from app.core.operations import Operation, operation_for
 from app.core.request_id import current_request_id
@@ -430,3 +432,8 @@ class AuditMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_after_audit)
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """AuditMiddleware (innermost: it sees the final status)."""
+    app.add_middleware(AuditMiddleware)

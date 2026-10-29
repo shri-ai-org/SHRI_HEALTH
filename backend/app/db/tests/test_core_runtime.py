@@ -209,6 +209,8 @@ def test_lookup_session_finds_live_sessions_of_any_clinic_before_one_is_set(
     ("admin.lookup_session(text)", "shri_app"),
     ("admin.claim_outbound_messages(integer)", "shri_integration"),
     ("admin.purge_expired_runtime_rows()", "shri_maintenance"),
+    ("admin.list_unusable_files(integer)", "shri_maintenance"),     # 0014, the file purge
+    ("admin.delete_unusable_files(uuid[])", "shri_maintenance"),
     ("admin.submit_pre_registration(text, uuid, text, jsonb, boolean, inet, text, text)",
      "shri_public"),
     ("admin.lookup_portal_session(text)", "shri_app"),

@@ -21,6 +21,7 @@ BATCH_1 = frozenset({
     "updateRelatedPerson",
     "listCoverages",
     "addCoverage",
+    "getCoverage",  # the single read (#64)
     "updateCoverage",
     "attachCoverageCardImage",
     "markCoverageEnteredInError",
@@ -53,7 +54,17 @@ BUILT_IN_PR_1 = frozenset({
     "restrictPatient",
     "unrestrictPatient",
 })
-PENDING = BATCH_1 - BUILT_IN_PR_1
+# PR-2: coverages and consents (card images and the preferred pharmacy follow in PR-7).
+BUILT_IN_PR_2 = frozenset({
+    "listCoverages",
+    "addCoverage",
+    "getCoverage",
+    "updateCoverage",
+    "markCoverageEnteredInError",
+    "listConsents",
+    "recordConsent",
+})
+PENDING = BATCH_1 - BUILT_IN_PR_1 - BUILT_IN_PR_2
 
 
 def test_batch_1_operations_are_built_or_pending() -> None:

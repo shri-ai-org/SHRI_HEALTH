@@ -36,10 +36,21 @@ Contract to column, where the name alone does not say it:
   (``is_available``). ``updatedAt`` also counts its rules' and exceptions' ``updated_at``.
 - PracticePayer: ``admin.practice_payer`` with its directory payer; ``enrollments`` are the
   clinic's ``payer_enrollment`` rows for that payer (``practitioner_id`` as ``providerId``).
+- NoteTemplate: ``admin.note_template`` (``specialty_code``, ``note_type_loinc``,
+  ``owner_user_id``, ``is_active``; ``version`` is the A41 counter the single GET's ETag comes
+  from) with its ``note_template_section`` rows by ``sequence`` (``is_required`` as
+  ``required``). ``personal`` is ``owner_user_id IS NOT NULL``. Every template is a clinic's
+  (``tenant_id`` is NOT NULL): there are no platform-wide ones. RLS gives the clinic's rows;
+  of those, the reads return the shared templates (``owner_user_id`` NULL) and the signed-in
+  user's own personal ones (``app.current_user_id``, set by tenant_db), never another user's:
+  the contract's ``personal`` is "the signed-in user's personal template" (the conservative
+  reading, decided for this change). Another user's personal template is absent from the list
+  and 404 on the single GET, and ``ownerUserId`` naming someone else gives an empty page.
+  ``updatedAt`` also counts its sections' ``updated_at``.
 
-Sort keys: facilities, appointment types and payers by ``name``; practice payers by the payer's
-name; providers and provider schedules by ``created_at`` (their names live in child rows). All
-then by ``id``. Collation is C.UTF-8 (D33), so name order is byte order.
+Sort keys: facilities, appointment types, payers and note templates by ``name``; practice
+payers by the payer's name; providers and provider schedules by ``created_at`` (their names live
+in child rows). All then by ``id``. Collation is C.UTF-8 (D33), so name order is byte order.
 """
 
 from __future__ import annotations
@@ -92,6 +103,13 @@ class SetupRepository(Protocol):
     async def list_practice_payers(self, db: AsyncSession, *, active: bool | None,
                                    after: Position | None, limit: int
                                    ) -> Page[schemas.PracticePayer]: ...
+
+    async def list_note_templates(self, db: AsyncSession, *, owner_user_id: UUID | None,
+                                  active: bool | None, after: Position | None, limit: int
+                                  ) -> Page[schemas.NoteTemplate]: ...
+
+    async def get_note_template(self, db: AsyncSession, note_template_id: UUID
+                                ) -> schemas.NoteTemplate | None: ...
 
 
 # ----------------------------------------------------------------------------------- SQL
@@ -290,6 +308,31 @@ WHERE payer_id = ANY(CAST(:ids AS uuid[]))
 ORDER BY payer_id, practitioner_id NULLS FIRST, transaction, clearinghouse, id
 """)
 
+# One SELECT list for the list and the single GET; :one_id NULL lists, a UUID reads one row.
+# Shared templates plus the signed-in user's own personal ones (see the module docstring).
+_NOTE_TEMPLATES = text("""
+SELECT t.id, t.code, t.version, t.name, t.specialty_code, t.note_type_loinc, t.owner_user_id,
+       t.is_active, t.created_at,
+       GREATEST(t.updated_at,
+                (SELECT max(s.updated_at) FROM admin.note_template_section s
+                  WHERE s.template_id = t.id)) AS updated_at
+FROM admin.note_template t
+WHERE (t.owner_user_id IS NULL
+       OR t.owner_user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid)
+  AND (CAST(:one_id AS uuid) IS NULL OR t.id = :one_id)
+  AND (CAST(:owner_user_id AS uuid) IS NULL OR t.owner_user_id = :owner_user_id)
+  AND (CAST(:active AS boolean) IS NULL OR t.is_active = :active)
+  AND (CAST(:after_key AS text) IS NULL
+       OR (t.name, t.id) > (CAST(:after_key AS text), CAST(:after_id AS uuid)))
+ORDER BY t.name, t.id
+LIMIT :limit
+""")
+_NOTE_TEMPLATE_SECTIONS = text("""
+SELECT template_id, sequence, section_code, title, default_text, is_required
+FROM admin.note_template_section
+WHERE template_id = ANY(CAST(:ids AS uuid[]))
+ORDER BY template_id, sequence, id
+""")
 
 # ----------------------------------------------------------------------------------- helpers
 def _keyset(after: Position | None, limit: int) -> dict[str, Any]:
@@ -525,3 +568,39 @@ class SqlSetupRepository:
         ]
         return Page(items, next_position)
 
+    async def list_note_templates(self, db: AsyncSession, *, owner_user_id: UUID | None,
+                                  active: bool | None, after: Position | None, limit: int
+                                  ) -> Page[schemas.NoteTemplate]:
+        found = (await db.execute(_NOTE_TEMPLATES, {
+            "one_id": None, "owner_user_id": owner_user_id, "active": active,
+            **_keyset(after, limit)})).all()
+        rows, next_position = _cut(found, limit, "note-templates", "name")
+        return Page(await _note_templates(db, rows), next_position)
+
+    async def get_note_template(self, db: AsyncSession, note_template_id: UUID
+                                ) -> schemas.NoteTemplate | None:
+        found = (await db.execute(_NOTE_TEMPLATES, {
+            "one_id": note_template_id, "owner_user_id": None, "active": None,
+            **_keyset(None, 1)})).all()
+        items = await _note_templates(db, found[:1])
+        return items[0] if items else None
+
+
+async def _note_templates(db: AsyncSession, rows: Sequence[Row[Any]]
+                          ) -> list[schemas.NoteTemplate]:
+    sections = await _children(db, _NOTE_TEMPLATE_SECTIONS, [r.id for r in rows], "template_id")
+    return [
+        schemas.NoteTemplate(
+            id=r.id, code=r.code, version=r.version, name=r.name,
+            specialty_code=r.specialty_code, note_type_loinc=r.note_type_loinc,
+            personal=r.owner_user_id is not None,
+            sections=[
+                schemas.NoteTemplateSection(sequence=x.sequence, section_code=x.section_code,
+                                            title=x.title, default_text=x.default_text,
+                                            required=x.is_required)
+                for x in sections.get(r.id, [])
+            ],
+            owner_user_id=r.owner_user_id, active=r.is_active, created_at=r.created_at,
+            updated_at=r.updated_at)
+        for r in rows
+    ]

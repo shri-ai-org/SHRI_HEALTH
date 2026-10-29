@@ -37,6 +37,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
+from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql.expression import bindparam
@@ -44,6 +45,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.core.config import Settings
 from app.core.crypto import decrypt_field, encrypt_field
 from app.core.errors import AppError, Conflict, ValidationFailed, field_error
 from app.core.operations import Operation
@@ -288,3 +290,13 @@ class IdempotencyMiddleware:
             if claim is not None and not done:
                 await _release(scope["app"].state.db, claim)  # the error becomes a 500
             raise
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """Outside the audit middleware, so it stores the final status, audit 500s included."""
+    app.add_middleware(IdempotencyMiddleware)
+
+
+def register_replays(app: FastAPI, settings: Settings) -> None:
+    """The stored answer for a finished key, after core's own error handlers."""
+    app.add_exception_handler(Replay, replay_response)
