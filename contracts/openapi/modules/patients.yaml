@@ -2998,9 +2998,6 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
-        '404':
-          $ref: ../components/responses/NotFound.yaml
-          description: 404. `not-found` (a facility the user is not assigned to).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -3091,8 +3088,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
         '404':
           $ref: ../components/responses/NotFound.yaml
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned
-            to).
+          description: '404. `not-found` (no such pre-registration in this clinic).'
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -3218,12 +3214,12 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `pre-registrations:accept`); `csrf-check-failed` (missing
-            or wrong CSRF header or Origin).
+          description: '403. `permission-denied` (the role lacks `pre-registrations:accept`); `break-glass-required` (linking:
+            `patientId` names a restricted chart and the user holds no break-glass grant and is not on the care team, D37);
+            `csrf-check-failed` (missing or wrong CSRF header or Origin).'
         '404':
           $ref: ../components/responses/NotFound.yaml
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned
-            to).
+          description: '404. `not-found` (no such pre-registration in this clinic).'
         '409':
           $ref: ../components/responses/Conflict.yaml
           description: '409. `possible-duplicate` (similar patients exist: review them, then link or override); `invalid-state-transition`
@@ -3231,8 +3227,9 @@ paths:
             merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`);
-            `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: '422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`);
+            `business-rule-violation` (`errors` names `/patientId` with `invalid-reference`: no such patient in this clinic);
+            `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -3346,8 +3343,7 @@ paths:
             or wrong CSRF header or Origin).
         '404':
           $ref: ../components/responses/NotFound.yaml
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned
-            to).
+          description: '404. `not-found` (no such pre-registration in this clinic).'
         '409':
           $ref: ../components/responses/Conflict.yaml
           description: 409. `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`).
@@ -5039,7 +5035,7 @@ components:
           type: string
           enum:
           - already-undone
-          - records-changed
+          - later-merge
           description: 'Why undo is not allowed, when `undoAllowed` is false: `already-undone` or `later-merge` (a later merge
             involving either patient still stands).'
           x-phi: none

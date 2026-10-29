@@ -21,6 +21,8 @@ dependencies = [
     "alembic>=1.14",          # migrations
     "pgvector>=0.3",          # Vector column type (admin.knowledge_chunk embeddings)
     "fhir.resources>=8.0",    # FHIR R4B models used to validate the read-only /fhir output
+    # File service (backend/app/modules/files/, Anand): AES-256-GCM with core's data keys
+    "cryptography>=50.0.2,<51",
 ]
 
 [project.optional-dependencies]

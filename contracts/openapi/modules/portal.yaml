@@ -1684,7 +1684,10 @@ paths:
         rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request
         bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double
         submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue;
-        a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).'
+        a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).
+        The checks run in this order, and the first that fails answers: the `Origin` (403 `csrf-check-failed`), the rate limit
+        (429), the ALTCHA bot check (422, `errors` names `/botCheck`), then the body''s fields (422 `validation-failed`).
+        A body that is not JSON at all is refused before any of them, with 400 `malformed-request`.'
       tags:
       - portal
       x-owner: vimal

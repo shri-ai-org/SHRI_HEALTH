@@ -4214,9 +4214,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
           description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
-        '404':
-          $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (a facility the user is not assigned to).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -4306,7 +4303,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+          description: 404. `not-found` (no such pre-registration in this clinic).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -4427,16 +4424,16 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `pre-registrations:accept`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: '403. `permission-denied` (the role lacks `pre-registrations:accept`); `break-glass-required` (linking: `patientId` names a restricted chart and the user holds no break-glass grant and is not on the care team, D37); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+          description: 404. `not-found` (no such pre-registration in this clinic).
         '409':
           $ref: '#/components/responses/Conflict'
           description: '409. `possible-duplicate` (similar patients exist: review them, then link or override); `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`); `patient-merged` (the patient to link was merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: '422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`); `business-rule-violation` (`errors` names `/patientId` with `invalid-reference`: no such patient in this clinic); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -4547,7 +4544,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `pre-registrations:reject`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+          description: 404. `not-found` (no such pre-registration in this clinic).
         '409':
           $ref: '#/components/responses/Conflict'
           description: 409. `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`).
@@ -6747,7 +6744,7 @@ paths:
     patch:
       operationId: updateEncounter
       summary: Edit an encounter
-      description: 'Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error` (inventory #64). Status changes only through actions.'
+      description: 'Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error` (inventory #64). Status changes only through actions. MA and RN hold `encounters:update` for rooming and may change only `reasons` (the reason for visit, recorded at rooming, #114); a request from them that changes anything else is `403 permission-denied`. MD and APP may change every field here. The role matrix row lands with core''s change (NOTE_FOR_THULASI T52), and it is a clinical row (‡, Q21).'
       tags:
         - encounters
       x-owner: vimal
@@ -6870,7 +6867,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `encounters:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+          description: 403. `permission-denied` (the role lacks `encounters:update`, or an MA or RN changes a field other than `reasons`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
@@ -20797,7 +20794,7 @@ paths:
     post:
       operationId: submitPreRegistration
       summary: Pre-register as a new patient
-      description: 'The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice''s own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).'
+      description: 'The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice''s own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81). The checks run in this order, and the first that fails answers: the `Origin` (403 `csrf-check-failed`), the rate limit (429), the ALTCHA bot check (422, `errors` names `/botCheck`), then the body''s fields (422 `validation-failed`). A body that is not JSON at all is refused before any of them, with 400 `malformed-request`.'
       tags:
         - portal
       x-owner: vimal
@@ -23797,7 +23794,7 @@ components:
           type: string
           enum:
             - already-undone
-            - records-changed
+            - later-merge
           description: 'Why undo is not allowed, when `undoAllowed` is false: `already-undone` or `later-merge` (a later merge involving either patient still stands).'
           x-phi: none
     PatientMergeList:
@@ -28267,11 +28264,11 @@ components:
           x-phi: none
         facilityIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 50
           items:
             $ref: '#/components/schemas/Id'
-          description: Facilities where the provider works (one PractitionerRole each).
+          description: Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such a provider.
           x-phi: internal-id
         phone:
           $ref: '#/components/schemas/PhoneNumber'
@@ -28354,11 +28351,11 @@ components:
           x-phi: none
         facilityIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 50
           items:
             $ref: '#/components/schemas/Id'
-          description: Facilities where the provider works (one PractitionerRole each).
+          description: Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such a provider.
           x-phi: internal-id
         phone:
           $ref: '#/components/schemas/PhoneNumber'
@@ -28408,11 +28405,11 @@ components:
           x-phi: none
         facilityIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 50
           items:
             $ref: '#/components/schemas/Id'
-          description: Facilities where the provider works (one PractitionerRole each).
+          description: Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such a provider.
           x-phi: internal-id
         phone:
           $ref: '#/components/schemas/PhoneNumber'

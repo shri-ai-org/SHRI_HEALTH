@@ -322,6 +322,9 @@ CREATE TABLE admin.binary_object (
 	scan_status VARCHAR(40) DEFAULT 'pending' NOT NULL, 
 	scanned_at TIMESTAMP WITH TIME ZONE, 
 	retention_until TIMESTAMP WITH TIME ZONE, 
+	purpose VARCHAR(40) NOT NULL, 
+	state VARCHAR(40) DEFAULT 'pending-upload' NOT NULL, 
+	wrapped_data_key TEXT, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -333,10 +336,15 @@ CREATE TABLE admin.binary_object (
 	CONSTRAINT ck_binary_object_sha256_format CHECK (sha256 ~ '^[0-9a-f]{64}$'), 
 	CONSTRAINT ck_binary_object_size CHECK (size_bytes >= 0), 
 	CONSTRAINT ck_binary_object_scanned_at CHECK ((scan_status = 'pending') = (scanned_at IS NULL)), 
+	CONSTRAINT ck_binary_object_generated_clean CHECK (purpose NOT IN ('receipt', 'after-visit-summary') OR state = 'clean'), 
+	CONSTRAINT ck_binary_object_key_when_clean CHECK (state = 'clean' OR wrapped_data_key IS NULL), 
+	CONSTRAINT ck_binary_object_clean_when_scanned CHECK (state <> 'clean' OR scan_status = 'clean' OR purpose IN ('receipt', 'after-visit-summary')), 
 	CONSTRAINT fk_binary_object_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_binary_object_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_binary_object_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT ck_binary_object_scan_status_codes CHECK (scan_status IN ('pending', 'clean', 'infected', 'error')), 
+	CONSTRAINT ck_binary_object_purpose_codes CHECK (purpose IN ('insurance-card', 'identity', 'receipt', 'encounter-audio', 'after-visit-summary', 'document', 'fax', 'ccda', 'export', 'onboarding-import')), 
+	CONSTRAINT ck_binary_object_state_codes CHECK (state IN ('pending-upload', 'quarantined', 'clean', 'rejected')), 
 	CONSTRAINT uq_binary_object_tenant_id_id UNIQUE (tenant_id, id)
 );
 
@@ -1138,7 +1146,7 @@ CREATE TABLE admin.payer_enrollment (
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
 	CONSTRAINT pk_payer_enrollment PRIMARY KEY (id), 
-	CONSTRAINT uq_payer_enrollment_payer_id_practitioner_id_transactio_c010 UNIQUE NULLS NOT DISTINCT (payer_id, practitioner_id, transaction, clearinghouse), 
+	CONSTRAINT uq_payer_enrollment_tenant_id_payer_id_practitioner_id__a493 UNIQUE NULLS NOT DISTINCT (tenant_id, payer_id, practitioner_id, transaction, clearinghouse), 
 	CONSTRAINT ck_payer_enrollment_approved_at CHECK (status <> 'approved' OR approved_at IS NOT NULL), 
 	CONSTRAINT fk_payer_enrollment_payer_id_payer FOREIGN KEY(payer_id) REFERENCES admin.payer (id), 
 	CONSTRAINT fk_payer_enrollment_practitioner_id_practitioner FOREIGN KEY(practitioner_id) REFERENCES clinical.practitioner (id), 
@@ -2483,8 +2491,6 @@ CREATE TABLE admin.patient_merge (
 	performed_by_user_id UUID NOT NULL, 
 	unmerged_at TIMESTAMP WITH TIME ZONE, 
 	unmerged_by_user_id UUID, 
-	surviving_patient_version INTEGER, 
-	merged_patient_version INTEGER, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -3091,27 +3097,6 @@ CREATE TABLE admin.compendium_aoe_option (
 );
 
 CREATE INDEX ix_compendium_aoe_option_tenant_id ON admin.compendium_aoe_option (tenant_id);
-
-CREATE TABLE admin.patient_merge_record (
-	patient_merge_id UUID NOT NULL, 
-	resource_type VARCHAR(64) NOT NULL, 
-	resource_id UUID NOT NULL, 
-	version_before_merge INTEGER NOT NULL, 
-	id UUID NOT NULL, 
-	tenant_id UUID NOT NULL, 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	created_by_user_id UUID, 
-	updated_by_user_id UUID, 
-	CONSTRAINT pk_patient_merge_record PRIMARY KEY (id), 
-	CONSTRAINT uq_patient_merge_record_patient_merge_id_resource_type__6e7b UNIQUE (patient_merge_id, resource_type, resource_id), 
-	CONSTRAINT fk_patient_merge_record_patient_merge_id_patient_merge FOREIGN KEY(patient_merge_id) REFERENCES admin.patient_merge (id), 
-	CONSTRAINT fk_patient_merge_record_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
-	CONSTRAINT fk_patient_merge_record_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
-	CONSTRAINT fk_patient_merge_record_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_patient_merge_record_tenant_id ON admin.patient_merge_record (tenant_id);
 
 CREATE TABLE admin.portal_account (
 	keycloak_user_id VARCHAR(100) NOT NULL, 
@@ -3816,7 +3801,9 @@ CREATE TABLE admin.patient_payment (
 	collected_by_user_id UUID, 
 	is_refund BOOLEAN NOT NULL, 
 	refund_of_payment_id UUID, 
-	receipt_file_id UUID, 
+	receipt_file_id UUID NOT NULL, 
+	check_number VARCHAR(40), 
+	note VARCHAR(500), 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -3828,6 +3815,7 @@ CREATE TABLE admin.patient_payment (
 	CONSTRAINT ck_patient_payment_refund_link CHECK (is_refund = (refund_of_payment_id IS NOT NULL)), 
 	CONSTRAINT ck_patient_payment_no_card_number CHECK (processor_reference IS NULL OR regexp_replace(processor_reference, '[ -]', '', 'g') !~ '^[0-9]{13,19}$'), 
 	CONSTRAINT ck_patient_payment_card_has_processor_ref CHECK (method <> 'card' OR processor_reference IS NOT NULL), 
+	CONSTRAINT ck_patient_payment_check_number_method CHECK (check_number IS NULL OR method = 'check'), 
 	CONSTRAINT fk_patient_payment_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
 	CONSTRAINT fk_patient_payment_encounter_id_encounter FOREIGN KEY(encounter_id) REFERENCES clinical.encounter (id), 
 	CONSTRAINT fk_patient_payment_appointment_id_appointment FOREIGN KEY(appointment_id) REFERENCES clinical.appointment (id), 
@@ -8324,8 +8312,6 @@ ALTER TABLE admin.patient_merge ADD CONSTRAINT fk_patient_merge_duplicate_candid
 ALTER TABLE admin.patient_merge ADD CONSTRAINT fk_patient_merge_merged_patient_id_tenant FOREIGN KEY(tenant_id, merged_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.patient_merge ADD CONSTRAINT fk_patient_merge_surviving_patient_id_tenant FOREIGN KEY(tenant_id, surviving_patient_id) REFERENCES clinical.patient (tenant_id, id);
-
-ALTER TABLE admin.patient_merge_record ADD CONSTRAINT fk_patient_merge_record_patient_merge_id_tenant FOREIGN KEY(tenant_id, patient_merge_id) REFERENCES admin.patient_merge (tenant_id, id);
 
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_appointment_id_same_patient FOREIGN KEY(patient_id, appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
