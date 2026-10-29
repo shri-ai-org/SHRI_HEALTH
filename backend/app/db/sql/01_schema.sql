@@ -350,6 +350,8 @@ CREATE TABLE admin.binary_object (
 
 CREATE INDEX ix_binary_object_tenant_id ON admin.binary_object (tenant_id);
 
+CREATE INDEX ix_binary_object_unusable ON admin.binary_object (updated_at, id) WHERE state <> 'clean';
+
 CREATE TABLE admin.message_template (
 	code VARCHAR(60) NOT NULL, 
 	channel VARCHAR(40) NOT NULL, 

@@ -59,6 +59,7 @@ schema changes, never for serving a request.
 | `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into (select, insert, update; never delete; 0004), the three `integration_*` admin tables, and `audit.audit_event` `INSERT` only (0004) |
 | `shri_reporting` | approved reports | nothing yet — no reporting views exist; grants come when they do |
 | `shri_migrator` | migrations only, and the development and test seed (`app.db.seed`); never production onboarding, which needs its own design | owns all three schemas |
+| `shri_maintenance` | the scheduled purges only (D23) | `USAGE` on `admin` and `EXECUTE` on the purge functions: `admin.purge_expired_runtime_rows()` (0005) and the file purge's `admin.list_unusable_files(integer)` and `admin.delete_unusable_files(uuid[])` (0014); no table privileges |
 | `shri_public` | the public pre-registration form (D96), the only write without a sign-in | `USAGE` on `admin` and `EXECUTE` on `admin.submit_pre_registration()`; no table privileges (0009) |
 | `shri_portal` | the patient portal's requests (`portal_db`, D93) | the chart in `app.current_patient_id` only, through generated RESTRICTIVE policies (`gen_db_rules.portal_sql`); bookings, cancellations and change requests; `audit_event` insert-only; no DELETE anywhere (0011) |
 
@@ -252,7 +253,18 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   `rejected`. Only a clean file is attached or downloaded. An uploaded file is clean only after a
   clean scan; a receipt or after-visit summary, made by the server, is clean from the start.
   `wrapped_data_key` is the file's data key as core wraps it, kept only once the file is
-  clean.
+  clean. An upload's row is written `pending-upload` in bucket `quarantine` with the declared
+  `size_bytes` and `sha256`; the scan checks the bytes against them, and a clean file moves to
+  bucket `clean` under the same `storage_key` (`<clinic>/<file>`). `shri_app` never deletes a
+  file.
+  - **The purge (migration 0014):** a file that is not clean 24 hours after its last change
+    (`updated_at`: an upload never completed, a stuck scan, a rejected file) goes, row and
+    stored bytes. `python -m app.modules.files.purge` runs as `shri_maintenance` and calls
+    `SELECT * FROM admin.list_unusable_files(:limit)` (`id, tenant_id, bucket, storage_key`,
+    oldest first, 1 to 1000), then, in one transaction, `SELECT id FROM
+    admin.delete_unusable_files(:ids)`, which deletes only rows still unusable and old and
+    skips a row another table still references; the job deletes those rows' objects before it
+    commits. The 24 hours are fixed in the functions. Every update of a file sets `updated_at`.
 - **Pre-registration (D96, A51, migration 0009):** the public form calls
   `SELECT admin.submit_pre_registration(:practice_code, :idempotency_key, :request_hash,
   :details, :contact_consent, :source_ip, :user_agent, :request_id)` as `shri_public`, with no
