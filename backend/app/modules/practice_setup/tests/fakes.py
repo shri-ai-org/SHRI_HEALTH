@@ -87,7 +87,7 @@ class FakeRepository:
                              active: bool | None, after: Position | None, limit: int
                              ) -> Page[schemas.Provider]:
         def keep(p: schemas.Provider) -> bool:
-            return (bool(p.facility_ids) and _active(active)(p)
+            return (_active(active)(p)
                     and (facility_id is None or facility_id in p.facility_ids))
         return _page(self._clinic(db).providers, keep, lambda p: p.created_at, "providers",
                      after, limit)

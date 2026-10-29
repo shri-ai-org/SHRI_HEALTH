@@ -368,10 +368,10 @@ def test_providers_with_their_child_rows(client: Any, world: dict[str, Any]) -> 
     assert sorted(retired["facilityIds"]) == sorted([str(a["main"]), str(a["north"])])
 
 
-def test_a_provider_without_an_active_role_at_a_facility_is_left_out(
+def test_a_provider_without_an_active_role_is_listed_with_no_facilities(
         client: Any, world: dict[str, Any], engines: tuple[Engine, Engine]) -> None:
-    """facilityIds has minItems 1 in the contract, so a provider with no active role at a
-    facility isn't listed until the contract says how to show one (asked on the PR)."""
+    """facilityIds is empty for a provider with no active role at any facility, so an admin can
+    still find and reactivate them (#129). A facility filter still needs an active role there."""
     _, app_engine = engines
     db = open_session(app_engine, world["a"]["tenant"])
     try:
@@ -381,11 +381,15 @@ def test_a_provider_without_an_active_role_at_a_facility_is_left_out(
         unplaced = _provider(db, "Nakamura", [])
         db.add(M["practitioner_role"](practitioner_id=unplaced["practitioner"].id))
         db.commit()
-        hidden = {str(lapsed["practitioner"].id), str(unplaced["practitioner"].id)}
+        without = {str(lapsed["practitioner"].id), str(unplaced["practitioner"].id)}
     finally:
         db.close()
-    listed = {p["id"] for p in _get(client, "adm", "/api/v1/providers", limit=100)["items"]}
-    assert listed == {str(i) for i in world["a"]["providers"]} and not listed & hidden
+    items = {p["id"]: p for p in _get(client, "adm", "/api/v1/providers", limit=100)["items"]}
+    assert set(items) == {str(i) for i in world["a"]["providers"]} | without
+    assert all(items[i]["facilityIds"] == [] for i in without)
+    at_main = {p["id"] for p in _get(client, "adm", "/api/v1/providers", limit=100,
+                                     facilityId=str(world["a"]["main"]))["items"]}
+    assert not at_main & without
 
 
 def test_provider_schedules_with_rules_and_exceptions(client: Any,

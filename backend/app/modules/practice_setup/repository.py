@@ -126,12 +126,7 @@ SELECT p.id, p.gender, p.active, p.created_at,
                 (SELECT max(r.meta_last_updated) FROM clinical.practitioner_role r
                   WHERE r.practitioner_id = p.id)) AS updated_at
 FROM clinical.practitioner p
-WHERE EXISTS (
-        SELECT 1 FROM clinical.practitioner_role r
-        JOIN clinical.practitioner_role_location rl ON rl.practitioner_role_id = r.id
-        JOIN admin.facility f ON f.location_id = rl.location_id
-        WHERE r.practitioner_id = p.id AND r.active)
-  AND (CAST(:active AS boolean) IS NULL OR p.active = :active)
+WHERE (CAST(:active AS boolean) IS NULL OR p.active = :active)
   AND (CAST(:facility_id AS uuid) IS NULL OR EXISTS (
         SELECT 1 FROM clinical.practitioner_role r
         JOIN clinical.practitioner_role_location rl ON rl.practitioner_role_id = r.id
