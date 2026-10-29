@@ -568,7 +568,7 @@ ALTER TABLE clinical.encounter_type FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.encounter_type USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON admin.erx_transaction TO shri_integration;
-GRANT UPDATE (status, error_message, vendor_message_id, updated_by_user_id) ON admin.erx_transaction TO shri_integration;
+GRANT UPDATE (status, error_message, vendor_message_id, updated_by_user_id, updated_at) ON admin.erx_transaction TO shri_integration;
 GRANT SELECT, INSERT, UPDATE ON admin.erx_transaction TO shri_app;
 ALTER TABLE admin.erx_transaction ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.erx_transaction FORCE ROW LEVEL SECURITY;
