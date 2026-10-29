@@ -8,11 +8,14 @@ can't be probed.
 
     tokens = request.app.state.download_tokens          # or Depends(download_tokens)
     token = tokens.sign(tokens.claims(file_id, user.id, user.tenant_id))
-    claims = tokens.verify(token, user_id=user.id)       # None: 404
+    claims = tokens.verify(token, user_id=user.id, file_id=file_id, tenant_id=user.tenant_id)
+    # None: 404
 
-A token is `<payload>.<signature>`, both base64url: the payload names the file, user, clinic,
-expiry and a random nonce; the signature is HMAC-SHA256 with a key derived from SESSION_SECRET
-(its own label, so it is never a CSRF token or the reverse). It is a bearer secret: never log it.
+A token is `<payload><signature>`, base64url only, as the contract's pattern requires
+(`^[A-Za-z0-9_-]{32,512}$`, files.yaml): the payload names the file, user, clinic, expiry and a
+random nonce; the signature, always the last 43 characters, is HMAC-SHA256 with a key derived
+from SESSION_SECRET (its own label, so it is never a CSRF token or the reverse; SESSION_SECRET
+itself comes from OpenBao outside development). It is a bearer secret: never log it.
 The query string of the content route is kept out of the access logs (access_log.py, nginx).
 
 **Accepted once** is recorded in this process, as for the bot check (public_form.BotCheck): the
@@ -25,6 +28,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import time
 from collections import OrderedDict
@@ -41,6 +45,9 @@ from app.core.errors import ServiceUnavailable
 TTL_SECONDS = 60
 MIN_SECRET_LENGTH = 32
 MAX_TRACKED = 10_000
+SIGNATURE_LENGTH = 43  # base64url of 32 bytes, unpadded
+MAX_TOKEN_LENGTH = 512  # the contract's limit
+TOKEN = re.compile(r"^[A-Za-z0-9_-]{32,512}$")  # the contract's pattern (files.yaml)
 _LABEL = b"shri-download-token"
 
 
@@ -80,14 +87,19 @@ class DownloadTokens:
         payload = _encode(json.dumps({
             "f": str(claims.file_id), "u": str(claims.user_id), "t": str(claims.tenant_id),
             "e": int(expires), "n": secrets.token_urlsafe(16)}, separators=(",", ":")).encode())
-        return f"{payload}.{self._signature(payload)}"
+        token = payload + self._signature(payload)
+        if not TOKEN.fullmatch(token):  # never: the payload is three UUIDs, a time and a nonce
+            raise ValueError("A download token must match the contract's pattern")
+        return token
 
-    def verify(self, token: str, *, user_id: UUID | None = None) -> DownloadClaims | None:
-        """The claims of a genuine, unexpired, unused token (of `user_id`, when given), and it
-        is used up; else None. A token of another user is refused and not used up."""
-        if not token or len(token) > 1024 or token.count(".") != 1:
+    def verify(self, token: str, *, user_id: UUID | None = None, file_id: UUID | None = None,
+               tenant_id: UUID | None = None) -> DownloadClaims | None:
+        """The claims of a genuine, unexpired, unused token, and it is used up; else None.
+        Each of `user_id`, `file_id` and `tenant_id` given must match the token: a token for
+        another user, file or clinic is refused and not used up."""
+        if not token or not TOKEN.fullmatch(token) or len(token) <= SIGNATURE_LENGTH:
             return None
-        payload, signature = token.split(".")
+        payload, signature = token[:-SIGNATURE_LENGTH], token[-SIGNATURE_LENGTH:]
         if not hmac.compare_digest(self._signature(payload), signature):
             return None
         try:
@@ -99,7 +111,9 @@ class DownloadTokens:
             return None
         now = self._clock()
         expires = claims.expires_at.timestamp()
-        if expires <= now or (user_id is not None and claims.user_id != user_id):
+        wanted = ((user_id, claims.user_id), (file_id, claims.file_id),
+                  (tenant_id, claims.tenant_id))
+        if expires <= now or any(want is not None and want != got for want, got in wanted):
             return None
         self._forget_expired(now)
         if nonce in self._used:
