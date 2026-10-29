@@ -40,6 +40,7 @@
 /backend/app/modules/inbox/               @anandshriai
 /backend/app/modules/exports/             @anandshriai
 /backend/app/modules/onboarding/          @anandshriai
+/backend/app/modules/codes/               @anandshriai
 /backend/app/modules/communications/      @Minalini-shriai
 /backend/app/modules/dashboards/          @Minalini-shriai
 /ai/                                      @vimalshriai
