@@ -151,3 +151,73 @@ def test_base64_is_what_travels() -> None:
     """Transit takes base64 plaintext; a body with any bytes survives."""
     raw = bytes(range(256))
     assert base64.b64decode(base64.b64encode(raw)) == raw
+
+
+# ------------------------------------------------------------------ file data keys (shri-files)
+def _fake_datakeys(seen: list[httpx.Request], key: bytes = bytes(range(32)),
+                   wrapped: str | None = None) -> Callable[[httpx.Request], httpx.Response]:
+    encoded = base64.b64encode(key).decode()
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        body = json.loads(request.content)
+        if request.url.path == "/v1/transit/datakey/plaintext/shri-files":
+            return httpx.Response(200, json={"data": {
+                "plaintext": encoded, "ciphertext": wrapped or f"vault:v1:{encoded}"}})
+        if request.url.path == "/v1/transit/decrypt/shri-files":
+            return httpx.Response(200, json={"data": {
+                "plaintext": body["ciphertext"].removeprefix("vault:v1:")}})
+        return httpx.Response(404)
+
+    return handle
+
+
+async def test_a_data_key_is_256_bits_from_the_files_key_and_unwraps() -> None:
+    seen: list[httpx.Request] = []
+    crypto = _crypto(_fake_datakeys(seen))
+    key = await crypto.new_data_key()
+    assert len(key.plaintext) == 32 and key.wrapped.startswith("vault:v1:")
+    assert await crypto.unwrap_data_key(key.wrapped) == key.plaintext
+    assert [r.url.path for r in seen] == ["/v1/transit/datakey/plaintext/shri-files",
+                                          "/v1/transit/decrypt/shri-files"]
+    assert json.loads(seen[0].content) == {"bits": 256}
+    assert "vault" not in repr(key) and str(key.plaintext) not in repr(key)
+    await crypto.aclose()
+
+
+@pytest.mark.parametrize("kind", ["down", "forbidden", "sealed", "not-json", "no-data"])
+async def test_data_keys_fail_closed(kind: str) -> None:
+    crypto = _crypto(_failing(kind))
+    with pytest.raises(InternalError):
+        await crypto.new_data_key()
+    with pytest.raises(InternalError):
+        await crypto.unwrap_data_key("vault:v1:c3ludGhldGlj")
+    await crypto.aclose()
+
+
+@pytest.mark.parametrize(("key", "wrapped"), [(bytes(16), None), (bytes(32), "not wrapped")])
+async def test_anything_but_a_256_bit_key_and_its_wrapping_is_refused(key: bytes,
+                                                                      wrapped: str | None) -> None:
+    crypto = _crypto(_fake_datakeys([], key=key, wrapped=wrapped))
+    with pytest.raises(InternalError):
+        await crypto.new_data_key()
+    await crypto.aclose()
+
+
+async def test_a_stored_value_that_isnt_a_wrapped_key_is_never_sent() -> None:
+    seen: list[httpx.Request] = []
+    crypto = _crypto(_fake_datakeys(seen))
+    for stored in ("plain", "vault:v1:", "vault:v1:" + base64.b64encode(bytes(16)).decode()):
+        with pytest.raises(InternalError):
+            await crypto.unwrap_data_key(stored)
+    assert len(seen) == 1  # only the well-formed one reached Transit, and its length was refused
+    await crypto.aclose()
+
+
+async def test_without_transit_configured_data_keys_are_refused() -> None:
+    from app.core.crypto import new_data_key, unwrap_data_key
+
+    with pytest.raises(InternalError):
+        await new_data_key(_App())
+    with pytest.raises(InternalError):
+        await unwrap_data_key(_App(), "vault:v1:c3ludGhldGlj")
