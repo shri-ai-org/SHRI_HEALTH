@@ -1,0 +1,16 @@
+{
+  "messageType": "270",
+  "schemaVersion": "1.0",
+  "correlationId": "3a4b5c6d-7e8f-4a9b-9c0d-1e2f3a4b5c6d",
+  "createdAt": "2026-11-03T14:52:01Z",
+  "payer": {"name": "Example Health Plan (synthetic)", "payerId": "TESTPAYER01"},
+  "provider": {"npi": "1234567893"},
+  "subscriber": {
+    "memberId": "TEST-M0012345",
+    "name": {"family": "Lindgren118", "given": ["Kaia401"]},
+    "birthDate": "1990-03-14",
+    "groupNumber": "TEST-G778"
+  },
+  "serviceDate": "2026-11-03",
+  "serviceTypeCodes": ["30"]
+}
