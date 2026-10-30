@@ -28,11 +28,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Path, Response
+from fastapi import APIRouter, Depends, FastAPI, Path, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
 from app.core.db import TENANT_ID_INFO_KEY, session_user_id
 from app.core.deps import CurrentUser, require, tenant_db
 from app.core.errors import CATALOGUE, DEFAULT_TYPE_BASE, Conflict, NotFound
@@ -236,3 +237,7 @@ async def cancel_operation(
     cancelled = await _set(db, operation, "cancelled")
     await db.commit()
     return _respond(cancelled, response)
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    app.include_router(router, prefix=API_PREFIX)

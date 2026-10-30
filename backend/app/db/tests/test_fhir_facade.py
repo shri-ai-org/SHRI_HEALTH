@@ -147,7 +147,7 @@ def chart(db: Session) -> dict[str, Any]:
                                                    category_code="LAB")]
     blob = M["binary_object"](bucket="docs", storage_key=f"k/{uuid.uuid4()}.pdf",
                               content_type="application/pdf",
-                              size_bytes=10, sha256="a" * 64)
+                              size_bytes=10, sha256="a" * 64, purpose="document")
     db.add_all([dr, blob])
     db.flush()
     doc = M["document_reference"](status="current", type_system=systems.LOINC,

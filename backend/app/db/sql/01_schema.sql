@@ -322,6 +322,9 @@ CREATE TABLE admin.binary_object (
 	scan_status VARCHAR(40) DEFAULT 'pending' NOT NULL, 
 	scanned_at TIMESTAMP WITH TIME ZONE, 
 	retention_until TIMESTAMP WITH TIME ZONE, 
+	purpose VARCHAR(40) NOT NULL, 
+	state VARCHAR(40) DEFAULT 'pending-upload' NOT NULL, 
+	wrapped_data_key TEXT, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -333,14 +336,21 @@ CREATE TABLE admin.binary_object (
 	CONSTRAINT ck_binary_object_sha256_format CHECK (sha256 ~ '^[0-9a-f]{64}$'), 
 	CONSTRAINT ck_binary_object_size CHECK (size_bytes >= 0), 
 	CONSTRAINT ck_binary_object_scanned_at CHECK ((scan_status = 'pending') = (scanned_at IS NULL)), 
+	CONSTRAINT ck_binary_object_generated_clean CHECK (purpose NOT IN ('receipt', 'after-visit-summary') OR state = 'clean'), 
+	CONSTRAINT ck_binary_object_key_when_clean CHECK (state = 'clean' OR wrapped_data_key IS NULL), 
+	CONSTRAINT ck_binary_object_clean_when_scanned CHECK (state <> 'clean' OR scan_status = 'clean' OR purpose IN ('receipt', 'after-visit-summary')), 
 	CONSTRAINT fk_binary_object_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_binary_object_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_binary_object_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT ck_binary_object_scan_status_codes CHECK (scan_status IN ('pending', 'clean', 'infected', 'error')), 
+	CONSTRAINT ck_binary_object_purpose_codes CHECK (purpose IN ('insurance-card', 'identity', 'receipt', 'encounter-audio', 'after-visit-summary', 'document', 'fax', 'ccda', 'export', 'onboarding-import')), 
+	CONSTRAINT ck_binary_object_state_codes CHECK (state IN ('pending-upload', 'quarantined', 'clean', 'rejected')), 
 	CONSTRAINT uq_binary_object_tenant_id_id UNIQUE (tenant_id, id)
 );
 
 CREATE INDEX ix_binary_object_tenant_id ON admin.binary_object (tenant_id);
+
+CREATE INDEX ix_binary_object_unusable ON admin.binary_object (updated_at, id) WHERE state <> 'clean';
 
 CREATE TABLE admin.message_template (
 	code VARCHAR(60) NOT NULL, 
@@ -1138,7 +1148,7 @@ CREATE TABLE admin.payer_enrollment (
 	created_by_user_id UUID, 
 	updated_by_user_id UUID, 
 	CONSTRAINT pk_payer_enrollment PRIMARY KEY (id), 
-	CONSTRAINT uq_payer_enrollment_payer_id_practitioner_id_transactio_c010 UNIQUE NULLS NOT DISTINCT (payer_id, practitioner_id, transaction, clearinghouse), 
+	CONSTRAINT uq_payer_enrollment_tenant_id_payer_id_practitioner_id__a493 UNIQUE NULLS NOT DISTINCT (tenant_id, payer_id, practitioner_id, transaction, clearinghouse), 
 	CONSTRAINT ck_payer_enrollment_approved_at CHECK (status <> 'approved' OR approved_at IS NOT NULL), 
 	CONSTRAINT fk_payer_enrollment_payer_id_payer FOREIGN KEY(payer_id) REFERENCES admin.payer (id), 
 	CONSTRAINT fk_payer_enrollment_practitioner_id_practitioner FOREIGN KEY(practitioner_id) REFERENCES clinical.practitioner (id), 
@@ -2483,8 +2493,6 @@ CREATE TABLE admin.patient_merge (
 	performed_by_user_id UUID NOT NULL, 
 	unmerged_at TIMESTAMP WITH TIME ZONE, 
 	unmerged_by_user_id UUID, 
-	surviving_patient_version INTEGER, 
-	merged_patient_version INTEGER, 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -2947,6 +2955,7 @@ CREATE TABLE clinical.coverage (
 	ai_suggestion_id UUID, 
 	CONSTRAINT pk_coverage PRIMARY KEY (id), 
 	CONSTRAINT ck_coverage_order_range CHECK ("order" IS NULL OR "order" BETWEEN 1 AND 9), 
+	CONSTRAINT ex_coverage_order_no_overlap EXCLUDE USING gist (beneficiary_patient_id WITH =, "order" WITH =, daterange(period_start, period_end, '[]') WITH &&) WHERE (status <> 'entered-in-error' AND "order" IS NOT NULL), 
 	CONSTRAINT ck_coverage_self_has_no_related_subscriber CHECK (relationship_code <> 'self' OR subscriber_related_person_id IS NULL), 
 	CONSTRAINT ck_coverage_period_order CHECK (period_end IS NULL OR period_start IS NULL OR period_end >= period_start), 
 	CONSTRAINT ck_coverage_meta_security_codes CHECK (meta_security <@ ARRAY['L', 'M', 'N', 'R', 'V', 'PSY', 'SUD', 'ETH', 'HIV', 'SEX', 'SOC', 'CEL']::varchar[]), 
@@ -2975,8 +2984,6 @@ CREATE TABLE clinical.coverage (
 );
 
 CREATE INDEX ix_coverage_tenant_id ON clinical.coverage (tenant_id);
-
-CREATE UNIQUE INDEX uq_coverage_active_order ON clinical.coverage (beneficiary_patient_id, "order") WHERE status = 'active';
 
 CREATE TABLE clinical.schedule (
 	active BOOLEAN DEFAULT true NOT NULL, 
@@ -3091,27 +3098,6 @@ CREATE TABLE admin.compendium_aoe_option (
 );
 
 CREATE INDEX ix_compendium_aoe_option_tenant_id ON admin.compendium_aoe_option (tenant_id);
-
-CREATE TABLE admin.patient_merge_record (
-	patient_merge_id UUID NOT NULL, 
-	resource_type VARCHAR(64) NOT NULL, 
-	resource_id UUID NOT NULL, 
-	version_before_merge INTEGER NOT NULL, 
-	id UUID NOT NULL, 
-	tenant_id UUID NOT NULL, 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	created_by_user_id UUID, 
-	updated_by_user_id UUID, 
-	CONSTRAINT pk_patient_merge_record PRIMARY KEY (id), 
-	CONSTRAINT uq_patient_merge_record_patient_merge_id_resource_type__6e7b UNIQUE (patient_merge_id, resource_type, resource_id), 
-	CONSTRAINT fk_patient_merge_record_patient_merge_id_patient_merge FOREIGN KEY(patient_merge_id) REFERENCES admin.patient_merge (id), 
-	CONSTRAINT fk_patient_merge_record_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
-	CONSTRAINT fk_patient_merge_record_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
-	CONSTRAINT fk_patient_merge_record_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_patient_merge_record_tenant_id ON admin.patient_merge_record (tenant_id);
 
 CREATE TABLE admin.portal_account (
 	keycloak_user_id VARCHAR(100) NOT NULL, 
@@ -3816,7 +3802,9 @@ CREATE TABLE admin.patient_payment (
 	collected_by_user_id UUID, 
 	is_refund BOOLEAN NOT NULL, 
 	refund_of_payment_id UUID, 
-	receipt_file_id UUID, 
+	receipt_file_id UUID NOT NULL, 
+	check_number VARCHAR(40), 
+	note VARCHAR(500), 
 	id UUID NOT NULL, 
 	tenant_id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
@@ -3828,6 +3816,7 @@ CREATE TABLE admin.patient_payment (
 	CONSTRAINT ck_patient_payment_refund_link CHECK (is_refund = (refund_of_payment_id IS NOT NULL)), 
 	CONSTRAINT ck_patient_payment_no_card_number CHECK (processor_reference IS NULL OR regexp_replace(processor_reference, '[ -]', '', 'g') !~ '^[0-9]{13,19}$'), 
 	CONSTRAINT ck_patient_payment_card_has_processor_ref CHECK (method <> 'card' OR processor_reference IS NOT NULL), 
+	CONSTRAINT ck_patient_payment_check_number_method CHECK (check_number IS NULL OR method = 'check'), 
 	CONSTRAINT fk_patient_payment_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
 	CONSTRAINT fk_patient_payment_encounter_id_encounter FOREIGN KEY(encounter_id) REFERENCES clinical.encounter (id), 
 	CONSTRAINT fk_patient_payment_appointment_id_appointment FOREIGN KEY(appointment_id) REFERENCES clinical.appointment (id), 
@@ -4150,6 +4139,10 @@ CREATE TABLE clinical.composition (
 	custodian_organization_id UUID, 
 	ext_template_id UUID, 
 	ext_is_ai_assisted BOOLEAN DEFAULT false NOT NULL, 
+	ext_cosign_status VARCHAR(40) DEFAULT 'not-required' NOT NULL, 
+	ext_cosigner_practitioner_id UUID, 
+	ext_cosign_return_comment VARCHAR(2000), 
+	ext_cosign_returned_at TIMESTAMP WITH TIME ZONE, 
 	meta_version_id INTEGER DEFAULT 1 NOT NULL, 
 	meta_last_updated TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	meta_txid BIGINT, 
@@ -4169,6 +4162,9 @@ CREATE TABLE clinical.composition (
 	ai_suggestion_id UUID, 
 	CONSTRAINT pk_composition PRIMARY KEY (id), 
 	CONSTRAINT uq_composition_id_status UNIQUE (id, status), 
+	CONSTRAINT ck_composition_draft_not_cosigned CHECK (status <> 'preliminary' OR ext_cosign_status = 'not-required'), 
+	CONSTRAINT ck_composition_cosign_has_cosigner CHECK (ext_cosign_status = 'not-required' OR ext_cosigner_practitioner_id IS NOT NULL), 
+	CONSTRAINT ck_composition_return_comment_while_returned CHECK (CASE WHEN ext_cosign_status = 'returned' THEN coalesce(length(trim(ext_cosign_return_comment)), 0) > 0 AND ext_cosign_returned_at IS NOT NULL ELSE ext_cosign_return_comment IS NULL AND ext_cosign_returned_at IS NULL END), 
 	CONSTRAINT ck_composition_meta_security_codes CHECK (meta_security <@ ARRAY['L', 'M', 'N', 'R', 'V', 'PSY', 'SUD', 'ETH', 'HIV', 'SEX', 'SOC', 'CEL']::varchar[]), 
 	CONSTRAINT ck_composition_extension_is_array CHECK (jsonb_typeof(extension) = 'array'), 
 	CONSTRAINT fk_composition_type_system_code_system FOREIGN KEY(type_system) REFERENCES admin.code_system (uri) ON UPDATE CASCADE, 
@@ -4177,11 +4173,13 @@ CREATE TABLE clinical.composition (
 	CONSTRAINT fk_composition_encounter_id_encounter FOREIGN KEY(encounter_id) REFERENCES clinical.encounter (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_composition_custodian_organization_id_organization FOREIGN KEY(custodian_organization_id) REFERENCES clinical.organization (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_composition_ext_template_id_note_template FOREIGN KEY(ext_template_id) REFERENCES admin.note_template (id), 
+	CONSTRAINT fk_composition_ext_cosigner_practitioner_id_practitioner FOREIGN KEY(ext_cosigner_practitioner_id) REFERENCES clinical.practitioner (id), 
 	CONSTRAINT fk_composition_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_composition_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_composition_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_composition_verified_by_user_id_app_user FOREIGN KEY(verified_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT ck_composition_status_codes CHECK (status IN ('preliminary', 'final', 'amended', 'entered-in-error')), 
+	CONSTRAINT ck_composition_ext_cosign_status_codes CHECK (ext_cosign_status IN ('not-required', 'pending', 'returned', 'cosigned')), 
 	CONSTRAINT ck_composition_entry_source_codes CHECK (entry_source IN ('clinician', 'imported', 'patient-reported', 'ai-generated', 'device', 'interface')), 
 	CONSTRAINT ck_composition_fhir_type_coding CHECK ((type_code IS NULL) = (type_system IS NULL)), 
 	CONSTRAINT ck_composition_fhir_type_display CHECK (type_display IS NULL OR type_code IS NOT NULL), 
@@ -4410,6 +4408,8 @@ CREATE TABLE clinical.medication_request (
 	ext_signed_at TIMESTAMP WITH TIME ZONE, 
 	ext_signed_by_practitioner_id UUID, 
 	ext_signed_by_user_id UUID, 
+	ext_safety_checked_at TIMESTAMP WITH TIME ZONE, 
+	ext_safety_checked_version INTEGER, 
 	meta_version_id INTEGER DEFAULT 1 NOT NULL, 
 	meta_last_updated TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	meta_txid BIGINT, 
@@ -4428,7 +4428,7 @@ CREATE TABLE clinical.medication_request (
 	verified_by_user_id UUID, 
 	ai_suggestion_id UUID, 
 	CONSTRAINT pk_medication_request PRIMARY KEY (id), 
-	CONSTRAINT ck_medication_request_active_requires_signature CHECK (status IN ('draft', 'cancelled', 'entered-in-error') OR entry_source IN ('imported', 'interface') OR (ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL)), 
+	CONSTRAINT ck_medication_request_active_requires_signature CHECK (status IN ('draft', 'cancelled', 'entered-in-error') OR entry_source IN ('imported', 'interface') OR (intent = 'plan' AND (reported_boolean IS TRUE OR reported_practitioner_id IS NOT NULL)) OR (ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL)), 
 	CONSTRAINT ck_medication_request_medication_code_binding CHECK (medication_codeable_concept_system IS NULL OR medication_codeable_concept_system IN ('http://www.nlm.nih.gov/research/umls/rxnorm', 'http://hl7.org/fhir/sid/ndc')), 
 	CONSTRAINT ck_medication_request_repeats_range CHECK (dispense_request_number_of_repeats_allowed IS NULL OR dispense_request_number_of_repeats_allowed BETWEEN 0 AND 11), 
 	CONSTRAINT ck_medication_request_cii_no_refills CHECK (ext_dea_schedule IS DISTINCT FROM 'CII' OR coalesce(dispense_request_number_of_repeats_allowed, 0) = 0), 
@@ -8325,8 +8325,6 @@ ALTER TABLE admin.patient_merge ADD CONSTRAINT fk_patient_merge_merged_patient_i
 
 ALTER TABLE admin.patient_merge ADD CONSTRAINT fk_patient_merge_surviving_patient_id_tenant FOREIGN KEY(tenant_id, surviving_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
-ALTER TABLE admin.patient_merge_record ADD CONSTRAINT fk_patient_merge_record_patient_merge_id_tenant FOREIGN KEY(tenant_id, patient_merge_id) REFERENCES admin.patient_merge (tenant_id, id);
-
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_appointment_id_same_patient FOREIGN KEY(patient_id, appointment_id) REFERENCES clinical.appointment (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE admin.patient_payment ADD CONSTRAINT fk_patient_payment_appointment_id_tenant FOREIGN KEY(tenant_id, appointment_id) REFERENCES clinical.appointment (tenant_id, id);
@@ -8630,6 +8628,8 @@ ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_custodian_organiz
 ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_encounter_id_same_patient FOREIGN KEY(subject_patient_id, encounter_id) REFERENCES clinical.encounter (subject_patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_encounter_id_tenant FOREIGN KEY(tenant_id, encounter_id) REFERENCES clinical.encounter (tenant_id, id);
+
+ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ext_cosigner_practitioner_id_tenant FOREIGN KEY(tenant_id, ext_cosigner_practitioner_id) REFERENCES clinical.practitioner (tenant_id, id);
 
 ALTER TABLE clinical.composition ADD CONSTRAINT fk_composition_ext_template_id_tenant FOREIGN KEY(tenant_id, ext_template_id) REFERENCES admin.note_template (tenant_id, id);
 

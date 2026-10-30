@@ -538,6 +538,17 @@
    "path": "/api/v1/duplicates/{duplicateId}/dismiss",
    "permission": "duplicates:dismiss"
   },
+  "downloadFileContent": {
+   "audit": {
+    "action": "R",
+    "category": "export",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/files/{fileId}/content",
+   "permission": "authenticated"
+  },
   "enablePortalAccount": {
    "audit": {
     "action": "E",
@@ -612,6 +623,17 @@
    "method": "GET",
    "path": "/api/v1/appointment-types/{appointmentTypeId}",
    "permission": "practice-setup:read"
+  },
+  "getBotChallenge": {
+   "audit": {
+    "action": "R",
+    "actor": "anonymous",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/bot-challenge",
+   "permission": "public"
   },
   "getConsentRequirement": {
    "audit": {

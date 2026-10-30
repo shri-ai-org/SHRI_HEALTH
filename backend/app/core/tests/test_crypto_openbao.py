@@ -72,3 +72,37 @@ async def test_the_api_token_can_do_nothing_else(method: str, path: str) -> None
     async with httpx.AsyncClient(base_url=ADDR or "", headers={"X-Vault-Token": TOKEN or ""}) as c:
         response = await c.request(method, path, json={"plaintext": "c3ludGhldGlj"})
     assert response.status_code == 403, (method, path, response.status_code)
+
+
+async def test_a_file_data_key_round_trips_and_is_fresh_each_time() -> None:
+    crypto = _crypto()
+    first, second = await crypto.new_data_key(), await crypto.new_data_key()
+    assert len(first.plaintext) == 32 and first.plaintext != second.plaintext
+    assert first.wrapped.startswith("vault:v1:") and first.wrapped != second.wrapped
+    assert await crypto.unwrap_data_key(first.wrapped) == first.plaintext
+    await crypto.aclose()
+
+
+async def test_the_two_keys_never_open_each_others_ciphertext() -> None:
+    crypto = _crypto()
+    field_value = await crypto.encrypt(bytes(32))  # 32 bytes, so only the key decides
+    with pytest.raises(InternalError):
+        await crypto.unwrap_data_key(field_value)
+    wrapped = (await crypto.new_data_key()).wrapped
+    with pytest.raises(InternalError):
+        await crypto.decrypt(wrapped)
+    await crypto.aclose()
+
+
+@pytest.mark.parametrize("path", ["/v1/transit/encrypt/shri-files",
+                                  "/v1/transit/datakey/plaintext/shri-fields",
+                                  "/v1/transit/datakey/wrapped/shri-files",
+                                  "/v1/transit/export/encryption-key/shri-files"])
+async def test_the_apis_token_can_do_nothing_else_with_the_keys(path: str) -> None:
+    assert ADDR and TOKEN
+    async with httpx.AsyncClient(base_url=ADDR, headers={"X-Vault-Token": TOKEN}) as client:
+        if "export" in path:
+            response = await client.get(path)
+        else:
+            response = await client.post(path, json={"plaintext": "c3ludGhldGlj"})
+    assert response.status_code == 403

@@ -18,6 +18,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +29,8 @@ from app.db.models.enums import (
     DeliveryStatus,
     FaxDirection,
     FaxStatus,
+    FilePurpose,
+    FileState,
     ScanStatus,
 )
 
@@ -35,7 +38,16 @@ SHA256 = "{col} ~ '^[0-9a-f]{{64}}$'"
 
 
 class BinaryObject(Base, AdminMixin):
-    """A stored file. Uploads stay unusable until the malware scan marks them clean."""
+    """A stored file. Uploads stay unusable until the malware scan marks them clean.
+
+    ``state`` follows the upload flow (API_STANDARDS §15): ``pending-upload`` → ``quarantined``
+    → ``clean`` or ``rejected``. Only a clean file is attached or downloaded. A file the server
+    makes itself (a receipt, an after-visit summary) is never uploaded, so it is clean from the
+    start. ``wrapped_data_key`` is the file's data key, encrypted by core (envelope encryption);
+    it is set once the file is clean, never before. A file that is not clean 24 hours after its
+    last change (an upload never completed, a stuck scan, a rejected file) goes, row and stored
+    bytes, through ``admin.list_unusable_files`` and ``admin.delete_unusable_files``, the only
+    way a row leaves this table (migration 0014); a row still referenced is kept."""
     __tablename__ = "binary_object"
     __table_args__ = (
         # per tenant: a global unique would leak other tenants' keys through 23505 errors
@@ -44,6 +56,15 @@ class BinaryObject(Base, AdminMixin):
         CheckConstraint(SHA256.format(col="sha256"), name="sha256_format"),
         CheckConstraint("size_bytes >= 0", name="size"),
         CheckConstraint("(scan_status = 'pending') = (scanned_at IS NULL)", name="scanned_at"),
+        CheckConstraint("purpose NOT IN ('receipt', 'after-visit-summary') OR state = 'clean'",
+                        name="generated_clean"),
+        CheckConstraint("state = 'clean' OR wrapped_data_key IS NULL", name="key_when_clean"),
+        CheckConstraint("state <> 'clean' OR scan_status = 'clean' "
+                        "OR purpose IN ('receipt', 'after-visit-summary')",
+                        name="clean_when_scanned"),
+        # The purge's listing (0014): files that are not clean, oldest change first.
+        Index("ix_binary_object_unusable", "updated_at", "id",
+              postgresql_where=text("state <> 'clean'")),
     )
 
     bucket: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -58,6 +79,11 @@ class BinaryObject(Base, AdminMixin):
                                                     server_default=ScanStatus.PENDING.value)
     scanned_at: Mapped[datetime | None]
     retention_until: Mapped[datetime | None]
+    purpose: Mapped[FilePurpose] = mapped_column(enum_type(FilePurpose), nullable=False)
+    state: Mapped[FileState] = mapped_column(enum_type(FileState), nullable=False,
+                                             default=FileState.PENDING_UPLOAD.value,
+                                             server_default=FileState.PENDING_UPLOAD.value)
+    wrapped_data_key: Mapped[str | None] = mapped_column(Text)
 
 
 class CommunicationPreference(Base, AdminMixin):

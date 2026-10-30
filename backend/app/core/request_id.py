@@ -9,8 +9,11 @@ import re
 from contextvars import ContextVar
 from uuid import UUID, uuid4
 
+from fastapi import FastAPI
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from app.core.config import Settings
 
 REQUEST_ID_HEADER = "X-Request-ID"
 
@@ -70,3 +73,8 @@ class RequestIdMiddleware:
         finally:
             _request_id.reset(request_token)
             _traceparent.reset(trace_token)
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """RequestIdMiddleware (outermost: every answer carries X-Request-ID)."""
+    app.add_middleware(RequestIdMiddleware)

@@ -11,13 +11,14 @@ import hmac
 from datetime import UTC
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
 from app.core import session as sessions
 from app.core.config import Settings
 from app.core.deps import CurrentUser, require
 from app.core.errors import ServiceUnavailable, ValidationFailed, field_error
+from app.core.routing import API_PREFIX
 
 router = APIRouter(tags=["platform"])
 Signed = Annotated[CurrentUser, Depends(require("authenticated"))]
@@ -127,3 +128,7 @@ async def logout(request: Request, user: Signed) -> Response:
     response = Response(status_code=204)
     sessions.clear_session_cookie(response)
     return response
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    app.include_router(router, prefix=API_PREFIX)

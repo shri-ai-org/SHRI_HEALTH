@@ -32,6 +32,7 @@ from app.db.base import ADMIN_SCHEMA, AUDIT_SCHEMA, CLINICAL_SCHEMA, Base
 from app.db.constraints import patient_column, referenced_table
 from app.db.models import FHIR_RESOURCES, GLOBAL_TABLES, MAPPERS, systems
 from app.db.models.admin.core import SETTINGS
+from app.db.models.admin.practice import PLATFORM_CDS_RULES
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]   # backend/app/db
 TENANT = "NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"
@@ -56,7 +57,7 @@ TENANT_ONLY = {"audit_event"}
 INSERT_ONLY = {
     "audit_event", "fhir_resource_history", "work_item_event", "result_acknowledgement",
     "claim_status_event", "service_request_status_event", "visit_flow_event",
-    "patient_merge_record", "ai_suggestion_evidence", "ai_suggestion_unknown",
+    "ai_suggestion_evidence", "ai_suggestion_unknown",
     "detected_issue_mitigation", "composition_attester", "provenance", "provenance_agent",
     "provenance_entity", "provenance_signature", "eligibility_benefit",
 }
@@ -124,6 +125,10 @@ GUARDS = {
     ],
     "composition_attester": [("guard", "BEFORE INSERT", "shri_composition_attester_guard()")],
     "medication_request": [("guard", "BEFORE UPDATE", "shri_medication_request_guard()")],
+    # Migration 0013 (D28, D97): only a prescription (intent order) is ever sent to a pharmacy;
+    # a medication the patient reported never is.
+    "erx_transaction": [("order_only", "BEFORE INSERT OR UPDATE OF medication_request_id",
+                         "shri_erx_order_only()")],
     "service_request": [("guard", "BEFORE UPDATE", "shri_service_request_guard()")],
     "observation": [("guard", "BEFORE UPDATE", "shri_final_result_guard()")],
     "diagnostic_report": [("guard", "BEFORE UPDATE", "shri_final_result_guard("
@@ -174,9 +179,7 @@ GUARDS = {
     "encounter_follow_up": [("fixed", "BEFORE UPDATE",
                              "shri_fixed_columns('encounter_id', 'patient_id')"),
                             ("guard", "BEFORE UPDATE", "shri_follow_up_guard()")],
-    "patient_merge": [("versions", "BEFORE INSERT", "shri_patient_merge_versions()"),
-                      ("guard", "BEFORE UPDATE", "shri_patient_merge_guard()")],
-    "patient_merge_record": [("version", "BEFORE INSERT", "shri_patient_merge_record_version()")],
+    "patient_merge": [("guard", "BEFORE UPDATE", "shri_patient_merge_guard()")],
     "break_glass_access": [("guard", "BEFORE UPDATE",
                             "shri_freeze_except('reviewed_by_user_id', 'reviewed_at')")],
     "composition_section": [("content", "BEFORE INSERT OR UPDATE OR DELETE",
@@ -191,8 +194,6 @@ GUARDS = {
 DEFERRED = {
     "composition": ("signed", "shri_composition_signed_check()"),
     "medication_request": ("alerts", "shri_medication_request_alert_check()"),
-    # An undo that would leave a record pointing at another patient's (0008, D51).
-    "patient_merge": ("undo", "shri_patient_merge_undo_check()"),
 }
 #: Admin tables with VersionedMixin (A41/issue #13): practice-setup resources and
 #: patient_pharmacy, none of which have a FHIR meta_version_id of their own; tenant_setting for
@@ -270,6 +271,7 @@ def versioning_sql() -> str:
     for rtype, cls in sorted(FHIR_RESOURCES.items()):
         t = cls.__tablename__
         qt = _q(CLINICAL_SCHEMA, t)
+        unversioned = ", ".join(f"'{c}'" for c in cls.fhir_unversioned_columns)
         out += [
             f"CREATE OR REPLACE FUNCTION {CLINICAL_SCHEMA}.shri_snapshot_{t}(p_id uuid) "
             "RETURNS jsonb LANGUAGE sql STABLE AS $$",
@@ -277,7 +279,7 @@ def versioning_sql() -> str:
             f"  FROM {qt} r WHERE r.id = p_id",
             "$$;",
             f"CREATE TRIGGER trg_{t}_version BEFORE INSERT OR UPDATE ON {qt}",
-            "  FOR EACH ROW EXECUTE FUNCTION shri_fhir_version();",
+            f"  FOR EACH ROW EXECUTE FUNCTION shri_fhir_version({unversioned});",
             f"CREATE CONSTRAINT TRIGGER trg_{t}_history AFTER INSERT OR UPDATE ON {qt}",
             "  DEFERRABLE INITIALLY DEFERRED",
             f"  FOR EACH ROW EXECUTE FUNCTION shri_fhir_history('{rtype}');",
@@ -548,6 +550,21 @@ PORTAL_REFERENCE = {"location", "organization", "practitioner", "practitioner_ro
 #: A practitioner as the portal sees them: never date of birth, gender or the DEA reference.
 PORTAL_PRACTITIONER_COLUMNS = ("id", "tenant_id", "active", "meta_version_id",
                                "meta_last_updated", "meta_security")
+#: Columns of the patient's own rows the portal never reads; it gets every other column. The
+#: co-signer's return-to-author comment, and when, is between clinicians (D73, migration 0013).
+PORTAL_HIDDEN_COLUMNS = {"composition": ("ext_cosign_return_comment", "ext_cosign_returned_at")}
+
+
+def portal_select(name: str) -> str:
+    """The portal's SELECT on one of the patient's tables: the whole row, or every column but
+    PORTAL_HIDDEN_COLUMNS, in table order."""
+    hidden = PORTAL_HIDDEN_COLUMNS.get(name, ())
+    if not hidden:
+        return "SELECT"
+    shown = [c.name for c in MAPPERS[name].__table__.columns if c.name not in hidden]
+    return f"SELECT ({', '.join(shown)})"
+
+
 #: Owner columns of shared datatype rows the portal never reads: a practitioner's own address,
 #: phone, email and identifiers. Their names stay visible.
 PORTAL_DENY_OWNER = {"address": {"practitioner_id"}, "contact_point": {"practitioner_id"},
@@ -655,7 +672,7 @@ def portal_sql() -> str:
         out.append(f"GRANT SELECT{limited} ON {_q(CLINICAL_SCHEMA, name)} TO shri_portal;")
     for name, rule in rules.items():
         qt = _q(CLINICAL_SCHEMA, name)
-        out += [f"GRANT SELECT ON {qt} TO shri_portal;",
+        out += [f"GRANT {portal_select(name)} ON {qt} TO shri_portal;",
                 f"CREATE POLICY portal_own_chart ON {qt} AS RESTRICTIVE FOR SELECT "
                 f"TO shri_portal USING ({rule});"]
     out.append("")
@@ -801,7 +818,23 @@ def seed_sql() -> str:
     out.append(f"INSERT INTO {cs} (id, code, uri, name) VALUES")
     out.append(",\n".join(f"  (gen_random_uuid(), {_lit(c)}, {_lit(u)}, {_lit(n)})"
                           for c, u, n in systems.SEED) + "\nON CONFLICT DO NOTHING;")
-    return "\n".join(out) + "\n\n" + settings_seed_sql()
+    return ("\n".join(out) + "\n\n" + settings_seed_sql() + "\n"
+            + platform_cds_rules_sql())
+
+
+def platform_cds_rules_sql() -> str:
+    """The platform's fixed rules (admin/practice.py PLATFORM_CDS_RULES; migration 0013). The
+    table's RLS lets no role write a platform row (tenant_id NULL), so a migration inserts them
+    as the owner with RLS not forced, inside its own transaction (sql_0013)."""
+    out = [f"INSERT INTO {_q(ADMIN_SCHEMA, 'cds_rule')} (id, tenant_id, code, name, alert_type, "
+           "rule_source, default_severity, requires_override_reason, is_suppressible, "
+           "is_active) VALUES"]
+    out.append(",\n".join(
+        f"  (gen_random_uuid(), NULL, {_lit(c)}, {_lit(n)}, {_lit(t)}, 'deterministic', "
+        f"{_lit(sev)}, {str(reason).lower()}, {str(supp).lower()}, true)"
+        for c, n, t, sev, reason, supp in PLATFORM_CDS_RULES)
+        + "\nON CONFLICT DO NOTHING;")
+    return "\n".join(out) + "\n"
 
 
 def schema_sql() -> str:

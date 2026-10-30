@@ -90,6 +90,47 @@ services:
       openbao:
         condition: service_healthy
 
+  seaweedfs:
+    # The file store (Anand's file service, #128), DEVELOPMENT only: one server with the S3 API.
+    # Every stored chunk is encrypted, the quarantine bucket included (seaweedfs/start.sh); the
+    # API's key reaches only the two buckets. Apache-2.0 (D75), pinned by digest
+    # (.github/licences/allowed.json "images"). Browsers reach S3 on 127.0.0.1:8333 for upload links.
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    entrypoint: ["sh", "/init/start.sh"]
+    environment:
+      FILE_STORE_ACCESS_KEY_ID: shri-api
+      FILE_STORE_SECRET_ACCESS_KEY: ${FILE_STORE_SECRET_ACCESS_KEY:?set FILE_STORE_SECRET_ACCESS_KEY in infra/compose/.env}
+    ports:
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - ./seaweedfs:/init:ro
+      - seaweedfs:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9333/cluster/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  seaweedfs-init:
+    # One shot: the quarantine and clean buckets.
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    entrypoint: ["sh", "/init/init.sh"]
+    volumes:
+      - ./seaweedfs:/init:ro
+    restart: "no"
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+  clamav:
+    # The upload scan (clamd on 3310, Anand's scanner.py). GPL-2.0: a separate program in its own
+    # container, which D75's scope allows; pinned by digest (allowed.json "images"). On first
+    # start freshclam downloads the signatures, kept in a volume; scans answer 503 until clamd is
+    # up, so no file is ever called clean unscanned.
+    image: clamav/clamav:1.5.3-debian@sha256:741e6c447241220e0792a901befcaec1d55a755c5097fc9cd88d7fd8be251a5c
+    volumes:
+      - clamav:/var/lib/clamav
+
   api:
     build:
       context: ../../backend
@@ -118,14 +159,37 @@ services:
       # the migrator's login; migrations run separately as shri_migrator.
       DATABASE_URL: postgresql+asyncpg://shri_app:${SHRI_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
       FHIR_DATABASE_URL: postgresql+asyncpg://shri_fhir_reader:${SHRI_FHIR_READER_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
+      # The public pre-registration form (D96): its own role, shri_public, which can only run the
+      # form's database function. The portal is served from this same host in development.
+      PUBLIC_DATABASE_URL: postgresql+asyncpg://shri_public:${SHRI_PUBLIC_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
+      PORTAL_ORIGIN: https://localhost:8443
+      PUBLIC_FORM_SECRET: ${PUBLIC_FORM_SECRET:?set PUBLIC_FORM_SECRET in infra/compose/.env}
       # Field encryption through OpenBao Transit, with the narrow token only (never the root).
       OPENBAO_TRANSIT_ADDR: http://openbao:8200
       OPENBAO_TRANSIT_TOKEN: ${OPENBAO_API_TOKEN:?set OPENBAO_API_TOKEN in infra/compose/.env}
+      # The file service (core/settings/files.py). The folder survives a restart (its volume),
+      # so demo receipts do too; SHRI_FILE_STORE_DIR is #128's name for it until it reads
+      # FILE_STORE_DIR.
+      FILE_STORE_DIR: /var/lib/shri/files
+      SHRI_FILE_STORE_DIR: /var/lib/shri/files
+      FILE_STORE_URL: http://seaweedfs:8333
+      FILE_STORE_PUBLIC_URL: http://localhost:8333
+      FILE_STORE_ACCESS_KEY_ID: shri-api
+      FILE_STORE_SECRET_ACCESS_KEY: ${FILE_STORE_SECRET_ACCESS_KEY:?set FILE_STORE_SECRET_ACCESS_KEY in infra/compose/.env}
+      FILE_STORE_CLEAN_BUCKET: shri-clean
+      FILE_STORE_QUARANTINE_BUCKET: shri-quarantine
+      CLAMD_ADDRESS: clamav:3310
+    volumes:
+      - filestore:/var/lib/shri/files
     depends_on:
       postgres:
         condition: service_healthy
       openbao-init:
         condition: service_completed_successfully
+      seaweedfs-init:
+        condition: service_completed_successfully
+      clamav:
+        condition: service_started
 
   # The outbox worker (T29, D25): sends what the API queued for partners, with retries and the
   # dead-letter queue. The API's image, run as shri_integration, never with the API's login.
@@ -159,6 +223,9 @@ services:
 
 volumes:
   pgdata18:
+  seaweedfs:
+  clamav:
+  filestore:
 
 networks:
   default:
