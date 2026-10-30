@@ -29,7 +29,8 @@ def sid(kind: int, n: int) -> uuid.UUID:
 
 # Kinds of fixed ID.
 ORG, SITE, ROOM, FACILITY, PRACTITIONER, ROLE, SCHEDULE, RULE, VISIT, PAYER, PRACTICE_PAYER, \
-    TEMPLATE, SECTION, COUNTER, USER, NAME, IDENT, ROLE_LOCATION, ACTOR, ADDRESS = range(1, 21)
+    TEMPLATE, SECTION, COUNTER, USER, NAME, IDENT, ROLE_LOCATION, ACTOR, ADDRESS, \
+    USER_ROLE = range(1, 22)
 
 #: The MRN system of the starter practice (D41): the placeholder domain until onboarding's real
 #: one is decided (Q3), in #96's shape. It freezes at the first MRN, so a database seeded with it
@@ -71,6 +72,8 @@ PRACTICES = (
 PROVIDERS = (
     ("md", "Lindqvist58", "Avery401", "Dr.", "MD", "1999999901"),
     ("app", "Okonkwo73", "Jordan552", None, "NP", "1999999919"),
+    # The demo doctor's (app.db.seed.demo): no dev user, since a practitioner has one user.
+    ("demo", "Halvorsen64", "Rowan318", "Dr.", "MD", "1999999927"),
 )
 
 #: (code, name, minutes, new patient, telehealth, note template code)
@@ -152,12 +155,21 @@ def _practice(db: Session, p: Practice, number: int) -> dict[str, Any]:
 
 def _dev_users(db: Session, providers: dict[str, uuid.UUID]) -> None:
     """An app_user per core dev user, with the same ID, so writes made with X-Dev-User have an
-    author (Provenance, created_by)."""
+    author (Provenance, created_by), and a user_role per role and facility the dev user has in
+    core, against the platform roles (migration 0017), as staff sign-in reads them."""
+    roles: dict[str, uuid.UUID] = {r.code: r.id for r in db.execute(text(
+        "SELECT code, id FROM admin.role WHERE tenant_id IS NULL AND is_system"))}
+    n = 0
     for name, user in DEV_USERS.items():
         _set_clinic(db, user.organization_id)
         _ensure(db, "app_user", user.id, tenant_id=user.organization_id,
                 keycloak_subject=f"dev:{name}", username=f"dev.{name}",
                 display_name=user.display_name, practitioner_id=providers.get(name))
+        for code in sorted(user.roles):
+            for facility in sorted(user.facility_ids):
+                n += 1
+                _ensure(db, "user_role", sid(USER_ROLE, n), tenant_id=user.organization_id,
+                        user_id=user.id, role_id=roles[code], facility_id=facility)
 
 
 def _providers(db: Session, practice: dict[str, Any]) -> dict[str, uuid.UUID]:
