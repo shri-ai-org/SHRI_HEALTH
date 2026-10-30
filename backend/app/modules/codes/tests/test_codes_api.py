@@ -61,7 +61,7 @@ def test_icd10_search_in_the_contracts_shape(client: TestClient,
     assert response.json() == {"items": [{
         "system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "I10",
         "display": "Essential (primary) hypertension", "billable": True}]}
-    assert calls[0]["billable_only"] is True and calls[0]["limit"] == 20
+    assert calls[0]["billable_only"] is True and calls[0]["limit"] == 25
 
 
 def test_drug_search_carries_the_drug(client: TestClient, calls: list[dict[str, Any]]) -> None:
@@ -93,7 +93,7 @@ def test_codes_read_is_required(client: TestClient, calls: list[dict[str, Any]],
 
 @pytest.mark.parametrize("params", [
     {"system": "icd-10-cm", "q": "h"}, {"system": "icd10", "q": "hy"}, {"q": "hy"},
-    {"system": "icd-10-cm"}, {"system": "icd-10-cm", "q": "hy", "limit": "51"}])
+    {"system": "icd-10-cm"}, {"system": "icd-10-cm", "q": "hy", "limit": "101"}])
 def test_invalid_parameters(client: TestClient, calls: list[dict[str, Any]],
                             params: dict[str, str]) -> None:
     response = _get(client, "md", **params)

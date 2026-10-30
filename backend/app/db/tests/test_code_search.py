@@ -61,6 +61,42 @@ def test_a_line_in_another_shape_is_an_error() -> None:
 # ======================================================================== load and search
 
 
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+def test_a_full_release_loads_over_the_bind_parameter_limit(admin_engine: Engine) -> None:
+    """A full FY release has about 97,000 codes: the retirement check anti-joins a temporary
+    table instead of a NOT IN list, so it never builds a statement with one bind parameter per
+    code (over PostgreSQL's 65,535 limit)."""
+    engine = create_engine(sync_url(), poolclass=NullPool)
+
+    @event.listens_for(engine, "connect")
+    def _as_migrator(dbapi_connection: Any, _record: Any) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET ROLE shri_migrator")
+        cursor.close()
+        dbapi_connection.commit()
+
+    # The module's `loaded` fixture may have already put a handful of ICD-10-CM codes in
+    # (ORDER_FILE); this release retires whichever of those this release doesn't repeat, so
+    # `retired` isn't asserted here.
+    many = [icd10cm.Code(f"Z{n:05d}", f"Synthetic code {n}", True) for n in range(70_000)]
+    with Session(engine) as db, db.begin():
+        counts = icd10cm.load(db, many, date(2025, 10, 1))
+    assert counts["concepts"] == 70_000 and counts["billable"] == 70_000
+
+    # A second release dropping half the codes retires exactly those, again over the limit.
+    kept = many[:35_000]
+    with Session(engine) as db, db.begin():
+        counts = icd10cm.load(db, kept, date(2026, 10, 1))
+    assert counts == {"concepts": 35_000, "billable": 35_000, "retired": 35_000}
+    with admin_engine.connect() as c:
+        still_active = c.execute(text(
+            "SELECT count(*) FROM admin.concept c JOIN admin.code_system s "
+            "ON s.id = c.code_system_id WHERE s.code = 'ICD10CM' AND c.is_active")).scalar_one()
+    assert still_active == 35_000
+    engine.dispose()
+
+
 @pytest.fixture(scope="module")
 def loaded() -> Iterator[None]:
     engine = create_engine(sync_url(), poolclass=NullPool)

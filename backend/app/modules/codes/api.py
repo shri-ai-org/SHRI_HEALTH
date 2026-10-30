@@ -20,8 +20,8 @@ from . import schemas, service
 
 router = APIRouter(tags=["encounters"])
 
-DEFAULT_LIMIT = 20
-Limit = Annotated[int, Query(ge=1, le=50)]
+DEFAULT_LIMIT = 25  # API_STANDARDS §8.1 (the shared Limit: 1..100, default 25)
+Limit = Annotated[int, Query(ge=1, le=100)]
 Cursor = Annotated[str | None, Query(max_length=512, pattern=r"^[A-Za-z0-9_-]+$")]
 
 

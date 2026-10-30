@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -68,7 +68,14 @@ def release_year(source: Path) -> int:
 
 
 def load(db: Session, codes: list[Code], version: date) -> dict[str, int]:
-    """Loads the codes in the session's transaction; the caller commits. Returns counts."""
+    """Loads the codes in the session's transaction; the caller commits. Returns counts.
+
+    A retired code (active in the database, missing from this release) is found by anti-joining
+    a temporary table of the release's codes, not a ``NOT IN`` list: a full FY release has about
+    97,000 codes, over PostgreSQL's 65,535-parameter limit for one statement (Thulasi's review
+    of #155). The temporary table is session-local and dropped at the end of the transaction,
+    so a second load in a later transaction starts clean.
+    """
     cs, concept = M["code_system"], M["concept"]
     system_id = db.execute(select(cs.id).where(cs.uri == systems.ICD10CM)).scalar_one()
     db.execute(update(cs).where(cs.id == system_id).values(
@@ -83,9 +90,14 @@ def load(db: Session, codes: list[Code], version: date) -> dict[str, int]:
             set_={"display": stmt.excluded.display, "is_billable": stmt.excluded.is_billable,
                   "is_active": True, "effective_from": stmt.excluded.effective_from,
                   "updated_at": func.now()}))
-    retired = len(db.execute(update(concept).where(
-        concept.code_system_id == system_id, concept.is_active,
-        concept.code.not_in([c.code for c in codes])).values(
-            is_active=False, updated_at=func.now()).returning(concept.id)).all())
+    db.execute(text("CREATE TEMPORARY TABLE icd10cm_release_codes "
+                    "(code text PRIMARY KEY) ON COMMIT DROP"))
+    db.execute(text("INSERT INTO icd10cm_release_codes (code) VALUES (:code)"),
+              [{"code": c.code} for c in codes])
+    retired = len(db.execute(text(
+        "UPDATE admin.concept SET is_active = false, updated_at = now() "
+        "WHERE code_system_id = :system_id AND is_active "
+        "AND code NOT IN (SELECT code FROM icd10cm_release_codes) "
+        "RETURNING id"), {"system_id": system_id}).all())
     return {"concepts": len(codes), "billable": sum(c.billable for c in codes),
             "retired": retired}
