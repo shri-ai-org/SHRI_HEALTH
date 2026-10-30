@@ -61,7 +61,6 @@ from .repository import (
 
 TRIGGERS = ("booking", "pre-visit-batch", "check-in", "manual")  # D15
 DEFAULT_SERVICE_TYPES = ("30",)  # health benefit plan coverage
-OPERATION_KIND = "eligibility.check"
 RESULT_TYPE = "eligibility-check"
 #: How long an answer is good for: after this the front desk checks again before relying on it.
 VALID_FOR = timedelta(hours=24)
