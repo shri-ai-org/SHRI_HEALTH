@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.db import Database
+from app.core.safe_logging import log_failure
 
 log = logging.getLogger(__name__)
 
@@ -196,7 +197,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
             try:
                 counts = await worker.run_once()
             except Exception:
-                log.exception("Outbox round failed; trying again")
+                log_failure(log, "Outbox round failed; trying again")
                 counts = {}
             if not any(counts.values()):
                 try:
