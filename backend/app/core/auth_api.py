@@ -2,9 +2,8 @@
 refreshSession, logout; x-owner thulasi). The rules are in session.py.
 
 Login and logout audit themselves as security events (operations.SELF_AUDITED). Staff
-back-channel logout (D94, POST /hooks/keycloak/backchannel-logout) isn't built yet: it needs
-PyJWT in the lock (#120) and Anand's 0011 (#112); until then the 5-minute token refresh is the
-backstop for a disabled user.
+back-channel logout (D94, POST /hooks/keycloak/backchannel-logout) is backchannel.py; the
+5-minute token refresh stays the backstop if Keycloak can't reach it.
 """
 
 import hmac

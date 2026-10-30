@@ -23,6 +23,7 @@ from app.core import (
     access_log,
     audit,
     auth_api,
+    backchannel,
     crypto,
     db,
     download_tokens,
@@ -51,6 +52,7 @@ FEATURES: tuple[tuple[str, Register], ...] = (
     ("download tokens", download_tokens.register),
     ("access log", access_log.register),
     ("server error log", safe_logging.register),
+    ("back-channel logout", backchannel.register),
     # Middleware, innermost first
     ("audit", audit.register),
     ("idempotency", idempotency.register),
@@ -61,6 +63,7 @@ FEATURES: tuple[tuple[str, Register], ...] = (
     ("idempotent replays", idempotency.register_replays),
     # Routes, in matching order
     ("health", health.register),
+    ("back-channel logout route", backchannel.register_routes),
     ("staff sign-in", auth_api.register),
     ("bot challenge", public_form.register_routes),
     ("events", events.register),
