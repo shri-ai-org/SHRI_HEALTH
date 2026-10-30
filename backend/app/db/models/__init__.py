@@ -9,6 +9,9 @@ constraints (``constraints.py``), so Alembic and the API see the same schema.
 """
 from typing import Any
 
+# The hook that fills tenant_id on new rows: registered wherever ORM rows can be written, so the
+# API never depends on importing it itself (it didn't, and forced RLS refused every insert).
+from app.db import session as _tenant_hook  # noqa: F401
 from app.db.base import Base
 from app.db.constraints import apply_all as _apply_constraints
 
