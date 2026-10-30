@@ -5,6 +5,8 @@ connects. The last one shows the backstop in a live database: a row given anothe
 it, and forced row-level security refuses the insert.
 """
 
+import subprocess
+import sys
 import uuid
 
 import pytest
@@ -74,3 +76,14 @@ def test_another_clinic_is_kept_and_refused_by_rls(db: Session, admin_engine: En
     savepoint.rollback()
     assert stranger.tenant_id == other  # the hook did not move it to the session's clinic
     assert getattr(caught.value.orig, "sqlstate", None) == "42501"  # RLS WITH CHECK
+
+
+def test_the_api_registers_the_hook_on_its_own() -> None:
+    """In a fresh interpreter, importing the API must register the hook: this package's conftest
+    imports it, so the in-process tests would pass without it."""
+    code = ("import sys, app.main\n"
+            "from sqlalchemy import event\n"
+            "from sqlalchemy.orm import Session\n"
+            "hook = sys.modules['app.db.session']._default_tenant\n"
+            "assert event.contains(Session, 'before_flush', hook)\n")
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=120)  # noqa: S603  (fixed code)

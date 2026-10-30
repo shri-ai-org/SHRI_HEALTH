@@ -22,7 +22,8 @@ The implementation is the core's: `Database.tenant_session` in `backend/app/core
 `tenant_db` in `backend/app/core/deps.py`. This package owns no engine and no session.
 `app/db/session.py` only holds the hook that fills `tenant_id` on new rows from
 `session.info["tenant_id"]`, which the core's `tenant_session()` sets to the clinic UUID (PR #28,
-`app.core.db.TENANT_ID_INFO_KEY`). It fills only an empty `tenant_id` and never overwrites one.
+`app.core.db.TENANT_ID_INFO_KEY`). It fills only an empty `tenant_id` and never overwrites one. Importing `app.db.models` registers it, so every process that writes ORM rows has it; nobody imports
+`app.db.session` for it.
 
 ## The /fhir session
 
