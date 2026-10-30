@@ -63,7 +63,8 @@ pytestmark = [
 
 
 def totp(secret_b32: str) -> str:
-    key = base64.b32decode(secret_b32.replace(" ", "").upper() + "=" * (-len(secret_b32) % 8))
+    clean = secret_b32.replace(" ", "").upper()
+    key = base64.b32decode(clean + "=" * (-len(clean) % 8))
     digest = hmac.new(key, struct.pack(">Q", int(time.time() // 30)), hashlib.sha1).digest()
     offset = digest[-1] & 0x0F
     return f"{(struct.unpack('>I', digest[offset:offset + 4])[0] & 0x7FFFFFFF) % 1_000_000:06d}"
