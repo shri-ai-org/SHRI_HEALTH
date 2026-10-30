@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -287,6 +288,7 @@ def test_without_the_key_service_no_clean_file(app: FastAPI, as_user: Client, wo
     """The real dependency, with OpenBao Transit not configured: core fails closed, and the
     file service answers 503, never a clean file in clear."""
     app.dependency_overrides.pop(crypto.file_crypto)
+    app.state.crypto = None  # not configured, whatever the runner sets (CI starts OpenBao)
     fd = as_user("fd")
     file_id = _uploaded(fd, store)
     _problem(_complete(fd, file_id), 503, "service-unavailable")
@@ -522,6 +524,20 @@ def test_the_checks_run_again(as_user: Client, world: World, store: MemoryFileSt
     world.attachments[file_id] = {PATIENT}
     world.restricted.add(PATIENT)  # restricted after the link was made
     _problem(fd.get(link), 403, "break-glass-required")
+
+
+def test_the_download_doesnt_ask_for_the_purpose_permission_again(
+        as_user: Client, world: World, store: MemoryFileStore) -> None:
+    """D105: the link's issuer checked the purpose's permission, so a link issued by another
+    operation (the front desk's after-visit summary, D98) downloads; the grants still apply."""
+    fd = as_user("fd")
+    file_id = _clean_upload(fd, store)
+    first, second = _link(fd, file_id), _link(fd, file_id)
+    world.add(replace(world.file(CLINIC_A, file_id), purpose="after-visit-summary"))
+    world.attachments[file_id] = {PATIENT}  # FD has no encounters:read
+    assert fd.get(first).status_code == 200
+    world.restricted.add(PATIENT)
+    _problem(fd.get(second), 403, "break-glass-required")
 
 
 def test_the_download_names_the_files_patient(as_user: Client, world: World,

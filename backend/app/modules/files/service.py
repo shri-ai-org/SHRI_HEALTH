@@ -43,7 +43,8 @@ in the quarantine bucket, with the declared size and SHA-256, and the answer is 
 The link points at our own API, ``GET /files/{fileId}/content`` (D105), never into the store,
 which holds only ciphertext. Its token is core's (``app.core.download_tokens``): bound to this
 user, this file and this clinic, valid for about a minute and accepted once.
-``serve_content`` is that endpoint's service: it repeats these checks, then decrypts.
+``serve_content`` is that endpoint's service: it repeats these checks but the purpose's
+permission (the link's issuer checked it), then decrypts.
 """
 
 from __future__ import annotations
@@ -234,14 +235,16 @@ async def complete_upload(db: AsyncSession, repo: FileRepository, store: FileSto
 
 # ================================================================================ reading a file
 async def _readable(request: Request, db: AsyncSession, repo: FileRepository,
-                    user: CurrentUser, file_id: UUID) -> tuple[FileRecord, frozenset[UUID]]:
+                    user: CurrentUser, file_id: UUID, *, purpose_permission: bool = True
+                    ) -> tuple[FileRecord, frozenset[UUID]]:
     """The checks before anyone gets a file's bytes, in order (module docstring). Returns the
-    file and the patients of the records it is attached to."""
+    file and the patients of the records it is attached to. ``purpose_permission`` is False
+    only at the download, whose link was issued under the purpose's permission (D105)."""
     file = await repo.get(db, file_id)
     if file is None:
         raise NotFound("File not found")
     allowed = READ_PERMISSIONS.get(file.purpose, ())
-    if not any(user.can(permission) for permission in allowed):
+    if purpose_permission and not any(user.can(permission) for permission in allowed):
         needed = " or ".join(allowed) or f"a mapping for purpose {file.purpose}"
         await audit.record_denial(request, user, needed)
         raise Forbidden(f"Requires {needed}")
@@ -323,9 +326,12 @@ async def serve_content(request: Request, db: AsyncSession, repo: FileRepository
 
     Core's token check comes first: the token must be genuine, unexpired, unused and this
     user's (core uses it up), and name this file and this clinic, or the answer is ``404
-    not-found``, the same as for a file that doesn't exist. Then every check of
-    ``createDownloadUrl`` runs again (``_readable``: 404, 403, 403 break-glass-required, 409),
-    since a permission or a grant may have ended since the link was made. The whole file is
+    not-found``, the same as for a file that doesn't exist. Then the checks of
+    ``createDownloadUrl`` run again (``_readable``: 404, 403 break-glass-required, 409), since a
+    grant may have ended or the file changed since the link was made, all but the purpose's
+    permission: the content route is ``authenticated`` and the link's issuer checked it (D105,
+    agreed on #136), so a link issued by another operation (the front desk's after-visit
+    summary, D98) downloads under the permission that issued it. The whole file is
     decrypted and verified before the first byte is sent, so a file that doesn't verify is a
     ``500`` and nothing of it is served; then it streams in chunks. The audit row is core's
     (x-audit), naming ``patient_ids``, which the route reports; this function writes none and
@@ -335,7 +341,8 @@ async def serve_content(request: Request, db: AsyncSession, repo: FileRepository
                            tenant_id=user.organization_id)
     if claims is None:
         raise NotFound("File not found")
-    file, patient_ids = await _readable(request, db, repo, user, file_id)
+    file, patient_ids = await _readable(request, db, repo, user, file_id,
+                                        purpose_permission=False)
     try:
         stored = await store.get(file.storage_key, bucket=CLEAN_BUCKET)
     except FileNotFoundError:

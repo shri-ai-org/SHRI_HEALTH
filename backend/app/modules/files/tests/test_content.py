@@ -204,11 +204,12 @@ async def test_an_unknown_token_is_not_found(setup: Setup, token: str) -> None:
 
 
 async def test_every_check_runs_again(setup: Setup) -> None:
-    """A valid token opens nothing the user may no longer read."""
+    """A valid token opens nothing the user may no longer read. The purpose's permission is the
+    one check not repeated: the link's issuer made it (D105), so a link issued by another
+    operation, such as the front desk's after-visit summary (D98), still downloads."""
     card = await setup.file(owner="co")
-    with pytest.raises(Forbidden) as denied:  # CO lacks coverages:read
-        await setup.serve(card, setup.token(card, user="co"), user="co")
-    assert denied.value.code == "permission-denied"
+    served = await setup.serve(card, setup.token(card, user="co"), user="co")  # no coverages:read
+    assert served.file_id == card.id
 
     other = await setup.file(owner="fd")  # unattached, someone else's upload
     with pytest.raises(NotFound):
