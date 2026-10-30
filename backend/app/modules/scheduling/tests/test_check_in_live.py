@@ -45,12 +45,13 @@ def _sql(practice: Practice, sql: str, **params: Any) -> Any:
 
 
 def _today_appointment(practice: Practice, patient: str = "kaia",
-                       facility: UUID | None = None) -> str:
-    """A booked appointment today at noon, facility time, with its provider, room and reason."""
+                       facility: UUID | None = None, hour: int = 12) -> str:
+    """A booked appointment today at noon (or ``hour``), facility time, with its provider, room
+    and reason."""
     admin = create_engine(sync_url(), poolclass=NullPool)
     db = setup_session(admin, practice.clinic)
     try:
-        start = dt.datetime.combine(dt.datetime.now(ZoneInfo(ZONE)).date(), dt.time(12),
+        start = dt.datetime.combine(dt.datetime.now(ZoneInfo(ZONE)).date(), dt.time(hour),
                                     ZoneInfo(ZONE))
         appt = M["appointment"](
             tenant_id=practice.clinic, status="booked", start=start,
@@ -107,6 +108,17 @@ def _check_in(client: Any, appointment_id: str, user: str = "fd", **body: Any) -
 def _code(response: Any) -> str:
     code: str = response.json()["code"]
     return code
+
+
+def checked_in_visit(client: Any, practice: Practice, patient: str = "kaia", hour: int = 12
+                     ) -> tuple[str, str]:
+    """A visit checked in today (self-pay) at ``hour``, facility time: its appointment and
+    encounter."""
+    appointment = _today_appointment(practice, patient, hour=hour)
+    done = _check_in(client, appointment, selfPay=True)
+    assert done.status_code == 200, done.text
+    encounter: str = done.json()["encounterId"]
+    return appointment, encounter
 
 
 # ----------------------------------------------------------------------------------- check-in

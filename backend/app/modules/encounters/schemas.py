@@ -2,7 +2,8 @@
 (contracts/openapi/modules/encounters.yaml). Field names are the contract's camelCase (aliases);
 bodies the contract closes (`additionalProperties: false`) forbid unknown fields. Only the
 operations built so far are here: getEncounter, updateEncounter, listPatientEncounters,
-recordVitals, listPatientVitals, markVitalEnteredInError.
+recordVitals, listPatientVitals, markVitalEnteredInError, the follow-up request (set, withdraw,
+decline; D98) and the after-visit summary's hand-off.
 """
 
 from __future__ import annotations
@@ -140,9 +141,14 @@ class NoteSummary(Out):
     updated_at: datetime
 
 
-class FollowUpInterval(Out):
-    value: int
-    unit: Literal["day", "week", "month"]
+FollowUpUnit = Literal["day", "week", "month"]
+
+
+class FollowUpInterval(Closed):
+    """Counted from the visit's date in the facility's time zone (D40)."""
+
+    value: Annotated[int, Field(ge=1, le=365)]
+    unit: FollowUpUnit
 
 
 class FollowUpRequest(Out):
@@ -195,6 +201,31 @@ class EncounterSummary(Out):
 class EncounterList(Out):
     items: list[EncounterSummary]
     next_cursor: str | None = None
+class FollowUpRequestPut(Closed):
+    interval: FollowUpInterval
+    appointment_type_id: UUID | None = None
+    provider_id: UUID | None = None
+    note: Annotated[str, _text(500)] | None = None
+
+
+class FollowUpDecline(Closed):
+    reason: Annotated[str, _text(500, min_length=1)]
+
+
+class FollowUpWithdraw(Closed):
+    reason: Annotated[str, _text(500, min_length=1)]
+
+
+# ----------------------------------------------------------------------- after-visit summary
+class AfterVisitSummaryRequest(Closed):
+    note_id: UUID | None = None
+
+
+class AfterVisitSummaryLink(Out):
+    document_id: UUID
+    generated_at: datetime
+    url: str
+    expires_at: datetime
 
 
 class EncounterPatch(Closed):
