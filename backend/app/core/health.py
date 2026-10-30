@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import Settings
 from app.core.db import Database
 from app.core.errors import problem
+from app.core.safe_logging import log_failure
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ async def ready(request: Request) -> dict[str, Any] | JSONResponse:
         bypasses_rls = await asyncio.wait_for(db.role_bypasses_rls(), READY_TIMEOUT_SECONDS)
     except Exception:
         # Log the cause, but never return connection details to the caller.
-        log.warning("Readiness check: database unavailable", exc_info=True)
+        log_failure(log, "Readiness check: database unavailable")
         return _not_ready(request)
     if bypasses_rls:
         # D23: the API's role may never bypass row-level security. Refuse traffic instead.
@@ -50,7 +51,7 @@ async def ready(request: Request) -> dict[str, Any] | JSONResponse:
             public_bypasses = await asyncio.wait_for(public.role_bypasses_rls(),
                                                      READY_TIMEOUT_SECONDS)
         except Exception:
-            log.warning("Readiness check: the public forms' database unavailable", exc_info=True)
+            log_failure(log, "Readiness check: the public forms' database unavailable")
             return _not_ready(request)
         if public_bypasses:
             log.error("Readiness check: the public forms' database role bypasses row-level "

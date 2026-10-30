@@ -266,3 +266,19 @@ def test_the_token_is_never_logged(client: TestClient, staff: dict[str, Any],
     _post(client, token)
     _post(client, token)  # the replay's refusal too
     assert token not in caplog.text and token.split(".")[2] not in caplog.text
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+def test_a_database_failure_is_still_400_and_is_logged_without_the_token(
+        client: TestClient, staff: dict[str, Any], caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Vimal's review of #153: only a replayed jti is quiet; any other database error is logged
+    (by type, never its message), since that logout then waits for the 5-minute backstop."""
+    monkeypatch.setattr(backchannel, "_END", text("SELECT * FROM admin.no_such_function()"))
+    token = _token(_claims(sid="kc-sid-db", sub=staff["subject"]))
+    with caplog.at_level("ERROR"):
+        response = _post(client, token)
+    assert response.status_code == 400
+    assert "Back-channel logout could not end sessions" in caplog.text
+    assert token not in caplog.text

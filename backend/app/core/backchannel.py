@@ -41,6 +41,7 @@ from app.core.db import CORRELATION_SETTING, TENANT_SETTING, USER_SETTING, Datab
 from app.core.errors import AppError, ServiceUnavailable
 from app.core.lifecycle import on_shutdown
 from app.core.request_id import current_request_id
+from app.core.safe_logging import log_failure
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ MAX_BODY_BYTES = 16 * 1024
 JWKS_REFRESH_SECONDS = 60  # an unknown kid fetches the keys again at most this often
 TIMEOUT_SECONDS = 5.0
 PATH = "/hooks/keycloak/backchannel-logout"
+REPLAYED = "P0001"  # admin.end_backchannel_sessions: "logout token: already used"
 OPERATION = "receiveKeycloakBackchannelLogout"
 
 
@@ -165,9 +167,14 @@ async def end_sessions(request: Request, db: Database, claims: dict[str, Any]) -
             ended = (await s.execute(_END, {
                 "jti": claims["jti"], "jti_expires_at": expires,
                 "sid": claims.get("sid") or None, "sub": claims.get("sub") or None})).all()
-        except DBAPIError:
+        except DBAPIError as error:
             await s.rollback()
-            raise refused() from None  # used before (logout_token_replayed), or unusable
+            if getattr(getattr(error, "orig", None), "sqlstate", None) != REPLAYED:
+                # Not a replay: the database failed. Keycloak won't retry, so this logout falls
+                # back to the 5-minute refresh (D94's backstop); make that visible.
+                log_failure(log, "Back-channel logout could not end sessions (request %s)",
+                            current_request_id())
+            raise refused() from None
         for row in ended:
             await s.execute(_SET, {"t_name": TENANT_SETTING, "t": str(row.tenant_id),
                                    "u_name": USER_SETTING, "u": "",
