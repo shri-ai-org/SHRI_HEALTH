@@ -22,6 +22,7 @@ from app.core.access import chart_access, facility_scope, require_facility
 from app.core.deps import CurrentUser
 from app.core.errors import (
     Conflict,
+    Forbidden,
     InvalidCursor,
     NotFound,
     ValidationFailed,
@@ -529,6 +530,17 @@ async def undo_check_in(db: AsyncSession, user: CurrentUser, appointment_id: UUI
 
 
 # --------------------------------------------------------------------------------- visit steps
+#: Who may record each visit step. appointments:status is held by FD, MA, RN, MD and APP, so the
+#: split is the service's (DATA_OWNERSHIP §5.1: arrived and noshow by the front desk; §5.2:
+#: roomed by MA and RN, with-provider by MD, APP and RN).
+VISIT_STEP_ROLES: dict[str, frozenset[str]] = {
+    "arrived": frozenset({"FD"}),
+    "noshow": frozenset({"FD"}),
+    "roomed": frozenset({"MA", "RN"}),
+    "with-provider": frozenset({"MD", "APP", "RN"}),
+}
+
+
 async def record_status(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
                         appointment_id: UUID, body: schemas.StatusChangeRequest, now: datetime
                         ) -> None:
@@ -539,9 +551,13 @@ async def record_status(db: AsyncSession, ref: PracticeSetupReads, user: Current
       which must be in the appointment's facility; a second ``roomed`` moves it (A42);
     - ``with-provider``: the encounter becomes ``in-progress``;
     - ``checked-out`` is its own action (D98): 409 naming ``/status``.
+    Each step is limited to the roles in VISIT_STEP_ROLES (403 otherwise), checked before any
+    write.
     The status board reads the visit steps, so it shows each one with its room and time."""
     current = await repo.get(db, appointment_id)
     require_facility(user, current.facility_id)
+    if body.status != "checked-out" and not user.roles & VISIT_STEP_ROLES[body.status]:
+        raise Forbidden("Your role does not record this visit step", code="permission-denied")
     if body.status == "checked-out":
         raise Conflict("Check out with POST /appointments/{appointmentId}/check-out",
                        code="invalid-state-transition", currentState=current.status,

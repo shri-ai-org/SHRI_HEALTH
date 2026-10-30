@@ -122,9 +122,15 @@ def test_visit_steps_are_refused(client: Any, practice: Practice) -> None:
     elsewhere = _status(client, appointment, status="roomed", roomLocationId=str(uuid.uuid4()))
     assert elsewhere.status_code == 422 and _code(elsewhere) == "business-rule-violation"
     assert elsewhere.json()["errors"][0]["code"] == "invalid-reference"
-    stray = _status(client, appointment, status="with-provider",
+    stray = _status(client, appointment, "md", status="with-provider",
                     roomLocationId=str(practice.room))
     assert stray.status_code == 422 and stray.json()["errors"][0]["code"] == "conflicting-fields"
+    wrong_role = _status(client, appointment, "md", **room)  # MD doesn't room (§5.2)
+    assert wrong_role.status_code == 403 and _code(wrong_role) == "permission-denied"
+    assert _sql(practice, "SELECT count(*) FROM admin.visit_flow_event WHERE appointment_id = "
+                ":a AND step = 'roomed'", a=UUID(appointment))[0][0] == 0
+    assert _sql(practice, "SELECT e.status FROM clinical.encounter e WHERE e.appointment_id = "
+                ":a", a=UUID(appointment))[0][0] == "arrived"
     out = _status(client, appointment, "fd", status="checked-out")
     assert out.status_code == 409 and _code(out) == "invalid-state-transition"
     assert out.json()["errors"][0]["pointer"] == "/status"
