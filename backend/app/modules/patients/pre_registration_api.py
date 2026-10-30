@@ -117,7 +117,8 @@ async def accept_pre_registration(
     request: Request, db: DB, repo: Repo, patients: Patients, store: Store, check: Check,
     cipher: Cipher, audit: Audit,
 ) -> schemas.PreRegistration:
-    if body.duplicate_check == "override" and body.duplicate_override_reason:
+    if (body.patient_id is None and body.duplicate_check == "override"
+            and body.duplicate_override_reason):  # only a created chart has an override (#105)
         audit.detail(request, "create", body.duplicate_override_reason)  # the override's reason
     patient_id = await rules.accept(db, repo, patients, store, check, cipher, user,
                                     pre_registration_id, body, today=datetime.now(UTC).date())

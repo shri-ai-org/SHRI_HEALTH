@@ -1682,11 +1682,14 @@ paths:
         no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching
         happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are
         rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request
-        bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double
-        submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue;
-        a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).
-        The checks run in this order, and the first that fails answers: the `Origin` (403 `csrf-check-failed`), the rate limit
-        (429), the ALTCHA bot check (422, `errors` names `/botCheck`), then the body''s fields (422 `validation-failed`).
+        bodies are never logged. The ALTCHA bot check is verified on the server. A solved challenge is spent by the first
+        request that passes the bot check, even when that request is then refused for its `Idempotency-Key` or its body (400
+        or 422); only a retry of the same request, with the same `Idempotency-Key`, may send it again (for example after a
+        network error). After a 400 or 422, the form gets a new challenge before it sends again. `Idempotency-Key` is required,
+        so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s
+        queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data
+        (D81). The checks run in this order, and the first that fails answers: the `Origin` (403 `csrf-check-failed`), the
+        rate limit (429), the ALTCHA bot check (422, `errors` names `/botCheck`), then the body''s fields (422 `validation-failed`).
         A body that is not JSON at all is refused before any of them, with 400 `malformed-request`.'
       tags:
       - portal
@@ -2956,8 +2959,9 @@ components:
           type: string
           maxLength: 4000
           description: 'The solved challenge from the form''s ALTCHA widget (MIT, self-hosted), for a challenge from `GET
-            /portal/bot-challenge`. Checked by the server, and accepted only once; nothing about the visitor goes to anyone
-            else.'
+            /portal/bot-challenge`. Checked by the server, and accepted only once (a retry of the same request, with the same
+            `Idempotency-Key`, may send it again; after a 400 or 422, get a new challenge); nothing about the visitor goes
+            to anyone else.'
           x-phi: none
     BotChallenge:
       description: 'An ALTCHA proof-of-work challenge (D96). Nothing about a person. The browser finds the number, up to `maxnumber`,
