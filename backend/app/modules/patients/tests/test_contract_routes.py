@@ -4,6 +4,7 @@
 
 from fastapi import FastAPI
 
+from ..api import portal_staff_ready
 from .contract_routes import make_app, progress_problems, route_walk_problems
 
 MODULE = "patients"
@@ -66,9 +67,15 @@ BUILT_IN_PR_2 = frozenset({
 })
 PENDING = BATCH_1 - BUILT_IN_PR_1 - BUILT_IN_PR_2
 
+# B8a (D89), x-owner Vimal: the staff side of the portal invitations. Built in portal_api.py and
+# mounted once core has their permissions (T45); until then they count as pending. Resetting
+# factors, disabling and enabling an account are x-owner Thulasi, in core (D92).
+PORTAL_STAFF = frozenset({"getPortalAccount", "createPortalInvitation", "revokePortalInvitation"})
+PORTAL_PENDING = frozenset() if portal_staff_ready() else PORTAL_STAFF
+
 
 def test_batch_1_operations_are_built_or_pending() -> None:
-    assert progress_problems(MODULE, BATCH_1, PENDING) == []
+    assert progress_problems(MODULE, BATCH_1 | PORTAL_STAFF, PENDING | PORTAL_PENDING) == []
 
 
 def test_the_route_walk_finds_routes_inside_included_routers() -> None:
