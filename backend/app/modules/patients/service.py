@@ -28,7 +28,7 @@ from app.core.errors import (
 
 from . import schemas
 from .matching import Person, possible_duplicates
-from .repository import PatientRepository, Versioned
+from .repository import PatientRepository, SqlPatientRepository, Versioned
 from .store import (
     UNSET,
     Coded,
@@ -243,6 +243,13 @@ async def readable_patient(db: AsyncSession, repo: PatientRepository, patient_id
 def writable(patient: schemas.Patient) -> None:
     if patient.merged_into_id is not None:
         raise Conflict(code="patient-merged")
+
+
+async def ensure_writable(db: AsyncSession, patient_id: UUID) -> None:
+    """For another module's new record on a chart (history, medications): 404 for a patient the
+    clinic can't see, 409 patient-merged for a merged one (D103: new records go to the
+    surviving patient)."""
+    writable((await SqlPatientRepository().get_patient(db, patient_id)).value)
 
 
 async def add_identifier(db: AsyncSession, repo: PatientRepository, store: FhirStore,

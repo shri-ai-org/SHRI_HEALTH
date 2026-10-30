@@ -139,6 +139,16 @@ async def live_for_appointment(db: AsyncSession, appointment_id: UUID) -> UUID |
     return await repository.live_encounter(db, appointment_id)
 
 
+async def visit_of(db: AsyncSession, encounter_id: UUID) -> tuple[UUID, str] | None:
+    """The encounter's patient and status, for another module's record made at a visit
+    (an allergy recorded at rooming); None for an encounter the clinic can't see."""
+    try:
+        head = await repository.SqlEncounterRepository().head(db, encounter_id)
+    except NotFound:
+        return None
+    return head.patient_id, head.status
+
+
 async def has_clinical_data(db: AsyncSession, encounter_id: UUID) -> bool:
     """Vitals, notes or diagnoses on the encounter (D55): any of them blocks the undo."""
     return await repository.has_clinical_data(db, encounter_id)
