@@ -10,7 +10,8 @@ Layers, each building on the one before, through the same insert-if-missing buil
 - ``demo``: the starter layer plus a pharmacy, more payers, the consent requirements, and
   synthetic patients with coverage, a preferred pharmacy and appointments on the demo day
   (Fri 20 Nov). The demo users linked to Keycloak come with Thulasi's demo realm;
-- reset (later): drop and recreate the demo database, migrate, then seed ``demo``. The audit
+- ``reset`` (reset.py): on an empty database (recreated by Thulasi's reset split), migrate,
+  then seed ``demo``, then check it. It never drops anything itself, and the audit
   protections are never disabled or bypassed.
 
 It runs as ``shri_migrator`` (``MIGRATION_DATABASE_URL``), because creating a practice is a
@@ -20,5 +21,5 @@ login that bypasses row-level security. This is for development and test databas
 production onboarding must not copy it, since D23 keeps ``shri_migrator`` for migrations; it
 needs its own design.
 
-Usage:  python -m app.db.seed {starter|demo}    (ENVIRONMENT must be development or test)
+Usage:  python -m app.db.seed {starter|demo|reset}    (ENVIRONMENT must be development or test)
 """
