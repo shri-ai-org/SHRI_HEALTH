@@ -3039,11 +3039,6 @@ export type listPreRegistrationsResponse403 = {
   status: 403
 }
 
-export type listPreRegistrationsResponse404 = {
-  data: NotFoundResponse
-  status: 404
-}
-
 export type listPreRegistrationsResponse422 = {
   data: UnprocessableContentResponse
   status: 422
@@ -3062,7 +3057,7 @@ export type listPreRegistrationsResponse500 = {
 export type listPreRegistrationsResponseSuccess = (listPreRegistrationsResponse200) & {
   headers: Headers;
 };
-export type listPreRegistrationsResponseError = (listPreRegistrationsResponse400 | listPreRegistrationsResponse401 | listPreRegistrationsResponse403 | listPreRegistrationsResponse404 | listPreRegistrationsResponse422 | listPreRegistrationsResponse429 | listPreRegistrationsResponse500) & {
+export type listPreRegistrationsResponseError = (listPreRegistrationsResponse400 | listPreRegistrationsResponse401 | listPreRegistrationsResponse403 | listPreRegistrationsResponse422 | listPreRegistrationsResponse429 | listPreRegistrationsResponse500) & {
   headers: Headers;
 };
 
