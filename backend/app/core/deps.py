@@ -235,13 +235,43 @@ def _header_uuid(request: Request, name: str) -> UUID:
 
 async def current_patient(request: Request) -> PortalPatient:
     """The signed-in patient. Signature final. In development and test, patient_auth_mode
-    dev_header takes the patient and its clinic from the X-Dev-Patient headers; otherwise every
-    request is refused until patient sign-in exists. TODO(ADR-0013, T45): the
-    `__Host-shri_portal` cookie looked up as a portal session (realm `shri-patients`)."""
-    if _settings(request).patient_auth_mode == "dev_header":
+    dev_header takes the patient and its clinic from the X-Dev-Patient headers. Otherwise the
+    `__Host-shri_portal` cookie names a live portal session (realm `shri-patients`, ADR-0013 §5),
+    and writes need its CSRF token from the portal host. A staff cookie is never read here, and
+    a portal cookie never by current_user."""
+    settings = _settings(request)
+    if settings.patient_auth_mode == "dev_header":
         return PortalPatient(patient_id=_header_uuid(request, DEV_PATIENT_HEADER),
                              organization_id=_header_uuid(request, DEV_PATIENT_CLINIC_HEADER))
-    raise Unauthorized("Not signed in to the patient portal")
+    from app.core import portal_sign_in  # it builds on deps' neighbours, not on deps
+
+    token = request.cookies.get(portal_sign_in.PORTAL_COOKIE)
+    if not token or len(token) > 100:
+        raise Unauthorized("Not signed in to the patient portal")
+    portal_sign_in.check_csrf(request, settings, token)
+    found = await portal_sign_in.session_from_cookie(request)
+    setattr(request.state, portal_sign_in.PORTAL_SESSION_STATE, found)
+    return PortalPatient(patient_id=found.patient_id, organization_id=found.tenant_id,
+                         account_id=found.account_id)
+
+
+def require_patient(permission: str) -> Callable[..., Coroutine[Any, Any, PortalPatient]]:
+    """A portal route's permission: `require_patient("portal-records:read")`, or
+    `require_patient("authenticated")` for any signed-in patient. Role PAT holds only
+    permissions.PATIENT_PERMISSIONS (D84); a staff permission here fails at import time."""
+    patient_permissions = permissions.PATIENT_PERMISSIONS
+    if permission != permissions.AUTHENTICATED and permission not in patient_permissions:
+        raise ValueError(f"{permission!r} is not a patient permission (permissions.py, PAT)")
+
+    async def check(patient: PortalPatient = Depends(portal_session)) -> PortalPatient:
+        if permission != permissions.AUTHENTICATED and not (
+                PATIENT_ROLE in patient.roles and permission in permissions.PATIENT_PERMISSIONS):
+            raise Forbidden(f"Requires {permission}")
+        return patient
+
+    check.__name__ = f"require_patient_{permission.replace(':', '_').replace('-', '_')}"
+    check.shri_permission = permission  # type: ignore[attr-defined]  # read by route_problems()
+    return check
 
 
 def require_own_record(patient: PortalPatient, record_patient_id: UUID | None) -> None:
@@ -263,12 +293,18 @@ async def portal_session(
 async def portal_db(
     request: Request, patient: PortalPatient = Depends(portal_session)
 ) -> AsyncIterator[AsyncSession]:
-    """The portal's database session. Signature final; the body is a placeholder that refuses
-    until the shri_portal role exists. TODO(D93, T45): connect as shri_portal
-    (PORTAL_DATABASE_URL), set app.current_tenant_id and app.current_patient_id, and start
-    the audit trail with audit.start_portal_trail(request, patient, session)."""
-    raise ServiceUnavailable("The patient portal's database is not available yet")
-    yield  # pragma: no cover  (makes this an async generator, like the real dependency)
+    """The portal's database session. Signature final. Connects as shri_portal
+    (PORTAL_DATABASE_URL, D93), never shri_app; sets app.current_tenant_id and
+    app.current_patient_id from the portal session, so the own-chart policies show this patient's
+    chart only; and starts the audit trail (audit.start_portal_trail). Nothing is saved unless
+    the endpoint commits. Unconfigured: 503."""
+    db: Database | None = getattr(request.app.state, "portal_db", None)
+    if db is None:
+        raise ServiceUnavailable("The patient portal's database is not available")
+    async with db.patient_session(patient.organization_id, patient.patient_id,
+                                  current_request_id()) as session:
+        audit.start_portal_trail(request, patient, session)
+        yield session
 
 
 async def public_db(request: Request) -> AsyncIterator[AsyncSession]:
