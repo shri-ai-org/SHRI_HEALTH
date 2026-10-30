@@ -7,7 +7,9 @@ is no Appointment helper yet (IMPL_BATCH1_PLAN §8.5). Columns as
 ``backend/app/db/docs/contract_mapping.yaml`` ("Appointment") maps them.
 
 ``visitStatus`` is the latest visit step recorded after the appointment's last undone check-in
-(``db/CLAUDE.md``, D55): steps before an undo stay as history but no longer count.
+(``db/CLAUDE.md``, D55): steps before an undo stay as history but no longer count. ``followUp`` is
+the follow-up request of the visit's live encounter (D98), so the front desk sees it at check-out
+without ``encounters:read``.
 """
 
 from __future__ import annotations
@@ -63,6 +65,20 @@ class AppointmentRow:
     room_name: str | None
     created_at: datetime
     updated_at: datetime
+    follow_up: FollowUpRef | None = None
+
+
+@dataclass(frozen=True)
+class FollowUpRef:
+    """The visit's follow-up request (``clinical.encounter_follow_up``)."""
+    encounter_id: UUID
+    status: str
+    interval_value: int
+    interval_unit: str
+    appointment_type_id: UUID | None
+    practitioner_id: UUID | None
+    note: str | None
+    booked_appointment_id: UUID | None
 
 
 @dataclass(frozen=True)
@@ -91,7 +107,11 @@ SELECT a.id, a.meta_version_id, a.status, a.start, a."end", a.minutes_duration,
        (SELECT e.id FROM clinical.encounter e
          WHERE e.appointment_id = a.id AND e.status <> 'entered-in-error'
          LIMIT 1) AS encounter_id,
-       vs.step AS visit_status, vs.occurred_at AS visit_status_at, rm.name AS room_name
+       vs.step AS visit_status, vs.occurred_at AS visit_status_at, rm.name AS room_name,
+       fu.encounter_id AS fu_encounter_id, fu.status AS fu_status,
+       fu.interval_value AS fu_interval_value, fu.interval_unit AS fu_interval_unit,
+       fu.appointment_type_id AS fu_type_id, fu.practitioner_id AS fu_practitioner_id,
+       fu.note AS fu_note, fu.booked_appointment_id AS fu_booked_id
 FROM clinical.appointment a
 JOIN admin.facility f ON f.id = a.ext_facility_id
 LEFT JOIN admin.appointment_type t ON t.id = a.ext_appointment_type_id
@@ -118,6 +138,13 @@ LEFT JOIN LATERAL (SELECT loc.name FROM admin.visit_flow_event v
                      WHERE e.appointment_id = a.id AND e.status = 'entered-in-error'
                        AND pv.activity_code = 'NULLIFY'), '-infinity'::timestamptz)
                     ORDER BY v.occurred_at DESC, v.created_at DESC LIMIT 1) rm ON true
+LEFT JOIN LATERAL (SELECT f.encounter_id, f.status, f.interval_value, f.interval_unit,
+                          f.appointment_type_id, f.practitioner_id, f.note,
+                          f.booked_appointment_id
+                     FROM clinical.encounter_follow_up f
+                     JOIN clinical.encounter e ON e.id = f.encounter_id
+                    WHERE e.appointment_id = a.id AND e.status <> 'entered-in-error'
+                    LIMIT 1) fu ON true
 """
 _ONE = text(_SELECT + "WHERE a.id = :id")
 _LIST = text(_SELECT + """
@@ -176,6 +203,16 @@ _LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
 _LOCK_PATIENT = text("SELECT 1 FROM clinical.patient WHERE id = :id FOR SHARE")
 
 
+def _follow_up(r: Any) -> FollowUpRef | None:
+    if r["fu_status"] is None:
+        return None
+    return FollowUpRef(
+        encounter_id=r["fu_encounter_id"], status=str(r["fu_status"]),
+        interval_value=r["fu_interval_value"], interval_unit=str(r["fu_interval_unit"]),
+        appointment_type_id=r["fu_type_id"], practitioner_id=r["fu_practitioner_id"],
+        note=r["fu_note"], booked_appointment_id=r["fu_booked_id"])
+
+
 def _row(r: Any) -> AppointmentRow:
     return AppointmentRow(
         id=r["id"], version=r["meta_version_id"], status=r["status"], start=r["start"],
@@ -191,7 +228,7 @@ def _row(r: Any) -> AppointmentRow:
         rescheduled_from_id=r["ext_rescheduled_from_appointment_id"],
         encounter_id=r["encounter_id"], visit_status=r["visit_status"],
         visit_status_at=r["visit_status_at"], room_name=r["room_name"],
-        created_at=r["created_at"], updated_at=r["meta_last_updated"])
+        created_at=r["created_at"], updated_at=r["meta_last_updated"], follow_up=_follow_up(r))
 
 
 async def get(db: AsyncSession, appointment_id: UUID) -> AppointmentRow:
@@ -367,7 +404,16 @@ async def cancel(db: AsyncSession, row: Any, reason_code: str, reason_text: str 
 
 
 # Follow-up requests (D98, db/CLAUDE.md): booking a revisit sets booked; cancelling it reopens;
-# rescheduling moves the link.
+# rescheduling moves the link. Each locks the visit's encounter before its request, the order
+# the encounters service (set, withdraw, decline) locks them in, so the two never deadlock; the
+# request's change moves the encounter's version (its touch trigger) either way.
+_LOCK_ENCOUNTER = text("SELECT id FROM clinical.encounter WHERE id = :encounter FOR UPDATE")
+_LOCK_BOOKED_ENCOUNTER = text("""
+SELECT e.id FROM clinical.encounter e
+JOIN clinical.encounter_follow_up f ON f.encounter_id = e.id
+WHERE f.booked_appointment_id = :appointment
+FOR UPDATE OF e
+""")
 _FOLLOW_UP_OPEN = text("""
 SELECT f.id FROM clinical.encounter_follow_up f
 WHERE f.encounter_id = :encounter AND f.patient_id = :patient AND f.status = 'open'
@@ -390,6 +436,7 @@ WHERE booked_appointment_id = :old AND status = 'booked'
 
 
 async def open_follow_up(db: AsyncSession, encounter_id: UUID, patient_id: UUID) -> UUID | None:
+    await db.execute(_LOCK_ENCOUNTER, {"encounter": encounter_id})
     found: UUID | None = (await db.execute(_FOLLOW_UP_OPEN, {
         "encounter": encounter_id, "patient": patient_id})).scalar_one_or_none()
     return found
@@ -400,11 +447,29 @@ async def book_follow_up(db: AsyncSession, follow_up_id: UUID, appointment_id: U
 
 
 async def reopen_follow_up(db: AsyncSession, appointment_id: UUID) -> None:
+    await db.execute(_LOCK_BOOKED_ENCOUNTER, {"appointment": appointment_id})
     await db.execute(_FOLLOW_UP_REOPEN, {"appointment": appointment_id})
 
 
 async def move_follow_up(db: AsyncSession, old: UUID, new: UUID) -> None:
+    await db.execute(_LOCK_BOOKED_ENCOUNTER, {"appointment": old})
     await db.execute(_FOLLOW_UP_MOVE, {"old": old, "new": new})
+
+
+# The visit's follow-up request at check-out, locked (after the encounter) so it can't be
+# reopened or declined while the visit is checked out.
+_VISIT_FOLLOW_UP = text("""
+SELECT f.status FROM clinical.encounter_follow_up f
+WHERE f.encounter_id = :encounter
+FOR UPDATE
+""")
+
+
+async def visit_follow_up_status(db: AsyncSession, encounter_id: UUID) -> str | None:
+    await db.execute(_LOCK_ENCOUNTER, {"encounter": encounter_id})
+    found = (await db.execute(_VISIT_FOLLOW_UP, {"encounter": encounter_id})
+             ).scalar_one_or_none()
+    return None if found is None else str(found)
 
 
 # ------------------------------------------------------------------------- check-in, visit steps
