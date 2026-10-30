@@ -765,6 +765,7 @@ paths:
         action: E
         category: phi-write
         patient: result
+      x-idempotency: supported
       x-storage: clinical
       x-events:
       - appointment.status-changed
@@ -774,6 +775,8 @@ paths:
       security:
       - sessionCookie: []
         csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
       requestBody:
         required: true
         content:
@@ -837,12 +840,14 @@ paths:
           description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: "409. `invalid-state-transition` (not allowed in the current state; or `checked-out`, which goes through `POST /appointments/{appointmentId}/check-out`: `errors` names `/status`)."
+          description: '409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (not allowed in the current state; or `checked-out`, which goes through `POST /appointments/{appointmentId}/check-out`:
+            `errors` names `/status`).'
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`roomed`
-            without `roomLocationId`, a room that is not in the appointment's facility (field code `invalid-reference`), or
-            `noshow` before the start time).
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`roomed`
+            without `roomLocationId`, a room that is not in the appointment''s facility (field code `invalid-reference`),
+            or `noshow` before the start time); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -1484,6 +1489,7 @@ paths:
         action: E
         category: phi-write
         patient: result
+      x-idempotency: supported
       x-storage: clinical
       x-events:
       - appointment.status-changed
@@ -1492,6 +1498,8 @@ paths:
       security:
       - sessionCookie: []
         csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
       requestBody:
         required: true
         content:
@@ -1556,11 +1564,12 @@ paths:
           description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: 409. `invalid-state-transition` (not `checked-in`, already roomed, or the encounter has vitals, notes
-            or diagnoses).
+          description: '409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (not `checked-in`, already roomed, or the encounter has vitals, notes or diagnoses).'
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a body field or a parameter is invalid).
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).'
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
