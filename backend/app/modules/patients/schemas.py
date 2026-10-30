@@ -2,7 +2,8 @@
 
 Field names are the contract's camelCase (aliases); request bodies the contract closes
 (`additionalProperties: false`) forbid unknown fields, so a typo is a 422, not a silent drop.
-Only the operations built so far are here (PR-1, then coverages and consents); later PRs add theirs.
+Only the operations built so far are here (PR-1, then coverages and consents, then the portal
+invitations of B8a); later PRs add theirs.
 """
 
 from __future__ import annotations
@@ -405,3 +406,40 @@ class Consent(Out):
 class ConsentList(Out):
     items: list[Consent]
     next_cursor: str | None = None
+
+
+# ------------------------------------------------------------- portal invitations (B8a, D89)
+PortalAccountState = Literal["none", "invited", "pending-setup", "active", "disabled",
+                             "suspended"]
+
+
+class PortalInvitationCreate(Closed):
+    id_checked: Literal[True]  # the user checked the patient's photo ID in person (ADR-0013 §3)
+
+
+class PortalInvitation(Out):
+    """The new invitation with its code: in this response only, never stored or logged."""
+
+    id: UUID
+    code: str
+    issued_at: datetime
+    expires_at: datetime
+
+
+class PortalInvitationSummary(Out):
+    id: UUID
+    status: Literal["active", "used", "expired", "revoked"]
+    issued_at: datetime
+    expires_at: datetime
+
+
+class PortalAccountStatus(Out):
+    """Never a password, factor or code."""
+
+    patient_id: UUID
+    status: PortalAccountState
+    email: str | None = None
+    invitation: PortalInvitationSummary | None = None
+    enrolled_at: datetime | None = None
+    factors_reset_at: datetime | None = None
+    disabled_at: datetime | None = None

@@ -7,7 +7,10 @@ with ``app.dependency_overrides``:
   ``store.FhirStore``;
 - the audit hooks, core's ``audit_patients`` and ``audit_detail`` (Thulasi, #79), which name the
   patients of an operation whose ``x-audit.patient`` is ``result`` or ``body:/…``, and the reason
-  where x-audit alone doesn't give it.
+  where x-audit alone doesn't give it;
+- the portal invitations, core's ``issue_invitation`` and ``revoke_invitation`` (Thulasi, #148;
+  ADR-0013 §3), which make the code, store only its HMAC and revoke; this module never sees the
+  key.
 
 The helpers have their own copies of the interface's types: the same names and fields as
 ``store.py`` (the agreed interface, with the renames on #13), but their own ``UNSET`` sentinel and
@@ -29,6 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import access as core_access
 from app.core import audit as core_audit
+from app.core import portal_sign_in as core_portal
+from app.core.config import Settings
 from app.core.deps import CurrentUser
 from app.db import fhir_store as helpers
 
@@ -112,3 +117,26 @@ def audit_hooks() -> AuditHooks:
         patients=core_audit.audit_patients,
         detail=lambda request, action, reason: core_audit.audit_detail(
             request, action=action, reason=reason))
+
+
+@dataclass(frozen=True)
+class PortalInvitations:
+    """``issue(db, patient_id, user_id)``: revoke the patient's open invitation and make a new
+    one, returning its code once (409 while the chart has a live account). ``revoke(db,
+    patient_id, invitation_id, user_id)``: 404 for an invitation that isn't the patient's, 409
+    for a used one, nothing for one already revoked or expired. Both run in the request's
+    session and never commit."""
+
+    issue: Callable[[AsyncSession, UUID, UUID], Awaitable[core_portal.IssuedInvitation]]
+    revoke: Callable[[AsyncSession, UUID, UUID, UUID], Awaitable[None]]
+
+
+def portal_invitations(request: Request) -> PortalInvitations:
+    """FastAPI dependency: core's invitation functions, with the app's settings (the HMAC key)."""
+    settings: Settings = request.app.state.settings
+
+    async def issue(db: AsyncSession, patient_id: UUID, user_id: UUID
+                    ) -> core_portal.IssuedInvitation:
+        return await core_portal.issue_invitation(db, settings, patient_id, user_id)
+
+    return PortalInvitations(issue=issue, revoke=core_portal.revoke_invitation)

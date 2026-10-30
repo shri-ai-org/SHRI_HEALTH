@@ -4,8 +4,10 @@ contract's operationId.
 
 PR-1: search, register, read, update, summaries, restrict and unrestrict, identifiers and related
 persons. PR-2: coverages (add, list, read one, edit or end with `endDate`, entered-in-error;
-D45) and consents (record, list). Every route that touches one chart runs the restricted-chart
-check first (D37), and patient data never reaches a response without it. Operations whose
+D45) and consents (record, list). B8a: the portal invitations and the portal account
+(portal_api.py), mounted once core has their permissions (``portal_staff_ready``). Every route
+that touches one chart runs the restricted-chart check first (D37), and patient data never
+reaches a response without it. Operations whose
 x-audit names the patient from the result or the body hand those patients to core's audit hook
 (#79) before they commit or return.
 The permission (`require`) is the first dependency, so a caller without it gets 401 or 403 before
@@ -19,7 +21,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import permissions
 from app.core.deps import CurrentUser, require, tenant_db
+from app.core.operations import OperationsMapError, load_operations
 
 from . import insurance, schemas, service
 from .access import AuditHooks, ChartCheck, audit_hooks, chart_check, fhir_store
@@ -329,3 +333,29 @@ async def record_consent(
     response.headers["ETag"] = service.etag(recorded.version)
     response.headers["Location"] = f"/api/v1/patients/{patient_id}/consents"
     return recorded.value
+
+
+# ------------------------------------------------------------- portal invitations (B8a, D89)
+_PORTAL_STAFF_OPERATIONS = frozenset({
+    "getPortalAccount", "createPortalInvitation", "revokePortalInvitation"})
+_PORTAL_STAFF_PERMISSIONS = frozenset({
+    "portal-accounts:read", "portal-invitations:create", "portal-invitations:revoke"})
+
+
+def portal_staff_ready() -> bool:
+    """The portal invitation routes (portal_api.py) need their operations in the operations map
+    (B8a, already there) and their permissions in core's catalogue (NOTE_FOR_THULASI T45). Until
+    core has them they stay out, so the API still starts (require() refuses an unknown
+    permission)."""
+    try:
+        known = load_operations()
+    except OperationsMapError:
+        return False
+    return (_PORTAL_STAFF_OPERATIONS <= known.keys()
+            and all(permissions.is_known_permission(p) for p in _PORTAL_STAFF_PERMISSIONS))
+
+
+if portal_staff_ready():
+    from .portal_api import router as _portal_router
+
+    router.include_router(_portal_router)
