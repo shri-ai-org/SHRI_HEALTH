@@ -64,8 +64,12 @@ run again; each run resets the password to `DEMO_PASSWORD` and asks for the one-
 set up again at the next sign-in.
 
 ```bash
-KC_URL=https://localhost:8443/kc KC_INSECURE=1 KC_ADMIN=admin KC_ADMIN_PASSWORD=... \
-  DEMO_PASSWORD="$(openssl rand -base64 18)" sh infra/keycloak/reset-demo-users.sh
+read -rs -p "Keycloak admin password: " KC_ADMIN_PASSWORD; echo
+export KC_ADMIN_PASSWORD
+DEMO_PASSWORD="$(openssl rand -base64 18)" KC_URL=https://localhost:8443/kc KC_INSECURE=1 \
+  KC_ADMIN=admin sh infra/keycloak/reset-demo-users.sh
 ```
 
-The password comes from the environment only; never write it into a file in the repository.
+`read -rs` keeps the admin password out of your shell history. The passwords come from the
+environment only; never write one into a file in the repository. The script puts no secret on a
+command line, so `ps` never shows one.

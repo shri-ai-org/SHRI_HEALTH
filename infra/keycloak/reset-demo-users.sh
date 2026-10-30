@@ -12,7 +12,9 @@
 # file; it must meet the realms' policy (at least 12 characters, not the username or email).
 # The patient realm is skipped, with a note, until it exists (#148).
 #
-# Needs curl and sed only. The admin password and DEMO_PASSWORD are never printed.
+# Needs curl and sed only. No secret is ever printed or put on a command line (where `ps` would
+# show it): the admin password and the admin token reach curl through stdin or a private
+# temporary file (mode 600, removed on exit), and DEMO_PASSWORD through the request body.
 set -eu
 
 : "${KC_URL:?set KC_URL, e.g. https://localhost:8443/kc}"
@@ -36,10 +38,21 @@ PATIENT_ID=8e477695-3ea5-4082-8765-2b8edee9123c
 CURL="curl -sS --fail-with-body"
 [ "${KC_INSECURE:-}" = 1 ] && CURL="$CURL -k"  # the local self-signed certificate only
 
-token=$($CURL -d grant_type=password -d client_id=admin-cli --data-urlencode "username=$KC_ADMIN" \
-    --data-urlencode "password=$KC_ADMIN_PASSWORD" "$KC_URL/realms/master/protocol/openid-connect/token" \
+# A value inside a double-quoted curl config string: backslash and quote escaped.
+quoted() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+token=$(printf 'data-urlencode = "password=%s"\n' "$(quoted "$KC_ADMIN_PASSWORD")" \
+    | $CURL -K - -d grant_type=password -d client_id=admin-cli --data-urlencode "username=$KC_ADMIN" \
+        "$KC_URL/realms/master/protocol/openid-connect/token" \
     | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 [ -n "$token" ] || { echo "Could not sign in to Keycloak's admin API" >&2; exit 1; }
+
+# The token for the calls below, in a file only this user can read, removed however we exit.
+auth=$(mktemp)
+trap 'rm -f "$auth"' EXIT INT TERM
+chmod 600 "$auth"
+printf 'header = "Authorization: Bearer %s"\n' "$token" > "$auth"
+unset token
 
 # user ID username email first last
 user() {
@@ -50,7 +63,7 @@ user() {
 
 import() {  # realm users-json
     body=$(printf '{"ifResourceExists":"OVERWRITE","users":[%s]}' "$2")
-    $CURL -o /dev/null -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+    $CURL -o /dev/null -K "$auth" -H "Content-Type: application/json" \
         --data-binary @- "$KC_URL/admin/realms/$1/partialImport" <<EOF
 $body
 EOF
@@ -62,7 +75,7 @@ $(user "$MD_ID" demo.doctor demo.doctor@example.com Rivera Doctor),\
 $(user "$ADM_ID" demo.admin demo.admin@example.com Alex Admin)"
 echo "shri-staff: demo.frontdesk ($FD_ID), demo.ma ($MA_ID), demo.doctor ($MD_ID), demo.admin ($ADM_ID)"
 
-if $CURL -o /dev/null -H "Authorization: Bearer $token" "$KC_URL/admin/realms/shri-patients" 2>/dev/null; then
+if $CURL -o /dev/null -K "$auth" "$KC_URL/admin/realms/shri-patients" 2>/dev/null; then
     # The patient signs in with the email as username (the realm's rule).
     import shri-patients "$(user "$PATIENT_ID" demo.patient@example.com demo.patient@example.com Mai Nguyen)"
     echo "shri-patients: demo.patient@example.com ($PATIENT_ID)"
