@@ -4,7 +4,8 @@ contract's operationId.
 
 PR-3/PR-4 (demo step 2): the booking lists, free times, book, reschedule, cancel, the appointment
 list and one appointment, and the status board.
-PR-5 (demo step 3): check-in and its undo. The permission (`require`) is the first
+PR-5 (demo step 3): check-in and its undo. Rooming (demo step 7): the visit steps
+(recordVisitStatus). The permission (`require`) is the first
 dependency. A `facilityId` the user isn't assigned to is 404 (core's facility filter): in the
 query core checks it, in a body or a stored appointment the service does. Operations whose x-audit
 takes the patient from the result or the body hand those patients to core's audit hook.
@@ -220,6 +221,24 @@ async def undo_check_in(
     found, _ = await service.one(db, user, appointment_id)
     audit_patients(request, [found.patient.id])  # x-audit patient "result"
     await db.commit()
+    return found
+
+
+# ---------------------------------------------------------------------------------- visit steps
+@router.post(APPOINTMENT + "/status", operation_id="recordVisitStatus",
+             response_model=schemas.Appointment, response_model_exclude_none=True)
+async def record_visit_status(
+    user: Annotated[CurrentUser, Depends(require("appointments:status"))],
+    appointment_id: AppointmentId, body: schemas.StatusChangeRequest, request: Request,
+    response: Response, db: DB, ref: Ref,
+) -> schemas.Appointment:
+    """Arrived, roomed (the encounter is triaged and in the room), with provider or no-show;
+    the status board shows the step (D60). Check-out is its own action (D98)."""
+    await service.record_status(db, ref, user, appointment_id, body, _now())
+    found, version = await service.one(db, user, appointment_id)
+    audit_patients(request, [found.patient.id])  # x-audit patient "result"
+    await db.commit()
+    response.headers["ETag"] = service.etag(version)
     return found
 
 
