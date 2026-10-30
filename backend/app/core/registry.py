@@ -37,6 +37,7 @@ from app.core import (
     request_id,
     response_headers,
     routing,
+    safe_logging,
     session,
 )
 from app.core.config import Settings
@@ -52,6 +53,7 @@ FEATURES: tuple[tuple[str, Register], ...] = (
     ("download tokens", download_tokens.register),
     ("patient sign-in", portal_sign_in.register),
     ("access log", access_log.register),
+    ("server error log", safe_logging.register),
     # Middleware, innermost first
     ("audit", audit.register),
     ("idempotency", idempotency.register),

@@ -22,6 +22,7 @@ from app.core import (
     portal_auth_api,
     portal_sign_in,
     public_form,
+    safe_logging,
 )
 from app.core.audit import AuditMiddleware
 from app.core.config import Settings
@@ -65,6 +66,7 @@ def _legacy_app(settings: Settings) -> FastAPI:
     # Added after the registry:
     download_tokens.register(application, settings)
     access_log.register(application, settings)
+    safe_logging.register(application, settings)
     portal_sign_in.register(application, settings)
     application.add_middleware(AuditMiddleware)
     application.add_middleware(IdempotencyMiddleware)
