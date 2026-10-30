@@ -99,3 +99,32 @@ def test_write_refuses_a_file_without_the_markers(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         write(plain)
     assert plain.read_text(encoding="utf-8") == "no markers here\n"
+
+
+def _marked(markdown: str) -> set[str]:
+    """The permissions in ‡ rows, read with role_matrix.py's own row parser."""
+    import re
+
+    matrix = _role_matrix()
+    found: set[str] = set()
+    for start, end in (("| Permission group |", "Notes on the matrix"), ("### 4.4", "## 5. ")):
+        for cells in matrix._rows(markdown, start, end):  # noqa: SLF001
+            if "‡" in cells[0]:
+                found |= matrix._names(re.sub(r"\([^)]*\)", "", cells[0]),  # noqa: SLF001
+                                       frozenset(CATALOGUE))
+                found |= set().union(*(p for k, p in matrix.ROW_PHRASES.items() if k in cells[0]))
+    return found
+
+
+def test_the_marks_are_exactly_today_s_section_4_3() -> None:
+    """Vimal's review of #135: ‡ is per permission; generating the table must not change which
+    rows wait for the clinical advisors (Q21)."""
+    today = _marked((REPO / "contracts" / "docs" / "SECURITY_MODEL.md").read_text(encoding="utf-8"))
+    assert permissions_doc.CLINICAL_REVIEW == today
+
+
+def test_the_generated_table_marks_exactly_those(tmp_path: Path) -> None:
+    generated = _marked(_model(tmp_path, section()).read_text(encoding="utf-8"))
+    assert generated == permissions_doc.CLINICAL_REVIEW
+    assert "appointments:status" in generated and "appointments:create" not in generated
+    assert "patients:break-glass" in generated
