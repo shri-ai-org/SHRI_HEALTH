@@ -23,12 +23,16 @@ BATCH_1 = frozenset({
     "listBookableAppointmentTypes",
     "rescheduleAppointment",
     "undoCheckIn",
+    "checkOutAppointment",  # demo step 11 (D98)
 })
 
 # Not built yet. Each PR removes the operations it builds; the test fails if a built one is
 # still listed here.
+# checkOutAppointment is built (api.mount_pending_routes) but mounted only once core's catalogue
+# has appointments:check-out (T50, note for Thulasi).
 PENDING = frozenset({
     "updateAppointment",
+    "checkOutAppointment",
 })
 
 

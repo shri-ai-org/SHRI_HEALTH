@@ -132,6 +132,23 @@ class Cancellation(Out):
     cancelled_at: datetime
 
 
+class FollowUpInterval(Out):
+    """encounters.yaml's FollowUpInterval, as the front desk reads it."""
+    value: int
+    unit: Literal["day", "week", "month"]
+
+
+class FollowUpSummary(Out):
+    """The visit's follow-up request as the front desk needs it at check-out (D98)."""
+    encounter_id: UUID
+    interval: FollowUpInterval
+    appointment_type_id: UUID | None = None
+    provider_id: UUID | None = None
+    note: str | None = None
+    status: Literal["open", "booked", "declined", "withdrawn"]
+    booked_appointment_id: UUID | None = None
+
+
 class Appointment(Out):
     id: UUID
     patient: SchedulingPatientRef
@@ -155,6 +172,7 @@ class Appointment(Out):
     encounter_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
+    follow_up: FollowUpSummary | None = None
 
 
 class AppointmentSummary(Out):
@@ -224,6 +242,7 @@ class StatusBoardItem(Out):
     appointment_type: AppointmentTypeRef | None = None
     reason_for_visit: str | None = None
     encounter_id: UUID | None = None
+    follow_up: FollowUpSummary | None = None
 
 
 class StatusBoardList(Out):

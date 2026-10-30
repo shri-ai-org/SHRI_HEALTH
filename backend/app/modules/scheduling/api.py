@@ -5,7 +5,15 @@ contract's operationId.
 PR-3/PR-4 (demo step 2): the booking lists, free times, book, reschedule, cancel, the appointment
 list and one appointment, and the status board.
 PR-5 (demo step 3): check-in and its undo. Rooming (demo step 7): the visit steps
-(recordVisitStatus). The permission (`require`) is the first
+(recordVisitStatus). Check-out (demo step 11, D98): checkOutAppointment, and the visit's follow-up
+request on the appointment and the staff status board.
+
+**Waiting for core (T50):** ``appointments:check-out`` is not in core's permission catalogue yet
+and ``require()`` refuses an unknown name at import, so ``checkOutAppointment`` is mounted by
+``mount_pending_routes`` only once core knows it (the tests mount it with T50's grant). Nothing
+stands in for the missing permission.
+
+The permission (`require`) is the first
 dependency. A `facilityId` the user isn't assigned to is 404 (core's facility filter): in the
 query core checks it, in a body or a stored appointment the service does. Operations whose x-audit
 takes the patient from the result or the body hand those patients to core's audit hook.
@@ -20,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import audit_patients
 from app.core.deps import CurrentUser, require, tenant_db
+from app.core.permissions import is_known_permission
 
 from . import schemas, service
 from .reference import PracticeSetupReads, reference
@@ -258,3 +267,38 @@ async def get_status_board(
                                        limit, service.decode_cursor(cursor), _now())
     audit_patients(request, named)  # x-audit patient "result": the patients shown by name
     return found
+
+
+# ------------------------------------------------- routes waiting for core's permissions (T50)
+#: The permission each waiting route needs (NOTE_FOR_THULASI T50; SECURITY_MODEL §4.2).
+PENDING_PERMISSIONS = {"checkOutAppointment": "appointments:check-out"}
+
+
+def mount_pending_routes(target: APIRouter, exclude: frozenset[str] = frozenset()
+                         ) -> frozenset[str]:
+    """Adds each waiting route whose permission core now knows (except those in ``exclude``,
+    already mounted); returns their operationIds. ``require()`` is called only here, after that
+    check, so an unknown name never reaches it."""
+    if "checkOutAppointment" in exclude or not is_known_permission(
+            PENDING_PERMISSIONS["checkOutAppointment"]):
+        return frozenset()
+
+    @target.post(APPOINTMENT + "/check-out", operation_id="checkOutAppointment",
+                 response_model=schemas.Appointment, response_model_exclude_none=True)
+    async def check_out_appointment(
+        user: Annotated[CurrentUser, Depends(require("appointments:check-out"))],
+        appointment_id: AppointmentId, request: Request, db: DB,
+    ) -> schemas.Appointment:
+        """Ends the visit flow at the desk (D98). Idempotency-Key is optional (x-idempotency:
+        supported): core claims and replays it."""
+        await service.check_out(db, user, appointment_id)
+        found, _ = await service.one(db, user, appointment_id)
+        audit_patients(request, [found.patient.id])  # x-audit patient "result"
+        await db.commit()
+        return found
+
+    return frozenset({"checkOutAppointment"})
+
+
+#: The waiting routes this process serves: none until core has T50's permission.
+MOUNTED_PENDING = mount_pending_routes(router)
