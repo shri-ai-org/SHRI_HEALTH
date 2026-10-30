@@ -98,3 +98,21 @@ def test_the_other_clinic_sees_no_demo_patient(migrator_engine: Engine,
         conn = db.bind
         db.close()
         conn.close()  # type: ignore[union-attr]
+
+
+def test_the_demo_accounts_sign_in_with_their_roles(migrator_engine: Engine,
+                                                   front_desk: Session) -> None:
+    """What core's sign-in reads for each demo account (#152's Keycloak IDs)."""
+    from app.core.session import _ROLES
+    _seed(migrator_engine)
+    for n, _username, subject, _name, role, _provider in demo.DEMO_USERS:
+        user = front_desk.execute(text("SELECT * FROM admin.lookup_staff_user(:sub)"),
+                                  {"sub": subject}).one()
+        assert (user.user_id, user.tenant_id, user.is_active) == (sid(demo.DEMO_USER, n),
+                                                                 CLINIC_A, True)
+        roles = front_desk.execute(_ROLES, {"id": user.user_id}).all()
+        assert [r.code for r in roles] == [role]
+    account = front_desk.execute(text("SELECT * FROM admin.lookup_portal_account(:k)"),
+                                 {"k": demo.DEMO_PATIENT_SUBJECT}).one()
+    assert (account.tenant_id, account.patient_id, account.status) == (
+        CLINIC_A, sid(demo.PATIENT, demo.DEMO_PORTAL_PATIENT), "active")
