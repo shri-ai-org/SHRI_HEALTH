@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
@@ -27,6 +27,8 @@ from app.db.models.systems import NPI
 
 M = MAPPERS
 CLEARINGHOUSE = "clearinghouse"  # the outbox partner (D25); the vendor is Q11
+#: errorCode of an automatic check that was recorded but not sent (no clearinghouse connection).
+NOT_SENT = "not-sent"
 
 
 # ---------------------------------------------------------------------------------- rows
@@ -46,6 +48,18 @@ class AppointmentRef:
     facility_id: UUID | None
     local_day: date  # the appointment's day in the facility's time zone (D40)
     provider_npi: str | None
+
+
+@dataclass(frozen=True)
+class AutoAppointment:
+    """What an automatic check (booking, pre-visit batch, check-in) needs of its appointment."""
+
+    id: UUID
+    patient_id: UUID
+    status: str
+    local_day: date  # in the facility's time zone (D40): the service date and coverage day
+    provider_npi: str | None
+    required: bool  # the appointment type's requiresEligibilityCheck (D15)
 
 
 @dataclass(frozen=True)
@@ -148,6 +162,36 @@ class EligibilityRepository(Protocol):
                               offset: int) -> list[CheckRow]: ...
 
 
+class AutoCheckRepository(Protocol):
+    """What the automatic checks read and write (service.queue_for_appointment and
+    service.queue_pre_visit_checks); the tests replace it with an in-memory fake."""
+
+    async def auto_appointment(self, db: AsyncSession, appointment_id: UUID
+                               ) -> AutoAppointment | None: ...
+
+    async def primary_coverage(self, db: AsyncSession, patient_id: UUID,
+                               on: date) -> UUID | None: ...
+
+    async def lock_appointment_checks(self, db: AsyncSession, appointment_id: UUID) -> None: ...
+
+    async def existing_check(self, db: AsyncSession, appointment_id: UUID, trigger: str,
+                             encounter_id: UUID | None) -> UUID | None: ...
+
+    async def fresh_check(self, db: AsyncSession, coverage_id: UUID, now: datetime,
+                          since: datetime) -> bool: ...
+
+    async def insert_pending(self, db: AsyncSession, *, coverage_id: UUID, patient_id: UUID,
+                             appointment_id: UUID | None, encounter_id: UUID | None,
+                             trigger: str, provider_npi: str | None = None,
+                             service_type_codes: Sequence[str] = ()) -> UUID: ...
+
+    async def link_message(self, db: AsyncSession, check_id: UUID, message_id: UUID) -> None: ...
+
+    async def mark_not_sent(self, db: AsyncSession, check_id: UUID, message: str) -> None: ...
+
+    async def booked_on(self, db: AsyncSession, day: date) -> list[UUID]: ...
+
+
 # ----------------------------------------------------------------------------------- SQL
 _PRIMARY = text("""
 SELECT c.id FROM clinical.coverage c
@@ -185,6 +229,53 @@ SELECT i.value FROM clinical.identifier i
 JOIN clinical.organization o ON o.id = i.organization_id
 WHERE i.system = :npi AND o.type_code = 'prov'
 ORDER BY o.created_at, i.created_at LIMIT 1
+""")
+# An automatic check's appointment: as _APPOINTMENT, with its status and whether its type runs
+# eligibility checks (a type that is gone or unset counts as yes, the column's default).
+_AUTO_APPOINTMENT = text("""
+SELECT a.id, a.subject_patient_id, a.status,
+       (a.start AT TIME ZONE coalesce(f.timezone, t.timezone, 'UTC'))::date AS local_day,
+       coalesce((SELECT i.value FROM clinical.appointment_participant p
+                   JOIN clinical.identifier i ON i.practitioner_id = p.actor_practitioner_id
+                  WHERE p.appointment_id = a.id AND i.system = :npi
+                  ORDER BY p.created_at, i.created_at LIMIT 1), f.npi) AS provider_npi,
+       coalesce(ty.requires_eligibility_check, true) AS required
+FROM clinical.appointment a
+LEFT JOIN admin.facility f ON f.id = a.ext_facility_id
+LEFT JOIN admin.tenant t ON t.id = a.tenant_id
+LEFT JOIN admin.appointment_type ty ON ty.id = a.ext_appointment_type_id
+WHERE a.id = :id
+""")
+# One automatic check at a time per appointment, so two runs can't both find none and queue.
+_LOCK_APPOINTMENT = text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
+_EXISTING = text("""
+SELECT id FROM admin.eligibility_check
+WHERE appointment_id = :appointment AND trigger = :trigger
+  AND (CAST(:encounter AS uuid) IS NULL OR encounter_id = :encounter)
+ORDER BY requested_at DESC, id DESC LIMIT 1
+""")
+# Fresh: still waiting for its answer (asked within VALID_FOR), or answered and not yet expired.
+# A check that failed, timed out or was never sent is not fresh.
+_FRESH = text("""
+SELECT EXISTS (SELECT 1 FROM admin.eligibility_check
+               WHERE coverage_id = :coverage
+                 AND ((status = 'pending' AND requested_at > :since)
+                      OR (status IN ('active', 'inactive', 'not-found') AND expires_at > :now)))
+""")
+_NOT_SENT = text("""
+UPDATE admin.eligibility_check SET status = 'error', error_code = :code, error_message = :message,
+       responded_at = requested_at, updated_at = now()
+WHERE id = :id AND status = 'pending'
+""")
+# The clinic's booked appointments on a local day (each in its facility's time zone), bounded
+# by start so the index on start is used.
+_BOOKED_ON = text("""
+SELECT a.id FROM clinical.appointment a
+LEFT JOIN admin.facility f ON f.id = a.ext_facility_id
+JOIN admin.tenant t ON t.id = a.tenant_id
+WHERE a.status = 'booked' AND a.start >= :lo AND a.start < :hi
+  AND (a.start AT TIME ZONE coalesce(f.timezone, t.timezone, 'UTC'))::date = :day
+ORDER BY a.start, a.id
 """)
 _NOW_AND_USER = text(
     "SELECT now(), NULLIF(current_setting('app.current_user_id', true), '')")
@@ -425,3 +516,41 @@ class SqlEligibilityRepository:
         rows = (await db.execute(_FOR_APPOINTMENT, {"appointment": appointment_id,
                                                     "limit": limit, "offset": offset})).all()
         return await self._with_benefits(db, rows)
+
+    # ------------------------------------------------- automatic checks (AutoCheckRepository)
+    async def auto_appointment(self, db: AsyncSession, appointment_id: UUID
+                               ) -> AutoAppointment | None:
+        row = (await db.execute(_AUTO_APPOINTMENT, {"id": appointment_id, "npi": NPI})
+               ).one_or_none()
+        if row is None:
+            return None
+        return AutoAppointment(id=row.id, patient_id=row.subject_patient_id, status=row.status,
+                               local_day=row.local_day, provider_npi=row.provider_npi,
+                               required=bool(row.required))
+
+    async def primary_coverage(self, db: AsyncSession, patient_id: UUID,
+                               on: date) -> UUID | None:
+        return await primary_coverage(db, patient_id, on)
+
+    async def lock_appointment_checks(self, db: AsyncSession, appointment_id: UUID) -> None:
+        await db.execute(_LOCK_APPOINTMENT, {"key": f"eligibility:{appointment_id}"})
+
+    async def existing_check(self, db: AsyncSession, appointment_id: UUID, trigger: str,
+                             encounter_id: UUID | None) -> UUID | None:
+        found: UUID | None = (await db.execute(_EXISTING, {
+            "appointment": appointment_id, "trigger": trigger, "encounter": encounter_id})
+        ).scalar_one_or_none()
+        return found
+
+    async def fresh_check(self, db: AsyncSession, coverage_id: UUID, now: datetime,
+                          since: datetime) -> bool:
+        return bool((await db.execute(_FRESH, {"coverage": coverage_id, "now": now,
+                                               "since": since})).scalar_one())
+
+    async def mark_not_sent(self, db: AsyncSession, check_id: UUID, message: str) -> None:
+        await db.execute(_NOT_SENT, {"id": check_id, "code": NOT_SENT, "message": message})
+
+    async def booked_on(self, db: AsyncSession, day: date) -> list[UUID]:
+        lo = datetime.combine(day - timedelta(days=1), time(), UTC)
+        hi = datetime.combine(day + timedelta(days=2), time(), UTC)
+        return list((await db.execute(_BOOKED_ON, {"day": day, "lo": lo, "hi": hi})).scalars())
