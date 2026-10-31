@@ -18,12 +18,14 @@ import type {
   BadRequestResponse,
   ConflictResponse,
   CreateUploadUrlHeaders,
+  DownloadFileContentParams,
   DownloadLink,
   ForbiddenResponse,
   Id,
   InternalErrorResponse,
   NotFoundResponse,
   Operation,
+  ServiceUnavailableResponse,
   TooManyRequestsResponse,
   UnauthorizedResponse,
   UnprocessableContentResponse,
@@ -252,12 +254,99 @@ export const getCreateDownloadUrlUrl = (fileId: Id,) => {
 }
 
 /**
- * A short-lived, audited link to a clean file (inventory #150; API_STANDARDS §15). Besides `files:read`, the caller needs the read permission mapped to the file's purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient's files need a break-glass grant or care-team membership. A purpose with no mapping is denied. Audited as an export.
+ * A one-time, audited link to a clean file (inventory #150; API_STANDARDS §15; D105). Besides `files:read`, the caller needs the read permission mapped to the file's purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient's files need a break-glass grant or care-team membership. A purpose with no mapping is denied. The link points at `GET /files/{fileId}/content` on our own API, with a token bound to this user and this file, valid for about one minute and accepted once. Files are encrypted at rest, so the link never points into the object store. Audited as an export, and the download itself is audited again. Naming the file's patient on this audit row comes with the file service reporting it (#145; Still open Q34, required before the pilot).
  * @summary Get a download link
  */
 export const createDownloadUrl = async (fileId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<createDownloadUrlResponse> => {
 
   return apiFetch<createDownloadUrlResponse>(getCreateDownloadUrlUrl(fileId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type downloadFileContentResponse200 = {
+  data: Blob
+  status: 200
+}
+
+export type downloadFileContentResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type downloadFileContentResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type downloadFileContentResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type downloadFileContentResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type downloadFileContentResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type downloadFileContentResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type downloadFileContentResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type downloadFileContentResponse503 = {
+  data: ServiceUnavailableResponse
+  status: 503
+}
+
+export type downloadFileContentResponseSuccess = (downloadFileContentResponse200) & {
+  headers: Headers;
+};
+export type downloadFileContentResponseError = (downloadFileContentResponse401 | downloadFileContentResponse403 | downloadFileContentResponse404 | downloadFileContentResponse409 | downloadFileContentResponse422 | downloadFileContentResponse429 | downloadFileContentResponse500 | downloadFileContentResponse503) & {
+  headers: Headers;
+};
+
+export type downloadFileContentResponse = (downloadFileContentResponseSuccess | downloadFileContentResponseError)
+
+export const getDownloadFileContentUrl = (fileId: Id,
+    params: DownloadFileContentParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/files/${fileId}/content?${stringifiedParams}` : `/files/${fileId}/content`
+}
+
+/**
+ * Where a download link points (D105): our own API, never the object store, because files are encrypted at rest. The token was issued, with the permission and chart checks, by the operation that gave out the link (`GET /files/{fileId}/download-url`, or a module's own link such as the after-visit summary's). **The token is not enough on its own:** the request must also carry the session of the same user it was issued to (the browser sends the session cookie with the link). Core checks that the token is for this user and this file, has not expired (about one minute) and has not been used: it is accepted once. **Every invalid, expired, reused or other-user token gets the same `404`**, so a token can't be probed; the screen asks for a new link. The API then decrypts the file as it streams it, with `Content-Disposition: attachment`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. **The query string is never logged on this route**, neither by nginx nor by the API, and the token never appears in events or audit rows. Every download is audited as an export, naming the file's patient (`x-audit` `patient: result`; none for an unattached upload). The token is the one query parameter the credentials-in-URL lint rule allows, and only on this operation (CONTRACT_GOVERNANCE §5).
+ * @summary Download a file
+ */
+export const downloadFileContent = async (fileId: Id,
+    params: DownloadFileContentParams, options?: Parameters<typeof apiFetch>[1]): Promise<downloadFileContentResponse> => {
+
+  return apiFetch<downloadFileContentResponse>(getDownloadFileContentUrl(fileId,params),
   {
     ...options,
     method: 'GET'
