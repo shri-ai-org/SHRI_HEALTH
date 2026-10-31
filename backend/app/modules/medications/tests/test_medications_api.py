@@ -205,9 +205,9 @@ def test_create_permission_denied(as_user: Client, world: World) -> None:
     for user in ("ma", "fd", "none"):
         response = as_user(user).post(f"{API}/prescriptions", json=_draft_body(world, patient))
         assert response.status_code == 403 and _code(response) == "permission-denied", user
-    # RN holds prescriptions:create but isn't a practitioner, so can't be the requester.
+    # RN holds prescriptions:create but isn't MD or APP (D110).
     response = as_user("rn").post(f"{API}/prescriptions", json=_draft_body(world, patient))
-    assert response.status_code == 403
+    assert response.status_code == 403 and _code(response) == "permission-denied"
 
 
 def test_create_validation_errors(as_user: Client, world: World) -> None:
@@ -469,3 +469,57 @@ def test_a_facility_not_the_users(as_user: Client, world: World) -> None:
     world.put(world.row(UUID(rx["id"])).__class__(**{
         **world.row(UUID(rx["id"])).__dict__, "facility_id": FACILITY_B}))
     assert as_user("md").get(f"{API}/prescriptions/{rx['id']}").status_code == 404
+
+
+# ------------------------------------------------------------- D110: MD and APP prescribe
+def test_rn_is_refused_on_every_prescribing_operation(as_user: Client, world: World) -> None:
+    """D110 (for the clinical advisors to confirm, Q21): RN holds each permission in core's
+    catalogue but is refused with 403 permission-denied, even when linked to a practitioner, so
+    the role rule, not the practitioner link, refuses; nothing is read for the audit or written."""
+    world.practitioners[DEV_USERS["rn"].id] = DEV_USERS["rn"].id
+    rx, alert_id = _allergic_draft(as_user, world)
+    before = (dict(world.prescriptions), list(world.audited), list(world.sent))
+    url = f"{API}/prescriptions/{rx['id']}"
+    rn = as_user("rn")
+    refused = {
+        "createPrescription": rn.post(f"{API}/prescriptions",
+                                      json=_draft_body(world, world.patient(CLINIC_A))),
+        "updatePrescription": rn.patch(url, json={"refills": 1}, headers={"If-Match": '"1"'}),
+        "checkPrescriptionSafety": rn.post(f"{url}/safety-check"),
+        "overrideAlert": rn.post(f"{API}/alerts/{alert_id}/override",
+                                 json={"reason": "Tolerated it."}),
+        "signAndSendPrescription": _sign(as_user, rx["id"], '"1"', user="rn"),
+        "markPrescriptionEnteredInError": rn.post(f"{url}/entered-in-error",
+                                                  json={"reason": "Wrong drug."}),
+    }
+    for operation, response in refused.items():
+        assert response.status_code == 403, (operation, response.text)
+        assert _code(response) == "permission-denied", operation
+    assert (dict(world.prescriptions), list(world.audited), list(world.sent)) == before
+    assert as_user("rn").get(url).status_code == 200  # reading stays open to RN
+
+
+def test_md_and_app_both_prescribe(as_user: Client, world: World) -> None:
+    """D110: APP drafts, edits, checks, overrides, signs and sends, and marks a draft wrong,
+    as MD does (MD's own runs are the tests above)."""
+    world.ingredients |= {"308191": frozenset({"723"})}
+    patient = world.patient(CLINIC_A)
+    world.allergy(patient, "723", "amoxicillin")
+    app = as_user("app")
+    created = app.post(f"{API}/prescriptions", json=_draft_body(world, patient))
+    assert created.status_code == 201, created.text
+    url = f"{API}/prescriptions/{created.json()['id']}"
+    edited = app.patch(url, json={"refills": 1}, headers={"If-Match": '"1"'})
+    assert edited.status_code == 200, edited.text
+    checked = app.post(f"{url}/safety-check")
+    assert checked.status_code == 200, checked.text
+    [alert] = checked.json()["alerts"]
+    overridden = app.post(f"{API}/alerts/{alert['id']}/override",
+                          json={"reason": "Tolerated it."})
+    assert overridden.status_code == 200, overridden.text
+    signed = _sign(as_user, created.json()["id"], '"2"', user="app")
+    assert signed.status_code == 200, signed.text
+    other = app.post(f"{API}/prescriptions", json=_draft_body(world, patient))
+    wrong = app.post(f"{API}/prescriptions/{other.json()['id']}/entered-in-error",
+                     json={"reason": "Wrong drug."})
+    assert wrong.status_code == 200 and wrong.json()["status"] == "entered-in-error"
