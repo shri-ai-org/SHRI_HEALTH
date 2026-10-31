@@ -138,3 +138,9 @@ async def list_patient_vitals(
         date_to=date_to, include_entered_in_error=include_entered_in_error, limit=limit,
         cursor=cursor)
     return schemas.VitalList(items=items, next_cursor=next_cursor)
+
+
+# Diagnoses live in their own files (diagnoses_api.py).
+from . import diagnoses_api  # noqa: E402
+
+router.include_router(diagnoses_api.router)

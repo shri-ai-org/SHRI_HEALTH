@@ -22,5 +22,14 @@ PENDING = frozenset({
 })
 
 
+# The doctor's part of the visit (demo step 8, IMPL_BATCH1_PLAN §8.3 PR-9).
+NOTES = frozenset({
+    "addEncounterDiagnosis", "removeEncounterDiagnosis", "markDiagnosisEnteredInError",
+})
+# markDiagnosisEnteredInError keeps the rank link, and app.db.fhir_store has no helper for a
+# Condition's entered-in-error (note for Anand).
+NOTES_PENDING = frozenset({"markDiagnosisEnteredInError"})
+
+
 def test_rooming_operations_are_built_or_pending() -> None:
-    assert progress_problems(MODULE, ROOMING, PENDING) == []
+    assert progress_problems(MODULE, ROOMING | NOTES, PENDING | NOTES_PENDING) == []
