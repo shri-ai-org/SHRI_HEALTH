@@ -1,11 +1,13 @@
 """The follow-up request (D98) with the in-memory fakes (fakes.py): setFollowUpRequest,
 withdrawFollowUpRequest and declineFollowUpRequest, each with a success, a permission-denied and
-a validation-error case, plus their rules. declineFollowUpRequest waits for core's T50
+a validation-error case, plus their rules; the decline on a restricted chart needs no
+break-glass and leaves out the note (D107). declineFollowUpRequest waits for core's T50
 permission; the test app grants it as T50 proposes (pending_permissions.py). Synthetic data
 only."""
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
@@ -160,14 +162,49 @@ def test_decline_refusals(as_user: Client, world: World) -> None:
     assert as_user("fd").post(path, json={**body, "x": 1}, headers=_tag(1)).status_code == 422
     stale = as_user("fd").post(path, json=body, headers=_tag(3))
     assert stale.status_code == 412 and stale.headers["ETag"] == '"1"'
-    world.restricted.add(world.encounters[encounter].patient_id)
-    restricted = as_user("fd").post(path, json=body, headers=_tag(1))
-    assert restricted.status_code == 403 and restricted.json()["code"] == "break-glass-required"
+    weak = as_user("fd").post(path, json=body, headers={"If-Match": 'W/"1"'})
+    assert weak.status_code == 412  # a weak or malformed tag never matches
+    elsewhere = world.add_encounter(status="in-progress", facility_id=uuid.uuid4())
+    world.ask_follow_up(elsewhere, by=MD)
+    assert as_user("fd").post(f"{API}/encounters/{elsewhere}/follow-up/decline", json=body,
+                              headers=_tag(1)).status_code == 404  # not the user's facility
+    assert world.encounters[elsewhere].follow_up.status == "open"  # type: ignore[union-attr]
     booked = world.add_encounter(status="in-progress")
     world.ask_follow_up(booked, by=MD, status="booked")
     refused = as_user("fd").post(f"{API}/encounters/{booked}/follow-up/decline", json=body,
                                  headers=_tag(1))
     assert refused.status_code == 409 and refused.json()["currentState"] == "booked"
+
+
+def test_a_restricted_chart_declines_without_break_glass(as_user: Client, world: World) -> None:
+    """D107: the front desk declines on a restricted chart without a grant; the decline is
+    audited naming the patient, the new ETag comes back, and the note is left out."""
+    encounter = world.add_encounter(status="in-progress")
+    patient = world.encounters[encounter].patient_id
+    world.restricted.add(patient)
+    world.ask_follow_up(encounter, by=MD)
+    done = as_user("fd").post(f"{API}/encounters/{encounter}/follow-up/decline",
+                              json={"reason": "Will call."}, headers=_tag(1))
+    assert done.status_code == 200, done.text
+    body = done.json()
+    assert body["status"] == "declined" and body["declinedReason"] == "Will call."
+    assert "note" not in body and body["interval"] == {"value": 3, "unit": "month"}
+    assert done.headers["ETag"] == '"2"' and world.audited == [patient]
+    assert world.encounters[encounter].follow_up.note == (  # type: ignore[union-attr]
+        "Recheck blood pressure.")  # kept on the chart, only not shown
+
+
+def test_a_grant_or_the_care_team_still_sees_the_note(as_user: Client, world: World) -> None:
+    for user in ("fd", "adm"):
+        encounter = world.add_encounter(status="in-progress")
+        patient = world.encounters[encounter].patient_id
+        world.restricted.add(patient)
+        world.may_open.add((DEV_USERS[user].id, patient))
+        world.ask_follow_up(encounter, by=MD)
+        done = as_user(user).post(f"{API}/encounters/{encounter}/follow-up/decline",
+                                  json={"reason": "Will call."}, headers=_tag(1))
+        assert done.status_code == 200, done.text
+        assert done.json()["note"] == "Recheck blood pressure."
 
 
 # ----------------------------------------------------------------------- the interval (D40)

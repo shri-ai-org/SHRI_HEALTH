@@ -51,6 +51,7 @@ def fake_app(world: World, monkeypatch: pytest.MonkeyPatch) -> Iterator[FastAPI]
     application.dependency_overrides[api.repository] = lambda: FakeRepository(world)
     application.dependency_overrides[api.fhir_store] = lambda: FakeStore(world)
     application.dependency_overrides[api.chart_check] = lambda: world.chart_check
+    application.dependency_overrides[api.chart_openable] = lambda: world.chart_open
     application.dependency_overrides[api.audit_patients] = lambda: world.audit
     application.dependency_overrides[api.facility_rooms] = lambda: world.rooms
     application.dependency_overrides[api.summary_operations] = lambda: FakeOperations(world)
