@@ -33,5 +33,21 @@ PENDING = frozenset({
 })
 
 
-def test_batch_1_operations_are_built_or_pending() -> None:
-    assert progress_problems(MODULE, BATCH_1, PENDING) == []
+# B8a (D89), x-owner Vimal: the patient portal's scheduling operations. Served by
+# portal_api.py as they are built.
+PORTAL_B8A = frozenset({
+    "listPortalAppointments",
+    "getPortalAppointment",
+    "bookPortalAppointment",
+    "cancelPortalAppointment",
+    "reschedulePortalAppointment",
+    "listPortalBookingFacilities",
+    "listPortalBookingAppointmentTypes",
+    "listPortalBookingProviders",
+    "listPortalBookingSlots",
+})
+PORTAL_PENDING = PORTAL_B8A - {"listPortalAppointments", "getPortalAppointment"}
+
+
+def test_batch_1_and_portal_operations_are_built_or_pending() -> None:
+    assert progress_problems(MODULE, BATCH_1 | PORTAL_B8A, PENDING | PORTAL_PENDING) == []
