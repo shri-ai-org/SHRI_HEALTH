@@ -148,26 +148,22 @@ def _unverified_claims(id_token: str) -> dict[str, Any]:
     return claims
 
 
-class Keycloak:
-    """The staff realm's endpoints, called server to server with the confidential client."""
+class OidcClient:
+    """A realm's endpoints, called server to server with its confidential client: the staff
+    realm (Keycloak, below) and the patient realm (portal_sign_in.PortalKeycloak)."""
 
-    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
-        if not (settings.keycloak_public_url and settings.keycloak_internal_url
-                and settings.keycloak_client_secret and settings.keycloak_redirect_uri):
-            missing = settings.missing("keycloak_public_url", "keycloak_internal_url",
-                                       "keycloak_client_secret", "keycloak_redirect_uri")
-            raise ValueError(f"Keycloak sign-in is not configured: set {', '.join(missing)}")
-        if settings.session_secret is None or len(settings.session_secret.get_secret_value()) < 32:
-            raise ValueError("SESSION_SECRET (at least 32 characters) is needed for sign-in")
-        realm = f"/realms/{settings.keycloak_realm}"
-        self.issuer = settings.keycloak_public_url.rstrip("/") + realm
+    def __init__(self, *, public_url: str, internal_url: str, realm: str, client_id: str,
+                 secret: str, redirect_uri: str,
+                 transport: httpx.AsyncBaseTransport | None = None) -> None:
+        path = f"/realms/{realm}"
+        self.issuer = public_url.rstrip("/") + path
         self.authorize_url = f"{self.issuer}/protocol/openid-connect/auth"
-        internal = settings.keycloak_internal_url.rstrip("/") + realm + "/protocol/openid-connect"
+        internal = internal_url.rstrip("/") + path + "/protocol/openid-connect"
         self._token_url = f"{internal}/token"
         self._logout_url = f"{internal}/logout"
-        self.client_id = settings.keycloak_client_id
-        self.redirect_uri = settings.keycloak_redirect_uri
-        self._secret = settings.keycloak_client_secret.get_secret_value()
+        self.client_id = client_id
+        self.redirect_uri = redirect_uri
+        self._secret = secret
         self._client = httpx.AsyncClient(timeout=TIMEOUT_SECONDS, transport=transport)
 
     def login_redirect(self, state: LoginState) -> str:
@@ -239,6 +235,24 @@ class Keycloak:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+
+class Keycloak(OidcClient):
+    """The staff realm's endpoints, called server to server with the confidential client."""
+
+    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
+        if not (settings.keycloak_public_url and settings.keycloak_internal_url
+                and settings.keycloak_client_secret and settings.keycloak_redirect_uri):
+            missing = settings.missing("keycloak_public_url", "keycloak_internal_url",
+                                       "keycloak_client_secret", "keycloak_redirect_uri")
+            raise ValueError(f"Keycloak sign-in is not configured: set {', '.join(missing)}")
+        if settings.session_secret is None or len(settings.session_secret.get_secret_value()) < 32:
+            raise ValueError("SESSION_SECRET (at least 32 characters) is needed for sign-in")
+        super().__init__(public_url=settings.keycloak_public_url,
+                         internal_url=settings.keycloak_internal_url,
+                         realm=settings.keycloak_realm, client_id=settings.keycloak_client_id,
+                         secret=settings.keycloak_client_secret.get_secret_value(),
+                         redirect_uri=settings.keycloak_redirect_uri, transport=transport)
 
 
 def _error_code(response: httpx.Response) -> str:

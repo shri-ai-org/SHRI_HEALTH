@@ -11,3 +11,8 @@ ac6db91bbdfc85dd8ef4dc2f635cd22c17b34cb5:infra/keycloak/Dockerfile:generic-api-k
 # A made-up download-token shape in a log-filter test (base64 of {"f":"synthetic"}), not a
 # secret; replaced by a value made at run time in the next commit on the same branch.
 4e01775e341260bde889e81a8b3137cb0dc236f2:backend/app/core/tests/test_access_log.py:generic-api-key:10
+
+# The contract's sample invitation code (K7Q2-9MZD-4TXH, normalized) in a test of the code's
+# HMAC, not a secret; replaced by a code made at run time in the next commit on the same branch.
+a0bcf4ac3e8db974875b72d40c7338cfef9081f5:backend/app/core/tests/test_portal_sign_in.py:generic-api-key:70
+a0bcf4ac3e8db974875b72d40c7338cfef9081f5:backend/app/core/tests/test_portal_sign_in.py:generic-api-key:71
