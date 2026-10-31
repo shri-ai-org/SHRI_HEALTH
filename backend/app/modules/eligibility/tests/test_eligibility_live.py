@@ -410,9 +410,10 @@ def test_a_dead_lettered_270_times_out_and_a_late_answer_is_still_filed(
 
 
 def test_a_check_in_check_is_sendable(client: Any, practice: Practice) -> None:  # noqa: F811
-    """Check-in records its check without sending it (record_check); its 270 can still be
-    built, with the appointment's provider's NPI looked up at send time."""
+    """Check-in queues its check (D15); its 270 is built at send time, with the appointment's
+    provider's NPI stored with the check."""
     _insured(practice)
+    _clearinghouse(practice)
     appointment = _today_appointment(practice)
     done = client("fd").post(f"{API}/appointments/{appointment}/check-in", json={},
                              headers=_key())
