@@ -17,6 +17,7 @@ This folder is the **single source of truth** for every endpoint of the Shri Hea
 | `tests/lint-fixtures/` | One deliberately broken file per lint rule, plus a compliant sample in `valid/` |
 | `scripts/` | Layout check, mock launcher, sample builder, breaking-change check, oasdiff installer, role-matrix reader (`role_matrix.py`), YAML load and save (`yaml-io.mjs`), markdown link check (`check-links.mjs`) |
 | `docs/` | The rules: API_STANDARDS, SECURITY_MODEL, DATA_OWNERSHIP, EXTENSIONS, and the rest |
+| `partners/` | JSON Schemas of the messages we exchange with partners through the outbox and `/hooks/*` (the clearinghouse's 270 and 271), with synthetic examples ([partners/README.md](partners/README.md)) |
 
 ## First-time setup
 
