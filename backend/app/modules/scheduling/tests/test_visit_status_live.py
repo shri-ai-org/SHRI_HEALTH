@@ -84,8 +84,10 @@ def test_rooming_triages_the_encounter_and_shows_on_the_board(client: Any,
         "WHERE encounter_id = :e", e=encounter)] == [(practice.room, "active")]
     board = _board(client, practice)
     assert [(b["visitStatus"], b["roomName"]) for b in board] == [("roomed", "Exam 1")]
+    # Only the visit-step events: check-in publishes its own (appointment.checked-in, live board).
     events = _sql(practice, "SELECT type FROM admin.event_log WHERE subject IN (:a, :e) "
-                  "ORDER BY type", a=f"appointment/{appointment}", e=f"encounter/{encounter}")
+                  "AND type LIKE '%.status-changed' ORDER BY type",
+                  a=f"appointment/{appointment}", e=f"encounter/{encounter}")
     assert [r[0] for r in events] == ["appointment.status-changed", "encounter.status-changed"]
     audit = _sql(practice, "SELECT count(*) FROM audit.audit_event WHERE entity_id = :a "
                  "AND patient_id = :p AND action = 'update'", a=appointment,
