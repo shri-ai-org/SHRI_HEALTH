@@ -15,6 +15,11 @@ const IN_CLINIC = new Set(['arrived', 'checked-in', 'roomed', 'with-provider'])
 
 export const roomingPath = (encounterId: string) => `/visits/${encounterId}/rooming`
 
+/** Roomed or with the provider: the clinician's visit screen (diagnoses and the note) applies. */
+const IN_ROOM = new Set(['roomed', 'with-provider'])
+
+export const visitPath = (encounterId: string) => `/visits/${encounterId}`
+
 /**
  * The clinical team's day (demo step 7): today's patients at one facility from the status board's
  * staff view (D60), with each visit's step, how long the patient has waited, the room, and the way
@@ -88,13 +93,24 @@ export function TodayPage() {
       header: 'Action',
       render: (r) =>
         r.encounterId && r.visitStatus && IN_CLINIC.has(r.visitStatus) ? (
-          <Link
-            to={roomingPath(r.encounterId)}
-            className="font-medium text-primary-700 underline-offset-2 hover:underline"
-            aria-label={`${r.visitStatus === 'checked-in' || r.visitStatus === 'arrived' ? 'Room' : 'Open rooming for'} ${r.patient?.displayName ?? r.initials}`}
-          >
-            {r.visitStatus === 'checked-in' || r.visitStatus === 'arrived' ? 'Room' : 'Open'}
-          </Link>
+          <span className="flex flex-wrap gap-3">
+            <Link
+              to={roomingPath(r.encounterId)}
+              className="font-medium text-primary-700 underline-offset-2 hover:underline"
+              aria-label={`${r.visitStatus === 'checked-in' || r.visitStatus === 'arrived' ? 'Room' : 'Open rooming for'} ${r.patient?.displayName ?? r.initials}`}
+            >
+              {r.visitStatus === 'checked-in' || r.visitStatus === 'arrived' ? 'Room' : 'Open'}
+            </Link>
+            {IN_ROOM.has(r.visitStatus) ? (
+              <Link
+                to={visitPath(r.encounterId)}
+                className="font-medium text-primary-700 underline-offset-2 hover:underline"
+                aria-label={`Open the visit for ${r.patient?.displayName ?? r.initials}`}
+              >
+                Visit
+              </Link>
+            ) : null}
+          </span>
         ) : null,
     },
   ]

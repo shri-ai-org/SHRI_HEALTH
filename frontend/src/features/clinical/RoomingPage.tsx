@@ -30,6 +30,7 @@ import {
 import { DrugPicker, drugConcept, NO_DRUG, type DrugChoice } from './DrugPicker'
 import { MedicationsSection } from './MedicationsSection'
 import { catchProblem, Panel } from './parts'
+import { visitPath } from './TodayPage'
 import { bmi, EMPTY_VITALS, INTERPRETATION, SINGLE_VITALS, toVitalEntries, VITAL_LABEL, type VitalsErrors, type VitalsForm } from './vitals'
 
 /** SNOMED CT "No known allergy" (716186003), the statement the contract names for it. */
@@ -113,7 +114,12 @@ export function RoomingPage() {
 
   return (
     <section aria-labelledby="rooming-title" className="space-y-6">
-      {back}
+      <div className="flex flex-wrap items-center gap-4">
+        {back}
+        <Link to={visitPath(encounter.id)} className="text-sm font-medium text-primary-700 hover:underline">
+          Diagnoses and note
+        </Link>
+      </div>
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h1 id="rooming-title" className="text-2xl font-semibold text-ink">
           Rooming: {name}

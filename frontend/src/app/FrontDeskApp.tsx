@@ -8,6 +8,7 @@ import { RegisterPatientPage } from '../features/patients/RegisterPatientPage'
 import { RegisterPrefillProvider } from '../features/patients/registerPrefill'
 import { RoomingPage } from '../features/clinical/RoomingPage'
 import { TodayPage } from '../features/clinical/TodayPage'
+import { VisitPage } from '../features/clinical/VisitPage'
 import { SchedulePage } from '../features/scheduling/SchedulePage'
 import { DesignSystemPreview } from './DesignSystemPreview'
 
@@ -66,6 +67,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <Navigate to="/patients/search" replace /> },
       { path: 'today', element: <TodayPage /> },
+      { path: 'visits/:encounterId', element: <VisitPage /> },
       { path: 'visits/:encounterId/rooming', element: <RoomingPage /> },
       { path: 'schedule', element: <SchedulePage /> },
       { path: 'patients/search', element: <PatientSearchPage /> },

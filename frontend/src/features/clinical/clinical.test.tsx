@@ -90,6 +90,9 @@ describe('TodayPage', () => {
     expect(within(rows[2]!).getByRole('link', { name: 'Room Testperson2, Ana' })).toHaveAttribute('href', `/visits/${encounterId}/rooming`)
     expect(rows[3]).toHaveTextContent('Exam 2')
     expect(within(rows[3]!).getByRole('link', { name: 'Open rooming for Testperson3, Ana' })).toBeInTheDocument()
+    // Once roomed, the clinician's visit screen; not before.
+    expect(within(rows[3]!).getByRole('link', { name: 'Open the visit for Testperson3, Ana' })).toHaveAttribute('href', '/visits/00000000-0000-4000-8000-0000000007e3')
+    expect(within(rows[2]!).queryByRole('link', { name: /Open the visit/ })).not.toBeInTheDocument()
     expect(within(rows[4]!).getByText('Restricted')).toBeInTheDocument()
     expect(await axeViolations()).toEqual([])
   })
