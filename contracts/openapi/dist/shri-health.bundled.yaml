@@ -9839,7 +9839,7 @@ paths:
     get:
       operationId: getAfterVisitSummaryDownloadUrl
       summary: Get the latest after-visit summary to print
-      description: A short-lived download link to the encounter's latest after-visit summary, generated from a signed note (D98), so the front desk can print it at check-out without generating one (`after-visit-summaries:create` stays with MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists.
+      description: A short-lived download link to the encounter's latest after-visit summary, generated from a signed note (D98), so the front desk can print it at check-out without generating one (`after-visit-summaries:create` stays with MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists. A restricted chart gets the normal chart check (D37; the front-desk exceptions of D107 don't cover it, D109). A user without a break-glass grant who is not on the care team, the front desk included, gets `403 break-glass-required`; care-team members, and users with a grant, read it without break-glass.
       tags:
         - encounters
       x-owner: vimal
@@ -9881,7 +9881,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `after-visit-summaries:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+          description: 403. `permission-denied` (the role lacks `after-visit-summaries:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team, the front desk included; care-team members, and users with a grant, read it without break-glass (D37, D109)).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such encounter, or no after-visit summary has been generated for it yet).
@@ -16650,7 +16650,7 @@ paths:
     post:
       operationId: createPrescription
       summary: Start a prescription
-      description: 'Starts a draft (inventory #120). Drug search is `GET /codes?system=rxnorm`, over RxNorm Current Prescribable Content (D97).'
+      description: 'Starts a draft (inventory #120). Drug search is `GET /codes?system=rxnorm`, over RxNorm Current Prescribable Content (D97). Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:create` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -16748,7 +16748,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `prescriptions:create`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:create`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such patient, encounter or pharmacy in this clinic or the user's facilities).
@@ -16899,7 +16899,7 @@ paths:
     patch:
       operationId: updatePrescription
       summary: Edit a draft prescription
-      description: 'Changes a draft (inventory #122). A changed draft needs a new safety check before signing. A signed prescription is locked.'
+      description: 'Changes a draft (inventory #122). A changed draft needs a new safety check before signing. A signed prescription is locked. Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:update` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -16983,7 +16983,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `prescriptions:update`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:update`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
@@ -17016,7 +17016,7 @@ paths:
     post:
       operationId: markPrescriptionEnteredInError
       summary: Mark a draft prescription wrong
-      description: 'A draft written by mistake (inventory #227): entered-in-error with a reason and its Provenance; nothing is deleted (D14). A signed prescription is cancelled instead (later).'
+      description: 'A draft written by mistake (inventory #227): entered-in-error with a reason and its Provenance; nothing is deleted (D14). A signed prescription is cancelled instead (later). Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:entered-in-error` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -17094,7 +17094,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `prescriptions:entered-in-error`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:entered-in-error`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
@@ -17121,7 +17121,7 @@ paths:
     post:
       operationId: checkPrescriptionSafety
       summary: Check a draft for allergy and duplicate alerts
-      description: 'Runs the safety check on a draft (inventory #123; D97): an `allergy` alert for an active allergy to an RxNorm ingredient of the drug, a `duplicate-medication` alert for an active medication with the same ingredient. The alerts are stored on the draft. Both alerts are fixed rules in the medications service, each with its tests; no AI model produces, ranks or suppresses an alert (D99). It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`.'
+      description: 'Runs the safety check on a draft (inventory #123; D97): an `allergy` alert for an active allergy to an RxNorm ingredient of the drug, a `duplicate-medication` alert for an active medication with the same ingredient. The alerts are stored on the draft. Both alerts are fixed rules in the medications service, each with its tests; no AI model produces, ranks or suppresses an alert (D99). It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`. Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:safety-check` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -17187,7 +17187,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `prescriptions:safety-check`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:safety-check`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
@@ -17214,7 +17214,7 @@ paths:
     post:
       operationId: overrideAlert
       summary: Override a safety alert
-      description: 'Records why the prescriber goes ahead despite an alert (inventory #124; D97). Required before signing for a `high` alert; audited. It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`.'
+      description: 'Records why the prescriber goes ahead despite an alert (inventory #124; D97). Required before signing for a `high` alert; audited. It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`. Only MD and APP may do this in the MVP; RN may not. A user who holds `alerts:override` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -17277,7 +17277,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `alerts:override`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `alerts:override`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such alert in this clinic or the user's facilities).
@@ -17304,7 +17304,7 @@ paths:
     post:
       operationId: signAndSendPrescription
       summary: Sign a prescription and send it to the pharmacy
-      description: 'Signs exactly the version read (`If-Match`), locks it, writes its Provenance, adds it to the medication list and queues NewRx for the pharmacy through the outbox, all in one transaction (inventory #125; D8, D25, D97). Refused while the latest safety check is missing or older than the draft, or a `high` alert has no override. Transmission then moves through `sent` to `accepted` or `rejected` (here a simulated pharmacy). Sending always goes through the outbox (`enqueue(db, "erx", "NewRx", …)`), never straight from the request: for the demo the outbox delivers to the simulated pharmacy, and its answer comes back through `/hooks/erx` (D99).'
+      description: 'Signs exactly the version read (`If-Match`), locks it, writes its Provenance, adds it to the medication list and queues NewRx for the pharmacy through the outbox, all in one transaction (inventory #125; D8, D25, D97). Refused while the latest safety check is missing or older than the draft, or a `high` alert has no override. Transmission then moves through `sent` to `accepted` or `rejected` (here a simulated pharmacy). Sending always goes through the outbox (`enqueue(db, "erx", "NewRx", …)`), never straight from the request: for the demo the outbox delivers to the simulated pharmacy, and its answer comes back through `/hooks/erx` (D99). Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:sign-and-send` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -17392,7 +17392,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `prescriptions:sign-and-send`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:sign-and-send`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
