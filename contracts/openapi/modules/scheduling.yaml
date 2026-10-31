@@ -3,9 +3,10 @@
 # Scope: Slots, appointments, check-in, visit status, status board (`backend/app/modules/scheduling/`)
 # Stage 4 batch 1. Shapes follow ENDPOINT_INVENTORY rows #50-58 and DATA_OWNERSHIP §5.1 (appointment states).
 # Instants are UTC; each response that shows times also carries the facility's IANA `timeZone` so screens display
-# facility time (D40). Scheduling and front-desk endpoints work on restricted charts without break-glass, showing name
-# and appointment only (SECURITY_MODEL §5.2): for a restricted patient, a user without a break-glass grant who is not on
-# the care team gets no `reasonForVisit`, `comment`, `patientInstruction` or `cancellation.reasonText`.
+# facility time (D40). Scheduling and front-desk endpoints (booking, check-in, check-out; D107) work on restricted charts
+# without break-glass, showing name and appointment only (SECURITY_MODEL §5.2): for a restricted patient, a user without
+# a break-glass grant who is not on the care team gets no `reasonForVisit`, `comment`, `patientInstruction` or
+# `cancellation.reasonText`.
 # Facility scope (SECURITY_MODEL §5.1): every `facilityId`, `providerId`, `locationId` and `roomLocationId` in a request must
 # belong to a facility the user is assigned to, and the provider and room to that facility; otherwise `404 not-found`
 # (facility) or `422` with field code `invalid-reference`.
@@ -415,6 +416,7 @@ paths:
                     updatedAt: '2026-11-03T15:40:00Z'
                     followUp:
                       encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                      version: '"4"'
                       interval:
                         value: 3
                         unit: month
@@ -865,7 +867,7 @@ paths:
     post:
       operationId: checkOutAppointment
       summary: Check the patient out
-      description: "Ends the visit flow at the desk (D98): the visit step becomes `checked-out` (kept with its time in `visit_flow_event`) and the appointment `fulfilled`. Front desk and ADM only (`appointments:check-out`). Refused with `409 invalid-state-transition` while something must be settled first; `errors` names each one, so the screen can point to the step: `/followUp` (the visit's follow-up request is still `open`: book it or decline it) and `/status` (the patient is not checked in, or is already checked out; the problem carries `currentState`). An unpaid copay and an unsigned note never block check-out: the note is often signed later, and balances are P1. The encounter is closed separately (`POST /encounters/{encounterId}/close`)."
+      description: "Ends the visit flow at the desk (D98): the visit step becomes `checked-out` (kept with its time in `visit_flow_event`) and the appointment `fulfilled`. Front desk and ADM only (`appointments:check-out`). Refused with `409 invalid-state-transition` while something must be settled first; `errors` names each one, so the screen can point to the step: `/followUp` (the visit's follow-up request is still `open`: book it or decline it) and `/status` (check-out needs the visit checked in or later, so it is refused before check-in and after check-out; the problem carries `currentState`). An unpaid copay and an unsigned note never block check-out: the note is often signed later, and balances are P1. The encounter is closed separately (`POST /encounters/{encounterId}/close`). A restricted chart needs no break-glass here (D107): the check-out is audited naming the patient, and the response carries no clinical text (a restricted patient's follow-up shows only its interval and status)."
       tags:
       - scheduling
       x-owner: vimal
@@ -929,6 +931,7 @@ paths:
                     updatedAt: 2026-11-03T15:52:00Z
                     followUp:
                       encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                      version: '"4"'
                       interval:
                         value: 3
                         unit: month
@@ -947,15 +950,14 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         "403":
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `appointments:check-out`); `break-glass-required` (the patient's
-            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
-            (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `appointments:check-out`); `csrf-check-failed` (missing or
+            wrong CSRF header or Origin). A restricted chart needs no break-glass here (D107).
         "404":
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such appointment).
         "409":
           $ref: ../components/responses/Conflict.yaml
-          description: "409. `invalid-state-transition` (`errors` names what must be settled first: `/followUp`, an open follow-up request; `/status`, not checked in or already checked out, with `currentState`); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running)."
+          description: "409. `invalid-state-transition` (`errors` names what must be settled first: `/followUp`, an open follow-up request; `/status`, not yet checked in (check-out needs the visit checked in or later) or already checked out, with `currentState`); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running)."
         "422":
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was
@@ -1060,6 +1062,7 @@ paths:
                       encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
                       followUp:
                         encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                        version: '"4"'
                         interval:
                           value: 3
                           unit: month
@@ -2458,12 +2461,14 @@ components:
           x-phi: identifier
     FollowUpSummary:
       description: 'The visit''s follow-up request as the front desk needs it at check-out (D98): no clinical note beyond
-        the request itself.'
+        the request itself. For a restricted patient seen by a user without a break-glass grant who is not on the care team,
+        it carries only `encounterId`, `interval`, `status` and `version` (D107).'
       type: object
       required:
       - encounterId
       - interval
       - status
+      - version
       properties:
         encounterId:
           $ref: ../components/schemas/Id.yaml
@@ -2499,3 +2504,11 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: "Once `booked`: the revisit, so the screen can link it."
           x-phi: internal-id
+        version:
+          type: string
+          pattern: ^"[^"]{1,126}"$
+          maxLength: 128
+          description: Opaque version of the request (the encounter's `ETag`). Send it unchanged as `If-Match` to decline
+            the request (`POST /encounters/{encounterId}/follow-up/decline`), since the front desk can't read the encounter
+            (D107).
+          x-phi: none

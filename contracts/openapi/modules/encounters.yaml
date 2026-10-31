@@ -681,7 +681,7 @@ paths:
                     providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     note: Recheck blood pressure.
                     status: open
-                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedBy: d0000000-0000-4000-8000-000000000004
                     requestedAt: '2026-11-20T15:25:00Z'
         '400':
           $ref: ../components/responses/BadRequest.yaml
@@ -728,10 +728,7 @@ paths:
     post:
       operationId: declineFollowUpRequest
       summary: Record that the follow-up was not booked
-      description: At check-out, when the patient does not book the revisit (D98). Front desk and ADM only (`follow-ups:decline`);
-        the clinician who asked for it withdraws it instead (`…/follow-up/withdraw`, D67). The request becomes `declined`
-        with the reason. `If-Match` carries the encounter's `ETag`, so a decline never overwrites a request the clinician
-        just changed.
+      description: "At check-out, when the patient does not book the revisit (D98). Front desk and ADM only (`follow-ups:decline`); the clinician who asked for it withdraws it instead (`…/follow-up/withdraw`, D67). The request becomes `declined` with the reason. `If-Match` carries the follow-up summary's `version` (the encounter's `ETag`, which the front desk sees on the appointment and the staff status board), so a decline never overwrites a request the clinician just changed; the response returns the new `ETag`. A restricted chart needs no break-glass here (D107): the decline is audited naming the patient, and for a restricted patient the response leaves out `note`."
       tags:
       - encounters
       x-owner: vimal
@@ -760,6 +757,8 @@ paths:
         '200':
           description: The follow-up request, declined.
           headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
             X-Request-ID:
               $ref: ../components/headers/XRequestId.yaml
             Cache-Control:
@@ -783,7 +782,7 @@ paths:
                     providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     note: Recheck blood pressure.
                     status: declined
-                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedBy: d0000000-0000-4000-8000-000000000004
                     requestedAt: '2026-11-20T15:25:00Z'
                     declinedReason: Patient will call to book.
         '400':
@@ -794,9 +793,8 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `follow-ups:decline`); `break-glass-required` (the patient's
-            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
-            (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `follow-ups:decline`); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin). A restricted chart needs no break-glass here (D107).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
@@ -892,7 +890,7 @@ paths:
                     providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     note: Recheck blood pressure.
                     status: withdrawn
-                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedBy: d0000000-0000-4000-8000-000000000004
                     requestedAt: 2026-11-20T15:25:00Z
                     withdrawnReason: Not needed after the results came back normal.
         "400":
@@ -2659,7 +2657,7 @@ paths:
             no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: ../components/responses/NotFound.yaml
-          description: 404. `not-found` (no such after-visit summary in this clinic or the user's facilities).
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
@@ -4574,7 +4572,7 @@ components:
           x-phi: none
         requestedBy:
           $ref: ../components/schemas/Id.yaml
-          description: Who asked for it.
+          description: "Who asked for it: the user's ID (not a practitioner ID)."
           x-phi: none
         requestedAt:
           $ref: ../components/schemas/Timestamp.yaml

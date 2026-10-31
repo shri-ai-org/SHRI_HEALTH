@@ -1,9 +1,11 @@
-"""Scheduling rules: booking, reschedule, cancel, the appointment views and the status board.
+"""Scheduling rules: booking, reschedule, cancel, the appointment views, the status board, check-in
+and its undo, the visit steps and check-out.
 
-Restricted charts (SECURITY_MODEL §5.2 rule 2, agreed T16): booking, check-in and the schedule
-views work without a break-glass grant, showing the name and the appointment only. The clinical
-text (reason for visit, comment, instructions) is left out for a restricted patient the user may
-not open (D60), using core's ``chart_access``, which reads and writes nothing else.
+Restricted charts (SECURITY_MODEL §5.2 rule 2, agreed T16; D107): booking, check-in, check-out
+and the schedule views work without a break-glass grant, showing the name and the appointment
+only. The clinical text (reason for visit, comment, instructions) is left out for a restricted
+patient the user may not open (D60), and the visit's follow-up request shows only its interval,
+status and version (D107), using core's ``chart_access``, which reads and writes nothing else.
 """
 
 from __future__ import annotations
@@ -338,6 +340,25 @@ def _type_ref(row: repo.AppointmentRow) -> schemas.AppointmentTypeRef:
                                       name=row.type_name or "Appointment")
 
 
+def _follow_up(row: repo.AppointmentRow, clinical: bool) -> schemas.FollowUpSummary | None:
+    """The visit's follow-up request (D98), with the encounter's ETag as its ``version`` (D107).
+    For a restricted patient the user may not open, only its interval, status and version: the
+    note is clinical text (D60), and the type, provider and revisit are left out too (D107)."""
+    f = row.follow_up
+    if f is None:
+        return None
+    interval = schemas.FollowUpInterval(value=f.interval_value, unit=f.interval_unit)
+    version = encounters.etag(f.encounter_version)
+    if not clinical:
+        return schemas.FollowUpSummary(encounter_id=f.encounter_id, interval=interval,
+                                       status=f.status, version=version)
+    return schemas.FollowUpSummary(
+        encounter_id=f.encounter_id, interval=interval,
+        appointment_type_id=f.appointment_type_id, provider_id=f.practitioner_id,
+        note=f.note, status=f.status, booked_appointment_id=f.booked_appointment_id,
+        version=version)
+
+
 def _appointment(row: repo.AppointmentRow, people: dict[UUID, repo.PersonRef],
                  providers: dict[UUID, str], openable: set[UUID]) -> schemas.Appointment:
     clinical = row.patient_id in openable
@@ -358,7 +379,8 @@ def _appointment(row: repo.AppointmentRow, people: dict[UUID, repo.PersonRef],
         comment=row.comment if clinical else None,
         patient_instruction=row.patient_instruction if clinical else None,
         cancellation=cancellation, rescheduled_from_id=row.rescheduled_from_id,
-        encounter_id=row.encounter_id, created_at=row.created_at, updated_at=row.updated_at)
+        encounter_id=row.encounter_id, created_at=row.created_at, updated_at=row.updated_at,
+        follow_up=_follow_up(row, clinical))
 
 
 def summary(a: schemas.Appointment) -> schemas.AppointmentSummary:
@@ -426,9 +448,10 @@ async def board(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
                 limit: int, offset: int, now: datetime
                 ) -> tuple[schemas.StatusBoardList, list[UUID]]:
     """Today's flow (inventory #58). DSP always gets the shared view: initials, time, status
-    (D47). The staff view adds names, type, visit step, room and encounter, and the reason for
-    visit except for a restricted patient the user may not open (D60). Returns the patients
-    shown by name, for the audit."""
+    (D47). The staff view adds names, type, visit step, room, encounter and the visit's
+    follow-up request (D98), and the reason for visit and the follow-up's note except for a
+    restricted patient the user may not open (D60). Returns the patients shown by name, for the
+    audit."""
     fac = await facility(db, ref, user, facility_id)
     shared = view != "staff" or SHARED_ROLE in user.roles
     when = day or slots.local_day(now, fac.time_zone)
@@ -458,7 +481,7 @@ async def board(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
                 start_at=r.start, status=a.status, visit_status=a.visit_status,
                 visit_status_at=r.visit_status_at, room_name=r.room_name,
                 appointment_type=a.appointment_type, reason_for_visit=a.reason_for_visit,
-                encounter_id=r.encounter_id))
+                encounter_id=r.encounter_id, follow_up=a.follow_up))
     return schemas.StatusBoardList(items=items, next_cursor=next_cursor, date=when,
                                    time_zone=fac.time_zone, facility_name=fac.name), named
 
@@ -609,3 +632,36 @@ async def record_status(db: AsyncSession, ref: PracticeSetupReads, user: Current
     await event("appointment.status-changed", subject, {"visitStatus": body.status})
     await event("encounter.status-changed", f"encounter/{encounter_id}",
                 {"status": encounter_status})
+
+
+# ------------------------------------------------------------------------------- check-out
+async def check_out(db: AsyncSession, user: CurrentUser, appointment_id: UUID) -> None:
+    """checkOutAppointment (D98), in one transaction: the appointment becomes ``fulfilled`` and
+    the ``checked-out`` visit step is kept. Refused with ``409 invalid-state-transition`` while
+    something must be settled first, each named in ``errors``: ``/status`` (check-out needs the
+    visit checked in or later, so it is refused before check-in and after check-out; the
+    appointment stays ``checked-in`` through rooming and the provider; ``currentState``) and
+    ``/followUp`` (the visit's follow-up request is still open: book it or decline it). No
+    break-glass (D107). An unpaid copay and an unsigned note never block it (the
+    encounter closes separately, POST /encounters/{encounterId}/close)."""
+    current = await repo.get(db, appointment_id)
+    require_facility(user, current.facility_id)
+    row = await repo.locked(db, appointment_id)
+    errors = []
+    if row.status != "checked-in":
+        errors.append(field_error("body", "/status", "not-allowed-value"))
+    encounter_id = await encounters.live_for_appointment(db, appointment_id)
+    if encounter_id is not None and await repo.visit_follow_up_status(db, encounter_id) == "open":
+        errors.append(field_error("body", "/followUp", "not-allowed-value"))
+    if errors:
+        raise Conflict("Settle these before checking out", code="invalid-state-transition",
+                       currentState=row.status, errors=errors)
+    at = await repo.db_now(db)
+    await repo.set_status(db, row, "fulfilled")
+    await repo.add_visit_step(db, appointment_id, "checked-out", at)
+    subject = f"appointment/{appointment_id}"
+    data = {"status": "fulfilled", "visitStatus": "checked-out"}
+    for kind in ("appointment.status-changed", "appointment.checked-out"):
+        await publish(db, kind, subject,
+                      {**data, "encounterId": str(encounter_id)} if encounter_id else data,
+                      facility_id=current.facility_id, patient_id=current.patient_id)

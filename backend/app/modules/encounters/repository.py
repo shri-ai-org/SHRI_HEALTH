@@ -3,7 +3,8 @@
 
 Writes of resources go through Anand's helpers (``app.db.fhir_store``: ``create_encounter``,
 ``set_encounter_status``, ``record_vitals``). There is no helper yet for an encounter's reasons,
-room or participants (``db/CLAUDE.md`` lists none), so this module writes those child rows itself
+room, participants or follow-up request (``db/CLAUDE.md`` lists none), so this module writes
+those child rows itself
 with Anand's models, as ``scheduling/repository.py`` does for appointments; the touch trigger moves
 the encounter's version with them, so its ETag changes. Columns as
 ``backend/app/db/docs/contract_mapping.yaml`` maps them.
@@ -28,6 +29,7 @@ from app.core.errors import NotFound
 from app.db.models import systems
 from app.db.models.fhir.workflow import (
     Encounter,
+    EncounterFollowUp,
     EncounterLocation,
     EncounterParticipant,
     EncounterReason,
@@ -102,6 +104,52 @@ class Versioned[T]:
     version: int
 
 
+@dataclass(frozen=True)
+class FollowUpIn:
+    """What the clinician asks for (setFollowUpRequest)."""
+    interval_value: int
+    interval_unit: str
+    appointment_type_id: UUID | None
+    practitioner_id: UUID | None
+    note: str | None
+
+
+@dataclass(frozen=True)
+class FollowUpRow:
+    """The visit's follow-up request (``clinical.encounter_follow_up``, one per encounter)."""
+    id: UUID
+    status: str
+    interval_value: int
+    interval_unit: str
+    appointment_type_id: UUID | None
+    practitioner_id: UUID | None
+    note: str | None
+    requested_by: UUID
+    requested_at: datetime
+    booked_appointment_id: UUID | None
+    reason: str | None  # why it was declined or withdrawn
+
+
+@dataclass(frozen=True)
+class SignedNote:
+    """A signed note on the encounter, for the after-visit summary: who signed it and its
+    patient instructions section (LOINC 69730-0, D73), as stored (XHTML narrative)."""
+    id: UUID
+    signer_practitioner_id: UUID | None
+    signer_name: str | None
+    instructions_xhtml: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SummaryContext:
+    """What the after-visit summary needs beyond the workspace read (``get``)."""
+    patient_name: str
+    practice_name: str | None
+    facility_name: str | None
+    booked_start: datetime | None  # the revisit, once the follow-up is booked
+    user_practitioner_id: UUID | None  # who generates it (the signed-in user's practitioner)
+
+
 class EncounterRepository(Protocol):
     async def head(self, db: AsyncSession, encounter_id: UUID, *, lock: bool = False
                    ) -> EncounterHead: ...
@@ -127,6 +175,24 @@ class EncounterRepository(Protocol):
                      vital_type: str | None = None, date_from: date | None = None,
                      date_to: date | None = None, include_entered_in_error: bool = False,
                      limit: int = 50, offset: int = 0) -> list[schemas.Vital]: ...
+
+    async def follow_up(self, db: AsyncSession, encounter_id: UUID, *, lock: bool = False
+                        ) -> FollowUpRow | None: ...
+
+    async def put_follow_up(self, db: AsyncSession, encounter_id: UUID, patient_id: UUID,
+                            asked: FollowUpIn, user_id: UUID) -> None: ...
+
+    async def close_follow_up(self, db: AsyncSession, encounter_id: UUID, status: str,
+                              reason: str) -> None: ...
+
+    async def appointment_types_exist(self, db: AsyncSession, ids: Sequence[UUID]
+                                      ) -> set[UUID]: ...
+
+    async def signed_note(self, db: AsyncSession, encounter_id: UUID, note_id: UUID | None
+                          ) -> SignedNote | None: ...
+
+    async def summary_context(self, db: AsyncSession, encounter_id: UUID, user_id: UUID
+                              ) -> SummaryContext: ...
 
 
 # ------------------------------------------------------------------------------------- SQL
@@ -208,10 +274,56 @@ ORDER BY c.date DESC, c.id
 LIMIT 50
 """)
 _FOLLOW_UP = text("""
-SELECT interval_value, interval_unit, appointment_type_id, practitioner_id, note, status,
+SELECT id, interval_value, interval_unit, appointment_type_id, practitioner_id, note, status,
        requested_by_user_id, requested_at, booked_appointment_id, status_reason
 FROM clinical.encounter_follow_up WHERE encounter_id = :id
 """)
+_FOLLOW_UP_LOCKED = text("""
+SELECT id, interval_value, interval_unit, appointment_type_id, practitioner_id, note, status,
+       requested_by_user_id, requested_at, booked_appointment_id, status_reason
+FROM clinical.encounter_follow_up WHERE encounter_id = :id
+FOR UPDATE
+""")
+_APPOINTMENT_TYPES = text("SELECT id FROM admin.appointment_type WHERE id = ANY(:ids)")
+# The newest signed note (or the one asked for), with its signer: the legal attester.
+_SIGNED_NOTE = text("""
+SELECT c.id, a.party_practitioner_id AS signer_id,
+       (SELECT concat_ws(' ', array_to_string(n.prefix, ' '), array_to_string(n.given, ' '),
+                         n.family, array_to_string(n.suffix, ' '))
+          FROM clinical.human_name n WHERE n.practitioner_id = a.party_practitioner_id
+         ORDER BY (n.use = 'official') DESC, n.created_at LIMIT 1) AS signer_name
+FROM clinical.composition c
+LEFT JOIN LATERAL (SELECT x.party_practitioner_id, x.time FROM clinical.composition_attester x
+                    WHERE x.composition_id = c.id AND x.mode = 'legal'
+                    ORDER BY x.time LIMIT 1) a ON true
+WHERE c.encounter_id = :e AND c.status IN ('final', 'amended')
+  AND (CAST(:note AS uuid) IS NULL OR c.id = :note)
+ORDER BY a.time DESC NULLS LAST, c.date DESC, c.id
+LIMIT 1
+""")
+_INSTRUCTIONS = text("""
+SELECT s.text_div FROM clinical.composition_section s
+WHERE s.composition_id = :c AND s.code_system = :loinc AND s.code_code = :code
+  AND s.text_div IS NOT NULL
+ORDER BY s.sequence
+""")
+_SUMMARY_CONTEXT = text("""
+SELECT (SELECT concat_ws(' ', array_to_string(n.given, ' '), n.family)
+          FROM clinical.human_name n WHERE n.patient_id = e.subject_patient_id
+         ORDER BY (n.use = 'official') DESC, n.created_at LIMIT 1) AS patient_name,
+       o.name AS practice_name, f.name AS facility_name,
+       (SELECT ap.start FROM clinical.encounter_follow_up fu
+          JOIN clinical.appointment ap ON ap.id = fu.booked_appointment_id
+         WHERE fu.encounter_id = e.id AND fu.status = 'booked') AS booked_start,
+       (SELECT u.practitioner_id FROM admin.app_user u WHERE u.id = :user) AS user_practitioner
+FROM clinical.encounter e
+LEFT JOIN admin.facility f ON f.id = e.ext_facility_id
+LEFT JOIN clinical.location l ON l.id = f.location_id
+LEFT JOIN clinical.organization o ON o.id = l.managing_organization_id
+WHERE e.id = :e
+""")
+#: The note's patient instructions section (D73), printed on the after-visit summary.
+PATIENT_INSTRUCTIONS_LOINC = "69730-0"
 _VITALS = text("""
 SELECT o.id, o.subject_patient_id, o.encounter_id, o.code_code, o.status,
        o.effective_date_time, coalesce(o.issued, o.created_at) AS recorded_at, o.entry_source,
@@ -290,6 +402,28 @@ def _partial(value: datetime | None) -> str | None:
     return value.date().isoformat() if value else None
 
 
+def _follow_up_row(r: Any) -> FollowUpRow:
+    return FollowUpRow(
+        id=r["id"], status=str(r["status"]), interval_value=r["interval_value"],
+        interval_unit=str(r["interval_unit"]), appointment_type_id=r["appointment_type_id"],
+        practitioner_id=r["practitioner_id"], note=r["note"],
+        requested_by=r["requested_by_user_id"], requested_at=r["requested_at"],
+        booked_appointment_id=r["booked_appointment_id"], reason=r["status_reason"])
+
+
+def follow_up_out(f: FollowUpRow) -> schemas.FollowUpRequest:
+    """The contract's FollowUpRequest: the one reason column is a decline's or a withdrawal's."""
+    return schemas.FollowUpRequest(
+        interval=schemas.FollowUpInterval(value=f.interval_value,
+                                          unit=f.interval_unit),
+        appointment_type_id=f.appointment_type_id, provider_id=f.practitioner_id,
+        note=f.note, status=f.status,
+        requested_by=f.requested_by, requested_at=f.requested_at,
+        booked_appointment_id=f.booked_appointment_id,
+        declined_reason=f.reason if f.status == "declined" else None,
+        withdrawn_reason=f.reason if f.status == "withdrawn" else None)
+
+
 class SqlEncounterRepository:
     async def head(self, db: AsyncSession, encounter_id: UUID, *, lock: bool = False
                    ) -> EncounterHead:
@@ -334,18 +468,8 @@ class SqlEncounterRepository:
                 title=r["title"], status=r["status"], cosign_status=r["ext_cosign_status"],
                 author=author, ai_assisted=bool(r["ext_is_ai_assisted"]),
                 signed_at=r["signed_at"], updated_at=r["meta_last_updated"]))
-        f = (await db.execute(_FOLLOW_UP, params)).mappings().first()
-        follow_up = None
-        if f is not None:
-            follow_up = schemas.FollowUpRequest(
-                interval=schemas.FollowUpInterval(value=f["interval_value"],
-                                                  unit=str(f["interval_unit"])),
-                appointment_type_id=f["appointment_type_id"], provider_id=f["practitioner_id"],
-                note=f["note"], status=str(f["status"]),
-                requested_by=f["requested_by_user_id"], requested_at=f["requested_at"],
-                booked_appointment_id=f["booked_appointment_id"],
-                declined_reason=f["status_reason"] if f["status"] == "declined" else None,
-                withdrawn_reason=f["status_reason"] if f["status"] == "withdrawn" else None)
+        found = await self.follow_up(db, encounter_id)
+        follow_up = follow_up_out(found) if found is not None else None
         vitals = await self.vitals(db, e["subject_patient_id"], encounter_id=encounter_id,
                                    limit=50)
         encounter = schemas.Encounter(
@@ -431,3 +555,69 @@ class SqlEncounterRepository:
             "include_eie": include_entered_in_error, "day_from": date_from, "day_to": date_to,
             "limit": limit, "offset": offset})).mappings()
         return [vital_out(r) for r in rows]
+
+    # ------------------------------------------------------------- follow-up request (D98)
+    async def follow_up(self, db: AsyncSession, encounter_id: UUID, *, lock: bool = False
+                        ) -> FollowUpRow | None:
+        r = (await db.execute(_FOLLOW_UP_LOCKED if lock else _FOLLOW_UP, {"id": encounter_id})
+             ).mappings().first()
+        return _follow_up_row(r) if r is not None else None
+
+    async def put_follow_up(self, db: AsyncSession, encounter_id: UUID, patient_id: UUID,
+                            asked: FollowUpIn, user_id: UUID) -> None:
+        """Adds the visit's request, or replaces an open one: who asked and when become this
+        user and now (the database refuses a change to any other kind)."""
+        now = (await db.execute(text("SELECT now()"))).scalar_one()
+        row = (await db.execute(select(EncounterFollowUp).where(
+            EncounterFollowUp.encounter_id == encounter_id))).scalar_one_or_none()
+        if row is None:
+            row = EncounterFollowUp(encounter_id=encounter_id, patient_id=patient_id)
+            db.add(row)
+        row.interval_value = asked.interval_value
+        row.interval_unit = asked.interval_unit  # type: ignore[assignment]
+        row.appointment_type_id = asked.appointment_type_id
+        row.practitioner_id = asked.practitioner_id
+        row.note = asked.note
+        row.requested_by_user_id = user_id
+        row.requested_at = now
+        await db.flush()
+        await self._touch(db, encounter_id)
+
+    async def close_follow_up(self, db: AsyncSession, encounter_id: UUID, status: str,
+                              reason: str) -> None:
+        """``declined`` or ``withdrawn``, with its reason (final: the database's guard)."""
+        row = (await db.execute(select(EncounterFollowUp).where(
+            EncounterFollowUp.encounter_id == encounter_id))).scalar_one()
+        row.status = status  # type: ignore[assignment]
+        row.status_reason = reason
+        await db.flush()
+        await self._touch(db, encounter_id)
+
+    async def appointment_types_exist(self, db: AsyncSession, ids: Sequence[UUID]
+                                      ) -> set[UUID]:
+        if not ids:
+            return set()
+        return {r[0] for r in (await db.execute(_APPOINTMENT_TYPES, {"ids": list(ids)})).all()}
+
+    # ------------------------------------------------------------ after-visit summary (#86)
+    async def signed_note(self, db: AsyncSession, encounter_id: UUID, note_id: UUID | None
+                          ) -> SignedNote | None:
+        r = (await db.execute(_SIGNED_NOTE, {"e": encounter_id, "note": note_id})
+             ).mappings().first()
+        if r is None:
+            return None
+        sections = (await db.execute(_INSTRUCTIONS, {
+            "c": r["id"], "loinc": systems.LOINC, "code": PATIENT_INSTRUCTIONS_LOINC})).all()
+        name = " ".join((r["signer_name"] or "").split()) or None
+        return SignedNote(r["id"], r["signer_id"], name, tuple(row[0] for row in sections))
+
+    async def summary_context(self, db: AsyncSession, encounter_id: UUID, user_id: UUID
+                              ) -> SummaryContext:
+        r = (await db.execute(_SUMMARY_CONTEXT, {"e": encounter_id, "user": user_id})
+             ).mappings().first()
+        if r is None:
+            raise NotFound()
+        return SummaryContext(
+            patient_name=" ".join((r["patient_name"] or "").split()) or "Patient",
+            practice_name=r["practice_name"], facility_name=r["facility_name"],
+            booked_start=r["booked_start"], user_practitioner_id=r["user_practitioner"])

@@ -1,6 +1,7 @@
 """Encounter rules: check-in opens the visit's encounter and its undo marks it entered-in-error
 (D16, D55); rooming moves it to ``triaged`` and puts it in a room, ``with-provider`` starts it
-(DATA_OWNERSHIP §5.2); the workspace read and edit (inventory #63-64) and vitals (#68-69, D69).
+(DATA_OWNERSHIP §5.2); the workspace read and edit (inventory #63-64) and vitals (#68-69, D69);
+the follow-up request (D98) and the after-visit summary's hand-off (#86, D98).
 
 Resources are written through Anand's FHIR write helpers (``app.db.fhir_store``), in the caller's
 transaction; the encounter's reasons, room and participants through this module's repository (no
@@ -12,10 +13,14 @@ from __future__ import annotations
 
 import base64
 import binascii
+import calendar
+import html
+import re
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +36,7 @@ from app.core.errors import (
     ValidationFailed,
     field_error,
 )
+from app.core.long_running import Operation
 from app.db.fhir_store import (
     Coded,
     EncounterIn,
@@ -46,11 +52,33 @@ from app.db.fhir_store import (
 )
 
 from . import repository, schemas
-from .repository import EncounterHead, EncounterRepository, ReasonIn, Versioned
+from .after_visit_summary import (
+    FileStoreSource,
+    StoredSummary,
+    SummaryDetails,
+    SummaryLink,
+    SummaryLinks,
+    SummaryOperations,
+    SummaryStore,
+)
+from .repository import (
+    EncounterHead,
+    EncounterRepository,
+    FollowUpIn,
+    FollowUpRow,
+    ReasonIn,
+    SignedNote,
+    SummaryContext,
+    Versioned,
+    follow_up_out,
+)
 
 _STORE = SqlFhirStore()
 
 ChartCheck = Callable[[AsyncSession, CurrentUser, UUID], Awaitable[object]]
+#: Whether the user may open the chart (not restricted, on the care team, or a current grant):
+#: reads only, refuses nothing, writes no audit row (core's ``chart_access``; D107).
+ChartOpen = Callable[[AsyncSession, CurrentUser, UUID], Awaitable[bool]]
 Rooms = Callable[[AsyncSession, UUID], Awaitable[set[UUID]]]
 
 #: Where vitals may be recorded (recordVitals): the visit is open.
@@ -379,3 +407,262 @@ async def list_vitals(db: AsyncSession, repo: EncounterRepository, check: ChartC
                               date_to=date_to, include_entered_in_error=include_entered_in_error,
                               limit=limit + 1, offset=offset)
     return page(found, limit, offset)
+
+
+# ------------------------------------------------------------------ follow-up request (D98)
+#: Who asks for a follow-up (IMPL_BATCH1_PLAN §8.2 C: MD, APP). MA and RN hold encounters:update
+#: for the reasons at rooming only (T52), so the request is refused to them (403).
+FOLLOW_UP_ROLES = FULL_EDIT_ROLES
+#: A visit in these states takes no follow-up request (the contract's 409).
+NO_FOLLOW_UP = ("entered-in-error", "cancelled")
+
+
+def _reason(text: str, pointer: str = "/reason") -> str:
+    """A decline's or withdrawal's reason: blank is refused, as the database refuses it."""
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        raise ValidationFailed(errors=[field_error("body", pointer, "required")])
+    return text.strip()
+
+
+async def set_follow_up(db: AsyncSession, repo: EncounterRepository, check: ChartCheck,
+                        user: CurrentUser, encounter_id: UUID, body: schemas.FollowUpRequestPut,
+                        if_match: str | None, name_patient: NamePatient
+                        ) -> Versioned[schemas.FollowUpRequest]:
+    """setFollowUpRequest: adds the visit's request or replaces an open one, with If-Match on
+    the encounter (its ETag moves with the request). A booked, declined or withdrawn one no
+    longer changes (409)."""
+    version = if_match_version(if_match)
+    head = await readable(db, repo, check, user, encounter_id)
+    if not user.roles & FOLLOW_UP_ROLES:
+        raise Forbidden("Only the clinician asks for a follow-up", code="permission-denied")
+    errors: list[dict[str, str]] = []
+    if body.appointment_type_id is not None and body.appointment_type_id not in (
+            await repo.appointment_types_exist(db, [body.appointment_type_id])):
+        errors.append(field_error("body", "/appointmentTypeId", "invalid-reference"))
+    if body.provider_id is not None and body.provider_id not in (
+            await repo.practitioners_exist(db, [body.provider_id])):
+        errors.append(field_error("body", "/providerId", "invalid-reference"))
+    if errors:
+        raise business_rule(errors)
+    locked = await repo.head(db, encounter_id, lock=True)
+    if locked.version != version:
+        raise PreconditionFailed(headers={"ETag": etag(locked.version)})
+    if locked.status in NO_FOLLOW_UP:
+        raise _state(locked.status)
+    current = await repo.follow_up(db, encounter_id, lock=True)
+    if current is not None and current.status != "open":
+        raise _state(current.status)
+    note = body.note.strip() if body.note and body.note.strip() else None
+    await repo.put_follow_up(db, encounter_id, head.patient_id, FollowUpIn(
+        interval_value=body.interval.value, interval_unit=body.interval.unit,
+        appointment_type_id=body.appointment_type_id, practitioner_id=body.provider_id,
+        note=note), user.id)
+    name_patient(head.patient_id)
+    await db.commit()
+    return await _follow_up_now(db, repo, encounter_id)
+
+
+async def _follow_up_now(db: AsyncSession, repo: EncounterRepository, encounter_id: UUID
+                         ) -> Versioned[schemas.FollowUpRequest]:
+    after = await repo.head(db, encounter_id)
+    found = await repo.follow_up(db, encounter_id)
+    if found is None:  # never: it was just written
+        raise NotFound()
+    return Versioned(follow_up_out(found), after.version)
+
+
+async def _locked_follow_up(db: AsyncSession, repo: EncounterRepository, encounter_id: UUID
+                            ) -> tuple[EncounterHead, FollowUpRow | None]:
+    """The encounter and its request, locked in that order (as setFollowUpRequest and the
+    booking of the revisit lock them)."""
+    locked = await repo.head(db, encounter_id, lock=True)
+    return locked, await repo.follow_up(db, encounter_id, lock=True)
+
+
+async def withdraw_follow_up(db: AsyncSession, repo: EncounterRepository, check: ChartCheck,
+                             user: CurrentUser, encounter_id: UUID,
+                             body: schemas.FollowUpWithdraw, if_match: str | None,
+                             name_patient: NamePatient) -> Versioned[schemas.FollowUpRequest]:
+    """withdrawFollowUpRequest: only the clinician who asked, only while it is open (D98,
+    D67: clinicians take a request back; they never change the calendar)."""
+    version = if_match_version(if_match)
+    head = await readable(db, repo, check, user, encounter_id)
+    reason = _reason(body.reason)
+    locked, current = await _locked_follow_up(db, repo, encounter_id)
+    if current is None:
+        raise NotFound()
+    if current.requested_by != user.id:
+        raise Forbidden("Only the clinician who asked for the follow-up withdraws it",
+                        code="permission-denied")
+    if locked.version != version:
+        raise PreconditionFailed(headers={"ETag": etag(locked.version)})
+    if current.status != "open":
+        raise _state(current.status)
+    await repo.close_follow_up(db, encounter_id, "withdrawn", reason)
+    name_patient(head.patient_id)
+    await db.commit()
+    return await _follow_up_now(db, repo, encounter_id)
+
+
+async def decline_follow_up(db: AsyncSession, repo: EncounterRepository, openable: ChartOpen,
+                            user: CurrentUser, encounter_id: UUID, body: schemas.FollowUpDecline,
+                            if_match: str | None, name_patient: NamePatient
+                            ) -> Versioned[schemas.FollowUpRequest]:
+    """declineFollowUpRequest: at check-out the patient doesn't book the revisit (D98). The
+    front desk and ADM (``follow-ups:decline``), with If-Match on the encounter (the follow-up
+    summary's ``version``), so a decline never overwrites a request the clinician just changed.
+    A restricted chart needs no break-glass here (D107): the clinic's and the user's facility's
+    checks still apply (404), the decline is audited naming the patient, and for a restricted
+    patient the user may not open (no grant, not on the care team) the answer leaves out the
+    clinician's note."""
+    version = if_match_version(if_match)
+    head = await repo.head(db, encounter_id)  # 404: another clinic's
+    require_facility(user, head.facility_id)  # 404: not the user's facility
+    clinical = await openable(db, user, head.patient_id)
+    reason = _reason(body.reason)
+    locked, current = await _locked_follow_up(db, repo, encounter_id)
+    if current is None:
+        raise Conflict("No open follow-up request on this encounter",
+                       code="invalid-state-transition")
+    if locked.version != version:
+        raise PreconditionFailed(headers={"ETag": etag(locked.version)})
+    if current.status != "open":
+        raise _state(current.status)
+    await repo.close_follow_up(db, encounter_id, "declined", reason)
+    name_patient(head.patient_id)
+    await db.commit()
+    done = await _follow_up_now(db, repo, encounter_id)
+    if clinical:
+        return done
+    return Versioned(done.value.model_copy(update={"note": None}), done.version)
+
+
+def due_date(visit_day: date, value: int, unit: str) -> date:
+    """The day the follow-up falls due: ``value`` days, weeks or months after the visit's day
+    in the facility's time zone (D40). A month later than a short month's last day is that
+    month's last day (31 January + 1 month = 28 or 29 February)."""
+    if unit == "day":
+        return visit_day + timedelta(days=value)
+    if unit == "week":
+        return visit_day + timedelta(weeks=value)
+    months = visit_day.month - 1 + value
+    year, month = visit_day.year + months // 12, months % 12 + 1
+    return date(year, month, min(visit_day.day, calendar.monthrange(year, month)[1]))
+
+
+def local_moment(moment: datetime, time_zone: str) -> datetime:
+    """The moment in the facility's zone (UTC if the zone is unknown)."""
+    try:
+        return moment.astimezone(ZoneInfo(time_zone))
+    except (ZoneInfoNotFoundError, ValueError):
+        return moment
+
+
+def _long_date(day: date) -> str:
+    return f"{day:%B} {day.day}, {day.year}"
+
+
+def follow_up_text(follow_up: schemas.FollowUpRequest | None, visit_start: datetime,
+                   time_zone: str, booked_start: datetime | None) -> str | None:
+    """The summary's follow-up line: the booked revisit, or when to come back. A declined or
+    withdrawn request, or none, prints nothing. The front desk's note is not for the patient."""
+    if follow_up is None:
+        return None
+    if follow_up.status == "booked" and booked_start is not None:
+        at = local_moment(booked_start, time_zone)
+        hour = at.hour % 12 or 12
+        return (f"Your next visit is booked for {_long_date(at.date())} at "
+                f"{hour}:{at.minute:02d} {'AM' if at.hour < 12 else 'PM'}.")
+    if follow_up.status != "open":
+        return None
+    value, unit = follow_up.interval.value, follow_up.interval.unit
+    due = due_date(local_moment(visit_start, time_zone).date(), value, unit)
+    return (f"Please come back in {value} {unit}{'' if value == 1 else 's'}, "
+            f"around {_long_date(due)}. The front desk will help you book it.")
+
+
+_TAG = re.compile(r"<[^>]+>")
+_BREAK = re.compile(r"<\s*(br|/p|/div|/li)\b[^>]*>", re.IGNORECASE)
+
+
+def plain_text(xhtml: str) -> str:
+    """A note section's narrative (XHTML) as plain lines for the PDF."""
+    lines = _BREAK.sub("\n", xhtml)
+    lines = html.unescape(_TAG.sub("", lines))
+    return "\n".join(" ".join(line.split()) for line in lines.splitlines() if line.strip())
+
+
+def summary_details(encounter: schemas.Encounter, context: SummaryContext, note: SignedNote
+                    ) -> SummaryDetails:
+    """The visit, as #157 prints it: the practice, the patient, the visit's date and the
+    clinician, the reasons, the diagnoses, the note's patient instructions and the follow-up.
+    Medications and orders are Thulasi's modules, not built yet, so they are empty."""
+    rendering = next((p.display_name for p in encounter.participants
+                      if p.role == "rendering" and p.display_name), None)
+    reasons = "; ".join(r.text or (r.codings[0].display or r.codings[0].code)
+                        for r in encounter.reasons or [] if r.text or r.codings)
+    diagnoses = tuple(f"{d.code.display} ({d.code.code})" if d.code.display else d.code.code
+                      for d in encounter.diagnoses)
+    instructions = "\n".join(t for t in (plain_text(x) for x in note.instructions_xhtml) if t)
+    start = encounter.started_at or encounter.created_at
+    return SummaryDetails(
+        practice_name=context.practice_name or context.facility_name or "Your care team",
+        patient_name=context.patient_name, visit_start=start, time_zone=encounter.time_zone,
+        clinician_name=rendering or note.signer_name or "Your care team",
+        facility_name=context.facility_name, reason_for_visit=reasons or None,
+        diagnoses=diagnoses, instructions=instructions or None,
+        follow_up=follow_up_text(encounter.follow_up, start, encounter.time_zone,
+                                 context.booked_start))
+
+
+async def create_summary(db: AsyncSession, repo: EncounterRepository, check: ChartCheck,
+                         operations: SummaryOperations, summaries: SummaryStore,
+                         files: FileStoreSource, user: CurrentUser, encounter_id: UUID,
+                         body: schemas.AfterVisitSummaryRequest, name_patient: NamePatient
+                         ) -> Operation:
+    """createAfterVisitSummary (#86): from a signed note, the latest one unless ``noteId``
+    names one. The PDF is small, so it is made in the request: the operation, the stored PDF,
+    its document and the finished operation commit together, and the 202 carries the operation
+    already ``succeeded`` (its result is the document). Generating again makes a new version.
+    No signed note, or ``noteId`` not a signed note on this encounter: 422."""
+    head = await readable(db, repo, check, user, encounter_id)
+    if head.status == "entered-in-error":
+        raise _state(head.status)
+    note = await repo.signed_note(db, encounter_id, body.note_id)
+    if note is None:
+        pointer = "/noteId"
+        raise business_rule([field_error("body", pointer, "invalid-reference" if body.note_id
+                                         else "required")])
+    found = await repo.get(db, encounter_id, signed_notes_only=True)
+    context = await repo.summary_context(db, encounter_id, user.id)
+    author = context.user_practitioner_id or note.signer_practitioner_id
+    if author is None:  # never for a signed note: its signer is a practitioner
+        raise business_rule([field_error("body", "/noteId", "invalid-reference")])
+    details = summary_details(found.value, context, note)
+    operation = await operations.start(db)
+    stored = await summaries.store(db, files(), patient_id=head.patient_id,
+                                   encounter_id=encounter_id, note_id=note.id,
+                                   author_practitioner_id=author, details=details)
+    finished = await operations.succeed(db, operation, stored.document_id)
+    name_patient(head.patient_id)
+    await db.commit()
+    return finished
+
+
+async def summary_link(db: AsyncSession, repo: EncounterRepository, check: ChartCheck,
+                       summaries: SummaryStore, links: SummaryLinks, user: CurrentUser,
+                       encounter_id: UUID, name_patient: NamePatient
+                       ) -> tuple[StoredSummary, SummaryLink]:
+    """getAfterVisitSummaryDownloadUrl (D98): the latest summary's short-lived link, so the
+    front desk prints it at check-out; 404 until one exists. A chart read: the restricted-chart
+    check runs first (D37; D107's desk exceptions don't cover it, D109), so the front desk
+    without a grant gets 403 break-glass-required (audited as an access denial by core) while
+    care-team members and users with a grant read it; the patient is named for the audit."""
+    head = await readable(db, repo, check, user, encounter_id)
+    stored = await summaries.latest(db, encounter_id)
+    if stored is None:
+        raise NotFound("No after-visit summary has been generated for this encounter yet")
+    link = await links.link(db, user, stored.file_id)
+    name_patient(head.patient_id)
+    return stored, link
