@@ -2,9 +2,10 @@
 only: no JSON Schema validator is in the backend's lockfiles, and adding one needs its own PR.
 
 It knows: type, const, enum, properties, required, additionalProperties: false, items, minItems,
-maxItems, uniqueItems, minLength, maxLength, pattern, format (date, date-time, uuid), $ref to
-#/$defs, allOf, anyOf, not, if/then. Annotations (description, title, x-phi, $schema, $id) are
-ignored. Any other keyword makes it fail loudly, so a schema can't quietly outgrow it.
+maxItems, uniqueItems, minLength, maxLength, pattern, format (date, date-time, uuid), minimum,
+maximum, $ref to #/$defs, allOf, anyOf, not, if/then. Annotations (description, title, x-phi,
+$schema, $id) are ignored. Any other keyword makes it fail loudly, so a schema can't quietly
+outgrow it.
 """
 
 from __future__ import annotations
@@ -18,9 +19,9 @@ ANNOTATIONS = frozenset({"$schema", "$id", "title", "description", "x-phi", "$de
 KNOWN = ANNOTATIONS | {
     "type", "const", "enum", "properties", "required", "additionalProperties", "items",
     "minItems", "maxItems", "uniqueItems", "minLength", "maxLength", "pattern", "format", "$ref",
-    "allOf", "anyOf", "not", "if", "then",
+    "allOf", "anyOf", "not", "if", "then", "minimum", "maximum",
 }
-TYPES = {"object": dict, "array": list, "string": str, "boolean": bool}
+TYPES = {"object": dict, "array": list, "string": str, "boolean": bool, "integer": int}
 
 
 def _ecma(pattern: str) -> str:
@@ -67,6 +68,11 @@ def errors(schema: dict[str, Any], value: Any, root: dict[str, Any] | None = Non
         return found
     if isinstance(value, bool) and schema.get("type") not in (None, "boolean"):
         fail("type")
+    if isinstance(value, int) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            fail("minimum")
+        if "maximum" in schema and value > schema["maximum"]:
+            fail("maximum")
     if "const" in schema and value != schema["const"]:
         fail("const")
     if "enum" in schema and value not in schema["enum"]:
