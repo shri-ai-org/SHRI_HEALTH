@@ -38,7 +38,8 @@ from app.main import create_app
 
 M = MAPPERS
 ZONE = "America/Chicago"
-SIGNS_IN_AS = ("fd", "ma", "md", "adm", "dsp", "none", "md-b", "fd-b")
+SIGNS_IN_AS = ("fd", "ma", "rn", "md", "bil", "adm", "dsp", "none", "md-b", "fd-b")
+LINKED = "md"  # the one dev user linked to a practitioner of its own (who recorded what)
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
@@ -180,7 +181,8 @@ def practice() -> Iterator[Practice]:
 @pytest.fixture
 def users(practice: Practice) -> dict[str, CurrentUser]:
     """A real user per dev user name, with that dev user's roles, at facility A1. md-b, and
-    fd-b (the front desk's roles), are in clinic B."""
+    fd-b (the front desk's roles), are in clinic B. md is linked to a practitioner of its own,
+    so the records it writes name their recorder."""
     admin = create_engine(sync_url(), poolclass=NullPool)
     signed: dict[str, CurrentUser] = {}
     try:
@@ -189,9 +191,17 @@ def users(practice: Practice) -> dict[str, CurrentUser]:
             dev = DEV_USERS["fd" if name == "fd-b" else name]
             tenant = practice.clinic_b if clinic_b else practice.clinic
             db = setup_session(admin, tenant)
+            practitioner_id = None
+            if name == LINKED:
+                doctor = M["practitioner"]()
+                doctor.name = [M["human_name"](family="Sorensen77", given=["Rowan310"],
+                                               prefix=["Dr."], use="official")]
+                db.add(doctor)
+                db.flush()
+                practitioner_id = doctor.id
             user = M["app_user"](tenant_id=tenant, keycloak_subject=str(uuid.uuid4()),
                                  username=f"{name}.{uuid.uuid4().hex[:8]}",
-                                 display_name=dev.display_name)
+                                 display_name=dev.display_name, practitioner_id=practitioner_id)
             db.add(user)
             db.flush()
             user_id = user.id
