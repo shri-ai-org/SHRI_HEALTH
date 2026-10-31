@@ -190,7 +190,9 @@ async def _validated(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
     providers = {p.id: p for p in await ref.providers(db, [fac.id])}
     if provider_id not in providers:
         raise business_rule(f"{prefix}/providerId", "invalid-reference")
-    if location_id is not None and location_id not in {
+    # A room of the facility, or its site itself: a slot names the site when its schedule rule
+    # does ("Room or site", the contract's locationId).
+    if location_id is not None and location_id != fac.location_id and location_id not in {
             loc.id for loc in await ref.locations(db, [fac.id])}:
         raise business_rule(f"{prefix}/locationId", "invalid-reference")
     start = start.astimezone(UTC)
