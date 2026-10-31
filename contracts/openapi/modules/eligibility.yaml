@@ -489,7 +489,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/EligibilityCheck'
           description: The items on this page.
