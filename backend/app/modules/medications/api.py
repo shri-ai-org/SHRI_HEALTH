@@ -10,6 +10,10 @@ dependency, so a caller without it gets 401 or 403 before anything else runs.
 - ``signAndSendPrescription`` (If-Match and the required Idempotency-Key, which core's tenant_db
   claims): the signature and the NewRx in the outbox, in one transaction.
 
+Drafting, editing, the safety check, overrides, signing and sending, and marking a draft wrong
+are for MD and APP only (D110; for the clinical advisors to confirm, Q21): the service refuses
+any other role with 403 permission-denied before it reads or writes anything.
+
 Every route runs the restricted-chart check (D37) before it shows or changes anything, and names
 the patient for core's audit where x-audit takes it from the result or the body. The repository,
 the chart check, the audit hook and the partner (outbox and events) are dependencies the tests
@@ -138,7 +142,7 @@ async def update_prescription(
     response: Response, db: DB, repo: Repo, check: Check, audit: Audit,
     if_match: IfMatch = None,
 ) -> schemas.Prescription:
-    current = await service.readable(db, repo, check, user, prescription_id)
+    current = await service.prescribable(db, repo, check, user, prescription_id)
     if not body.model_fields_set:
         raise service.invalid("", "required")  # minProperties: 1
     row = await service.update_prescription(db, repo, current, body, if_match)
@@ -154,7 +158,7 @@ async def mark_prescription_entered_in_error(
     prescription_id: PrescriptionId, body: schemas.PrescriptionEnteredInError,
     request: Request, response: Response, db: DB, repo: Repo, check: Check, audit: Audit,
 ) -> schemas.Prescription:
-    current = await service.readable(db, repo, check, user, prescription_id)
+    current = await service.prescribable(db, repo, check, user, prescription_id)
     row = await service.enter_in_error(db, repo, current, body.reason)
     audit(request, [row.patient_id])
     await db.commit()
@@ -169,7 +173,7 @@ async def check_prescription_safety(
     prescription_id: PrescriptionId, request: Request, db: DB, repo: Repo, check: Check,
     audit: Audit,
 ) -> schemas.SafetyCheckResult:
-    current = await service.readable(db, repo, check, user, prescription_id)
+    current = await service.prescribable(db, repo, check, user, prescription_id)
     result, row = await service.check_safety(db, repo, current)
     audit(request, [row.patient_id])
     await db.commit()
@@ -197,7 +201,7 @@ async def sign_and_send_prescription(
     prescription_id: PrescriptionId, request: Request, response: Response, db: DB, repo: Repo,
     check: Check, audit: Audit, outbox: Outbox, if_match: IfMatch = None,
 ) -> schemas.Prescription:
-    current = await service.readable(db, repo, check, user, prescription_id)
+    current = await service.prescribable(db, repo, check, user, prescription_id)
     row = await service.sign_and_send(db, repo, outbox, user, current, if_match)
     audit(request, [row.patient_id])
     await db.commit()  # signed, Provenance, on the list and NewRx queued: together or not at all

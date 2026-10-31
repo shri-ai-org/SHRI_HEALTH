@@ -24,7 +24,7 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
-from app.core.deps import CurrentUser
+from app.core.deps import DEV_USERS, CurrentUser
 from app.core.errors import NotFound, ValidationFailed
 from app.db import fhir_store as fs
 from app.db.models import MAPPERS, systems
@@ -361,6 +361,45 @@ def test_prescriptions_refuse(client: Any, practice: Practice, rx: Rx) -> None:
     missing_key = client("md").post(f"{url}/sign-and-send", headers={"If-Match": '"1"'})
     assert missing_key.status_code == 400 and missing_key.json()["code"] == \
         "idempotency-key-missing"
+
+
+def _sign_in_rn(practice: Practice, users: dict[str, CurrentUser]) -> None:
+    """A real RN user at facility A1 (scheduling's ``users`` has none on this branch)."""
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    db = setup_session(admin, practice.clinic)
+    try:
+        dev = DEV_USERS["rn"]
+        user = M["app_user"](tenant_id=practice.clinic, keycloak_subject=str(uuid.uuid4()),
+                             username=f"rn.{uuid.uuid4().hex[:8]}", display_name=dev.display_name)
+        db.add(user)
+        db.flush()
+        users["rn"] = CurrentUser(id=user.id, organization_id=practice.clinic, roles=dev.roles,
+                                  facility_ids=frozenset({practice.facility}),
+                                  display_name=dev.display_name)
+        db.commit()
+    finally:
+        db.close()
+        admin.dispose()
+
+
+def test_rn_is_refused_against_the_real_tables(client: Any, practice: Practice, rx: Rx,
+                                               users: dict[str, CurrentUser]) -> None:
+    """D110 (for the clinical advisors to confirm, Q21): RN holds prescriptions:create and
+    :update in core, but the service refuses the role with 403 permission-denied before it
+    writes anything."""
+    _sign_in_rn(practice, users)
+    body = {"patientId": str(practice.patients["kaia"]), "encounterId": rx.encounter,
+            "medication": AMOXICILLIN, "pharmacyId": str(rx.pharmacy)}
+    count = "SELECT count(*) FROM clinical.medication_request WHERE tenant_id = :t"
+    before = _sql(practice, count, t=practice.clinic)[0][0]
+    refused = client("rn").post(f"{API}/prescriptions", json=body, headers=_key())
+    assert refused.status_code == 403 and refused.json()["code"] == "permission-denied"
+    draft = _draft(client, practice, rx).json()
+    edit = client("rn").patch(f"{API}/prescriptions/{draft['id']}", json={"refills": 1},
+                              headers={"If-Match": '"1"'})
+    assert edit.status_code == 403 and edit.json()["code"] == "permission-denied"
+    assert _sql(practice, count, t=practice.clinic)[0][0] == before + 1  # the MD's draft only
+    assert client("rn").get(f"{API}/prescriptions/{draft['id']}").headers["ETag"] == '"1"'
 
 
 def test_override_refuses(client: Any, practice: Practice, rx: Rx) -> None:

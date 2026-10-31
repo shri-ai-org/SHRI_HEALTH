@@ -58,6 +58,10 @@ ChartCheck = Callable[[AsyncSession, CurrentUser, UUID], Any]
 PAGE_MAX = 100  # MedicationList.items maxItems
 LIST_STATUSES = ("active", "completed", "stopped")
 DRUG_SYSTEMS = (RXNORM, NDC)
+#: Who may draft, edit, check, override for, sign and send, or mark a draft entered-in-error in
+#: the MVP (D110; for the clinical advisors to confirm, Q21). RN holds the permissions in core's
+#: catalogue but is refused here, as scheduling's VISIT_STEP_ROLES limits a permission by role.
+PRESCRIBER_ROLES = frozenset({"MD", "APP"})
 #: Visits a prescription can't be written in: closed, or never real.
 CLOSED_VISITS = frozenset({"finished", "cancelled", "entered-in-error"})
 #: DetectedIssue.severity -> the contract's SafetyAlert.severity (db/CLAUDE.md).
@@ -298,17 +302,33 @@ async def readable(db: AsyncSession, repo: MedicationRepository, check: ChartChe
     return row
 
 
+def require_prescriber(user: CurrentUser) -> None:
+    """D110: drafting, editing, checking, overriding, signing and sending, and marking a draft
+    entered-in-error are for PRESCRIBER_ROLES only. A user who holds the permission without one
+    of those roles (RN) gets 403 permission-denied. Checked first, before any read or write."""
+    if not user.roles & PRESCRIBER_ROLES:
+        raise Forbidden("Only MD and APP may prescribe in the MVP", code="permission-denied")
+
+
+async def prescribable(db: AsyncSession, repo: MedicationRepository, check: ChartCheck,
+                       user: CurrentUser, prescription_id: UUID) -> PrescriptionRow:
+    """The role rule (D110), then the prescription as ``readable`` finds it."""
+    require_prescriber(user)
+    return await readable(db, repo, check, user, prescription_id)
+
+
 async def _prescriber(db: AsyncSession, repo: MedicationRepository, user: CurrentUser) -> None:
-    """Only a user linked to a practitioner prescribes, overrides or signs (the requester and
-    the signer are practitioners)."""
+    """The requester and the signer are practitioners: an MD or APP account not linked to one
+    can't be written as either (a set-up gap, not a role question; D110 is require_prescriber)."""
     if await repo.practitioner_of_user(db, user.id) is None:
-        raise Forbidden("Only a user linked to a practitioner may do this")
+        raise Forbidden("Your account is not linked to a practitioner")
 
 
 async def create_prescription(db: AsyncSession, repo: MedicationRepository, check: ChartCheck,
                               user: CurrentUser, body: schemas.PrescriptionCreate
                               ) -> tuple[PrescriptionRow, UUID]:
     """A draft, in the caller's transaction (no commit). Returns it and its patient."""
+    require_prescriber(user)
     await check(db, user, body.patient_id)
     patient = await repo.patient(db, body.patient_id)
     if patient is None:
@@ -462,6 +482,7 @@ async def override(db: AsyncSession, repo: MedicationRepository, check: ChartChe
     """The prescriber goes ahead despite an alert, with a reason (no commit). ``409`` when the
     alert is already overridden or its prescription is no longer a draft. Returns the alert and
     the patient."""
+    require_prescriber(user)
     prescription_id = await repo.alert_prescription(db, alert_id)
     if prescription_id is None:
         raise NotFound()
