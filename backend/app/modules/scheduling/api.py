@@ -239,3 +239,9 @@ async def get_status_board(
                                        limit, service.decode_cursor(cursor), _now())
     audit_patients(request, named)  # x-audit patient "result": the patients shown by name
     return found
+
+
+# ------------------------------------------------------- patient portal: own appointments (B8a)
+from .portal_api import router as _portal_router  # noqa: E402 (after this module's routes)
+
+router.include_router(_portal_router)
