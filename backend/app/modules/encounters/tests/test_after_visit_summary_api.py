@@ -124,6 +124,30 @@ def test_download_url_refusals(as_user: Client, world: World) -> None:
     assert restricted.status_code == 403 and restricted.json()["code"] == "break-glass-required"
 
 
+def test_a_restricted_summary_needs_break_glass_at_the_desk(as_user: Client, world: World
+                                                            ) -> None:
+    """D109: D107 doesn't cover the summary. On a restricted chart the front desk without a
+    grant gets 403 break-glass-required; a care-team member, or a user with a grant, gets the
+    link without break-glass (D37). The fakes hold grants and the care team in ``may_open``."""
+    encounter = world.add_encounter(status="finished")
+    world.sign_note(encounter)
+    _create(as_user("md"), encounter)
+    patient = world.encounters[encounter].patient_id
+    world.restricted.add(patient)
+    path = f"{API}/encounters/{encounter}/after-visit-summary/download-url"
+    audited = len(world.audited)
+    refused = as_user("fd").get(path)
+    assert refused.status_code == 403 and refused.json()["code"] == "break-glass-required"
+    assert len(world.audited) == audited  # no chart read recorded for a refusal
+    world.may_open.add((DEV_USERS["ma"].id, patient))  # on the care team
+    care_team = as_user("ma").get(path)
+    assert care_team.status_code == 200, care_team.text
+    world.may_open.add((DEV_USERS["fd"].id, patient))  # a current break-glass grant
+    granted = as_user("fd").get(path)
+    assert granted.status_code == 200, granted.text
+    assert world.audited[-2:] == [patient, patient]
+
+
 def test_until_the_documents_service_is_wired_it_is_503(fake_app: FastAPI,
                                                       as_user: Client, world: World) -> None:
     """The app's own placeholders (after_visit_summary.py), not the fakes."""

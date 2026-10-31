@@ -203,6 +203,47 @@ def test_summary_refusals(summary_client: Any, practice: Practice,
     assert recording.given == []
 
 
+def test_a_restricted_summary_needs_break_glass_at_the_desk(
+        summary_client: Any, practice: Practice, users: dict[str, CurrentUser],
+        recording: Recording) -> None:
+    """D109 with core's chart check running for real: on a restricted chart the front desk
+    without a grant gets 403 break-glass-required, and the refusal is audited as an access
+    denial naming the patient; a care-team member (ma) and a user with a current break-glass
+    grant (fd) get the link without break-glass (D37)."""
+    client = summary_client
+    patient = practice.patients["restricted"]
+    _, encounter = _visit(client, practice, "restricted", hour=15)
+    made = Stored(uuid.uuid4(), uuid.uuid4(), dt.datetime.now(dt.UTC))
+    recording.stored[UUID(encounter)] = [made]  # generated earlier by the clinician
+    link = f"{API}/encounters/{encounter}/after-visit-summary/download-url"
+
+    def denials() -> int:
+        count: int = _sql(practice, "SELECT count(*) FROM audit.audit_event WHERE patient_id = :p "
+                          "AND action = 'access-denied' AND actor_user_id = :u",
+                          p=patient, u=users["fd"].id)[0][0]
+        return count
+
+    before = denials()
+    refused = client("fd").get(link)
+    assert refused.status_code == 403 and refused.json()["code"] == "break-glass-required"
+    assert denials() == before + 1
+    now = dt.datetime.now(dt.UTC)
+    _sql(practice, "INSERT INTO admin.care_team_member (id, tenant_id, patient_id, user_id, "
+         "role_code, period_start) VALUES (:i, :t, :p, :u, 'care-manager', :s)",
+         i=uuid.uuid4(), t=practice.clinic, p=patient, u=users["ma"].id,
+         s=dt.date.today() - dt.timedelta(days=30))
+    care_team = client("ma").get(link)
+    assert care_team.status_code == 200, care_team.text
+    assert care_team.json()["documentId"] == str(made.document_id)
+    _sql(practice, "INSERT INTO audit.break_glass_access (id, tenant_id, patient_id, user_id, "
+         "reason_code, granted_at, expires_at) VALUES (:i, :t, :p, :u, 'emergency-care', :g, "
+         ":x)", i=uuid.uuid4(), t=practice.clinic, p=patient, u=users["fd"].id,
+         g=now - dt.timedelta(minutes=1), x=now + dt.timedelta(hours=4))
+    granted = client("fd").get(link)
+    assert granted.status_code == 200, granted.text
+    assert denials() == before + 1
+
+
 def test_until_the_documents_service_is_wired_it_is_503(pending_client: Any,
                                                       practice: Practice,
                                                       users: dict[str, CurrentUser]) -> None:
