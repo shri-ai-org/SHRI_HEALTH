@@ -74,6 +74,8 @@ class World:
     encounters: dict[UUID, FakeEncounter] = field(default_factory=dict)
     vitals: list[schemas.Vital] = field(default_factory=list)
     restricted: set[UUID] = field(default_factory=set)
+    #: (user, patient): a current break-glass grant or care-team membership (D37).
+    may_open: set[tuple[UUID, UUID]] = field(default_factory=set)
     patients: dict[UUID, UUID] = field(default_factory=dict)  # patient -> clinic
     audited: list[UUID] = field(default_factory=list)
     summaries: dict[UUID, list[Stored]] = field(default_factory=dict)  # encounter -> stored
@@ -90,8 +92,12 @@ class World:
     async def chart_check(self, db: Any, user: CurrentUser, patient_id: UUID) -> None:
         if self.patients.get(patient_id) != db.tenant_id:
             raise NotFound()
-        if patient_id in self.restricted:
+        if not await self.chart_open(db, user, patient_id):
             raise Forbidden(code="break-glass-required")
+
+    async def chart_open(self, db: Any, user: CurrentUser, patient_id: UUID) -> bool:
+        """As core's chart_access: refuses nothing, says whether the chart opens."""
+        return patient_id not in self.restricted or (user.id, patient_id) in self.may_open
 
     def audit(self, request: Any, patient_ids: Iterable[UUID]) -> None:
         self.audited.extend(patient_ids)

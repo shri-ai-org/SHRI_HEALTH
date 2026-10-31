@@ -139,7 +139,9 @@ class FollowUpInterval(Out):
 
 
 class FollowUpSummary(Out):
-    """The visit's follow-up request as the front desk needs it at check-out (D98)."""
+    """The visit's follow-up request as the front desk needs it at check-out (D98). For a
+    restricted patient the user may not open, only ``encounterId``, ``interval``, ``status`` and
+    ``version`` (D107)."""
     encounter_id: UUID
     interval: FollowUpInterval
     appointment_type_id: UUID | None = None
@@ -147,6 +149,7 @@ class FollowUpSummary(Out):
     note: str | None = None
     status: Literal["open", "booked", "declined", "withdrawn"]
     booked_appointment_id: UUID | None = None
+    version: str  # the encounter's ETag, sent as If-Match to decline (D107)
 
 
 class Appointment(Out):

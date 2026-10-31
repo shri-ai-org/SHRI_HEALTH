@@ -8,6 +8,7 @@ with its 409s. checkOutAppointment and declineFollowUpRequest wait for core's T5
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -79,10 +80,10 @@ def test_check_out_waits_for_the_follow_up_until_the_revisit_is_booked(
     assert seen == {"encounterId": encounter, "interval": {"value": 3, "unit": "month"},
                     "appointmentTypeId": str(practice.types["FU"]),
                     "providerId": str(practice.provider), "note": "Recheck blood pressure.",
-                    "status": "open"}
+                    "status": "open", "version": _etag(client, encounter)}  # D107
     board = client("fd").get(f"{API}/status-board", params={
         "facilityId": str(practice.facility), "view": "staff"}).json()["items"]
-    assert board[0]["followUp"]["status"] == "open"
+    assert board[0]["followUp"] == seen
     shared = client("dsp").get(f"{API}/status-board", params={
         "facilityId": str(practice.facility), "view": "staff"}).json()["items"]
     assert "followUp" not in shared[0]  # D47: never on a shared screen
@@ -99,6 +100,7 @@ def test_check_out_waits_for_the_follow_up_until_the_revisit_is_booked(
     out = done.json()
     assert out["status"] == "fulfilled" and out["visitStatus"] == "checked-out"
     assert out["followUp"]["status"] == "booked"
+    assert out["followUp"]["version"] == _etag(client, encounter)  # booking moved it
     replayed = _check_out(client, appointment, **key)  # the same key replays the first answer
     assert replayed.status_code == 200 and replayed.json() == out
     again = _check_out(client, appointment)
@@ -120,15 +122,22 @@ def test_a_declined_follow_up_lets_the_patient_check_out(pending_client: Any,
     _ask(client, practice, encounter)
     path = f"{API}/encounters/{encounter}/follow-up/decline"
     body = {"reason": "Patient will call to book."}
-    tag = {"If-Match": _etag(client, encounter)}
+    version = _follow_up(client, appointment)["version"]  # D107: the front desk's If-Match
+    assert version == _etag(client, encounter)
+    tag = {"If-Match": version}
     assert client("md").post(path, json=body, headers=tag).status_code == 403  # D67
     assert client("fd").post(path, json=body).status_code == 428
     assert client("fd").post(path, json={"reason": ""}, headers=tag).status_code == 422
-    assert client("fd").post(path, json=body, headers={"If-Match": '"1"'}).status_code == 412
+    stale = client("fd").post(path, json=body, headers={"If-Match": '"1"'})
+    assert stale.status_code == 412 and stale.headers["ETag"] == version
+    assert client("fd-b").post(path, json=body, headers=tag).status_code == 404  # another clinic
     declined = client("fd").post(path, json=body, headers={**tag, **_key()})
     assert declined.status_code == 200, declined.text
     assert declined.json()["status"] == "declined"
     assert declined.json()["declinedReason"] == "Patient will call to book."
+    assert declined.json()["note"] == "Recheck blood pressure."
+    assert declined.headers["ETag"] != version
+    assert declined.headers["ETag"] == _follow_up(client, appointment)["version"]
     assert _sql(practice, "SELECT status, status_reason FROM clinical.encounter_follow_up "
                 "WHERE encounter_id = :e", e=encounter)[0] == ("declined",
                                                                "Patient will call to book.")
@@ -157,27 +166,115 @@ def test_check_out_refusals(pending_client: Any, practice: Practice) -> None:
     assert _check_out(client, appointment, "adm").status_code == 200
 
 
+def _restricted_visit(client: Any, practice: Practice, users: dict[str, CurrentUser],
+                      hour: int = 12) -> tuple[str, str]:
+    """The restricted patient checked in (T16) with an open follow-up request on the visit,
+    written straight to the table: the clinician can't ask without break-glass either."""
+    appointment, encounter = _visit(client, practice, "restricted", hour=hour)
+    _sql(practice, "INSERT INTO clinical.encounter_follow_up (id, tenant_id, encounter_id, "
+         "patient_id, interval_value, interval_unit, appointment_type_id, practitioner_id, "
+         "note, requested_by_user_id) VALUES (:id, :t, :e, :p, 2, 'week', :ty, :pr, "
+         "'Sensitive note.', :u)", id=uuid.uuid4(), t=practice.clinic, e=encounter,
+         p=practice.patients["restricted"], ty=practice.types["FU"], pr=practice.provider,
+         u=users["md"].id)
+    return appointment, encounter
+
+
+def _staff_board(client: Any, practice: Practice, user: str = "fd") -> dict[str, Any]:
+    items = client(user).get(f"{API}/status-board", params={
+        "facilityId": str(practice.facility), "view": "staff"}).json()["items"]
+    follow_up: dict[str, Any] = next(i for i in items if "followUp" in i)["followUp"]
+    return follow_up
+
+
+def _audited(practice: Practice, encounter: str, action: str | None = None) -> int:
+    count: int = _sql(practice, "SELECT count(*) FROM audit.audit_event WHERE entity_id = :e "
+                      "AND patient_id = :p AND (CAST(:a AS text) IS NULL OR action = :a)",
+                      e=encounter, p=practice.patients["restricted"], a=action)[0][0]
+    return count
+
+
 def test_a_restricted_chart_checks_out_without_break_glass(
         pending_client: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:
-    """As check-in (T16): the front desk checks a restricted patient out; the follow-up's note,
-    clinical text, is left out (D60), and its decline needs chart access (D37)."""
+    """D107: the front desk declines a restricted patient's follow-up and checks them out
+    without break-glass. The follow-up shows only its interval, status and version, on the
+    appointment and the staff board; the decline is audited naming the patient and leaves out
+    the note."""
     client = pending_client
-    appointment, encounter = _visit(client, practice, "restricted")
-    _sql(practice, "INSERT INTO clinical.encounter_follow_up (id, tenant_id, encounter_id, "
-         "patient_id, interval_value, interval_unit, note, requested_by_user_id) VALUES "
-         "(:id, :t, :e, :p, 2, 'week', 'Sensitive note.', :u)", id=uuid.uuid4(),
-         t=practice.clinic, e=encounter,
-         p=practice.patients["restricted"], u=users["md"].id)
+    appointment, encounter = _restricted_visit(client, practice, users)
     seen = _follow_up(client, appointment)
-    assert seen["status"] == "open" and "note" not in seen
-    decline = client("fd").post(f"{API}/encounters/{encounter}/follow-up/decline",
-                                json={"reason": "Will call."}, headers={"If-Match": '"1"'})
-    assert decline.status_code == 403 and decline.json()["code"] == "break-glass-required"
-    revisit = _revisit(client, practice, encounter, patient="restricted")  # booking: T16
-    assert revisit.status_code == 201, revisit.text
+    assert set(seen) == {"encounterId", "interval", "status", "version"}
+    assert seen["status"] == "open" and seen["interval"] == {"value": 2, "unit": "week"}
+    assert _staff_board(client, practice) == seen
+    blocked = _check_out(client, appointment)
+    assert blocked.status_code == 409 and _pointers(blocked) == ["/followUp"]
+    before = _audited(practice, encounter)
+    path = f"{API}/encounters/{encounter}/follow-up/decline"
+    stale = client("fd").post(path, json={"reason": "Will call."}, headers={"If-Match": '"999"'})
+    assert stale.status_code == 412 and stale.headers["ETag"] == seen["version"]
+    declined = client("fd").post(path, json={"reason": "Will call."},
+                                 headers={"If-Match": seen["version"]})
+    assert declined.status_code == 200, declined.text
+    body = declined.json()
+    assert body["status"] == "declined" and body["declinedReason"] == "Will call."
+    assert "note" not in body
+    after = _follow_up(client, appointment)
+    assert declined.headers["ETag"] == after["version"] != seen["version"]
+    assert set(after) == {"encounterId", "interval", "status", "version"}
+    assert _audited(practice, encounter) > before  # names the patient
+    assert _audited(practice, encounter, "access-denied") == 0  # no break-glass refusal
+    assert _sql(practice, "SELECT count(*) FROM audit.audit_event WHERE patient_id = :p AND "
+                "action = 'access-denied'", p=practice.patients["restricted"])[0][0] == 0
     done = _check_out(client, appointment)
     assert done.status_code == 200, done.text
-    assert done.json()["followUp"]["status"] == "booked" and "note" not in done.json()["followUp"]
+    assert set(done.json()["followUp"]) == {"encounterId", "interval", "status", "version"}
+    assert done.json()["followUp"]["status"] == "declined"
+
+
+def test_a_restricted_visits_booked_revisit_is_left_out_without_access(
+        pending_client: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:
+    """Booking the revisit works without break-glass (T16); the summary still shows only the
+    four fields, so the revisit's ID is left out too (D107)."""
+    client = pending_client
+    appointment, encounter = _restricted_visit(client, practice, users)
+    revisit = _revisit(client, practice, encounter, patient="restricted")
+    assert revisit.status_code == 201, revisit.text
+    seen = _follow_up(client, appointment)
+    assert set(seen) == {"encounterId", "interval", "status", "version"}
+    assert seen["status"] == "booked"
+    done = _check_out(client, appointment)
+    assert done.status_code == 200, done.text
+    assert set(done.json()["followUp"]) == {"encounterId", "interval", "status", "version"}
+
+
+def test_a_grant_or_the_care_team_still_sees_the_whole_follow_up(
+        pending_client: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:
+    """A user with a current break-glass grant (fd) or on the care team (adm) sees the whole
+    summary, on the appointment and the staff board, and the decline's note (D37, D107)."""
+    client = pending_client
+    appointment, encounter = _restricted_visit(client, practice, users)
+    now = datetime.now(UTC)
+    _sql(practice, "INSERT INTO audit.break_glass_access (id, tenant_id, patient_id, user_id, "
+         "reason_code, granted_at, expires_at) VALUES (:i, :t, :p, :u, 'emergency-care', :g, "
+         ":x)", i=uuid.uuid4(), t=practice.clinic, p=practice.patients["restricted"],
+         u=users["fd"].id, g=now - timedelta(minutes=1), x=now + timedelta(hours=4))
+    _sql(practice, "INSERT INTO admin.care_team_member (id, tenant_id, patient_id, user_id, "
+         "role_code, period_start) VALUES (:i, :t, :p, :u, 'care-manager', :s)",
+         i=uuid.uuid4(), t=practice.clinic, p=practice.patients["restricted"],
+         u=users["adm"].id, s=date.today() - timedelta(days=30))
+    whole = {"encounterId", "interval", "appointmentTypeId", "providerId", "note", "status",
+             "version"}
+    for user in ("fd", "adm"):
+        found = client(user).get(f"{API}/appointments/{appointment}").json()["followUp"]
+        assert set(found) == whole, user
+        assert found["note"] == "Sensitive note.", user
+        assert _staff_board(client, practice, user) == found, user
+    assert set(_follow_up(client, appointment)) == whole  # fd, through the grant
+    version = _follow_up(client, appointment)["version"]
+    declined = client("adm").post(f"{API}/encounters/{encounter}/follow-up/decline",
+                                  json={"reason": "Will call."}, headers={"If-Match": version})
+    assert declined.status_code == 200, declined.text
+    assert declined.json()["note"] == "Sensitive note."
 
 
 # ------------------------------------------------------- the revisit: book, cancel, reschedule

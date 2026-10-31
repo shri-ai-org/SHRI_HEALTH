@@ -9,7 +9,8 @@ is no Appointment helper yet (IMPL_BATCH1_PLAN §8.5). Columns as
 ``visitStatus`` is the latest visit step recorded after the appointment's last undone check-in
 (``db/CLAUDE.md``, D55): steps before an undo stay as history but no longer count. ``followUp`` is
 the follow-up request of the visit's live encounter (D98), so the front desk sees it at check-out
-without ``encounters:read``.
+without ``encounters:read``, with the encounter's version, which a decline sends as If-Match
+(D107).
 """
 
 from __future__ import annotations
@@ -79,6 +80,7 @@ class FollowUpRef:
     practitioner_id: UUID | None
     note: str | None
     booked_appointment_id: UUID | None
+    encounter_version: int  # the encounter's meta_version_id: its ETag (D107)
 
 
 @dataclass(frozen=True)
@@ -111,7 +113,8 @@ SELECT a.id, a.meta_version_id, a.status, a.start, a."end", a.minutes_duration,
        fu.encounter_id AS fu_encounter_id, fu.status AS fu_status,
        fu.interval_value AS fu_interval_value, fu.interval_unit AS fu_interval_unit,
        fu.appointment_type_id AS fu_type_id, fu.practitioner_id AS fu_practitioner_id,
-       fu.note AS fu_note, fu.booked_appointment_id AS fu_booked_id
+       fu.note AS fu_note, fu.booked_appointment_id AS fu_booked_id,
+       fu.encounter_version AS fu_version
 FROM clinical.appointment a
 JOIN admin.facility f ON f.id = a.ext_facility_id
 LEFT JOIN admin.appointment_type t ON t.id = a.ext_appointment_type_id
@@ -140,7 +143,7 @@ LEFT JOIN LATERAL (SELECT loc.name FROM admin.visit_flow_event v
                     ORDER BY v.occurred_at DESC, v.created_at DESC LIMIT 1) rm ON true
 LEFT JOIN LATERAL (SELECT f.encounter_id, f.status, f.interval_value, f.interval_unit,
                           f.appointment_type_id, f.practitioner_id, f.note,
-                          f.booked_appointment_id
+                          f.booked_appointment_id, e.meta_version_id AS encounter_version
                      FROM clinical.encounter_follow_up f
                      JOIN clinical.encounter e ON e.id = f.encounter_id
                     WHERE e.appointment_id = a.id AND e.status <> 'entered-in-error'
@@ -210,7 +213,8 @@ def _follow_up(r: Any) -> FollowUpRef | None:
         encounter_id=r["fu_encounter_id"], status=str(r["fu_status"]),
         interval_value=r["fu_interval_value"], interval_unit=str(r["fu_interval_unit"]),
         appointment_type_id=r["fu_type_id"], practitioner_id=r["fu_practitioner_id"],
-        note=r["fu_note"], booked_appointment_id=r["fu_booked_id"])
+        note=r["fu_note"], booked_appointment_id=r["fu_booked_id"],
+        encounter_version=r["fu_version"])
 
 
 def _row(r: Any) -> AppointmentRow:

@@ -76,6 +76,9 @@ from .repository import (
 _STORE = SqlFhirStore()
 
 ChartCheck = Callable[[AsyncSession, CurrentUser, UUID], Awaitable[object]]
+#: Whether the user may open the chart (not restricted, on the care team, or a current grant):
+#: reads only, refuses nothing, writes no audit row (core's ``chart_access``; D107).
+ChartOpen = Callable[[AsyncSession, CurrentUser, UUID], Awaitable[bool]]
 Rooms = Callable[[AsyncSession, UUID], Awaitable[set[UUID]]]
 
 #: Where vitals may be recorded (recordVitals): the visit is open.
@@ -502,16 +505,21 @@ async def withdraw_follow_up(db: AsyncSession, repo: EncounterRepository, check:
     return await _follow_up_now(db, repo, encounter_id)
 
 
-async def decline_follow_up(db: AsyncSession, repo: EncounterRepository, check: ChartCheck,
+async def decline_follow_up(db: AsyncSession, repo: EncounterRepository, openable: ChartOpen,
                             user: CurrentUser, encounter_id: UUID, body: schemas.FollowUpDecline,
                             if_match: str | None, name_patient: NamePatient
                             ) -> Versioned[schemas.FollowUpRequest]:
     """declineFollowUpRequest: at check-out the patient doesn't book the revisit (D98). The
-    front desk and ADM (``follow-ups:decline``), with If-Match on the encounter, so a decline
-    never overwrites a request the clinician just changed. The restricted-chart check runs as
-    for any chart record (D37)."""
+    front desk and ADM (``follow-ups:decline``), with If-Match on the encounter (the follow-up
+    summary's ``version``), so a decline never overwrites a request the clinician just changed.
+    A restricted chart needs no break-glass here (D107): the clinic's and the user's facility's
+    checks still apply (404), the decline is audited naming the patient, and for a restricted
+    patient the user may not open (no grant, not on the care team) the answer leaves out the
+    clinician's note."""
     version = if_match_version(if_match)
-    head = await readable(db, repo, check, user, encounter_id)
+    head = await repo.head(db, encounter_id)  # 404: another clinic's
+    require_facility(user, head.facility_id)  # 404: not the user's facility
+    clinical = await openable(db, user, head.patient_id)
     reason = _reason(body.reason)
     locked, current = await _locked_follow_up(db, repo, encounter_id)
     if current is None:
@@ -524,7 +532,10 @@ async def decline_follow_up(db: AsyncSession, repo: EncounterRepository, check: 
     await repo.close_follow_up(db, encounter_id, "declined", reason)
     name_patient(head.patient_id)
     await db.commit()
-    return await _follow_up_now(db, repo, encounter_id)
+    done = await _follow_up_now(db, repo, encounter_id)
+    if clinical:
+        return done
+    return Versioned(done.value.model_copy(update={"note": None}), done.version)
 
 
 def due_date(visit_day: date, value: int, unit: str) -> date:

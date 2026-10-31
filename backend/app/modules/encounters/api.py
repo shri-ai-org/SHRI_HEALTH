@@ -3,7 +3,8 @@ operation_id is the contract's operationId; the permission (`require`) is the fi
 
 Rooming (demo step 7, IMPL_BATCH1_PLAN §8.3 PR-5): the workspace read and its edit (the reason for
 visit, with If-Match), recording vitals and the patient's vitals list. Check-in uses this module's
-service only (D16). Every route that touches a chart runs the restricted-chart check first (D37).
+service only (D16). Every route that touches a chart runs the restricted-chart check first (D37),
+except the front desk's decline of a follow-up, which needs no break-glass (D107).
 Operations whose x-audit takes the patient from the result hand it to core's audit hook.
 
 The follow-up request (D98, demo step 10): the clinician sets it and may withdraw it; the front
@@ -65,6 +66,15 @@ def chart_check() -> service.ChartCheck:
     return core_access.ensure_chart_access
 
 
+def chart_openable() -> service.ChartOpen:
+    """Whether the user may open a chart, refusing nothing (core's chart_access): the front
+    desk's decline works on a restricted chart and only leaves out its clinical text (D107)."""
+    async def openable(db: AsyncSession, user: CurrentUser, patient_id: UUID) -> bool:
+        return (await core_access.chart_access(db, user, patient_id)).allowed
+
+    return openable
+
+
 def audit_patients() -> AuditPatients:
     """Core's hook naming the patients of an operation whose x-audit patient is "result"."""
     return core_audit.audit_patients
@@ -104,6 +114,7 @@ DB = Annotated[AsyncSession, Depends(tenant_db)]
 Repo = Annotated[EncounterRepository, Depends(repository)]
 Store = Annotated[FhirStore, Depends(fhir_store)]
 Check = Annotated[service.ChartCheck, Depends(chart_check)]
+Openable = Annotated[service.ChartOpen, Depends(chart_openable)]
 Audit = Annotated[AuditPatients, Depends(audit_patients)]
 Rooms = Annotated[Callable[[AsyncSession, UUID], Awaitable[set[UUID]]], Depends(facility_rooms)]
 EncounterId = Annotated[UUID, Path(alias="encounterId")]
@@ -255,13 +266,13 @@ def mount_pending_routes(target: APIRouter, exclude: frozenset[str] = frozenset(
         async def decline_follow_up_request(
             user: Annotated[CurrentUser, Depends(require("follow-ups:decline"))],
             encounter_id: EncounterId, body: schemas.FollowUpDecline, request: Request,
-            response: Response, db: DB, repo: Repo, check: Check, audit: Audit,
+            response: Response, db: DB, repo: Repo, openable: Openable, audit: Audit,
             if_match: IfMatch = None,
         ) -> schemas.FollowUpRequest:
             """Idempotency-Key is optional (x-idempotency: supported): core claims and replays
-            it."""
+            it. No break-glass (D107): the service leaves out the note instead."""
             done = await service.decline_follow_up(
-                db, repo, check, user, encounter_id, body, if_match,
+                db, repo, openable, user, encounter_id, body, if_match,
                 lambda patient_id: audit(request, [patient_id]))
             response.headers["ETag"] = service.etag(done.version)
             return done.value

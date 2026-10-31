@@ -1,11 +1,11 @@
 """Scheduling rules: booking, reschedule, cancel, the appointment views, the status board, check-in
 and its undo, the visit steps and check-out.
 
-Restricted charts (SECURITY_MODEL §5.2 rule 2, agreed T16): booking, check-in and the schedule
-views work without a break-glass grant, showing the name and the appointment only. The clinical
-text (reason for visit, comment, instructions, and the follow-up request's note) is left out for a
-restricted patient the user may not open (D60), using core's ``chart_access``, which reads and
-writes nothing else. Check-out is the front desk's, as check-in is: it needs no break-glass grant.
+Restricted charts (SECURITY_MODEL §5.2 rule 2, agreed T16; D107): booking, check-in, check-out
+and the schedule views work without a break-glass grant, showing the name and the appointment
+only. The clinical text (reason for visit, comment, instructions) is left out for a restricted
+patient the user may not open (D60), and the visit's follow-up request shows only its interval,
+status and version (D107), using core's ``chart_access``, which reads and writes nothing else.
 """
 
 from __future__ import annotations
@@ -341,17 +341,22 @@ def _type_ref(row: repo.AppointmentRow) -> schemas.AppointmentTypeRef:
 
 
 def _follow_up(row: repo.AppointmentRow, clinical: bool) -> schemas.FollowUpSummary | None:
-    """The visit's follow-up request (D98); its note is clinical text (D60)."""
+    """The visit's follow-up request (D98), with the encounter's ETag as its ``version`` (D107).
+    For a restricted patient the user may not open, only its interval, status and version: the
+    note is clinical text (D60), and the type, provider and revisit are left out too (D107)."""
     f = row.follow_up
     if f is None:
         return None
+    interval = schemas.FollowUpInterval(value=f.interval_value, unit=f.interval_unit)
+    version = encounters.etag(f.encounter_version)
+    if not clinical:
+        return schemas.FollowUpSummary(encounter_id=f.encounter_id, interval=interval,
+                                       status=f.status, version=version)
     return schemas.FollowUpSummary(
-        encounter_id=f.encounter_id,
-        interval=schemas.FollowUpInterval(value=f.interval_value,
-                                          unit=f.interval_unit),
+        encounter_id=f.encounter_id, interval=interval,
         appointment_type_id=f.appointment_type_id, provider_id=f.practitioner_id,
-        note=f.note if clinical else None, status=f.status,
-        booked_appointment_id=f.booked_appointment_id)
+        note=f.note, status=f.status, booked_appointment_id=f.booked_appointment_id,
+        version=version)
 
 
 def _appointment(row: repo.AppointmentRow, people: dict[UUID, repo.PersonRef],
@@ -633,9 +638,11 @@ async def record_status(db: AsyncSession, ref: PracticeSetupReads, user: Current
 async def check_out(db: AsyncSession, user: CurrentUser, appointment_id: UUID) -> None:
     """checkOutAppointment (D98), in one transaction: the appointment becomes ``fulfilled`` and
     the ``checked-out`` visit step is kept. Refused with ``409 invalid-state-transition`` while
-    something must be settled first, each named in ``errors``: ``/status`` (not checked in, or
-    already out; ``currentState``) and ``/followUp`` (the visit's follow-up request is still
-    open: book it or decline it). An unpaid copay and an unsigned note never block it (the
+    something must be settled first, each named in ``errors``: ``/status`` (check-out needs the
+    visit checked in or later, so it is refused before check-in and after check-out; the
+    appointment stays ``checked-in`` through rooming and the provider; ``currentState``) and
+    ``/followUp`` (the visit's follow-up request is still open: book it or decline it). No
+    break-glass (D107). An unpaid copay and an unsigned note never block it (the
     encounter closes separately, POST /encounters/{encounterId}/close)."""
     current = await repo.get(db, appointment_id)
     require_facility(user, current.facility_id)
