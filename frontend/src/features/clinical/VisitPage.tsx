@@ -37,6 +37,7 @@ import {
   type Column,
   type Problem,
 } from '../../design-system'
+import { PrescriptionsSection } from '../medications/PrescriptionsSection'
 import { catchProblem, Panel } from './parts'
 import { roomingPath } from './TodayPage'
 
@@ -143,6 +144,7 @@ export function VisitPage() {
       {!open && !note ? <p className="rounded-lg border border-border bg-surface-1 p-4 text-ink-muted">This visit is closed; a note can no longer be started here.</p> : null}
       <DiagnosesSection encounter={encounter} editable={open && !locked} locked={locked} onChanged={refresh} />
       <NoteSection encounter={encounter} noteId={note?.id ?? null} open={open} onChanged={refresh} />
+      <PrescriptionsSection encounter={encounter} open={open} />
     </section>
   )
 }

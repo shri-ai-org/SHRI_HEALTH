@@ -81,6 +81,8 @@ function visit(encounters: Array<() => Response>, extra: Record<string, Array<()
     [ENCOUNTER]: encounters,
     'POST /api/v1/patients/summaries': [() => json(200, { items: [summary] })],
     [TEMPLATES]: [() => json(200, { items: [template] })],
+    // The prescriptions section reads the preferred pharmacy.
+    [`GET /api/v1/patients/${patientId}`]: [() => json(200, summary)],
     ...extra,
   })
 }
