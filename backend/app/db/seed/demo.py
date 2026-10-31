@@ -5,8 +5,13 @@ inserted only if missing, so a second run changes nothing; it runs as shri_migra
 clinic set, so forced RLS checks every row.
 
 Each patient's MRN comes from ``admin.next_mrn()`` when the patient is first created, as
-registration takes it. The demo users come later, with the Keycloak subjects of Thulasi's demo
-realm.
+registration takes it.
+
+The demo users are the accounts of Thulasi's realms (#152, IDs posted on #85), with fixed
+Keycloak user IDs: four staff users (an ``app_user`` each, ``keycloak_subject`` = the Keycloak
+user ID, and a ``user_role`` row at the main office for its role, against migration 0017's
+platform roles) and the demo patient's active portal account (``keycloak_user_id``), linked to
+the patient with the demo visit. No password is stored or seeded: they live in Keycloak.
 """
 from __future__ import annotations
 
@@ -28,7 +33,7 @@ M = MAPPERS
 # Kinds of fixed ID, after the starter layer's.
 PHARMACY, CONSENT_REQUIREMENT, PATIENT, P_NAME, P_TELECOM, P_ADDRESS, P_MRN, P_LANGUAGE, \
     COVERAGE, C_PAYOR, C_MEMBER, C_GROUP, APPOINTMENT, A_PATIENT, A_PROVIDER, \
-    P_PHARMACY, A_LOCATION = range(21, 38)
+    P_PHARMACY, A_LOCATION, DEMO_USER, DEMO_USER_ROLE, PORTAL_ACCOUNT = range(21, 41)
 
 #: The demo day, Friday 20 November 2026, at the main office (America/Chicago, UTC-6 then).
 DEMO_DAY = dt.date(2026, 11, 20)
@@ -66,13 +71,13 @@ class DemoPatient:
 
 PATIENTS = (
     DemoPatient(1, "Kaia401", "Lindgren118", dt.date(1990, 3, 14), "female", "+12175550142",
-                "42 Sample Avenue", 1, (dt.time(9, 0), "NEW", 1)),
+                "42 Sample Avenue", 1, (dt.time(9, 0), "NEW", 3)),
     DemoPatient(2, "Marcus217", "Okafor904", dt.date(1958, 7, 2), "male", "+12175550117",
-                "17 Sample Avenue", 2, (dt.time(9, 40), "FU", 1)),
+                "17 Sample Avenue", 2, (dt.time(9, 40), "FU", 3)),
     DemoPatient(3, "Elena88", "Vasquez512", dt.date(1976, 11, 23), "female", "+12175550163",
                 "63 Sample Avenue", 3, (dt.time(10, 0), "FU", 2)),
     DemoPatient(4, "Theo343", "Brandt27", dt.date(2001, 1, 9), "male", "+12175550188",
-                "88 Sample Avenue", None, (dt.time(10, 20), "ANNUAL", 1)),
+                "88 Sample Avenue", None, (dt.time(10, 20), "ANNUAL", 3)),
     DemoPatient(5, "Priya765", "Raman431", dt.date(1983, 5, 30), "female", "+12175550129",
                 "29 Sample Avenue", 1, None),
 )
@@ -140,6 +145,35 @@ def _coverage(db: Session, p: DemoPatient) -> None:
     db.flush()
 
 
+#: (n, username, Keycloak user ID, display name, role, provider index or None). Fixed by
+#: infra/keycloak/reset-demo-users.sh (#152).
+DEMO_USERS = (
+    (1, "demo.frontdesk", "bfb3e893-5380-4260-b1b9-420ee3a9e6e4", "Demo Front Desk", "FD", None),
+    (2, "demo.ma", "8474b553-c2bb-4a7b-a098-cc4bfdf5f4ac", "Demo Medical Assistant", "MA", None),
+    (3, "demo.doctor", "490ef6d1-2e36-40ed-88eb-132538695ad9", "Demo Doctor", "MD", 3),
+    (4, "demo.admin", "9a805285-df36-4ce9-abcc-3844ab784dfa", "Demo Practice Admin", "ADM", None),
+)
+#: The patient realm's demo account, and the demo patient whose chart it opens (the visit).
+DEMO_PATIENT_SUBJECT = "8e477695-3ea5-4082-8765-2b8edee9123c"
+DEMO_PORTAL_PATIENT = 1
+
+
+def _demo_users(db: Session) -> None:
+    starter._set_clinic(db, CLINIC_A)
+    roles = {r.code: r.id for r in db.execute(text(
+        "SELECT code, id FROM admin.role WHERE tenant_id IS NULL AND is_system"))}
+    for n, username, subject, name, role, provider in DEMO_USERS:
+        practitioner = starter.sid(starter.PRACTITIONER, provider) if provider else None
+        _ensure(db, "app_user", sid(DEMO_USER, n), tenant_id=CLINIC_A, keycloak_subject=subject,
+                username=username, display_name=name, practitioner_id=practitioner)
+        _ensure(db, "user_role", sid(DEMO_USER_ROLE, n), tenant_id=CLINIC_A,
+                user_id=sid(DEMO_USER, n), role_id=roles[role], facility_id=FACILITY_A)
+    _ensure(db, "portal_account", sid(PORTAL_ACCOUNT, 1), tenant_id=CLINIC_A,
+            keycloak_user_id=DEMO_PATIENT_SUBJECT,
+            patient_id=sid(PATIENT, DEMO_PORTAL_PATIENT), status="active",
+            enrolled_at=dt.datetime(2026, 10, 29, tzinfo=dt.UTC))
+
+
 def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> None:
     if p.visit is None or db.get(M["appointment"], sid(APPOINTMENT, p.n)) is not None:
         return
@@ -179,4 +213,5 @@ def load_demo(db: Session) -> None:
         _ensure(db, "patient_pharmacy", sid(P_PHARMACY, p.n), tenant_id=CLINIC_A,
                 patient_id=sid(PATIENT, p.n), pharmacy_id=PHARMACY_ID, is_default=True)
         _appointment(db, p, visits)
+    _demo_users(db)
     db.flush()
