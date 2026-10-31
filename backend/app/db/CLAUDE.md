@@ -134,7 +134,8 @@ The visit helpers (batch 2), on the same rules:
   writes its Provenance, and nothing changes after it;
 - `record_vitals`: one vital-signs Observation per entry, with the contract's LOINC code, the
   value and UCUM unit as entered (D69), blood pressure as two components; at most one per type,
-  never in the future;
+  never in the future; `vital_entered_in_error` sets its status and writes the Provenance, as
+  `allergy_entered_in_error` does;
 - `create_allergy`, `update_allergy`, `allergy_entered_in_error`: reactions with their
   manifestations, and a note;
 - `add_encounter_diagnosis` and `remove_encounter_diagnosis`: a Condition (category
