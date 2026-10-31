@@ -101,7 +101,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 39 | PATCH | `/patients/{patientId}/coverages/{coverageId}` | V | Cl | `coverages:update` | pw | – | ✓ | | FR-RCM-01 | B2 | |
 | 256 | GET | `/patients/{patientId}/coverages/{coverageId}` | V | Cl | `coverages:read` | pr | – | | | FR-RCM-01 | B2 | **New** (contracts follow-up 2, 2026-10-26; Minalini on #48): one coverage with the strong `ETag` #39 needs, so a coverage can be ended (D45) |
 | 40 | POST | `/patients/{patientId}/coverages/{coverageId}/card-images` | V | Cl+F | `coverages:update` | pw | S | | | FR-PAT-01 | B2 | Body `{ fileId, side }` (API_STANDARDS §15) |
-| 232 | POST | `/patients/{patientId}/coverages/{coverageId}/entered-in-error` | V | Cl | `coverages:entered-in-error` | pw | – | | | FR-PAT-01, FR-RCM-01 | B2 | **New** (D45, 2026-10-23): a coverage recorded by mistake; ending one is `PATCH` with `endDate` |
+| 232 | POST | `/patients/{patientId}/coverages/{coverageId}/entered-in-error` | V | Cl | `coverages:entered-in-error` | pw | S | | | FR-PAT-01, FR-RCM-01 | B2 | **New** (D45, 2026-10-23): a coverage recorded by mistake; ending one is `PATCH` with `endDate`. `Idempotency-Key` accepted (2026-10-29, Minalini's #85 request) |
 | 41 | GET | `/patients/{patientId}/consents` | V | Cl | `consents:read` | pr | – | | | FR-PAT-01 | B2 | |
 | 42 | POST | `/patients/{patientId}/consents` | V | Cl | `consents:create` | pw | S | | | FR-PAT-01, AI-01 (recording consent) | B2 | |
 | 43 | PUT | `/patients/{patientId}/preferred-pharmacy` | V | Ad | `patients:update` | pw | – | ✓ | | FR-PAT-01 | B2 | |
@@ -125,10 +125,10 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 53 | GET | `/appointments/{appointmentId}` | V | Cl | `appointments:read` | pr | – | | | FR-SCH-01 | B3 | **New** (single read missing from CAT) |
 | 54 | PATCH | `/appointments/{appointmentId}` | V | Cl | `appointments:update` | pw | – | ✓ | | FR-SCH-01 | B3 | Room, reason for visit, notes, instructions; no slot or time fields (D61): rescheduling is only #243 |
 | 243 | POST | `/appointments/{appointmentId}/reschedule` | V | Cl | `appointments:reschedule` | pw | S | | | FR-SCH-01 | B3 | **New** (D61, 2026-10-24): cancels the old slot, books the new one, sets `rescheduledFromId`; reason required |
-| 242 | POST | `/appointments/{appointmentId}/undo-check-in` | V | Cl | `appointments:undo-check-in` | pw | – | | | FR-SCH-02 | B3 | **New** (D55, 2026-10-24): before rooming and any clinical data; encounter → entered-in-error |
+| 242 | POST | `/appointments/{appointmentId}/undo-check-in` | V | Cl | `appointments:undo-check-in` | pw | S | | | FR-SCH-02 | B3 | **New** (D55, 2026-10-24): before rooming and any clinical data; encounter → entered-in-error. `Idempotency-Key` accepted (2026-10-29, Minalini's #85 request) |
 | 55 | POST | `/appointments/{appointmentId}/cancel` | V | Cl | `appointments:cancel` | pw | – | | | FR-SCH-01 | B3 | |
 | 56 | POST | `/appointments/{appointmentId}/check-in` | V | Cl | `appointments:check-in` | pw | R | | | FR-SCH-02 | B3 | Creates Encounter (VD-G4); eligibility (VD-G3) — reaches a partner, so key required |
-| 57 | POST | `/appointments/{appointmentId}/status` | V | Cl+Ad | `appointments:status` | pw | – | | | FR-SCH-02 | B3 | Values: `arrived`, `roomed`, `with-provider`, `checked-out`, `noshow` (DATA_OWNERSHIP §5.1) |
+| 57 | POST | `/appointments/{appointmentId}/status` | V | Cl+Ad | `appointments:status` | pw | S | | | FR-SCH-02 | B3 | Values: `arrived`, `roomed`, `with-provider`, `checked-out`, `noshow` (DATA_OWNERSHIP §5.1). `Idempotency-Key` accepted (2026-10-29, Minalini's #85 request) |
 | 58 | GET | `/status-board` | V | C | `status-board:read` | pr | – | | | FR-SCH-02 | B3 | `facilityName` in both views; staff view adds `appointmentType`, `reasonForVisit`, `encounterId` (D60) |
 | 236 | GET | `/booking/facilities` | V | Cl | `scheduling-reference:read` | – | – | | | FR-SCH-01 | B3 | **New** (D49, 2026-10-24): bookable fields only; reference data |
 | 237 | GET | `/booking/locations` | V | Cl | `scheduling-reference:read` | – | – | | | FR-SCH-01 | B3 | **New** (D49) |
