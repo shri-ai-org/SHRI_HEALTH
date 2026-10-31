@@ -296,7 +296,8 @@ paths:
       operationId: createPrescription
       summary: Start a prescription
       description: 'Starts a draft (inventory #120). Drug search is `GET /codes?system=rxnorm`, over RxNorm Current Prescribable
-        Content (D97).'
+        Content (D97). Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:create` but has
+        neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
       - medications
       x-owner: thulasi
@@ -387,9 +388,10 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `prescriptions:create`); `break-glass-required` (the patient's
-            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
-            (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:create`, or the user has neither the MD nor
+            the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is
+            restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such patient, encounter or pharmacy in this clinic or the user's facilities).
@@ -537,7 +539,8 @@ paths:
       operationId: updatePrescription
       summary: Edit a draft prescription
       description: 'Changes a draft (inventory #122). A changed draft needs a new safety check before signing. A signed prescription
-        is locked.'
+        is locked. Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:update` but has neither
+        the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
       - medications
       x-owner: thulasi
@@ -612,9 +615,10 @@ paths:
         '401': *a12
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `prescriptions:update`); `break-glass-required` (the patient's
-            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
-            (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:update`, or the user has neither the MD nor
+            the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is
+            restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing
+            or wrong CSRF header or Origin).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
@@ -643,7 +647,9 @@ paths:
       operationId: markPrescriptionEnteredInError
       summary: Mark a draft prescription wrong
       description: 'A draft written by mistake (inventory #227): entered-in-error with a reason and its Provenance; nothing
-        is deleted (D14). A signed prescription is cancelled instead (later).'
+        is deleted (D14). A signed prescription is cancelled instead (later). Only MD and APP may do this in the MVP; RN may
+        not. A user who holds `prescriptions:entered-in-error` but has neither the MD nor the APP role gets `403 permission-denied`
+        (D110; for the clinical advisors to confirm, Q21).'
       tags:
       - medications
       x-owner: thulasi
@@ -721,9 +727,10 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `prescriptions:entered-in-error`); `break-glass-required`
-            (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37));
-            `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:entered-in-error`, or the user has neither
+            the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
@@ -755,7 +762,9 @@ paths:
         RxNorm ingredient of the drug, a `duplicate-medication` alert for an active medication with the same ingredient. The
         alerts are stored on the draft. Both alerts are fixed rules in the medications service, each with its tests; no AI
         model produces, ranks or suppresses an alert (D99). It doesn''t change the draft''s version or `ETag`, so an open
-        editor keeps its `If-Match`.'
+        editor keeps its `If-Match`. Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:safety-check`
+        but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm,
+        Q21).'
       tags:
       - medications
       x-owner: thulasi
@@ -821,8 +830,9 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `prescriptions:safety-check`); `break-glass-required` (the
-            patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+          description: 403. `permission-denied` (the role lacks `prescriptions:safety-check`, or the user has neither the
+            MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
             (missing or wrong CSRF header or Origin).
         '404':
           $ref: ../components/responses/NotFound.yaml
@@ -851,7 +861,9 @@ paths:
       operationId: overrideAlert
       summary: Override a safety alert
       description: 'Records why the prescriber goes ahead despite an alert (inventory #124; D97). Required before signing
-        for a `high` alert; audited. It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`.'
+        for a `high` alert; audited. It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`.
+        Only MD and APP may do this in the MVP; RN may not. A user who holds `alerts:override` but has neither the MD nor
+        the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
       - medications
       x-owner: thulasi
@@ -914,9 +926,10 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `alerts:override`); `break-glass-required` (the patient's
-            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
-            (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `alerts:override`, or the user has neither the MD nor the
+            APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted
+            and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong
+            CSRF header or Origin).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such alert in this clinic or the user's facilities).
@@ -948,7 +961,9 @@ paths:
         Refused while the latest safety check is missing or older than the draft, or a `high` alert has no override. Transmission
         then moves through `sent` to `accepted` or `rejected` (here a simulated pharmacy). Sending always goes through the
         outbox (`enqueue(db, "erx", "NewRx", …)`), never straight from the request: for the demo the outbox delivers to the
-        simulated pharmacy, and its answer comes back through `/hooks/erx` (D99).'
+        simulated pharmacy, and its answer comes back through `/hooks/erx` (D99). Only MD and APP may do this in the MVP;
+        RN may not. A user who holds `prescriptions:sign-and-send` but has neither the MD nor the APP role gets `403 permission-denied`
+        (D110; for the clinical advisors to confirm, Q21).'
       tags:
       - medications
       x-owner: thulasi
@@ -1036,8 +1051,9 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `prescriptions:sign-and-send`); `break-glass-required` (the
-            patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+          description: 403. `permission-denied` (the role lacks `prescriptions:sign-and-send`, or the user has neither the
+            MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
             (missing or wrong CSRF header or Origin).
         '404':
           $ref: ../components/responses/NotFound.yaml
