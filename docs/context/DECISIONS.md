@@ -137,6 +137,7 @@ Proprietary items allowed under D75, one line each, with the reason and any cond
 | CPT | AMA licence | U.S. claims need CPT codes (Q7) | Licence bought before the pilot (Q7) | 2026-10-26 |
 | SNOMED CT, through UMLS | SNOMED CT affiliate licence (UMLS) | US Core and certification need it (Q8) | UMLS registration (Q8) | 2026-10-26 |
 | Partner vendors (clearinghouse, e-prescribing and the Surescripts network, lab, SMS and email, eFax, card processor, drug-interaction data; Q11–Q17) | Proprietary services | They are the networks themselves | One line per vendor, added here when it is chosen | 2026-10-26 |
+| ClamAV (the file scanner, D105) | GPL-2.0 | Not proprietary: a separate program, which D75's scope allows; recorded so that it is never linked into our code | Our code talks to it only over the clamd network socket, in its own container. Never link libclamav (no Python binding); any socket client library must be on the D75 allowlist. Decided by Vimal on #140 | 2026-10-30 |
 | MedGemma (Health AI Developer Foundations terms) | Custom terms | **Not granted.** Added only if the benchmark shows that no Apache-2.0 or MIT model is good enough | — | — |
 
 ## Who owns what
@@ -201,6 +202,7 @@ The schema is locked (D72). These rows go in through new migrations and reviewed
 | Collation C.UTF-8 and the RDS pgvector version, identical in development and CI | Anand (database), Thulasi (development image and CI) | D31, D33 |
 | ~~Lock the P0 tables~~ **Done (2026-10-24):** schema locked; changes by migration | Anand, Sam | D24, D72 |
 | `enqueue()` signature change to `enqueue(db, partner, message_type, payload, idempotency_key, ordering_key=None)` (T29): a separate core PR, reviewed by all four. Needed before the first partner integration | Thulasi | D25 |
+| A shared store for the public form's rate limiter and its used bot-challenge answers (today in the API's memory, one process only), before the API runs more than one process or server. Until then, every environment, the demo included, runs the API as one process | Thulasi | #105 review, `core/public_form.py` |
 | Market code systems and DPDP erasure designs. Needed before India | Anand | D26 |
 | Amazon RDS for PostgreSQL 18 per ADR-0012 (Multi-AZ, encryption at rest, point-in-time recovery, snapshot copies to a second U.S. region) and quarterly restore drills. | Thulasi (Terraform), with Anand (parameters, extensions, restore drills) | D30 |
 
