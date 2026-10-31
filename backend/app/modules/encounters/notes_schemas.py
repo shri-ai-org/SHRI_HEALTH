@@ -1,7 +1,7 @@
 """Request and response shapes for notes (contracts/openapi/modules/encounters.yaml: Note,
 NoteSection, NoteAddendum, CosignReturn, NoteCreate, NotePatch, NoteSectionText, AddendumCreate,
-NoteList, NoteVersion, NoteVersionSection, NoteVersionList). ``NoteSummary`` and the shared
-shapes are in schemas.py."""
+CosignDecision, NoteList, NoteVersion, NoteVersionSection, NoteVersionList). ``NoteSummary``
+and the shared shapes are in schemas.py."""
 
 from __future__ import annotations
 
@@ -83,6 +83,11 @@ class NotePatch(Closed):
 
 class AddendumCreate(Closed):
     text: Annotated[str, StringConstraints(min_length=1, max_length=20000)]
+
+
+class CosignDecision(Closed):
+    decision: Literal["cosign", "return"]
+    comment: Annotated[str, StringConstraints(min_length=1, max_length=2000)] | None = None
 
 
 class NoteList(Out):

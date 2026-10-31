@@ -30,9 +30,9 @@ NOTES = frozenset({
     "markNoteEnteredInError",
 })
 # markDiagnosisEnteredInError keeps the rank link, and app.db.fhir_store has no helper for a
-# Condition's entered-in-error (note for Anand); cosignNote and markNoteEnteredInError are not on
-# the demo path (D108).
-NOTES_PENDING = frozenset({"markDiagnosisEnteredInError", "cosignNote", "markNoteEnteredInError"})
+# Condition's entered-in-error (note for Anand); markNoteEnteredInError is not on the demo path
+# (D108).
+NOTES_PENDING = frozenset({"markDiagnosisEnteredInError", "markNoteEnteredInError"})
 
 
 def test_rooming_operations_are_built_or_pending() -> None:

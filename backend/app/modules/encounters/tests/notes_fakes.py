@@ -76,6 +76,9 @@ class FakeNote:
     version: int = 1
     addenda: list[str] = field(default_factory=list)
     versions: list[str] = field(default_factory=list)
+    cosign_status: str = "not-required"
+    cosigner: UUID | None = None  # the co-signer's practitioner, named when it was signed
+    cosign_comment: str | None = None
 
 
 @dataclass
@@ -130,7 +133,7 @@ class FakeNoteRepository:
 
     def _head(self, n: FakeNote) -> NoteHead:
         return NoteHead(n.id, n.encounter_id, n.patient_id, n.status, n.version, n.type_code,
-                        n.author, n.template_id)
+                        n.author, n.template_id, n.cosign_status, n.cosigner)
 
     async def head(self, db: Any, note_id: UUID, *, lock: bool = False) -> NoteHead | None:
         n = self.world.notes.get(note_id)
@@ -141,11 +144,14 @@ class FakeNoteRepository:
     async def get(self, db: Any, note_id: UUID) -> Versioned[nschemas.Note]:
         n = self.world.notes[note_id]
         author = schemas.ClinicianRef(id=n.author, display_name="Dr. Test")
+        cosigner = (schemas.ClinicianRef(id=n.cosigner, display_name="Dr. Supervisor")
+                    if n.cosigner else None)
+        cosigned = n.cosign_status == "cosigned"
         return Versioned(nschemas.Note(
             id=n.id, encounter_id=n.encounter_id, patient_id=n.patient_id,
             note_type=schemas.CodeableConcept(codings=[schemas.Coding(
                 system="http://loinc.org", code=n.type_code)]),
-            title=n.title, status=n.status, cosign_status="not-required",
+            title=n.title, status=n.status, cosign_status=n.cosign_status, cosigner=cosigner,
             template_id=n.template_id, author=author, ai_assisted=False,
             sections=[nschemas.NoteSection(id=s.id, code=s.code, title=s.title, sequence=i,
                                            required=s.required, text=s.text,
@@ -154,6 +160,10 @@ class FakeNoteRepository:
             addenda=[nschemas.NoteAddendum(id=uuid.uuid4(), text=t, author=author,
                                            signed_at=NOW) for t in n.addenda],
             signed_at=NOW if n.status != "preliminary" else None,
+            cosigned_at=NOW if cosigned else None, cosigned_by=cosigner if cosigned else None,
+            cosign_return=nschemas.CosignReturn(comment=n.cosign_comment, returned_at=NOW,
+                                                returned_by=cosigner)
+            if n.cosign_status == "returned" and n.cosign_comment and cosigner else None,
             created_at=NOW, updated_at=NOW), n.version)
 
     async def sections(self, db: Any, note: NoteHead) -> list[SectionHead]:
@@ -278,4 +288,27 @@ class FakeClinicalStore(FakeStore):
         n = self._note(note_id, if_version)
         n.status = "amended"
         n.addenda.append(text)
+        if n.cosign_status == "returned":  # the author's answer: waiting again (D73)
+            n.cosign_status, n.cosign_comment = "pending", None
         return AddendumWritten(Written(uuid.uuid4(), 1, NOW), self._bump(n))
+
+    def _pending(self, note_id: UUID, if_version: int) -> FakeNote:
+        """As the helper: signed and waiting for its co-signature (the real one also checks
+        that the current user is the named co-signer, which the fakes leave to the service)."""
+        n = self._note(note_id, if_version)
+        if n.status not in ("final", "amended"):
+            raise InvalidTransition(n.status)
+        if n.cosign_status != "pending":
+            raise InvalidTransition(n.cosign_status)
+        return n
+
+    async def cosign_note(self, db: Any, note_id: UUID, *, if_version: int) -> Written:
+        n = self._pending(note_id, if_version)
+        n.cosign_status = "cosigned"
+        return self._bump(n)
+
+    async def return_note_to_author(self, db: Any, note_id: UUID, comment: str, *,
+                                    if_version: int) -> Written:
+        n = self._pending(note_id, if_version)
+        n.cosign_status, n.cosign_comment = "returned", comment
+        return self._bump(n)

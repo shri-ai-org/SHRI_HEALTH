@@ -11,6 +11,11 @@
   in ``errors``. Signing locks the note and writes its Provenance in the same transaction (D8).
   A co-sign rule for the author names the co-signer (``cosignStatus: pending``).
 - **Addendum**: a new signed Composition that appends to a signed note, in one transaction.
+- **Co-sign** (``cosignNote``, D73): only the co-signer the co-sign rule named when the note was
+  signed, never the author, while ``cosignStatus`` is ``pending``. ``cosign`` adds the
+  professional attester and its Provenance (``cosigned``, ``note.cosigned``); ``return`` keeps
+  the note signed and frozen with the comment (``returned``, ``note.cosign-returned``), and the
+  author answers with an addendum, which makes it ``pending`` again.
 - **Close**: ``in-progress`` to ``finished`` with the Q22 default: a signed note, no open draft,
   and a diagnosis for a billable visit; publishes ``encounter.closed`` in the same transaction.
 
@@ -360,3 +365,52 @@ async def close(db: AsyncSession, repo: EncounterRepository, nrepo: NoteReposito
     await db.commit()
     return await repo.get(db, encounter_id, signed_notes_only=signed_notes_only(user))
 
+
+
+# ------------------------------------------------------------------------------------- co-sign
+def _not_the_cosigner() -> Forbidden:
+    return Forbidden("Only the co-signer the co-sign rule names may decide",
+                     code="permission-denied")
+
+
+async def cosign(db: AsyncSession, repo: EncounterRepository, nrepo: NoteRepository,
+                 store: FhirStore, check: ChartCheck, user: CurrentUser, note_id: UUID,
+                 body: nschemas.CosignDecision, if_match: str | None,
+                 name_patient: NamePatient) -> Versioned[nschemas.Note]:
+    """cosignNote (#81, D73). In order: ``If-Match`` (428), the note (404) and the chart (D37),
+    a ``return`` without a comment (422), a note not waiting for its co-signature (409 with
+    ``currentState``), a user who is not the co-signer the rule named, or is the author (403),
+    then the version (412). The helper decides again under the row lock."""
+    version = if_match_version(if_match)
+    note, encounter = await _note(db, nrepo, repo, check, user, note_id)
+    comment = (body.comment or "").strip()
+    if body.decision == "return" and not comment:
+        raise business_rule([field_error("body", "/comment", "required")])
+    if note.status not in ("final", "amended"):
+        raise _state(note.status)
+    if note.cosign_status != "pending":
+        raise _state(note.cosign_status)
+    practitioner = await nrepo.user_practitioner(db, user.id)
+    if practitioner is None or practitioner != note.cosigner_id \
+            or practitioner == note.author_id:
+        raise _not_the_cosigner()
+    locked = await _locked_version(db, nrepo, note_id, version)
+    if locked.cosign_status != "pending":
+        raise _state(locked.cosign_status)
+    try:
+        if body.decision == "cosign":
+            await store.cosign_note(db, note_id, if_version=version)
+        else:
+            await store.return_note_to_author(db, note_id, comment, if_version=version)
+    except StaleVersion as stale:
+        raise PreconditionFailed(headers={"ETag": etag(stale.current_version)}) from stale
+    except InvalidTransition as done:
+        raise _state(done.current_state) from done
+    except InvalidInput as refused:  # not the named co-signer, seen under the lock
+        raise _not_the_cosigner() from refused
+    event = "note.cosigned" if body.decision == "cosign" else "note.cosign-returned"
+    await publish(db, event, f"note/{note_id}", {"encounterId": str(note.encounter_id)},
+                  facility_id=encounter.facility_id, patient_id=note.patient_id)
+    name_patient(note.patient_id)
+    await db.commit()
+    return await nrepo.get(db, note_id)

@@ -11,11 +11,13 @@ import uuid
 from typing import Any
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.deps import CurrentUser
-from app.db.models import systems
-from app.db.tests.conftest import TEST_DATABASE_URL
-from app.modules.scheduling.tests.conftest import Practice
+from app.db.models import MAPPERS, systems
+from app.db.tests.conftest import TEST_DATABASE_URL, sync_url
+from app.modules.scheduling.tests.conftest import Practice, setup_session
 from app.modules.scheduling.tests.test_check_in_live import _sql
 
 from .test_rooming_live import _visit
@@ -354,6 +356,119 @@ def test_a_cosign_rule_names_the_cosigner(client: Any, practice: Practice,
     assert signed.json()["cosignStatus"] == "pending"
     assert signed.json()["cosigner"] == {"id": str(practice.provider),
                                          "displayName": "Dr. Avery401 Lindqvist58"}
+
+
+SUPERVISOR = "Dr. Quinn402 Halvorsen61"
+
+
+def _supervisor(practice: Practice, users: dict[str, CurrentUser]) -> uuid.UUID:
+    """A second MD user, linked to a practitioner of its own (SUPERVISOR), who supervises the
+    md user under a co-sign rule for notes. Returns the supervisor's practitioner."""
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    db = setup_session(admin, practice.clinic)
+    try:
+        doctor = MAPPERS["practitioner"]()
+        doctor.name = [MAPPERS["human_name"](family="Halvorsen61", given=["Quinn402"],
+                                             prefix=["Dr."], use="official")]
+        db.add(doctor)
+        db.flush()
+        supervisor: uuid.UUID = doctor.id
+        made = MAPPERS["app_user"](tenant_id=practice.clinic, keycloak_subject=str(uuid.uuid4()),
+                                   username=f"sup.{uuid.uuid4().hex[:8]}",
+                                   display_name="Dev MD supervisor", practitioner_id=supervisor)
+        db.add(made)
+        db.flush()
+        user: uuid.UUID = made.id
+        db.commit()
+    finally:
+        db.close()
+        admin.dispose()
+    md = users["md"]
+    users["sup"] = CurrentUser(id=user, organization_id=practice.clinic, roles=md.roles,
+                               facility_ids=md.facility_ids,
+                               display_name="Dev MD supervisor")
+    author = _sql(practice, "SELECT practitioner_id FROM admin.app_user WHERE id = :u",
+                  u=md.id)[0][0]
+    _sql(practice, "INSERT INTO admin.cosign_rule (id, tenant_id, supervisee_practitioner_id, "
+         "supervising_practitioner_id, applies_to_notes, applies_to_prescriptions, "
+         "applies_to_orders, effective_from) VALUES (gen_random_uuid(), :t, :a, :s, true, "
+         "false, false, current_date - 1)", t=practice.clinic, a=author, s=supervisor)
+    return supervisor
+
+
+def _decide(client: Any, note_id: str, body: dict[str, Any], user: str = "sup",
+            tag: str | None = None) -> Any:
+    tag = tag or client(user).get(f"{API}/notes/{note_id}").headers["ETag"]
+    return client(user).post(f"{API}/notes/{note_id}/cosign", json=body,
+                             headers={"If-Match": tag})
+
+
+def test_the_cosigner_returns_then_cosigns(client: Any, practice: Practice,
+                                           users: dict[str, CurrentUser]) -> None:
+    """cosignNote with Anand's helpers (D73): only the co-signer the rule named decides; a
+    return keeps the note signed and frozen, the author's addendum makes it pending again, and
+    the co-signature adds the professional attester and its Provenance. Each decision raises
+    its event in the same transaction."""
+    supervisor = _supervisor(practice, users)
+    encounter = _visit(client, practice)
+    note = _note(client, encounter, noteType={"codings": [{"system": systems.LOINC,
+                                                            "code": "11506-3"}]}).json()
+    assert _write(client, note, {"11506-3": "Seen and examined."}).status_code == 200
+    signed = _sign(client, note["id"])
+    assert signed.json()["cosignStatus"] == "pending", signed.text
+    url = f"{API}/notes/{note['id']}/cosign"
+    # Refusals: the author (an MD, but not the one named), no notes:cosign, the body, If-Match.
+    author = _decide(client, note["id"], {"decision": "cosign"}, user="md")
+    assert author.status_code == 403 and _code(author) == "permission-denied"
+    for user in ("fd", "rn", "none"):
+        refused = client(user).post(url, json={"decision": "cosign"},
+                                    headers={"If-Match": '"1"'})
+        assert refused.status_code == 403 and _code(refused) == "permission-denied", user
+    assert client("md-b").post(url, json={"decision": "cosign"},
+                               headers={"If-Match": '"1"'}).status_code == 404
+    no_comment = _decide(client, note["id"], {"decision": "return"})
+    assert no_comment.status_code == 422 and no_comment.json()["errors"] == [
+        {"in": "body", "pointer": "/comment", "code": "required"}]
+    assert _decide(client, note["id"], {"decision": "maybe"}).status_code == 422
+    assert client("sup").post(url, json={"decision": "cosign"}).status_code == 428
+    stale = _decide(client, note["id"], {"decision": "cosign"}, tag='"1"')
+    assert stale.status_code == 412
+    # Returned to the author: still signed and frozen.
+    returned = _decide(client, note["id"], {"decision": "return",
+                                            "comment": "Please add the home readings."})
+    assert returned.status_code == 200, returned.text
+    r = returned.json()
+    assert (r["status"], r["cosignStatus"]) == ("final", "returned")
+    assert r["cosignReturn"]["comment"] == "Please add the home readings."
+    assert r["cosignReturn"]["returnedBy"]["id"] == str(supervisor)
+    assert returned.headers["ETag"].startswith('"')
+    frozen = client("md").patch(f"{API}/notes/{note['id']}", json={"title": "Changed"},
+                                headers={"If-Match": returned.headers["ETag"], **MERGE})
+    assert frozen.status_code == 409 and _code(frozen) == "record-locked"
+    twice = _decide(client, note["id"], {"decision": "cosign"})
+    assert twice.status_code == 409 and twice.json()["currentState"] == "returned"
+    # The author answers with an addendum: pending again.
+    answer = client("md").post(f"{API}/notes/{note['id']}/addenda",
+                               json={"text": "Home readings average 128/82."},
+                               headers={"If-Match": returned.headers["ETag"]})
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["cosignStatus"] == "pending"
+    # Co-signed: the professional attester, its Provenance, final.
+    done = _decide(client, note["id"], {"decision": "cosign"})
+    assert done.status_code == 200, done.text
+    d = done.json()
+    assert d["cosignStatus"] == "cosigned" and d["status"] == "amended"
+    assert d["cosignedBy"] == {"id": str(supervisor), "displayName": SUPERVISOR}
+    assert d["cosignedAt"] and "cosignReturn" not in d
+    assert _sql(practice, "SELECT count(*) FROM clinical.composition_attester WHERE "
+                "composition_id = :n AND mode = 'professional'", n=note["id"])[0][0] == 1
+    again = _decide(client, note["id"], {"decision": "return", "comment": "Late."})
+    assert again.status_code == 409 and again.json()["currentState"] == "cosigned"
+    events = [(t, data) for t, data in _sql(
+        practice, "SELECT type, data FROM admin.event_log WHERE subject = :s "
+        "ORDER BY created_at, type", s=f"note/{note['id']}")]
+    assert ("note.cosign-returned", {"encounterId": encounter}) in events
+    assert ("note.cosigned", {"encounterId": encounter}) in events
 
 
 # ------------------------------------------------------------------------------------ close

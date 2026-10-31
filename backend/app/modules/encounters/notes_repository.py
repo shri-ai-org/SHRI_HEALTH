@@ -1,6 +1,6 @@
 """Note reads, under the request's session (row-level security: another clinic's note is simply
 not found). Writes go through Anand's note helpers (``create_note``, ``update_note``,
-``sign_note``, ``add_note_addendum``).
+``sign_note``, ``add_note_addendum``, ``cosign_note``, ``return_note_to_author``).
 
 How the contract's Note is read from the Composition tables (``db/CLAUDE.md``):
 - an addendum is its own signed Composition that ``appends`` to the note, so it is never listed
@@ -46,6 +46,8 @@ class NoteHead:
     type_code: str | None
     author_id: UUID | None  # the author's Practitioner
     template_id: UUID | None
+    cosign_status: str = "not-required"
+    cosigner_id: UUID | None = None  # the Practitioner the co-sign rule named when it was signed
 
 
 @dataclass(frozen=True)
@@ -88,7 +90,7 @@ class NoteRepository(Protocol):
 # A note, never an addendum (a Composition that appends to another).
 _HEAD = text("""
 SELECT c.id, c.encounter_id, c.subject_patient_id, c.status, c.meta_version_id, c.type_code,
-       c.ext_template_id,
+       c.ext_template_id, c.ext_cosign_status, c.ext_cosigner_practitioner_id,
        (SELECT x.practitioner_id FROM clinical.composition_author x
          WHERE x.composition_id = c.id AND x.practitioner_id IS NOT NULL
          ORDER BY x.created_at LIMIT 1) AS author_id
@@ -99,7 +101,7 @@ WHERE c.id = :id AND c.encounter_id IS NOT NULL
 """)
 _HEAD_LOCKED = text("""
 SELECT c.id, c.encounter_id, c.subject_patient_id, c.status, c.meta_version_id, c.type_code,
-       c.ext_template_id,
+       c.ext_template_id, c.ext_cosign_status, c.ext_cosigner_practitioner_id,
        (SELECT x.practitioner_id FROM clinical.composition_author x
          WHERE x.composition_id = c.id AND x.practitioner_id IS NOT NULL
          ORDER BY x.created_at LIMIT 1) AS author_id
@@ -242,7 +244,8 @@ def _coded(system: str | None, code: str | None, display: str | None, txt: str |
 
 def _head(r: Any) -> NoteHead:
     return NoteHead(r["id"], r["encounter_id"], r["subject_patient_id"], r["status"],
-                    r["meta_version_id"], r["type_code"], r["author_id"], r["ext_template_id"])
+                    r["meta_version_id"], r["type_code"], r["author_id"], r["ext_template_id"],
+                    r["ext_cosign_status"] or "not-required", r["ext_cosigner_practitioner_id"])
 
 
 def _entry_source(source: str | None, ai_suggestion_id: UUID | None) -> str:

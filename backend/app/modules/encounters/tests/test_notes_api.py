@@ -22,7 +22,9 @@ from .notes_fakes import (
     TEMPLATE,
     FakeClinicalStore,
     FakeDiagnosisRepository,
+    FakeNote,
     FakeNoteRepository,
+    FakeSection,
     NotesWorld,
 )
 
@@ -228,3 +230,119 @@ def test_close(as_user: Client, world: World, notes: NotesWorld) -> None:
     assert ("encounter.closed", f"encounter/{encounter}") in notes.published
     again = as_user("md").post(path)
     assert again.status_code == 409 and again.json()["currentState"] == "finished"
+
+
+# ------------------------------------------------------------------------------- cosignNote
+#: The APP dev user's practitioner: the supervisee whose notes the MD (DOCTOR) co-signs.
+SUPERVISEE = UUID("a0000000-0000-4000-8000-0000000000a9")
+
+
+def _pending_note(world: World, notes: NotesWorld, cosigner: UUID = DOCTOR,
+                  author: UUID = SUPERVISEE) -> FakeNote:
+    """A note the APP wrote and signed, waiting for the co-signer the rule named (version 2)."""
+    notes.practitioners[DEV_USERS["app"].id] = SUPERVISEE
+    encounter = _encounter(world)
+    note = FakeNote(uuid4(), encounter, world.encounters[encounter].patient_id, "Progress note",
+                    "11506-3", author, [FakeSection(uuid4(), "10154-3", "Chief complaint",
+                                                    True, "Headache.")],
+                    None, status="final", version=2, versions=["preliminary", "final"],
+                    cosign_status="pending", cosigner=cosigner)
+    notes.notes[note.id] = note
+    return note
+
+
+def _decide(as_user: Client, note: FakeNote, body: dict[str, Any], user: str = "md",
+            tag: str | None = '"2"') -> Any:
+    headers = {"If-Match": tag} if tag else {}
+    return as_user(user).post(f"{API}/notes/{note.id}/cosign", json=body, headers=headers)
+
+
+def test_the_named_cosigner_cosigns(as_user: Client, world: World, notes: NotesWorld) -> None:
+    note = _pending_note(world, notes)
+    done = _decide(as_user, note, {"decision": "cosign"})
+    assert done.status_code == 200, done.text
+    body = done.json()
+    assert body["cosignStatus"] == "cosigned" and body["status"] == "final"
+    assert body["cosignedBy"]["id"] == str(DOCTOR) and body["cosignedAt"]
+    assert done.headers["ETag"] == '"3"'
+    assert notes.published == [("note.cosigned", f"note/{note.id}")]
+    assert world.audited == [note.patient_id]
+    again = _decide(as_user, note, {"decision": "cosign"}, tag='"3"')
+    assert again.status_code == 409 and again.json()["currentState"] == "cosigned"
+
+
+def test_return_to_the_author_keeps_the_note_signed(as_user: Client, world: World,
+                                                    notes: NotesWorld) -> None:
+    """D73: returned, still signed and frozen; the author answers with an addendum, which makes
+    it pending again."""
+    note = _pending_note(world, notes)
+    returned = _decide(as_user, note, {"decision": "return",
+                                       "comment": "  Please add the home readings.  "})
+    assert returned.status_code == 200, returned.text
+    body = returned.json()
+    assert (body["status"], body["cosignStatus"]) == ("final", "returned")
+    assert body["cosignReturn"]["comment"] == "Please add the home readings."
+    assert body["cosignReturn"]["returnedBy"]["id"] == str(DOCTOR)
+    assert "cosignedAt" not in body
+    assert notes.published == [("note.cosign-returned", f"note/{note.id}")]
+    edit = as_user("app").patch(f"{API}/notes/{note.id}", json={"title": "Changed"},
+                                headers={"If-Match": '"3"', **MERGE})
+    assert edit.status_code == 409 and edit.json()["code"] == "record-locked"  # frozen
+    answer = as_user("app").post(f"{API}/notes/{note.id}/addenda",
+                                 json={"text": "Home readings 128/82 on average."},
+                                 headers={"If-Match": '"3"'})
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["cosignStatus"] == "pending"
+    cosigned = _decide(as_user, note, {"decision": "cosign"}, tag='"4"')
+    assert cosigned.status_code == 200 and cosigned.json()["cosignStatus"] == "cosigned"
+
+
+def test_cosign_permission_denied(as_user: Client, world: World, notes: NotesWorld) -> None:
+    note = _pending_note(world, notes)
+    for user in ("app", "rn", "ma", "fd", "bil", "none"):  # no notes:cosign
+        refused = _decide(as_user, note, {"decision": "cosign"}, user=user)
+        assert refused.status_code == 403, user
+        assert refused.json()["code"] == "permission-denied", user
+    other = _pending_note(world, notes, cosigner=uuid4())  # the rule named someone else
+    refused = _decide(as_user, other, {"decision": "cosign"})
+    assert refused.status_code == 403 and refused.json()["code"] == "permission-denied"
+    own = _pending_note(world, notes, author=DOCTOR)  # never the author
+    refused = _decide(as_user, own, {"decision": "return", "comment": "Mine."})
+    assert refused.status_code == 403 and refused.json()["code"] == "permission-denied"
+    world.restricted.add(note.patient_id)
+    restricted = _decide(as_user, note, {"decision": "cosign"})
+    assert restricted.status_code == 403
+    assert restricted.json()["code"] == "break-glass-required"
+    assert _unchanged(notes, note) and notes.published == []
+
+
+def _unchanged(notes: NotesWorld, note: FakeNote) -> bool:
+    return notes.notes[note.id].cosign_status == "pending" and notes.notes[note.id].version == 2
+
+
+def test_cosign_validation_and_preconditions(as_user: Client, world: World,
+                                             notes: NotesWorld) -> None:
+    note = _pending_note(world, notes)
+    for body in ({}, {"decision": "approve"}, {"decision": "cosign", "extra": 1},
+                 {"decision": "return", "comment": ""}, {"decision": "return",
+                                                         "comment": "x" * 2001}):
+        bad = _decide(as_user, note, body)
+        assert bad.status_code == 422 and bad.json()["code"] == "validation-failed", body
+    for body in ({"decision": "return"}, {"decision": "return", "comment": "   "}):
+        rule = _decide(as_user, note, body)
+        assert rule.status_code == 422 and rule.json()["code"] == "business-rule-violation"
+        assert rule.json()["errors"] == [{"in": "body", "pointer": "/comment",
+                                          "code": "required"}]
+    missing = _decide(as_user, note, {"decision": "cosign"}, tag=None)
+    assert missing.status_code == 428
+    stale = _decide(as_user, note, {"decision": "cosign"}, tag='"1"')
+    assert stale.status_code == 412 and stale.headers["ETag"] == '"2"'
+    assert _decide(as_user, note, {"decision": "cosign"}).status_code == 200
+    unsigned = _started(as_user, _encounter(world))  # a draft: nothing to co-sign
+    draft = as_user("md").post(f"{API}/notes/{unsigned['id']}/cosign",
+                               json={"decision": "cosign"}, headers={"If-Match": '"1"'})
+    assert draft.status_code == 409 and draft.json()["currentState"] == "preliminary"
+    assert as_user("md").post(f"{API}/notes/not-a-uuid/cosign", json={"decision": "cosign"},
+                              headers={"If-Match": '"1"'}).status_code == 422
+    assert as_user("md").post(f"{API}/notes/{uuid4()}/cosign", json={"decision": "cosign"},
+                              headers={"If-Match": '"1"'}).status_code == 404

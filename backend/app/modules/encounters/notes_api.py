@@ -4,7 +4,7 @@ the first dependency. Every route runs the facility and restricted-chart checks 
 names the patient for core's audit (x-audit patient "result"): before the commit for writes,
 before returning for reads.
 
-Not built (D108, not on the demo path): cosignNote and markNoteEnteredInError.
+Not built (D108, not on the demo path): markNoteEnteredInError.
 
 The note templates are Anand's (practice setup, x-owner anand): createNote reads one through his
 module's repository (``template_reader``), the seam the tests replace.
@@ -150,6 +150,21 @@ async def add_note_addendum(
                                           body.text, if_match, _named(request, audit))
     response.headers["ETag"] = service.etag(amended.version)
     return amended.value
+
+
+@router.post(NOTE + "/cosign", operation_id="cosignNote", response_model=nschemas.Note,
+             response_model_exclude_none=True)
+async def cosign_note(
+    user: Annotated[CurrentUser, Depends(require("notes:cosign"))],
+    note_id: NoteId, body: nschemas.CosignDecision, request: Request, response: Response,
+    db: DB, repo: Repo, nrepo: NRepo, store: Store, check: Check, audit: Audit,
+    if_match: IfMatch = None,
+) -> nschemas.Note:
+    """Co-sign, or return to the author (D73): ``note.cosigned`` or ``note.cosign-returned``."""
+    decided = await nservice.cosign(db, repo, nrepo, store, check, user, note_id, body,
+                                    if_match, _named(request, audit))
+    response.headers["ETag"] = service.etag(decided.version)
+    return decided.value
 
 
 @router.get(NOTE + "/versions", operation_id="listNoteVersions",
