@@ -656,7 +656,9 @@ async def summary_link(db: AsyncSession, repo: EncounterRepository, check: Chart
                        ) -> tuple[StoredSummary, SummaryLink]:
     """getAfterVisitSummaryDownloadUrl (D98): the latest summary's short-lived link, so the
     front desk prints it at check-out; 404 until one exists. A chart read: the restricted-chart
-    check runs first (D37) and the patient is named for the audit."""
+    check runs first (D37; D107's desk exceptions don't cover it, D109), so the front desk
+    without a grant gets 403 break-glass-required (audited as an access denial by core) while
+    care-team members and users with a grant read it; the patient is named for the audit."""
     head = await readable(db, repo, check, user, encounter_id)
     stored = await summaries.latest(db, encounter_id)
     if stored is None:
