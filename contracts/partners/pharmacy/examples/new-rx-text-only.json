@@ -1,0 +1,17 @@
+{
+  "messageType": "NewRx",
+  "schemaVersion": "1.0",
+  "correlationId": "7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+  "createdAt": "2026-11-20T15:41:12Z",
+  "signedAt": "2026-11-20T15:41:10Z",
+  "prescriber": {"npi": "1234567893", "name": {"family": "Lindqvist58"}},
+  "patient": {"name": {"family": "Okafor904", "given": ["Marcus217", "Lee8"]}, "birthDate": "1978-07-02"},
+  "pharmacy": {"ncpdpId": "0000034"},
+  "medication": {
+    "description": "Saline nasal spray 0.65%",
+    "quantity": {"value": "44.5", "unit": "mL"},
+    "refills": 2,
+    "substitutionAllowed": false,
+    "sig": "2 sprays in each nostril as needed"
+  }
+}
