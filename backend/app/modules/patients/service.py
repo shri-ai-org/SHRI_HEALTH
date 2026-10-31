@@ -139,7 +139,7 @@ def _identifier(i: schemas.PatientIdentifierCreate) -> IdentifierIn:
                         assigner_display=i.assigner, supporting_document_id=i.document_id)
 
 
-def patient_in(body: schemas.PatientCreate) -> PatientIn:
+def patient_in(body: schemas.PatientCreate, entry_source: str = "clinician") -> PatientIn:
     """The registration for the helpers. No MR: ``create_patient`` issues it (D41, #88)."""
     names = (_name(body.name, "official"),
              *((Name(use="nickname", text=body.preferred_name),) if body.preferred_name else ()),
@@ -154,7 +154,7 @@ def patient_in(body: schemas.PatientCreate) -> PatientIn:
         telecoms=_telecoms(body.phones, body.emails),
         addresses=tuple(a for a in (_address(body.address),) if a is not None),
         identifiers=tuple(_identifier(i) for i in body.identifiers),
-        employer=_employer(body.employer), entry_source="clinician")
+        employer=_employer(body.employer), entry_source=entry_source)
 
 
 def _relationships(codes: list[schemas.CodedValue]) -> tuple[Coded, ...]:
@@ -203,9 +203,12 @@ def check_search_criteria(c: schemas.SearchCriteria) -> None:
     raise business_rule("body", "/criteria", "required")
 
 
-async def register(db: AsyncSession, repo: PatientRepository, store: FhirStore,
-                   body: schemas.PatientCreate, *, today: date,
-                   name_patient: Callable[[UUID], None]) -> Versioned[schemas.Patient]:
+async def create_registered(db: AsyncSession, repo: PatientRepository, store: FhirStore,
+                            body: schemas.PatientCreate, *, today: date,
+                            entry_source: str = "clinician") -> UUID:
+    """The registration rules (D44, D41, the duplicate check) and the write, without the commit,
+    so a caller that writes more in the same transaction (accepting a pre-registration, D96)
+    commits once. Returns the new patient's ID."""
     if body.birth_date > today:
         raise business_rule("body", "/birthDate", "out-of-range")
     if body.duplicate_check == "override" and not (body.duplicate_override_reason or "").strip():
@@ -228,10 +231,17 @@ async def register(db: AsyncSession, repo: PatientRepository, store: FhirStore,
                            candidateIds=[patient_id for patient_id, _ in matches])
     # Last: create_patient takes the next MRN from the practice's counter (D41), which stays
     # locked until commit.
-    written = await store.create_patient(db, patient_in(body))
-    name_patient(written.id)  # for the audit row, which commits with the patient (#79)
+    written = await store.create_patient(db, patient_in(body, entry_source))
+    return written.id
+
+
+async def register(db: AsyncSession, repo: PatientRepository, store: FhirStore,
+                   body: schemas.PatientCreate, *, today: date,
+                   name_patient: Callable[[UUID], None]) -> Versioned[schemas.Patient]:
+    patient_id = await create_registered(db, repo, store, body, today=today)
+    name_patient(patient_id)  # for the audit row, which commits with the patient (#79)
     await db.commit()
-    return await repo.get_patient(db, written.id)
+    return await repo.get_patient(db, patient_id)
 
 
 async def readable_patient(db: AsyncSession, repo: PatientRepository, patient_id: UUID
