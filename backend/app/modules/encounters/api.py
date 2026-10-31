@@ -140,7 +140,8 @@ async def list_patient_vitals(
     return schemas.VitalList(items=items, next_cursor=next_cursor)
 
 
-# Diagnoses live in their own files (diagnoses_api.py).
-from . import diagnoses_api  # noqa: E402
+# Diagnoses, notes and closing the visit live in their own files (diagnoses_api.py, notes_api.py).
+from . import diagnoses_api, notes_api  # noqa: E402
 
 router.include_router(diagnoses_api.router)
+router.include_router(notes_api.router)
