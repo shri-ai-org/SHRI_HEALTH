@@ -1,0 +1,9 @@
+{
+  "messageType": "RxStatus",
+  "schemaVersion": "1.0",
+  "correlationId": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+  "responseId": "SIM-RX-000202",
+  "respondedAt": "2026-11-20T15:23:11Z",
+  "status": "rejected",
+  "rejection": {"code": "900", "descriptionCode": "1000", "message": "Drug not stocked at this pharmacy (synthetic)."}
+}

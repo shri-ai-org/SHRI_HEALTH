@@ -1,0 +1,20 @@
+{
+  "messageType": "NewRx",
+  "schemaVersion": "1.0",
+  "correlationId": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+  "createdAt": "2026-11-20T15:23:04Z",
+  "signedAt": "2026-11-20T15:23:00Z",
+  "prescriber": {"npi": "1234567893", "name": {"family": "Lindqvist58", "given": ["Avery401"]}},
+  "patient": {"name": {"family": "Lindgren118", "given": ["Kaia401"]}, "birthDate": "1990-03-14"},
+  "pharmacy": {"ncpdpId": "0000012", "npi": "1245319599"},
+  "medication": {
+    "rxnormCode": "308191",
+    "description": "amoxicillin 500 MG Oral Capsule",
+    "quantity": {"value": "30", "unit": "capsule"},
+    "daysSupply": 10,
+    "refills": 0,
+    "substitutionAllowed": true,
+    "sig": "1 capsule by mouth three times daily for 10 days",
+    "noteToPharmacist": "Synthetic test prescription."
+  }
+}
