@@ -246,6 +246,8 @@ async def book(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
     appointment_id = await _insert(db, new)
     if follow_up is not None:
         await repo.book_follow_up(db, follow_up, appointment_id)  # D98, same transaction
+    # D15: the 270 for the primary coverage, in this transaction; never refuses the booking.
+    await eligibility.queue_for_appointment(db, appointment_id, trigger="booking")
     return appointment_id
 
 
@@ -272,7 +274,7 @@ async def reschedule(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
     provider_id = body.provider_id or old.provider_id
     if provider_id is None:
         raise business_rule("/providerId", "required")
-    _, _, new = await _validated(
+    fac, _, new = await _validated(
         db, ref, user, patient_id=old.patient_id, provider_id=provider_id,
         facility_id=body.facility_id or old.facility_id,
         location_id=body.location_id if body.location_id is not None else (
@@ -284,6 +286,9 @@ async def reschedule(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
                   rescheduled_from_id=old.id)
     new_id = await _insert(db, new)
     await repo.move_follow_up(db, old.id, new_id)
+    if slots.local_day(new.start, fac.time_zone) != slots.local_day(old.start, old.time_zone):
+        # D15: a new day is a new service date; same day, the earlier check still answers.
+        await eligibility.queue_for_appointment(db, new_id, trigger="booking")
     return new_id
 
 
@@ -469,7 +474,9 @@ async def check_in(db: AsyncSession, user: CurrentUser, appointment_id: UUID, se
                    now: datetime) -> tuple[UUID, UUID | None]:
     """In one transaction (ADR-0011, D16): the appointment becomes checked-in, the visit step is
     recorded, the encounter is opened (status arrived) and, unless self-pay, an eligibility check
-    is recorded for the primary coverage (D15). Returns the encounter and the check."""
+    for the primary coverage is queued to the clearinghouse (D15; recorded as not sent when the
+    practice has no connection, so check-in never fails on it). Returns the encounter and the
+    check (None for self-pay, or a type that runs no checks)."""
     current = await repo.get(db, appointment_id)
     require_facility(user, current.facility_id)
     row = await repo.locked(db, appointment_id)
@@ -498,9 +505,9 @@ async def check_in(db: AsyncSession, user: CurrentUser, appointment_id: UUID, se
         raise Conflict(code="invalid-state-transition", currentState="checked-in") from twice
     check_id = None
     if coverage is not None:
-        check_id = await eligibility.record_check(
-            db, coverage_id=coverage, patient_id=current.patient_id,
-            appointment_id=appointment_id, encounter_id=encounter_id, trigger="check-in")
+        check_id = (await eligibility.queue_for_appointment(
+            db, appointment_id, trigger="check-in", encounter_id=encounter_id,
+            coverage_id=coverage)).check_id
     return encounter_id, check_id
 
 
