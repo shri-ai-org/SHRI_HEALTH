@@ -312,3 +312,11 @@ class FakeClinicalStore(FakeStore):
         n = self._pending(note_id, if_version)
         n.cosign_status, n.cosign_comment = "returned", comment
         return self._bump(n)
+
+    async def note_entered_in_error(self, db: Any, note_id: UUID, reason: Reason, *,
+                                    if_version: int | None = None) -> Written:
+        n = self._note(note_id, if_version)
+        if n.status == "entered-in-error":
+            raise InvalidTransition(n.status)
+        n.status = "entered-in-error"
+        return self._bump(n)

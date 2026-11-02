@@ -4,8 +4,6 @@ the first dependency. Every route runs the facility and restricted-chart checks 
 names the patient for core's audit (x-audit patient "result"): before the commit for writes,
 before returning for reads.
 
-Not built (D108, not on the demo path): markNoteEnteredInError.
-
 The note templates are Anand's (practice setup, x-owner anand): createNote reads one through his
 module's repository (``template_reader``), the seam the tests replace.
 """
@@ -165,6 +163,21 @@ async def cosign_note(
                                     if_match, _named(request, audit))
     response.headers["ETag"] = service.etag(decided.version)
     return decided.value
+
+
+@router.post(NOTE + "/entered-in-error", operation_id="markNoteEnteredInError",
+             response_model=nschemas.Note, response_model_exclude_none=True)
+async def mark_note_entered_in_error(
+    user: Annotated[CurrentUser, Depends(require("notes:entered-in-error"))],
+    note_id: NoteId, body: nschemas.NoteEnteredInError, request: Request, response: Response,
+    db: DB, repo: Repo, nrepo: NRepo, store: Store, check: Check, audit: Audit,
+) -> nschemas.Note:
+    """D14: kept with its versions and Provenance, marked in the chart; ``note.entered-in-error``
+    tells billing."""
+    marked = await nservice.enter_in_error(db, repo, nrepo, store, check, user, note_id,
+                                           body.reason, _named(request, audit))
+    response.headers["ETag"] = service.etag(marked.version)
+    return marked.value
 
 
 @router.get(NOTE + "/versions", operation_id="listNoteVersions",

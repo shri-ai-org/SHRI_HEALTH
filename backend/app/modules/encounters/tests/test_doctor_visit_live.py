@@ -22,7 +22,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.deps import DEV_USERS, CurrentUser
-from app.db.models import MAPPERS, systems
+from app.db.models import MAPPERS
 from app.db.seed.starter import NOTE_TEMPLATES
 from app.db.tests.conftest import TEST_DATABASE_URL, sync_url
 from app.modules.scheduling.tests.conftest import Practice, setup_session
@@ -436,3 +436,53 @@ def test_another_clinic_or_facility_finds_nothing(client: Any, practice: Practic
     assert _sql(practice, "SELECT meta_version_id FROM clinical.encounter WHERE id = :e",
                 e=encounter)[0][0] == before
     assert client("md").get(npath).json()["addenda"] == []
+
+
+def test_a_note_is_marked_entered_in_error(client: Any, practice: Practice,
+                                          users: dict[str, CurrentUser]) -> None:
+    """markNoteEnteredInError with Anand's helper (D14): a draft by its author only, a signed
+    note by its author or another MD; the note is kept, marked, with its Provenance and event,
+    and no longer counts as the visit's signed note."""
+    _terminology(practice)
+    _doctor(practice, users, "md2", COLLEAGUE)
+    encounter = _checked_in(client, practice)
+    path = f"{API}/encounters/{encounter}"
+    assert client("md").post(f"{path}/diagnoses", json=_icd("I10")).status_code == 201
+    draft = client("md").post(f"{path}/notes", json={"templateId": _seeded_template(practice)})
+    assert draft.status_code == 201, draft.text
+    url = f"{API}/notes/{draft.json()['id']}/entered-in-error"
+    other = client("md2").post(url, json={"reason": "Not mine to remove."})
+    assert other.status_code == 403 and _code(other) == "permission-denied"
+    for user in ("fd", "ma", "bil", "none"):
+        assert client(user).post(url, json={"reason": "Wrong."}).status_code == 403, user
+    assert client("md").post(url, json={"reason": " "}).status_code == 422
+    assert client("md-b").post(url, json={"reason": "Wrong."}).status_code == 404
+    marked = client("md").post(url, json={"reason": "Started on the wrong visit."})
+    assert marked.status_code == 200, marked.text
+    assert marked.json()["status"] == "entered-in-error"
+    assert [tuple(r) for r in _sql(practice, "SELECT activity_code, reason_text FROM "
+                                   "clinical.provenance WHERE target_id = :n",
+                                   n=draft.json()["id"])] == [
+        ("NULLIFY", "Started on the wrong visit.")]
+    again = client("md").post(url, json={"reason": "Again."})
+    assert again.status_code == 409 and again.json()["currentState"] == "entered-in-error"
+
+    # A signed note: another MD may mark it; it then stops counting for closing the visit.
+    signed = _signed_note(client, practice, encounter)
+    marked_signed = client("md2").post(f"{API}/notes/{signed['id']}/entered-in-error",
+                                       json={"reason": "Documented on the wrong patient."})
+    assert marked_signed.status_code == 200, marked_signed.text
+    assert marked_signed.json()["status"] == "entered-in-error"
+    assert _sql(practice, "SELECT count(*) FROM clinical.composition WHERE id = :n",
+                n=signed["id"])[0][0] == 1  # never deleted
+    versions = client("md").get(f"{API}/notes/{signed['id']}/versions").json()["items"]
+    assert [v["status"] for v in versions][:2] == ["entered-in-error", "final"]
+    workspace = client("md").get(path).json()
+    assert {(n["id"], n["status"]) for n in workspace["notes"]} == {
+        (draft.json()["id"], "entered-in-error"), (signed["id"], "entered-in-error")}
+    refused = client("md").post(f"{path}/close")
+    assert refused.status_code == 422 and refused.json()["errors"] == [
+        {"in": "body", "pointer": "/notes", "code": "required"}]
+    assert _sql(practice, "SELECT count(*) FROM admin.event_log WHERE type = "
+                "'note.entered-in-error' AND subject IN (:a, :b)", a=f"note/{draft.json()['id']}",
+                b=f"note/{signed['id']}")[0][0] == 2

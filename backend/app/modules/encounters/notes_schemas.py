@@ -85,6 +85,10 @@ class AddendumCreate(Closed):
     text: Annotated[str, StringConstraints(min_length=1, max_length=20000)]
 
 
+class NoteEnteredInError(Closed):
+    reason: Annotated[str, StringConstraints(min_length=1, max_length=500)]
+
+
 class CosignDecision(Closed):
     decision: Literal["cosign", "return"]
     comment: Annotated[str, StringConstraints(min_length=1, max_length=2000)] | None = None
