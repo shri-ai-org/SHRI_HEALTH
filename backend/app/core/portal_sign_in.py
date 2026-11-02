@@ -484,8 +484,10 @@ _REVOKE_INVITATION = text(
 _INVITATION_STATE = text(
     "SELECT used_at IS NOT NULL AS used FROM admin.portal_invitation "
     "WHERE id = :id AND patient_id = :patient")
-_ACCOUNT_STATE = text("SELECT status FROM admin.portal_account WHERE patient_id = :patient "
-                      "AND status IN ('pending-setup', 'active')")
+# Any account, whatever its status: one per chart (uq_portal_account_patient), and a disabled or
+# suspended one must not get a new invitation (D92). Counting only live ones let a code be issued
+# whose enrolment then failed on the unique key with a 500 (Vimal on #148).
+_ACCOUNT_STATE = text("SELECT status FROM admin.portal_account WHERE patient_id = :patient")
 
 
 @dataclass(frozen=True)
@@ -499,7 +501,8 @@ async def issue_invitation(db: AsyncSession, settings: Settings, patient_id: UUI
                            user_id: UUID) -> IssuedInvitation:
     """For createPortalInvitation (x-owner Vimal), in the staff request's tenant session
     (tenant_db): revoke the patient's open invitation, if any, and make a new one (one open per
-    patient, §3). 409 `invalid-state-transition` if the chart already has a live account. The
+    patient, §3). 409 `invalid-state-transition` if the chart already has an account, in any
+    status (`currentState` says which; D92: a disabled or suspended one gets no new code). The
     caller has checked the chart (ensure_chart_access, not merged), audits and commits; the code
     is in the response only, never logged."""
     key = _secret(settings.portal_invitation_secret, "PORTAL_INVITATION_SECRET")
@@ -539,8 +542,7 @@ async def revoke_invitation(db: AsyncSession, patient_id: UUID, invitation_id: U
 # ---------------------------------------------------------------------------- enrolment
 _REDEEM = text("SELECT tenant_id, patient_id, invitation_id "
                "FROM admin.redeem_portal_invitation(:hmac, :birth_date)")
-_LIVE_ACCOUNT = text("SELECT 1 FROM admin.portal_account WHERE patient_id = :patient "
-                     "AND status IN ('pending-setup', 'active')")
+_ANY_ACCOUNT = text("SELECT 1 FROM admin.portal_account WHERE patient_id = :patient")
 _NEW_ACCOUNT = text(
     "INSERT INTO admin.portal_account (id, tenant_id, keycloak_user_id, patient_id) "
     "VALUES (:id, :tenant, :kc, :patient)")
@@ -624,7 +626,7 @@ async def enroll(request: Request, code: str, birth_date: date, email: str) -> N
         for name, value in ((TENANT_SETTING, str(redeemed.tenant_id)), (USER_SETTING, ""),
                             (CORRELATION_SETTING, current_request_id() or "")):
             await s.execute(text("SELECT set_config(:n, :v, true)"), {"n": name, "v": value})
-        if (await s.execute(_LIVE_ACCOUNT, {"patient": redeemed.patient_id})).first():
+        if (await s.execute(_ANY_ACCOUNT, {"patient": redeemed.patient_id})).first():
             await s.rollback()  # one account per chart (§3.5); the code stays usable
             raise code_refused()
         try:
