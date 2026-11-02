@@ -638,8 +638,9 @@ paths:
         call never changes the note: `accepted` means the section''s text is still the AI text; `edited` means the author
         changed it, and the section''s text at this moment is recorded as the edited content; `rejected` needs a `reason`,
         and the AI text must already be gone from the section (cleared or rewritten), so rejected AI text is never signed.
-        **A chart summary** (AI-02): `accepted` or `rejected` (a summary is not edited). Not gated by the AI switches: a draft
-        with undecided sections can always be finished and signed after AI is turned off.'
+        **A chart summary** (AI-02): only the user who requested the summary decides, `accepted` or `rejected` (a summary
+        is not edited). Not gated by the AI switches: a draft with undecided sections can always be finished and signed after
+        AI is turned off.'
       tags:
       - ai
       x-owner: vimal
@@ -726,8 +727,9 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `ai-suggestions:decision`, or the suggestion is a note section
-            and the user is not the note's author); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required`
-            (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+            and the user is not the note's author, or a chart summary and the user is not the one who requested it); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user
+            holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such suggestion in this clinic or the user's facilities).
@@ -747,7 +749,7 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
-  /admin/ai-settings:
+  /ai-settings:
     get:
       operationId: getAiSettings
       summary: Get the AI settings

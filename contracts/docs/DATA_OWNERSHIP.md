@@ -70,7 +70,7 @@ US Core profiles are named from **US Core 9.0.0**, the current published version
 | AI note draft | `/ai/note-drafts` | **Ad** → **Cl** (becomes a draft Composition) | — | — | — | AI request and suggestion tables, Composition |
 | Chart summary | `/ai/chart-summaries` | **Ad** | — | — | Insert-only | AI request and suggestion tables |
 | AI decision | `/ai/suggestions/{suggestionId}/decision` | **Ad** | Provenance records AI involvement on the signed note | US Core Provenance | Recorded once per suggestion (database-enforced) | AI suggestion table |
-| AI settings | `/admin/ai-settings` | **Ad** | — | — | Row version, PUT with `If-Match` | AI settings table |
+| AI settings | `/ai-settings` | **Ad** | — | — | Row version, PUT with `If-Match` | AI settings table |
 
 ### 2.2 Thulasi's resources (signed off on issue #3)
 

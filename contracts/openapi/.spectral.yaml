@@ -60,11 +60,6 @@ rules:
   # partner-specific signature in middleware, not by a security scheme (API_STANDARDS §16.1). shri-security
   # enforces the session cookie and CSRF header on every other write.
   owasp:api2:2023-write-restricted: off
-  # OWASP API5 wants /admin paths to use a different security scheme from every other endpoint. Admin staff sign in
-  # like everyone else (one staff realm, one session cookie, SECURITY_MODEL §2); admin rights come from the role's
-  # permission (`x-permission`, checked by core's require() before any data is read), which shri-x-permission
-  # requires on every operation. First /admin path: /admin/ai-settings (inventory #114-115).
-  owasp:api5:2023-admin-security-unique: off
   # OWASP's rule uses the JSONPath "$..parameters[?(@.in.match(...))]", which also visits schema
   # properties named "in" (our Problem FieldError.in, API_STANDARDS §9.1) and crashes Spectral.
   # Same check and message on real parameter lists, in rules/noCredentialsInUrl.js, with one exception:

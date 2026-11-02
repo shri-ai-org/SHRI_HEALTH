@@ -310,8 +310,8 @@ paths:
     $ref: 'modules/ai.yaml#/paths/~1ai~1chart-summaries~1{chartSummaryId}'
   /ai/suggestions/{suggestionId}/decision:
     $ref: 'modules/ai.yaml#/paths/~1ai~1suggestions~1{suggestionId}~1decision'
-  /admin/ai-settings:
-    $ref: 'modules/ai.yaml#/paths/~1admin~1ai-settings'
+  /ai-settings:
+    $ref: 'modules/ai.yaml#/paths/~1ai-settings'
   /facilities:
     $ref: 'modules/practice-setup.yaml#/paths/~1facilities'
   /facilities/{facilityId}:

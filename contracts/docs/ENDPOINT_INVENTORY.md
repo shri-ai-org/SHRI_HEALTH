@@ -207,8 +207,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 111 | POST | `/ai/chart-summaries` | V | Ad | `chart-summaries:create` | ai | S | | ✓ | AI-02 | B7 | **Written** 2026-11-02 (`createChartSummary`): operation kind `ai.chart-summary`; the gateway reads the chart with a per-task delegated token (SECURITY_MODEL §2.4) |
 | 112 | GET | `/ai/chart-summaries/{chartSummaryId}` | V | Ad | `chart-summaries:read` | pr | – | | | AI-02 | B7 | **New** (result of the operation). **Written** 2026-11-02 (`getChartSummary`, D70): statements by topic with `sourced`, `no-source` or `conflicting`, and what is `missing` |
 | 113 | POST | `/ai/suggestions/{suggestionId}/decision` | V | Ad | `ai-suggestions:decision` | ai | S | | | §3.4 traceability | B7 | **Written** 2026-11-02 (`decideAiSuggestion`, D70): `accepted`, `edited` (note sections only) or `rejected` with a reason, recorded once; not gated by the AI switches |
-| 114 | GET | `/admin/ai-settings` | V | Ad | `ai-settings:read` | adm | – | | | §3.4 kill switch, §3.10 | B7 | **Written** 2026-11-02 (`getAiSettings`): the clinic switch and one switch per AI-01 and AI-02 feature (D68) |
-| 115 | PUT | `/admin/ai-settings` | V | Ad | `ai-settings:update` | adm | – | ✓ | | §3.4 | B7 | **Written** 2026-11-02 (`replaceAiSettings`): features left out keep their setting; a `reason` to turn one off |
+| 114 | GET | `/ai-settings` | V | Ad | `ai-settings:read` | adm | – | | | §3.4 kill switch, §3.10 | B7 | **Written** 2026-11-02 (`getAiSettings`): the clinic switch and one switch per AI-01 and AI-02 feature (D68) |
+| 115 | PUT | `/ai-settings` | V | Ad | `ai-settings:update` | adm | – | ✓ | | §3.4 | B7 | **Written** 2026-11-02 (`replaceAiSettings`): features left out keep their setting; a `reason` to turn one off |
 
 ## 7. Medications and prescriptions — Thulasi (signed off, issue #3)
 

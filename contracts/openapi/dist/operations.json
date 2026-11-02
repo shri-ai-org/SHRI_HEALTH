@@ -654,7 +654,7 @@
    },
    "idempotency": null,
    "method": "GET",
-   "path": "/api/v1/admin/ai-settings",
+   "path": "/api/v1/ai-settings",
    "permission": "ai-settings:read"
   },
   "getAllergy": {
@@ -1955,7 +1955,7 @@
    },
    "idempotency": null,
    "method": "PUT",
-   "path": "/api/v1/admin/ai-settings",
+   "path": "/api/v1/ai-settings",
    "permission": "ai-settings:update"
   },
   "replaceMyFavorites": {
