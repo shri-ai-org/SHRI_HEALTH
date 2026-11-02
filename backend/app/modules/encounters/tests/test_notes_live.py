@@ -43,11 +43,15 @@ def _icd(code: str, display: str = "") -> dict[str, Any]:
 
 
 def _terminology(practice: Practice) -> None:
+    """The ICD-10-CM codes these tests use, active and billable as listed. They are shared
+    terminology rows, so a code an earlier test retired (db/tests/test_code_search.py loads a
+    smaller release) is made active again rather than left as it is."""
     for code, display, billable in CODES:
         _sql(practice, "INSERT INTO admin.concept (id, code_system_id, code, display, "
              "is_billable, is_active) SELECT gen_random_uuid(), s.id, :c, :d, :b, true "
              "FROM admin.code_system s WHERE s.uri = :u "
-             "ON CONFLICT (code_system_id, code) DO NOTHING",
+             "ON CONFLICT (code_system_id, code) DO UPDATE SET display = EXCLUDED.display, "
+             "is_billable = EXCLUDED.is_billable, is_active = true",
              c=code, d=display, b=billable, u=systems.ICD10CM)
 
 

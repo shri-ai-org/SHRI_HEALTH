@@ -2,8 +2,9 @@
 operation_id is the contract's operationId; the permission (`require`) is the first dependency.
 
 Rooming (demo step 7, IMPL_BATCH1_PLAN §8.3 PR-5): the workspace read and its edit (the reason for
-visit, with If-Match), recording vitals and the patient's vitals list. Check-in uses this module's
-service only (D16). Every route that touches a chart runs the restricted-chart check first (D37).
+visit, with If-Match), recording vitals, the patient's vitals list and marking a vital entered in
+error. Check-in uses this module's service only (D16). Every route that touches a chart runs the
+restricted-chart check first (D37).
 Operations whose x-audit takes the patient from the result hand it to core's audit hook.
 
 The pieces from other owners are FastAPI dependencies, so the tests can replace them: the
@@ -70,6 +71,7 @@ Audit = Annotated[AuditPatients, Depends(audit_patients)]
 Rooms = Annotated[Callable[[AsyncSession, UUID], Awaitable[set[UUID]]], Depends(facility_rooms)]
 EncounterId = Annotated[UUID, Path(alias="encounterId")]
 PatientId = Annotated[UUID, Path(alias="patientId")]
+VitalId = Annotated[UUID, Path(alias="vitalId")]
 IfMatch = Annotated[str | None, Header(alias="If-Match", max_length=128)]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Cursor = Annotated[str | None, Query(max_length=512, pattern=r"^[A-Za-z0-9_-]+$")]
@@ -155,6 +157,22 @@ async def list_patient_vitals(
         date_to=date_to, include_entered_in_error=include_entered_in_error, limit=limit,
         cursor=cursor)
     return schemas.VitalList(items=items, next_cursor=next_cursor)
+
+
+@router.post("/patients/{patientId}/vitals/{vitalId}/entered-in-error",
+             operation_id="markVitalEnteredInError", response_model=schemas.Vital,
+             response_model_exclude_none=True)
+async def mark_vital_entered_in_error(
+    user: Annotated[CurrentUser, Depends(require("vitals:entered-in-error"))],
+    patient_id: PatientId, vital_id: VitalId, body: schemas.VitalEnteredInError,
+    response: Response, db: DB, repo: Repo, store: Store, check: Check,
+) -> schemas.Vital:
+    """D14: kept, with its Provenance (the reason), and left out of the chart; the right value
+    is recorded as a new vital. Core audits it against the path's patientId (x-audit)."""
+    marked = await service.mark_vital_entered_in_error(db, repo, store, check, user, patient_id,
+                                                       vital_id, body.reason)
+    response.headers["ETag"] = service.etag(marked.version)
+    return marked.value
 
 
 # Diagnoses, notes and closing the visit live in their own files (diagnoses_api.py, notes_api.py).

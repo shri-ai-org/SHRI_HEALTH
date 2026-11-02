@@ -88,6 +88,18 @@ class EncounterHead:
 
 
 @dataclass(frozen=True)
+class VitalHead:
+    """What markVitalEnteredInError checks before it writes: whose vital, at which facility's
+    visit (None without a visit), its status and version, and the user who recorded it."""
+    id: UUID
+    patient_id: UUID
+    facility_id: UUID | None
+    status: str
+    version: int
+    created_by_user_id: UUID | None
+
+
+@dataclass(frozen=True)
 class ReasonIn:
     """One reason: at most one coding (``encounter_reason`` holds one) and its text."""
     system: str | None
@@ -133,6 +145,8 @@ class EncounterRepository(Protocol):
                           facility_ids: Sequence[UUID], status: str | None,
                           date_from: date | None, date_to: date | None, limit: int,
                           offset: int) -> list[schemas.EncounterSummary]: ...
+
+    async def vital_head(self, db: AsyncSession, vital_id: UUID) -> VitalHead: ...
 
 
 # ------------------------------------------------------------------------------------- SQL
@@ -288,6 +302,16 @@ WHERE o.subject_patient_id = :patient
        OR o.effective_date_time < CAST(:day_to AS date) + 1)
 ORDER BY o.effective_date_time DESC, o.id
 LIMIT :limit OFFSET :offset
+""")
+# One vital sign (a vital-signs Observation with one of the contract's LOINC codes) and the
+# facility of the visit it was taken at.
+_VITAL_HEAD = text("""
+SELECT o.id, o.subject_patient_id, e.ext_facility_id, o.status, o.meta_version_id,
+       o.created_by_user_id
+FROM clinical.observation o LEFT JOIN clinical.encounter e ON e.id = o.encounter_id
+WHERE o.id = :id AND o.code_system = :loinc AND o.code_code = ANY(:codes)
+  AND EXISTS (SELECT 1 FROM clinical.observation_category k
+               WHERE k.observation_id = o.id AND k.category_code = 'vital-signs')
 """)
 _PRACTITIONERS = text("SELECT id FROM clinical.practitioner WHERE id = ANY(:ids)")
 # A code needs a registered code system (the coded columns' foreign key to admin.code_system).
@@ -497,3 +521,12 @@ class SqlEncounterRepository:
             "facilities": list(facility_ids) if facility_ids is not None else None,
             "limit": limit, "offset": offset})).mappings()
         return [vital_out(r) for r in rows]
+
+    async def vital_head(self, db: AsyncSession, vital_id: UUID) -> VitalHead:
+        r = (await db.execute(_VITAL_HEAD, {
+            "id": vital_id, "loinc": systems.LOINC, "codes": list(VITAL_LOINC.values())})
+             ).mappings().first()
+        if r is None:
+            raise NotFound()
+        return VitalHead(r["id"], r["subject_patient_id"], r["ext_facility_id"], r["status"],
+                         r["meta_version_id"], r["created_by_user_id"])
