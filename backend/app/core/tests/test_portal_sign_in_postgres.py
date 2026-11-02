@@ -375,6 +375,26 @@ async def test_one_account_per_chart(app: Any, client: TestClient,
     assert live.value.extensions["currentState"] == "pending-setup"
 
 
+async def test_a_disabled_account_gets_no_new_code_and_an_old_code_is_refused_not_500(
+        app: Any, client: TestClient, realm: FakeRealm, chart: dict[str, Any],
+        admin_engine: Engine) -> None:  # noqa: F811
+    code = await _invite(app, chart)  # an open code from before the account existed
+    with admin_engine.begin() as c:  # an account that was set up, then disabled (D92)
+        c.execute(text(
+            "INSERT INTO admin.portal_account (id, tenant_id, keycloak_user_id, patient_id, "
+            "status, enrolled_at, disabled_at, disabled_reason) VALUES (:i, :t, :k, :p, "
+            "'disabled', now(), now(), 'Synthetic test')"),
+            {"i": uuid4(), "t": chart["tenant"], "k": str(uuid4()), "p": chart["patient"]})
+
+    with pytest.raises(Conflict) as refused:
+        await _invite(app, chart)
+    assert refused.value.extensions["currentState"] == "disabled"
+    enrol = _enrol(client, code, chart["birth"])
+    assert _refused(enrol) and realm.users == {}
+    (account,) = _account(admin_engine, chart["patient"])
+    assert account.status == "disabled"
+
+
 async def test_a_revoked_invitation_cannot_be_used_and_revoking_follows_the_contract(
         app: Any, client: TestClient, chart: dict[str, Any], admin_engine: Engine) -> None:  # noqa: F811
     code = await _invite(app, chart)
