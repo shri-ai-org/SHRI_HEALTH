@@ -248,6 +248,10 @@ def test_ai01_from_transcript_to_the_clinicians_signature(
     assert {s["resourceType"] for s in history["sources"]} == {"Transcription"}
     assert {s["resourceId"] for s in history["sources"]} == {transcript}
     assert all(1 <= s["segment"] <= len(visit["transcript"]) for s in history["sources"])
+    # A note reader sees which segments, never their text: that is getTranscription's, which
+    # checks transcriptions:read and is audited (security review).
+    assert not any("excerpt" in s for sec in sections.values() if sec.get("aiSuggestion")
+                   for s in sec["aiSuggestion"]["sources"])
     # The model's request record: hashes and references only.
     rows = _sql(practice, "SELECT r.status, r.model_name, r.input_sha256, r.input_tokens, "
                 "array_agg(i.resource_type ORDER BY i.resource_type) FROM admin.ai_request r "

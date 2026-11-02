@@ -268,8 +268,11 @@ def _section_suggestion(request: NoteDraftRequest, code: str, title: str, text: 
     ``low``."""
     links = (link_segments(text, request.segments)
              if request.segments and request.transcription_id else [])
+    # No excerpt: the suggestion is shown with the note to anyone who reads notes, so it names
+    # the transcript's segments only; their text is read through getTranscription, which checks
+    # transcriptions:read and is audited as a chart read (security review).
     sources = [{"resourceType": TRANSCRIPTION, "resourceId": str(request.transcription_id),
-                "segment": sequence, "excerpt": excerpt} for sequence, excerpt in links]
+                "segment": sequence} for sequence, _ in links]
     content = {"code": code, "title": title, "text": text,
                "sourceStatus": "sourced" if sources else "no-source", "sources": sources,
                "unknowns": list(unknowns)}
