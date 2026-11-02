@@ -253,6 +253,8 @@ paths:
           headers:
             Location:
               $ref: ../components/headers/Location.yaml
+              description: '`/api/v1/patients/{patientId}/medications`, the list the entry was added to: a list entry has
+                no URL of its own.'
             X-Request-ID:
               $ref: ../components/headers/XRequestId.yaml
             Cache-Control:
