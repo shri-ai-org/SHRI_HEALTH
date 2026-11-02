@@ -206,7 +206,14 @@ up() {
     $DC up -d postgres openbao
     unseal
     say "The rest of the stack"
-    $DC up -d --remove-orphans
+    # The one-shot setups (buckets, Keycloak's database) are safe to repeat; SeaweedFS reports
+    # healthy a little before its filer listens, so a first try can lose that race.
+    for attempt in 1 2 3; do
+        $DC up -d --remove-orphans && break
+        [ "$attempt" = 3 ] && die "the stack did not start; see: $DC logs"
+        echo "deploy: starting again in 10 seconds (attempt $attempt of 3)" >&2
+        sleep 10
+    done
     say "Migrations (shri_migrator)"
     migrate
     if [ "${SHRI_DEMO:-false}" = true ]; then
