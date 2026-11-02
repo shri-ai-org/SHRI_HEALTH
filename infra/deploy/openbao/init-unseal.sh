@@ -17,13 +17,19 @@ case "$state" in
         BAO_ROOT_TOKEN=$(printf '%s\n' "$out" | sed -n 's/^Initial Root Token: *//p' | head -1)
         [ -n "$BAO_UNSEAL_KEY" ] && [ -n "$BAO_ROOT_TOKEN" ] || { echo "init output not understood" >&2; exit 1; }
         echo "INIT $BAO_UNSEAL_KEY $BAO_ROOT_TOKEN"
+        exit 0  # deploy.sh stores them first, then runs this again to unseal
         ;;
 esac
 
 : "${BAO_UNSEAL_KEY:?the unseal key (deploy.sh passes it from the state directory)}"
 : "${BAO_ROOT_TOKEN:?the root token (deploy.sh passes it from the state directory)}"
 if bao status >/dev/null 2>&1; then :; else
-    printf '%s\n' "$BAO_UNSEAL_KEY" | bao operator unseal - >/dev/null
+    # Through the API with the key in a private file: `bao operator unseal` takes it only as an
+    # argument (visible to ps) or from a terminal.
+    body=$(umask 077; mktemp)
+    printf '{"key":"%s"}' "$BAO_UNSEAL_KEY" >"$body"
+    wget -q -O /dev/null --post-file="$body" "$BAO_ADDR/v1/sys/unseal" || { rm -f "$body"; exit 1; }
+    rm -f "$body"
 fi
 
 # The API's narrow Transit token (32 days, not renewable) is created again here once it expires.
