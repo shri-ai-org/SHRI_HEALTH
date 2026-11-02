@@ -1,0 +1,287 @@
+{
+  "realm": "shri-patients",
+  "displayName": "Shri Health patient portal",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": true,
+  "resetPasswordAllowed": true,
+  "rememberMe": false,
+  "editUsernameAllowed": false,
+  "passwordPolicy": "length(12) and notUsername and notEmail and passwordHistory(5)",
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "quickLoginCheckMilliSeconds": 1000,
+  "minimumQuickLoginWaitSeconds": 60,
+  "ssoSessionIdleTimeout": 1200,
+  "ssoSessionMaxLifespan": 14700,
+  "accessTokenLifespan": 300,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "offlineSessionIdleTimeout": 0,
+  "actionTokenGeneratedByUserLifespan": 43200,
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "otpPolicyLookAheadWindow": 1,
+  "eventsEnabled": true,
+  "eventsExpiration": 7776000,
+  "enabledEventTypes": [
+    "LOGIN",
+    "LOGIN_ERROR",
+    "LOGOUT",
+    "LOGOUT_ERROR",
+    "CODE_TO_TOKEN",
+    "CODE_TO_TOKEN_ERROR",
+    "REFRESH_TOKEN",
+    "REFRESH_TOKEN_ERROR",
+    "UPDATE_PASSWORD",
+    "UPDATE_TOTP",
+    "REMOVE_TOTP",
+    "RESET_PASSWORD",
+    "RESET_PASSWORD_ERROR",
+    "SEND_RESET_PASSWORD",
+    "UPDATE_CREDENTIAL",
+    "REMOVE_CREDENTIAL",
+    "USER_DISABLED_BY_TEMPORARY_LOCKOUT",
+    "VERIFY_EMAIL",
+    "VERIFY_EMAIL_ERROR",
+    "EXECUTE_ACTIONS",
+    "EXECUTE_ACTION_TOKEN",
+    "EXECUTE_ACTION_TOKEN_ERROR"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "browserFlow": "shri patient browser",
+  "resetCredentialsFlow": "shri patient reset",
+  "requiredActions": [
+    {
+      "alias": "CONFIGURE_TOTP",
+      "name": "Configure OTP",
+      "providerId": "CONFIGURE_TOTP",
+      "enabled": true,
+      "defaultAction": true,
+      "priority": 10
+    },
+    {
+      "alias": "UPDATE_PASSWORD",
+      "name": "Update Password",
+      "providerId": "UPDATE_PASSWORD",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 30
+    },
+    {
+      "alias": "VERIFY_EMAIL",
+      "name": "Verify Email",
+      "providerId": "VERIFY_EMAIL",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 50
+    },
+    {
+      "alias": "UPDATE_PROFILE",
+      "name": "Update Profile",
+      "providerId": "UPDATE_PROFILE",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 40
+    },
+    {
+      "alias": "webauthn-register",
+      "name": "Webauthn Register",
+      "providerId": "webauthn-register",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 70
+    },
+    {
+      "alias": "delete_account",
+      "name": "Delete Account",
+      "providerId": "delete_account",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 60
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "shri patient browser",
+      "description": "Patient sign-in (ADR-0013 §2): an existing session, or password plus a one-time code on every sign-in. No 'remember this device'.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "flowAlias": "shri patient browser forms",
+          "authenticatorFlow": true,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "shri patient browser forms",
+      "description": "Password, then the one-time code. An account without a code sets one up first (CONFIGURE_TOTP).",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": true
+        }
+      ]
+    },
+    {
+      "alias": "shri patient reset",
+      "description": "Forgot password (ADR-0013 §4): the same answer whether or not the address has an account, a link to the verified email, a new password, then the one-time code. A reset never removes or skips the second factor.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "reset-credentials-choose-user",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "reset-credential-email",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "reset-password",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 30,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 40,
+          "userSetupAllowed": true
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "shri-portal-web",
+      "name": "Shri Health patient portal (server-side login)",
+      "description": "Confidential client for /api/v1/portal/auth/login and /callback (ADR-0013 §1). Tokens never reach the browser.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${SHRI_PORTAL_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "consentRequired": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [
+        "${SHRI_PORTAL_REDIRECT_URI:https://localhost:8443/api/v1/portal/auth/callback}"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${SHRI_PORTAL_POST_LOGOUT_URI:https://localhost:8443/portal/}",
+        "use.refresh.tokens": "true",
+        "client_credentials.use_refresh_token": "false",
+        "require.pushed.authorization.requests": "false"
+      },
+      "defaultClientScopes": [
+        "acr",
+        "basic",
+        "email",
+        "profile"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "shri-portal-admin",
+      "name": "Shri Health API: patient accounts",
+      "description": "The API's service account in the patient realm (ADR-0013 §1): creates an enrolled patient's account, resets factors and disables accounts. manage-users and view-users in this realm only; no sign-in of its own.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${SHRI_PORTAL_ADMIN_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": false,
+      "consentRequired": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {
+        "client_credentials.use_refresh_token": "false"
+      },
+      "defaultClientScopes": [
+        "basic"
+      ],
+      "optionalClientScopes": []
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-shri-portal-admin",
+      "enabled": true,
+      "serviceAccountClientId": "shri-portal-admin",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users"
+        ]
+      }
+    }
+  ],
+  "clientScopeMappings": {
+    "realm-management": [
+      {
+        "client": "shri-portal-admin",
+        "roles": [
+          "manage-users",
+          "view-users"
+        ]
+      }
+    ]
+  }
+}

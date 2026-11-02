@@ -7,6 +7,9 @@ policies and triggers read (DECISIONS D21):
     app.current_user_id     the signed-in user
     app.correlation_id      the request ID (X-Request-ID)
 
+A portal session (patient_session, shri_portal) also sets app.current_patient_id, which the
+portal's own-chart policies read (D93).
+
 They are set with set_config(name, value, true), the parameterised form of SET LOCAL: they last
 for the whole transaction, including triggers that fire at COMMIT, and end with it. So a pooled
 connection never carries one clinic's settings into another request, and they are set again
@@ -36,6 +39,7 @@ from app.core.lifecycle import on_shutdown
 TENANT_SETTING = "app.current_tenant_id"
 USER_SETTING = "app.current_user_id"
 CORRELATION_SETTING = "app.correlation_id"
+PATIENT_SETTING = "app.current_patient_id"
 
 _CONTEXT_KEY = "shri_tenant_context"
 _GUARD_KEY = "shri_tenant_guard"
@@ -96,6 +100,14 @@ class Database:
         }
         return session
 
+    def patient_session(self, tenant_id: UUID, patient_id: UUID,
+                        correlation_id: str | None = None) -> AsyncSession:
+        """A portal request's session (D93): the clinic and the patient from the portal session,
+        never from the request, and no staff user. Use it on the shri_portal database."""
+        session = self.system_session(tenant_id, correlation_id)
+        session.info[_CONTEXT_KEY][PATIENT_SETTING] = str(patient_id)
+        return session
+
     async def ping(self) -> None:
         async with self.engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -138,6 +150,9 @@ def _set_tenant_context(
                 "c_name": CORRELATION_SETTING, "c": context[CORRELATION_SETTING],
             },
         )
+        if PATIENT_SETTING in context:
+            connection.execute(text("SELECT set_config(:p_name, :p, true)"),
+                               {"p_name": PATIENT_SETTING, "p": context[PATIENT_SETTING]})
 
 
 def register(app: FastAPI, settings: Settings) -> None:

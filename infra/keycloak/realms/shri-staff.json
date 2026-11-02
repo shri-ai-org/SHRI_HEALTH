@@ -128,6 +128,8 @@
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "${SHRI_WEB_POST_LOGOUT_URI:https://localhost:8443/}",
+        "backchannel.logout.url": "${SHRI_WEB_BACKCHANNEL_URL:http://api:8000/hooks/keycloak/backchannel-logout}",
+        "backchannel.logout.session.required": "true",
         "use.refresh.tokens": "true",
         "client_credentials.use_refresh_token": "false",
         "require.pushed.authorization.requests": "false"

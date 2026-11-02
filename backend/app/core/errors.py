@@ -21,6 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import Settings
 from app.core.request_id import REQUEST_ID_HEADER
+from app.core.safe_logging import log_failure
 
 log = logging.getLogger(__name__)
 
@@ -311,7 +312,7 @@ async def _http_error(request: Request, exc: Exception) -> JSONResponse:
 
 
 async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
-    log.exception("Unhandled error on %s %s", request.method, request.url.path)
+    log_failure(log, "Unhandled error on %s %s", request.method, request.url.path)
     return problem(request, "internal-error")
 
 
