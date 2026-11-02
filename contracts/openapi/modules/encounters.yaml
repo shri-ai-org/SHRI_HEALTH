@@ -3898,8 +3898,13 @@ components:
           - edited
           - rejected
           description: The clinician's decision on the AI text (D70). The note cannot be signed while any section is `pending`
-            (FRS §3.4, §8). Read-only; decided through the AI decision endpoint (batch 7).
+            (FRS §3.4, §8). Read-only; decided through `POST /ai/suggestions/{suggestionId}/decision` (batch 7).
           x-phi: none
+        aiSuggestion:
+          $ref: ./ai.yaml#/components/schemas/AiSuggestion
+          description: 'For an AI-drafted section: the AI text as drafted, its confidence band, rationale, links to the transcript
+            segments it came from, what the model could not determine, and the decision (D70; batch 7). Read-only.'
+          x-phi: clinical
     NoteAddendum:
       description: 'An addendum to a signed note: a new Composition that `appends` to the original, signed when it is added
         (DATA_OWNERSHIP §5.3). The original is never edited.'

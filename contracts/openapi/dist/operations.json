@@ -330,6 +330,17 @@
    "path": "/api/v1/payments/card-session",
    "permission": "payments:card-session"
   },
+  "createChartSummary": {
+   "audit": {
+    "action": "C",
+    "category": "ai",
+    "patient": "body:/patientId"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/chart-summaries",
+   "permission": "chart-summaries:create"
+  },
   "createConsentRequirement": {
    "audit": {
     "action": "C",
@@ -370,6 +381,17 @@
    "method": "POST",
    "path": "/api/v1/encounters",
    "permission": "encounters:create"
+  },
+  "createEncounterAudio": {
+   "audit": {
+    "action": "C",
+    "category": "ai",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/encounters/{encounterId}/audio",
+   "permission": "encounter-audio:create"
   },
   "createFacility": {
    "audit": {
@@ -433,6 +455,17 @@
    "path": "/api/v1/encounters/{encounterId}/notes",
    "permission": "notes:create"
   },
+  "createNoteDraft": {
+   "audit": {
+    "action": "C",
+    "category": "ai",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/note-drafts",
+   "permission": "note-drafts:create"
+  },
   "createNoteTemplate": {
    "audit": {
     "action": "C",
@@ -495,6 +528,17 @@
    "path": "/api/v1/provider-schedules",
    "permission": "provider-schedules:create"
   },
+  "createTranscription": {
+   "audit": {
+    "action": "C",
+    "category": "ai",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/transcriptions",
+   "permission": "transcriptions:create"
+  },
   "createUploadUrl": {
    "audit": {
     "action": "C",
@@ -504,6 +548,17 @@
    "method": "POST",
    "path": "/api/v1/files/upload-url",
    "permission": "files:create"
+  },
+  "decideAiSuggestion": {
+   "audit": {
+    "action": "E",
+    "category": "ai",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/suggestions/{suggestionId}/decision",
+   "permission": "ai-suggestions:decision"
   },
   "declineFollowUpRequest": {
    "audit": {
@@ -592,6 +647,16 @@
    "path": "/api/v1/encounters/{encounterId}/after-visit-summary/download-url",
    "permission": "after-visit-summaries:read"
   },
+  "getAiSettings": {
+   "audit": {
+    "action": "R",
+    "category": "admin"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/admin/ai-settings",
+   "permission": "ai-settings:read"
+  },
   "getAllergy": {
    "audit": {
     "action": "R",
@@ -634,6 +699,17 @@
    "method": "GET",
    "path": "/api/v1/portal/bot-challenge",
    "permission": "public"
+  },
+  "getChartSummary": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/ai/chart-summaries/{chartSummaryId}",
+   "permission": "chart-summaries:read"
   },
   "getConsentRequirement": {
    "audit": {
@@ -1050,6 +1126,17 @@
    "method": "GET",
    "path": "/api/v1/status-board",
    "permission": "status-board:read"
+  },
+  "getTranscription": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/ai/transcriptions/{transcriptionId}",
+   "permission": "transcriptions:read"
   },
   "listAllergies": {
    "audit": {
@@ -1860,6 +1947,16 @@
    "method": "POST",
    "path": "/api/v1/encounters/{encounterId}/diagnoses/{diagnosisId}/remove",
    "permission": "diagnoses:remove"
+  },
+  "replaceAiSettings": {
+   "audit": {
+    "action": "U",
+    "category": "admin"
+   },
+   "idempotency": null,
+   "method": "PUT",
+   "path": "/api/v1/admin/ai-settings",
+   "permission": "ai-settings:update"
   },
   "replaceMyFavorites": {
    "audit": {
