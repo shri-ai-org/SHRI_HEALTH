@@ -368,10 +368,14 @@ async def cancel(db: AsyncSession, row: Any, reason_code: str, reason_text: str 
 
 # Follow-up requests (D98, db/CLAUDE.md): booking a revisit sets booked; cancelling it reopens;
 # rescheduling moves the link.
+# The visit must be at one of the user's facilities (SECURITY_MODEL §5.1): another facility's
+# request is not one the user can see, so it can't be booked either.
 _FOLLOW_UP_OPEN = text("""
 SELECT f.id FROM clinical.encounter_follow_up f
+JOIN clinical.encounter e ON e.id = f.encounter_id
 WHERE f.encounter_id = :encounter AND f.patient_id = :patient AND f.status = 'open'
-FOR UPDATE
+  AND e.ext_facility_id = ANY(CAST(:facilities AS uuid[]))
+FOR UPDATE OF f
 """)
 _FOLLOW_UP_BOOK = text("""
 UPDATE clinical.encounter_follow_up SET status = 'booked', booked_appointment_id = :appointment,
@@ -389,9 +393,13 @@ WHERE booked_appointment_id = :old AND status = 'booked'
 """)
 
 
-async def open_follow_up(db: AsyncSession, encounter_id: UUID, patient_id: UUID) -> UUID | None:
+async def open_follow_up(db: AsyncSession, encounter_id: UUID, patient_id: UUID,
+                         facilities: Iterable[UUID]) -> UUID | None:
+    """The open follow-up request of the visit, locked; None unless the visit is at one of
+    ``facilities``."""
     found: UUID | None = (await db.execute(_FOLLOW_UP_OPEN, {
-        "encounter": encounter_id, "patient": patient_id})).scalar_one_or_none()
+        "encounter": encounter_id, "patient": patient_id,
+        "facilities": list(facilities)})).scalar_one_or_none()
     return found
 
 
