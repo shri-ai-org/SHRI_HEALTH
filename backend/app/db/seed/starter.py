@@ -6,6 +6,7 @@ against the National Library of Medicine's LOINC tables.
 """
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import date, time
@@ -38,6 +39,9 @@ ORG, SITE, ROOM, FACILITY, PRACTITIONER, ROLE, SCHEDULE, RULE, VISIT, PAYER, PRA
 MRN_SYSTEM = "https://company-domain.invalid/sid/mrn/RFM"
 #: The environments the seed may run in; anything else, unset included, is refused.
 ALLOWED_ENVIRONMENTS = frozenset({"development", "test"})
+#: Staging only with this set to exactly "1": the synthetic-only test server (#187), where
+#: every record is synthetic (D12). Production is refused whatever it says.
+ALLOW_STAGING_SETTING = "SEED_ALLOW_STAGING"
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri")
 EFFECTIVE_FROM = date(2026, 10, 1)
 
@@ -248,10 +252,13 @@ def _schedules(db: Session, practice: dict[str, Any], visits: dict[str, uuid.UUI
 
 def require_dev_environment() -> None:
     """Every way into the seed calls this first: core's ENVIRONMENT setting (unset is
-    production) must be development or test."""
+    production) must be development or test, or staging with SEED_ALLOW_STAGING=1."""
     environment = Settings().environment
-    if environment not in ALLOWED_ENVIRONMENTS:
-        raise RuntimeError(f"refusing to seed synthetic data with ENVIRONMENT={environment}")
+    if environment in ALLOWED_ENVIRONMENTS:
+        return
+    if environment == "staging" and os.environ.get(ALLOW_STAGING_SETTING) == "1":
+        return
+    raise RuntimeError(f"refusing to seed synthetic data with ENVIRONMENT={environment}")
 
 
 def load_starter(db: Session) -> None:
