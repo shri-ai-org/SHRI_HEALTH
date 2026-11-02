@@ -120,6 +120,8 @@ paths:
     $ref: 'modules/files.yaml#/paths/~1files~1{fileId}~1complete'
   /files/{fileId}/download-url:
     $ref: 'modules/files.yaml#/paths/~1files~1{fileId}~1download-url'
+  /files/{fileId}/content:
+    $ref: 'modules/files.yaml#/paths/~1files~1{fileId}~1content'
   /patients/search:
     $ref: 'modules/patients.yaml#/paths/~1patients~1search'
   /patients:
@@ -294,6 +296,22 @@ paths:
     $ref: 'modules/history.yaml#/paths/~1patients~1{patientId}~1surgical-history'
   /patients/{patientId}/surgical-history/{surgicalHistoryId}/entered-in-error:
     $ref: 'modules/history.yaml#/paths/~1patients~1{patientId}~1surgical-history~1{surgicalHistoryId}~1entered-in-error'
+  /encounters/{encounterId}/audio:
+    $ref: 'modules/ai.yaml#/paths/~1encounters~1{encounterId}~1audio'
+  /ai/transcriptions:
+    $ref: 'modules/ai.yaml#/paths/~1ai~1transcriptions'
+  /ai/transcriptions/{transcriptionId}:
+    $ref: 'modules/ai.yaml#/paths/~1ai~1transcriptions~1{transcriptionId}'
+  /ai/note-drafts:
+    $ref: 'modules/ai.yaml#/paths/~1ai~1note-drafts'
+  /ai/chart-summaries:
+    $ref: 'modules/ai.yaml#/paths/~1ai~1chart-summaries'
+  /ai/chart-summaries/{chartSummaryId}:
+    $ref: 'modules/ai.yaml#/paths/~1ai~1chart-summaries~1{chartSummaryId}'
+  /ai/suggestions/{suggestionId}/decision:
+    $ref: 'modules/ai.yaml#/paths/~1ai~1suggestions~1{suggestionId}~1decision'
+  /ai-settings:
+    $ref: 'modules/ai.yaml#/paths/~1ai-settings'
   /facilities:
     $ref: 'modules/practice-setup.yaml#/paths/~1facilities'
   /facilities/{facilityId}:
@@ -430,6 +448,8 @@ paths:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1vitals'
   /portal/practices/{practiceLinkId}/pre-registrations:
     $ref: 'modules/portal.yaml#/paths/~1portal~1practices~1{practiceLinkId}~1pre-registrations'
+  /portal/bot-challenge:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1bot-challenge'
 components:
   schemas:
     Address:

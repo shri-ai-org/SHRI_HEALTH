@@ -121,7 +121,9 @@ INTEGRATION_WRITE_TABLES = {
 #: Read, and update only these columns, so the partner worker files a pharmacy's answer to a
 #: NewRx (set_transmission_status, /hooks/erx; Thulasi on #124, migration 0015).
 INTEGRATION_COLUMN_UPDATE = {
-    "erx_transaction": ("status", "error_message", "vendor_message_id", "updated_by_user_id"),
+    # updated_at too: the ORM's onupdate sets it on every update (Thulasi on #138).
+    "erx_transaction": ("status", "error_message", "vendor_message_id", "updated_by_user_id",
+                        "updated_at"),
 }
 
 EDITABLE_RESULT = "registered,partial,preliminary,amended,corrected,appended,cancelled,unknown"

@@ -19,7 +19,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core.config import Settings
 from app.core.request_id import REQUEST_ID_HEADER
+from app.core.safe_logging import log_failure
 
 log = logging.getLogger(__name__)
 
@@ -310,7 +312,7 @@ async def _http_error(request: Request, exc: Exception) -> JSONResponse:
 
 
 async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
-    log.exception("Unhandled error on %s %s", request.method, request.url.path)
+    log_failure(log, "Unhandled error on %s %s", request.method, request.url.path)
     return problem(request, "internal-error")
 
 
@@ -319,3 +321,8 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)
     app.add_exception_handler(Exception, _unhandled_error)
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """Problem Details for every error (API_STANDARDS §9)."""
+    install_error_handlers(app)

@@ -664,6 +664,10 @@ class FhirStore(Protocol):
                             encounter_id: uuid.UUID | None, vitals: tuple[VitalIn, ...], *,
                             effective_at: datetime | None = None) -> list[Written]: ...
 
+    async def vital_entered_in_error(self, db: AsyncSession, observation_id: uuid.UUID,
+                                     reason: Reason, *, if_version: int | None = None
+                                     ) -> Written: ...
+
     # AllergyIntolerance (allergy_intolerance, its reactions and manifestations, a note)
     async def create_allergy(self, db: AsyncSession, data: AllergyIn) -> Written: ...
 
@@ -804,7 +808,7 @@ def _given[T](value: T | _Unset) -> TypeIs[T]:
 
 
 async def _locked[R: (Patient, RelatedPerson, Coverage, Encounter, Condition, AllergyIntolerance,
-                     MedicationRequest, DetectedIssue, Composition)](
+                     Observation, MedicationRequest, DetectedIssue, Composition)](
         db: AsyncSession, model: type[R], row_id: uuid.UUID, if_version: int | None) -> R:
     row = (await db.execute(select(model).where(model.id == row_id).with_for_update()
                             .execution_options(populate_existing=True))).scalar_one_or_none()
@@ -1346,6 +1350,18 @@ class SqlFhirStore:
             db.add(await _new(db, obs))
             rows.append(obs)
         return [await _written(db, obs) for obs in rows]
+
+    async def vital_entered_in_error(self, db: AsyncSession, observation_id: uuid.UUID,
+                                     reason: Reason, *, if_version: int | None = None
+                                     ) -> Written:
+        reason = _require_reason(reason)
+        obs = await _locked(db, Observation, observation_id, if_version)
+        if obs.status == "entered-in-error":
+            raise InvalidTransition(obs.status)
+        obs.status = "entered-in-error"
+        written = await _written(db, obs)
+        await _nullify_provenance(db, "Observation", written, reason)
+        return written
 
     # ------------------------------------------------------------------------- Allergy
     async def create_allergy(self, db: AsyncSession, data: AllergyIn) -> Written:

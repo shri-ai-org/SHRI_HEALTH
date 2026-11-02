@@ -247,7 +247,10 @@ paths:
       operationId: updateEncounter
       summary: Edit an encounter
       description: 'Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error`
-        (inventory #64). Status changes only through actions.'
+        (inventory #64). Status changes only through actions. MA and RN hold `encounters:update` for rooming and may change
+        only `reasons` (the reason for visit, recorded at rooming, #114); a request from them that changes anything else is
+        `403 permission-denied`. MD and APP may change every field here. The role matrix row lands with core''s change (NOTE_FOR_THULASI
+        T52), and it is a clinical row (‡, Q21).'
       tags:
       - encounters
       x-owner: vimal
@@ -301,9 +304,9 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `encounters:update`); `csrf-check-failed` (missing or wrong
-            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
-            grant and is not on the care team (D37)).
+          description: '403. `permission-denied` (the role lacks `encounters:update`, or an MA or RN changes a field other
+            than `reasons`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient''s
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).'
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
@@ -1508,7 +1511,7 @@ paths:
         name for a branded product, and the DEA schedule for a controlled substance.'
       tags:
       - encounters
-      x-owner: vimal
+      x-owner: anand
       x-permission: codes:read
       x-audit:
         action: R
@@ -2685,7 +2688,10 @@ paths:
       summary: Get the latest after-visit summary to print
       description: A short-lived download link to the encounter's latest after-visit summary, generated from a signed note
         (D98), so the front desk can print it at check-out without generating one (`after-visit-summaries:create` stays with
-        MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists.
+        MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists. A restricted
+        chart gets the normal chart check (D37; the front-desk exceptions of D107 don't cover it, D109). A user without a
+        break-glass grant who is not on the care team, the front desk included, gets `403 break-glass-required`; care-team
+        members, and users with a grant, read it without break-glass.
       tags:
       - encounters
       x-owner: vimal
@@ -2728,7 +2734,8 @@ paths:
         "403":
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `after-visit-summaries:read`); `break-glass-required` (the
-            patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+            patient's chart is restricted and the user holds no break-glass grant and is not on the care team, the front desk
+            included; care-team members, and users with a grant, read it without break-glass (D37, D109)).
         "404":
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such encounter, or no after-visit summary has been generated for it yet).
@@ -3822,7 +3829,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/CodeMatch'
           description: The items on this page.
@@ -3895,8 +3902,13 @@ components:
           - edited
           - rejected
           description: The clinician's decision on the AI text (D70). The note cannot be signed while any section is `pending`
-            (FRS §3.4, §8). Read-only; decided through the AI decision endpoint (batch 7).
+            (FRS §3.4, §8). Read-only; decided through `POST /ai/suggestions/{suggestionId}/decision` (batch 7).
           x-phi: none
+        aiSuggestion:
+          $ref: ./ai.yaml#/components/schemas/AiSuggestion
+          description: 'For an AI-drafted section: the AI text as drafted, its confidence band, rationale, links to the transcript
+            segments it came from, what the model could not determine, and the decision (D70; batch 7). Read-only.'
+          x-phi: clinical
     NoteAddendum:
       description: 'An addendum to a signed note: a new Composition that `appends` to the original, signed when it is added
         (DATA_OWNERSHIP §5.3). The original is never edited.'
@@ -4251,7 +4263,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/NoteVersion'
           description: The items on this page.
@@ -4662,7 +4674,8 @@ components:
           type: string
           format: uri
           maxLength: 2000
-          description: The download link. Short-lived; never logged.
+          description: 'A one-time link to `GET /files/{fileId}/content` (D105): for this user only, valid for about one minute,
+            accepted once. Never logged.'
           x-phi: none
         expiresAt:
           $ref: ../components/schemas/Timestamp.yaml

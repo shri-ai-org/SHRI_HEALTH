@@ -70,7 +70,7 @@ Values used in more than one rule are defined once here.
 | POST (`…/search`) | Search involving PHI | 200 | Not a create; never cached |
 | POST (`…/{id}/<action>`) | Run an action | 200 + the updated resource, or 202 + operation (§13) | |
 | PATCH | Partial update, JSON Merge Patch | 200 + updated resource | §7.3; `If-Match` required (§11) |
-| PUT | Replace a singleton sub-resource | 200 | Only where the catalogue says so: `/patients/{patientId}/preferred-pharmacy`, `/me/favorites`, `/admin/ai-settings`, `/users/{userId}/roles` |
+| PUT | Replace a singleton sub-resource | 200 | Only where the catalogue says so: `/patients/{patientId}/preferred-pharmacy`, `/me/favorites`, `/ai-settings`, `/users/{userId}/roles` |
 | DELETE | **Not used** in the MVP contract | — | Clinical: no DELETE (CAT, TW §7, VD-G1). Non-clinical: none needed in the catalogue; any future DELETE needs an ADR |
 
 Allowed error statuses are listed in §9.3. `204 No Content` is used only for `POST /auth/logout` (**PROPOSED**: nothing to return).
@@ -408,14 +408,14 @@ Files never pass through module endpoints. Module endpoints only reference a `fi
 2. **Upload:** the browser `PUT`s the bytes directly to `uploadUrl` (object-store quarantine).
 3. **Complete:** `POST /files/{fileId}/complete` → `202` + operation; the file service scans, hashes and encrypts it. File states: `pending-upload` → `quarantined` → `clean` | `rejected`.
 4. **Attach:** the module endpoint receives `fileId` (for example `POST /patients/{patientId}/coverages/{coverageId}/card-images` with `{ fileId, side: "front" }`). The module checks the file is `clean`, has the expected `purpose`, and belongs to the same clinic; otherwise `422 file-not-ready`.
-5. **Download:** `GET /files/{fileId}/download-url` → `{ url, expiresAt }`, valid for a short time (**PROPOSED**: at most 5 minutes). Permission depends on the file's purpose (for example card images need `coverages:read`).
+5. **Download (D105):** `GET /files/{fileId}/download-url` → `{ url, expiresAt }`. Permission depends on the file's purpose (for example card images need `coverages:read`). Files are encrypted at rest, so `url` points at `GET /files/{fileId}/content` on our own API, never into the object store, with a token bound to this user and this file, valid for about one minute and accepted once; the same user's session must come with it. The API decrypts the file as it streams it (`Cache-Control: no-store`, `Content-Disposition: attachment`, `Referrer-Policy: no-referrer`), the query string is never logged on that route, every invalid, expired, reused or other-user token gets the same `404`, and every download is audited.
 
 | Rule | Detail |
 |---|---|
 | `purpose` values | `insurance-card`, `identity` (license images, D56), `receipt` (payment receipts, D58; server-generated), `encounter-audio`, `after-visit-summary`, `document`, `fax`, `ccda`, `export`, `onboarding-import`. Each purpose maps to one read permission for the download link (`FilePurpose` in `files.yaml`); a purpose with no mapping is denied |
 | Allowed types and sizes | Declared per purpose. `insurance-card`: **JPEG and PNG for P0**, at most 10 MB (agreed, Minalini M13 and Vimal). HEIC (iPhone photo format) only if Anand's file service converts it for display — **pending Anand** |
 | Long audio | Multipart upload with several part URLs (agreed, A24) |
-| Secrecy | Upload and download URLs are bearer secrets: never logged, never stored by clients, never put in events |
+| Secrecy | Upload and download URLs are bearer secrets: never logged, never stored by clients, never put in events. The download token is also single-use and works only with its user's session (D105) |
 | File names | Not stored from the client by default (a name can contain PHI) — **PROPOSED** |
 
 ## 16. Webhooks

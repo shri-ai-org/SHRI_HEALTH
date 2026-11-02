@@ -23,5 +23,5 @@ export type PatientMergeSummaryUndoBlockedReason = typeof PatientMergeSummaryUnd
 
 export const PatientMergeSummaryUndoBlockedReason = {
   'already-undone': 'already-undone',
-  'records-changed': 'records-changed',
+  'later-merge': 'later-merge',
 } as const;

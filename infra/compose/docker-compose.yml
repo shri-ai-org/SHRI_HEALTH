@@ -55,6 +55,10 @@ services:
       # Keycloak 26.8 binds start-dev to localhost only; Nginx reaches it over the compose network.
       KC_HTTP_HOST: 0.0.0.0
       SHRI_WEB_CLIENT_SECRET: ${SHRI_WEB_CLIENT_SECRET:?set SHRI_WEB_CLIENT_SECRET in infra/compose/.env}
+      # The patient realm (shri-patients, ADR-0013): the portal's sign-in client and the API's
+      # service account. Same values as the API's PORTAL_*_CLIENT_SECRET below.
+      SHRI_PORTAL_CLIENT_SECRET: ${SHRI_PORTAL_CLIENT_SECRET:?set SHRI_PORTAL_CLIENT_SECRET in infra/compose/.env}
+      SHRI_PORTAL_ADMIN_CLIENT_SECRET: ${SHRI_PORTAL_ADMIN_CLIENT_SECRET:?set SHRI_PORTAL_ADMIN_CLIENT_SECRET in infra/compose/.env}
       KC_PROXY_HEADERS: xforwarded
       KC_HOSTNAME: https://localhost:8443/kc
       KC_HEALTH_ENABLED: "true"
@@ -90,6 +94,47 @@ services:
       openbao:
         condition: service_healthy
 
+  seaweedfs:
+    # The file store (Anand's file service, #128), DEVELOPMENT only: one server with the S3 API.
+    # Every stored chunk is encrypted, the quarantine bucket included (seaweedfs/start.sh); the
+    # API's key reaches only the two buckets. Apache-2.0 (D75), pinned by digest
+    # (.github/licences/allowed.json "images"). Browsers reach S3 on 127.0.0.1:8333 for upload links.
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    entrypoint: ["sh", "/init/start.sh"]
+    environment:
+      FILE_STORE_ACCESS_KEY_ID: shri-api
+      FILE_STORE_SECRET_ACCESS_KEY: ${FILE_STORE_SECRET_ACCESS_KEY:?set FILE_STORE_SECRET_ACCESS_KEY in infra/compose/.env}
+    ports:
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - ./seaweedfs:/init:ro
+      - seaweedfs:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9333/cluster/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  seaweedfs-init:
+    # One shot: the quarantine and clean buckets.
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    entrypoint: ["sh", "/init/init.sh"]
+    volumes:
+      - ./seaweedfs:/init:ro
+    restart: "no"
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+  clamav:
+    # The upload scan (clamd on 3310, Anand's scanner.py). GPL-2.0: a separate program in its own
+    # container, which D75's scope allows; pinned by digest (allowed.json "images"). On first
+    # start freshclam downloads the signatures, kept in a volume; scans answer 503 until clamd is
+    # up, so no file is ever called clean unscanned.
+    image: clamav/clamav:1.5.3-debian@sha256:741e6c447241220e0792a901befcaec1d55a755c5097fc9cd88d7fd8be251a5c
+    volumes:
+      - clamav:/var/lib/clamav
+
   api:
     build:
       context: ../../backend
@@ -111,6 +156,14 @@ services:
       # The patient portal's development sign-in (X-Dev-Patient, X-Dev-Patient-Clinic); refused
       # outside development and test.
       PATIENT_AUTH_MODE: dev_header
+      # Real patient sign-in (set PATIENT_AUTH_MODE: keycloak to use it): the patient realm on the
+      # same Keycloak, its own client, cookie and keys, and the shri_portal role (D93).
+      PORTAL_CLIENT_SECRET: ${SHRI_PORTAL_CLIENT_SECRET:?set SHRI_PORTAL_CLIENT_SECRET in infra/compose/.env}
+      PORTAL_ADMIN_CLIENT_SECRET: ${SHRI_PORTAL_ADMIN_CLIENT_SECRET:?set SHRI_PORTAL_ADMIN_CLIENT_SECRET in infra/compose/.env}
+      PORTAL_REDIRECT_URI: https://localhost:8443/api/v1/portal/auth/callback
+      PORTAL_SESSION_SECRET: ${PORTAL_SESSION_SECRET:?set PORTAL_SESSION_SECRET in infra/compose/.env}
+      PORTAL_INVITATION_SECRET: ${PORTAL_INVITATION_SECRET:?set PORTAL_INVITATION_SECRET in infra/compose/.env}
+      PORTAL_DATABASE_URL: postgresql+asyncpg://shri_portal:${SHRI_PORTAL_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
       # Trust X-Forwarded-For/-Proto only from Nginx's fixed address below, so clients cannot
       # fake their IP in logs, rate limits or audit records.
       FORWARDED_ALLOW_IPS: 172.31.250.10
@@ -126,11 +179,29 @@ services:
       # Field encryption through OpenBao Transit, with the narrow token only (never the root).
       OPENBAO_TRANSIT_ADDR: http://openbao:8200
       OPENBAO_TRANSIT_TOKEN: ${OPENBAO_API_TOKEN:?set OPENBAO_API_TOKEN in infra/compose/.env}
+      # The file service (core/settings/files.py). The folder survives a restart (its volume),
+      # so demo receipts do too; SHRI_FILE_STORE_DIR is #128's name for it until it reads
+      # FILE_STORE_DIR.
+      FILE_STORE_DIR: /var/lib/shri/files
+      SHRI_FILE_STORE_DIR: /var/lib/shri/files
+      FILE_STORE_URL: http://seaweedfs:8333
+      FILE_STORE_PUBLIC_URL: http://localhost:8333
+      FILE_STORE_ACCESS_KEY_ID: shri-api
+      FILE_STORE_SECRET_ACCESS_KEY: ${FILE_STORE_SECRET_ACCESS_KEY:?set FILE_STORE_SECRET_ACCESS_KEY in infra/compose/.env}
+      FILE_STORE_CLEAN_BUCKET: shri-clean
+      FILE_STORE_QUARANTINE_BUCKET: shri-quarantine
+      CLAMD_ADDRESS: clamav:3310
+    volumes:
+      - filestore:/var/lib/shri/files
     depends_on:
       postgres:
         condition: service_healthy
       openbao-init:
         condition: service_completed_successfully
+      seaweedfs-init:
+        condition: service_completed_successfully
+      clamav:
+        condition: service_started
 
   # The outbox worker (T29, D25): sends what the API queued for partners, with retries and the
   # dead-letter queue. The API's image, run as shri_integration, never with the API's login.
@@ -164,6 +235,9 @@ services:
 
 volumes:
   pgdata18:
+  seaweedfs:
+  clamav:
+  filestore:
 
 networks:
   default:

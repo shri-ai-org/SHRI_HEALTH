@@ -21,6 +21,7 @@ from .fakes import (
     fake_chart_check,
     recording_audit,
 )
+from .insurance_fakes import FakeInsuranceRepository
 
 
 @pytest.fixture
@@ -37,6 +38,8 @@ def app(world: World) -> Iterator[FastAPI]:
 
     application.dependency_overrides[tenant_db] = fake_db
     application.dependency_overrides[api.repository] = lambda: FakeRepository(world)
+    application.dependency_overrides[api.insurance_repository] = (
+        lambda: FakeInsuranceRepository(world))
     application.dependency_overrides[access.fhir_store] = lambda: FakeStore(world)
     application.dependency_overrides[access.chart_check] = lambda: fake_chart_check(world)
     application.dependency_overrides[access.audit_hooks] = lambda: recording_audit(world)

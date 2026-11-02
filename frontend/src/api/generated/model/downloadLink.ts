@@ -17,11 +17,11 @@
 import type { Timestamp } from './timestamp';
 
 /**
- * A short-lived link to a clean file.
+ * A one-time link to a clean file (D105).
  */
 export interface DownloadLink {
   /**
-     * Pre-signed download link, valid for at most 5 minutes. A bearer secret: never log or store it.
+     * A link to `GET /files/{fileId}/content` on our own API with a one-time token: for this user and this file only, and only with their session; valid for about one minute, accepted once (D105). A bearer secret: never log or store it.
      * @maxLength 2000
      */
   url: string;

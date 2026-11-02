@@ -22,7 +22,8 @@ The implementation is the core's: `Database.tenant_session` in `backend/app/core
 `tenant_db` in `backend/app/core/deps.py`. This package owns no engine and no session.
 `app/db/session.py` only holds the hook that fills `tenant_id` on new rows from
 `session.info["tenant_id"]`, which the core's `tenant_session()` sets to the clinic UUID (PR #28,
-`app.core.db.TENANT_ID_INFO_KEY`). It fills only an empty `tenant_id` and never overwrites one.
+`app.core.db.TENANT_ID_INFO_KEY`). It fills only an empty `tenant_id` and never overwrites one. Importing `app.db.models` registers it, so every process that writes ORM rows has it; nobody imports
+`app.db.session` for it.
 
 ## The /fhir session
 
@@ -56,7 +57,7 @@ schema changes, never for serving a request.
 |---|---|---|
 | `shri_app` | the API | `clinical` + `admin` read/write per table (see `tools/gen_db_rules.py`'s classification); `audit.audit_event` select+insert, never update or delete (0004), `audit.break_glass_access` select+insert |
 | `shri_fhir_reader` | `/fhir` (read-only, machine-token access) | `clinical` schema, `SELECT` only; `audit.audit_event` `INSERT` only (migration 0003) |
-| `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into (select, insert, update; never delete; 0004), the three `integration_*` admin tables, `admin.erx_transaction` read with a column-limited update of the status, error message, vendor message ID and updater (0015, for a pharmacy's answer), and `audit.audit_event` `INSERT` only (0004) |
+| `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into (select, insert, update; never delete; 0004), the three `integration_*` admin tables, `admin.erx_transaction` read with a column-limited update of the status, error message, vendor message ID, updater and `updated_at` (0015, for a pharmacy's answer; `set_transmission_status` runs as it), and `audit.audit_event` `INSERT` only (0004) |
 | `shri_reporting` | approved reports | nothing yet — no reporting views exist; grants come when they do |
 | `shri_migrator` | migrations only, and the development and test seed (`app.db.seed`; on staging only with `SEED_ALLOW_STAGING=1`, the synthetic-only test server, #187); never production onboarding, which needs its own design | owns all three schemas |
 | `shri_maintenance` | the scheduled purges only (D23) | `USAGE` on `admin` and `EXECUTE` on the purge functions: `admin.purge_expired_runtime_rows()` (0005) and the file purge's `admin.list_unusable_files(integer)` and `admin.delete_unusable_files(uuid[])` (0014); no table privileges |
@@ -133,7 +134,8 @@ The visit helpers (batch 2), on the same rules:
   writes its Provenance, and nothing changes after it;
 - `record_vitals`: one vital-signs Observation per entry, with the contract's LOINC code, the
   value and UCUM unit as entered (D69), blood pressure as two components; at most one per type,
-  never in the future;
+  never in the future; `vital_entered_in_error` sets its status and writes the Provenance, as
+  `allergy_entered_in_error` does;
 - `create_allergy`, `update_allergy`, `allergy_entered_in_error`: reactions with their
   manifestations, and a note;
 - `add_encounter_diagnosis` and `remove_encounter_diagnosis`: a Condition (category
@@ -260,7 +262,8 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   `rejected`. Only a clean file is attached or downloaded. An uploaded file is clean only after a
   clean scan; a receipt or after-visit summary, made by the server, is clean from the start.
   `wrapped_data_key` is the file's data key as core wraps it, kept only once the file is
-  clean. An upload's row is written `pending-upload` in bucket `quarantine` with the declared
+  clean, and every clean file has one: its stored bytes are AES-256-GCM ciphertext
+  (`app.modules.files.crypto`), and `size_bytes` and `sha256` are the plaintext's. An upload's row is written `pending-upload` in bucket `quarantine` with the declared
   `size_bytes` and `sha256`; the scan checks the bytes against them, and a clean file moves to
   bucket `clean` under the same `storage_key` (`<clinic>/<file>`). `shri_app` never deletes a
   file.
