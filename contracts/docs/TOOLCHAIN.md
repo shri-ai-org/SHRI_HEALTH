@@ -110,7 +110,7 @@ All npm dependencies, including transitive ones, were resolved with `npm install
 
 ## 6. CI jobs (agreed by Thulasi, T3; she owns `.github/`)
 
-Two limits of the GitHub Free plan on a private repository (T3): (a) Actions has a monthly minutes cap, so jobs stay lean; (b) labels cannot be restricted to certain people, so `contract-breaking` checks through the GitHub API that the `breaking-change-approved` label was applied by Vimal.
+Two limits of the GitHub Free plan on a private repository (T3): (a) Actions has a monthly minutes cap, so jobs stay lean (no longer a cap since the repository became public, D106; jobs stay lean anyway); (b) labels cannot be restricted to certain people, so `contract-breaking` checks through the GitHub API that the `breaking-change-approved` label was applied by Vimal.
 
 | Job | Runs | Fails when |
 |---|---|---|
