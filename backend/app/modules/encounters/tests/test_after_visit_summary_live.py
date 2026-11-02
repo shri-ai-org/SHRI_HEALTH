@@ -168,6 +168,44 @@ def _signed_note(practice: Practice, users: dict[str, CurrentUser], encounter: s
         admin.dispose()
 
 
+def _addendum(practice: Practice, users: dict[str, CurrentUser], note: UUID) -> UUID:
+    """An addendum to the signed note, as the notes helpers write it: a signed Composition of its
+    own on the same visit, with a later legal attester, that appends to the note (now amended)."""
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    db = setup_session(admin, practice.clinic)
+    try:
+        now = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=1)
+        signed = db.get_one(M["composition"], note)
+        signer = db.get_one(M["app_user"], users["md"].id).practitioner_id
+        add = M["composition"](
+            tenant_id=practice.clinic, status="preliminary", type_system=systems.LOINC,
+            type_code="11506-3", type_display="Progress note",
+            subject_patient_id=signed.subject_patient_id, encounter_id=signed.encounter_id,
+            date=now, title="Addendum")
+        add.author = [M["composition_author"](practitioner_id=signer)]
+        add.section = [M["composition_section"](
+            sequence=1, title="Addendum", text_status="generated",
+            text_div='<div xmlns="http://www.w3.org/1999/xhtml">Reviewed with the patient.</div>')]
+        db.add(add)
+        db.flush()
+        db.add(M["composition_relates_to"](composition_id=add.id, code="appends",
+                                           target_composition_id=note))
+        db.add(M["composition_attester"](composition_id=add.id, mode="legal", time=now,
+                                         party_practitioner_id=signer,
+                                         ext_user_id=users["md"].id,
+                                         ext_content_sha256="0" * 64))
+        db.flush()
+        add.status = "final"
+        signed.status = "amended"
+        db.flush()
+        add_id: UUID = add.id
+        db.commit()
+        return add_id
+    finally:
+        db.close()
+        admin.dispose()
+
+
 def _create(client: Any, encounter: str, user: str = "md", **body: Any) -> Any:
     return client(user).post(f"{API}/encounters/{encounter}/after-visit-summary",
                              json=body or None, headers=_key())
@@ -245,6 +283,23 @@ def test_the_summary_is_made_from_the_visit_and_downloaded(
     another = _link(client, encounter, "md").json()["url"]
     assert client("ma").get(another).status_code == 404  # another user's token
     assert client("md").get(another).status_code == 200  # still unused: the refusal spent none
+
+
+def test_an_addendum_never_replaces_the_note(summary_client: Any, practice: Practice,
+                                             users: dict[str, CurrentUser], spy: Spy) -> None:
+    client = summary_client
+    _, encounter = _visit(client, practice)
+    note = _signed_note(practice, users, encounter, instructions="<p>Rest.</p>")
+    addendum = _addendum(practice, users, note)
+    asked = _create(client, encounter, noteId=str(addendum))
+    assert asked.status_code == 422
+    assert asked.json()["errors"][0]["code"] == "invalid-reference"
+    assert spy.given == []
+    assert _create(client, encounter).status_code == 202
+    (given,) = spy.given
+    assert given["note_id"] == note and given["details"].instructions == "Rest."
+    (document,) = _documents(practice, encounter)
+    assert document.ext_composition_id == note
 
 
 @pytest.mark.xfail(strict=True, reason=(

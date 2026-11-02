@@ -377,7 +377,8 @@ FROM clinical.encounter_follow_up WHERE encounter_id = :id
 FOR UPDATE
 """)
 _APPOINTMENT_TYPES = text("SELECT id FROM admin.appointment_type WHERE id = ANY(:ids)")
-# The newest signed note (or the one asked for), with its signer: the legal attester.
+# The newest signed note (or the one asked for), with its signer: the legal attester. An addendum
+# is a signed Composition of its own that appends to the note, never the note itself.
 _SIGNED_NOTE = text("""
 SELECT c.id, a.party_practitioner_id AS signer_id,
        (SELECT concat_ws(' ', array_to_string(n.prefix, ' '), array_to_string(n.given, ' '),
@@ -390,6 +391,8 @@ LEFT JOIN LATERAL (SELECT x.party_practitioner_id, x.time FROM clinical.composit
                     ORDER BY x.time LIMIT 1) a ON true
 WHERE c.encounter_id = :e AND c.status IN ('final', 'amended')
   AND (CAST(:note AS uuid) IS NULL OR c.id = :note)
+  AND NOT EXISTS (SELECT 1 FROM clinical.composition_relates_to r
+                  WHERE r.composition_id = c.id AND r.code = 'appends')
 ORDER BY a.time DESC NULLS LAST, c.date DESC, c.id
 LIMIT 1
 """)

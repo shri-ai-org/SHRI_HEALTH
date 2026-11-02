@@ -3,7 +3,10 @@ doctor's part of the visit (demo step 8) and its check-out ones (demo steps 10-1
 follow-up request and the after-visit summary) are built or still pending.
 """
 
+from app.core.permissions import is_known_permission
 from app.modules.patients.tests.contract_routes import progress_problems
+
+from ..api import PENDING_PERMISSIONS
 
 MODULE = "encounters"
 
@@ -40,11 +43,9 @@ CHECK_OUT = frozenset({
     "getAfterVisitSummaryDownloadUrl",
 })
 # declineFollowUpRequest and getAfterVisitSummaryDownloadUrl are built (api.mount_pending_routes)
-# but mounted only once core's catalogue has their permissions (T50, note for Thulasi).
-CHECK_OUT_PENDING = frozenset({
-    "declineFollowUpRequest",
-    "getAfterVisitSummaryDownloadUrl",
-})
+# but mounted only once core's catalogue has their permissions (T50); pending until then.
+CHECK_OUT_PENDING = frozenset(operation for operation, permission in PENDING_PERMISSIONS.items()
+                              if not is_known_permission(permission))
 
 
 def test_rooming_notes_and_check_out_operations_are_built_or_pending() -> None:
