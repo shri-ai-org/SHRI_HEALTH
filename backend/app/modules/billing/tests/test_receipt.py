@@ -17,7 +17,7 @@ COLLECTED = datetime(2026, 11, 3, 14, 53, tzinfo=UTC)
 
 def _details(**overrides: object) -> ReceiptDetails:
     values: dict[str, object] = {
-        "practice_name": "Lakeside Test Neurology", "patient_name": "Mai Thi Nguyen",
+        "practice_name": "Lakeside Test Neurology", "patient_name": "Kaia401 Lindgren118",
         "payment_id": PAYMENT_ID, "collected_at": COLLECTED, "amount": Decimal("25.00"),
         "currency": "USD", "method": "check", "check_number": "1042",
         "note": "Copay (visit) paid at check-in \\ thanks", "time_zone": "America/Chicago"}
@@ -86,7 +86,7 @@ def test_the_receipt_shows_what_was_paid() -> None:
     assert texts[0] == "Lakeside Test Neurology"
     assert "Payment receipt" in texts
     assert f"Receipt number: {PAYMENT_ID}" in texts
-    assert "Patient: Mai Thi Nguyen" in texts
+    assert "Patient: Kaia401 Lindgren118" in texts
     assert "Collected: November 3, 2026, 8:53 AM CST" in texts
     assert "Amount paid: $25.00 USD" in texts
     assert "Method: Check" in texts
@@ -105,9 +105,9 @@ def test_cash_has_no_check_number_or_note_and_a_long_note_wraps() -> None:
 
 
 def test_letters_outside_winansi_lose_only_their_accent() -> None:
-    _, texts = _parse(render(_details(patient_name="Trần Thị Nguyễn", practice_name="Café 中")))
+    _, texts = _parse(render(_details(patient_name="Trần412 Thị Nguyễn88", practice_name="Café 中")))
 
-    assert "Patient: Tran Thi Nguyen" in texts
+    assert "Patient: Tran412 Thi Nguyen88" in texts
     assert texts[0] == "Café ?"
 
 

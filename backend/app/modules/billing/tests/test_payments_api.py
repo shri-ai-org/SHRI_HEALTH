@@ -27,7 +27,7 @@ Client = Callable[[str], TestClient]
 def _patient(world: World, clinic: UUID = CLINIC_A, merged_into: UUID | None = None
              ) -> UUID:
     patient_id = uuid4()
-    world.add_patient(clinic, PatientForPayment(id=patient_id, name="Mai Nguyen",
+    world.add_patient(clinic, PatientForPayment(id=patient_id, name="Kaia401 Lindgren118",
                                                 merged_into_id=merged_into))
     return patient_id
 
