@@ -5448,7 +5448,7 @@ paths:
     post:
       operationId: recordVisitStatus
       summary: Record a visit step
-      description: 'Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment''s `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out` (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names `/status`).'
+      description: 'Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). Each status has its own roles, checked by the service on top of `appointments:status`: `arrived` and `noshow` FD; `roomed` MA and RN; `with-provider` MD, APP and RN. Any other role gets `403 permission-denied`, and nothing changes. `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment''s `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out` (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names `/status`).'
       tags:
         - scheduling
       x-owner: vimal
@@ -16502,7 +16502,7 @@ paths:
                   summary: One page
                   value:
                     items:
-                      - id: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
+                      - id: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
                         patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
                         medication:
                           codings:
@@ -25408,7 +25408,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/EligibilityCheck'
           description: The items on this page.
@@ -26324,7 +26324,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/CodeMatch'
           description: The items on this page.
@@ -26727,7 +26727,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/NoteVersion'
           description: The items on this page.
@@ -30304,7 +30304,7 @@ components:
           x-phi: none
         prescriptionId:
           $ref: '#/components/schemas/Id'
-          description: The prescription that put it on the list, when `source` is `prescription`.
+          description: 'The prescription that put it on the list, when `source` is `prescription`. It equals `id`: the list entry is that prescription''s `MedicationRequest` (D28).'
           x-phi: internal-id
         note:
           type: string
