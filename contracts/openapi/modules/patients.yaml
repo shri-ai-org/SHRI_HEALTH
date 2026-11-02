@@ -1372,11 +1372,14 @@ paths:
         action: E
         category: phi-write
         patient: patientId
+      x-idempotency: supported
       x-storage: clinical
       x-release: P0
       security:
       - sessionCookie: []
         csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
       requestBody:
         required: true
         content:
@@ -1436,11 +1439,12 @@ paths:
           description: 404. `not-found` (no such coverage in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: 409. `invalid-state-transition` (the coverage is already `entered-in-error`); `patient-merged` (the
-            patient was merged into another record).
+          description: '409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the coverage is already `entered-in-error`); `patient-merged` (the patient was merged into another record).'
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a body field or a parameter is invalid).
+          description: '422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).'
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).

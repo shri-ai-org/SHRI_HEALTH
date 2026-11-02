@@ -16,7 +16,8 @@ WORKDIR /srv
 # Exact versions with hashes only (requirements.lock); nothing resolved at build time.
 COPY requirements.lock ./
 RUN pip install --require-hashes --no-deps -r requirements.lock \
-    && useradd --system --uid 10001 --no-create-home api
+    && useradd --system --uid 10001 --no-create-home api \
+    && install -d -o api -g api -m 0700 /var/lib/shri/files
 COPY app ./app
 # Only the operations map, never the contract itself: core reads each operation's permission
 # and audit rule from it, and refuses to start without it (app/core/operations.py).

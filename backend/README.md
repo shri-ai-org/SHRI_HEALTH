@@ -115,7 +115,9 @@ steps in the API's own image instead, so nothing is installed on the host. It ru
 no root-owned files land in the checkout, and the virtualenv lives in a Docker volume.
 
 1. Start the compose database and OpenBao (with `infra/compose/.env` filled in), and add the
-   extensions, as CI does:
+   extensions, as CI does. Compose refuses to start *any* service while a required key is
+   missing from `.env`, so after every pull run `python3 scripts/check_env.py` first and fill in
+   each key it lists (for a secret, any long random value: `openssl rand -hex 32`):
 
    ```bash
    docker compose -f infra/compose/docker-compose.yml up -d postgres openbao openbao-init
@@ -156,10 +158,16 @@ once, so the database is created again with them. Synthetic data only.
 ## Run the whole stack locally
 
 ```bash
-cp infra/compose/example.env infra/compose/.env   # fill in every password
+cp infra/compose/example.env infra/compose/.env   # fill in every password and secret
 infra/nginx/make-dev-cert.sh                      # once
 docker compose -f infra/compose/docker-compose.yml up --build
 ```
+
+After every pull, `python3 scripts/check_env.py` lists any key `example.env` gained that your
+`.env` lacks (names only, never values). Compose refuses to start any service while one is
+missing: for example `FILE_STORE_SECRET_ACCESS_KEY` (the API's key on the development file store),
+added with SeaweedFS. Give each secret its own long random value (`openssl rand -hex 32`); never
+copy a real one into `example.env`.
 
 Then open `https://localhost:8443/health` and `https://localhost:8443/api/v1/docs`.
 Keycloak is at `https://localhost:8443/kc/`. Synthetic data only.

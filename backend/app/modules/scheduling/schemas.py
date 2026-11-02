@@ -247,3 +247,9 @@ class CheckInResult(Out):
 
 class UndoCheckInRequest(Closed):
     reason: Annotated[str, _text(500, min_length=1)]
+
+
+# --------------------------------------------------------------------------------- visit steps
+class StatusChangeRequest(Closed):
+    status: Literal["arrived", "roomed", "with-provider", "checked-out", "noshow"]
+    room_location_id: UUID | None = None

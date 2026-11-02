@@ -29,7 +29,6 @@ BATCH_1 = frozenset({
 # still listed here.
 PENDING = frozenset({
     "updateAppointment",
-    "recordVisitStatus",
 })
 
 
