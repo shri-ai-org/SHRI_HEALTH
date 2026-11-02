@@ -191,6 +191,20 @@ check() {
         *) die "staff sign-in does not start at Keycloak" ;; esac
     [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' "$SHRI_PUBLIC_URL/kc/admin/" 2>/dev/null || true)" = 404 ] \
         || die "the Keycloak admin console is reachable on the public host"
+    # The development sign-in is never reachable from outside: the header is stripped and refused.
+    [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' -H 'X-Dev-User: md' "$SHRI_PUBLIC_URL/api/v1/me" 2>/dev/null || true)" = 401 ] \
+        || die "a request with X-Dev-User was not refused"
+    # Real patient sign-in is off on servers for now (#148's account-state bug).
+    [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' "$SHRI_PUBLIC_URL/api/v1/portal/auth/login" 2>/dev/null || true)" = 503 ] \
+        || die "patient sign-in is on; it stays off until #148's account-state bug is fixed"
+    # No query string, so no download token, ever reaches Nginx's log (D105).
+    local probe
+    probe="deploycheck$(openssl rand -hex 16)"
+    "${curl[@]}" -o /dev/null "$SHRI_PUBLIC_URL/api/v1/files/00000000-0000-4000-8000-000000000000/content?token=$probe" 2>/dev/null || true
+    sleep 1
+    if $DC logs --no-log-prefix --since 2m nginx 2>&1 | grep -q "$probe"; then
+        die "a query string reached Nginx's access log"
+    fi
     say "All checks passed: $SHRI_PUBLIC_URL (release $SHRI_RELEASE, ${SHRI_ENVIRONMENT:-staging}, demo ${SHRI_DEMO:-false})"
 }
 
