@@ -17,6 +17,7 @@ from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, admin_engine, app_engin
 from app.db.tests.test_fhir_store import _rows, clinic, database, session  # noqa: F401
 from app.db.tests.test_fhir_store_visits import _facility, _visit  # noqa: F401
 from app.modules.files.storage import LocalFileStore
+from app.modules.files.tests.fakes import FakeFileCrypto
 
 from .. import after_visit_summary as avs
 from .. import pdf
@@ -96,15 +97,15 @@ async def test_stored_with_its_document_and_found_as_the_latest(
             title="Visit", sections=(fs.SectionIn("69730-0", "Instructions", "Rest."),)))
         await STORE.sign_note(s, note.id, if_version=note.version)
         await s.commit()
-    files = LocalFileStore(tmp_path)
+    files, crypto = LocalFileStore(tmp_path), FakeFileCrypto()
     async with session(database, clinic) as s:
         assert await avs.latest(s, enc.id) is None
-        first = await avs.store(s, files, patient_id=patient.id, encounter_id=enc.id,
+        first = await avs.store(s, files, crypto, patient_id=patient.id, encounter_id=enc.id,
                                 note_id=note.id, author_practitioner_id=clinic["practitioner"],
                                 details=DETAILS)
         await s.commit()
     async with session(database, clinic) as s:
-        second = await avs.store(s, files, patient_id=patient.id, encounter_id=enc.id,
+        second = await avs.store(s, files, crypto, patient_id=patient.id, encounter_id=enc.id,
                                  note_id=note.id, author_practitioner_id=clinic["practitioner"],
                                  details=DETAILS)
         await s.commit()
@@ -117,7 +118,10 @@ async def test_stored_with_its_document_and_found_as_the_latest(
     (cat,) = _rows(admin_engine, "SELECT category_code FROM clinical.document_reference_category "
                    "WHERE document_reference_id = :i", i=first.document_id)
     assert cat.category_code == "clinical-note"
-    (obj,) = _rows(admin_engine, "SELECT purpose, state, storage_key FROM admin.binary_object "
-                   "WHERE id = :i", i=first.file_id)
+    (obj,) = _rows(admin_engine, "SELECT purpose, state, storage_key, wrapped_data_key FROM "
+                   "admin.binary_object WHERE id = :i", i=first.file_id)
     assert (obj.purpose, obj.state) == ("after-visit-summary", "clean")
-    assert (tmp_path / obj.storage_key).read_bytes() == avs.render(DETAILS)
+    stored = (tmp_path / obj.storage_key).read_bytes()
+    assert b"After-visit summary" not in stored                    # sealed at rest (#145)
+    assert await crypto.open(stored, obj.wrapped_data_key, context=obj.storage_key) == avs.render(
+        DETAILS)

@@ -31,6 +31,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import MAPPERS, systems
+from app.modules.files.crypto import FileCrypto
 from app.modules.files.storage import FileStore, store_generated
 
 from . import pdf
@@ -133,12 +134,14 @@ class StoredSummary:
     generated_at: datetime
 
 
-async def store(db: AsyncSession, file_store: FileStore, *, patient_id: UUID,
+async def store(db: AsyncSession, file_store: FileStore, crypto: FileCrypto, *, patient_id: UUID,
                 encounter_id: UUID, note_id: UUID, author_practitioner_id: UUID,
                 details: AfterVisitSummaryDetails) -> StoredSummary:
-    """Render, store and record the summary in the caller's transaction; never commits."""
+    """Render, store and record the summary in the caller's transaction; never commits. The PDF
+    is sealed with its own data key (``crypto``, #145) like every stored file; no key, no
+    summary (503 from the file service)."""
     data = render(details)
-    file_id = await store_generated(db, file_store, purpose=PURPOSE,
+    file_id = await store_generated(db, file_store, crypto, purpose=PURPOSE,
                                     content_type=pdf.CONTENT_TYPE, data=data)
     now: datetime = (await db.execute(text("SELECT now()"))).scalar_one()
     user = (await db.execute(text(
