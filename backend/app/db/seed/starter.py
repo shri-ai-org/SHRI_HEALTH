@@ -73,7 +73,8 @@ PROVIDERS = (
     ("md", "Lindqvist58", "Avery401", "Dr.", "MD", "1999999901"),
     ("app", "Okonkwo73", "Jordan552", None, "NP", "1999999919"),
     # The demo doctor's (app.db.seed.demo): no dev user, since a practitioner has one user.
-    ("demo", "Halvorsen64", "Rowan318", "Dr.", "MD", "1999999927"),
+    # Named as the demo.doctor Keycloak account is (#152, D112).
+    ("demo", "Doctor", "Rivera", "Dr.", "MD", "1999999927"),
 )
 
 #: (code, name, minutes, new patient, telehealth, note template code)

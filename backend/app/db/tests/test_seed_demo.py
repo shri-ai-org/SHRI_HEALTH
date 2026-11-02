@@ -2,7 +2,9 @@
 re-runnable, and what the demo screens read through the API role."""
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -10,7 +12,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS
-from app.db.seed import demo
+from app.db.seed import demo, starter
 from app.db.seed.starter import sid
 from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, open_session
 from app.db.tests.test_seed import _snapshot, migrator_engine
@@ -116,3 +118,22 @@ def test_the_demo_accounts_sign_in_with_their_roles(migrator_engine: Engine,
                                  {"k": demo.DEMO_PATIENT_SUBJECT}).one()
     assert (account.tenant_id, account.patient_id, account.status) == (
         CLINIC_A, sid(demo.PATIENT, demo.DEMO_PORTAL_PATIENT), "active")
+
+
+def test_the_seed_uses_the_keycloak_accounts_ids_and_names() -> None:
+    """D112: Keycloak's names (#152's reset script) are the source of truth, so a person has
+    one name on every screen and in sign-in. No database needed."""
+    script = (Path(__file__).resolve().parents[4] / "infra" / "keycloak"
+              / "reset-demo-users.sh").read_text()
+    ids = dict(re.findall(r"^(\w+)_ID=([0-9a-f-]{36})$", script, re.MULTILINE))
+    accounts = {m[1]: (ids[m[0]], f"{m[2]} {m[3]}") for m in re.findall(
+        r'user "\$(\w+)_ID" (\S+) \S+ (\w+) (\w+)\)', script)}
+    staff = {username: (subject, name)
+             for _, username, subject, name, _, _ in demo.DEMO_USERS}
+    assert staff == {u: a for u, a in accounts.items() if not u.startswith("demo.patient")}
+    subject, name = accounts["demo.patient@example.com"]
+    assert subject == demo.DEMO_PATIENT_SUBJECT
+    patient = next(p for p in demo.PATIENTS if p.n == demo.DEMO_PORTAL_PATIENT)
+    assert f"{patient.given} {patient.family}" == name
+    provider = next(p for p in starter.PROVIDERS if p[0] == "demo")
+    assert f"{provider[2]} {provider[1]}" == accounts["demo.doctor"][1]
