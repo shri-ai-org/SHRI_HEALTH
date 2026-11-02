@@ -20,6 +20,9 @@ from app.core import (
     events,
     health,
     long_running,
+    me_api,
+    portal_auth_api,
+    portal_sign_in,
     public_form,
     safe_logging,
 )
@@ -37,6 +40,7 @@ from app.core.request_id import RequestIdMiddleware
 from app.core.response_headers import NoStoreMiddleware
 from app.core.routing import API_PREFIX, include_module_routers
 from app.core.session import Keycloak, LoginStates
+from app.integration import inbound
 from app.main import create_app
 
 
@@ -67,6 +71,7 @@ def _legacy_app(settings: Settings) -> FastAPI:
     access_log.register(application, settings)
     safe_logging.register(application, settings)
     backchannel.register(application, settings)
+    portal_sign_in.register(application, settings)
     application.add_middleware(AuditMiddleware)
     application.add_middleware(IdempotencyMiddleware)
     application.add_middleware(NoStoreMiddleware)
@@ -75,8 +80,11 @@ def _legacy_app(settings: Settings) -> FastAPI:
     application.add_exception_handler(Replay, replay_response)
     application.include_router(health.router)
     backchannel.register_routes(application, settings)  # added after the registry
+    inbound.register(application, settings)  # added after the registry
     application.include_router(auth_api.router, prefix=API_PREFIX)
+    me_api.register(application, settings)  # added after the registry
     public_form.include_routes(application, API_PREFIX)
+    portal_auth_api.register(application, settings)  # added after the registry
     application.include_router(events.router, prefix=API_PREFIX)
     application.include_router(long_running.router, prefix=API_PREFIX)
     include_module_routers(application)

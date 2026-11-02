@@ -14,6 +14,7 @@ import pytest
 from app.core.db import TENANT_ID_INFO_KEY
 from app.core.errors import ServiceUnavailable
 
+from ..crypto import FORMAT
 from ..s3 import S3FileStore
 from ..storage import (
     CLEAN_BUCKET,
@@ -23,6 +24,7 @@ from ..storage import (
     file_store,
     store_generated,
 )
+from .fakes import FakeFileCrypto
 
 TENANT = UUID("0a000000-0000-4000-8000-00000000000a")
 
@@ -73,12 +75,12 @@ class _Session:
         self.rows.append(params)
 
 
-async def test_store_generated_writes_the_bytes_and_the_row(tmp_path: Path) -> None:
-    session, store = _Session(), LocalFileStore(tmp_path)
+async def test_store_generated_seals_the_bytes_and_writes_the_row(tmp_path: Path) -> None:
+    session, store, crypto = _Session(), LocalFileStore(tmp_path), FakeFileCrypto()
     data = b"%PDF-1.4 receipt"
 
-    file_id = await store_generated(session, store, purpose="receipt",  # type: ignore[arg-type]
-                                    content_type="application/pdf", data=data)
+    file_id = await store_generated(session, store, crypto,  # type: ignore[arg-type]
+                                    purpose="receipt", content_type="application/pdf", data=data)
 
     (row,) = session.rows
     assert row["id"] == file_id and row["tenant_id"] == TENANT
@@ -86,13 +88,25 @@ async def test_store_generated_writes_the_bytes_and_the_row(tmp_path: Path) -> N
     assert (row["bucket"], row["purpose"], row["content_type"]) == (
         "clean", "receipt", "application/pdf")
     assert row["size_bytes"] == len(data) and row["sha256"] == hashlib.sha256(data).hexdigest()
-    assert await store.get(row["storage_key"]) == data
+    assert row["wrapped_data_key"] == crypto.wrapped[-1]
+    sealed = await store.get(row["storage_key"])
+    assert sealed.startswith(FORMAT) and data not in sealed  # never stored in clear
+    assert await crypto.open(sealed, row["wrapped_data_key"], context=row["storage_key"]) == data
+
+
+async def test_no_data_key_no_generated_file(tmp_path: Path) -> None:
+    session, store, crypto = _Session(), LocalFileStore(tmp_path), FakeFileCrypto()
+    crypto.data_keys.unavailable = True
+    with pytest.raises(ServiceUnavailable):
+        await store_generated(session, store, crypto,  # type: ignore[arg-type]
+                              purpose="receipt", content_type="application/pdf", data=b"x")
+    assert not session.rows and not any(tmp_path.iterdir())  # noqa: ASYNC240 (nothing written)
 
 
 async def test_a_failed_insert_removes_the_bytes(tmp_path: Path) -> None:
     store = LocalFileStore(tmp_path)
     with pytest.raises(RuntimeError):
-        await store_generated(_Session(fail=True), store,  # type: ignore[arg-type]
+        await store_generated(_Session(fail=True), store, FakeFileCrypto(),  # type: ignore[arg-type]
                               purpose="receipt", content_type="application/pdf", data=b"x")
     assert not list((tmp_path / str(TENANT)).iterdir())
 
@@ -100,7 +114,8 @@ async def test_a_failed_insert_removes_the_bytes(tmp_path: Path) -> None:
 async def test_only_generated_purposes(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         await store_generated(_Session(), LocalFileStore(tmp_path),  # type: ignore[arg-type]
-                              purpose="insurance-card", content_type="image/jpeg", data=b"x")
+                              FakeFileCrypto(), purpose="insurance-card",
+                              content_type="image/jpeg", data=b"x")
 
 
 def _request(environment: str) -> Any:
@@ -136,21 +151,18 @@ async def test_buckets_are_separate_folders(tmp_path: Path) -> None:
             await call
 
 
-def test_local_links_are_file_urls(tmp_path: Path) -> None:
+def test_local_upload_links_are_file_urls(tmp_path: Path) -> None:
     store, key = LocalFileStore(tmp_path), _key()
     before = datetime.now(UTC)
     put = store.presign_put(key, bucket=QUARANTINE_BUCKET, content_type="image/png",
                             size_bytes=10, expires=timedelta(minutes=15))
-    get = store.presign_get(key, bucket=CLEAN_BUCKET, content_type="image/png",
-                            expires=timedelta(minutes=5))
     assert put.url == (tmp_path.resolve() / "quarantine" / key).as_uri()
     assert put.headers == {"Content-Type": "image/png"}
-    assert get.url == (tmp_path.resolve() / key).as_uri() and get.headers == {}
-    assert before + timedelta(minutes=4) < get.expires_at <= before + timedelta(minutes=5)
+    assert before + timedelta(minutes=14) < put.expires_at <= before + timedelta(minutes=15)
     assert "url" not in repr(put) and key not in repr(put)  # a link is never in a repr
     with pytest.raises(ValueError):
-        store.presign_get("../x", bucket=CLEAN_BUCKET, content_type="image/png",
-                          expires=timedelta(minutes=5))
+        store.presign_put("../x", bucket=QUARANTINE_BUCKET, content_type="image/png",
+                          size_bytes=10, expires=timedelta(minutes=15))
 
 
 def test_the_object_store_when_configured(monkeypatch: pytest.MonkeyPatch,
@@ -167,8 +179,15 @@ def test_the_object_store_when_configured(monkeypatch: pytest.MonkeyPatch,
 
 
 @pytest.mark.parametrize("environment", ["staging", "production"])
-def test_no_unencrypted_store_outside_development_and_test(
+def test_no_folder_outside_development_and_test(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path, environment: str) -> None:
+    """A folder's quarantined uploads aren't encrypted at rest; the object store's are."""
+    monkeypatch.delenv("SHRI_S3_ENDPOINT", raising=False)
     monkeypatch.setenv(FILE_STORE_DIR_ENV, str(tmp_path))
     with pytest.raises(ServiceUnavailable):
         file_store(_request(environment))
+    for name, value in {"SHRI_S3_ENDPOINT": "http://seaweedfs:8333",
+                        "SHRI_S3_ACCESS_KEY_ID": "TESTKEY", "SHRI_S3_SECRET_ACCESS_KEY": "x",
+                        "SHRI_S3_BUCKET_CLEAN": "c", "SHRI_S3_BUCKET_QUARANTINE": "q"}.items():
+        monkeypatch.setenv(name, value)
+    assert isinstance(file_store(_request(environment)), S3FileStore)

@@ -55,6 +55,10 @@ services:
       # Keycloak 26.8 binds start-dev to localhost only; Nginx reaches it over the compose network.
       KC_HTTP_HOST: 0.0.0.0
       SHRI_WEB_CLIENT_SECRET: ${SHRI_WEB_CLIENT_SECRET:?set SHRI_WEB_CLIENT_SECRET in infra/compose/.env}
+      # The patient realm (shri-patients, ADR-0013): the portal's sign-in client and the API's
+      # service account. Same values as the API's PORTAL_*_CLIENT_SECRET below.
+      SHRI_PORTAL_CLIENT_SECRET: ${SHRI_PORTAL_CLIENT_SECRET:?set SHRI_PORTAL_CLIENT_SECRET in infra/compose/.env}
+      SHRI_PORTAL_ADMIN_CLIENT_SECRET: ${SHRI_PORTAL_ADMIN_CLIENT_SECRET:?set SHRI_PORTAL_ADMIN_CLIENT_SECRET in infra/compose/.env}
       KC_PROXY_HEADERS: xforwarded
       KC_HOSTNAME: https://localhost:8443/kc
       KC_HEALTH_ENABLED: "true"
@@ -152,6 +156,14 @@ services:
       # The patient portal's development sign-in (X-Dev-Patient, X-Dev-Patient-Clinic); refused
       # outside development and test.
       PATIENT_AUTH_MODE: dev_header
+      # Real patient sign-in (set PATIENT_AUTH_MODE: keycloak to use it): the patient realm on the
+      # same Keycloak, its own client, cookie and keys, and the shri_portal role (D93).
+      PORTAL_CLIENT_SECRET: ${SHRI_PORTAL_CLIENT_SECRET:?set SHRI_PORTAL_CLIENT_SECRET in infra/compose/.env}
+      PORTAL_ADMIN_CLIENT_SECRET: ${SHRI_PORTAL_ADMIN_CLIENT_SECRET:?set SHRI_PORTAL_ADMIN_CLIENT_SECRET in infra/compose/.env}
+      PORTAL_REDIRECT_URI: https://localhost:8443/api/v1/portal/auth/callback
+      PORTAL_SESSION_SECRET: ${PORTAL_SESSION_SECRET:?set PORTAL_SESSION_SECRET in infra/compose/.env}
+      PORTAL_INVITATION_SECRET: ${PORTAL_INVITATION_SECRET:?set PORTAL_INVITATION_SECRET in infra/compose/.env}
+      PORTAL_DATABASE_URL: postgresql+asyncpg://shri_portal:${SHRI_PORTAL_PASSWORD}@postgres:5432/${POSTGRES_DB:-shri_health}
       # Trust X-Forwarded-For/-Proto only from Nginx's fixed address below, so clients cannot
       # fake their IP in logs, rate limits or audit records.
       FORWARDED_ALLOW_IPS: 172.31.250.10

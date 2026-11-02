@@ -8,8 +8,8 @@ The order is the app's behaviour, so it is the one thing to keep in mind when ad
   innermost (it sees the final status); Idempotency sits outside it (it stores that status, audit
   500s included); NoStore; RequestId outermost (every answer carries X-Request-ID).
 - **Error handlers**, then the idempotent-replay handler, in that order.
-- **Routes last,** in the order they match: /health, sign-in, the bot challenge, events,
-  operations, then every module's router.
+- **Routes last,** in the order they match: /health, the /hooks callbacks, sign-in, /me, the bot
+  challenge, events, operations, then every module's router.
 
 test_registry.py checks the result against the sequence create_app() used before the registry:
 the same middleware stack, routes, error handlers and app state.
@@ -32,6 +32,9 @@ from app.core import (
     health,
     idempotency,
     long_running,
+    me_api,
+    portal_auth_api,
+    portal_sign_in,
     public_form,
     request_id,
     response_headers,
@@ -40,6 +43,7 @@ from app.core import (
     session,
 )
 from app.core.config import Settings
+from app.integration import inbound
 
 Register = Callable[[FastAPI, Settings], None]
 
@@ -50,6 +54,7 @@ FEATURES: tuple[tuple[str, Register], ...] = (
     ("public forms", public_form.register),
     ("staff sessions", session.register),
     ("download tokens", download_tokens.register),
+    ("patient sign-in", portal_sign_in.register),
     ("access log", access_log.register),
     ("server error log", safe_logging.register),
     ("back-channel logout", backchannel.register),
@@ -64,8 +69,11 @@ FEATURES: tuple[tuple[str, Register], ...] = (
     # Routes, in matching order
     ("health", health.register),
     ("back-channel logout route", backchannel.register_routes),
+    ("partner callbacks", inbound.register),
     ("staff sign-in", auth_api.register),
+    ("current user", me_api.register),
     ("bot challenge", public_form.register_routes),
+    ("patient sign-in routes", portal_auth_api.register),
     ("events", events.register),
     ("operations", long_running.register),
     ("modules", routing.register),

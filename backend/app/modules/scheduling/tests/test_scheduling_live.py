@@ -136,6 +136,20 @@ def test_book_returns_the_appointment(client: Any, practice: Practice) -> None:
     assert "visitStatus" not in a and "encounterId" not in a
 
 
+def test_a_slot_naming_the_site_can_be_booked(client: Any, practice: Practice) -> None:
+    """A schedule rule may name the facility's site, so its slots carry the site as their
+    location; booking that slot must work ("Room or site"). Another facility's site is refused."""
+    at_site = client("fd").post(f"{API}/appointments",
+                                json=_booking(practice, locationId=str(practice.site)))
+    assert at_site.status_code == 201, at_site.text
+    assert at_site.json()["locationId"] == str(practice.site)
+    stranger = client("fd").post(f"{API}/appointments", json=_booking(
+        practice, hour=10, locationId=str(uuid.uuid4())))
+    assert stranger.status_code == 422
+    assert stranger.json()["errors"][0] == {
+        "in": "body", "pointer": "/locationId", "code": "invalid-reference"}
+
+
 def test_book_refuses(client: Any, practice: Practice) -> None:
     assert client("ma").post(f"{API}/appointments",
                              json=_booking(practice)).status_code == 403  # D67

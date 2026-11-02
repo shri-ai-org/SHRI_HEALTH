@@ -45,3 +45,248 @@ Still with you: M10 (EVENTS §4 review) and M16 (rows #220–226). Also: please 
 | M24 | **Prescriptions (D97; demo steps 7 and 9 on #85).** (1) Rooming's current medications: `GET`/`POST /patients/{patientId}/medications`. (2) Drug search: `GET /codes?system=rxnorm&q=` (example `rxnorm`). Each result carries `drug`, as you and Anand listed on #13: `strength`, `doseForm`, `route`, `ingredients` (each with `rxcui` and `name`), `brandName` for a branded product, and `controlledSchedule` (`CII` to `CV`) for a controlled substance, to show before signing. (3) The draft: `POST /prescriptions`, then `PATCH` with `If-Match`; a wrong draft is marked with `POST …/entered-in-error`. (4) The safety check: `POST …/safety-check` returns the alerts (examples `allergy`, `duplicate`, `none`); a `high` alert shows an override with a required reason (`POST /alerts/{alertId}/override`). (5) Sign and send: `POST …/sign-and-send` with `If-Match` and an `Idempotency-Key`; then show the transmission status (`queued`, `sent`, `accepted`, `rejected`) as `prescription.transmission-updated` arrives. MOCK_GUIDE §5g runs it (`tests/flows/prescriptions.mjs`). | Please review | D97; ENDPOINT_INVENTORY #116–117, #120–125, #227 |
 | M25 | **Note templates for clinicians and the portal's medication list (demo steps 8 and 12 on #85).** (1) The clinician's template picker calls `GET /note-templates` with `note-templates:read` (MA, RN, MD, APP, ADM, CO); FD gets `403`. (2) The portal's prescription step reads `GET /portal/me/medications`: prescriptions with their transmission status (`queued`, `sent`, `accepted`, `rejected`, `error`) and reported medications, active first. It replaces the prescriptions part of your portal mock. MOCK_GUIDE §5h runs both (`tests/flows/templates-and-portal-medications.mjs`). | Please review | ENDPOINT_INVENTORY #183–186, #300 |
 | M26 | **Your #93 review (2026-10-27).** (1) Signing refuses with `422 business-rule-violation` and one `errors` entry per refusal: `safety-check-stale` at `/alerts` (run the check again) and `override-required` at `/alerts/{i}` (override the alert at that index), plus `required` at `/dosageText`, `/quantity` or `/pharmacyId`. The mock serves `Prefer: code=422, example=safety-check-stale`, `override-required` or `missing-fields` (MOCK_GUIDE §5g). (2) The check and the override don't change the draft's `ETag`. `safetyCheckedAt` on the prescription is present only when the check ran on this version, so after a reload the screen knows whether to run it again. (3) The override reason needs at least 3 characters, not counting spaces at either end. D99 is in DECISIONS since #84. | Please review | `medications.yaml`; MOCK_GUIDE §5g |
+| M27 | **The clinician's part of the demo, steps 7, 8, 9, 10 and 12 (D108), and the check-out revisit:** for each step, the screen, the operations in order, a shortened example and the errors the screen must handle. See [M27 below](#m27--demo-steps-7-8-9-10-and-12-d108). | Please wire the screens to these | `encounters.yaml`, `medications.yaml`, `scheduling.yaml` |
+
+## M27 — Demo steps 7, 8, 9, 10 and 12 (D108)
+
+From: Vimal (drafted with Claude Code) · 2026-11-02.
+
+**Where the order comes from:** the preview run of 31 October (`demo_story.json` and the script that produced it). That run passed steps 7, 8, 10 and 12. Step 9 signed the prescription and queued it, but the worker had no simulated-pharmacy adapter yet, so it was never sent. The run records the operations and status codes only, not the bodies. So the requests below are the ones that run sent, and the responses are the contract's own examples. All data is synthetic. Examples marked *(shortened)* leave out fields; `…` marks where.
+
+**Step numbers:** these are D108's. D108, D109 and D110 are in Vimal's PR #164 (not merged yet); D107 is in #170.
+
+**Backend status:**
+- Steps 7, 8 and 12 are built: diagnoses, notes, signing, addenda, co-sign and close are in PR #165, and booking is on main.
+- Step 10 (`setFollowUpRequest`, `withdrawFollowUpRequest`) is in draft PR #161.
+- Step 9 is in PR #169 (not merged).
+- Until those merge, the mock serves them.
+
+### Errors every step can return
+
+| Status and `code` | When | What the screen does |
+|---|---|---|
+| `403 break-glass-required` | The chart is restricted and the user has neither a break-glass grant nor a place on the care team (D37). | Show the break-glass reason dialog (M8, D53), then retry. Care-team members never see this. |
+| `403 permission-denied` | The role lacks the permission, or a rule about who may act refuses it (for example, not the note's author). | Hide or disable the action. Don't offer a retry. |
+| `404 not-found` | Another clinic's record, a facility that isn't the user's, or a draft note read by BIL. | Treat as gone. |
+| `409 record-locked` | The note is signed (D8). Once a note on the visit is signed, its diagnoses are locked too (D24). | Offer **Add addendum** instead of editing. |
+| `409 invalid-state-transition` | The record isn't in a state that allows this. The problem's `currentState` says which state it is in (for example `final`, `finished`, `entered-in-error`). | Reload, and show the state. |
+| `412 precondition-failed` | The `If-Match` is stale: someone, or another tab, saved first. The response's `ETag` header is the current version. | Show the "record changed" screen (M4), then reload. |
+| `428 precondition-required` | `If-Match` is missing. | A client bug: the fetch wrapper always sends the latest `ETag` (M4). |
+
+Every `422 business-rule-violation` lists each refusal in `errors` (`pointer` and `code`). Show each one next to its field.
+
+### Step 7 — Diagnoses
+
+**Screen:** the visit workspace (to build; `RoomingPage` is the nearest existing screen). The doctor opens it after rooming.
+
+**Calls, in order:**
+1. `recordVisitStatus` (`with-provider`, from scheduling).
+2. `getEncounter` (keep its `ETag`).
+3. `searchCodes` (`system=icd-10-cm`).
+4. `addEncounterDiagnosis`.
+5. `removeEncounterDiagnosis`, only to take a diagnosis off before signing.
+
+```http
+POST /api/v1/encounters/{encounterId}/diagnoses
+{"code": {"system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "I10"}}
+
+201 Created   (shortened)
+{"id": "8a9b0c1d-…", "encounterId": "5d6e7f8a-…", "rank": 1,
+ "code": {"system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "I10",
+          "display": "Essential (primary) hypertension"},
+ "verificationStatus": "confirmed", "recordedBy": {"displayName": "Dr. Lowe58"}, …}
+```
+
+The display shown is always the terminology's, not the client's. An optional `rank` inserts the diagnosis at that place and moves the others down.
+
+```http
+POST /api/v1/encounters/{encounterId}/diagnoses/{diagnosisId}/remove
+{"reason": "Added to the wrong encounter."}
+
+200 OK   (shortened)
+{"id": "8a9b0c1d-…", "verificationStatus": "entered-in-error", …}
+```
+
+**After a removal:**
+- The diagnosis is kept for audit, but it disappears from the workspace's `diagnoses`.
+- The diagnoses below it move up a rank.
+- The real API leaves `rank` out of the response; the contract example shows `"rank": null`. Treat the two the same.
+
+**Errors:**
+- `403 break-glass-required`.
+- `409 record-locked` once a note on the visit is signed. After signing, a wrong diagnosis is corrected by an addendum. `markDiagnosisEnteredInError` isn't built yet (it waits on Anand).
+- `409 invalid-state-transition` when removing a diagnosis that is already removed.
+- `422` with one of these at `/code/code`: `not-allowed-value` (a non-billable header code such as `E11`), `invalid-reference` (an unknown code) or `conflicting-fields` (the code is already on the visit); or at `/rank`, a rank that would leave a gap.
+- No `If-Match` on these two calls, so no `412` or `428`.
+
+### Step 8 — Templated note, sign, addendum, co-sign
+
+**Screen:** the note editor in the visit workspace.
+
+**Calls, in order:**
+1. `listNoteTemplates`.
+2. `createNote`.
+3. `updateNoteDraft`, the autosave, with `If-Match`, at most every 30 seconds.
+4. `signNote`, with `If-Match`.
+5. `addNoteAddendum`, with `If-Match`, after signing.
+6. `cosignNote`, with `If-Match`, by the co-signer only.
+
+```http
+POST /api/v1/encounters/{encounterId}/notes
+{"templateId": "1d2e3f4a-…"}
+
+201 Created   ETag: "1"   (shortened)
+{"id": "6e7f8a9b-…", "status": "preliminary", "cosignStatus": "not-required",
+ "title": "Follow-up visit",
+ "sections": [{"id": "2e3f4a5b-…", "code": "10154-3", "title": "Chief complaint",
+               "required": true, "text": ""}, …],
+ "addenda": [], …}
+```
+
+The first note moves the encounter to `in-progress`.
+
+```http
+PATCH /api/v1/notes/{noteId}   If-Match: "1"   Content-Type: application/merge-patch+json
+{"sections": [{"id": "2e3f4a5b-…", "text": "Headaches for two weeks."}]}
+→ 200 OK   ETag: "2"
+
+POST /api/v1/notes/{noteId}/sign   If-Match: "2"
+→ 200 OK   (shortened)
+{"status": "final", "cosignStatus": "pending",
+ "cosigner": {"displayName": "Dr. Hessel21"}, "signedAt": "…",
+ "signedBy": {"displayName": "Dr. Lowe58"}, …}
+
+POST /api/v1/notes/{noteId}/addenda   If-Match: <ETag from sign>
+{"text": "Home blood pressure log reviewed: within goal."}
+→ 200 OK   (shortened)
+{"status": "amended", "addenda": [{"text": "Home blood pressure log reviewed: within goal.", …}], …}
+
+POST /api/v1/notes/{noteId}/cosign   If-Match: <current ETag>
+{"decision": "cosign"}
+or {"decision": "return", "comment": "Please add the home readings."}
+```
+
+**About the calls:**
+- `cosignStatus` is `pending` only when a co-sign rule covers the author. Otherwise it is `not-required`, and step 6 doesn't happen.
+- A returned note stays signed. The author answers with an addendum, which makes it `pending` again.
+
+**Errors:**
+- `428` on the autosave or the sign without `If-Match`.
+- `412` when another tab saved first. The response's `ETag` header is the current version.
+- `422` on sign: one `required` entry for each empty required section, at `/sections/{i}/text`.
+- `409 record-locked` on any `PATCH` after signing.
+- `409 invalid-state-transition`: signing twice (`currentState: final`), co-signing a note that isn't `pending`, or writing a note on a closed visit (`finished`).
+- `403 permission-denied` when someone other than the author edits or signs, or when the co-sign comes from anyone but the named co-signer (the author included).
+- `403 break-glass-required` on every call for a restricted chart. A care-team member co-signs without break-glass.
+
+### Step 9 — Prescribe
+
+**Screen:**
+- `DrugPicker` and `MedicationsSection` (features/clinical), from the visit workspace.
+- Prescribing is MD and APP only (D110, PR #164).
+
+**Calls, in order:**
+1. `searchCodes` (`system=rxnorm`).
+2. `createPrescription`.
+3. `updatePrescription` with `If-Match`, only when editing the draft.
+4. `checkPrescriptionSafety`.
+5. `overrideAlert`, once for each `high` alert.
+6. `signAndSendPrescription`, with `If-Match` and `Idempotency-Key`.
+7. `getPrescription`, or the `prescription.transmission-updated` event, for the transmission status.
+
+```http
+POST /api/v1/prescriptions
+{"patientId": "7a1b2c3d-…", "encounterId": "2b3c4d5e-…",
+ "medication": {"codings": [{"system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                             "code": "308191", "display": "amoxicillin 500 MG Oral Capsule"}]},
+ "dosageText": "1 capsule by mouth three times daily for 10 days",
+ "quantity": {"value": 30, "unit": "capsule"}, "daysSupply": 10, "refills": 0,
+ "substitutionAllowed": true, "pharmacyId": "9d0e1f2a-…"}
+→ 201 Created   ETag: "1"   (shortened)
+{"id": "6a7b8c9d-…", "status": "draft", "transmission": {"status": "not-sent"}, "alerts": [], …}
+
+POST /api/v1/prescriptions/{prescriptionId}/safety-check
+→ 200 OK
+{"prescriptionId": "6a7b8c9d-…", "checkedAt": "…",
+ "alerts": [{"id": "8c9d0e1f-…", "kind": "allergy", "severity": "high",
+             "message": "Active allergy to penicillin; amoxicillin is a penicillin.",
+             "overrideRequired": true}]}
+
+POST /api/v1/alerts/{alertId}/override
+{"reason": "Tolerated amoxicillin in 2024 without reaction."}
+→ 200 OK   (the alert, with its override)
+
+POST /api/v1/prescriptions/{prescriptionId}/sign-and-send   If-Match: "1"   Idempotency-Key: <one per click>
+→ 200 OK   (shortened)
+{"status": "active", "transmission": {"status": "queued", "updatedAt": "…"}, "signedAt": "…", …}
+```
+
+The transmission status then moves through `queued`, `sent`, and `accepted` or `rejected`.
+
+**Errors:**
+- `422 business-rule-violation` on sign-and-send, one entry for each refusal:
+  - `safety-check-stale` at `/alerts`: run the check again.
+  - `override-required` at `/alerts/{i}`: override that alert.
+  - `required` at `/dosageText`, `/quantity` or `/pharmacyId`.
+- `409 record-locked` on `PATCH` once the prescription is signed.
+- `409 invalid-state-transition` for a safety check, an override or a sign-and-send on a prescription that isn't a draft (`currentState`).
+- `412` and `428` on `PATCH` and sign-and-send.
+- `403 break-glass-required` on a restricted chart.
+
+### Step 10 — Follow-up request
+
+**Screen:** the visit workspace (the doctor). The front desk sees the result at check-out (M23).
+
+**Calls, in order:**
+1. `getEncounter`, for the encounter's `ETag`.
+2. `setFollowUpRequest`, with `If-Match`.
+3. `withdrawFollowUpRequest`, with `If-Match`, only to withdraw an open request (only the clinician who asked for it may).
+
+```http
+PUT /api/v1/encounters/{encounterId}/follow-up   If-Match: <encounter ETag>
+{"interval": {"value": 2, "unit": "week"}, "appointmentTypeId": "7a8b9c0d-…",
+ "providerId": "6f7a8b9c-…", "note": "Recheck blood pressure."}
+→ 200 OK   ETag: <new encounter ETag>   (shortened)
+{"interval": {"value": 2, "unit": "week"}, "status": "open", "requestedBy": "6f7a8b9c-…",
+ "requestedAt": "…", …}
+```
+
+**About the call:** the follow-up is part of the encounter. Saving it changes the encounter's `ETag`, so keep the new one for the next encounter write.
+
+**Errors:**
+- `428` and `412`, against the encounter's version.
+- `409 invalid-state-transition` when the request is already booked, or the encounter is entered in error or cancelled (`currentState`).
+- `403 permission-denied` on withdraw by anyone but the clinician who asked.
+- `403 break-glass-required` on a restricted chart. At the desk, D107 (PR #170) exempts check-out and declining, not this call.
+
+### Step 12 — Book the revisit
+
+**Screen:** `BookAppointmentDialog` (features/scheduling), opened from check-out with the follow-up request filled in (M23).
+
+**Calls, in order:**
+1. `listSlots`.
+2. `bookAppointment`, with `followUpOfEncounterId` and an `Idempotency-Key`.
+3. Then `checkOutAppointment` (M23).
+
+```http
+GET /api/v1/slots?providerId=…&facilityId=…&appointmentTypeId=…&date=2026-11-16
+→ 200 OK   {"items": [{"startAt": "…", "overbook": false, …}, …], "timeZone": "America/Chicago"}
+
+POST /api/v1/appointments   Idempotency-Key: <one per click>
+{"patientId": "7a1b2c3d-…", "providerId": "6f7a8b9c-…", "facilityId": "8b9c0d1e-…",
+ "appointmentTypeId": "0d1e2f3a-…", "startAt": "2026-11-16T15:00:00Z",
+ "reasonForVisit": "Recheck blood pressure.", "followUpOfEncounterId": "2f3a4b5c-…"}
+→ 201 Created   (shortened)
+{"id": "1e2f3a4b-…", "status": "booked", "startAt": "2026-11-16T15:00:00Z",
+ "timeZone": "America/Chicago", …}
+```
+
+In the same transaction, the follow-up request becomes `booked`, with `bookedAppointmentId`.
+
+**Errors:**
+- `409 booking-conflict`: the slot was taken. Read the free times again.
+- `409 patient-merged`.
+- `422` with `invalid-reference` at `/followUpOfEncounterId`: no open follow-up request for this patient, or it is already booked.
+- `422 business-rule-violation`: outside the provider's hours, or the overbook limit is reached.
+- `404 not-found`: the facility isn't one of the user's.
+- No `If-Match` and no `break-glass-required`: booking needs neither.

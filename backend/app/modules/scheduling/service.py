@@ -22,16 +22,18 @@ from app.core.access import chart_access, facility_scope, require_facility
 from app.core.deps import CurrentUser
 from app.core.errors import (
     Conflict,
+    Forbidden,
     InvalidCursor,
     NotFound,
     ValidationFailed,
     field_error,
 )
+from app.core.events import publish
 
 from ..eligibility import service as eligibility
 from ..encounters import service as encounters
+from . import events, schemas, slots
 from . import repository as repo
-from . import schemas, slots
 from .reference import AppointmentTypeRow, FacilityRow, PracticeSetupReads
 
 MAX_RANGE_DAYS = 31  # D62
@@ -188,7 +190,9 @@ async def _validated(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
     providers = {p.id: p for p in await ref.providers(db, [fac.id])}
     if provider_id not in providers:
         raise business_rule(f"{prefix}/providerId", "invalid-reference")
-    if location_id is not None and location_id not in {
+    # A room of the facility, or its site itself: a slot names the site when its schedule rule
+    # does ("Room or site", the contract's locationId).
+    if location_id is not None and location_id != fac.location_id and location_id not in {
             loc.id for loc in await ref.locations(db, [fac.id])}:
         raise business_rule(f"{prefix}/locationId", "invalid-reference")
     start = start.astimezone(UTC)
@@ -248,6 +252,8 @@ async def book(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
         await repo.book_follow_up(db, follow_up, appointment_id)  # D98, same transaction
     # D15: the 270 for the primary coverage, in this transaction; never refuses the booking.
     await eligibility.queue_for_appointment(db, appointment_id, trigger="booking")
+    await events.booked(db, appointment_id, patient_id=new.patient_id, provider_id=new.provider_id,
+                        facility_id=new.facility_id, start=new.start)
     return appointment_id
 
 
@@ -289,6 +295,8 @@ async def reschedule(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
     if slots.local_day(new.start, fac.time_zone) != slots.local_day(old.start, old.time_zone):
         # D15: a new day is a new service date; same day, the earlier check still answers.
         await eligibility.queue_for_appointment(db, new_id, trigger="booking")
+    await events.booked(db, new_id, patient_id=new.patient_id, provider_id=new.provider_id,
+                        facility_id=new.facility_id, start=new.start, rescheduled=True)
     return new_id
 
 
@@ -301,6 +309,8 @@ async def cancel(db: AsyncSession, user: CurrentUser, appointment_id: UUID,
         raise Conflict(code="invalid-state-transition", currentState=row.status)
     await repo.cancel(db, row, body.reason_code, body.reason_text)
     await repo.reopen_follow_up(db, appointment_id)  # D98: the revisit is open again
+    await events.cancelled(db, appointment_id, patient_id=current.patient_id,
+                           facility_id=current.facility_id, reason_code=body.reason_code)
 
 
 # ------------------------------------------------------------------------------------ views
@@ -508,6 +518,8 @@ async def check_in(db: AsyncSession, user: CurrentUser, appointment_id: UUID, se
         check_id = (await eligibility.queue_for_appointment(
             db, appointment_id, trigger="check-in", encounter_id=encounter_id,
             coverage_id=coverage)).check_id
+    await events.checked_in(db, appointment_id, patient_id=current.patient_id,
+                            facility_id=current.facility_id, encounter_id=encounter_id)
     return encounter_id, check_id
 
 
@@ -532,3 +544,87 @@ async def undo_check_in(db: AsyncSession, user: CurrentUser, appointment_id: UUI
                        code="invalid-state-transition", currentState=row.status)
     await encounters.mark_entered_in_error(db, encounter_id, reason)
     await repo.set_status(db, row, "booked")
+    await events.check_in_undone(db, appointment_id, patient_id=current.patient_id,
+                                 facility_id=current.facility_id, encounter_id=encounter_id)
+
+
+# --------------------------------------------------------------------------------- visit steps
+#: Who may record each visit step. appointments:status is held by FD, MA, RN, MD and APP, so the
+#: split is the service's (DATA_OWNERSHIP §5.1: arrived and noshow by the front desk; §5.2:
+#: roomed by MA and RN, with-provider by MD, APP and RN).
+VISIT_STEP_ROLES: dict[str, frozenset[str]] = {
+    "arrived": frozenset({"FD"}),
+    "noshow": frozenset({"FD"}),
+    "roomed": frozenset({"MA", "RN"}),
+    "with-provider": frozenset({"MD", "APP", "RN"}),
+}
+
+
+async def record_status(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
+                        appointment_id: UUID, body: schemas.StatusChangeRequest, now: datetime
+                        ) -> None:
+    """recordVisitStatus (inventory #57; DATA_OWNERSHIP §5.1, §5.2), in one transaction:
+    - ``arrived``: booked → arrived, same day; the visit step is kept;
+    - ``noshow``: booked → noshow, once the start time has passed (kept in the history);
+    - ``roomed``: a checked-in visit's encounter becomes ``triaged`` and is put in the room,
+      which must be in the appointment's facility; a second ``roomed`` moves it (A42);
+    - ``with-provider``: the encounter becomes ``in-progress``;
+    - ``checked-out`` is its own action (D98): 409 naming ``/status``.
+    Each step is limited to the roles in VISIT_STEP_ROLES (403 otherwise), checked before any
+    write.
+    The status board reads the visit steps, so it shows each one with its room and time."""
+    current = await repo.get(db, appointment_id)
+    require_facility(user, current.facility_id)
+    if body.status != "checked-out" and not user.roles & VISIT_STEP_ROLES[body.status]:
+        raise Forbidden("Your role does not record this visit step", code="permission-denied")
+    if body.status == "checked-out":
+        raise Conflict("Check out with POST /appointments/{appointmentId}/check-out",
+                       code="invalid-state-transition", currentState=current.status,
+                       errors=[field_error("body", "/status", "not-allowed-value")])
+    if body.room_location_id is not None and body.status != "roomed":
+        raise business_rule("/roomLocationId", "conflicting-fields")
+    if body.status == "roomed":
+        if body.room_location_id is None:
+            raise business_rule("/roomLocationId", "required")
+        rooms = {loc.id for loc in await ref.locations(db, [current.facility_id])}
+        if body.room_location_id not in rooms:
+            raise business_rule("/roomLocationId", "invalid-reference")
+    row = await repo.locked(db, appointment_id)
+    at = await repo.db_now(db)
+    subject = f"appointment/{appointment_id}"
+
+    async def event(kind: str, about: str, data: dict[str, str]) -> None:
+        await publish(db, kind, about, data, facility_id=current.facility_id,
+                      patient_id=current.patient_id)
+
+    if body.status in ("arrived", "noshow"):
+        if row.status != "booked":
+            raise Conflict(code="invalid-state-transition", currentState=row.status)
+        if body.status == "arrived":
+            if slots.local_day(current.start, current.time_zone) != slots.local_day(
+                    now, current.time_zone):
+                raise business_rule("appointmentId", "out-of-range", location="path")
+            await repo.set_status(db, row, "arrived")
+            await repo.add_visit_step(db, appointment_id, "arrived", at)
+            await event("appointment.status-changed", subject, {"visitStatus": "arrived"})
+            return
+        if current.start > now:
+            raise business_rule("/status", "out-of-range")  # before the start time
+        await repo.set_status(db, row, "noshow")
+        await event("appointment.status-changed", subject, {"status": "noshow"})
+        return
+    if row.status != "checked-in":
+        raise Conflict(code="invalid-state-transition", currentState=row.status)
+    encounter_id = await encounters.live_for_appointment(db, appointment_id)
+    if encounter_id is None:
+        raise Conflict(code="invalid-state-transition", currentState=row.status)
+    room_id = body.room_location_id
+    if room_id is not None:  # roomed: checked above
+        encounter_status = await encounters.room(db, encounter_id, room_id)
+        await repo.add_visit_step(db, appointment_id, "roomed", at, room_id)
+    else:
+        encounter_status = await encounters.start_with_provider(db, encounter_id)
+        await repo.add_visit_step(db, appointment_id, "with-provider", at)
+    await event("appointment.status-changed", subject, {"visitStatus": body.status})
+    await event("encounter.status-changed", f"encounter/{encounter_id}",
+                {"status": encounter_status})

@@ -317,7 +317,7 @@ export const getUpdateEncounterUrl = (encounterId: Id,) => {
 }
 
 /**
- * Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error` (inventory #64). Status changes only through actions.
+ * Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error` (inventory #64). Status changes only through actions. MA and RN hold `encounters:update` for rooming and may change only `reasons` (the reason for visit, recorded at rooming, #114); a request from them that changes anything else is `403 permission-denied`. MD and APP may change every field here. The role matrix row lands with core's change (NOTE_FOR_THULASI T52), and it is a clinical row (‡, Q21).
  * @summary Edit an encounter
  */
 export const updateEncounter = async (encounterId: Id,

@@ -69,6 +69,7 @@ class _Patient:
     version: int = 1
     labels: set[str] = field(default_factory=set)
     identifiers: list[schemas.PatientIdentifier] = field(default_factory=list)
+    merged_into_id: UUID | None = None
 
 
 @dataclass
@@ -271,7 +272,7 @@ class FakeRepository:
             preferred_name=next((n.text for n in d.names if n.use == "nickname"), None),
             marital_status=cast(schemas.MaritalStatus | None, d.marital_status),
             restricted=bool(found.labels & {"R", "V"}), active=d.active,
-            created_at=_NOW, updated_at=_NOW), found.version)
+            merged_into_id=found.merged_into_id, created_at=_NOW, updated_at=_NOW), found.version)
 
     async def get_patient(self, db: Any, patient_id: UUID) -> Versioned[schemas.Patient]:
         return self._patient(db, patient_id)

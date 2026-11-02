@@ -17,6 +17,7 @@
 import type {
   BadRequestResponse,
   BookPortalAppointmentHeaders,
+  BotChallenge,
   ConflictResponse,
   EnrollInPortalHeaders,
   EnrollmentRequest,
@@ -2078,7 +2079,7 @@ export const getSubmitPreRegistrationUrl = (practiceLinkId: string,) => {
 }
 
 /**
- * The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice's own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can't be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can't be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice's queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).
+ * The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice's own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can't be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can't be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice's queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81). The checks run in this order, and the first that fails answers: the `Origin` (403 `csrf-check-failed`), the rate limit (429), the ALTCHA bot check (422, `errors` names `/botCheck`), then the body's fields (422 `validation-failed`). A body that is not JSON at all is refused before any of them, with 400 `malformed-request`.
  * @summary Pre-register as a new patient
  */
 export const submitPreRegistration = async (practiceLinkId: string,
@@ -2105,6 +2106,59 @@ return apiFetch<submitPreRegistrationResponse>(getSubmitPreRegistrationUrl(pract
     method: 'POST',
     headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(preRegistrationCreate)
+  }
+);}
+
+
+export type getBotChallengeResponse200 = {
+  data: BotChallenge
+  status: 200
+}
+
+export type getBotChallengeResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getBotChallengeResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getBotChallengeResponse503 = {
+  data: ServiceUnavailableResponse
+  status: 503
+}
+
+export type getBotChallengeResponseSuccess = (getBotChallengeResponse200) & {
+  headers: Headers;
+};
+export type getBotChallengeResponseError = (getBotChallengeResponse429 | getBotChallengeResponse500 | getBotChallengeResponse503) & {
+  headers: Headers;
+};
+
+export type getBotChallengeResponse = (getBotChallengeResponseSuccess | getBotChallengeResponseError)
+
+export const getGetBotChallengeUrl = () => {
+
+
+
+
+  return `/portal/bot-challenge`
+}
+
+/**
+ * A fresh proof-of-work challenge for the ALTCHA widget on the public pre-registration form (D96; ALTCHA is MIT and self-hosted). Public: no session and no practice code, so it can't be used to test practice codes, and it says nothing about any person. The salt carries an expiry a few minutes ahead (`?expires=`, Unix seconds) and the signature (an HMAC with a key only the server holds) covers it, so a challenge can't be made up or stretched. The form solves it in the browser and sends the solution as `botCheck` with `POST /portal/practices/{practiceLinkId}/pre-registrations`. **Each solved challenge is accepted only once:** core records it when a submission uses it and refuses it after that, until it expires (Thulasi). `Cache-Control: no-store`, so no cache hands one challenge to two visitors. Rate-limited per IP. Not audited: no session and no person. Nothing is stored in the database: core keeps the used challenges in the API's memory until they expire (one API process).
+ * @summary Get a bot-check challenge
+ */
+export const getBotChallenge = async ( options?: Parameters<typeof apiFetch>[1]): Promise<getBotChallengeResponse> => {
+
+  return apiFetch<getBotChallengeResponse>(getGetBotChallengeUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 

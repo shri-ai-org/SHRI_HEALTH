@@ -14,6 +14,8 @@ Owner: Thulasi (OpenTofu). Run everything here with **OpenTofu** (`tofu`, MPL-2.
 | `aws_cloudwatch_log_group.postgres` | PostgreSQL and upgrade logs, encrypted with our key and expired after `log_retention_days` |
 | `aws_iam_role.rds_monitoring` | Enhanced monitoring (operating-system metrics only) |
 
+**The test server** (one EC2 instance for the demo, synthetic data only) is a separate root with its own state: `test-server/`, described in `infra/deploy/README.md`.
+
 **Not here yet:** the VPC and the services. Pass `vpc_id`, `db_subnet_ids` (private subnets in two or more availability zones) and `app_security_group_ids` in.
 
 ## Secrets
