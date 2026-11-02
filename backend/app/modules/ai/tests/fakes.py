@@ -15,10 +15,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.enums import AIDecision, AIFeature
 from app.modules.ai.model_client import ModelError, ModelReply
 from app.modules.ai.prompts import NOTE_DRAFT_V1
-from app.modules.ai.repository import RequestRecord, SuggestionRecord, Switches
+from app.modules.ai.repository import (
+    FeatureState,
+    RequestRecord,
+    SettingsState,
+    SuggestionHead,
+    SuggestionRecord,
+    Switches,
+)
 from app.modules.ai.schemas import (
     NOTE_DRAFT_PROMPT,
     AIDraftIn,
+    AiSuggestion,
     DraftWritten,
     NoteDraftRequest,
     PromptRef,
@@ -111,6 +119,29 @@ class FakeAIRepository:
                      rejection_reason: str | None = None) -> None:
         self.decisions[suggestion_id] = decision
 
+    async def suggestion(self, db: AsyncSession, suggestion_id: UUID, *, lock: bool = False
+                         ) -> SuggestionHead | None:
+        rec = self.suggestions.get(suggestion_id)
+        if rec is None:
+            return None
+        decision = self.decisions.get(suggestion_id, AIDecision.PENDING)
+        return SuggestionHead(suggestion_id, rec.feature.value, rec.target_resource_type,
+                              self.targets.get(suggestion_id), rec.patient_id,
+                              rec.encounter_id, rec.content, decision.value, None)
+
+    async def suggestion_views(self, db: AsyncSession, ids: Any) -> dict[UUID, AiSuggestion]:
+        return {}
+
+    async def settings(self, db: AsyncSession, *, lock: bool = False) -> SettingsState:
+        return SettingsState(self.clinic_on, NOW, {
+            f: FeatureState(f, True, None, NOW) for f in self.features_on})
+
+    async def set_clinic(self, db: AsyncSession, enabled: bool) -> None:
+        self.clinic_on = enabled
+
+    async def patient_context(self, db: AsyncSession, patient_id: UUID) -> str | None:
+        return "41-year-old female"
+
 
 @dataclass
 class StubModelClient:
@@ -137,4 +168,5 @@ class FakeNoteDrafts:
     async def create_ai_draft(self, db: AsyncSession, draft: AIDraftIn) -> DraftWritten:
         note_id = uuid4()
         self.drafts[note_id] = draft
-        return DraftWritten(note_id=note_id, version=1)
+        return DraftWritten(note_id=note_id, version=1,
+                            sections=tuple((s.code, uuid4()) for s in draft.sections))

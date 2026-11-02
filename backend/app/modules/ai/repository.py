@@ -12,13 +12,13 @@ by the clinician, which is a clinical-grade record, not a log).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
-from datetime import datetime
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import TENANT_ID_INFO_KEY, session_user_id
@@ -33,13 +33,51 @@ from app.db.models.admin.ai import (
 from app.db.models.admin.core import Tenant
 from app.db.models.enums import AIDecision, AIFeature, AIRequestStatus
 
-from .schemas import PromptRef, SourceRef
+from .schemas import (
+    NOTE_SECTION,
+    AiGeneratedBy,
+    AiSourceLink,
+    AiSuggestion,
+    ClinicianRef,
+    PromptRef,
+    SourceRef,
+)
 
 
 @dataclass(frozen=True)
 class Switches:
     clinic: bool    # admin.tenant.ai_enabled: the clinic-wide switch
     feature: bool   # admin.ai_feature_setting.is_enabled; a feature with no row is off
+
+
+@dataclass(frozen=True)
+class FeatureState:
+    feature: AIFeature
+    enabled: bool
+    reason: str | None = None
+    updated_at: datetime | None = None   # None: never set (off)
+
+
+@dataclass(frozen=True)
+class SettingsState:
+    """The clinic's AI switches: ``admin.tenant.ai_enabled`` and one row per feature set."""
+    clinic_enabled: bool
+    clinic_updated_at: datetime | None
+    features: dict[AIFeature, FeatureState] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class SuggestionHead:
+    """What a decision needs: the suggestion, its target and who requested it."""
+    id: UUID
+    feature: str
+    target_resource_type: str
+    target_id: UUID | None
+    patient_id: UUID | None
+    encounter_id: UUID | None
+    content: dict[str, Any]
+    decision: str
+    requested_by: UUID | None
 
 
 @dataclass(frozen=True)
@@ -97,6 +135,18 @@ class AIRepository(Protocol):
                      edited_content: dict[str, Any] | None = None,
                      rejection_reason: str | None = None) -> None: ...
 
+    async def suggestion(self, db: AsyncSession, suggestion_id: UUID, *, lock: bool = False
+                         ) -> SuggestionHead | None: ...
+
+    async def suggestion_views(self, db: AsyncSession, ids: Iterable[UUID]
+                               ) -> dict[UUID, AiSuggestion]: ...
+
+    async def settings(self, db: AsyncSession, *, lock: bool = False) -> SettingsState: ...
+
+    async def set_clinic(self, db: AsyncSession, enabled: bool) -> None: ...
+
+    async def patient_context(self, db: AsyncSession, patient_id: UUID) -> str | None: ...
+
 
 def _prompt(row: PromptTemplate) -> PromptRef:
     return PromptRef(id=row.id, code=row.code, version=row.version,
@@ -115,7 +165,7 @@ class SqlAIRepository:
     async def set_feature(self, db: AsyncSession, feature: AIFeature, enabled: bool,
                           reason: str | None = None) -> None:
         """One clinic's switch for one feature. Turning it off needs a reason (the table's
-        ``disabled_has_reason``); the AI settings endpoint (#115) will call this."""
+        ``disabled_has_reason``); replaceAiSettings (#115) calls this."""
         row = (await db.execute(select(AIFeatureSetting).where(
             AIFeatureSetting.feature == feature).with_for_update())).scalar_one_or_none()
         user = session_user_id(db)
@@ -195,7 +245,7 @@ class SqlAIRepository:
                      edited_content: dict[str, Any] | None = None,
                      rejection_reason: str | None = None) -> None:
         """A person's accept, edit or reject (D70), once; the session's user is the reviewer.
-        The decision endpoint (#113) will call this; the gateway never does."""
+        decideAiSuggestion (#113) calls this; the gateway never does."""
         user = session_user_id(db)
         if user is None:
             raise PermissionError("a decision needs a signed-in user")
@@ -203,6 +253,117 @@ class SqlAIRepository:
             decision=decision, decided_by_user_id=user, decided_at=func.now(),
             edited_content=edited_content, rejection_reason=rejection_reason,
             updated_by_user_id=user))
+
+
+    async def suggestion(self, db: AsyncSession, suggestion_id: UUID, *, lock: bool = False
+                         ) -> SuggestionHead | None:
+        r = (await db.execute(_SUGGESTION_LOCKED if lock else _SUGGESTION,
+                              {"id": suggestion_id})).mappings().first()
+        if r is None:
+            return None
+        return SuggestionHead(
+            id=r["id"], feature=str(r["feature"]), target_resource_type=r["target_resource_type"],
+            target_id=r["target_id"], patient_id=r["patient_id"], encounter_id=r["encounter_id"],
+            content=dict(r["content"]), decision=str(r["decision"]), requested_by=r["user_id"])
+
+    async def suggestion_views(self, db: AsyncSession, ids: Iterable[UUID]
+                               ) -> dict[UUID, AiSuggestion]:
+        """The contract's AiSuggestion for each ID the session can see."""
+        wanted = list(dict.fromkeys(ids))
+        if not wanted:
+            return {}
+        rows = (await db.execute(_SUGGESTION_VIEWS, {"ids": wanted})).mappings().all()
+        return {r["id"]: _view(r) for r in rows if r["patient_id"] is not None}
+
+    async def settings(self, db: AsyncSession, *, lock: bool = False) -> SettingsState:
+        # RLS (tenant_self) shows the session's own clinic only.
+        clinic = (await db.execute(_TENANT_LOCKED if lock else _TENANT)).mappings().first()
+        rows = (await db.execute(select(AIFeatureSetting))).scalars().all()
+        return SettingsState(
+            clinic_enabled=bool(clinic and clinic["ai_enabled"]),
+            clinic_updated_at=clinic["updated_at"] if clinic else None,
+            features={AIFeature(r.feature): FeatureState(AIFeature(r.feature), r.is_enabled,
+                                                         r.reason, r.updated_at)
+                      for r in rows})
+
+    async def set_clinic(self, db: AsyncSession, enabled: bool) -> None:
+        """The clinic-wide switch (``admin.tenant.ai_enabled``)."""
+        await db.execute(_SET_CLINIC, {"enabled": enabled})
+
+    async def patient_context(self, db: AsyncSession, patient_id: UUID) -> str | None:
+        """The minimum a note draft needs from the chart: age and administrative sex, e.g.
+        "41-year-old female"; None when neither is known."""
+        r = (await db.execute(_PATIENT, {"id": patient_id})).mappings().first()
+        if r is None:
+            return None
+        age = _age(r["birth_date"]) if r["birth_date"] else None
+        sex = r["gender"] if r["gender"] in ("female", "male") else None
+        parts = [f"{age}-year-old" if age is not None else None, sex or "patient"]
+        return " ".join(p for p in parts if p) if (age is not None or sex) else None
+
+
+def _age(born: date) -> int:
+    today = datetime.now(UTC).date()
+    return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+
+
+_SUGGESTION_SQL = """
+SELECT s.id, s.feature, s.target_resource_type, s.target_id, s.patient_id, s.encounter_id,
+       s.content, s.decision, r.user_id
+FROM admin.ai_suggestion s
+JOIN admin.ai_request r ON r.id = s.ai_request_id
+WHERE s.id = :id
+"""
+_SUGGESTION = text(_SUGGESTION_SQL)
+_SUGGESTION_LOCKED = text(_SUGGESTION_SQL + " FOR UPDATE OF s")
+_SUGGESTION_VIEWS = text("""
+SELECT s.id, s.feature, s.target_resource_type, s.target_id, s.patient_id, s.encounter_id,
+       s.content, s.confidence, s.rationale, s.decision, s.decided_at, s.rejection_reason,
+       s.created_at, r.model_name, r.model_version, r.pipeline_version,
+       p.code AS prompt_code, p.version AS prompt_version,
+       u.id AS decider_id, u.practitioner_id AS decider_practitioner_id,
+       u.display_name AS decider_name, cs.composition_id AS note_id
+FROM admin.ai_suggestion s
+JOIN admin.ai_request r ON r.id = s.ai_request_id
+LEFT JOIN admin.prompt_template p ON p.id = r.prompt_template_id
+LEFT JOIN admin.app_user u ON u.id = s.decided_by_user_id
+LEFT JOIN clinical.composition_section cs
+       ON s.target_resource_type = 'CompositionSection' AND cs.id = s.target_id
+WHERE s.id = ANY(CAST(:ids AS uuid[]))
+""")
+_TENANT = text("SELECT ai_enabled, updated_at FROM admin.tenant")
+_TENANT_LOCKED = text("SELECT ai_enabled, updated_at FROM admin.tenant FOR UPDATE")
+# shri_app may update ai_enabled (a column grant), not updated_at: the settings' ETag covers the
+# switch's value, which is what a second admin's PUT must not overwrite unseen.
+_SET_CLINIC = text("UPDATE admin.tenant SET ai_enabled = :enabled")
+_PATIENT = text("SELECT birth_date, gender FROM clinical.patient WHERE id = :id")
+
+
+def _view(r: Any) -> AiSuggestion:
+    content: dict[str, Any] = dict(r["content"] or {})
+    section = r["target_resource_type"] == NOTE_SECTION
+    decided = r["decision"] != AIDecision.PENDING.value and r["decider_id"] is not None
+    return AiSuggestion(
+        id=r["id"], feature=str(r["feature"]),
+        target_type="note-section" if section else "chart-summary",
+        target_id=r["target_id"] or r["id"], note_id=r["note_id"] if section else None,
+        patient_id=r["patient_id"], encounter_id=r["encounter_id"],
+        confidence=str(r["confidence"]), rationale=r["rationale"],
+        suggested_text=content.get("text") if section else None,
+        source_status=content.get("sourceStatus") if section else None,
+        sources=[AiSourceLink.model_validate(s) for s in content.get("sources", [])]
+        if section else None,
+        unknowns=list(content.get("unknowns", [])), decision=str(r["decision"]),
+        decided_at=r["decided_at"] if decided else None,
+        decided_by=ClinicianRef(id=r["decider_practitioner_id"] or r["decider_id"],
+                                display_name=r["decider_name"] or "") if decided else None,
+        rejection_reason=r["rejection_reason"],
+        generated_by=AiGeneratedBy(model_name=r["model_name"] or "unrecorded",
+                                   model_version=r["model_version"],
+                                   prompt_code=r["prompt_code"],
+                                   prompt_version=r["prompt_version"],
+                                   pipeline_version=r["pipeline_version"]),
+        created_at=r["created_at"])
 
 
 def _unique(sources: Sequence[SourceRef]) -> list[SourceRef]:

@@ -1,24 +1,27 @@
 """The AI gateway (service layer): one entry point for every AI call (FRS §3.4; Vimal's guide,
-Step 7.3). No routes yet: they come with the AI contract (batch 7, inventory #107-#115).
+Step 7.3). The routes (api.py, drafts.py) call it; nothing in the visit workflow does.
 
 **The off switch.** Every public gateway call first checks the clinic's switch
 (``admin.tenant.ai_enabled``) and the feature's (``admin.ai_feature_setting``; a feature with no
 row is off). Either off: ``409 feature-disabled`` with ``feature`` (API_STANDARDS §9.3), before
 anything is read, sent or written. Nothing in the visit workflow calls the gateway: encounters,
-notes and signing work the same with AI off (tests/test_gateway_live.py).
+notes and signing work the same with AI off (tests/test_gateway_live.py, test_ai01_live.py).
 
 **Drafts are suggestions, never signed records.** A note draft (AI-01) is:
 
 1. the active prompt version (``prompt_template``) rendered with the template's sections;
 2. one model call; the reply parsed and pruned to the output schema, keeping only the
    template's section codes, once each (anything else is dropped, never repaired);
-3. an ``ai_request`` (metadata, the input's SHA-256, the source references) and a pending
-   ``ai_suggestion`` (the pruned output, its unknowns, a confidence band) in the session;
-4. an unsigned note written by the **encounters module** (``NoteDrafts``), its AI sections
-   linked to the suggestion. The gateway has no way to sign: ``NoteDrafts`` has no sign
-   method, and the database refuses to sign a note while an AI section's suggestion is
-   undecided (``shri_composition_signed_check``). Signing stays a person's act, by the author,
-   after accepting or editing each AI section (D70).
+3. an ``ai_request`` (metadata, the input's SHA-256, the source references) and, for each
+   section the model filled, a pending ``ai_suggestion`` (contract ``targetType:
+   note-section``): the section's AI text, its source links to the transcript segments it came
+   from (a fixed lexical rule, transcripts.link_segments; ``no-source`` when none), the draft's
+   unknowns, a confidence band and a rationale;
+4. an unsigned note written by the **encounters module** (``NoteDrafts``), each AI section
+   linked to its own suggestion, whose ``target_id`` is then that section. The gateway has no
+   way to sign: ``NoteDrafts`` has no sign method, and the database refuses to sign a note
+   while an AI section's suggestion is undecided (``shri_composition_signed_check``). Signing
+   stays a person's act, by the author, after deciding each AI section (D70).
 
 Nothing here commits: the caller's transaction (the AI operation, API_STANDARDS §13) holds it.
 A failed model call or rejected output raises after its ``ai_request`` row is flushed, so the
@@ -49,7 +52,9 @@ from .repository import AIRepository, RequestRecord, SuggestionRecord
 from .schemas import (
     NOTE_DRAFT_PROMPT,
     NOTE_DRAFT_SCHEMA,
+    NOTE_SECTION,
     PIPELINE_VERSION,
+    TRANSCRIPTION,
     AIDraftIn,
     DraftProvenance,
     DraftResult,
@@ -59,12 +64,15 @@ from .schemas import (
     PromptRef,
     SourceRef,
 )
+from .transcripts import link_segments
 
 log = logging.getLogger("app.modules.ai.gateway")
 
 MAX_OUTPUT_TOKENS = 2048
 RATIONALE = ("Drafted by AI from the visit transcript. Review, edit or reject every section "
              "before signing.")
+NO_SOURCE_RATIONALE = ("Drafted by AI, but no transcript segment shares its words: check it "
+                       "against the visit before accepting it.")
 
 
 class ModelUnavailable(ServiceUnavailable):
@@ -217,28 +225,61 @@ class Gateway:
         request_id, requested_at = await self._record(db, request, prompt, digest,
                                                       AIRequestStatus.COMPLETED, reply, None)
         band = confidence(draft, dropped, request)
-        suggestion_id = await self.repo.record_suggestion(db, SuggestionRecord(
-            request_id=request_id, feature=feature, patient_id=request.patient_id,
-            encounter_id=request.encounter_id, target_resource_type="Composition",
-            content=draft, confidence=band, rationale=RATIONALE,
-            unknowns=tuple(draft["unknowns"])))
         texts = {s["code"]: s["text"] for s in draft["sections"]}
+        suggestions: list[tuple[str, Any]] = []
+        for section in request.sections:
+            if not texts.get(section.code):
+                continue        # nothing drafted: an ordinary empty section, no suggestion
+            content, rationale, section_band = _section_suggestion(
+                request, section.code, section.title, texts[section.code], band,
+                draft["unknowns"])
+            suggestions.append((section.code, await self.repo.record_suggestion(
+                db, SuggestionRecord(
+                    request_id=request_id, feature=feature, patient_id=request.patient_id,
+                    encounter_id=request.encounter_id, target_resource_type=NOTE_SECTION,
+                    content=content, confidence=section_band, rationale=rationale,
+                    unknowns=tuple(draft["unknowns"])))))
         note = await self.drafts.create_ai_draft(db, AIDraftIn(
             encounter_id=request.encounter_id, note_type_loinc=request.note_type_loinc,
-            title=request.title, template_id=request.template_id, suggestion_id=suggestion_id,
+            title=request.title, template_id=request.template_id,
+            suggestions=tuple(suggestions),
             sections=tuple(DraftSectionIn(s.code, s.title, texts.get(s.code, ""))
                            for s in request.sections)))
-        await self.repo.set_suggestion_target(db, suggestion_id, note.note_id)
-        _log(feature, request_id, prompt, reply, "completed",
-             kept=sum(1 for t in texts.values() if t), dropped=len(dropped))
+        section_ids = dict(note.sections)
+        for code, suggestion_id in suggestions:
+            await self.repo.set_suggestion_target(db, suggestion_id, section_ids[code])
+        _log(feature, request_id, prompt, reply, "completed", kept=len(suggestions),
+             dropped=len(dropped))
         return DraftResult(
             note=note, confidence=band, unknowns=tuple(draft["unknowns"]),
             dropped=tuple(dropped),
             provenance=DraftProvenance(
-                request_id=request_id, suggestion_id=suggestion_id, model=reply.model,
-                prompt_template_id=prompt.id, prompt_code=prompt.code,
+                request_id=request_id, suggestion_ids=tuple(s for _, s in suggestions),
+                model=reply.model, prompt_template_id=prompt.id, prompt_code=prompt.code,
                 prompt_version=prompt.version, requested_at=requested_at,
                 sources=_sources(request)))
+
+
+def _section_suggestion(request: NoteDraftRequest, code: str, title: str, text: str,
+                        band: str, unknowns: list[str]) -> tuple[dict[str, Any], str, str]:
+    """One section's suggestion: its content (the AI text, its source links and the draft's
+    unknowns, which belong to the whole note, in the model's order), rationale and band. With
+    the transcript's segments at hand, a section no segment supports is ``no-source`` and
+    ``low``."""
+    links = (link_segments(text, request.segments)
+             if request.segments and request.transcription_id else [])
+    sources = [{"resourceType": TRANSCRIPTION, "resourceId": str(request.transcription_id),
+                "segment": sequence, "excerpt": excerpt} for sequence, excerpt in links]
+    content = {"code": code, "title": title, "text": text,
+               "sourceStatus": "sourced" if sources else "no-source", "sources": sources,
+               "unknowns": list(unknowns)}
+    if request.segments and not sources:
+        return content, NO_SOURCE_RATIONALE, AIConfidence.LOW.value
+    if sources:
+        segments = ", ".join(str(sequence) for sequence, _ in links)
+        return content, (f"Drafted by AI from transcript segment{'s' if len(links) > 1 else ''} "
+                         f"{segments}. Review, edit or reject it before signing."), band
+    return content, RATIONALE, band
 
 
 #: Each public gateway call and the feature it needs; a test checks every call is listed and

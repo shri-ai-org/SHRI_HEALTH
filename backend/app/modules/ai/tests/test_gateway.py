@@ -8,6 +8,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +17,7 @@ from app.core.errors import Conflict, ServiceUnavailable
 from app.db.models.enums import AIFeature, AIRequestStatus
 from app.modules.ai import service
 from app.modules.ai.model_client import ModelError
-from app.modules.ai.schemas import NOTE_DRAFT_PROMPT, NOTE_DRAFT_SCHEMA, SourceRef
+from app.modules.ai.schemas import NOTE_DRAFT_PROMPT, NOTE_DRAFT_SCHEMA, Segment, SourceRef
 from app.modules.ai.service import (
     FEATURES,
     Gateway,
@@ -92,13 +93,20 @@ async def test_a_draft_is_an_unsigned_note_from_a_pending_suggestion() -> None:
     assert [s.title for s in draft.sections][1] == "Interval history"
     assert draft.encounter_id == req.encounter_id and draft.note_type_loinc == "11506-3"
 
-    [suggestion] = repo.suggestions.values()
-    assert draft.suggestion_id == result.provenance.suggestion_id
-    assert repo.targets == {draft.suggestion_id: note_id}
-    assert suggestion.target_resource_type == "Composition"
-    assert suggestion.content == {"sections": GOOD_REPLY["sections"], "unknowns": []}
-    assert suggestion.confidence == "medium" and suggestion.unknowns == ()
-    assert TRANSCRIPT not in suggestion.rationale
+    # One pending suggestion per drafted section, each the target of its own section.
+    filled = [s for s in GOOD_REPLY["sections"] if s["text"]]
+    assert [code for code, _ in draft.suggestions] == [s["code"] for s in filled]
+    assert tuple(sid for _, sid in draft.suggestions) == result.provenance.suggestion_ids
+    sections = dict(result.note.sections)
+    assert repo.targets == {sid: sections[code] for code, sid in draft.suggestions}
+    for (code, sid), reply in zip(draft.suggestions, filled, strict=True):
+        suggestion = repo.suggestions[sid]
+        assert suggestion.target_resource_type == "CompositionSection"
+        assert suggestion.content == {"code": code, "title": next(
+            s.title for s in req.sections if s.code == code), "text": reply["text"],
+            "sourceStatus": "no-source", "sources": [], "unknowns": []}
+        assert suggestion.confidence == "medium" and suggestion.unknowns == ()
+        assert TRANSCRIPT not in suggestion.rationale
 
     [rec] = repo.requests
     assert rec.status == AIRequestStatus.COMPLETED and rec.error_message is None
@@ -143,10 +151,12 @@ async def test_anything_outside_the_schema_or_the_template_is_dropped() -> None:
                                    "/sections/3", "/sections/4/code", "/sections/4",
                                    "/unknowns/1", "/diagnosis", "/sections/1", "/sections/2"}
     assert result.unknowns == ("Blood pressure was not stated.",)
-    [suggestion] = repo.suggestions.values()
-    assert suggestion.unknowns == ("Blood pressure was not stated.",)
-    assert suggestion.confidence == "low"
-    assert "diagnosis" not in suggestion.content
+    assert len(repo.suggestions) == 2                         # one per drafted section
+    for suggestion in repo.suggestions.values():
+        assert suggestion.unknowns == ("Blood pressure was not stated.",)
+        assert suggestion.content["unknowns"] == ["Blood pressure was not stated."]
+        assert suggestion.confidence == "low"
+        assert "diagnosis" not in suggestion.content
 
 
 async def test_think_blocks_and_code_fences_are_ignored() -> None:
@@ -242,3 +252,31 @@ async def test_a_draft_stays_a_draft() -> None:
     result = await gateway.draft_note(DB, request())
     assert list(drafts.drafts) == [result.note.note_id] and result.note.version == 1
     assert repo.decisions == {}            # the gateway never records a decision either
+
+
+# ============================================================================== source links
+async def test_each_section_links_the_transcript_segments_it_came_from() -> None:
+    transcription = uuid4()
+    segments = (
+        Segment(1, 0, 4000, "clinician", "How have the headaches been since topiramate?"),
+        Segment(2, 4000, 9000, "patient", "Down to five or six headache days a month."),
+        Segment(3, 9000, 12000, "patient", "The sumatriptan works in an hour."))
+    reply = {"sections": [
+        {"code": "10154-3", "text": "Headaches since starting topiramate."},
+        {"code": "10164-2", "text": "Headache days down to five or six a month; sumatriptan "
+                                    "works within an hour."},
+        {"code": "29545-1", "text": "Fundi normal, no papilledema."},
+        {"code": "51847-2", "text": "Continue topiramate."}]}
+    gateway, repo, _, drafts = _gateway(model=StubModelClient([json.dumps(reply)]))
+    await gateway.draft_note(DB, request(transcription_id=transcription, segments=segments))
+    [draft] = drafts.drafts.values()
+    chief, history, exam, plan = (repo.suggestions[sid] for _, sid in draft.suggestions)
+    assert chief.content["sourceStatus"] == plan.content["sourceStatus"] == "sourced"
+    assert history.content["sourceStatus"] == "sourced"
+    assert [(s["segment"], s["resourceType"], s["resourceId"])
+            for s in history.content["sources"]] == [
+        (2, "Transcription", str(transcription)), (3, "Transcription", str(transcription))]
+    assert "segments 2, 3" in history.rationale and history.confidence == "medium"
+    # Nothing in the transcript supports the exam: no-source, low, and the rationale says so.
+    assert exam.content["sourceStatus"] == "no-source" and exam.content["sources"] == []
+    assert exam.confidence == "low" and "no transcript segment" in exam.rationale

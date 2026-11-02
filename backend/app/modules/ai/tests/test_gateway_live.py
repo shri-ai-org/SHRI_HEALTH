@@ -141,25 +141,31 @@ async def test_a_draft_needs_a_persons_decision_before_the_clinician_signs(
     note = _t(_rows(admin_engine, "SELECT status, ext_is_ai_assisted, encounter_id, "
                     "subject_patient_id FROM clinical.composition WHERE id = :n", n=note_id))
     assert note == [("preliminary", True, enc.id, patient.id)]
-    sections = _rows(admin_engine, "SELECT code_code, entry_source, ai_suggestion_id FROM "
+    # The first note moved the visit to in-progress, as a clinician's first note does.
+    assert _rows(admin_engine, "SELECT status FROM clinical.encounter WHERE id = :e",
+                 e=enc.id)[0][0] == "in-progress"
+    sections = _rows(admin_engine, "SELECT id, code_code, entry_source, ai_suggestion_id FROM "
                      "clinical.composition_section WHERE composition_id = :n ORDER BY sequence",
                      n=note_id)
-    ai = prov.suggestion_id
-    assert _t(sections) == [
-        ("10154-3", "clinician", ai), ("10164-2", "clinician", ai), ("29545-1", "clinician", ai),
-        ("51847-2", "clinician", ai), ("69730-0", "clinician", None)]   # empty: not AI text
+    one, two, three, four = prov.suggestion_ids
+    assert [(r.code_code, r.entry_source, r.ai_suggestion_id) for r in sections] == [
+        ("10154-3", "clinician", one), ("10164-2", "clinician", two),
+        ("29545-1", "clinician", three), ("51847-2", "clinician", four),
+        ("69730-0", "clinician", None)]   # empty: not AI text, no suggestion
     texts = _rows(admin_engine, "SELECT text_div FROM clinical.composition_section WHERE "
                   "composition_id = :n ORDER BY sequence", n=note_id)
     assert fs.section_text(texts[0].text_div) == CHIEF
 
-    suggestion = _rows(admin_engine, "SELECT decision, target_resource_type, target_id, "
-                       "content, confidence, ai_request_id, encounter_id, patient_id FROM "
-                       "admin.ai_suggestion WHERE id = :i", i=ai)[0]
-    assert (suggestion.decision, suggestion.target_resource_type, suggestion.target_id) == (
-        "pending", "Composition", note_id)
-    assert suggestion.content == {"sections": GOOD_REPLY["sections"], "unknowns": []}
-    assert (suggestion.ai_request_id, suggestion.encounter_id, suggestion.patient_id) == (
-        prov.request_id, enc.id, patient.id)
+    for section, reply in zip(sections[:4], GOOD_REPLY["sections"][:4], strict=True):
+        suggestion = _rows(admin_engine, "SELECT decision, target_resource_type, target_id, "
+                           "content, confidence, ai_request_id, encounter_id, patient_id FROM "
+                           "admin.ai_suggestion WHERE id = :i", i=section.ai_suggestion_id)[0]
+        assert (suggestion.decision, suggestion.target_resource_type, suggestion.target_id) == (
+            "pending", "CompositionSection", section.id)
+        assert suggestion.content["text"] == reply["text"]
+        assert (suggestion.ai_request_id, suggestion.encounter_id, suggestion.patient_id) == (
+            prov.request_id, enc.id, patient.id)
+    ai = one
     req = _rows(admin_engine, "SELECT feature, status, model_name, prompt_template_id, "
                 "input_sha256, user_id, latency_ms, created_at FROM admin.ai_request "
                 "WHERE id = :i", i=prov.request_id)[0]
@@ -193,9 +199,10 @@ async def test_a_draft_needs_a_persons_decision_before_the_clinician_signs(
                         {"n": note_id})
         with pytest.raises(DBAPIError, match="AI-drafted section"):
             await s.commit()
-    # A person accepts it, then the clinician signs.
+    # A person accepts each section, then the clinician signs.
     async with session(database, clinic) as s:
-        await REPO.decide(s, ai, AIDecision.ACCEPTED)
+        for suggestion_id in prov.suggestion_ids:
+            await REPO.decide(s, suggestion_id, AIDecision.ACCEPTED)
         await s.commit()
     async with session(database, clinic) as s:
         await STORE.sign_note(s, note_id, if_version=result.note.version)
