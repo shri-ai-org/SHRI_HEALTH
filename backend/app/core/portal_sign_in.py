@@ -505,6 +505,8 @@ async def issue_invitation(db: AsyncSession, settings: Settings, patient_id: UUI
     status (`currentState` says which; D92: a disabled or suspended one gets no new code). The
     caller has checked the chart (ensure_chart_access, not merged), audits and commits; the code
     is in the response only, never logged."""
+    if settings.portal_invitation_secret is None:  # contract: 503, not set up on this server
+        raise ServiceUnavailable("Portal invitations are not set up on this server")
     key = _secret(settings.portal_invitation_secret, "PORTAL_INVITATION_SECRET")
     tenant_id = db.info.get(TENANT_ID_INFO_KEY)
     if not isinstance(tenant_id, UUID):
