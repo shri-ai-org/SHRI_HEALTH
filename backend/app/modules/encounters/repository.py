@@ -126,7 +126,8 @@ class EncounterRepository(Protocol):
                      encounter_id: UUID | None = None, ids: Sequence[UUID] | None = None,
                      vital_type: str | None = None, date_from: date | None = None,
                      date_to: date | None = None, include_entered_in_error: bool = False,
-                     limit: int = 50, offset: int = 0) -> list[schemas.Vital]: ...
+                     limit: int = 50, offset: int = 0,
+                     facility_ids: Sequence[UUID] | None = None) -> list[schemas.Vital]: ...
 
 
 # ------------------------------------------------------------------------------------- SQL
@@ -237,6 +238,9 @@ WHERE o.subject_patient_id = :patient
   AND EXISTS (SELECT 1 FROM clinical.observation_category k
                WHERE k.observation_id = o.id AND k.category_code = 'vital-signs')
   AND (CAST(:encounter AS uuid) IS NULL OR o.encounter_id = :encounter)
+  AND (CAST(:facilities AS uuid[]) IS NULL OR EXISTS (
+        SELECT 1 FROM clinical.encounter fe
+         WHERE fe.id = o.encounter_id AND fe.ext_facility_id = ANY(:facilities)))
   AND (CAST(:ids AS uuid[]) IS NULL OR o.id = ANY(:ids))
   AND (:include_eie OR o.status <> 'entered-in-error')
   AND (CAST(:day_from AS date) IS NULL OR o.effective_date_time >= CAST(:day_from AS date))
@@ -424,12 +428,14 @@ class SqlEncounterRepository:
                      encounter_id: UUID | None = None, ids: Sequence[UUID] | None = None,
                      vital_type: str | None = None, date_from: date | None = None,
                      date_to: date | None = None, include_entered_in_error: bool = False,
-                     limit: int = 50, offset: int = 0) -> list[schemas.Vital]:
+                     limit: int = 50, offset: int = 0,
+                     facility_ids: Sequence[UUID] | None = None) -> list[schemas.Vital]:
         codes = [VITAL_LOINC[vital_type]] if vital_type else list(VITAL_LOINC.values())
         rows = (await db.execute(_VITALS, {
             "patient": patient_id, "loinc": systems.LOINC, "codes": codes,
             "systolic": SYSTOLIC, "diastolic": DIASTOLIC,
             "encounter": encounter_id, "ids": list(ids) if ids is not None else None,
             "include_eie": include_entered_in_error, "day_from": date_from, "day_to": date_to,
+            "facilities": list(facility_ids) if facility_ids is not None else None,
             "limit": limit, "offset": offset})).mappings()
         return [vital_out(r) for r in rows]
