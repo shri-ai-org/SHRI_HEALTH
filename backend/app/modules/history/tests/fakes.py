@@ -6,12 +6,13 @@ and a stale one raises StaleVersion. Synthetic data only."""
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from app.core.deps import CLINIC_A, CurrentUser
+from app.core.deps import CLINIC_A, FACILITY_A, CurrentUser
 from app.core.errors import Conflict, Forbidden, NotFound
 from app.db.fhir_store import (
     UNSET,
@@ -55,6 +56,7 @@ class World:
     restricted: set[UUID] = field(default_factory=set)
     merged: set[UUID] = field(default_factory=set)
     visits: dict[UUID, tuple[UUID, str]] = field(default_factory=dict)  # encounter -> visit
+    visit_facilities: dict[UUID, UUID] = field(default_factory=dict)  # FACILITY_A unless set
     allergies: dict[UUID, _Allergy] = field(default_factory=dict)
     user_of: dict[UUID, UUID] = field(default_factory=dict)  # session tenant -> last writer
 
@@ -153,5 +155,8 @@ class FakeRepository:
             raise NotFound()
         return AllergyRow(self._out(allergy_id, a), a.version, a.created_by)
 
-    async def visit_of(self, db: Any, encounter_id: UUID) -> tuple[UUID, str] | None:
+    async def visit_of(self, db: Any, encounter_id: UUID,
+                       facility_ids: Collection[UUID]) -> tuple[UUID, str] | None:
+        if self.world.visit_facilities.get(encounter_id, FACILITY_A) not in facility_ids:
+            return None
         return self.world.visits.get(encounter_id)
