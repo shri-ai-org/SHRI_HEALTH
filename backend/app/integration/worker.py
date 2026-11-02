@@ -177,10 +177,13 @@ class OutboxWorker:
         return "failed"
 
 
-def adapters() -> dict[str, Adapter]:
-    """The partner adapters by name (admin.integration_endpoint.adapter). The simulated payer and
-    pharmacy for the demo join here once their message shapes are in the contract (7 Nov)."""
-    return {}
+def adapters(settings: Settings) -> dict[str, Adapter]:
+    """The partner adapters by name (admin.integration_endpoint.adapter): for now the simulated
+    payer and pharmacy, when enabled (simulated.py; never in production)."""
+    from app.integration.simulated import simulated_adapters  # it builds on this module
+
+    found: dict[str, Adapter] = dict(simulated_adapters(settings))
+    return found
 
 
 async def run(settings: Settings, stop: asyncio.Event) -> None:
@@ -190,8 +193,12 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     if await db.role_bypasses_rls():
         await db.dispose()
         raise SystemExit("The worker's database role bypasses row-level security (D23)")
-    worker = OutboxWorker(db, adapters())
-    log.info("Outbox worker started")
+    from app.integration.outbound import load_modules  # the modules' message builders
+
+    load_modules()
+    found = adapters(settings)
+    worker = OutboxWorker(db, found)
+    log.info("Outbox worker started (adapters: %s)", ", ".join(sorted(found)) or "none")
     try:
         while not stop.is_set():
             try:
@@ -205,6 +212,10 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                 except TimeoutError:
                     pass
     finally:
+        for adapter in found.values():
+            close = getattr(adapter, "aclose", None)
+            if close is not None:
+                await close()
         await db.dispose()
         log.info("Outbox worker stopped")
 

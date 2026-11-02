@@ -1741,6 +1741,17 @@
    "path": "/api/v1/alerts/{alertId}/override",
    "permission": "alerts:override"
   },
+  "receiveClearinghouseMessage": {
+   "audit": {
+    "action": "C",
+    "actor": "partner",
+    "category": "phi-write"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/hooks/clearinghouse",
+   "permission": "partner-signed"
+  },
   "receiveKeycloakBackchannelLogout": {
    "audit": {
     "action": "E",
@@ -1750,6 +1761,17 @@
    "idempotency": null,
    "method": "POST",
    "path": "/hooks/keycloak/backchannel-logout",
+   "permission": "partner-signed"
+  },
+  "receivePharmacyMessage": {
+   "audit": {
+    "action": "C",
+    "actor": "partner",
+    "category": "phi-write"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/hooks/erx",
    "permission": "partner-signed"
   },
   "recordConsent": {
