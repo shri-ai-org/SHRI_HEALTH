@@ -79,6 +79,37 @@ describe('SessionProvider', () => {
     expect(assign).toHaveBeenCalledWith('/api/v1/auth/login')
   })
 
+  it('offers a retry when the first read fails with a server error, then signs in when it answers', async () => {
+    const server = serve({ 'GET /api/v1/auth/session': [() => problem(503, 'service-unavailable'), () => ok(session(15))] })
+    render(<SessionProvider><Who /></SessionProvider>)
+    expect(await screen.findByRole('heading', { name: 'Can’t reach Shri Health' })).toBeInTheDocument()
+    expect(screen.queryByText('Signed in at Test Clinic')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('Signed in at Test Clinic')).toBeInTheDocument()
+    expect(server.calls()).toEqual(['GET /api/v1/auth/session', 'GET /api/v1/auth/session'])
+    expect(assign).not.toHaveBeenCalled()
+  })
+
+  it('offers a retry after a network error, says so when it fails again, and never signs in on its own', async () => {
+    serve({
+      'GET /api/v1/auth/session': [
+        () => {
+          throw new TypeError('Failed to fetch')
+        },
+        () => {
+          throw new TypeError('Failed to fetch')
+        },
+        () => problem(401, 'unauthenticated'),
+      ],
+    })
+    render(<SessionProvider><Who /></SessionProvider>)
+    await userEvent.click(await screen.findByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText(/Still no answer/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('heading', { name: 'Sign in to Shri Health' })).toBeInTheDocument()
+    expect(assign).not.toHaveBeenCalled()
+  })
+
   it('re-reads the session before warning, then "Stay signed in" calls POST /auth/refresh', async () => {
     const oneMinuteLeft = session(1, 'tok-a')
     const server = serve({

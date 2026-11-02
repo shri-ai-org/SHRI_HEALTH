@@ -15,10 +15,13 @@ from pydantic import SecretStr
 from app.core import (
     access_log,
     auth_api,
+    backchannel,
     download_tokens,
     events,
     health,
     long_running,
+    portal_auth_api,
+    portal_sign_in,
     public_form,
     safe_logging,
 )
@@ -65,6 +68,8 @@ def _legacy_app(settings: Settings) -> FastAPI:
     download_tokens.register(application, settings)
     access_log.register(application, settings)
     safe_logging.register(application, settings)
+    backchannel.register(application, settings)
+    portal_sign_in.register(application, settings)
     application.add_middleware(AuditMiddleware)
     application.add_middleware(IdempotencyMiddleware)
     application.add_middleware(NoStoreMiddleware)
@@ -72,8 +77,10 @@ def _legacy_app(settings: Settings) -> FastAPI:
     install_error_handlers(application)
     application.add_exception_handler(Replay, replay_response)
     application.include_router(health.router)
+    backchannel.register_routes(application, settings)  # added after the registry
     application.include_router(auth_api.router, prefix=API_PREFIX)
     public_form.include_routes(application, API_PREFIX)
+    portal_auth_api.register(application, settings)  # added after the registry
     application.include_router(events.router, prefix=API_PREFIX)
     application.include_router(long_running.router, prefix=API_PREFIX)
     include_module_routers(application)
@@ -152,7 +159,7 @@ async def test_the_registry_builds_the_same_app_as_before(settings: Any) -> None
 async def test_shutdown_closes_every_client_the_registry_opened() -> None:
     application = create_app(_configured())
     opened = [application.state.db, application.state.public_db, application.state.crypto,
-              application.state.keycloak]
+              application.state.keycloak, application.state.staff_realm_keys]
     assert all(opened) and len(application.state.closers) == len(opened)
     await shut_down(application)
     assert application.state.crypto._client.is_closed  # noqa: SLF001

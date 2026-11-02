@@ -1615,7 +1615,7 @@
     "category": "phi-write",
     "patient": "patientId"
    },
-   "idempotency": null,
+   "idempotency": "supported",
    "method": "POST",
    "path": "/api/v1/patients/{patientId}/coverages/{coverageId}/entered-in-error",
    "permission": "coverages:entered-in-error"
@@ -1791,7 +1791,7 @@
     "category": "phi-write",
     "patient": "result"
    },
-   "idempotency": null,
+   "idempotency": "supported",
    "method": "POST",
    "path": "/api/v1/appointments/{appointmentId}/status",
    "permission": "appointments:status"
@@ -2086,7 +2086,7 @@
     "category": "phi-write",
     "patient": "result"
    },
-   "idempotency": null,
+   "idempotency": "supported",
    "method": "POST",
    "path": "/api/v1/appointments/{appointmentId}/undo-check-in",
    "permission": "appointments:undo-check-in"
