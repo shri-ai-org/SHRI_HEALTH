@@ -6,11 +6,13 @@ other's files to register routes. A module whose api.py fails to import stops st
 """
 
 import importlib
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI
 
 import app.modules
+from app.core.config import Settings
 
 API_PREFIX = "/api/v1"
 
@@ -30,3 +32,9 @@ def include_module_routers(application: FastAPI) -> list[str]:
         application.include_router(router, prefix=API_PREFIX)
         included.append(name)
     return included
+
+
+def register(application: FastAPI, settings: Settings) -> None:
+    """Every module's router, found by folder (module_names)."""
+    modules = include_module_routers(application)
+    logging.getLogger("app.main").info("Modules with routes: %s", ", ".join(modules) or "none")

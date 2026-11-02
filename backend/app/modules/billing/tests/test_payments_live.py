@@ -6,6 +6,7 @@ each. Runs where ``TEST_DATABASE_URL`` is set. Synthetic data only.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import hashlib
 import uuid
@@ -34,7 +35,8 @@ from app.db.tests.conftest import (
     sync_url,
 )
 from app.main import create_app
-from app.modules.files import storage
+from app.modules.files import crypto, storage
+from app.modules.files.tests.fakes import FakeFileCrypto
 
 from .. import api
 from ..repository import NewPayment, SqlPaymentRepository
@@ -98,7 +100,13 @@ def users(chart: Callable[[UUID], Session], clinics: dict[UUID, UUID]
 
 
 @pytest.fixture
-def app(users: dict[str, CurrentUser], tmp_path: Path) -> Iterator[FastAPI]:
+def fake_crypto() -> FakeFileCrypto:
+    return FakeFileCrypto()
+
+
+@pytest.fixture
+def app(users: dict[str, CurrentUser], tmp_path: Path,
+        fake_crypto: FakeFileCrypto) -> Iterator[FastAPI]:
     application = create_app(Settings(environment="test", auth_mode="dev_header",
                                       database_url=TEST_DATABASE_URL))
     switch_to_role(application.state.db.engine.sync_engine, "shri_app")
@@ -109,6 +117,7 @@ def app(users: dict[str, CurrentUser], tmp_path: Path) -> Iterator[FastAPI]:
     application.dependency_overrides[current_user] = signed_in
     application.dependency_overrides[storage.file_store] = (
         lambda: storage.LocalFileStore(tmp_path / "files"))
+    application.dependency_overrides[crypto.file_crypto] = lambda: fake_crypto
     yield application
 
 
@@ -136,7 +145,8 @@ def _payments(admin: Engine, patient_id: Any) -> list[Any]:
 
 def test_the_payment_its_receipt_row_and_the_stored_bytes(
         client: Callable[[str], TestClient], chart: Callable[[UUID], Session], admin: Engine,
-        clinics: dict[UUID, UUID], users: dict[str, CurrentUser], tmp_path: Path) -> None:
+        clinics: dict[UUID, UUID], users: dict[str, CurrentUser], tmp_path: Path,
+        fake_crypto: FakeFileCrypto) -> None:
     db = chart(CLINIC_A)
     patient = b.patient(db, "Okafor", "Ada")
     appointment = M["appointment"](status="booked", subject_patient_id=patient.id,
@@ -161,9 +171,13 @@ def test_the_payment_its_receipt_row_and_the_stored_bytes(
                              {"i": row.receipt_file_id}).one()
     assert file_row.tenant_id == clinics[CLINIC_A]
     assert (file_row.bucket, file_row.purpose, file_row.state) == ("clean", "receipt", "clean")
-    assert file_row.content_type == "application/pdf" and file_row.wrapped_data_key is None
+    assert file_row.content_type == "application/pdf"
+    assert file_row.wrapped_data_key == fake_crypto.wrapped[-1]
     assert file_row.storage_key == f"{clinics[CLINIC_A]}/{row.receipt_file_id}"
-    stored = (tmp_path / "files" / file_row.storage_key).read_bytes()
+    sealed = (tmp_path / "files" / file_row.storage_key).read_bytes()
+    assert b"%PDF-" not in sealed and b"Okafor" not in sealed  # only ciphertext at rest
+    stored = asyncio.run(fake_crypto.open(sealed, file_row.wrapped_data_key,
+                                          context=file_row.storage_key))
     assert stored.startswith(b"%PDF-")
     assert file_row.sha256 == hashlib.sha256(stored).hexdigest()
     assert file_row.size_bytes == len(stored)

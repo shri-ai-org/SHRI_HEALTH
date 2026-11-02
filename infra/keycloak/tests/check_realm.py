@@ -94,6 +94,12 @@ def problems_in(realm: dict[str, Any], client: dict[str, Any], actions: list[dic
         found.append("accessTokenLifespan must be at most 5 minutes")
     found += [f"client shri-web {key} is {client.get(key)!r}, must be {want!r}"
               for key, want in CLIENT_RULES.items() if client.get(key) != want]
+    attributes = client.get("attributes", {})
+    if not attributes.get("backchannel.logout.url"):
+        found.append("client shri-web needs backchannel.logout.url (D94): disabled users must lose "
+                     "their sessions at once")
+    if attributes.get("backchannel.logout.session.required") != "true":
+        found.append("client shri-web needs backchannel.logout.session.required (sid in the token)")
     if client.get("attributes", {}).get("pkce.code.challenge.method") != "S256":
         found.append("client shri-web must require PKCE S256")
     for uri in client.get("redirectUris", []):

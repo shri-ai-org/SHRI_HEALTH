@@ -16,7 +16,7 @@ from app.main import create_app
 TAG = "practice-setup"
 BUILT = frozenset({
     "listFacilitys", "listProviders", "listAppointmentTypes", "listProviderSchedules",
-    "listPayers", "listPracticePayers",
+    "listPayers", "listPracticePayers", "listNoteTemplates", "getNoteTemplate",
 })
 
 

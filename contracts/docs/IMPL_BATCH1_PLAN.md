@@ -388,7 +388,7 @@ Card images (PR-7), duplicates and merges (PR-8) and the manual eligibility run 
 | **Tue 3 Nov** | The four core pieces: audit from `x-audit` (#79), the restricted-chart check, the facility filter, idempotency |
 | **Tue 10 Nov** | **Real staff sign-in** (Keycloak realm #72, core's login and session) and **demo accounts** for each role (FD, MA, MD, ADM, and the patient) |
 | **Tue 17 Nov** | **The simulated payer** (270 in, 271 back through the webhook) and **the simulated pharmacy** (NewRx in, status back through `/hooks/erx`); **the patient session** (patient realm, core's portal session, `PAT` permissions; ADR-0013, T45) |
-| Test server | One cloud server running our Docker setup. Whether to fall back to a laptop is decided by **Tue 10 Nov** |
+| Test server | One cloud server running our Docker setup. Whether to fall back to a laptop is decided by **Tue 10 Nov**. The API runs as **one process** there: the public form's rate limiter and used bot answers live in memory until core's shared store lands (DECISIONS.md, scheduled work) |
 
 **Not yet in Thulasi's reply** (asked on #85; each is needed by the date shown):
 - a development sign-in for patients (`PAT`), like `X-Dev-User`, for building the portal steps before 17 Nov;

@@ -12,6 +12,9 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.32",
+    # RS256 check of Keycloak's back-channel logout token (D94). [crypto] brings cryptography.
+    # MIT; cryptography is Apache-2.0 OR BSD-3-Clause (D75).
+    "pyjwt[crypto]>=2.15,<3",
     "pydantic-settings>=2.6",
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30",
@@ -21,6 +24,8 @@ dependencies = [
     "alembic>=1.14",          # migrations
     "pgvector>=0.3",          # Vector column type (admin.knowledge_chunk embeddings)
     "fhir.resources>=8.0",    # FHIR R4B models used to validate the read-only /fhir output
+    # File service (backend/app/modules/files/, Anand): AES-256-GCM with core's data keys
+    "cryptography>=50.0.2,<51",
 ]
 
 [project.optional-dependencies]

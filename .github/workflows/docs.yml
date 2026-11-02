@@ -1,0 +1,43 @@
+# Docs link check: every relative link and anchor in the repository's Markdown outside contracts/
+# resolves. contracts/ has its own (part of npm test in the contracts workflow). Runs only when
+# Markdown or this workflow changes, so a docs-only PR runs just this and the secret scan. The
+# checker (contracts/scripts/check-links.mjs) uses Node's standard library only: no npm install.
+# Every Action is pinned by commit SHA.
+name: docs
+
+on:
+  pull_request:
+    # No CI on drafts: a PR runs only once it's ready for review, and again on each push to it.
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ["**/*.md", "!contracts/**", ".github/workflows/docs.yml",
+            "contracts/scripts/check-links.mjs"]
+  push:
+    branches: [main]
+    paths: ["**/*.md", "!contracts/**", ".github/workflows/docs.yml",
+            "contracts/scripts/check-links.mjs"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.event.pull_request.number || github.ref }}
+  # Cancel superseded PR runs only; every commit on main gets a complete run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  links:
+    # Skipped on a draft PR (it runs when the PR is marked ready for review); always on main.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version-file: contracts/.nvmrc  # Node 24 LTS, as the contracts workflow
+
+      - name: Links in the Markdown outside contracts/
+        run: node contracts/scripts/check-links.mjs $(git ls-files '*.md' | grep -v '^contracts/')

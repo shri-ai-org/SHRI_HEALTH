@@ -4,6 +4,7 @@ Synthetic data only."""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections.abc import Callable
 from typing import Any
@@ -14,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS, tenant_db
+from app.modules.files.tests.fakes import FakeFileCrypto
 
 from ..repository import EncounterLink, PatientForPayment
 from .conftest import cash
@@ -40,13 +42,21 @@ def _field_errors(response: Any) -> list[tuple[str, str]]:
     return [(e["pointer"], e["code"]) for e in response.json()["errors"]]
 
 
+def _opened(store: MemoryFileStore, crypto: FakeFileCrypto, file_row: dict[str, Any]) -> bytes:
+    """The stored receipt, decrypted as the download does."""
+    sealed, _ = store.objects[file_row["storage_key"]]
+    return asyncio.run(crypto.open(sealed, file_row["wrapped_data_key"],
+                                   context=file_row["storage_key"]))
+
+
 def _nothing_written(world: World, store: MemoryFileStore) -> bool:
     return not world.payments and not store.objects and not any(s.files for s in world.sessions)
 
 
 # ------------------------------------------------------------------------------------ success
 def test_a_cash_copay_is_recorded_with_its_receipt(as_user: Client, world: World,
-                                                   store: MemoryFileStore) -> None:
+                                                   store: MemoryFileStore,
+                                                   fake_crypto: FakeFileCrypto) -> None:
     patient_id = _patient(world)
     appointment_id, encounter_id = uuid4(), uuid4()
     world.appointments[CLINIC_A] = {appointment_id: patient_id}
@@ -76,15 +86,18 @@ def test_a_cash_copay_is_recorded_with_its_receipt(as_user: Client, world: World
     assert file_row["id"] == payment.receipt_file_id
     assert file_row["purpose"] == "receipt" and file_row["bucket"] == "clean"
     assert file_row["storage_key"] == f"{CLINIC_A}/{payment.receipt_file_id}"
-    data, content_type = store.objects[file_row["storage_key"]]
-    assert content_type == "application/pdf" and data.startswith(b"%PDF-")
+    sealed, content_type = store.objects[file_row["storage_key"]]
+    assert content_type == "application/pdf" and b"%PDF-" not in sealed  # encrypted at rest
+    data = _opened(store, fake_crypto, file_row)
+    assert data.startswith(b"%PDF-")
     assert file_row["sha256"] == hashlib.sha256(data).hexdigest()
     assert file_row["size_bytes"] == len(data)
     assert b"(Receipt number: " + body["id"].encode() + b")" in data
 
 
 def test_a_check_payment_keeps_its_number_and_note(as_user: Client, world: World,
-                                                   store: MemoryFileStore) -> None:
+                                                   store: MemoryFileStore,
+                                                   fake_crypto: FakeFileCrypto) -> None:
     patient_id = _patient(world)
 
     response = _pay(as_user("bil"), patient_id, {
@@ -97,8 +110,19 @@ def test_a_check_payment_keeps_its_number_and_note(as_user: Client, world: World
     (payment,) = world.payments
     assert (payment.check_number, payment.note) == ("1042", "Copay for the visit")
     assert str(payment.amount) == "1250.50"
-    (data, _), = store.objects.values()
+    ((file_row,),) = [session.files for session in world.sessions]
+    data = _opened(store, fake_crypto, file_row)
     assert b"(Check number: 1042)" in data and b"(Amount paid: $1,250.50 USD)" in data
+
+
+def test_no_data_key_no_payment(as_user: Client, world: World, store: MemoryFileStore,
+                                fake_crypto: FakeFileCrypto) -> None:
+    """The receipt can't be encrypted, so nothing is stored in clear and no payment is made
+    (D104: never a payment without its receipt)."""
+    fake_crypto.data_keys.unavailable = True
+    response = _pay(as_user("fd"), _patient(world), cash())
+    assert response.status_code == 503 and response.json()["code"] == "service-unavailable"
+    assert _nothing_written(world, store)
 
 
 def test_a_payment_does_not_need_break_glass(as_user: Client, world: World) -> None:

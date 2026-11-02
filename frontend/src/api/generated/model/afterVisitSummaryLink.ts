@@ -26,7 +26,7 @@ export interface AfterVisitSummaryLink {
   /** When this version was generated. */
   generatedAt: Timestamp;
   /**
-     * The download link. Short-lived; never logged.
+     * A one-time link to `GET /files/{fileId}/content` (D105): for this user only, valid for about one minute, accepted once. Never logged.
      * @maxLength 2000
      */
   url: string;

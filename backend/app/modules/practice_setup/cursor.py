@@ -31,7 +31,7 @@ from app.core.errors import InvalidCursor
 
 Kind = Literal[
     "facilities", "providers", "appointment-types", "provider-schedules", "payers",
-    "practice-payers",
+    "practice-payers", "note-templates",
 ]
 
 # The type of each list's sort key: a name (text) or a creation time (timestamptz).
@@ -42,6 +42,7 @@ KEY_TYPES: dict[Kind, type[str] | type[datetime]] = {
     "provider-schedules": datetime,
     "payers": str,
     "practice-payers": str,
+    "note-templates": str,
 }
 
 _VERSION = 1

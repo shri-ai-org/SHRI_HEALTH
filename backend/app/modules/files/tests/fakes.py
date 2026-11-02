@@ -5,13 +5,13 @@
 - ``MemoryFileStore``: a ``FileStore`` keeping bytes by bucket and key, with ``memory://`` links.
 - ``FakeScanner``: a ``Scanner`` (replaces clamd until ClamAV is in compose): infected when the
   bytes contain ``EICAR``, the test marker below, or unavailable when told to be.
-- ``FakeFileCrypto``: a ``FileCrypto`` (replaces core's ``new_data_key()``). It does **not**
-  encrypt: it prefixes the bytes with ``SEALED:`` so tests can tell sealed from plain bytes,
-  records each wrapped key it hands out, and opens only bytes it sealed with a key it issued.
+- ``FakeFileCrypto``: the module's real AES-256-GCM (``AesGcmFileCrypto``) over
+  ``FakeDataKeys``, core's data keys in memory: a random 32-byte key per file, "wrapped" as an
+  opaque name it remembers, or unavailable (503) when told to be.
 - ``FakeOperations``: core's operations and ``file.scanned``, in memory (the live tests use
   core's own).
-- ``FakeDownloadTokens``: ``DownloadTokens`` (replaces core's ``sign_download_token``): random
-  opaque tokens remembered with their claims. Nothing is signed.
+- ``download_tokens()``: core's own ``DownloadTokens`` with a synthetic secret and, if given,
+  a clock.
 
 Synthetic data only.
 """
@@ -19,22 +19,24 @@ Synthetic data only.
 from __future__ import annotations
 
 import secrets
-from collections.abc import AsyncIterator
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.core.crypto import DataKey
 from app.core.db import TENANT_ID_INFO_KEY
 from app.core.deps import CurrentUser
+from app.core.download_tokens import DownloadTokens
 from app.core.errors import Forbidden, ServiceUnavailable
 from app.core.long_running import FINAL, Operation
 
-from ..crypto import SealedFile
+from ..crypto import AesGcmFileCrypto
 from ..repository import Attachment, FileRecord, NewUpload
 from ..scanner import ScanResult
 from ..storage import CLEAN_BUCKET, SignedLink, check_key, expiry
-from ..tokens import DownloadClaims
 
 # The marker the fake scanner treats as malware (synthetic; not the real EICAR test string).
 EICAR = b"EICAR-SYNTHETIC-TEST-MARKER"
@@ -60,6 +62,7 @@ class World:
     granted: set[tuple[UUID, UUID]] = field(default_factory=set)  # (user, patient)
     scan_status: dict[UUID, str] = field(default_factory=dict)
     wrapped_keys: dict[UUID, str] = field(default_factory=dict)
+    audited: list[list[UUID]] = field(default_factory=list)  # each download's audit patients
     sessions: list[FakeSession] = field(default_factory=list)
 
     def add(self, record: FileRecord) -> FileRecord:
@@ -147,11 +150,6 @@ class MemoryFileStore:
         return SignedLink(url=f"memory://{bucket}/{key}?put", expires_at=expiry(expires),
                           headers={"Content-Type": content_type})
 
-    def presign_get(self, key: str, *, bucket: str, content_type: str,
-                    expires: timedelta) -> SignedLink:
-        check_key(key, bucket)
-        return SignedLink(url=f"memory://{bucket}/{key}?get", expires_at=expiry(expires))
-
 
 class FakeScanner:
     def __init__(self) -> None:
@@ -167,23 +165,37 @@ class FakeScanner:
         return ScanResult(infected=False)
 
 
-class FakeFileCrypto:
-    """Not encryption (module docstring)."""
+class FakeDataKeys:
+    """Core's data keys in memory (module docstring). Never real key material."""
 
     def __init__(self) -> None:
-        self.wrapped: list[str] = []
+        self.keys: dict[str, bytes] = {}
+        self.unavailable = False
 
-    async def seal(self, data: bytes) -> SealedFile:
-        key = f"test-wrapped-key-{len(self.wrapped) + 1}"
-        self.wrapped.append(key)
-        return SealedFile(data=b"SEALED:" + data, wrapped_data_key=key)
+    async def new_data_key(self) -> DataKey:
+        if self.unavailable:
+            raise ServiceUnavailable("File encryption is not available")
+        wrapped = f"vault:v1:test-wrapped-{len(self.keys) + 1}"
+        self.keys[wrapped] = secrets.token_bytes(32)
+        return DataKey(self.keys[wrapped], wrapped)
 
-    async def open(self, sealed: bytes, wrapped_data_key: str) -> AsyncIterator[bytes]:
-        if wrapped_data_key not in self.wrapped or not sealed.startswith(b"SEALED:"):
-            raise ValueError("not sealed by this fake")
-        plain = sealed.removeprefix(b"SEALED:")
-        for start in range(0, len(plain), 16):
-            yield plain[start:start + 16]
+    async def unwrap_data_key(self, wrapped: str) -> bytes:
+        if self.unavailable or wrapped not in self.keys:
+            raise ServiceUnavailable("File encryption is not available")
+        return self.keys[wrapped]
+
+
+class FakeFileCrypto(AesGcmFileCrypto):
+    """Real AES-256-GCM over ``FakeDataKeys``."""
+
+    def __init__(self) -> None:
+        self.data_keys = FakeDataKeys()
+        super().__init__(self.data_keys)
+
+    @property
+    def wrapped(self) -> list[str]:
+        """Every wrapped key handed out, in order."""
+        return list(self.data_keys.keys)
 
 
 class FakeOperations:
@@ -213,14 +225,10 @@ class FakeOperations:
         self.events.append((file_id, status))
 
 
-class FakeDownloadTokens:
-    def __init__(self) -> None:
-        self.issued: dict[str, DownloadClaims] = {}
+#: Synthetic, for tests only.
+TOKEN_SECRET = "synthetic-download-token-key-for-tests-only"
 
-    def sign(self, claims: DownloadClaims) -> str:
-        token = secrets.token_urlsafe(24)
-        self.issued[token] = claims
-        return token
 
-    def verify(self, token: str) -> DownloadClaims | None:
-        return self.issued.get(token)
+def download_tokens(clock: Callable[[], float] = time.time) -> DownloadTokens:
+    """Core's own download tokens (module docstring)."""
+    return DownloadTokens(TOKEN_SECRET, clock)
