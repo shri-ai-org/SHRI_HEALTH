@@ -62,6 +62,8 @@ Accessibility from the start: full keyboard use, visible focus, readable contras
 
 ### Step 3 — Connect screens to the real APIs
 
+**Existing screens first (D115).** Port from `care-entry` and `AIEMR_mockups/doctors-portal`, and change only what the U.S. contract requires. Build a new screen only when none exists or none was designed for the function, and build it from existing components. Every frontend PR names its source screen (repo and path) and its reuse level: ported, adapted or new, with the reason.
+
 Switch each area from the mock to the real API as it becomes available, in this order:
 
 1. **Patient search and registration,** including licence scanning:
