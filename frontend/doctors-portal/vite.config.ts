@@ -48,6 +48,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // SHRI_HEALTH: the screens import react-router-dom 7; SHRI_HEALTH ships react-router 8.
+      'react-router-dom': 'react-router',
+      // SHRI_HEALTH: not installed (video visits are not in the demo); see shri-health/.
+      'fix-webm-duration': fileURLToPath(new URL('./shri-health/fixWebmDurationStub.ts', import.meta.url)),
     },
   },
   server: {
