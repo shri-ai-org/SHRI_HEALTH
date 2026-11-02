@@ -5,8 +5,9 @@ sends them with ``httpx``. Two ways to sign, both SigV4 (AWS's "Signature Versio
 process" for S3):
 
 - **pre-signed links** (``presign()``): the signature is in the query string and the payload is
-  ``UNSIGNED-PAYLOAD``, so a browser can ``PUT`` an upload into quarantine or ``GET`` a clean
-  file directly, without the bytes passing through the API (API_STANDARDS §15);
+  ``UNSIGNED-PAYLOAD``, so a browser can ``PUT`` an upload into quarantine without the bytes
+  passing through the API (API_STANDARDS §15). Downloads never get one: stored files are
+  encrypted, so they are served by the API (D105, service.serve_content);
 - **the API's own requests** (``sign_headers()``): the signature is in ``Authorization`` and the
   payload's SHA-256 is signed, for ``S3FileStore.put``, ``get`` and ``delete``.
 
@@ -265,10 +266,3 @@ class S3FileStore:
                           {"content-length": str(size_bytes), "content-type": content_type}, {})
         return SignedLink(url=link.url, expires_at=link.expires_at,
                           headers={"Content-Type": content_type})
-
-    def presign_get(self, key: str, *, bucket: str, content_type: str,
-                    expires: timedelta) -> SignedLink:
-        # Always a download, never rendered at the store's origin; the type is the file's own.
-        return self._link("GET", key, bucket, expires, {}, {
-            "response-content-disposition": "attachment",
-            "response-content-type": content_type})

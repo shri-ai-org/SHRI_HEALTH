@@ -128,6 +128,28 @@ async def test_vitals_that_cannot_be_recorded(database: Database,
                 await STORE.record_vitals(s, patient.id, enc.id, vitals, effective_at=at)
 
 
+async def test_a_vital_is_entered_in_error(database: Database, clinic: dict[str, Any],
+                                           admin_engine: Engine) -> None:
+    patient, enc = await _visit(database, clinic)
+    async with session(database, clinic) as s:
+        written = (await STORE.record_vitals(s, patient.id, enc.id, (
+            fs.VitalIn("heart-rate", value=fs.Measured(Decimal(72), "/min")),), effective_at=NOW))
+        await s.commit()
+    w = written[0]
+    async with session(database, clinic) as s:
+        w2 = await STORE.vital_entered_in_error(s, w.id, WHY, if_version=w.version)
+        await s.commit()
+    assert w2.version == w.version + 1
+    row = _rows(admin_engine, "SELECT status FROM clinical.observation WHERE id = :o",
+               o=w.id)[0]
+    assert row.status == "entered-in-error"
+    assert _rows(admin_engine, "SELECT reason_text FROM clinical.provenance WHERE "
+                "target_id = :o", o=w.id)[0].reason_text == "Wrong patient"
+    async with session(database, clinic) as s:
+        with pytest.raises(fs.InvalidTransition):
+            await STORE.vital_entered_in_error(s, w.id, WHY, if_version=w2.version)
+
+
 # ====================================================================== Allergy
 async def test_an_allergy_with_reactions_is_updated_and_entered_in_error(
         database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:

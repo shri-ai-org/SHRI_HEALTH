@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
+from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -51,8 +52,16 @@ def payers(clinics: dict[UUID, UUID]) -> Iterator[dict[str, UUID]]:  # noqa: F81
 
 
 def _patient(client: Any) -> dict[str, Any]:  # noqa: F811
-    created = client("fd").post("/api/v1/patients",
-                                json=_body(f"Haddad{uuid.uuid4().hex[:6]}", identifiers=[]))
+    """A synthetic patient no other test patient resembles: its own surname, birth date and phone.
+    The duplicate check looks at patients sharing a birth date or a phone, then compares names,
+    so a shared birth date and phone with a similar name made registration fail now and then."""
+    n = uuid.uuid4().int
+    family = "Cov" + "".join(chr(97 + (n >> (5 * i)) % 26) for i in range(8))
+    born = date(1940, 1, 1) + timedelta(days=n % 20_000)
+    phone = f"+1217555{(n >> 40) % 10_000:04d}"
+    created = client("fd").post("/api/v1/patients", json=_body(
+        family, identifiers=[], birthDate=born.isoformat(),
+        phones=[{"number": phone, "use": "mobile"}]))
     assert created.status_code == 201, created.text
     patient: dict[str, Any] = created.json()
     return patient

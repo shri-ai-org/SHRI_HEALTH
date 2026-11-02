@@ -353,7 +353,8 @@
   "createDownloadUrl": {
    "audit": {
     "action": "R",
-    "category": "export"
+    "category": "export",
+    "patient": "result"
    },
    "idempotency": null,
    "method": "GET",
@@ -538,6 +539,17 @@
    "path": "/api/v1/duplicates/{duplicateId}/dismiss",
    "permission": "duplicates:dismiss"
   },
+  "downloadFileContent": {
+   "audit": {
+    "action": "R",
+    "category": "export",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/files/{fileId}/content",
+   "permission": "authenticated"
+  },
   "enablePortalAccount": {
    "audit": {
     "action": "E",
@@ -612,6 +624,17 @@
    "method": "GET",
    "path": "/api/v1/appointment-types/{appointmentTypeId}",
    "permission": "practice-setup:read"
+  },
+  "getBotChallenge": {
+   "audit": {
+    "action": "R",
+    "actor": "anonymous",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/bot-challenge",
+   "permission": "public"
   },
   "getConsentRequirement": {
    "audit": {
@@ -1593,7 +1616,7 @@
     "category": "phi-write",
     "patient": "patientId"
    },
-   "idempotency": null,
+   "idempotency": "supported",
    "method": "POST",
    "path": "/api/v1/patients/{patientId}/coverages/{coverageId}/entered-in-error",
    "permission": "coverages:entered-in-error"
@@ -1769,7 +1792,7 @@
     "category": "phi-write",
     "patient": "result"
    },
-   "idempotency": null,
+   "idempotency": "supported",
    "method": "POST",
    "path": "/api/v1/appointments/{appointmentId}/status",
    "permission": "appointments:status"
@@ -2064,7 +2087,7 @@
     "category": "phi-write",
     "patient": "result"
    },
-   "idempotency": null,
+   "idempotency": "supported",
    "method": "POST",
    "path": "/api/v1/appointments/{appointmentId}/undo-check-in",
    "permission": "appointments:undo-check-in"

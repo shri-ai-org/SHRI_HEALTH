@@ -19,7 +19,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import permissions
 from app.core.deps import CurrentUser, require, tenant_db
+from app.core.operations import OperationsMapError, load_operations
 
 from . import insurance, schemas, service
 from .access import AuditHooks, ChartCheck, audit_hooks, chart_check, fhir_store
@@ -329,3 +331,28 @@ async def record_consent(
     response.headers["ETag"] = service.etag(recorded.version)
     response.headers["Location"] = f"/api/v1/patients/{patient_id}/consents"
     return recorded.value
+
+# --------------------------------------------------------------- online pre-registration (D96)
+_PRE_REGISTRATION_OPERATIONS = frozenset({
+    "submitPreRegistration", "listPreRegistrations", "getPreRegistration",
+    "acceptPreRegistration", "rejectPreRegistration"})
+_PRE_REGISTRATION_PERMISSIONS = frozenset({
+    "pre-registrations:read", "pre-registrations:accept", "pre-registrations:reject"})
+
+
+def pre_registration_ready() -> bool:
+    """The pre-registration routes need their contract (#89) in the operations map and their
+    permissions in core's catalogue (T47). Until both are on main they stay out, so the API still
+    starts (create_app refuses a route the contract doesn't have)."""
+    try:
+        known = load_operations()
+    except OperationsMapError:
+        return False
+    return (_PRE_REGISTRATION_OPERATIONS <= known.keys()
+            and all(permissions.is_known_permission(p) for p in _PRE_REGISTRATION_PERMISSIONS))
+
+
+if pre_registration_ready():
+    from .pre_registration_api import router as _pre_registration_router
+
+    router.include_router(_pre_registration_router)

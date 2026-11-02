@@ -7,6 +7,9 @@ endpoint: `tenant_db` claims the required Idempotency-Key (x-idempotency) before
 runs and replays a finished one, and the audit row (x-audit, patient from the path) commits with
 the payment. The endpoint has no idempotency or audit code of its own.
 
+The receipt is sealed like every stored file (the file service's ``file_crypto``, AES-256-GCM
+with core's data keys); without a data key the payment is refused (503) and nothing is stored.
+
 `createCardSession` is not built: card payments wait for the card processor (Q17), so
 `recordPayment` refuses `card` for now (service.py).
 """
@@ -20,6 +23,7 @@ from fastapi import APIRouter, Depends, Path, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser, require, tenant_db
+from app.modules.files.crypto import FileCrypto, file_crypto
 from app.modules.files.storage import FileStore, file_store
 
 from . import schemas, service
@@ -34,6 +38,7 @@ def repository() -> PaymentRepository:
 
 Repo = Annotated[PaymentRepository, Depends(repository)]
 Store = Annotated[FileStore, Depends(file_store)]
+Crypto = Annotated[FileCrypto, Depends(file_crypto)]
 DB = Annotated[AsyncSession, Depends(tenant_db)]
 PatientId = Annotated[UUID, Path(alias="patientId")]
 
@@ -44,9 +49,9 @@ PatientId = Annotated[UUID, Path(alias="patientId")]
 async def record_payment(
     user: Annotated[CurrentUser, Depends(require("payments:create"))],
     patient_id: PatientId, body: schemas.PaymentCreate, response: Response, repo: Repo,
-    store: Store, db: DB,
+    store: Store, crypto: Crypto, db: DB,
 ) -> schemas.Payment:
-    payment = await service.record_payment(db, repo, store, user, patient_id, body)
+    payment = await service.record_payment(db, repo, store, crypto, user, patient_id, body)
     response.headers["Location"] = service.location(patient_id, payment.id)
     response.headers["ETag"] = service.etag()
     return payment

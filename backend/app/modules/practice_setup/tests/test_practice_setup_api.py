@@ -293,6 +293,17 @@ def test_providers_by_facility(as_user: Client, seeded: dict[str, Any]) -> None:
     assert [p["name"]["family"] for p in active_at_f1["items"]] == ["Lowe58"]
 
 
+def test_a_provider_with_no_active_role_is_listed_with_no_facilities(
+        as_user: Client, seeded: dict[str, Any]) -> None:
+    seeded["a"].providers.append(fakes.provider("Unplaced", [], n=4))
+    items = as_user("adm").get("/api/v1/providers", params={"limit": 10}).json()["items"]
+    unplaced = [p for p in items if p["name"]["family"] == "Unplaced"]
+    assert len(unplaced) == 1 and unplaced[0]["facilityIds"] == []
+    f1 = str(seeded["a"].facilities[0].id)
+    at_f1 = as_user("adm").get("/api/v1/providers", params={"facilityId": f1}).json()["items"]
+    assert "Unplaced" not in {p["name"]["family"] for p in at_f1}
+
+
 def test_provider_schedules_by_provider_and_facility(as_user: Client,
                                                      seeded: dict[str, Any]) -> None:
     a = seeded["a"]

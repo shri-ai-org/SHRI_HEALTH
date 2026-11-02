@@ -2,22 +2,22 @@
 refreshSession, logout; x-owner thulasi). The rules are in session.py.
 
 Login and logout audit themselves as security events (operations.SELF_AUDITED). Staff
-back-channel logout (D94, POST /hooks/keycloak/backchannel-logout) isn't built yet: it needs
-PyJWT in the lock (#120) and Anand's 0011 (#112); until then the 5-minute token refresh is the
-backstop for a disabled user.
+back-channel logout (D94, POST /hooks/keycloak/backchannel-logout) is backchannel.py; the
+5-minute token refresh stays the backstop if Keycloak can't reach it.
 """
 
 import hmac
 from datetime import UTC
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
 from app.core import session as sessions
 from app.core.config import Settings
 from app.core.deps import CurrentUser, require
 from app.core.errors import ServiceUnavailable, ValidationFailed, field_error
+from app.core.routing import API_PREFIX
 
 router = APIRouter(tags=["platform"])
 Signed = Annotated[CurrentUser, Depends(require("authenticated"))]
@@ -127,3 +127,7 @@ async def logout(request: Request, user: Signed) -> Response:
     response = Response(status_code=204)
     sessions.clear_session_cookie(response)
     return response
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    app.include_router(router, prefix=API_PREFIX)

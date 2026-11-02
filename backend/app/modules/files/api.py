@@ -1,6 +1,7 @@
 """File service API (contracts/openapi/modules/files.yaml; API_STANDARDS §15).
 
-``createUploadUrl``, ``completeUpload`` and ``createDownloadUrl``. The permission (``require``)
+``createUploadUrl``, ``completeUpload``, ``createDownloadUrl`` and ``downloadFileContent``
+(D105). The permission (``require``)
 is the first dependency, so a caller without it gets 401 or 403 before anything else is
 resolved. Core does the rest of what the contract asks around the endpoints: ``tenant_db``
 claims an Idempotency-Key on ``createUploadUrl`` (x-idempotency: supported) and replays a
@@ -8,24 +9,29 @@ finished one, and the audit rows (x-audit) commit with the endpoint's changes, o
 before the response for the download link (category export). The endpoints have no idempotency
 or audit code of their own. The rules are in service.py.
 
-The store, the scanner, the encryption and the download tokens are dependencies, each a seam
-until its real service exists (storage.py, scanner.py, crypto.py, tokens.py); the operations are
-core's (operations.py). Tests override them all.
+The store, the scanner and the encryption are dependencies (storage.py, scanner.py,
+crypto.py); the operations and the download tokens are core's (operations.py,
+``app.core.download_tokens``). Tests override them all.
 
-The decrypting download (service.serve_content, proposed ``GET /files/{fileId}/content`` on
-#128) has no route yet: core refuses a route that isn't in the contract's operations map.
+``downloadFileContent`` serves a file only through its one-time link: the token, and the same
+user's session (``require("authenticated")``). It and ``createDownloadUrl`` report the file's
+patients for their audit rows (x-audit ``patient: result``; none for an unattached upload);
+core keeps the query string, with its token, out of the logs.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Path, Query, Request, status
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import audit
 from app.core.deps import CurrentUser, require, tenant_db
+from app.core.download_tokens import DownloadTokens, download_tokens
 from app.core.long_running import accepted
 
 from . import schemas, service
@@ -34,9 +40,9 @@ from .operations import Operations, operations
 from .repository import FileRepository, SqlFileRepository
 from .scanner import Scanner, scanner
 from .storage import FileStore, file_store
-from .tokens import DownloadTokens, download_tokens
 
 router = APIRouter(tags=["files"])
+
 
 def repository() -> FileRepository:
     return SqlFileRepository()
@@ -46,6 +52,16 @@ Repo = Annotated[FileRepository, Depends(repository)]
 Store = Annotated[FileStore, Depends(file_store)]
 DB = Annotated[AsyncSession, Depends(tenant_db)]
 FileId = Annotated[UUID, Path(alias="fileId")]
+Crypto = Annotated[FileCrypto, Depends(file_crypto)]
+PatientAudit = Callable[[Request, Iterable[UUID]], None]
+
+
+def patient_audit() -> PatientAudit:
+    """FastAPI dependency: core's ``audit_patients``, naming the patients on the audit row."""
+    return audit.audit_patients
+
+
+Tokens = Annotated[DownloadTokens, Depends(download_tokens)]
 
 
 @router.post("/files/upload-url", operation_id="createUploadUrl",
@@ -63,7 +79,7 @@ async def create_upload_url(
 async def complete_upload(
     user: Annotated[CurrentUser, Depends(require("files:create"))],
     file_id: FileId, repo: Repo, store: Store,
-    scan: Annotated[Scanner, Depends(scanner)], crypto: Annotated[FileCrypto, Depends(file_crypto)],
+    scan: Annotated[Scanner, Depends(scanner)], crypto: Crypto,
     ops: Annotated[Operations, Depends(operations)], db: DB,
 ) -> JSONResponse:
     operation = await service.complete_upload(db, repo, store, scan, crypto, ops, user, file_id)
@@ -74,7 +90,25 @@ async def complete_upload(
             response_model=schemas.DownloadLink, response_model_exclude_none=True)
 async def create_download_url(
     user: Annotated[CurrentUser, Depends(require("files:read"))],
-    file_id: FileId, request: Request, repo: Repo, store: Store,
-    tokens: Annotated[DownloadTokens, Depends(download_tokens)], db: DB,
+    file_id: FileId, request: Request, repo: Repo, tokens: Tokens,
+    audit_patients: Annotated[PatientAudit, Depends(patient_audit)], db: DB,
 ) -> schemas.DownloadLink:
-    return await service.create_download_url(request, db, repo, store, tokens, user, file_id)
+    issued = await service.create_download_url(request, db, repo, tokens, user, file_id)
+    audit_patients(request, sorted(issued.patient_ids))
+    return issued.link
+
+
+@router.get("/files/{fileId}/content", operation_id="downloadFileContent",
+            response_class=StreamingResponse)
+async def download_file_content(
+    user: Annotated[CurrentUser, Depends(require("authenticated"))],
+    file_id: FileId,
+    token: Annotated[str, Query(min_length=32, max_length=512, pattern=r"^[A-Za-z0-9_-]+$")],
+    request: Request, repo: Repo, store: Store, crypto: Crypto, tokens: Tokens,
+    audit_patients: Annotated[PatientAudit, Depends(patient_audit)], db: DB,
+) -> StreamingResponse:
+    content = await service.serve_content(request, db, repo, store, crypto, tokens, user,
+                                          file_id, token)
+    audit_patients(request, sorted(content.patient_ids))
+    return StreamingResponse(content.body, media_type=content.content_type,
+                             headers=content.headers)

@@ -37,6 +37,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
+from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql.expression import bindparam
@@ -44,10 +45,12 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.core.config import Settings
 from app.core.crypto import decrypt_field, encrypt_field
 from app.core.errors import AppError, Conflict, ValidationFailed, field_error
 from app.core.operations import Operation
 from app.core.request_id import current_request_id
+from app.core.safe_logging import log_failure
 
 if TYPE_CHECKING:
     from app.core.db import Database
@@ -204,7 +207,7 @@ async def _release(db: "Database", claim: Claim) -> None:
         await _expire(db, claim, 0)
     except Exception:
         # The lease still runs out, so the key frees itself.
-        log.exception("Could not release an Idempotency-Key claim (request %s)",
+        log_failure(log, "Could not release an Idempotency-Key claim (request %s)",
                       current_request_id())
 
 
@@ -226,7 +229,7 @@ async def _finish(app: Any, claim: Claim, status: int, headers: list[tuple[bytes
                 "retention": RETENTION.total_seconds()})
             await session.commit()
     except Exception:
-        log.exception("Could not store an idempotent response (request %s, status %s)",
+        log_failure(log, "Could not store an idempotent response (request %s, status %s)",
                       current_request_id(), status)
         if status >= 400:
             await _release(db, claim)  # nothing was done: a retry may run again
@@ -234,7 +237,7 @@ async def _finish(app: Any, claim: Claim, status: int, headers: list[tuple[bytes
         try:
             await _expire(db, claim, RETENTION.total_seconds())  # done: never run it twice
         except Exception:
-            log.exception("Could not hold an Idempotency-Key claim (request %s)",
+            log_failure(log, "Could not hold an Idempotency-Key claim (request %s)",
                           current_request_id())
 
 
@@ -287,3 +290,13 @@ class IdempotencyMiddleware:
             if claim is not None and not done:
                 await _release(scope["app"].state.db, claim)  # the error becomes a 500
             raise
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """Outside the audit middleware, so it stores the final status, audit 500s included."""
+    app.add_middleware(IdempotencyMiddleware)
+
+
+def register_replays(app: FastAPI, settings: Settings) -> None:
+    """The stored answer for a finished key, after core's own error handlers."""
+    app.add_exception_handler(Replay, replay_response)

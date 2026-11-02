@@ -2,7 +2,8 @@
 
 Field names are the contract's camelCase (aliases); request bodies the contract closes
 (`additionalProperties: false`) forbid unknown fields, so a typo is a 422, not a silent drop.
-Only the operations built so far are here (PR-1, then coverages and consents); later PRs add theirs.
+Only the operations built so far are here (PR-1, coverages and consents, and pre-registration,
+D96, #89); later PRs add theirs.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -405,3 +406,85 @@ class Consent(Out):
 class ConsentList(Out):
     items: list[Consent]
     next_cursor: str | None = None
+
+# ------------------------------------------------------------------- pre-registration (D96, #89)
+EmailAddress = Annotated[str, _text(254, pattern=r"^[^@\s]+@[^@\s]+$")]
+IdDocumentType = Literal["drivers-license", "state-id", "passport", "military-id", "other"]
+RejectionReason = Literal["duplicate", "incomplete", "not-our-practice", "spam", "other"]
+PreRegistrationStatus = Literal["pending", "accepted", "rejected"]
+
+
+class PreRegistrationInsurance(Closed):
+    payer_name: Annotated[str, _text(200)] | None = None
+    member_id: Annotated[str, _text(80)] | None = None
+    group_number: Annotated[str, _text(80)] | None = None
+
+
+class PreRegistrationDetails(Closed):
+    """What a person types into the public form: patient-reported until the front desk checks
+    it against ID (FR-PAT-02)."""
+
+    name: HumanName
+    birth_date: date
+    gender: Gender | None = None
+    phones: Annotated[list[Phone], Field(min_length=1, max_length=3)] | None = None
+    email: EmailAddress | None = None
+    address: Address | None = None
+    preferred_language: LanguageTag | None = None
+    insurance: PreRegistrationInsurance | None = None
+    reason_for_visit: Annotated[str, _text(1000)] | None = None
+
+    @model_validator(mode="after")
+    def _a_way_to_reach_them(self) -> PreRegistrationDetails:
+        if not self.phones and not self.email:
+            raise ValueError("a phone or an email is required")
+        return self
+
+
+class PreRegistrationCreate(Closed):
+    details: PreRegistrationDetails
+    contact_consent: Literal[True]
+    bot_check: Annotated[str, _text(4000)]
+
+
+class PreRegistrationRejection(Out):
+    reason_code: RejectionReason
+    reason_text: str | None = None
+
+
+class PreRegistrationIdentityCheck(Out):
+    id_document_type: IdDocumentType
+    verified_by: UUID
+    verified_at: datetime
+
+
+class PreRegistration(Out):
+    id: UUID
+    status: PreRegistrationStatus
+    details: PreRegistrationDetails
+    entry_source: Literal["patient-reported"] = "patient-reported"
+    submitted_at: datetime
+    decided_at: datetime | None = None
+    decided_by: UUID | None = None
+    patient_id: UUID | None = None
+    rejection: PreRegistrationRejection | None = None
+    identity_check: PreRegistrationIdentityCheck | None = None
+    delete_after: datetime | None = None
+
+
+class PreRegistrationList(Out):
+    items: list[PreRegistration]
+    next_cursor: str | None = None
+
+
+class PreRegistrationAccept(Closed):
+    identity_verified: Literal[True]
+    id_document_type: IdDocumentType
+    patient_id: UUID | None = None
+    duplicate_check: Literal["default", "override"] = "default"
+    duplicate_override_reason: Annotated[str, _text(500)] | None = None
+
+
+class PreRegistrationReject(Closed):
+    reason_code: RejectionReason
+    reason_text: Annotated[str, _text(500)] | None = None
