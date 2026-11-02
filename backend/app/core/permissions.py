@@ -259,6 +259,11 @@ PATIENT_PERMISSIONS: frozenset[str] = _expand(
 )
 
 
+def permissions_of(roles: Iterable[str]) -> frozenset[str]:
+    """The effective permissions of these roles, for GET /me (unknown roles add nothing)."""
+    return frozenset().union(*(ROLE_PERMISSIONS.get(role, frozenset()) for role in roles))
+
+
 def roles_allow(roles: Iterable[str], permission: str) -> bool:
     if permission == AUTHENTICATED:
         return True
