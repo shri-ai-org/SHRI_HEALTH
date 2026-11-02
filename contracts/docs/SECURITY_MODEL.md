@@ -140,7 +140,7 @@ The per-endpoint assignment is in [ENDPOINT_INVENTORY.md](ENDPOINT_INVENTORY.md)
 | Communications and dashboard (Minalini) | `message-templates:read\|create\|update`, `communication-preferences:read\|update`, `communications:read`, `operations-dashboard:read` |
 | Pre-registration (Vimal, D96) | `pre-registrations:read`, `pre-registrations:accept`, `pre-registrations:reject` (FD, ADM; T47, in §4.3 with core since #110) |
 | Patient portal, B8a (Vimal; sign-in, enrollment and factor reset Thulasi; D84, D89) | Role `PAT` only: `portal-profile:read`, `portal-profile:request-change`, `portal-appointments:read\|create\|cancel\|reschedule`, `portal-booking:read`, `portal-records:read`. Staff: `portal-accounts:read`, `portal-invitations:create\|revoke`, `portal-accounts:reset-factors`, `portal-accounts:disable\|enable` (ADM; D92). Proposed grants in NOTE_FOR_THULASI T45; they join §4.3 in the same change as core, as for T42 |
-| Check-out and follow-up (Vimal, D98) | `appointments:check-out` (FD, ADM), `follow-ups:decline` (FD, ADM), `after-visit-summaries:read` (FD, MA, RN, MD, APP, ADM; read the latest after-visit summary to print it). Proposed in NOTE_FOR_THULASI T50; they join §4.3 with core |
+| Check-out and follow-up (Vimal, D98) | `appointments:check-out` (FD, ADM), `follow-ups:decline` (FD, ADM), `after-visit-summaries:read` (FD, MA, RN, MD, APP, ADM; read the latest after-visit summary to print it). Proposed in NOTE_FOR_THULASI T50; in §4.3 and core since T50 |
 
 ### 4.3 Draft role-to-permission matrix
 
@@ -175,6 +175,8 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `slots:read`, `appointments:read`, `status-board:read` | ✓ | ✓ | ✓ | ✓ | ✓ | R | ✓ | – | – | ✓ (status-board only, shared view; D47) |
 | `appointments:create\|update\|cancel\|check-in` (D67: clinicians are read-only on appointments and request changes through inbox tasks) | ✓ | – | – | – | – | – | ✓ | – | – | – |
 | `appointments:undo-check-in`, `appointments:reschedule` (D55, D61; in core since #21) | ✓ | – | – | – | – | – | ✓ | – | – | – |
+| `appointments:check-out`, `follow-ups:decline` (D98, T50: check-out at the desk; the clinician withdraws a follow-up instead, D67) | ✓ | – | – | – | – | – | ✓ | – | – | – |
+| `after-visit-summaries:read` (D98, T50: print the latest summary without creating one) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | – | – | – |
 | `appointments:status` (roomed, with provider, checked out) ‡ | ✓ (checked out) | ✓ (roomed) | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `timeline:read`, `encounters:read`, `notes:read`, `vitals:read`, history `:read` ‡ | – | ✓ | ✓ | ✓ | ✓ | R (signed notes, diagnoses) | – | R (investigations) | – | – |
 | `vitals:create`, `allergies:create\|update` ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
@@ -226,6 +228,7 @@ Notes on the matrix:
 - 2026-10-24 (D49–D67): the `appointments:create|update|cancel|check-in` row had ADM `–` and CO `✓`, the reverse of DATA_OWNERSHIP §5.1 (FD, ADM) and of core; corrected to ADM `✓`, CO `–`. Duplicate review moved to ADM only (D64). Provider self-service on schedules is P1 (D66).
 - 2026-10-24 (post-merge review of core PR #21): the clinician-writes row had APP `–` and BIL `✓`, a column shift from adding the DSP column on 2026-10-23; corrected to APP `✓`, BIL `–`, as in core. `medications:discontinue` (MD, APP) added to the prescribing row. APP's billing cell reads `superbills:read` only, as MD's and as core. BIL reads billing documents through `documents:read` only, with no `fax-inbox:read` (D71).
 - 2026-10-26 (T42; batch 2 plan Q2–Q4, D73): RN signs and writes addenda for nursing notes only; the notes service refuses other note types for RN (DATA_OWNERSHIP §5.3). `note-templates:read` lets clinicians pick a practice or personal template (the D49 pattern); practice templates are still written under `practice-setup:create|update`. A personal template is created with `note-templates:create-personal`; the server sets the owner, and only the owner edits it.
+- 2026-11-02 (T50, D98): `appointments:check-out` and `follow-ups:decline` (FD, ADM) and `after-visit-summaries:read` (FD, MA, RN, MD, APP, ADM) join the matrix, with core.
 
 ### 4.4 Matrix gaps filled in core — gap, pending clinical advisors
 
