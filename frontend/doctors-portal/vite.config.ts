@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+import { realApiProxy, realApiSettings, sessionStub } from '../dev/realApi.ts'
+
 // ─── Build stamp ─────────────────────────────────────────────────────────────
 // Shown at the foot of the sidebar so anyone can tell which version they are
 // looking at: "V_10 10-01" — V_, the day and month (India time), then which
@@ -32,6 +34,10 @@ function buildCommit(): string {
   }
 }
 
+// SHRI_HEALTH: `SHRI_API=real npm run dev` sends /api/v1 to the local stack, signed in as
+// SHRI_DEV_USER through X-Dev-User (../dev/realApi.ts, #109).
+const realApi = realApiSettings(process.env)
+
 export default defineConfig({
   /**
    * Where the built app is mounted. The dev server and the harness run at `/`;
@@ -40,7 +46,7 @@ export default defineConfig({
    * and index.html all read this, so nothing else needs to know.
    */
   base: process.env.PORTAL_BASE ?? '/',
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), ...(realApi?.stubSessions ? [sessionStub(realApi)] : [])],
   define: {
     __BUILD_STAMP__: JSON.stringify(buildStamp(new Date())),
     __BUILD_COMMIT__: JSON.stringify(buildCommit()),
@@ -61,5 +67,6 @@ export default defineConfig({
     port: 5180,
     strictPort: true,
     host: true,
+    ...(realApi ? { proxy: { '/api/v1': realApiProxy(realApi) } } : {}),
   },
 })
