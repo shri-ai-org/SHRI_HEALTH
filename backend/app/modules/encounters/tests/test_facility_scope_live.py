@@ -8,6 +8,7 @@ facility_scope.py runs it). Synthetic data only."""
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 import pytest
 
@@ -64,9 +65,10 @@ def _visit(client: Any, practice: Practice, *, at_a2: bool, front_desk: str, nur
             "draft_etag": draft.headers["ETag"]}
 
 
-def _calls(user: str, nurse: str, v: dict[str, Any], template: str,
+def _calls(user: str, nurse: str, v: dict[str, Any], template: str, patient: UUID,
            mine: dict[str, Any] | None = None) -> list[Row]:
-    """Every by-ID operation on visit ``v``, each expected to be 404 for ``user``."""
+    """Every by-ID operation on visit ``v`` of ``patient``, each expected to be 404 for
+    ``user``."""
     enc = f"{API}/encounters/{v['encounter']}"
     draft, signed = f"{API}/notes/{v['draft']}", f"{API}/notes/{v['signed']}"
     rows = [
@@ -74,6 +76,9 @@ def _calls(user: str, nurse: str, v: dict[str, Any], template: str,
         Row("updateEncounter", user, "PATCH", enc, 404, json={"reasons": [{"text": "x"}]},
             headers={"If-Match": v["etag"], **MERGE}),
         Row("recordVitals", nurse, "POST", f"{enc}/vitals", 404, json=VITALS),
+        Row("markVitalEnteredInError", user, "POST",
+            f"{API}/patients/{patient}/vitals/{v['vitals'][0]}/entered-in-error", 404,
+            json={"reason": "Wrong chart."}),
         Row("addEncounterDiagnosis", user, "POST", f"{enc}/diagnoses", 404,
             json=_icd("J06.9")),
         Row("removeEncounterDiagnosis", user, "POST",
@@ -136,11 +141,11 @@ def _rows(client: Any, practice: Practice, users: dict[str, CurrentUser]) -> lis
         Row("listEncounterNotes", "md", "GET", f"{API}/encounters/{mine['encounter']}/notes",
             200, hidden=hidden, shown=(mine["signed"], mine["draft"])),
         # --- every by-ID operation on the A2 visit: 404, nothing changes
-        *_calls("md", "ma", theirs, template, mine),
+        *_calls("md", "ma", theirs, template, kaia, mine),
         # --- clinic B: clinic A's visit and patient are 404 (RLS)
         Row("listPatientEncounters", "md-b", "GET", f"{API}/patients/{kaia}/encounters", 404),
         Row("listPatientVitals", "md-b", "GET", f"{API}/patients/{kaia}/vitals", 404),
-        *_calls("md-b", "md-b", mine, template),
+        *_calls("md-b", "md-b", mine, template, kaia),
     ]
 
 
