@@ -1,0 +1,61 @@
+{
+  "id": "visit-01",
+  "synthetic": true,
+  "specialty": "neurology",
+  "visitType": "follow-up",
+  "template": "FOLLOW-UP",
+  "noteType": "11506-3",
+  "patient": {"name": "Mai623 Nguyen418", "age": 41, "sex": "female"},
+  "clinician": "Dr. Avery401 Lindqvist58",
+  "transcript": [
+    {"speaker": "clinician", "text": "Good morning, Ms. Nguyen. It's been about three months since we started topiramate. How have the headaches been?"},
+    {"speaker": "patient", "text": "Better overall. I was having around twelve headache days a month, and now it's maybe five or six."},
+    {"speaker": "clinician", "text": "That's a good drop. Are they still the same kind of headache, one-sided and throbbing?"},
+    {"speaker": "patient", "text": "Yes, mostly on the left side, throbbing, and light bothers me. No aura, same as before."},
+    {"speaker": "clinician", "text": "And when you get one, what do you take?"},
+    {"speaker": "patient", "text": "The sumatriptan 50 mg. It works within an hour most of the time. I used it five times this month."},
+    {"speaker": "clinician", "text": "Any side effects from the topiramate? Some people notice tingling in their fingers or trouble finding words."},
+    {"speaker": "patient", "text": "A little tingling in my fingers the first two weeks, but that's gone. No trouble with words."},
+    {"speaker": "clinician", "text": "Good. How are sleep and caffeine?"},
+    {"speaker": "patient", "text": "I'm sleeping about seven hours. I cut down to one coffee in the morning."},
+    {"speaker": "clinician", "text": "Any new weakness, vision changes, or a sudden worst headache of your life?"},
+    {"speaker": "patient", "text": "No, nothing like that."},
+    {"speaker": "clinician", "text": "Let me examine you. Blood pressure today is 118 over 76. Pupils are equal and reactive, the fundi look normal with no papilledema. Cranial nerves are intact, strength is 5 out of 5 throughout, reflexes are symmetric, and gait is normal."},
+    {"speaker": "clinician", "text": "So this is chronic migraine without aura, improving on topiramate. Let's keep topiramate at 50 mg twice a day, and sumatriptan 50 mg as needed, but no more than nine days a month so you don't get rebound headaches."},
+    {"speaker": "patient", "text": "That makes sense."},
+    {"speaker": "clinician", "text": "Keep your headache diary, and we'll see you back in three months. If you get a sudden severe headache, new weakness, or vision loss, go to the emergency department."},
+    {"speaker": "patient", "text": "Will do. Thank you."}
+  ],
+  "referenceNote": {
+    "sections": [
+      {"code": "10154-3", "title": "Chief complaint", "sequence": 1, "required": true,
+       "text": "Follow-up of chronic migraine, three months after starting topiramate."},
+      {"code": "10164-2", "title": "Interval history", "sequence": 2, "required": true,
+       "text": "Headache days down from about twelve a month to five or six a month on topiramate. Headaches are left-sided and throbbing, and light bothers her; no aura. Sumatriptan 50 mg works within an hour; used five times this month. Tingling in the fingers in the first two weeks of topiramate, now gone; no trouble finding words. Sleeping about seven hours; cut down to one coffee in the morning. No new weakness, no vision changes, no sudden worst headache."},
+      {"code": "29545-1", "title": "Physical exam", "sequence": 3, "required": true,
+       "text": "Blood pressure 118/76. Pupils equal and reactive. Fundi normal, no papilledema. Cranial nerves intact. Strength 5/5 throughout. Reflexes symmetric. Gait normal."},
+      {"code": "51847-2", "title": "Assessment and plan", "sequence": 4, "required": true,
+       "text": "Chronic migraine without aura, improving on topiramate. Continue topiramate 50 mg twice a day. Continue sumatriptan 50 mg as needed, no more than nine days a month to avoid rebound headaches. Keep the headache diary. Follow-up in three months."},
+      {"code": "69730-0", "title": "Patient instructions", "sequence": 5, "required": false,
+       "text": "Keep taking topiramate 50 mg twice a day. Take sumatriptan only as needed, no more than nine days a month. Keep your headache diary. Go to the emergency department for a sudden severe headache, new weakness, or vision loss. Return in three months."}
+    ]
+  },
+  "keyFacts": [
+    {"id": "f1", "section": "10164-2", "anyOf": ["five or six", "5-6", "5 to 6", "five to six"]},
+    {"id": "f2", "section": "10164-2", "anyOf": ["no aura", "without aura"]},
+    {"id": "f3", "section": "29545-1", "anyOf": ["118/76", "118 over 76"]},
+    {"id": "f4", "section": "29545-1", "anyOf": ["papilledema"]},
+    {"id": "f5", "section": "51847-2", "anyOf": ["50 mg twice", "50 mg bid", "50 mg two times"]},
+    {"id": "f6", "section": "51847-2", "anyOf": ["nine days", "9 days"]},
+    {"id": "f7", "section": "51847-2", "anyOf": ["three months", "3 months"]},
+    {"id": "f8", "section": "69730-0", "anyOf": ["emergency"]}
+  ],
+  "mustNotInvent": [
+    {"id": "n1", "description": "Nausea or vomiting with the headaches was never mentioned.", "anyOf": ["nausea", "vomiting"]},
+    {"id": "n2", "description": "No imaging was discussed or ordered.", "anyOf": ["MRI", "CT scan", "imaging"]},
+    {"id": "n3", "description": "No other preventive medication was discussed.", "anyOf": ["propranolol", "amitriptyline", "botox"]},
+    {"id": "n4", "description": "Weight was not measured or discussed.", "anyOf": ["weight", "BMI"]}
+  ],
+  "conflicts": [],
+  "medicalTerms": ["migraine", "topiramate", "sumatriptan", "aura", "papilledema", "rebound"]
+}

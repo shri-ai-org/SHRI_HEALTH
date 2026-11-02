@@ -1,0 +1,64 @@
+{
+  "id": "visit-05",
+  "synthetic": true,
+  "specialty": "cardiology",
+  "visitType": "follow-up",
+  "template": "FOLLOW-UP",
+  "noteType": "11506-3",
+  "patient": {"name": "Harold44 Whitfield907", "age": 71, "sex": "male"},
+  "clinician": "Dr. Rosalind812 Achterberg36",
+  "transcript": [
+    {"speaker": "clinician", "text": "Good afternoon, Mr. Whitfield. This is your six-month check on the atrial fibrillation. How have you been feeling?"},
+    {"speaker": "patient", "text": "Pretty good. I notice my heart fluttering maybe once or twice a month, for a few minutes, and then it settles."},
+    {"speaker": "clinician", "text": "Any shortness of breath, fainting, or swelling in your legs?"},
+    {"speaker": "patient", "text": "No. I still walk the dog every morning, about a mile."},
+    {"speaker": "clinician", "text": "You're on apixaban 5 mg twice a day and metoprolol succinate 50 mg once a day. Any bleeding?"},
+    {"speaker": "patient", "text": "No bleeding."},
+    {"speaker": "clinician", "text": "No nosebleeds, blood in the urine, or dark stools?"},
+    {"speaker": "patient", "text": "No. Well, my gums bleed a little when I brush, I guess. It stops quickly."},
+    {"speaker": "clinician", "text": "That's common on a blood thinner. Use a soft toothbrush and mention it to your dentist. Have you missed any apixaban doses?"},
+    {"speaker": "patient", "text": "No, I use a pill box."},
+    {"speaker": "clinician", "text": "Your heart rate is 72 and irregularly irregular, blood pressure is 128 over 78. Lungs are clear, and there's no leg edema."},
+    {"speaker": "clinician", "text": "Your atrial fibrillation is well rate controlled with only brief, infrequent palpitations. We'll continue apixaban 5 mg twice a day and metoprolol succinate 50 mg once a day. I'll order blood work, a complete blood count and a kidney panel, to make sure the apixaban dose is still right."},
+    {"speaker": "patient", "text": "Okay. Anything I should watch for?"},
+    {"speaker": "clinician", "text": "Call us if the fluttering lasts more than an hour or you feel faint. Go to the emergency department for black stools, vomiting blood, or any bleeding that won't stop. We'll see you again in six months."},
+    {"speaker": "patient", "text": "Thank you."}
+  ],
+  "referenceNote": {
+    "sections": [
+      {"code": "10154-3", "title": "Chief complaint", "sequence": 1, "required": true,
+       "text": "Six-month follow-up of atrial fibrillation."},
+      {"code": "10164-2", "title": "Interval history", "sequence": 2, "required": true,
+       "text": "Heart fluttering once or twice a month for a few minutes, then settles. No shortness of breath, fainting, or leg swelling. Walks the dog about a mile every morning. On apixaban 5 mg twice a day and metoprolol succinate 50 mg once a day; uses a pill box, no missed doses. Gums bleed a little when he brushes and it stops quickly; no nosebleeds, no blood in the urine, no dark stools."},
+      {"code": "29545-1", "title": "Physical exam", "sequence": 3, "required": true,
+       "text": "Heart rate 72, irregularly irregular. Blood pressure 128/78. Lungs clear. No leg edema."},
+      {"code": "51847-2", "title": "Assessment and plan", "sequence": 4, "required": true,
+       "text": "Atrial fibrillation, well rate controlled, with brief, infrequent palpitations. Continue apixaban 5 mg twice a day and metoprolol succinate 50 mg once a day. Complete blood count and kidney panel to check the apixaban dose. Gum bleeding when brushing: soft toothbrush, mention it to the dentist. Follow-up in six months."},
+      {"code": "69730-0", "title": "Patient instructions", "sequence": 5, "required": false,
+       "text": "Keep taking apixaban 5 mg twice a day and metoprolol succinate 50 mg once a day. Use a soft toothbrush and mention the gum bleeding to your dentist. Call us if the fluttering lasts more than an hour or you feel faint. Go to the emergency department for black stools, vomiting blood, or bleeding that won't stop. Return in six months."}
+    ]
+  },
+  "keyFacts": [
+    {"id": "f1", "section": "10164-2", "anyOf": ["once or twice a month"]},
+    {"id": "f2", "section": "10164-2", "anyOf": ["gums bleed", "gum bleeding"]},
+    {"id": "f3", "section": "29545-1", "anyOf": ["irregularly irregular"]},
+    {"id": "f4", "section": "29545-1", "anyOf": ["128/78", "128 over 78"]},
+    {"id": "f5", "section": "51847-2", "anyOf": ["apixaban 5 mg twice", "apixaban 5 mg bid"]},
+    {"id": "f6", "section": "51847-2", "anyOf": ["metoprolol succinate 50 mg"]},
+    {"id": "f7", "section": "51847-2", "anyOf": ["complete blood count", "CBC"]},
+    {"id": "f8", "section": "51847-2", "anyOf": ["six months", "6 months"]}
+  ],
+  "mustNotInvent": [
+    {"id": "n1", "description": "No other blood thinner was discussed.", "anyOf": ["warfarin", "rivaroxaban", "aspirin"]},
+    {"id": "n2", "description": "No procedure was discussed.", "anyOf": ["ablation", "cardioversion", "pacemaker"]},
+    {"id": "n3", "description": "No echocardiogram or ECG was ordered.", "anyOf": ["echocardiogram", "echo", "EKG", "ECG", "Holter"]},
+    {"id": "n4", "description": "Dizziness and chest pain were not reported.", "anyOf": ["dizziness", "dizzy", "chest pain"]}
+  ],
+  "conflicts": [
+    {"id": "c1", "description": "He first says no bleeding, then mentions his gums bleed a little when brushing.",
+     "turns": [5, 7],
+     "resolvedAnyOf": ["gums bleed", "gum bleeding"],
+     "supersededAnyOf": ["no bleeding", "denies bleeding", "denies any bleeding"]}
+  ],
+  "medicalTerms": ["atrial fibrillation", "apixaban", "metoprolol succinate", "irregularly irregular", "complete blood count", "palpitations", "edema"]
+}
