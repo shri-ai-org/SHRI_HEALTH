@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "workspaces": [
+    "front-office",
+    "doctors-portal"
+  ],
   "engines": {
     "node": ">=24.22.0"
   },
@@ -47,5 +51,11 @@
     "typescript-eslint": "8.71.2",
     "vite": "8.3.4",
     "vitest": "5.0.5"
+  },
+  "overrides": {
+    "framer-motion@13.4.4": {
+      "motion-dom": "13.4.4",
+      "motion-utils": "13.3.0"
+    }
   }
 }

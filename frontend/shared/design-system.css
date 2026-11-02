@@ -19,10 +19,6 @@
    download when a page contains that script.
 ──────────────────────────────────────────────────────────────────── */
 @import '@fontsource-variable/plus-jakarta-sans';
-@import '@fontsource-variable/noto-sans-kannada';
-@import '@fontsource-variable/noto-sans-devanagari';
-@import '@fontsource-variable/noto-sans-tamil';
-@import '@fontsource-variable/noto-sans-malayalam';
 
 @import 'tailwindcss' source(none);
 
