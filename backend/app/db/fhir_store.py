@@ -688,6 +688,14 @@ class FhirStore(Protocol):
         its link goes, freeing its rank; the ranks after it close up. Returns the encounter."""
         ...
 
+    async def diagnosis_entered_in_error(self, db: AsyncSession, condition_id: uuid.UUID,
+                                         reason: Reason, *, if_version: int | None = None
+                                         ) -> Written:
+        """After signing (D14, D24): the Condition becomes entered-in-error with its Provenance;
+        its rank link stays, so the signed visit keeps its record of what was diagnosed. Returns
+        the Condition."""
+        ...
+
     # The medication list: a reported MedicationRequest, intent plan (D28; demo step 7)
     async def record_medication(self, db: AsyncSession, data: MedicationIn) -> Written: ...
 
@@ -1460,6 +1468,18 @@ class SqlFhirStore:
             later.rank -= 1
             await db.flush()
         return await _written(db, enc)
+
+    async def diagnosis_entered_in_error(self, db: AsyncSession, condition_id: uuid.UUID,
+                                         reason: Reason, *, if_version: int | None = None
+                                         ) -> Written:
+        reason = _require_reason(reason)
+        cond = await _locked(db, Condition, condition_id, if_version)
+        if cond.verification_status == "entered-in-error":
+            raise InvalidTransition(cond.verification_status)
+        cond.verification_status, cond.clinical_status = "entered-in-error", None
+        written = await _written(db, cond)
+        await _nullify_provenance(db, "Condition", written, reason)
+        return written
 
     # ------------------------------------------------------------------------- Medication list
     async def record_medication(self, db: AsyncSession, data: MedicationIn) -> Written:
