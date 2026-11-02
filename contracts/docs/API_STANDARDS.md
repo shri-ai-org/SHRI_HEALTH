@@ -70,7 +70,7 @@ Values used in more than one rule are defined once here.
 | POST (`…/search`) | Search involving PHI | 200 | Not a create; never cached |
 | POST (`…/{id}/<action>`) | Run an action | 200 + the updated resource, or 202 + operation (§13) | |
 | PATCH | Partial update, JSON Merge Patch | 200 + updated resource | §7.3; `If-Match` required (§11) |
-| PUT | Replace a singleton sub-resource | 200 | Only where the catalogue says so: `/patients/{patientId}/preferred-pharmacy`, `/me/favorites`, `/admin/ai-settings`, `/users/{userId}/roles` |
+| PUT | Replace a singleton sub-resource | 200 | Only where the catalogue says so: `/patients/{patientId}/preferred-pharmacy`, `/me/favorites`, `/ai-settings`, `/users/{userId}/roles` |
 | DELETE | **Not used** in the MVP contract | — | Clinical: no DELETE (CAT, TW §7, VD-G1). Non-clinical: none needed in the catalogue; any future DELETE needs an ADR |
 
 Allowed error statuses are listed in §9.3. `204 No Content` is used only for `POST /auth/logout` (**PROPOSED**: nothing to return).
