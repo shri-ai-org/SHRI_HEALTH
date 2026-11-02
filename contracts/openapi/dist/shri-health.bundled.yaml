@@ -640,7 +640,7 @@ paths:
     post:
       operationId: receiveClearinghouseMessage
       summary: Receive a clearinghouse message
-      description: 'A message from the clearinghouse, for the demo the simulated payer: a 271 answering an eligibility check (contracts/partners/clearinghouse). Verified by core before anything is read (API_STANDARDS §16.1): the Standard Webhooks v1 signature (HMAC-SHA256 with the partner''s secret over `webhook-id`, `webhook-timestamp`, `Shri-Clinic-Id` and the raw body, joined by dots), a timestamp within 5 minutes, and `webhook-id` used once per clinic and partner. The clinic comes only from the signed `Shri-Clinic-Id`. The message is recorded as an inbound partner message and handed to the module that owns its `messageType` in the same request; nothing about the outcome is returned. Not for browsers, so it is left out of the generated client.'
+      description: 'A message from the clearinghouse, for the demo the simulated payer: a 271 answering an eligibility check (contracts/partners/clearinghouse). Verified by core before anything is read (API_STANDARDS §16.1): the Standard Webhooks v1 signature (HMAC-SHA256 with the partner''s secret over `webhook-id`, `webhook-timestamp`, `Shri-Clinic-Id` and the raw body, joined by dots), a timestamp within 5 minutes, and `webhook-id` used once per clinic and partner. The clinic comes only from the signed `Shri-Clinic-Id`. The message is recorded as an inbound partner message; its `correlationId` must name one of our requests to this partner from the same clinic, and it is then handed to the module that owns its `messageType` in the same request. Nothing about the outcome is returned. Not for browsers, so it is left out of the generated client.'
       tags:
         - partner-callbacks
       x-owner: thulasi
@@ -22067,20 +22067,20 @@ components:
             - member-not-found
             - error
           description: '271 only: the eligibility answer.'
-          x-phi: clinical
+          x-phi: none
         plan:
           type: object
           maxProperties: 20
           description: '271 only: the plan (the clearinghouse partner schema).'
-          x-phi: identifier
+          x-phi: financial
         benefits:
           type: array
-          maxItems: 100
+          maxItems: 200
           items:
             type: object
             maxProperties: 20
           description: '271 only: the benefit lines (the clearinghouse partner schema).'
-          x-phi: clinical
+          x-phi: financial
         errors:
           type: array
           maxItems: 20
@@ -22095,7 +22095,7 @@ components:
             - accepted
             - rejected
           description: 'RxStatus only: the pharmacy''s answer.'
-          x-phi: clinical
+          x-phi: none
         rejection:
           type: object
           maxProperties: 10
