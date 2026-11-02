@@ -9,6 +9,7 @@ overbook, the 31-day range, the shared board, restricted charts).
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 import uuid
 from datetime import timedelta
@@ -104,6 +105,47 @@ def test_free_times_leave_out_booked_ones(client: Any, practice: Practice) -> No
     new_visits = client("fd").get(f"{API}/slots", params={
         **params, "appointmentTypeId": str(practice.types["NEW"])}).json()["items"]
     assert all(s["endAt"] > s["startAt"] for s in new_visits) and len(new_visits) < 23
+
+
+def test_a_rule_ending_at_2400_gives_slots_up_to_midnight(client: Any,
+                                                           practice: Practice) -> None:
+    """PostgreSQL's ``time`` allows 24:00 (the end of the day) and Python's can't hold it: a
+    rule seeded with it directly (practice setup's own write doesn't exist yet) must give slots
+    up to midnight, and a booking of the last one, never a 500."""
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    db = setup_session(admin, practice.clinic)
+    try:
+        db.execute(text("""
+            INSERT INTO admin.schedule_availability_rule
+                (id, tenant_id, schedule_id, day_of_week, start_time, end_time, slot_minutes,
+                 location_id, effective_from, created_at, updated_at)
+            SELECT gen_random_uuid(), tenant_id, schedule_id, day_of_week, TIME '22:00',
+                   TIME '24:00', slot_minutes, location_id, effective_from, now(), now()
+              FROM admin.schedule_availability_rule ru
+             WHERE ru.day_of_week = 'mon' AND ru.schedule_id IN (
+                   SELECT id FROM clinical.schedule WHERE ext_facility_id = :facility)"""),
+                   {"facility": practice.facility})
+        db.commit()
+    finally:
+        db.close()
+        admin.dispose()
+    params = {"date": practice.day.isoformat(), "facilityId": str(practice.facility),
+              "providerId": str(practice.provider), "limit": 100}
+    found = client("fd").get(f"{API}/slots", params=params)
+    assert found.status_code == 200, found.text
+    items = found.json()["items"]
+    assert len(items) == 24 + 6  # 9:00–17:00 and 22:00–24:00, 20 minutes
+    midnight = dt.datetime.fromisoformat(local(practice.day + timedelta(days=1), 0))
+    last = items[-1]
+    assert dt.datetime.fromisoformat(last["startAt"]) == midnight - timedelta(minutes=20)
+    assert dt.datetime.fromisoformat(last["endAt"]) == midnight
+    booked = client("fd").post(f"{API}/appointments", json=_booking(practice, hour=23,
+                                                                    minute=40))
+    assert booked.status_code == 201, booked.text
+    across = client("fd").post(f"{API}/appointments", json=_booking(
+        practice, patient="marcus", hour=23, minute=50))  # would end at 0:10, the next day
+    assert across.status_code == 422 and _code(across) == "business-rule-violation", across.text
+    assert len(client("fd").get(f"{API}/slots", params=params).json()["items"]) == 29
 
 
 def test_free_times_refuse(client: Any, practice: Practice) -> None:
