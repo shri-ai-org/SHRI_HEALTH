@@ -3341,7 +3341,7 @@ components:
           maxItems: 12
           items:
             $ref: '#/components/schemas/VitalEntry'
-          description: The vitals, at most one per type.
+          description: The vitals, at most one per type. An empty list is valid and records nothing (`201` with an empty `vitals`).
           x-phi: clinical
     VitalsRecorded:
       description: The vitals just recorded.
