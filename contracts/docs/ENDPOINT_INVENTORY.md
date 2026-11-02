@@ -200,15 +200,15 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 
 | # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 107 | POST | `/encounters/{encounterId}/audio` | V | F+Ad | `encounter-audio:create` | ai | S | | | AI-01 (incl. uploaded audio) | B7 | Body references `fileId`s; recording consent checked |
-| 108 | POST | `/ai/transcriptions` | V | Ad | `transcriptions:create` | ai | S | | ✓ | AI-01 | B7 | |
-| 109 | GET | `/ai/transcriptions/{transcriptionId}` | V | Ad | `transcriptions:read` | pr | – | | | AI-01 | B7 | |
-| 110 | POST | `/ai/note-drafts` | V | Ad→Cl | `note-drafts:create` | ai | S | | ✓ | AI-01 | B7 | Result is a draft note (VD-G11) |
-| 111 | POST | `/ai/chart-summaries` | V | Ad | `chart-summaries:create` | ai | S | | ✓ | AI-02 | B7 | |
-| 112 | GET | `/ai/chart-summaries/{chartSummaryId}` | V | Ad | `chart-summaries:read` | pr | – | | | AI-02 | B7 | **New** (result of the operation) |
-| 113 | POST | `/ai/suggestions/{suggestionId}/decision` | V | Ad | `ai-suggestions:decision` | ai | S | | | §3.4 traceability | B7 | |
-| 114 | GET | `/admin/ai-settings` | V | Ad | `ai-settings:read` | adm | – | | | §3.4 kill switch, §3.10 | B7 | |
-| 115 | PUT | `/admin/ai-settings` | V | Ad | `ai-settings:update` | adm | – | ✓ | | §3.4 | B7 | |
+| 107 | POST | `/encounters/{encounterId}/audio` | V | F+Ad | `encounter-audio:create` | ai | S | | | AI-01 (incl. uploaded audio) | B7 | Body references `fileId`s; recording consent checked. **Written** 2026-11-02 (`createEncounterAudio`, D70): the chunks' file IDs in order; `409 consent-required` without an `ambient-recording` consent; `201`, no `Location` |
+| 108 | POST | `/ai/transcriptions` | V | Ad | `transcriptions:create` | ai | S | | ✓ | AI-01 | B7 | **Written** 2026-11-02 (`createTranscription`): operation kind `ai.transcription`; `409 feature-disabled` while AI-01 is off |
+| 109 | GET | `/ai/transcriptions/{transcriptionId}` | V | Ad | `transcriptions:read` | pr | – | | | AI-01 | B7 | **Written** 2026-11-02 (`getTranscription`, D70): timed, speaker-labeled segments, each with a confidence band |
+| 110 | POST | `/ai/note-drafts` | V | Ad→Cl | `note-drafts:create` | ai | S | | ✓ | AI-01 | B7 | Result is a draft note (VD-G11). **Written** 2026-11-02 (`createNoteDraft`): operation kind `ai.note-draft`; each AI section carries `aiSuggestion` on `NoteSection` (confidence band, rationale, transcript links) |
+| 111 | POST | `/ai/chart-summaries` | V | Ad | `chart-summaries:create` | ai | S | | ✓ | AI-02 | B7 | **Written** 2026-11-02 (`createChartSummary`): operation kind `ai.chart-summary`; the gateway reads the chart with a per-task delegated token (SECURITY_MODEL §2.4) |
+| 112 | GET | `/ai/chart-summaries/{chartSummaryId}` | V | Ad | `chart-summaries:read` | pr | – | | | AI-02 | B7 | **New** (result of the operation). **Written** 2026-11-02 (`getChartSummary`, D70): statements by topic with `sourced`, `no-source` or `conflicting`, and what is `missing` |
+| 113 | POST | `/ai/suggestions/{suggestionId}/decision` | V | Ad | `ai-suggestions:decision` | ai | S | | | §3.4 traceability | B7 | **Written** 2026-11-02 (`decideAiSuggestion`, D70): `accepted`, `edited` (note sections only) or `rejected` with a reason, recorded once; not gated by the AI switches |
+| 114 | GET | `/ai-settings` | V | Ad | `ai-settings:read` | adm | – | | | §3.4 kill switch, §3.10 | B7 | **Written** 2026-11-02 (`getAiSettings`): the clinic switch and one switch per AI-01 and AI-02 feature (D68) |
+| 115 | PUT | `/ai-settings` | V | Ad | `ai-settings:update` | adm | – | ✓ | | §3.4 | B7 | **Written** 2026-11-02 (`replaceAiSettings`): features left out keep their setting; a `reason` to turn one off |
 
 ## 7. Medications and prescriptions — Thulasi (signed off, issue #3)
 
@@ -373,7 +373,7 @@ Minalini's clinical items from the screen mapping, to be written in the batch na
 | **Confirmed:** drug search is `GET /codes?system=rxnorm` (#74), no separate drug endpoint | B4 | Done in batch 2 |
 | **Confirmed:** per-user alert suppression is in-product (FRS §3.4), in the medications batch | B5 | Thulasi |
 | Vitals in U.S. customary UCUM units as entered (D69) | B4 | **Done in batch 2** |
-| AI contract shapes from Minalini's Stage 3 design (D70) | B7 | Vimal |
+| AI contract shapes from Minalini's Stage 3 design (D70) | B7 | **Written in batch 7** (2026-11-02, `ai.yaml`): her Stage 3 file is not in the repository, so the smallest shapes that meet D70; Minalini to confirm |
 
 ## Later batches: patient portal (B8, P1; mapped 2026-10-26)
 
