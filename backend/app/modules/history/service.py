@@ -179,7 +179,8 @@ async def add_allergy(db: AsyncSession, repo: AllergyRepository, store: FhirStor
     onset = _onset(body.onset_date, "/onsetDate", today, errors)
     reactions = _reactions(body.reactions, today, errors)
     if body.encounter_id is not None:
-        visit = await repo.visit_of(db, body.encounter_id)
+        # A visit at another facility is one the user can't see (SECURITY_MODEL §5.1).
+        visit = await repo.visit_of(db, body.encounter_id, user.facility_ids)
         if visit is None or visit[0] != patient_id or visit[1] not in OPEN_VISIT:
             errors.append(field_error("body", "/encounterId", "invalid-reference"))
     if errors:
