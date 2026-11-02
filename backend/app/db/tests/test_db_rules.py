@@ -175,6 +175,26 @@ def test_appointment_invariants(db: Session) -> None:
         db.flush()
 
 
+def test_a_schedule_rule_ends_before_midnight(db: Session) -> None:
+    """Migration 0019 (Vimal on #85): `24:00:00` is a valid `time`, but drivers can't read it
+    back, so a rule that runs to the end of the day ends at 23:59."""
+    ctx = b.practice(db)
+    schedule = M["schedule"](ext_facility_id=ctx["facility"].id)
+    db.add(schedule)
+    db.flush()
+
+    def rule(end: str) -> Any:
+        return M["schedule_availability_rule"](schedule_id=schedule.id, day_of_week="mon",
+                                               start_time=dt.time(0), end_time=end,
+                                               slot_minutes=20,
+                                               effective_from=dt.date(2026, 11, 1))
+    db.add(rule("23:59"))
+    db.flush()
+    with fails(db, "23514", "ck_schedule_availability_rule_before_midnight"):
+        db.add(rule("24:00"))
+        db.flush()
+
+
 def test_undo_check_in_then_check_in_again(db: Session) -> None:
     """D55: undo check-in marks the check-in encounter entered-in-error. The appointment can
     then be checked in again with a new encounter, while a second live encounter for the same

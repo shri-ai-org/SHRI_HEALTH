@@ -2886,7 +2886,7 @@ Contract (from DATA_OWNERSHIP.md):
 
 Contract properties with no column of the same name: `endAt`, `facilityId`, `overbook`, `providerId`, `startAt`, `timeZone`
 
-Checks: `ck_schedule_availability_rule_day_of_week_codes`, `ck_schedule_availability_rule_period`, `ck_schedule_availability_rule_slot_minutes`, `ck_schedule_availability_rule_time_order`
+Checks: `ck_schedule_availability_rule_before_midnight`, `ck_schedule_availability_rule_day_of_week_codes`, `ck_schedule_availability_rule_period`, `ck_schedule_availability_rule_slot_minutes`, `ck_schedule_availability_rule_time_order`
 
 Unique: `uq_schedule_availability_rule_tenant_id_id`
 
@@ -7957,7 +7957,7 @@ DATA_OWNERSHIP.md does not name tables for these yet. They are not guessed here.
 - **AI note draft** (`/ai/note-drafts`): AI request and suggestion tables, Composition
 - **Chart summary** (`/ai/chart-summaries`): AI request and suggestion tables
 - **AI decision** (`/ai/suggestions/{suggestionId}/decision`): AI suggestion table
-- **AI settings** (`/admin/ai-settings`): AI settings table
+- **AI settings** (`/ai-settings`): AI settings table
 
 ### 2.2 Thulasi's resources (signed off on issue #3)
 

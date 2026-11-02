@@ -79,6 +79,8 @@ class ScheduleAvailabilityRule(Base, AdminMixin):
     __tablename__ = "schedule_availability_rule"
     __table_args__ = (
         CheckConstraint("end_time > start_time", name="time_order"),
+        # A day ends at 23:59: drivers can't read `24:00:00` back (Vimal on #85, migration 0019).
+        CheckConstraint("end_time < '24:00'", name="before_midnight"),
         CheckConstraint("slot_minutes BETWEEN 5 AND 240", name="slot_minutes"),
         CheckConstraint("effective_to IS NULL OR effective_to >= effective_from", name="period"),
     )
