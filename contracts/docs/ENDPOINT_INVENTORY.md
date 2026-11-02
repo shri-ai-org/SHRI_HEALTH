@@ -75,6 +75,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 301 | POST | `/appointments/{appointmentId}/check-out` | V | Ad | `appointments:check-out` | pw | S | | | FR-SCH-02 | Demo | **New** (D98): check-out as an action, FD and ADM only; the `409` names what blocks it (open follow-up, wrong visit state); `checked-out` is no longer sent to #57 |
 | 302 | POST | `/encounters/{encounterId}/follow-up/withdraw` | V | Cl | `encounters:update` | pw | – | ✓ | | FR-SCH-02 | Demo | **New** (D98, D67): the clinician who asked withdraws an open follow-up request |
 | 303 | GET | `/encounters/{encounterId}/after-visit-summary/download-url` | V | Cl | `after-visit-summaries:read` | pr | – | | | FR-ENC-06 | Demo | **New** (D98): the front desk prints the latest signed after-visit summary at check-out |
+| 304 | GET | `/portal/bot-challenge` | T | C | `public` | – | – | | | FR-PAT-02 | Demo | **New** (D96, amended 2026-10-28): the ALTCHA challenge for the public pre-registration form; no session and no practice code; each solved challenge is accepted once |
+| 305 | GET | `/files/{fileId}/content` | A | F | `authenticated` | ex | – | | | §3.9 | Demo | **New** (D105): where every download link points; a one-time token bound to the user and the file, about one minute; decrypts as it streams; every download audited |
 | 24 | GET | `/admin/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
 | 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |
@@ -99,7 +101,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 39 | PATCH | `/patients/{patientId}/coverages/{coverageId}` | V | Cl | `coverages:update` | pw | – | ✓ | | FR-RCM-01 | B2 | |
 | 256 | GET | `/patients/{patientId}/coverages/{coverageId}` | V | Cl | `coverages:read` | pr | – | | | FR-RCM-01 | B2 | **New** (contracts follow-up 2, 2026-10-26; Minalini on #48): one coverage with the strong `ETag` #39 needs, so a coverage can be ended (D45) |
 | 40 | POST | `/patients/{patientId}/coverages/{coverageId}/card-images` | V | Cl+F | `coverages:update` | pw | S | | | FR-PAT-01 | B2 | Body `{ fileId, side }` (API_STANDARDS §15) |
-| 232 | POST | `/patients/{patientId}/coverages/{coverageId}/entered-in-error` | V | Cl | `coverages:entered-in-error` | pw | – | | | FR-PAT-01, FR-RCM-01 | B2 | **New** (D45, 2026-10-23): a coverage recorded by mistake; ending one is `PATCH` with `endDate` |
+| 232 | POST | `/patients/{patientId}/coverages/{coverageId}/entered-in-error` | V | Cl | `coverages:entered-in-error` | pw | S | | | FR-PAT-01, FR-RCM-01 | B2 | **New** (D45, 2026-10-23): a coverage recorded by mistake; ending one is `PATCH` with `endDate`. `Idempotency-Key` accepted (2026-10-29, Minalini's #85 request) |
 | 41 | GET | `/patients/{patientId}/consents` | V | Cl | `consents:read` | pr | – | | | FR-PAT-01 | B2 | |
 | 42 | POST | `/patients/{patientId}/consents` | V | Cl | `consents:create` | pw | S | | | FR-PAT-01, AI-01 (recording consent) | B2 | |
 | 43 | PUT | `/patients/{patientId}/preferred-pharmacy` | V | Ad | `patients:update` | pw | – | ✓ | | FR-PAT-01 | B2 | |
@@ -123,10 +125,10 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 53 | GET | `/appointments/{appointmentId}` | V | Cl | `appointments:read` | pr | – | | | FR-SCH-01 | B3 | **New** (single read missing from CAT) |
 | 54 | PATCH | `/appointments/{appointmentId}` | V | Cl | `appointments:update` | pw | – | ✓ | | FR-SCH-01 | B3 | Room, reason for visit, notes, instructions; no slot or time fields (D61): rescheduling is only #243 |
 | 243 | POST | `/appointments/{appointmentId}/reschedule` | V | Cl | `appointments:reschedule` | pw | S | | | FR-SCH-01 | B3 | **New** (D61, 2026-10-24): cancels the old slot, books the new one, sets `rescheduledFromId`; reason required |
-| 242 | POST | `/appointments/{appointmentId}/undo-check-in` | V | Cl | `appointments:undo-check-in` | pw | – | | | FR-SCH-02 | B3 | **New** (D55, 2026-10-24): before rooming and any clinical data; encounter → entered-in-error |
+| 242 | POST | `/appointments/{appointmentId}/undo-check-in` | V | Cl | `appointments:undo-check-in` | pw | S | | | FR-SCH-02 | B3 | **New** (D55, 2026-10-24): before rooming and any clinical data; encounter → entered-in-error. `Idempotency-Key` accepted (2026-10-29, Minalini's #85 request) |
 | 55 | POST | `/appointments/{appointmentId}/cancel` | V | Cl | `appointments:cancel` | pw | – | | | FR-SCH-01 | B3 | |
 | 56 | POST | `/appointments/{appointmentId}/check-in` | V | Cl | `appointments:check-in` | pw | R | | | FR-SCH-02 | B3 | Creates Encounter (VD-G4); eligibility (VD-G3) — reaches a partner, so key required |
-| 57 | POST | `/appointments/{appointmentId}/status` | V | Cl+Ad | `appointments:status` | pw | – | | | FR-SCH-02 | B3 | Values: `arrived`, `roomed`, `with-provider`, `checked-out`, `noshow` (DATA_OWNERSHIP §5.1) |
+| 57 | POST | `/appointments/{appointmentId}/status` | V | Cl+Ad | `appointments:status` | pw | S | | | FR-SCH-02 | B3 | Values: `arrived`, `roomed`, `with-provider`, `checked-out`, `noshow` (DATA_OWNERSHIP §5.1). `Idempotency-Key` accepted (2026-10-29, Minalini's #85 request) |
 | 58 | GET | `/status-board` | V | C | `status-board:read` | pr | – | | | FR-SCH-02 | B3 | `facilityName` in both views; staff view adds `appointmentType`, `reasonForVisit`, `encounterId` (D60) |
 | 236 | GET | `/booking/facilities` | V | Cl | `scheduling-reference:read` | – | – | | | FR-SCH-01 | B3 | **New** (D49, 2026-10-24): bookable fields only; reference data |
 | 237 | GET | `/booking/locations` | V | Cl | `scheduling-reference:read` | – | – | | | FR-SCH-01 | B3 | **New** (D49) |
@@ -198,15 +200,15 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 
 | # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 107 | POST | `/encounters/{encounterId}/audio` | V | F+Ad | `encounter-audio:create` | ai | S | | | AI-01 (incl. uploaded audio) | B7 | Body references `fileId`s; recording consent checked |
-| 108 | POST | `/ai/transcriptions` | V | Ad | `transcriptions:create` | ai | S | | ✓ | AI-01 | B7 | |
-| 109 | GET | `/ai/transcriptions/{transcriptionId}` | V | Ad | `transcriptions:read` | pr | – | | | AI-01 | B7 | |
-| 110 | POST | `/ai/note-drafts` | V | Ad→Cl | `note-drafts:create` | ai | S | | ✓ | AI-01 | B7 | Result is a draft note (VD-G11) |
-| 111 | POST | `/ai/chart-summaries` | V | Ad | `chart-summaries:create` | ai | S | | ✓ | AI-02 | B7 | |
-| 112 | GET | `/ai/chart-summaries/{chartSummaryId}` | V | Ad | `chart-summaries:read` | pr | – | | | AI-02 | B7 | **New** (result of the operation) |
-| 113 | POST | `/ai/suggestions/{suggestionId}/decision` | V | Ad | `ai-suggestions:decision` | ai | S | | | §3.4 traceability | B7 | |
-| 114 | GET | `/admin/ai-settings` | V | Ad | `ai-settings:read` | adm | – | | | §3.4 kill switch, §3.10 | B7 | |
-| 115 | PUT | `/admin/ai-settings` | V | Ad | `ai-settings:update` | adm | – | ✓ | | §3.4 | B7 | |
+| 107 | POST | `/encounters/{encounterId}/audio` | V | F+Ad | `encounter-audio:create` | ai | S | | | AI-01 (incl. uploaded audio) | B7 | Body references `fileId`s; recording consent checked. **Written** 2026-11-02 (`createEncounterAudio`, D70): the chunks' file IDs in order; `409 consent-required` without an `ambient-recording` consent; `201`, no `Location` |
+| 108 | POST | `/ai/transcriptions` | V | Ad | `transcriptions:create` | ai | S | | ✓ | AI-01 | B7 | **Written** 2026-11-02 (`createTranscription`): operation kind `ai.transcription`; `409 feature-disabled` while AI-01 is off |
+| 109 | GET | `/ai/transcriptions/{transcriptionId}` | V | Ad | `transcriptions:read` | pr | – | | | AI-01 | B7 | **Written** 2026-11-02 (`getTranscription`, D70): timed, speaker-labeled segments, each with a confidence band |
+| 110 | POST | `/ai/note-drafts` | V | Ad→Cl | `note-drafts:create` | ai | S | | ✓ | AI-01 | B7 | Result is a draft note (VD-G11). **Written** 2026-11-02 (`createNoteDraft`): operation kind `ai.note-draft`; each AI section carries `aiSuggestion` on `NoteSection` (confidence band, rationale, transcript links) |
+| 111 | POST | `/ai/chart-summaries` | V | Ad | `chart-summaries:create` | ai | S | | ✓ | AI-02 | B7 | **Written** 2026-11-02 (`createChartSummary`): operation kind `ai.chart-summary`; the gateway reads the chart with a per-task delegated token (SECURITY_MODEL §2.4) |
+| 112 | GET | `/ai/chart-summaries/{chartSummaryId}` | V | Ad | `chart-summaries:read` | pr | – | | | AI-02 | B7 | **New** (result of the operation). **Written** 2026-11-02 (`getChartSummary`, D70): statements by topic with `sourced`, `no-source` or `conflicting`, and what is `missing` |
+| 113 | POST | `/ai/suggestions/{suggestionId}/decision` | V | Ad | `ai-suggestions:decision` | ai | S | | | §3.4 traceability | B7 | **Written** 2026-11-02 (`decideAiSuggestion`, D70): `accepted`, `edited` (note sections only) or `rejected` with a reason, recorded once; not gated by the AI switches |
+| 114 | GET | `/ai-settings` | V | Ad | `ai-settings:read` | adm | – | | | §3.4 kill switch, §3.10 | B7 | **Written** 2026-11-02 (`getAiSettings`): the clinic switch and one switch per AI-01 and AI-02 feature (D68) |
+| 115 | PUT | `/ai-settings` | V | Ad | `ai-settings:update` | adm | – | ✓ | | §3.4 | B7 | **Written** 2026-11-02 (`replaceAiSettings`): features left out keep their setting; a `reason` to turn one off |
 
 ## 7. Medications and prescriptions — Thulasi (signed off, issue #3)
 
@@ -371,7 +373,7 @@ Minalini's clinical items from the screen mapping, to be written in the batch na
 | **Confirmed:** drug search is `GET /codes?system=rxnorm` (#74), no separate drug endpoint | B4 | Done in batch 2 |
 | **Confirmed:** per-user alert suppression is in-product (FRS §3.4), in the medications batch | B5 | Thulasi |
 | Vitals in U.S. customary UCUM units as entered (D69) | B4 | **Done in batch 2** |
-| AI contract shapes from Minalini's Stage 3 design (D70) | B7 | Vimal |
+| AI contract shapes from Minalini's Stage 3 design (D70) | B7 | **Written in batch 7** (2026-11-02, `ai.yaml`): her Stage 3 file is not in the repository, so the smallest shapes that meet D70; Minalini to confirm |
 
 ## Later batches: patient portal (B8, P1; mapped 2026-10-26)
 

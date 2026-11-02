@@ -2,8 +2,10 @@
 CSRF, refresh, the 5-minute backstop (D94) and logout. Keycloak and Transit are fakes
 (httpx.MockTransport); the database is real. Needs TEST_DATABASE_URL; skipped otherwise.
 
-admin.lookup_staff_user() (Anand) isn't in the schema yet: one test checks that sign-in fails
-closed without it, and the others stand in for that one lookup only. Synthetic data only."""
+Most tests stand in for admin.lookup_staff_user() (Anand, migration 0016, #139), so they don't
+depend on it. The real lookup has its own tests below, which work either way round: without the
+function, sign-in fails closed (503); with it, staff sign in and an inactive or unknown user is
+refused (403). Synthetic data only."""
 
 import base64
 import json
@@ -284,9 +286,40 @@ def test_a_deactivated_account_is_refused(client: TestClient, keycloak: FakeKeyc
     assert client.get("/api/v1/auth/session").status_code == 403
 
 
-def test_without_anands_lookup_sign_in_fails_closed(
-        client: TestClient, keycloak: FakeKeycloak, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.undo()  # the real find_staff_user: admin.lookup_staff_user() doesn't exist yet
+def _has_staff_lookup(admin: Engine) -> bool:
+    with admin.connect() as c:
+        found: bool = c.execute(text(
+            "SELECT to_regprocedure('admin.lookup_staff_user(text)') IS NOT NULL")).scalar_one()
+    return found
+
+
+def test_the_real_lookup_signs_staff_in_and_fails_closed_without_it(
+        client: TestClient, keycloak: FakeKeycloak, staff: dict[str, Any],
+        admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    monkeypatch.undo()  # the real find_staff_user
     callback = _sign_in(client, keycloak)
-    assert callback.status_code == 503
+    if not _has_staff_lookup(admin_engine):  # before migration 0016 (#139)
+        assert callback.status_code == 503
+        assert sessions.SESSION_COOKIE not in client.cookies
+        return
+    assert callback.status_code == 302 and sessions.SESSION_COOKIE in client.cookies
+    assert client.get("/api/v1/auth/session").status_code == 200
+    assert _session_row(admin_engine, staff["tenant"]).revoked_at is None
+
+
+@pytest.mark.parametrize("who", ["inactive", "unknown"])
+def test_the_real_lookup_refuses_an_inactive_or_unknown_user(
+        client: TestClient, keycloak: FakeKeycloak, staff: dict[str, Any],
+        admin_engine: Engine, monkeypatch: pytest.MonkeyPatch, who: str) -> None:  # noqa: F811
+    if not _has_staff_lookup(admin_engine):
+        pytest.skip("admin.lookup_staff_user() arrives with migration 0016 (#139)")
+    monkeypatch.undo()  # the real find_staff_user
+    if who == "inactive":
+        with admin_engine.begin() as c:
+            c.execute(text("UPDATE admin.app_user SET is_active = false WHERE id = :u"),
+                      {"u": staff["user"]})
+    else:
+        keycloak.subject = f"kc-{uuid4()}"  # signed in to Keycloak, but no user of ours
+    callback = _sign_in(client, keycloak)
+    assert callback.status_code == 403
     assert sessions.SESSION_COOKIE not in client.cookies

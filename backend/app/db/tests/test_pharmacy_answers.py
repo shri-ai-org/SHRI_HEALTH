@@ -13,10 +13,14 @@ import pytest
 from sqlalchemy import Connection, Engine, create_engine, text
 from sqlalchemy.pool import NullPool
 
+from app.core.config import Settings
+from app.core.db import Database
+from app.db import fhir_store as fs
 from app.db.models import MAPPERS
 from app.db.tests import builders as b
 from app.db.tests.conftest import (
     SKIP_WITHOUT_DATABASE,
+    TEST_DATABASE_URL,
     make_tenant,
     open_session,
     switch_to_role,
@@ -99,3 +103,36 @@ def test_the_worker_sees_only_the_clinic_it_works_in(worker: Engine, app_engine:
         _in_clinic(c, make_tenant(admin_engine))
         assert c.execute(text("SELECT count(*) FROM admin.erx_transaction WHERE id = :i"),
                          {"i": rx["tx"]}).scalar_one() == 0
+
+
+async def test_the_real_helper_runs_as_the_worker(app_engine: Engine,
+                                                  admin_engine: Engine) -> None:
+    """set_transmission_status itself, through the ORM, as shri_integration in the message's
+    clinic: the column grant covers every column the helper writes (updated_at included), so
+    the grant and the helper can't drift apart."""
+    from pydantic import SecretStr
+
+    rx = _queued_new_rx(app_engine, admin_engine)
+    with admin_engine.connect() as c:
+        prescription = c.execute(text("SELECT medication_request_id FROM admin.erx_transaction "
+                                      "WHERE id = :i"), {"i": rx["tx"]}).scalar_one()
+    database = Database(Settings(database_url=SecretStr(TEST_DATABASE_URL or "")))
+    switch_to_role(database.engine.sync_engine, "shri_integration")
+    try:
+        async with database.system_session(rx["tenant"]) as s:  # as the outbox worker
+            store = fs.SqlFhirStore()
+            sent = await store.set_transmission_status(s, prescription, "sent",
+                                                       vendor_message_id="V-1")
+            done = await store.set_transmission_status(s, prescription, "rejected",
+                                                       message="Unknown prescriber")
+            await s.commit()
+    finally:
+        await database.dispose()
+    assert (sent.status, done.status) == ("sent", "rejected")
+    with admin_engine.connect() as c:
+        row = c.execute(text("SELECT status, error_message, vendor_message_id, updated_at, "
+                             "created_at FROM admin.erx_transaction WHERE id = :i"),
+                        {"i": rx["tx"]}).one()
+    assert (row.status, row.error_message, row.vendor_message_id) == (
+        "rejected", "Unknown prescriber", "V-1")
+    assert row.updated_at >= row.created_at

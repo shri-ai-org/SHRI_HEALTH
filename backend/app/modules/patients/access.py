@@ -62,8 +62,18 @@ class _Helpers:
             return self._module.UNSET
         if dataclasses.is_dataclass(value) and not isinstance(value, type):
             target = getattr(self._module, type(value).__name__)
-            return target(**{f.name: self._theirs(getattr(value, f.name))
-                             for f in dataclasses.fields(value)})
+            known = {f.name for f in dataclasses.fields(target)}
+            fields: dict[str, Any] = {}
+            for f in dataclasses.fields(value):
+                given = getattr(value, f.name)
+                if f.name in known:
+                    fields[f.name] = self._theirs(given)
+                elif given is not store.UNSET:
+                    # A field our interface has and the helpers don't yet
+                    # (CoverageChanges.payer_id): refused, never dropped silently.
+                    name = f"{type(value).__name__}.{f.name}"
+                    raise store.InvalidInput(f"{name} is not supported yet")
+            return target(**fields)
         if isinstance(value, tuple):
             return tuple(self._theirs(v) for v in value)
         return value

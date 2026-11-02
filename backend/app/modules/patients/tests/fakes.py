@@ -30,11 +30,16 @@ from ..repository import Versioned
 from ..store import (
     UNSET,
     ChildWritten,
+    ConsentIn,
+    CoverageChanges,
+    CoverageIn,
     IdentifierIn,
     InvalidInput,
+    InvalidTransition,
     Name,
     PatientChanges,
     PatientIn,
+    Reason,
     RelatedPersonChanges,
     RelatedPersonIn,
     ResourceNotFound,
@@ -64,11 +69,26 @@ class _Patient:
     version: int = 1
     labels: set[str] = field(default_factory=set)
     identifiers: list[schemas.PatientIdentifier] = field(default_factory=list)
+    merged_into_id: UUID | None = None
 
 
 @dataclass
 class _Related:
     data: RelatedPersonIn
+    version: int = 1
+    created_at: datetime = _NOW
+
+
+@dataclass
+class _Coverage:
+    data: CoverageIn
+    version: int = 1
+    created_at: datetime = _NOW
+
+
+@dataclass
+class _Consent:
+    data: ConsentIn
     version: int = 1
     created_at: datetime = _NOW
 
@@ -83,12 +103,22 @@ class World:
     grants: set[tuple[UUID, UUID]] = field(default_factory=set)  # (user, patient)
     audited: list[list[UUID]] = field(default_factory=list)  # each call of audit_patients
     details: list[tuple[str, str | None]] = field(default_factory=list)  # audit_detail calls
+    coverages: dict[UUID, dict[UUID, _Coverage]] = field(default_factory=dict)
+    consents: dict[UUID, dict[UUID, _Consent]] = field(default_factory=dict)
+    payers: dict[UUID, tuple[str, bool]] = field(default_factory=dict)  # name, usable
+    clean_files: set[UUID] = field(default_factory=set)
 
     def clinic(self, db: Any) -> dict[UUID, _Patient]:
         return self.patients.setdefault(db.tenant_id, {})
 
     def related_of(self, db: Any) -> dict[UUID, _Related]:
         return self.related.setdefault(db.tenant_id, {})
+
+    def coverages_of(self, db: Any) -> dict[UUID, _Coverage]:
+        return self.coverages.setdefault(db.tenant_id, {})
+
+    def consents_of(self, db: Any) -> dict[UUID, _Consent]:
+        return self.consents.setdefault(db.tenant_id, {})
 
     def patient(self, db: Any, patient_id: UUID) -> _Patient:
         found = self.clinic(db).get(patient_id)
@@ -177,8 +207,49 @@ class FakeStore:
         found.version += 1
         return Written(related_person_id, found.version, _NOW)
 
+    async def create_coverage(self, db: Any, data: CoverageIn) -> Written:
+        self.world.patient(db, data.beneficiary_patient_id)
+        coverage_id = uuid.uuid4()
+        self.world.coverages_of(db)[coverage_id] = _Coverage(data)
+        return Written(coverage_id, 1, _NOW)
+
+    async def update_coverage(self, db: Any, coverage_id: UUID, changes: CoverageChanges, *,
+                              if_version: int) -> Written:
+        found = self.world.coverages_of(db).get(coverage_id)
+        if found is None:
+            raise ResourceNotFound()
+        if found.version != if_version:
+            raise StaleVersion(found.version)
+        if found.data.status == "entered-in-error":
+            raise InvalidTransition(found.data.status)
+        values = {k: v for k, v in vars(changes).items() if v is not UNSET and k != "payer_id"}
+        found.data = replace(found.data, **values)
+        found.version += 1
+        return Written(coverage_id, found.version, _NOW)
+
+    async def coverage_entered_in_error(self, db: Any, coverage_id: UUID, reason: Reason, *,
+                                        if_version: int | None = None) -> Written:
+        found = self.world.coverages_of(db).get(coverage_id)
+        if found is None:
+            raise ResourceNotFound()
+        if found.data.status == "entered-in-error":
+            raise InvalidTransition(found.data.status)
+        found.data = replace(found.data, status="entered-in-error")
+        found.version += 1
+        return Written(coverage_id, found.version, _NOW)
+
+    async def create_consent(self, db: Any, data: ConsentIn) -> Written:
+        self.world.patient(db, data.patient_id)
+        for earlier in self.world.consents_of(db).values():  # the latest of a kind is in force
+            if earlier.data.patient_id == data.patient_id and earlier.data.kind == data.kind \
+                    and earlier.data.status == "active":
+                earlier.data = replace(earlier.data, status="inactive")
+        consent_id = uuid.uuid4()
+        self.world.consents_of(db)[consent_id] = _Consent(data)
+        return Written(consent_id, 1, _NOW)
+
     def __getattr__(self, name: str) -> Any:
-        raise NotImplementedError(f"FakeStore.{name} is not needed by PR-1")
+        raise NotImplementedError(f"FakeStore.{name} is not needed by these tests")
 
 
 class FakeRepository:
@@ -201,7 +272,7 @@ class FakeRepository:
             preferred_name=next((n.text for n in d.names if n.use == "nickname"), None),
             marital_status=cast(schemas.MaritalStatus | None, d.marital_status),
             restricted=bool(found.labels & {"R", "V"}), active=d.active,
-            created_at=_NOW, updated_at=_NOW), found.version)
+            merged_into_id=found.merged_into_id, created_at=_NOW, updated_at=_NOW), found.version)
 
     async def get_patient(self, db: Any, patient_id: UUID) -> Versioned[schemas.Patient]:
         return self._patient(db, patient_id)

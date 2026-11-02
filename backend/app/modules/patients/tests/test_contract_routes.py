@@ -21,6 +21,7 @@ BATCH_1 = frozenset({
     "updateRelatedPerson",
     "listCoverages",
     "addCoverage",
+    "getCoverage",  # the single read (#64)
     "updateCoverage",
     "attachCoverageCardImage",
     "markCoverageEnteredInError",
@@ -36,6 +37,17 @@ BATCH_1 = frozenset({
     "listPatientMerges",
     "getPatientSummaries",
 })
+
+# Online pre-registration for the demo (D95, D96; IMPL_BATCH1_PLAN.md §8): the public form
+# and the front desk's queue, built in this module.
+PRE_REGISTRATION = frozenset({
+    "submitPreRegistration",
+    "listPreRegistrations",
+    "getPreRegistration",
+    "acceptPreRegistration",
+    "rejectPreRegistration",
+})
+PROMISED = BATCH_1 | PRE_REGISTRATION
 
 # Not built yet. Each PR removes the operations it builds; the test fails if a built one is
 # still listed here. PR-1 builds patients core (plan §5).
@@ -53,11 +65,21 @@ BUILT_IN_PR_1 = frozenset({
     "restrictPatient",
     "unrestrictPatient",
 })
-PENDING = BATCH_1 - BUILT_IN_PR_1
+# PR-2: coverages and consents (card images and the preferred pharmacy follow in PR-7).
+BUILT_IN_PR_2 = frozenset({
+    "listCoverages",
+    "addCoverage",
+    "getCoverage",
+    "updateCoverage",
+    "markCoverageEnteredInError",
+    "listConsents",
+    "recordConsent",
+})
+PENDING = BATCH_1 - BUILT_IN_PR_1 - BUILT_IN_PR_2
 
 
 def test_batch_1_operations_are_built_or_pending() -> None:
-    assert progress_problems(MODULE, BATCH_1, PENDING) == []
+    assert progress_problems(MODULE, PROMISED, PENDING) == []
 
 
 def test_the_route_walk_finds_routes_inside_included_routers() -> None:

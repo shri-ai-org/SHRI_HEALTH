@@ -954,7 +954,7 @@ paths:
     get:
       operationId: createDownloadUrl
       summary: Get a download link
-      description: 'A short-lived, audited link to a clean file (inventory #150; API_STANDARDS §15). Besides `files:read`, the caller needs the read permission mapped to the file''s purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient''s files need a break-glass grant or care-team membership. A purpose with no mapping is denied. Audited as an export.'
+      description: 'A one-time, audited link to a clean file (inventory #150; API_STANDARDS §15; D105). Besides `files:read`, the caller needs the read permission mapped to the file''s purpose (`FilePurpose`), the file must be attached to a record the caller may read (an unattached file is downloadable only by its uploader), and a restricted patient''s files need a break-glass grant or care-team membership. A purpose with no mapping is denied. The link points at `GET /files/{fileId}/content` on our own API, with a token bound to this user and this file, valid for about one minute and accepted once. Files are encrypted at rest, so the link never points into the object store. Audited as an export naming the file''s patient (none for an unattached upload), and the download itself is audited again.'
       tags:
         - files
       x-owner: anand
@@ -962,11 +962,12 @@ paths:
       x-audit:
         action: R
         category: export
+        patient: result
       x-storage: files
       x-release: P0
       responses:
         '200':
-          description: The download link, valid for at most 5 minutes.
+          description: 'The download link: for this user only, valid for about one minute, accepted once.'
           headers:
             X-Request-ID:
               $ref: '#/components/headers/XRequestId'
@@ -984,7 +985,7 @@ paths:
                 link:
                   summary: Download link
                   value:
-                    url: https://files.company-domain.invalid/clean/TEST-download-1
+                    url: https://app.company-domain.invalid/api/v1/files/7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f/content?token=TEST-download-token-0000000000000000000001
                     expiresAt: '2035-01-01T14:35:00Z'
                     contentType: image/jpeg
                     sizeBytes: 348211
@@ -1009,6 +1010,94 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /files/{fileId}/content:
+    parameters:
+      - name: fileId
+        in: path
+        required: true
+        description: File ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: downloadFileContent
+      summary: Download a file
+      description: 'Where a download link points (D105): our own API, never the object store, because files are encrypted at rest. The token was issued, with the permission and chart checks, by the operation that gave out the link (`GET /files/{fileId}/download-url`, or a module''s own link such as the after-visit summary''s). **The token is not enough on its own:** the request must also carry the session of the same user it was issued to (the browser sends the session cookie with the link). Core checks that the token is for this user and this file, has not expired (about one minute) and has not been used: it is accepted once. **Every invalid, expired, reused or other-user token gets the same `404`**, so a token can''t be probed; the screen asks for a new link. The API then decrypts the file as it streams it, with `Content-Disposition: attachment`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. **The query string is never logged on this route**, neither by nginx nor by the API, and the token never appears in events or audit rows. Every download is audited as an export, naming the file''s patient (`x-audit` `patient: result`; none for an unattached upload). The token is the one query parameter the credentials-in-URL lint rule allows, and only on this operation (CONTRACT_GOVERNANCE §5).'
+      tags:
+        - files
+      x-owner: anand
+      x-permission: authenticated
+      x-audit:
+        action: R
+        category: export
+        patient: result
+      x-storage: files
+      x-release: P0
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: 'The one-time download token from the link. Not enough on its own: the same user''s session must come with it. Never logged; on this route the query string is dropped from nginx and API logs.'
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9_-]{32,512}$
+            minLength: 32
+            maxLength: 512
+          x-phi: none
+      responses:
+        '200':
+          description: The file's bytes, decrypted, with its own media type.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            Content-Disposition:
+              description: Always `attachment`, with a file name made from the purpose and the file ID, never from patient data or the uploader's file name.
+              schema:
+                type: string
+                maxLength: 200
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+            Referrer-Policy:
+              description: Always `no-referrer`, so the link and its token are never sent on as a Referer.
+              schema:
+                type: string
+                const: no-referrer
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+                maxLength: 2147483648
+                description: The file. Its real media type is in `Content-Type` (the file's own, as in the download link).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: '401. `unauthenticated` (no valid session: the token alone is never enough); `session-expired` (the session ended).'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (no signed-in staff user).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: '404. `not-found` (no such file in this clinic, or the token is invalid, expired, already used, another user''s or for another file: always the same answer).'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the file is no longer `clean`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (`token` is missing, or doesn't match its pattern). A well-formed token that core refuses is `404`.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (the file can't be decrypted right now, because the key service or the object store is unavailable).
   /patients/search:
     post:
       operationId: searchPatients
@@ -2562,11 +2651,14 @@ paths:
         action: E
         category: phi-write
         patient: patientId
+      x-idempotency: supported
       x-storage: clinical
       x-release: P0
       security:
         - sessionCookie: []
           csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
       requestBody:
         required: true
         content:
@@ -2631,10 +2723,10 @@ paths:
           description: 404. `not-found` (no such coverage in this clinic or the user's facilities).
         '409':
           $ref: '#/components/responses/Conflict'
-          description: 409. `invalid-state-transition` (the coverage is already `entered-in-error`); `patient-merged` (the patient was merged into another record).
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (the coverage is already `entered-in-error`); `patient-merged` (the patient was merged into another record).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -4214,9 +4306,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
           description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
-        '404':
-          $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (a facility the user is not assigned to).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -4306,7 +4395,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `pre-registrations:read`).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+          description: 404. `not-found` (no such pre-registration in this clinic).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -4427,16 +4516,16 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `pre-registrations:accept`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: '403. `permission-denied` (the role lacks `pre-registrations:accept`); `break-glass-required` (linking: `patientId` names a restricted chart and the user holds no break-glass grant and is not on the care team, D37); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+          description: 404. `not-found` (no such pre-registration in this clinic).
         '409':
           $ref: '#/components/responses/Conflict'
           description: '409. `possible-duplicate` (similar patients exist: review them, then link or override); `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`); `patient-merged` (the patient to link was merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: '422. `validation-failed` (a field is invalid, or `duplicateOverrideReason` is missing with `override`); `business-rule-violation` (`errors` names `/patientId` with `invalid-reference`: no such patient in this clinic); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -4547,7 +4636,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `pre-registrations:reject`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such pre-registration in this clinic, or it names a facility the user is not assigned to).
+          description: 404. `not-found` (no such pre-registration in this clinic).
         '409':
           $ref: '#/components/responses/Conflict'
           description: 409. `invalid-state-transition` (already accepted or rejected; the problem carries `currentState`).
@@ -5360,7 +5449,7 @@ paths:
     post:
       operationId: recordVisitStatus
       summary: Record a visit step
-      description: 'Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment''s `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out` (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names `/status`).'
+      description: 'Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). Each status has its own roles, checked by the service on top of `appointments:status`: `arrived` and `noshow` FD; `roomed` MA and RN; `with-provider` MD, APP and RN. Any other role gets `403 permission-denied`, and nothing changes. `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment''s `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out` (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names `/status`).'
       tags:
         - scheduling
       x-owner: vimal
@@ -5369,6 +5458,7 @@ paths:
         action: E
         category: phi-write
         patient: result
+      x-idempotency: supported
       x-storage: clinical
       x-events:
         - appointment.status-changed
@@ -5378,6 +5468,8 @@ paths:
       security:
         - sessionCookie: []
           csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
       requestBody:
         required: true
         content:
@@ -5451,10 +5543,10 @@ paths:
           description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
         '409':
           $ref: '#/components/responses/Conflict'
-          description: '409. `invalid-state-transition` (not allowed in the current state; or `checked-out`, which goes through `POST /appointments/{appointmentId}/check-out`: `errors` names `/status`).'
+          description: '409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (not allowed in the current state; or `checked-out`, which goes through `POST /appointments/{appointmentId}/check-out`: `errors` names `/status`).'
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`roomed` without `roomLocationId`, a room that is not in the appointment's facility (field code `invalid-reference`), or `noshow` before the start time).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`roomed` without `roomLocationId`, a room that is not in the appointment's facility (field code `invalid-reference`), or `noshow` before the start time); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -6099,6 +6191,7 @@ paths:
         action: E
         category: phi-write
         patient: result
+      x-idempotency: supported
       x-storage: clinical
       x-events:
         - appointment.status-changed
@@ -6107,6 +6200,8 @@ paths:
       security:
         - sessionCookie: []
           csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
       requestBody:
         required: true
         content:
@@ -6174,10 +6269,10 @@ paths:
           description: 404. `not-found` (no such appointment in this clinic or the user's facilities).
         '409':
           $ref: '#/components/responses/Conflict'
-          description: 409. `invalid-state-transition` (not `checked-in`, already roomed, or the encounter has vitals, notes or diagnoses).
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (not `checked-in`, already roomed, or the encounter has vitals, notes or diagnoses).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -6747,7 +6842,7 @@ paths:
     patch:
       operationId: updateEncounter
       summary: Edit an encounter
-      description: 'Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error` (inventory #64). Status changes only through actions.'
+      description: 'Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error` (inventory #64). Status changes only through actions. MA and RN hold `encounters:update` for rooming and may change only `reasons` (the reason for visit, recorded at rooming, #114); a request from them that changes anything else is `403 permission-denied`. MD and APP may change every field here. The role matrix row lands with core''s change (NOTE_FOR_THULASI T52), and it is a clinical row (‡, Q21).'
       tags:
         - encounters
       x-owner: vimal
@@ -6870,7 +6965,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `encounters:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+          description: 403. `permission-denied` (the role lacks `encounters:update`, or an MA or RN changes a field other than `reasons`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
@@ -9745,7 +9840,7 @@ paths:
     get:
       operationId: getAfterVisitSummaryDownloadUrl
       summary: Get the latest after-visit summary to print
-      description: A short-lived download link to the encounter's latest after-visit summary, generated from a signed note (D98), so the front desk can print it at check-out without generating one (`after-visit-summaries:create` stays with MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists.
+      description: A short-lived download link to the encounter's latest after-visit summary, generated from a signed note (D98), so the front desk can print it at check-out without generating one (`after-visit-summaries:create` stays with MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists. A restricted chart gets the normal chart check (D37; the front-desk exceptions of D107 don't cover it, D109). A user without a break-glass grant who is not on the care team, the front desk included, gets `403 break-glass-required`; care-team members, and users with a grant, read it without break-glass.
       tags:
         - encounters
       x-owner: vimal
@@ -9787,7 +9882,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `after-visit-summaries:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+          description: 403. `permission-denied` (the role lacks `after-visit-summaries:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team, the front desk included; care-team members, and users with a grant, read it without break-glass (D37, D109)).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such encounter, or no after-visit summary has been generated for it yet).
@@ -12201,6 +12296,835 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/audio:
+    parameters:
+      - name: encounterId
+        in: path
+        required: true
+        description: Encounter ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: createEncounterAudio
+      summary: Register an encounter recording
+      description: 'Registers a recording for AI-01 (inventory #107; FRS §3.4): ambient audio, dictation, or audio recorded outside the application and uploaded. The audio never passes through this endpoint: the screen uploads it in chunks through the file service (`POST /files/upload-url` with purpose `encounter-audio`, the `PUT`, then `POST /files/{fileId}/complete` for each chunk; API_STANDARDS §15), then sends the chunks'' file IDs here in order. Every chunk must be `clean`, of purpose `encounter-audio`, uploaded by the same user and not attached to anything else. The patient must have an active `ambient-recording` consent with decision `permit` (the database refuses the row otherwise); the server finds it and records which one was used. Allowed while the encounter is `arrived`, `triaged`, `in-progress` or `finished`. Returns `201` without a `Location`: a recording has no single-read endpoint; its transcript is read through `GET /ai/transcriptions/{transcriptionId}`. Refused with `409 feature-disabled` while AI or `ambient-documentation` is off for the clinic.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: encounter-audio:create
+      x-audit:
+        action: C
+        category: ai
+        patient: result
+      x-idempotency: supported
+      x-storage: files
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AudioRecordingCreate'
+            examples:
+              ambient:
+                summary: Ambient recording in two chunks
+                value:
+                  mode: ambient
+                  fileIds:
+                    - 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
+                    - 0d1e2f3a-4b5c-4d6e-9f7a-8b9c0d1e2f3a
+                  durationSeconds: 912
+      responses:
+        '201':
+          description: Created. The recording, ready to transcribe.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AudioRecording'
+              examples:
+                registered:
+                  summary: Registered
+                  value:
+                    id: 8b9c0d1e-2f3a-4b4c-9d5e-6f7a8b9c0d1e
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    mode: ambient
+                    consentId: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                    fileIds:
+                      - 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
+                      - 0d1e2f3a-4b5c-4d6e-9f7a-8b9c0d1e2f3a
+                    durationSeconds: 912
+                    status: uploaded
+                    createdAt: '2026-11-03T15:31:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `encounter-audio:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `feature-disabled` (AI or `ambient-documentation` is off for the clinic; the problem carries `feature`); `consent-required` (the patient has no active `ambient-recording` consent; the problem carries `consentType`); `invalid-state-transition` (not allowed in the current state (DATA_OWNERSHIP §5.2); the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `file-not-ready` (a chunk is not scanned clean, has another purpose, was uploaded by someone else, is already attached, or is from another clinic; the problem carries `fileId`); `business-rule-violation` (the same file twice (field code `conflicting-fields`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai/transcriptions:
+    post:
+      operationId: createTranscription
+      summary: Transcribe a recording
+      description: 'Starts speech-to-text for a registered recording (inventory #108; AI-01). Returns `202` and an operation of kind `ai.transcription`; its result is the transcription (`GET /ai/transcriptions/{transcriptionId}`). The original transcript is kept unchanged; clinician edits belong in the note. A recording is transcribed once: a second request while one runs or after it succeeded is `409`. The operation fails with `ai-unavailable` when the speech service is down, and can be cancelled while it runs. Refused with `409 feature-disabled` while AI or `ambient-documentation` is off for the clinic.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: transcriptions:create
+      x-audit:
+        action: C
+        category: ai
+        patient: result
+      x-idempotency: supported
+      x-async: true
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranscriptionCreate'
+            examples:
+              recording:
+                summary: Transcribe a recording
+                value:
+                  audioRecordingId: 8b9c0d1e-2f3a-4b4c-9d5e-6f7a8b9c0d1e
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed` on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+              examples:
+                queued:
+                  summary: Transcription queued
+                  value:
+                    id: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
+                    kind: ai.transcription
+                    status: queued
+                    createdAt: '2026-11-03T15:31:05Z'
+                    updatedAt: '2026-11-03T15:31:05Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `transcriptions:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such recording in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `feature-disabled` (AI or `ambient-documentation` is off for the clinic; the problem carries `feature`); `invalid-state-transition` (the recording is already being transcribed, was transcribed, or was purged; the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai/transcriptions/{transcriptionId}:
+    parameters:
+      - name: transcriptionId
+        in: path
+        required: true
+        description: Transcription ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getTranscription
+      summary: Get a transcription
+      description: 'The transcript of a recording, as timed, speaker-labeled segments (inventory #109; AI-01; D70), so the clinician can review the source of a draft. Note-draft source links point at these segments. Still readable when AI is switched off. A restricted patient needs break-glass or care-team membership.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: transcriptions:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The transcription.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcription'
+              examples:
+                visit:
+                  summary: Start of a visit transcript
+                  value:
+                    id: 1e2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b
+                    audioRecordingId: 8b9c0d1e-2f3a-4b4c-9d5e-6f7a8b9c0d1e
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    language: en-US
+                    segments:
+                      - sequence: 1
+                        startMs: 0
+                        endMs: 4200
+                        speaker: clinician
+                        text: What brings you in today?
+                        confidence: high
+                      - sequence: 2
+                        startMs: 4200
+                        endMs: 9800
+                        speaker: patient
+                        text: My blood pressure readings at home have been high this month.
+                        confidence: high
+                      - sequence: 3
+                        startMs: 9800
+                        endMs: 13100
+                        speaker: unknown
+                        text: About one fifty over ninety most mornings.
+                        confidence: medium
+                    generatedBy:
+                      modelName: faster-whisper-large-v3
+                      modelVersion: 1.1.1
+                      pipelineVersion: ai-01.2026-11
+                    createdAt: '2026-11-03T15:33:40Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `transcriptions:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such transcription in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai/note-drafts:
+    post:
+      operationId: createNoteDraft
+      summary: Draft a note from a transcript
+      description: 'AI-01 (inventory #110; FRS §3.4; VD-G11): turns a transcription into a **draft** note on the transcription''s encounter, from a note template. Returns `202` and an operation of kind `ai.note-draft`; its result is the draft note (`GET /notes/{noteId}`), made through the same notes service as `POST /encounters/{encounterId}/notes`, with the caller as author. The gateway sends only the transcript and the template''s sections, checks the output against the prompt''s schema, and drops anything the transcript does not support; a section it cannot fill stays empty (unknown stays unknown). Each filled section has `entrySource: ai-generated`, `aiDecision: pending` and its `aiSuggestion` (confidence band, rationale, links to the transcript segments it came from). The note cannot be signed until every AI section is accepted, edited or rejected (`POST /ai/suggestions/{suggestionId}/decision`); AI never signs. Allowed while the encounter is `arrived`, `triaged` or `in-progress`, which then moves to `in-progress`. The operation fails with `ai-unavailable` (the model is down) or `ai-output-rejected` (the output failed validation), and can be cancelled while it runs. Refused with `409 feature-disabled` while AI or `ambient-documentation` is off for the clinic.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: note-drafts:create
+      x-audit:
+        action: C
+        category: ai
+        patient: result
+      x-idempotency: supported
+      x-async: true
+      x-storage: clinical
+      x-events:
+        - encounter.status-changed
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteDraftCreate'
+            examples:
+              progress:
+                summary: Progress note from the visit transcript
+                value:
+                  transcriptionId: 1e2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b
+                  templateId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed` on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+              examples:
+                queued:
+                  summary: Draft queued
+                  value:
+                    id: 7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e
+                    kind: ai.note-draft
+                    status: queued
+                    createdAt: '2026-11-03T15:34:00Z'
+                    updatedAt: '2026-11-03T15:34:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `note-drafts:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such transcription in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `feature-disabled` (AI or `ambient-documentation` is off for the clinic; the problem carries `feature`); `invalid-state-transition` (not allowed in the current state (DATA_OWNERSHIP §5.2); the problem carries `currentState`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a template that is inactive or another user's personal template (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai/chart-summaries:
+    post:
+      operationId: createChartSummary
+      summary: Summarize a patient's chart
+      description: 'AI-02 (inventory #111; FRS §3.4): summarizes prior encounters, diagnoses, medications, allergies, results and outstanding issues. Returns `202` and an operation of kind `ai.chart-summary`; its result is the summary (`GET /ai/chart-summaries/{chartSummaryId}`). The API mints a **delegated token** for this task only (SECURITY_MODEL §2.4): at most 5 minutes, bound to the user, clinic, patient and task, read permissions only, every use audited as `ai`; the gateway reads the chart through the clinical read endpoints with it, so it sees only what the user may see, and never reads the database. Entered-in-error records are left out (D24). Every statement carries its source links or a `no-source` or `conflicting` marker, and what could not be found is listed in `missing` (D70). The summary is for reading: it never changes the chart. The operation fails with `ai-unavailable` or `ai-output-rejected`, and can be cancelled while it runs. Refused with `409 feature-disabled` while AI or `chart-summary` is off for the clinic.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: chart-summaries:create
+      x-audit:
+        action: C
+        category: ai
+        patient: body:/patientId
+      x-idempotency: supported
+      x-async: true
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChartSummaryCreate'
+            examples:
+              visit:
+                summary: Summary for today's visit
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed` on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+              examples:
+                queued:
+                  summary: Summary queued
+                  value:
+                    id: 8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f
+                    kind: ai.chart-summary
+                    status: queued
+                    createdAt: '2026-11-03T15:12:00Z'
+                    updatedAt: '2026-11-03T15:12:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `chart-summaries:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient or encounter in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `feature-disabled` (AI or `chart-summary` is off for the clinic; the problem carries `feature`); `patient-merged` (the patient was merged into another record).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the encounter belongs to another patient (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai/chart-summaries/{chartSummaryId}:
+    parameters:
+      - name: chartSummaryId
+        in: path
+        required: true
+        description: Chart summary ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getChartSummary
+      summary: Get a chart summary
+      description: 'The result of `POST /ai/chart-summaries` (inventory #112; AI-02; D70): statements by topic, each with a confidence band and links to the records behind it, or a `no-source` or `conflicting` marker; what could not be found; and the summary''s suggestion, with its decision. Labeled as AI output on every screen (FRS §3.4). Still readable when AI is switched off. A restricted patient needs break-glass or care-team membership.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: chart-summaries:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The chart summary.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartSummary'
+              examples:
+                summary:
+                  summary: Summary with a conflict and a gap
+                  value:
+                    id: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    sections:
+                      - topic: diagnoses
+                        statements:
+                          - sequence: 1
+                            text: Essential hypertension, on the problem list since 2024.
+                            confidence: high
+                            sourceStatus: sourced
+                            sources:
+                              - resourceType: Condition
+                                resourceId: 3e4f5a6b-7c8d-4e9f-8a0b-1c2d3e4f5a6b
+                                label: Problem list entry
+                      - topic: medications
+                        statements:
+                          - sequence: 2
+                            text: The lisinopril dose differs between the medication list and the last visit note.
+                            confidence: medium
+                            sourceStatus: conflicting
+                            sources:
+                              - resourceType: MedicationRequest
+                                resourceId: 4f5a6b7c-8d9e-4f0a-9b1c-2d3e4f5a6b7c
+                                label: Medication list
+                                excerpt: Lisinopril 10 mg tablet, once daily
+                              - resourceType: Composition
+                                resourceId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                                label: Progress note
+                                excerpt: Lisinopril 20 mg daily
+                      - topic: allergies
+                        statements:
+                          - sequence: 3
+                            text: No allergy has been recorded.
+                            confidence: high
+                            sourceStatus: no-source
+                            sources: []
+                    missing:
+                      - topic: results
+                        description: No lipid panel result found in the chart.
+                    suggestion:
+                      id: 6d7e8f9a-0b1c-4d2e-8f3a-4b5c6d7e8f9a
+                      feature: chart-summary
+                      targetType: chart-summary
+                      targetId: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+                      patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                      confidence: medium
+                      rationale: Built from 1 problem, 1 medication and 1 signed note; one medication conflict found.
+                      decision: pending
+                      generatedBy:
+                        modelName: qwen3.5-4b
+                        modelVersion: 2026-09
+                        promptCode: ai-02.chart-summary
+                        promptVersion: 3
+                        pipelineVersion: ai-02.2026-11
+                      createdAt: '2026-11-03T15:12:20Z'
+                    createdAt: '2026-11-03T15:12:20Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `chart-summaries:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such chart summary in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai/suggestions/{suggestionId}/decision:
+    parameters:
+      - name: suggestionId
+        in: path
+        required: true
+        description: AI suggestion ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: decideAiSuggestion
+      summary: Accept, edit or reject an AI suggestion
+      description: 'Records the clinician''s one decision on one suggestion (inventory #113; FRS §3.4 traceability; D70): who, when and what, recorded once (the database refuses a second decision). **A note section** (AI-01): only the note''s author decides, while the note is a draft. Text changes only through `PATCH /notes/{noteId}`, never here, so this call never changes the note: `accepted` means the section''s text is still the AI text; `edited` means the author changed it, and the section''s text at this moment is recorded as the edited content; `rejected` needs a `reason`, and the AI text must already be gone from the section (cleared or rewritten), so rejected AI text is never signed. **A chart summary** (AI-02): only the user who requested the summary decides, `accepted` or `rejected` (a summary is not edited). Not gated by the AI switches: a draft with undecided sections can always be finished and signed after AI is turned off.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: ai-suggestions:decision
+      x-audit:
+        action: E
+        category: ai
+        patient: result
+      x-idempotency: supported
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiSuggestionDecision'
+            examples:
+              edited:
+                summary: The author edited the AI text
+                value:
+                  decision: edited
+              rejected:
+                summary: Rejected with a reason
+                value:
+                  decision: rejected
+                  reason: The plan described was not discussed at this visit.
+      responses:
+        '200':
+          description: The suggestion with its decision.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSuggestion'
+              examples:
+                edited:
+                  summary: Edited note section
+                  value:
+                    id: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+                    feature: ambient-documentation
+                    targetType: note-section
+                    targetId: 2e3f4a5b-6c7d-4e8f-9a9b-0c1d2e3f4a5b
+                    noteId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    confidence: high
+                    rationale: The patient states the reason for the visit in segment 2.
+                    suggestedText: Elevated home blood pressure readings this month.
+                    sourceStatus: sourced
+                    sources:
+                      - resourceType: Transcription
+                        resourceId: 1e2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b
+                        segment: 2
+                        excerpt: My blood pressure readings at home have been high this month.
+                    unknowns: []
+                    decision: edited
+                    decidedAt: '2026-11-03T15:40:00Z'
+                    decidedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    generatedBy:
+                      modelName: qwen3.5-4b
+                      modelVersion: 2026-09
+                      promptCode: ai-01.note-draft
+                      promptVersion: 5
+                      pipelineVersion: ai-01.2026-11
+                    createdAt: '2026-11-03T15:34:30Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `ai-suggestions:decision`, or the suggestion is a note section and the user is not the note's author, or a chart summary and the user is not the one who requested it); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such suggestion in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (the suggestion is already decided; the problem carries `currentState`); `record-locked` (the note is signed).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid; `reason` is required for `rejected`); `business-rule-violation` (`accepted` while the section's text differs from the AI text, `edited` while it is unchanged, `rejected` while the AI text is still in the section, or `edited` on a chart summary (field code `not-allowed-value`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai-settings:
+    get:
+      operationId: getAiSettings
+      summary: Get the AI settings
+      description: 'The clinic''s AI switches (inventory #114; FRS §3.4 kill switch, §3.10): the clinic-wide switch and one switch per feature. A feature works only when both are on. Only this batch''s features are listed (`ambient-documentation` for AI-01, `chart-summary` for AI-02); later batches add theirs (D68). A feature never set is off. The `ETag` is what `PUT` sends as `If-Match`.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: ai-settings:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The AI settings.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSettings'
+              examples:
+                settings:
+                  summary: Note drafting on, chart summary off
+                  value:
+                    clinicEnabled: true
+                    features:
+                      - feature: ambient-documentation
+                        enabled: true
+                        updatedAt: '2026-11-02T18:00:00Z'
+                      - feature: chart-summary
+                        enabled: false
+                        reason: Waiting for the clinical advisors' review.
+                        updatedAt: '2026-11-02T18:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `ai-settings:read`).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    put:
+      operationId: replaceAiSettings
+      summary: Change the AI settings
+      description: 'Sets the clinic-wide switch and the features listed (inventory #115; FRS §3.4); a feature left out keeps its setting. Turning a feature off needs a `reason`. `If-Match` makes a second admin tab get `412` instead of overwriting. Switching off applies from the next AI request: running operations finish, and drafts and summaries already made stay readable and decidable, so every non-AI workflow keeps working. Audited as `admin`.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: ai-settings:update
+      x-audit:
+        action: U
+        category: admin
+      x-concurrency: if-match-required
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiSettingsUpdate'
+            examples:
+              'off':
+                summary: Turn chart summary off
+                value:
+                  clinicEnabled: true
+                  features:
+                    - feature: chart-summary
+                      enabled: false
+                      reason: Waiting for the clinical advisors' review.
+      responses:
+        '200':
+          description: The AI settings.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSettings'
+              examples:
+                saved:
+                  summary: Saved
+                  value:
+                    clinicEnabled: true
+                    features:
+                      - feature: ambient-documentation
+                        enabled: true
+                        updatedAt: '2026-11-02T18:00:00Z'
+                      - feature: chart-summary
+                        enabled: false
+                        reason: Waiting for the clinical advisors' review.
+                        updatedAt: '2026-11-02T18:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `ai-settings:update`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+          description: 412. `precondition-failed` (`If-Match` does not match the current version).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid; `reason` is required to turn a feature off); `business-rule-violation` (the same feature twice (field code `conflicting-fields`)).
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+          description: 428. `precondition-required` (`If-Match` is missing).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -16408,7 +17332,7 @@ paths:
                   summary: One page
                   value:
                     items:
-                      - id: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
+                      - id: 6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d
                         patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
                         medication:
                           codings:
@@ -16556,7 +17480,7 @@ paths:
     post:
       operationId: createPrescription
       summary: Start a prescription
-      description: 'Starts a draft (inventory #120). Drug search is `GET /codes?system=rxnorm`, over RxNorm Current Prescribable Content (D97).'
+      description: 'Starts a draft (inventory #120). Drug search is `GET /codes?system=rxnorm`, over RxNorm Current Prescribable Content (D97). Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:create` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -16654,7 +17578,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `prescriptions:create`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:create`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such patient, encounter or pharmacy in this clinic or the user's facilities).
@@ -16805,7 +17729,7 @@ paths:
     patch:
       operationId: updatePrescription
       summary: Edit a draft prescription
-      description: 'Changes a draft (inventory #122). A changed draft needs a new safety check before signing. A signed prescription is locked.'
+      description: 'Changes a draft (inventory #122). A changed draft needs a new safety check before signing. A signed prescription is locked. Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:update` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -16889,7 +17813,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `prescriptions:update`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:update`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
@@ -16922,7 +17846,7 @@ paths:
     post:
       operationId: markPrescriptionEnteredInError
       summary: Mark a draft prescription wrong
-      description: 'A draft written by mistake (inventory #227): entered-in-error with a reason and its Provenance; nothing is deleted (D14). A signed prescription is cancelled instead (later).'
+      description: 'A draft written by mistake (inventory #227): entered-in-error with a reason and its Provenance; nothing is deleted (D14). A signed prescription is cancelled instead (later). Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:entered-in-error` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -17000,7 +17924,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `prescriptions:entered-in-error`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:entered-in-error`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
@@ -17027,7 +17951,7 @@ paths:
     post:
       operationId: checkPrescriptionSafety
       summary: Check a draft for allergy and duplicate alerts
-      description: 'Runs the safety check on a draft (inventory #123; D97): an `allergy` alert for an active allergy to an RxNorm ingredient of the drug, a `duplicate-medication` alert for an active medication with the same ingredient. The alerts are stored on the draft. Both alerts are fixed rules in the medications service, each with its tests; no AI model produces, ranks or suppresses an alert (D99). It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`.'
+      description: 'Runs the safety check on a draft (inventory #123; D97): an `allergy` alert for an active allergy to an RxNorm ingredient of the drug, a `duplicate-medication` alert for an active medication with the same ingredient. The alerts are stored on the draft. Both alerts are fixed rules in the medications service, each with its tests; no AI model produces, ranks or suppresses an alert (D99). It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`. Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:safety-check` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -17093,7 +18017,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `prescriptions:safety-check`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:safety-check`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
@@ -17120,7 +18044,7 @@ paths:
     post:
       operationId: overrideAlert
       summary: Override a safety alert
-      description: 'Records why the prescriber goes ahead despite an alert (inventory #124; D97). Required before signing for a `high` alert; audited. It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`.'
+      description: 'Records why the prescriber goes ahead despite an alert (inventory #124; D97). Required before signing for a `high` alert; audited. It doesn''t change the draft''s version or `ETag`, so an open editor keeps its `If-Match`. Only MD and APP may do this in the MVP; RN may not. A user who holds `alerts:override` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -17183,7 +18107,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `alerts:override`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `alerts:override`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such alert in this clinic or the user's facilities).
@@ -17210,7 +18134,7 @@ paths:
     post:
       operationId: signAndSendPrescription
       summary: Sign a prescription and send it to the pharmacy
-      description: 'Signs exactly the version read (`If-Match`), locks it, writes its Provenance, adds it to the medication list and queues NewRx for the pharmacy through the outbox, all in one transaction (inventory #125; D8, D25, D97). Refused while the latest safety check is missing or older than the draft, or a `high` alert has no override. Transmission then moves through `sent` to `accepted` or `rejected` (here a simulated pharmacy). Sending always goes through the outbox (`enqueue(db, "erx", "NewRx", …)`), never straight from the request: for the demo the outbox delivers to the simulated pharmacy, and its answer comes back through `/hooks/erx` (D99).'
+      description: 'Signs exactly the version read (`If-Match`), locks it, writes its Provenance, adds it to the medication list and queues NewRx for the pharmacy through the outbox, all in one transaction (inventory #125; D8, D25, D97). Refused while the latest safety check is missing or older than the draft, or a `high` alert has no override. Transmission then moves through `sent` to `accepted` or `rejected` (here a simulated pharmacy). Sending always goes through the outbox (`enqueue(db, "erx", "NewRx", …)`), never straight from the request: for the demo the outbox delivers to the simulated pharmacy, and its answer comes back through `/hooks/erx` (D99). Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:sign-and-send` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
       tags:
         - medications
       x-owner: thulasi
@@ -17298,7 +18222,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `prescriptions:sign-and-send`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `prescriptions:sign-and-send`, or the user has neither the MD nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such prescription in this clinic or the user's facilities).
@@ -20797,7 +21721,7 @@ paths:
     post:
       operationId: submitPreRegistration
       summary: Pre-register as a new patient
-      description: 'The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice''s own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81).'
+      description: 'The public pre-registration form (D96): no account and no session. The clinic comes only from the practice code in the path, the practice''s own pre-registration link, resolved on the server; never from the body. It always answers with the same generic `204` (no body), whether or not the person is already a patient here, so the form can''t be used to learn who is. Only a malformed request, an unknown practice code, a wrong `Origin`, a failed bot check or a rate limit gets a different answer, and none of those depends on the person. Validation on submit is syntax only: no patient, email or phone lookup happens here, so a known person can''t be revealed by timing; duplicate matching happens only at accept. The `Origin` header must be the portal host (as for enrollment, ADR-0013 §5); requests are rate-limited per IP and per email, and the rate limiter keeps only a keyed hash of the email, never the email; request bodies are never logged. The ALTCHA bot check is verified on the server. A solved challenge is spent by the first request that passes the bot check, even when that request is then refused for its `Idempotency-Key` or its body (400 or 422); only a retry of the same request, with the same `Idempotency-Key`, may send it again (for example after a network error). After a 400 or 422, the form gets a new challenge before it sends again. `Idempotency-Key` is required, so a double submit or a retry makes one request. The submission is stored encrypted at rest and waits in the practice''s queue; a rejected or never-reviewed one is deleted after 30 days. Nothing is emailed or texted back with patient data (D81). The checks run in this order, and the first that fails answers: the `Origin` (403 `csrf-check-failed`), the rate limit (429), the ALTCHA bot check (422, `errors` names `/botCheck`), then the body''s fields (422 `validation-failed`). A body that is not JSON at all is refused before any of them, with 400 `malformed-request`.'
       tags:
         - portal
       x-owner: vimal
@@ -20883,6 +21807,55 @@ paths:
       x-idempotency: required
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+  /portal/bot-challenge:
+    get:
+      operationId: getBotChallenge
+      summary: Get a bot-check challenge
+      description: 'A fresh proof-of-work challenge for the ALTCHA widget on the public pre-registration form (D96; ALTCHA is MIT and self-hosted). Public: no session and no practice code, so it can''t be used to test practice codes, and it says nothing about any person. The salt carries an expiry a few minutes ahead (`?expires=`, Unix seconds) and the signature (an HMAC with a key only the server holds) covers it, so a challenge can''t be made up or stretched. The form solves it in the browser and sends the solution as `botCheck` with `POST /portal/practices/{practiceLinkId}/pre-registrations`. **Each solved challenge is accepted only once:** core records it when a submission uses it and refuses it after that, until it expires (Thulasi). `Cache-Control: no-store`, so no cache hands one challenge to two visitors. Rate-limited per IP. Not audited: no session and no person. Nothing is stored in the database: core keeps the used challenges in the API''s memory until they expire (one API process).'
+      tags:
+        - portal
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: R
+        category: none
+        actor: anonymous
+      x-release: P1
+      security: []
+      responses:
+        '200':
+          description: A new challenge, valid until the expiry in its salt.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BotChallenge'
+              examples:
+                challenge:
+                  summary: A challenge (synthetic values)
+                  value:
+                    algorithm: SHA-256
+                    challenge: '0000000000000000000000000000000000000000000000000000000000000001'
+                    maxnumber: 100000
+                    salt: TEST-salt-1?expires=2051222400
+                    signature: '0000000000000000000000000000000000000000000000000000000000000002'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (the server can't sign challenges right now, for example its key is unavailable).
 components:
   schemas:
     Address:
@@ -21786,7 +22759,7 @@ components:
           description: When the link stops working.
           x-phi: none
     DownloadLink:
-      description: A short-lived link to a clean file.
+      description: A one-time link to a clean file (D105).
       type: object
       required:
         - url
@@ -21797,7 +22770,7 @@ components:
           type: string
           format: uri
           maxLength: 2000
-          description: 'Pre-signed download link, valid for at most 5 minutes. A bearer secret: never log or store it.'
+          description: 'A link to `GET /files/{fileId}/content` on our own API with a one-time token: for this user and this file only, and only with their session; valid for about one minute, accepted once (D105). A bearer secret: never log or store it.'
           x-phi: none
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
@@ -23797,7 +24770,7 @@ components:
           type: string
           enum:
             - already-undone
-            - records-changed
+            - later-merge
           description: 'Why undo is not allowed, when `undoAllowed` is false: `already-undone` or `later-merge` (a later merge involving either patient still stands).'
           x-phi: none
     PatientMergeList:
@@ -25265,7 +26238,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/EligibilityCheck'
           description: The items on this page.
@@ -26181,7 +27154,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/CodeMatch'
           description: The items on this page.
@@ -26225,6 +27198,207 @@ components:
           maxLength: 300
           description: Title. Defaults to the template's or the note type's name.
           x-phi: clinical
+    AiFeature:
+      description: 'An AI feature with its own switch (FRS §3.4): `ambient-documentation` (AI-01: audio, transcript, note draft) and `chart-summary` (AI-02). An extensible enum (API_STANDARDS §6.5): the P1 batches add their features (D68), so screens show an unknown value as it is.'
+      type: string
+      maxLength: 64
+      x-extensible-enum:
+        - ambient-documentation
+        - chart-summary
+    AiConfidence:
+      description: 'The qualitative confidence band every AI output carries (FRS §3.4; D70): `high`, `medium` or `low`. Never a number.'
+      type: string
+      enum:
+        - low
+        - medium
+        - high
+    AiSourceStatus:
+      description: 'How a statement is supported (D70): `sourced` (by the linked records or transcript segments), `no-source` (nothing in the chart or transcript supports it, for example a statement that something was not found; it links nothing), `conflicting` (the linked sources disagree; at least two are linked).'
+      type: string
+      enum:
+        - sourced
+        - no-source
+        - conflicting
+    AiSourceLink:
+      description: 'A link from AI output to what it came from (FRS §3.4; D70): a chart record (FHIR resource type and our ID), or a transcript segment (`Transcription` with `segment`). Screens open the record through its own endpoint, with its own permission and restricted-chart rules (D37).'
+      type: object
+      required:
+        - resourceType
+        - resourceId
+      properties:
+        resourceType:
+          type: string
+          pattern: ^[A-Z][A-Za-z]{2,63}$
+          maxLength: 64
+          description: 'What is linked: a FHIR resource type (`Encounter`, `Condition`, `MedicationRequest`, `AllergyIntolerance`, `Observation`, `DiagnosticReport`, `Procedure`, `Composition`), or `Transcription`.'
+          x-phi: none
+        resourceId:
+          $ref: '#/components/schemas/Id'
+          description: The record's ID, or the transcription's.
+          x-phi: internal-id
+        segment:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100000
+          description: 'For `Transcription`: the segment''s `sequence`.'
+          x-phi: none
+        label:
+          type: string
+          maxLength: 200
+          description: What to show for the link, for example "Problem list entry".
+          x-phi: clinical
+        excerpt:
+          type: string
+          maxLength: 1000
+          description: The words in the source that support the output.
+          x-phi: clinical
+    AiDecision:
+      description: 'The clinician''s decision on a suggestion (D70): `pending` until decided, then `accepted`, `edited` or `rejected`, recorded once.'
+      type: string
+      enum:
+        - pending
+        - accepted
+        - edited
+        - rejected
+    AiGeneratedBy:
+      description: Which model, prompt version and pipeline produced the output (FRS §3.4 AI provenance; versioned prompts, VG Step 7). Metadata only.
+      type: object
+      required:
+        - modelName
+        - pipelineVersion
+      properties:
+        modelName:
+          type: string
+          maxLength: 120
+          description: Model name.
+          x-phi: none
+        modelVersion:
+          type: string
+          maxLength: 80
+          description: Model version.
+          x-phi: none
+        promptCode:
+          type: string
+          maxLength: 80
+          description: The versioned prompt used. Absent for speech-to-text.
+          x-phi: none
+        promptVersion:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100000
+          description: The prompt's version. Absent for speech-to-text.
+          x-phi: none
+        pipelineVersion:
+          type: string
+          maxLength: 40
+          description: Version of the AI pipeline (gateway, validation and post-processing).
+          x-phi: none
+    AiSuggestion:
+      description: 'One piece of AI output a clinician reviews (FRS §3.4; D70): labeled as AI, with a confidence band, a rationale, source links and what the model could not determine, and one recorded decision. A suggestion is either one drafted note section (AI-01) or one chart summary (AI-02, whose statements and their sources are in the summary). Its content never changes after it is made.'
+      type: object
+      required:
+        - id
+        - feature
+        - targetType
+        - targetId
+        - patientId
+        - confidence
+        - rationale
+        - decision
+        - generatedBy
+        - createdAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Suggestion ID.
+          x-phi: internal-id
+        feature:
+          $ref: '#/components/schemas/AiFeature'
+          description: The feature that made it.
+          x-phi: none
+        targetType:
+          type: string
+          enum:
+            - note-section
+            - chart-summary
+          description: What it is.
+          x-phi: none
+        targetId:
+          $ref: '#/components/schemas/Id'
+          description: The note section's ID, or the chart summary's.
+          x-phi: internal-id
+        noteId:
+          $ref: '#/components/schemas/Id'
+          description: 'For `note-section`: the draft note.'
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter, when there is one.
+          x-phi: internal-id
+        confidence:
+          $ref: '#/components/schemas/AiConfidence'
+          description: Confidence band.
+          x-phi: none
+        rationale:
+          type: string
+          maxLength: 2000
+          description: Why the model produced this, in a sentence or two.
+          x-phi: clinical
+        suggestedText:
+          type: string
+          maxLength: 50000
+          description: 'For `note-section`: the AI text as drafted, kept unchanged so screens can show what the author changed.'
+          x-phi: clinical
+        sourceStatus:
+          $ref: '#/components/schemas/AiSourceStatus'
+          description: 'For `note-section`: how the text is supported by the transcript.'
+          x-phi: none
+        sources:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/AiSourceLink'
+          description: 'For `note-section`: the transcript segments the text came from.'
+          x-phi: clinical
+        unknowns:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            maxLength: 500
+          description: Facts the model could not determine; left unknown, never invented (FRS §3.4).
+          x-phi: clinical
+        decision:
+          $ref: '#/components/schemas/AiDecision'
+          description: The clinician's decision.
+          x-phi: none
+        decidedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was decided. Absent while `pending`.
+          x-phi: none
+        decidedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: Who decided. Absent while `pending`.
+          x-phi: none
+        rejectionReason:
+          type: string
+          maxLength: 500
+          description: Why it was rejected. Only for `rejected`.
+          x-phi: clinical
+        generatedBy:
+          $ref: '#/components/schemas/AiGeneratedBy'
+          description: Model, prompt and pipeline versions.
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was made.
+          x-phi: none
     NoteSection:
       description: 'One section of a note, from the template (FRS FR-ENC-01, FR-ENC-04). LOINC section codes: 10154-3 chief complaint, 10164-2 history of present illness, 10187-3 review of systems, 29545-1 physical exam, 51847-2 assessment and plan, 69730-0 patient instructions (printed on the after-visit summary), 18776-5 plan of care.'
       type: object
@@ -26286,8 +27460,12 @@ components:
             - accepted
             - edited
             - rejected
-          description: The clinician's decision on the AI text (D70). The note cannot be signed while any section is `pending` (FRS §3.4, §8). Read-only; decided through the AI decision endpoint (batch 7).
+          description: The clinician's decision on the AI text (D70). The note cannot be signed while any section is `pending` (FRS §3.4, §8). Read-only; decided through `POST /ai/suggestions/{suggestionId}/decision` (batch 7).
           x-phi: none
+        aiSuggestion:
+          $ref: '#/components/schemas/AiSuggestion'
+          description: 'For an AI-drafted section: the AI text as drafted, its confidence band, rationale, links to the transcript segments it came from, what the model could not determine, and the decision (D70; batch 7). Read-only.'
+          x-phi: clinical
     NoteAddendum:
       description: 'An addendum to a signed note: a new Composition that `appends` to the original, signed when it is added (DATA_OWNERSHIP §5.3). The original is never edited.'
       type: object
@@ -26584,7 +27762,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/NoteVersion'
           description: The items on this page.
@@ -26698,7 +27876,7 @@ components:
           type: string
           format: uri
           maxLength: 2000
-          description: The download link. Short-lived; never logged.
+          description: 'A one-time link to `GET /files/{fileId}/content` (D105): for this user only, valid for about one minute, accepted once. Never logged.'
           x-phi: none
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
@@ -27817,6 +28995,481 @@ components:
           $ref: '#/components/schemas/Id'
           description: The encounter it is recorded in, if any.
           x-phi: internal-id
+    AudioRecordingCreate:
+      description: 'Body to register a recording (inventory #107). The chunks were uploaded through the file service, in order.'
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - fileIds
+      properties:
+        mode:
+          type: string
+          enum:
+            - ambient
+            - dictation
+            - upload
+          description: '`ambient` (the visit conversation), `dictation` (the clinician alone), or `upload` (recorded outside the application; same consent and retention rules, FRS AI-01).'
+          x-phi: none
+        fileIds:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Id'
+          description: The audio chunks, in playing order; each a clean `encounter-audio` file.
+          x-phi: internal-id
+        durationSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 14400
+          description: Total length, as the recorder measured it.
+          x-phi: none
+    AudioRecording:
+      description: A registered recording (inventory
+      type: object
+      required:
+        - id
+        - encounterId
+        - patientId
+        - mode
+        - consentId
+        - fileIds
+        - status
+        - createdAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Recording ID.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        mode:
+          type: string
+          enum:
+            - ambient
+            - dictation
+            - upload
+          description: How it was recorded.
+          x-phi: none
+        consentId:
+          $ref: '#/components/schemas/Id'
+          description: The patient's `ambient-recording` consent it was recorded under.
+          x-phi: internal-id
+        fileIds:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Id'
+          description: The audio chunks, in order.
+          x-phi: internal-id
+        durationSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 14400
+          description: Total length.
+          x-phi: none
+        status:
+          type: string
+          enum:
+            - uploaded
+            - transcribing
+            - transcribed
+            - failed
+            - purged
+          description: '`uploaded`, `transcribing`, `transcribed`, `failed`, or `purged` (the audio was removed at the end of its retention period; the transcript stays).'
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was registered.
+          x-phi: none
+    TranscriptionCreate:
+      description: 'Body to transcribe a recording (inventory #108).'
+      type: object
+      additionalProperties: false
+      required:
+        - audioRecordingId
+      properties:
+        audioRecordingId:
+          $ref: '#/components/schemas/Id'
+          description: The recording.
+          x-phi: internal-id
+        language:
+          type: string
+          pattern: ^[a-z]{2,3}(-[A-Z]{2})?$
+          maxLength: 20
+          default: en-US
+          description: Spoken language, a BCP 47 tag.
+          x-phi: none
+    TranscriptSegment:
+      description: 'One stretch of speech (D70): who spoke, when, and what was said.'
+      type: object
+      required:
+        - sequence
+        - startMs
+        - endMs
+        - speaker
+        - text
+      properties:
+        sequence:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100000
+          description: Order in the transcript, from 1; what source links point at.
+          x-phi: none
+        startMs:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 14400000
+          description: Start, in milliseconds from the start of the recording.
+          x-phi: none
+        endMs:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 14400000
+          description: End, in milliseconds from the start of the recording.
+          x-phi: none
+        speaker:
+          type: string
+          enum:
+            - clinician
+            - patient
+            - other
+            - unknown
+          description: Who spoke, as far as the speech service could tell; `unknown` when it could not.
+          x-phi: none
+        text:
+          type: string
+          maxLength: 5000
+          description: What was said.
+          x-phi: clinical
+        confidence:
+          $ref: '#/components/schemas/AiConfidence'
+          description: How sure the speech service is of the words, so screens can mark doubtful passages.
+          x-phi: none
+    Transcription:
+      description: 'The transcript of a recording (inventory #109; D70): the original, never edited.'
+      type: object
+      required:
+        - id
+        - audioRecordingId
+        - encounterId
+        - patientId
+        - language
+        - segments
+        - generatedBy
+        - createdAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Transcription ID.
+          x-phi: internal-id
+        audioRecordingId:
+          $ref: '#/components/schemas/Id'
+          description: The recording.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The encounter.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        language:
+          type: string
+          maxLength: 20
+          description: Spoken language, a BCP 47 tag.
+          x-phi: none
+        segments:
+          type: array
+          maxItems: 20000
+          items:
+            $ref: '#/components/schemas/TranscriptSegment'
+          description: The segments, in order.
+          x-phi: clinical
+        generatedBy:
+          $ref: '#/components/schemas/AiGeneratedBy'
+          description: Speech model and pipeline versions.
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was made.
+          x-phi: none
+    NoteDraftCreate:
+      description: 'Body to draft a note from a transcript (inventory #110).'
+      type: object
+      additionalProperties: false
+      required:
+        - transcriptionId
+        - templateId
+      properties:
+        transcriptionId:
+          $ref: '#/components/schemas/Id'
+          description: The transcription; the draft goes on its encounter.
+          x-phi: internal-id
+        templateId:
+          $ref: '#/components/schemas/Id'
+          description: A practice or personal note template (`/note-templates`); the model fills its sections.
+          x-phi: internal-id
+    ChartSummaryCreate:
+      description: 'Body to summarize a chart (inventory #111).'
+      type: object
+      additionalProperties: false
+      required:
+        - patientId
+      properties:
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit it is for, when there is one; its reason for visit focuses the summary.
+          x-phi: internal-id
+    ChartSummaryTopic:
+      description: 'A part of the summary (FRS AI-02): prior encounters, diagnoses, medications, allergies, results, outstanding issues.'
+      type: string
+      enum:
+        - encounters
+        - diagnoses
+        - medications
+        - allergies
+        - results
+        - outstanding-issues
+    ChartSummaryStatement:
+      description: One statement in the summary (D70), with its confidence band and its sources, or a `no-source` or `conflicting` marker.
+      type: object
+      required:
+        - sequence
+        - text
+        - confidence
+        - sourceStatus
+        - sources
+      properties:
+        sequence:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 1000
+          description: Order in the summary, from 1.
+          x-phi: none
+        text:
+          type: string
+          maxLength: 2000
+          description: The statement.
+          x-phi: clinical
+        confidence:
+          $ref: '#/components/schemas/AiConfidence'
+          description: Confidence band.
+          x-phi: none
+        sourceStatus:
+          $ref: '#/components/schemas/AiSourceStatus'
+          description: '`sourced`, `no-source` (no links) or `conflicting` (at least two links that disagree).'
+          x-phi: none
+        sources:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/AiSourceLink'
+          description: The records behind it. Empty for `no-source`.
+          x-phi: clinical
+    ChartSummarySection:
+      description: The statements on one topic.
+      type: object
+      required:
+        - topic
+        - statements
+      properties:
+        topic:
+          $ref: '#/components/schemas/ChartSummaryTopic'
+          description: The topic.
+          x-phi: none
+        statements:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ChartSummaryStatement'
+          description: Its statements, in order.
+          x-phi: clinical
+    ChartSummaryGap:
+      description: Something the summary could not find or determine (FRS AI-02; unknown stays unknown).
+      type: object
+      required:
+        - topic
+        - description
+      properties:
+        topic:
+          $ref: '#/components/schemas/ChartSummaryTopic'
+          description: The topic.
+          x-phi: none
+        description:
+          type: string
+          maxLength: 500
+          description: What is missing.
+          x-phi: clinical
+    ChartSummary:
+      description: 'An AI chart summary (inventory #112; AI-02; D70). Read-only and never part of the chart.'
+      type: object
+      required:
+        - id
+        - patientId
+        - sections
+        - missing
+        - suggestion
+        - createdAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Chart summary ID.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit it was made for, when there is one.
+          x-phi: internal-id
+        sections:
+          type: array
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/ChartSummarySection'
+          description: One per topic that has statements, in the topic order.
+          x-phi: clinical
+        missing:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/ChartSummaryGap'
+          description: What could not be found or determined. Empty when nothing is missing.
+          x-phi: clinical
+        suggestion:
+          $ref: '#/components/schemas/AiSuggestion'
+          description: 'The summary as a suggestion: overall confidence band, rationale, model and prompt versions, and the clinician''s decision.'
+          x-phi: clinical
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was made.
+          x-phi: none
+    AiSuggestionDecision:
+      description: 'Body to decide a suggestion (inventory #113). The edited text is never sent here: it is the note section''s text, saved through `PATCH /notes/{noteId}`.'
+      type: object
+      additionalProperties: false
+      required:
+        - decision
+      properties:
+        decision:
+          type: string
+          enum:
+            - accepted
+            - edited
+            - rejected
+          description: 'The decision: `edited` only for a note section.'
+          x-phi: none
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why it was rejected. Required for `rejected`; not allowed otherwise.
+          x-phi: clinical
+    AiFeatureSetting:
+      description: One feature's switch.
+      type: object
+      required:
+        - feature
+        - enabled
+      properties:
+        feature:
+          $ref: '#/components/schemas/AiFeature'
+          description: The feature.
+          x-phi: none
+        enabled:
+          type: boolean
+          description: On or off for the clinic. Works only while `clinicEnabled` is also on.
+          x-phi: none
+        reason:
+          type: string
+          maxLength: 500
+          description: Why it was turned off. Present while off, unless it was never set.
+          x-phi: none
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: Last change. Absent if never set.
+          x-phi: none
+    AiSettings:
+      description: 'The clinic''s AI switches (inventory #114): the clinic-wide kill switch and one switch per feature (FRS §3.4). Settings, not patient data.'
+      type: object
+      required:
+        - clinicEnabled
+        - features
+      properties:
+        clinicEnabled:
+          type: boolean
+          description: The clinic-wide switch. Off turns every AI feature off at once.
+          x-phi: none
+        features:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/AiFeatureSetting'
+          description: One per feature.
+          x-phi: none
+    AiFeatureSettingUpdate:
+      description: One feature's new setting.
+      type: object
+      additionalProperties: false
+      required:
+        - feature
+        - enabled
+      properties:
+        feature:
+          type: string
+          enum:
+            - ambient-documentation
+            - chart-summary
+          description: The feature.
+          x-phi: none
+        enabled:
+          type: boolean
+          description: On or off.
+          x-phi: none
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why it is turned off. Required when `enabled` is false; not allowed otherwise.
+          x-phi: none
+    AiSettingsUpdate:
+      description: 'Body to change the AI settings (inventory #115). Features left out keep their setting.'
+      type: object
+      additionalProperties: false
+      required:
+        - clinicEnabled
+      properties:
+        clinicEnabled:
+          type: boolean
+          description: The clinic-wide switch.
+          x-phi: none
+        features:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/AiFeatureSettingUpdate'
+          description: The features to set, each at most once.
+          x-phi: none
     Facility:
       description: A practice site (the admin `facility` row and its FHIR-shaped site `Location`).
       type: object
@@ -28267,11 +29920,11 @@ components:
           x-phi: none
         facilityIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 50
           items:
             $ref: '#/components/schemas/Id'
-          description: Facilities where the provider works (one PractitionerRole each).
+          description: Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such a provider.
           x-phi: internal-id
         phone:
           $ref: '#/components/schemas/PhoneNumber'
@@ -28354,11 +30007,11 @@ components:
           x-phi: none
         facilityIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 50
           items:
             $ref: '#/components/schemas/Id'
-          description: Facilities where the provider works (one PractitionerRole each).
+          description: Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such a provider.
           x-phi: internal-id
         phone:
           $ref: '#/components/schemas/PhoneNumber'
@@ -28408,11 +30061,11 @@ components:
           x-phi: none
         facilityIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 50
           items:
             $ref: '#/components/schemas/Id'
-          description: Facilities where the provider works (one PractitionerRole each).
+          description: Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such a provider.
           x-phi: internal-id
         phone:
           $ref: '#/components/schemas/PhoneNumber'
@@ -30161,7 +31814,7 @@ components:
           x-phi: none
         prescriptionId:
           $ref: '#/components/schemas/Id'
-          description: The prescription that put it on the list, when `source` is `prescription`.
+          description: 'The prescription that put it on the list, when `source` is `prescription`. It equals `id`: the list entry is that prescription''s `MedicationRequest` (D28).'
           x-phi: internal-id
         note:
           type: string
@@ -32399,7 +34052,47 @@ components:
         botCheck:
           type: string
           maxLength: 4000
-          description: The proof-of-work answer from the form's ALTCHA widget (MIT, self-hosted), checked by the server; nothing about the visitor goes to anyone else.
+          description: The solved challenge from the form's ALTCHA widget (MIT, self-hosted), for a challenge from `GET /portal/bot-challenge`. Checked by the server, and accepted only once (a retry of the same request, with the same `Idempotency-Key`, may send it again; after a 400 or 422, get a new challenge); nothing about the visitor goes to anyone else.
+          x-phi: none
+    BotChallenge:
+      description: An ALTCHA proof-of-work challenge (D96). Nothing about a person. The browser finds the number, up to `maxnumber`, whose hash with the salt matches `challenge`, and sends the result as `botCheck`.
+      type: object
+      required:
+        - algorithm
+        - challenge
+        - maxnumber
+        - salt
+        - signature
+      properties:
+        algorithm:
+          type: string
+          enum:
+            - SHA-256
+          description: The hash function.
+          x-phi: none
+        challenge:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          maxLength: 64
+          description: The hash to find, in lowercase hex.
+          x-phi: none
+        maxnumber:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 10000000
+          description: The largest number the search may need; sets how much work the browser does.
+          x-phi: none
+        salt:
+          type: string
+          maxLength: 200
+          description: Random salt that carries the challenge's expiry, a few minutes ahead (`?expires=`, Unix seconds).
+          x-phi: none
+        signature:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          maxLength: 64
+          description: The server's HMAC over the challenge, in lowercase hex. Only the server can check it.
           x-phi: none
   parameters:
     Cursor:

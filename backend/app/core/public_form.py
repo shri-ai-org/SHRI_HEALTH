@@ -37,6 +37,7 @@ from fastapi import APIRouter, Depends, FastAPI, Request, Response
 
 from app.core.config import Settings
 from app.core.errors import AppError, Forbidden, ServiceUnavailable
+from app.core.lifecycle import on_shutdown
 
 ALGORITHM = "SHA-256"
 MIN_SECRET_LENGTH = 32
@@ -196,7 +197,8 @@ class PublicFormGuards:
 
     def __init__(self, settings: Settings) -> None:
         if not settings.portal_origin or settings.public_form_secret is None:
-            raise ValueError("PORTAL_ORIGIN and PUBLIC_FORM_SECRET are needed for public forms")
+            missing = settings.missing("portal_origin", "public_form_secret")
+            raise ValueError(f"Public forms are not configured: set {', '.join(missing)}")
         secret = settings.public_form_secret.get_secret_value()
         if len(secret) < MIN_SECRET_LENGTH:
             raise ValueError(f"PUBLIC_FORM_SECRET must be at least {MIN_SECRET_LENGTH} characters")
@@ -277,3 +279,24 @@ def include_routes(app: FastAPI, api_prefix: str) -> None:
         return
     if CHALLENGE_OPERATION in known:
         app.include_router(router, prefix=api_prefix)
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """Public forms (D96): their own database role, and the guards. Half-configured stops
+    startup."""
+    from app.core.db import Database  # db builds on settings only; public_form is imported early
+
+    app.state.public_db = (Database(settings, settings.public_database_url)
+                           if settings.public_database_url else None)
+    if app.state.public_db is not None:
+        on_shutdown(app, app.state.public_db.dispose)
+    setattr(app.state, STATE,
+            PublicFormGuards(settings)
+            if settings.portal_origin or settings.public_form_secret else None)
+
+
+def register_routes(app: FastAPI, settings: Settings) -> None:
+    """GET /portal/bot-challenge, once the contract has it (#136)."""
+    from app.core.routing import API_PREFIX
+
+    include_routes(app, API_PREFIX)
