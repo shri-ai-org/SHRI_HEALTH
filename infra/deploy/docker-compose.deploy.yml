@@ -4,7 +4,7 @@
 # outside the repository (mode 600) and computes SHRI_PUBLIC_URL and SHRI_RELEASE.
 #
 # What changes from development:
-# - OpenBao: a real server (file storage, sealed at start), initialised and unsealed by deploy.sh.
+# - OpenBao: a real server (integrated storage, sealed at start), initialised and unsealed by deploy.sh.
 # - Keycloak: production mode, its own database and role in the same PostgreSQL.
 # - API and worker: ENVIRONMENT staging, real staff and patient sign-in (the X-Dev-* stand-ins
 #   are refused outside development and test), images tagged with the commit.
@@ -60,11 +60,12 @@ services:
         condition: service_completed_successfully
 
   openbao:
-    # A real server: file storage in a volume, sealed at every start until deploy.sh unseals it.
-    command: !override ["server", "-config=/openbao/config/openbao.hcl"]
+    # A real server: integrated storage in a volume, sealed at every start until deploy.sh
+    # unseals it. Its files live outside /openbao/config, which the image's entrypoint takes over.
+    command: !override ["server", "-config=/etc/shri-openbao/openbao.hcl"]
     environment: !reset {}
     volumes:
-      - ../deploy/openbao:/openbao/config:ro
+      - ../deploy/openbao:/etc/shri-openbao:ro
       - ../compose/openbao:/init:ro
       - openbao:/openbao/file
     restart: unless-stopped
