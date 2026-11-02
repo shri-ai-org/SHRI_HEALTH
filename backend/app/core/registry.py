@@ -9,7 +9,7 @@ The order is the app's behaviour, so it is the one thing to keep in mind when ad
   500s included); NoStore; RequestId outermost (every answer carries X-Request-ID).
 - **Error handlers**, then the idempotent-replay handler, in that order.
 - **Routes last,** in the order they match: /health, sign-in, the bot challenge, events,
-  operations, then every module's router.
+  operations, break-glass, then every module's router.
 
 test_registry.py checks the result against the sequence create_app() used before the registry:
 the same middleware stack, routes, error handlers and app state.
@@ -24,6 +24,7 @@ from app.core import (
     audit,
     auth_api,
     backchannel,
+    break_glass_api,
     crypto,
     db,
     download_tokens,
@@ -72,6 +73,7 @@ FEATURES: tuple[tuple[str, Register], ...] = (
     ("patient sign-in routes", portal_auth_api.register),
     ("events", events.register),
     ("operations", long_running.register),
+    ("break-glass", break_glass_api.register),
     ("modules", routing.register),
 )
 
