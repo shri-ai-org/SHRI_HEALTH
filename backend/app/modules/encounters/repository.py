@@ -203,6 +203,8 @@ LEFT JOIN LATERAL (SELECT x.practitioner_id FROM clinical.composition_author x
                     WHERE x.composition_id = c.id AND x.practitioner_id IS NOT NULL
                     ORDER BY x.created_at LIMIT 1) au ON true
 WHERE c.encounter_id = :id
+  AND NOT EXISTS (SELECT 1 FROM clinical.composition_relates_to r
+                   WHERE r.composition_id = c.id AND r.code = 'appends')  -- an addendum
   AND (NOT :signed_only OR c.status IN ('final', 'amended'))
 ORDER BY c.date DESC, c.id
 LIMIT 50
