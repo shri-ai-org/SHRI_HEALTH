@@ -1,0 +1,147 @@
+# The test-server overlay: the development stack (infra/compose/docker-compose.yml) made fit for
+# one Linux host with Docker (an EC2 instance, a VM, or a laptop for the demo fallback). Run it
+# only through infra/deploy/deploy.sh, which supplies the settings below from an env file kept
+# outside the repository (mode 600) and computes SHRI_PUBLIC_URL and SHRI_RELEASE.
+#
+# What changes from development:
+# - OpenBao: a real server (integrated storage, sealed at start), initialised and unsealed by deploy.sh.
+# - Keycloak: production mode, its own database and role in the same PostgreSQL.
+# - API and worker: ENVIRONMENT staging, real staff and patient sign-in (the X-Dev-* stand-ins
+#   are refused outside development and test), images tagged with the commit.
+# - The simulated payer and pharmacy: only when SHRI_DEMO=true, never in production.
+# - Nginx: one public HTTPS port, the hostname and certificate from the settings; the internal
+#   S3 port is not published.
+#
+# Paths are written "../deploy/…": the same folder whether compose resolves them from
+# infra/compose or from here. Synthetic data only, on every host this runs on.
+
+services:
+  keycloak-db:
+    # One shot: Keycloak's own database and role (production mode needs a real database).
+    build: ../compose/postgres  # the same image as postgres (built, never pulled)
+    image: shri-health/postgres:18.6-pgvector0.8.2
+    entrypoint: ["sh", "/init/keycloak-db.sh"]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: ${POSTGRES_DB:-shri_health}
+      PGUSER: ${POSTGRES_USER:-shri}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD in the deploy env file}
+    volumes:
+      - ../deploy/postgres:/init:ro
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  keycloak:
+    command: !override ["start", "--import-realm"]
+    # The admin console and admin API are never on the public host (Nginx refuses /kc/admin/):
+    # only on this host's loopback, reached over an SSH tunnel (README) and by deploy.sh.
+    ports:
+      - "127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}:8080"
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?}
+      # TLS ends at Nginx; Keycloak is reached over the internal network only.
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: ${SHRI_PUBLIC_URL:?run through deploy.sh}/kc
+      KC_HOSTNAME_ADMIN: http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc
+      # The realms' redirect URIs follow the host (placeholders in realms/*.json).
+      SHRI_WEB_REDIRECT_URI: ${SHRI_PUBLIC_URL}/api/v1/auth/callback
+      SHRI_WEB_POST_LOGOUT_URI: ${SHRI_PUBLIC_URL}/
+      SHRI_PORTAL_REDIRECT_URI: ${SHRI_PUBLIC_URL}/api/v1/portal/auth/callback
+      SHRI_PORTAL_POST_LOGOUT_URI: ${SHRI_PUBLIC_URL}/portal/
+    restart: unless-stopped
+    depends_on:
+      keycloak-db:
+        condition: service_completed_successfully
+
+  openbao:
+    # A real server: integrated storage in a volume, sealed at every start until deploy.sh
+    # unseals it. Its files live outside /openbao/config, which the image's entrypoint takes over.
+    command: !override ["server", "-config=/etc/shri-openbao/openbao.hcl"]
+    environment: !reset {}
+    volumes:
+      - ../deploy/openbao:/etc/shri-openbao:ro
+      - ../compose/openbao:/init:ro
+      - openbao:/openbao/file
+    restart: unless-stopped
+    healthcheck:
+      # 0 only when initialised and unsealed.
+      test: ["CMD", "bao", "status", "-address=http://127.0.0.1:8200"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  openbao-init:
+    # The development one-shot is replaced by deploy.sh (openbao/init-unseal.sh).
+    profiles: ["development-only"]
+
+  seaweedfs:
+    ports: !reset []
+    restart: unless-stopped
+
+  clamav:
+    restart: unless-stopped
+
+  postgres:
+    restart: unless-stopped
+
+  api:
+    image: shri-health/api:${SHRI_RELEASE:?run through deploy.sh}
+    build:
+      args:
+        BUILD_VERSION: ${SHRI_BUILD_VERSION:-dev}
+        BUILD_COMMIT: ${SHRI_RELEASE}
+    environment:
+      ENVIRONMENT: ${SHRI_ENVIRONMENT:-staging}
+      AUTH_MODE: keycloak
+      PATIENT_AUTH_MODE: keycloak
+      KEYCLOAK_PUBLIC_URL: ${SHRI_PUBLIC_URL}/kc
+      KEYCLOAK_REDIRECT_URI: ${SHRI_PUBLIC_URL}/api/v1/auth/callback
+      ALLOWED_ORIGINS: '["${SHRI_PUBLIC_URL}"]'
+      PORTAL_REDIRECT_URI: ${SHRI_PUBLIC_URL}/api/v1/portal/auth/callback
+      PORTAL_ORIGIN: ${SHRI_PUBLIC_URL}
+      HOOK_SECRET_CLEARINGHOUSE: ${HOOK_SECRET_CLEARINGHOUSE:?}
+      HOOK_SECRET_ERX: ${HOOK_SECRET_ERX:?}
+    restart: unless-stopped
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+      openbao:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      seaweedfs-init:
+        condition: service_completed_successfully
+      clamav:
+        condition: service_started
+
+  integration-worker:
+    image: shri-health/api:${SHRI_RELEASE}
+    environment:
+      ENVIRONMENT: ${SHRI_ENVIRONMENT:-staging}
+      # The simulated payer and pharmacy (D95): demo hosts only; settings refuse it in production.
+      SIMULATED_PARTNERS: ${SHRI_DEMO:-false}
+      SIMULATED_PARTNER_CALLBACK_URL: http://api:8000
+      HOOK_SECRET_CLEARINGHOUSE: ${HOOK_SECRET_CLEARINGHOUSE:?}
+      HOOK_SECRET_ERX: ${HOOK_SECRET_ERX:?}
+    restart: unless-stopped
+
+  nginx:
+    ports: !override
+      - "${SHRI_HTTPS_PORT:-443}:443"
+    environment:
+      SHRI_HOSTNAME: ${SHRI_HOSTNAME:?}
+      SHRI_HTTPS_PORT: ${SHRI_HTTPS_PORT:-443}
+    volumes: !override
+      - ../deploy/nginx:/etc/nginx/templates:ro
+      - ${TLS_CERT_FILE:?}:/etc/nginx/certs/server.crt:ro
+      - ${TLS_KEY_FILE:?}:/etc/nginx/certs/server.key:ro
+    restart: unless-stopped
+
+volumes:
+  openbao:
