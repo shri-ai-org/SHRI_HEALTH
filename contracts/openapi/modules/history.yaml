@@ -2049,7 +2049,8 @@ components:
           maxItems: 10
           items:
             $ref: ../components/schemas/CodeableConcept.yaml
-          description: What happened, e.g. hives, SNOMED CT or text.
+          description: What happened, e.g. hives, SNOMED CT or text. Until the coding child tables land (after the demo),
+            the server stores one coding per manifestation and answers `422` for more than one.
           x-phi: clinical
         severity:
           type: string
@@ -2112,7 +2113,8 @@ components:
         code: &id027
           $ref: ../components/schemas/CodeableConcept.yaml
           description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses
-            SNOMED CT 716186003.'
+            SNOMED CT 716186003. Until the coding child tables land (after the demo), the server stores one coding per concept
+            and answers `422` for more than one.'
           x-phi: clinical
         type: &id028
           type: string

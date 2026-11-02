@@ -3618,7 +3618,8 @@ components:
             items:
               $ref: ../components/schemas/CodeableConcept.yaml
           - type: 'null'
-          description: Reason, coded or as text. Send `null` to clear it.
+          description: Reason, coded or as text. Send `null` to clear it. Until the coding child tables land (after the demo),
+            the server stores one coding per reason and answers `422` for more than one.
           x-phi: clinical
         locationId:
           oneOf:

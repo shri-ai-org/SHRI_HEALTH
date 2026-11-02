@@ -27039,7 +27039,7 @@ components:
               items:
                 $ref: '#/components/schemas/CodeableConcept'
             - type: 'null'
-          description: Reason, coded or as text. Send `null` to clear it.
+          description: Reason, coded or as text. Send `null` to clear it. Until the coding child tables land (after the demo), the server stores one coding per reason and answers `422` for more than one.
           x-phi: clinical
         locationId:
           oneOf:
@@ -28615,7 +28615,7 @@ components:
           maxItems: 10
           items:
             $ref: '#/components/schemas/CodeableConcept'
-          description: What happened, e.g. hives, SNOMED CT or text.
+          description: What happened, e.g. hives, SNOMED CT or text. Until the coding child tables land (after the demo), the server stores one coding per manifestation and answers `422` for more than one.
           x-phi: clinical
         severity:
           type: string
@@ -28676,7 +28676,7 @@ components:
           x-phi: internal-id
         code:
           $ref: '#/components/schemas/CodeableConcept'
-          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003.'
+          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.'
           x-phi: clinical
         type:
           type: string
@@ -28786,7 +28786,7 @@ components:
           x-phi: internal-id
         code:
           $ref: '#/components/schemas/CodeableConcept'
-          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003.'
+          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.'
           x-phi: clinical
         type:
           type: string
@@ -32127,7 +32127,7 @@ components:
       properties:
         medication:
           $ref: '#/components/schemas/CodeableConcept'
-          description: 'The drug: RxNorm from `GET /codes?system=rxnorm`, or text.'
+          description: 'The drug: RxNorm from `GET /codes?system=rxnorm`, or text. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.'
           x-phi: clinical
         dosageText:
           type: string
@@ -32185,7 +32185,7 @@ components:
           x-phi: internal-id
         medication:
           $ref: '#/components/schemas/CodeableConcept'
-          description: The drug, from `GET /codes?system=rxnorm`.
+          description: The drug, from `GET /codes?system=rxnorm`. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.
           x-phi: clinical
         dosageText:
           type: string
@@ -32437,7 +32437,7 @@ components:
       properties:
         medication:
           $ref: '#/components/schemas/CodeableConcept'
-          description: The drug.
+          description: The drug. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.
           x-phi: clinical
         dosageText:
           type: string
