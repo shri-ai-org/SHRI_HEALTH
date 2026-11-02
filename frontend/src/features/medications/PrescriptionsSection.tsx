@@ -14,6 +14,7 @@ import type { CodeMatch, Encounter, Pharmacy, Prescription, PrescriptionCreate, 
 import { Badge, Button, ConfirmDialog, Field, formatDateTime, Modal, ProblemAlert, Select, Spinner, Textarea, TextInput, useToast, type BadgeTone, type Problem } from '../../design-system'
 import { DrugPicker, NO_DRUG, type DrugChoice } from '../clinical/DrugPicker'
 import { catchProblem, Panel } from '../clinical/parts'
+import { usePrescribingAccess, type PrescribingAccess } from './access'
 
 // ---- Drafts this tab started -----------------------------------------------------------------
 
@@ -48,8 +49,10 @@ type PharmacyNames = Record<string, string>
  * Prescribing on the visit (demo step 9; D97, D99): an RxNorm drug, directions, quantity and the
  * pharmacy; the safety check runs on every saved draft, a `high` alert needs an override with a
  * reason, and sign-and-send signs exactly the version read and queues it for the pharmacy.
+ * Only MD and APP see the prescribing actions (D110); everyone else sees the prescriptions read-only.
  */
 export function PrescriptionsSection({ encounter, open }: { encounter: Encounter; open: boolean }) {
+  const access = usePrescribingAccess()
   const [ids, setIds] = useState<string[]>(() => readIds(encounter.id))
   const [names, setNames] = useState<PharmacyNames>({})
   const [preferred, setPreferred] = useState<{ id: string; name: string } | null>(null)
@@ -57,6 +60,8 @@ export function PrescriptionsSection({ encounter, open }: { encounter: Encounter
   const [fresh, setFresh] = useState<Record<string, Loaded>>({})
 
   useEffect(() => {
+    // The preferred pharmacy only fills in the new-prescription form.
+    if (!access.create) return
     let current = true
     getPatient(encounter.patientId)
       .then((res) => {
@@ -70,7 +75,7 @@ export function PrescriptionsSection({ encounter, open }: { encounter: Encounter
     return () => {
       current = false
     }
-  }, [encounter.patientId])
+  }, [encounter.patientId, access.create])
 
   function created(prescription: Prescription, etag: string | null, pharmacyName: string) {
     setFresh((f) => ({ ...f, [prescription.id]: { prescription, etag } }))
@@ -96,14 +101,17 @@ export function PrescriptionsSection({ encounter, open }: { encounter: Encounter
         <ul className="space-y-4">
           {ids.map((id) => (
             <li key={id}>
-              <PrescriptionCard id={id} initial={fresh[id]} timeZone={encounter.timeZone} names={names} onGone={() => forget(id)} />
+              <PrescriptionCard id={id} initial={fresh[id]} timeZone={encounter.timeZone} names={names} access={access} onGone={() => forget(id)} />
             </li>
           ))}
         </ul>
       ) : (
         <p className="text-ink-muted">No prescriptions started on this visit.</p>
       )}
-      {open ? <NewPrescriptionForm encounter={encounter} preferred={preferred} onCreated={created} /> : null}
+      {access.known && !access.create ? (
+        <p className="mt-3 text-sm text-ink-muted">Only a physician or an advanced practice provider can prescribe. Prescriptions on this visit show here read-only.</p>
+      ) : null}
+      {open && access.create ? <NewPrescriptionForm encounter={encounter} preferred={preferred} onCreated={created} /> : null}
     </Panel>
   )
 }
@@ -507,12 +515,14 @@ function PrescriptionCard({
   initial,
   timeZone,
   names,
+  access,
   onGone,
 }: {
   id: string
   initial: Loaded | undefined
   timeZone: string
   names: PharmacyNames
+  access: PrescribingAccess
   onGone: () => void
 }) {
   const toast = useToast()
@@ -523,8 +533,12 @@ function PrescriptionCard({
   const [signing, setSigning] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [discarding, setDiscarding] = useState(false)
-  // One key per sign-and-send of one version: kept while it is retried.
+  // One key per sign-and-send of one version, kept only to retry the same request after a network
+  // failure or a 5xx. Any 4xx clears it: the server stores 4xx answers by key and the body is empty,
+  // so the next click must send a new key or it gets the stored refusal back (M27, "one per click").
   const signKey = useRef<{ etag: string; key: string } | null>(null)
+  // The automatic safety check runs once per card, as soon as this user may run it.
+  const autoChecked = useRef(false)
 
   async function reload(): Promise<Loaded | null> {
     try {
@@ -565,8 +579,6 @@ function PrescriptionCard({
       .then((l) => {
         if (!current || !l) return
         if (!initial) setLoaded(l)
-        // Every saved draft is checked; an open draft already checked shows its alerts as stored.
-        if (l.prescription.status === 'draft' && !l.prescription.safetyCheckedAt) void check()
       })
       .catch((error: unknown) => {
         if (!current) return
@@ -576,9 +588,20 @@ function PrescriptionCard({
     return () => {
       current = false
     }
-    // Runs once per card: the check and reload are this card's own actions.
+    // Runs once per card: the reload is this card's own action.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // Every saved draft is checked; an open draft already checked shows its alerts as stored. Only a
+  // user who may run the check does so (D110): for anyone else the draft shows as not checked.
+  const unchecked = loaded?.prescription.status === 'draft' && !loaded.prescription.safetyCheckedAt
+  useEffect(() => {
+    if (!unchecked || !access.check || autoChecked.current) return
+    autoChecked.current = true
+    void check()
+    // `check` is this card's own action; the effect waits only for the draft and the permission.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unchecked, access.check])
 
   async function sign() {
     setConfirm(false)
@@ -594,9 +617,13 @@ function PrescriptionCard({
         setLoaded({ prescription: res.data, etag: etagOf(res) })
       }
     } catch (error) {
+      const refused = error instanceof ApiError && error.status >= 400 && error.status < 500
+      if (refused) signKey.current = null
       if (error instanceof ApiError && error.status === 422) setSignProblem(error.problem)
       else catchProblem(setProblem)(error)
-      if (error instanceof ApiError && error.status === 412) void reload()
+      // A 412 (changed) or a 422 (refused, e.g. alerts replaced by a check elsewhere): read it again,
+      // so the refusal points at the current alerts and the next sign sends the current ETag.
+      if (error instanceof ApiError && (error.status === 412 || error.status === 422)) void reload()
     } finally {
       setSigning(false)
     }
@@ -649,7 +676,7 @@ function PrescriptionCard({
       {problem ? <ProblemAlert problem={problem} /> : null}
 
       {draft ? (
-        <SafetyAlerts rx={rx} checking={checking} mustOverride={refusal.alerts} onOverridden={() => void reload()} />
+        <SafetyAlerts rx={rx} checking={checking} mustOverride={refusal.alerts} canOverride={access.override} onOverridden={() => void reload()} />
       ) : rx.alerts.length > 0 ? (
         <p className="text-sm text-ink-muted">
           Signed with {rx.alerts.length} safety alert{rx.alerts.length === 1 ? '' : 's'} reviewed.
@@ -672,22 +699,28 @@ function PrescriptionCard({
       <div className="flex flex-wrap items-center gap-3">
         {draft ? (
           <>
-            <Button loading={signing} disabled={checking || needsOverride || !rx.safetyCheckedAt} onClick={() => setConfirm(true)}>
-              Sign and send
-            </Button>
-            <Button variant="outline" loading={checking} onClick={() => void check()}>
-              Run safety check again
-            </Button>
-            <Button variant="ghost" onClick={() => setDiscarding(true)}>
-              Discard draft
-            </Button>
+            {access.sign ? (
+              <Button loading={signing} disabled={checking || needsOverride || !rx.safetyCheckedAt} onClick={() => setConfirm(true)}>
+                Sign and send
+              </Button>
+            ) : null}
+            {access.check ? (
+              <Button variant="outline" loading={checking} onClick={() => void check()}>
+                Run safety check again
+              </Button>
+            ) : null}
+            {access.discard ? (
+              <Button variant="ghost" onClick={() => setDiscarding(true)}>
+                Discard draft
+              </Button>
+            ) : null}
           </>
         ) : rx.transmission.status === 'queued' || rx.transmission.status === 'sent' ? (
           <Button variant="outline" onClick={() => void reload()}>
             Refresh status
           </Button>
         ) : null}
-        {draft && needsOverride ? <span className="text-sm text-ink-muted">Override the high alert to sign.</span> : null}
+        {draft && needsOverride && access.sign ? <span className="text-sm text-ink-muted">Override the high alert to sign.</span> : null}
       </div>
 
       <ConfirmDialog open={confirm} title="Sign and send this prescription?" confirmLabel="Sign and send" onConfirm={() => void sign()} onCancel={() => setConfirm(false)}>
@@ -710,7 +743,19 @@ function PrescriptionCard({
   )
 }
 
-function SafetyAlerts({ rx, checking, mustOverride, onOverridden }: { rx: Prescription; checking: boolean; mustOverride: Set<string>; onOverridden: () => void }) {
+function SafetyAlerts({
+  rx,
+  checking,
+  mustOverride,
+  canOverride,
+  onOverridden,
+}: {
+  rx: Prescription
+  checking: boolean
+  mustOverride: Set<string>
+  canOverride: boolean
+  onOverridden: () => void
+}) {
   if (checking) return <Spinner label="Running the safety check" />
   if (!rx.safetyCheckedAt) return <p className="text-sm text-ink-muted">Not checked on this version yet. Run the safety check to sign.</p>
   if (rx.alerts.length === 0) return <p className="text-sm text-success-fg">Safety check passed: no allergy or duplicate-medication alerts.</p>
@@ -727,8 +772,10 @@ function SafetyAlerts({ rx, checking, mustOverride, onOverridden }: { rx: Prescr
             </p>
             {a.override ? (
               <p className="text-sm text-ink-muted">Overridden: {a.override.reason}</p>
-            ) : a.overrideRequired ? (
+            ) : a.overrideRequired && canOverride ? (
               <OverrideForm alert={a} highlighted={mustOverride.has(a.id)} onOverridden={onOverridden} />
+            ) : a.overrideRequired ? (
+              <p className="text-sm text-ink-muted">A prescriber must override this alert before it can be signed.</p>
             ) : null}
           </li>
         ))}
@@ -746,8 +793,10 @@ function OverrideForm({ alert, highlighted, onOverridden }: { alert: SafetyAlert
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!reason.trim()) {
-      setError('Give the reason for going ahead.')
+    // The server needs at least 3 characters, not counting surrounding spaces (M26): say so on the field.
+    const trimmed = reason.trim()
+    if (trimmed.length < 3) {
+      setError(trimmed ? 'Give a reason of at least 3 characters.' : 'Give the reason for going ahead.')
       return
     }
     setBusy(true)

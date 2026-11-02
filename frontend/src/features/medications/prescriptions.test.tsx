@@ -8,6 +8,20 @@ import { axeViolations } from '../../test/axe'
 import { json, problem, serve } from '../../test/fakeServer'
 import { PrescriptionsSection } from './PrescriptionsSection'
 
+// The signed-in user's roles for each test (D110: only MD and APP prescribe). Everything else goes
+// through the real fetch wrapper, including `GET /me` for the permissions.
+const signedIn = vi.hoisted(() => ({ roles: ['MD'] as string[] }))
+vi.mock('../../api/session', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/session')>()),
+  useSignedInSession: () => ({
+    user: { id: `u-${signedIn.roles.join('-')}`, name: { given: ['Test'], family: 'Clinician' }, roles: signedIn.roles },
+    organization: { id: 'o1', name: 'Test Clinic' },
+    csrfToken: 'tok',
+    idleExpiresAt: '2099-01-01T00:00:00Z',
+    expiresAt: '2099-01-01T00:00:00Z',
+  }),
+}))
+
 // Synthetic data only.
 const TZ = 'America/Chicago'
 const patientId = '00000000-0000-4000-8000-0000000009aa'
@@ -66,6 +80,11 @@ const OVERRIDE = `POST /api/v1/alerts/${alertId}/override`
 const SIGN = `POST /api/v1/prescriptions/${rxId}/sign-and-send`
 const DISCARD = `POST /api/v1/prescriptions/${rxId}/entered-in-error`
 const STORAGE = `shri.visit-prescriptions.${encounterId}`
+const ME = 'GET /api/v1/me'
+
+const PRESCRIBER_PERMISSIONS = ['prescriptions:read', 'prescriptions:create', 'prescriptions:update', 'prescriptions:safety-check', 'prescriptions:sign-and-send', 'prescriptions:entered-in-error', 'alerts:override']
+const me = (permissions: string[] = PRESCRIBER_PERMISSIONS) =>
+  json(200, { user: { id: 'u1', name: { given: ['Test'], family: 'Clinician' }, roles: signedIn.roles }, organization: { id: 'o1', name: 'Test Clinic' }, permissions })
 
 const patient = (extra: object = {}) => json(200, { id: patientId, name: { family: 'Testperson', given: ['Cy'] }, birthDate: '1970-01-15', mrn: 'TST-3001', preferredPharmacy: pharmacy, ...extra })
 
@@ -88,6 +107,7 @@ function renderSection(open = true) {
 beforeEach(() => {
   setCsrfToken('tok')
   sessionStorage.clear()
+  signedIn.roles = ['MD']
 })
 afterEach(() => {
   setCsrfToken(null)
@@ -98,6 +118,7 @@ describe('PrescriptionsSection', () => {
   it('writes an RxNorm draft for the preferred pharmacy, checks it, needs an override for a high alert, then signs and sends', async () => {
     const user = userEvent.setup()
     const server = serve({
+      [ME]: [() => me()],
       [PATIENT]: [() => patient()],
       [CODES]: [() => json(200, { items: [{ ...amoxicillin, drug: { strength: '500 MG', doseForm: 'Oral Capsule', route: 'Oral', ingredients: [{ rxcui: '723', name: 'Amoxicillin' }] } }] })],
       [CREATE]: [() => withEtag(draft(), '"p1"', 201)],
@@ -164,7 +185,7 @@ describe('PrescriptionsSection', () => {
 
   it('checks the form before sending anything, including the pharmacy when there is no preferred one', async () => {
     const user = userEvent.setup()
-    const server = serve({ [PATIENT]: [() => patient({ preferredPharmacy: undefined })] })
+    const server = serve({ [ME]: [() => me()], [PATIENT]: [() => patient({ preferredPharmacy: undefined })] })
     renderSection()
     expect(await screen.findByText('No pharmacy chosen')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Save draft and check safety' }))
@@ -184,6 +205,7 @@ describe('PrescriptionsSection', () => {
     const user = userEvent.setup()
     sessionStorage.setItem(STORAGE, JSON.stringify([rxId]))
     serve({
+      [ME]: [() => me()],
       [PATIENT]: [() => patient()],
       [GET]: [() => withEtag(checked([highAlert({ severity: 'warning', overrideRequired: false })]), '"p1"')],
       [SIGN]: [
@@ -215,6 +237,7 @@ describe('PrescriptionsSection', () => {
   it('treats a draft with no current check as unchecked: no override prompt, no signing, and it runs the check', async () => {
     sessionStorage.setItem(STORAGE, JSON.stringify([rxId]))
     const server = serve({
+      [ME]: [() => me()],
       [PATIENT]: [() => patient()],
       // Changed after its last check: the old alerts are still stored, `safetyCheckedAt` is gone.
       [GET]: [() => withEtag(draft({ alerts: [highAlert()] }), '"p3"')],
@@ -232,6 +255,7 @@ describe('PrescriptionsSection', () => {
     const user = userEvent.setup()
     sessionStorage.setItem(STORAGE, JSON.stringify([rxId]))
     const server = serve({
+      [ME]: [() => me()],
       [PATIENT]: [() => patient()],
       [GET]: [() => withEtag(checked([]), '"p1"')],
       [DISCARD]: [() => json(200, draft({ status: 'entered-in-error' }))],
@@ -248,5 +272,91 @@ describe('PrescriptionsSection', () => {
     expect(await screen.findByText('No prescriptions started on this visit.')).toBeInTheDocument()
     expect(server.bodies(DISCARD)[0]?.body).toEqual({ reason: 'Wrong strength chosen' })
     expect(JSON.parse(sessionStorage.getItem(STORAGE) ?? '[]')).toEqual([])
+  })
+
+  it('refuses an override reason under 3 characters on the field, without calling the server', async () => {
+    const user = userEvent.setup()
+    sessionStorage.setItem(STORAGE, JSON.stringify([rxId]))
+    const server = serve({ [ME]: [() => me()], [PATIENT]: [() => patient()], [GET]: [() => withEtag(checked(), '"p1"')] })
+    renderSection()
+    const card = await screen.findByRole('article', { name: amoxicillin.display })
+    await user.type(await within(card).findByRole('textbox', { name: /^Reason to go ahead/ }), ' ok ')
+    await user.click(within(card).getByRole('button', { name: 'Override alert' }))
+    expect(within(card).getByText('Give a reason of at least 3 characters.')).toBeInTheDocument()
+    expect(server.calls()).not.toContain(OVERRIDE)
+  })
+
+  it('sends a new Idempotency-Key on the next click after a refused sign, and reads the prescription again', async () => {
+    const user = userEvent.setup()
+    sessionStorage.setItem(STORAGE, JSON.stringify([rxId]))
+    const passed = checked([])
+    const server = serve({
+      [ME]: [() => me()],
+      [PATIENT]: [() => patient()],
+      [GET]: [() => withEtag(passed, '"p1"')],
+      [SIGN]: [
+        () => problem(422, 'business-rule-violation', { errors: [{ in: 'body', pointer: '/alerts', code: 'safety-check-stale' }] }),
+        () => withEtag(draft({ status: 'active', signedAt: at, safetyCheckedAt: at, transmission: { status: 'queued' } }), '"p2"'),
+      ],
+    })
+    renderSection()
+    const card = await screen.findByRole('article', { name: amoxicillin.display })
+    const signTwice = async () => {
+      await user.click(within(card).getByRole('button', { name: 'Sign and send' }))
+      await user.click(within(await screen.findByRole('dialog', { name: 'Sign and send this prescription?' })).getByRole('button', { name: 'Sign and send' }))
+    }
+    await signTwice()
+    expect(await within(card).findByText('Not signed yet')).toBeInTheDocument()
+    // The refusal makes the card read the prescription again (the mount read, then this one).
+    expect(server.calls().filter((c) => c === GET)).toHaveLength(2)
+    await signTwice()
+    expect(await within(card).findByText('Queued for the pharmacy')).toBeInTheDocument()
+    const [first, second] = headersOf(SIGN)
+    expect(first?.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/)
+    expect(second?.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/)
+    expect(second?.get('Idempotency-Key')).not.toBe(first?.get('Idempotency-Key'))
+  })
+})
+
+describe('PrescriptionsSection for users who may not prescribe (D110)', () => {
+  it.each([['RN'], ['MA']])('shows an %s the prescriptions read-only: no form, no draft actions, no check run', async (role) => {
+    signedIn.roles = [role]
+    sessionStorage.setItem(STORAGE, JSON.stringify([rxId]))
+    // A draft that was never checked, with a stored high alert: a prescriber's screen would check it and offer the override.
+    const server = serve({ [GET]: [() => withEtag(draft({ alerts: [highAlert()] }), '"p1"')] })
+    renderSection()
+    const card = await screen.findByRole('article', { name: amoxicillin.display })
+    expect(screen.getByText(/^Only a physician or an advanced practice provider can prescribe/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save draft and check safety' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /^Drug/ })).not.toBeInTheDocument()
+    for (const name of ['Sign and send', 'Run safety check again', 'Discard draft', 'Override alert']) {
+      expect(within(card).queryByRole('button', { name })).not.toBeInTheDocument()
+    }
+    // No permission read, no patient read for the form, and no safety check on the user's behalf.
+    expect(server.calls()).toEqual([GET])
+    expect(await axeViolations()).toEqual([])
+  })
+
+  it('fails closed for an MD when GET /me cannot be read', async () => {
+    sessionStorage.setItem(STORAGE, JSON.stringify([rxId]))
+    const server = serve({ [ME]: [() => problem(503, 'service-unavailable')], [GET]: [() => withEtag(checked(), '"p1"')] })
+    renderSection()
+    const card = await screen.findByRole('article', { name: amoxicillin.display })
+    expect(await screen.findByText(/^Only a physician or an advanced practice provider can prescribe/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save draft and check safety' })).not.toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Sign and send' })).not.toBeInTheDocument()
+    expect(within(card).getByText('A prescriber must override this alert before it can be signed.')).toBeInTheDocument()
+    expect(server.calls()).not.toContain(CHECK)
+  })
+
+  it('shows an MD only the actions GET /me grants', async () => {
+    sessionStorage.setItem(STORAGE, JSON.stringify([rxId]))
+    serve({ [ME]: [() => me(['prescriptions:read', 'prescriptions:create', 'prescriptions:safety-check'])], [PATIENT]: [() => patient()], [GET]: [() => withEtag(checked([]), '"p1"')] })
+    renderSection()
+    const card = await screen.findByRole('article', { name: amoxicillin.display })
+    expect(await screen.findByRole('button', { name: 'Save draft and check safety' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Run safety check again' })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Sign and send' })).not.toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Discard draft' })).not.toBeInTheDocument()
   })
 })

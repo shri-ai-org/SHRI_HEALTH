@@ -309,3 +309,13 @@ export function useSession(): SessionContextValue {
   if (!value) throw new Error('useSession must be used inside <SessionProvider>')
   return value
 }
+
+/**
+ * The signed-in session, or `null` when nobody is signed in or outside `<SessionProvider>`. Never
+ * throws, so a screen can use it to show or hide actions and fail closed. The server still checks
+ * every call.
+ */
+export function useSignedInSession(): Session | null {
+  const value = useContext(SessionContext)
+  return value?.state.status === 'signed-in' ? value.state.session : null
+}
