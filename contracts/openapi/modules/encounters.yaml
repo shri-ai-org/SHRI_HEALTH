@@ -3338,11 +3338,10 @@ components:
           x-phi: none
         entries:
           type: array
-          minItems: 1
           maxItems: 12
           items:
             $ref: '#/components/schemas/VitalEntry'
-          description: 'The vitals: at least one, and at most one per type.'
+          description: The vitals, at most one per type.
           x-phi: clinical
     VitalsRecorded:
       description: The vitals just recorded.
