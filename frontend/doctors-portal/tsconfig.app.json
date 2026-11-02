@@ -18,7 +18,9 @@
 
     /* Paths — resolved relative to this tsconfig, so no baseUrl (deprecated in TS 6). */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "react-router-dom": ["../node_modules/react-router/dist/production/index.d.ts"],
+      "fix-webm-duration": ["./shri-health/fixWebmDurationStub.ts"]
     },
 
     /* Linting */
@@ -28,5 +30,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src", "shri-health"]
 }
