@@ -361,7 +361,7 @@ def test_accept_creates_the_patient_through_the_registration_rules(
 
 
 def test_accept_finds_possible_duplicates_then_takes_an_override(
-        public: TestClient, staff: Client, table: FakePreRegistrations) -> None:
+        public: TestClient, staff: Client, world: World, table: FakePreRegistrations) -> None:
     existing = staff("fd").post("/api/v1/patients", json=new_patient()).json()
     pre_id = _submitted(public, table, name={"family": "Lindgren118", "given": ["Kaia401"]},
                         birthDate="1990-03-14", phones=[{"number": "+12175550142"}])
@@ -376,6 +376,7 @@ def test_accept_finds_possible_duplicates_then_takes_an_override(
         **ACCEPT, "duplicateCheck": "override",
         "duplicateOverrideReason": "Different person, checked at the desk."})
     assert overridden.status_code == 200 and overridden.json()["patientId"] != existing["id"]
+    assert world.details[-1] == ("create", "Different person, checked at the desk.")
 
 
 def test_accept_can_link_an_existing_chart(public: TestClient, staff: Client, world: World,
@@ -395,6 +396,28 @@ def test_accept_can_link_an_existing_chart(public: TestClient, staff: Client, wo
                               json={**ACCEPT, "patientId": existing["id"]})
     assert linked.status_code == 200 and linked.json()["patientId"] == existing["id"]
     assert len(world.clinic(FakeSession(CLINIC_A))) == count  # nothing created
+
+
+def test_linking_records_no_override_and_refuses_a_merged_chart(
+        public: TestClient, staff: Client, world: World, table: FakePreRegistrations) -> None:
+    """Thulasi's review of #105: a link creates nothing, so an override reason sent with it is not
+    recorded as a create; and a chart merged into another can't be linked (D103)."""
+    merged = staff("fd").post("/api/v1/patients", json=new_patient()).json()
+    survivor = uuid4()
+    world.clinic(FakeSession(CLINIC_A))[UUID(merged["id"])].merged_into_id = survivor
+    pre_id = _submitted(public, table)
+    before = len(world.details)
+    refused = staff("fd").post(f"{QUEUE}/{pre_id}/accept", json={
+        **ACCEPT, "patientId": merged["id"], "duplicateCheck": "override",
+        "duplicateOverrideReason": "Same person, checked at the desk."})
+    assert refused.status_code == 409 and refused.json()["code"] == "patient-merged"
+    assert staff("fd").get(f"{QUEUE}/{pre_id}").json()["status"] == "pending"
+    world.clinic(FakeSession(CLINIC_A))[UUID(merged["id"])].merged_into_id = None
+    linked = staff("fd").post(f"{QUEUE}/{pre_id}/accept", json={
+        **ACCEPT, "patientId": merged["id"], "duplicateCheck": "override",
+        "duplicateOverrideReason": "Same person, checked at the desk."})
+    assert linked.status_code == 200 and linked.json()["patientId"] == merged["id"]
+    assert len(world.details) == before  # no override recorded for a link
 
 
 def test_accept_needs_the_identity_check_and_the_permission(
