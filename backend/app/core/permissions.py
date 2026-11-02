@@ -42,13 +42,15 @@ CATALOGUE: frozenset[str] = _expand(
     # Scheduling, eligibility (Vimal)
     "slots:read", "status-board:read",
     "appointments:read|create|update|cancel|check-in|undo-check-in|reschedule|status",  # D55, D61
+    "appointments:check-out", "follow-ups:decline",  # check-out at the desk (D98, T50)
     "scheduling-reference:read",  # booking reference lists (D49, T41)
     "eligibility-checks:read|create",
     # Encounters and notes (Vimal)
     "encounters:read|create|update|close|entered-in-error", "vitals:read|create|entered-in-error",
     "diagnoses:create|remove|entered-in-error", "codes:read",
     "notes:read|create|update|sign|cosign|entered-in-error", "note-addenda:create",
-    "favorites:read|update", "after-visit-summaries:create", "cosign-rules:read|create|update",
+    "favorites:read|update", "after-visit-summaries:create|read",  # read: T50
+    "cosign-rules:read|create|update",
     # History (Vimal)
     "problems:read|create|update|entered-in-error", "allergies:read|create|update|entered-in-error",
     "family-history:read|create|entered-in-error", "social-history:read|create|entered-in-error",
@@ -94,7 +96,12 @@ _BOOKING_REFERENCE = _expand("scheduling-reference:read")  # FD, MA, RN, MD, APP
 _SCHEDULE_DESK = _expand(
     "appointments:create|update|cancel|check-in|undo-check-in|reschedule",
     "provider-schedules:create|update", "consent-requirements:read",
+    # Check-out (D98, T50): ends the visit, declines a follow-up the patient won't book (the
+    # clinician withdraws instead, D67) and prints the latest after-visit summary.
+    "appointments:check-out", "follow-ups:decline", "after-visit-summaries:read",
 )
+# Printing the latest after-visit summary without creating one (T50): the desk and clinicians.
+_AVS_READ = _expand("after-visit-summaries:read")
 _CHART_READ = _expand(
     "timeline:read", "encounters:read", "notes:read", "vitals:read", "problems:read",
     "allergies:read", "family-history:read", "social-history:read", "surgical-history:read",
@@ -141,7 +148,7 @@ _MD = frozenset().union(
     _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _CHART_READ, _CLINICIAN_WRITE,
     _ROOMING, _AI_CLINICAL,
     _CLINICAL_ENTERED_IN_ERROR, _MED_READ, _RX_DRAFT, _RX_PRESCRIBE, _ORDER_DRAFT, _ORDER_SIGN,
-    _UNMATCHED, _DOCUMENTS, _INBOX, _COMMS, _FILES,
+    _UNMATCHED, _DOCUMENTS, _INBOX, _COMMS, _FILES, _AVS_READ,
     _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
             "encounters:entered-in-error", "codes:read", "favorites:read|update",
             "superbills:read", "ccda:import|export", "patients:break-glass",
@@ -167,7 +174,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     # Medical assistant (rooming). Orders: point-of-care results only, as in §4.3; no order entry.
     "MA": frozenset().union(
         _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _CHART_READ, _ROOMING, _MED_READ,
-        _ORDER_READ, _DOCUMENTS, _INBOX, _COMMS, _FILES,
+        _ORDER_READ, _DOCUMENTS, _INBOX, _COMMS, _FILES, _AVS_READ,
         _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
                 "codes:read", "medication-reconciliations:create", "medications:create",
                 "medication-history:fetch", "in-office-results:create", "patients:break-glass",
@@ -178,6 +185,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _CHART_READ, _ROOMING,
         _CLINICAL_ENTERED_IN_ERROR,
         _MED_READ, _RX_DRAFT, _ORDER_DRAFT, _UNMATCHED, _DOCUMENTS, _INBOX, _COMMS, _FILES,
+        _AVS_READ,
         _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
                 # Nursing notes only: the notes service refuses other note types for RN (T42).
                 "notes:create|update|sign", "note-addenda:create",
