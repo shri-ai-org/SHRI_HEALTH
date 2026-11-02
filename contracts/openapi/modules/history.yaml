@@ -2067,7 +2067,8 @@ components:
           x-phi: clinical
         onsetDate:
           $ref: ../components/schemas/PartialDate.yaml
-          description: When it happened.
+          description: 'When it happened. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted:
+            `YYYY` and `YYYY-MM` get `422`.'
           x-phi: clinical
     Allergy:
       description: An allergy or intolerance (US Core AllergyIntolerance; FRS FR-PAT-03, FR-MED-01). The medications batch
@@ -2145,7 +2146,8 @@ components:
           x-phi: clinical
         onsetDate: &id031
           $ref: ../components/schemas/PartialDate.yaml
-          description: When it started.
+          description: 'When it started. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted:
+            `YYYY` and `YYYY-MM` get `422`.'
           x-phi: clinical
         reactions: &id032
           type: array
