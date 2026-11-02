@@ -163,6 +163,44 @@ async def test_pages_follow_on_without_repeats(loaded: None, app_db: Any) -> Non
 
 @pytest.mark.db
 @SKIP_WITHOUT_DATABASE
+async def test_equal_matches_put_the_shorter_name_first(loaded: None, app_db: Any) -> None:
+    """Within a class and a similarity, the shorter name comes first, before the code: a single
+    product before a combination pack that contains it ("amoxicillin 500" on the real RxNorm
+    release listed packs first). Here a later code with a shorter name."""
+    extra = _line(7, "Z8669", True, "Personal history of migraine")
+    _load_as_migrator(ORDER_FILE + [extra])
+    try:
+        matches, _ = await terms.search(app_db, "icd-10-cm", "migraine")
+        assert [m.code for m in matches] == ["G43", "Z86.69", "G43.009"]
+        pages, after, seen = 0, None, []
+        while True:                     # the keyset cursor follows the same order
+            page, after = await terms.search(app_db, "icd-10-cm", "migraine", after=after, limit=1)
+            seen += [m.code for m in page]
+            pages += 1
+            if after is None:
+                break
+        assert seen == ["G43", "Z86.69", "G43.009"] and pages == 3
+    finally:
+        _load_as_migrator(ORDER_FILE)   # the extra code is retired again
+
+
+def _load_as_migrator(lines: list[str]) -> None:
+    engine = create_engine(sync_url(), poolclass=NullPool)
+
+    @event.listens_for(engine, "connect")
+    def _as_migrator(dbapi_connection: Any, _record: Any) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET ROLE shri_migrator")
+        cursor.close()
+        dbapi_connection.commit()
+
+    with Session(engine) as db, db.begin():
+        icd10cm.load(db, list(icd10cm.read_order_file(lines)), date(2025, 10, 1))
+    engine.dispose()
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
 async def test_drug_search_gives_products_with_their_drug_details(loaded: None,
                                                                     app_db: Any) -> None:
     matches, _ = await terms.search(app_db, "rxnorm", "amoxicillin")

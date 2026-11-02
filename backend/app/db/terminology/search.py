@@ -1,6 +1,7 @@
 """Code search over admin.concept (searchCodes, ``GET /codes``; demo steps 8 and 9).
 
-Best match first, in four classes, each by word similarity to the query, then by code:
+Best match first, in four classes, each by word similarity to the query, then the shorter name
+(a single product before a combination pack that contains it), then by code:
   0  the code itself (``E11.9``, typed with or without its dot, any case);
   1  codes that start with the query;
   2  names that contain every word of the query, in any order (``diabetes type 2``);
@@ -9,7 +10,8 @@ The name search uses the trigram index on ``concept.display``. Only active conce
 ICD-10-CM, ``billable_only`` leaves out header codes. For RxNorm only the products a prescriber
 can pick (SCD, SBD, GPCK, BPCK), each with its drug details from ``concept_property``.
 
-A page ends at a ``Position`` (class, similarity, code); the next page starts after it.
+A page ends at a ``Position`` (class, similarity, name length, code); the next page starts
+after it.
 Reference data, not patient data: nothing here is audited.
 """
 from __future__ import annotations
@@ -33,6 +35,7 @@ PRODUCTS = ("SCD", "SBD", "GPCK", "BPCK")
 class Position:
     rank: int
     similarity: float
+    length: int  # of the name
     code: str
 
 
@@ -69,7 +72,8 @@ WITH found AS (
               WHEN replace(upper(c.code), '.', '') LIKE :code_prefix THEN 1
               WHEN c.display ILIKE ALL (CAST(:words AS text[])) THEN 2
               ELSE 3 END AS rank,
-         CAST(word_similarity(:q, c.display) AS float8) AS similarity
+         CAST(word_similarity(:q, c.display) AS float8) AS similarity,
+         length(c.display) AS length
   FROM admin.concept c
   WHERE c.code_system_id = (SELECT id FROM admin.code_system WHERE uri = :system)
     AND c.is_active
@@ -81,11 +85,11 @@ WITH found AS (
          OR c.display ILIKE ALL (CAST(:words AS text[]))
          OR :q <% c.display)
 )
-SELECT id, code, display, is_billable, rank, similarity FROM found
+SELECT id, code, display, is_billable, rank, similarity, length FROM found
 WHERE CAST(:after_rank AS int) IS NULL
-   OR (rank, -similarity, code) > (CAST(:after_rank AS int), -CAST(:after_sim AS float8),
-                                   CAST(:after_code AS text))
-ORDER BY rank, similarity DESC, code
+   OR (rank, -similarity, length, code) > (CAST(:after_rank AS int), -CAST(:after_sim AS float8),
+                                           CAST(:after_length AS int), CAST(:after_code AS text))
+ORDER BY rank, similarity DESC, length, code
 LIMIT :limit
 """)
 
@@ -137,11 +141,13 @@ async def search(db: AsyncSession, system: str, q: str, *, billable_only: bool =
         "products_only": system == "rxnorm", "products": list(PRODUCTS),
         "after_rank": after.rank if after else None,
         "after_sim": after.similarity if after else None,
+        "after_length": after.length if after else None,
         "after_code": after.code if after else None, "limit": limit + 1})).all()
     page, more = rows[:limit], len(rows) > limit
     drugs = await _drugs(db, [r.id for r in page]) if system == "rxnorm" and page else {}
     matches = [Match(system=uri, code=r.code, display=r.display,
                      billable=r.is_billable if system == "icd-10-cm" else None,
-                     drug=drugs.get(r.id), position=Position(r.rank, r.similarity, r.code))
+                     drug=drugs.get(r.id),
+                     position=Position(r.rank, r.similarity, r.length, r.code))
                for r in page]
     return matches, (matches[-1].position if more else None)

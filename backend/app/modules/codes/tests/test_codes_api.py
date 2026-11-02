@@ -17,13 +17,13 @@ from .. import service
 
 ICD = terms.Match(system="http://hl7.org/fhir/sid/icd-10-cm", code="I10",
                   display="Essential (primary) hypertension", billable=True, drug=None,
-                  position=terms.Position(0, 1.0, "I10"))
+                  position=terms.Position(0, 1.0, 32, "I10"))
 RX = terms.Match(system="http://www.nlm.nih.gov/research/umls/rxnorm", code="308191",
                  display="amoxicillin 500 MG Oral Capsule", billable=None,
                  drug=terms.Drug(strength="500 MG", dose_form="Oral Capsule", route="Oral",
                                  ingredients=(terms.Ingredient("723", "amoxicillin"),),
                                  brand_name=None, schedule=None),
-                 position=terms.Position(2, 0.9, "308191"))
+                 position=terms.Position(2, 0.9, 37, "308191"))
 
 
 @pytest.fixture

@@ -1,11 +1,11 @@
 """searchCodes' rules: the cursor, and turning the terminology search's matches into the
 contract's shape. The search itself is app.db.terminology.search.
 
-The cursor is base64url (no padding) of {"v", "f", "r", "s", "c"}: a fingerprint of the search
-(system, words, billableOnly), so a cursor only continues the search it came from, and the last
-match's class, similarity and code. Anything else is core's ``InvalidCursor`` (400). Codes are
-reference data, not patient data, so the cursor is not encrypted (as practice setup's, until
-core's T22 cursor lands).
+The cursor is base64url (no padding) of {"v", "f", "r", "s", "n", "c"}: a fingerprint of the
+search (system, words, billableOnly), so a cursor only continues the search it came from, and the
+last match's class, similarity, name length and code. Anything else is core's ``InvalidCursor``
+(400). Codes are reference data, not patient data, so the cursor is not encrypted (as practice
+setup's, until core's T22 cursor lands).
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ from app.db.terminology import search as terms
 
 from . import schemas
 
-_VERSION = 1
-_MEMBERS = frozenset({"v", "f", "r", "s", "c"})
+_VERSION = 2
+_MEMBERS = frozenset({"v", "f", "r", "s", "n", "c"})
 
 
 def fingerprint(system: str, q: str, billable_only: bool) -> str:
@@ -33,7 +33,7 @@ def fingerprint(system: str, q: str, billable_only: bool) -> str:
 
 def encode(position: terms.Position, finger: str) -> str:
     payload = {"v": _VERSION, "f": finger, "r": position.rank, "s": position.similarity,
-               "c": position.code}
+               "n": position.length, "c": position.code}
     raw = json.dumps(payload, separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
@@ -47,9 +47,11 @@ def decode(cursor: str, finger: str) -> terms.Position:
     if (not isinstance(payload, dict) or payload.keys() != _MEMBERS
             or payload["v"] != _VERSION or payload["f"] != finger
             or type(payload["r"]) is not int or not 0 <= payload["r"] <= 3
-            or type(payload["s"]) not in (int, float) or not isinstance(payload["c"], str)):
+            or type(payload["s"]) not in (int, float)
+            or type(payload["n"]) is not int or not 0 <= payload["n"] <= 10_000
+            or not isinstance(payload["c"], str)):
         raise InvalidCursor()
-    return terms.Position(payload["r"], float(payload["s"]), payload["c"])
+    return terms.Position(payload["r"], float(payload["s"]), payload["n"], payload["c"])
 
 
 def _drug(drug: terms.Drug | None) -> schemas.DrugDetails | None:
