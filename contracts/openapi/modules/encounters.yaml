@@ -2688,7 +2688,10 @@ paths:
       summary: Get the latest after-visit summary to print
       description: A short-lived download link to the encounter's latest after-visit summary, generated from a signed note
         (D98), so the front desk can print it at check-out without generating one (`after-visit-summaries:create` stays with
-        MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists.
+        MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists. A restricted
+        chart gets the normal chart check (D37; the front-desk exceptions of D107 don't cover it, D109). A user without a
+        break-glass grant who is not on the care team, the front desk included, gets `403 break-glass-required`; care-team
+        members, and users with a grant, read it without break-glass.
       tags:
       - encounters
       x-owner: vimal
@@ -2731,7 +2734,8 @@ paths:
         "403":
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `permission-denied` (the role lacks `after-visit-summaries:read`); `break-glass-required` (the
-            patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+            patient's chart is restricted and the user holds no break-glass grant and is not on the care team, the front desk
+            included; care-team members, and users with a grant, read it without break-glass (D37, D109)).
         "404":
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such encounter, or no after-visit summary has been generated for it yet).
