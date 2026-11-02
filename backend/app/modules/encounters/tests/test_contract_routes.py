@@ -13,6 +13,7 @@ ROOMING = frozenset({
     "recordVitals",
     "listPatientVitals",
     "markVitalEnteredInError",
+    "listPatientEncounters",
 })
 
 # Not built yet: markVitalEnteredInError needs a write helper for a vital's entered-in-error

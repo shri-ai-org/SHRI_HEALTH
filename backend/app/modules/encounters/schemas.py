@@ -1,7 +1,8 @@
 """Request and response shapes for the encounter workspace and vitals
 (contracts/openapi/modules/encounters.yaml). Field names are the contract's camelCase (aliases);
 bodies the contract closes (`additionalProperties: false`) forbid unknown fields. Only the
-operations built so far are here: getEncounter, updateEncounter, recordVitals, listPatientVitals.
+operations built so far are here: getEncounter, updateEncounter, listPatientEncounters,
+recordVitals, listPatientVitals.
 """
 
 from __future__ import annotations
@@ -173,6 +174,23 @@ class Encounter(Out):
     created_at: datetime
     updated_at: datetime
     follow_up: FollowUpRequest | None = None
+
+
+class EncounterSummary(Out):
+    """An encounter in a patient's list (listPatientEncounters)."""
+    id: UUID
+    status: EncounterStatus
+    class_: Literal["AMB", "VR"] = Field(alias="class")
+    types: list[CodeableConcept] | None = None
+    facility_id: UUID
+    rendering_provider: ClinicianRef | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+
+
+class EncounterList(Out):
+    items: list[EncounterSummary]
+    next_cursor: str | None = None
 
 
 class EncounterPatch(Closed):

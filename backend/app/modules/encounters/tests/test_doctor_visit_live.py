@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import create_engine
@@ -486,3 +487,56 @@ def test_a_note_is_marked_entered_in_error(client: Any, practice: Practice,
     assert _sql(practice, "SELECT count(*) FROM admin.event_log WHERE type = "
                 "'note.entered-in-error' AND subject IN (:a, :b)", a=f"note/{draft.json()['id']}",
                 b=f"note/{signed['id']}")[0][0] == 2
+
+
+def test_a_patients_visits_are_listed(client: Any, practice: Practice,
+                                      users: dict[str, CurrentUser]) -> None:
+    """listPatientEncounters: newest first at the user's facilities, entered-in-error ones only
+    on request, days in the facility's time zone; the chart rules as everywhere (D37)."""
+    _doctor(practice, users, "md-a2", COLLEAGUE, facility=practice.other_facility)
+    # Two visits the same day, the second an hour earlier (no double booking), checked in
+    # after the first.
+    later = _today_appointment(practice)
+    _sql(practice, "UPDATE clinical.appointment SET start = start - interval '1 hour', "
+         "\"end\" = \"end\" - interval '1 hour' WHERE id = :a", a=later)
+    first = _checked_in(client, practice)
+    done = _check_in(client, later, selfPay=True)
+    assert done.status_code == 200, done.text
+    second = done.json()["encounterId"]
+    patient = practice.patients["kaia"]
+    path = f"{API}/patients/{patient}/encounters"
+    found = client("md").get(path)
+    assert found.status_code == 200, found.text
+    items = found.json()["items"]
+    assert [e["id"] for e in items] == [second, first]
+    e = items[0]
+    assert (e["status"], e["class"], e["facilityId"]) == ("arrived", "AMB", str(practice.facility))
+    assert e["renderingProvider"] == {"id": str(practice.provider),
+                                      "displayName": "Dr. Avery401 Lindqvist58"}
+    assert e["startedAt"]
+    assert _sql(practice, "SELECT count(*) FROM audit.audit_event WHERE patient_id = :p AND "
+                "action = 'read' AND entity_type = 'patients' AND entity_id = :e",
+                p=patient, e=str(patient))[0][0] >= 1  # core's x-audit, from the path
+    paged = client("md").get(path, params={"limit": 1})
+    assert [x["id"] for x in paged.json()["items"]] == [second]
+    rest = client("md").get(path, params={"limit": 1, "cursor": paged.json()["nextCursor"]})
+    assert [x["id"] for x in rest.json()["items"]] == [first]
+    # Undoing a check-in enters its encounter in error: listed only when asked for.
+    appointment = client("md").get(f"{API}/encounters/{second}").json()["appointmentId"]
+    assert client("fd").post(f"{API}/appointments/{appointment}/undo-check-in",
+                             json={"reason": "Checked in twice."}).status_code == 200
+    assert [x["id"] for x in client("md").get(path).json()["items"]] == [first]
+    asked = client("md").get(path, params={"status": "entered-in-error"}).json()["items"]
+    assert [x["id"] for x in asked] == [second]
+    today = dt.datetime.now(dt.UTC).astimezone(ZoneInfo("America/Chicago")).date()
+    assert [x["id"] for x in client("md").get(path, params={
+        "dateFrom": today.isoformat(), "dateTo": today.isoformat()}).json()["items"]] == [first]
+    tomorrow = (today + dt.timedelta(days=1)).isoformat()
+    assert client("md").get(path, params={"dateFrom": tomorrow}).json()["items"] == []
+    # Refusals: the role, another clinic, the restricted chart; another facility sees none.
+    assert client("fd").get(path).status_code == 403
+    assert client("md-b").get(path).status_code == 404
+    assert client("md").get(path, params={"status": "open"}).status_code == 422
+    assert client("md-a2").get(path).json()["items"] == []
+    restricted = client("md").get(f"{API}/patients/{practice.patients['restricted']}/encounters")
+    assert restricted.status_code == 403 and _code(restricted) == "break-glass-required"

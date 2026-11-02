@@ -155,6 +155,17 @@ class FakeRepository:
     async def known_code_systems(self, db: Any, uris: Sequence[str]) -> set[str]:
         return {u for u in uris if u in ("http://snomed.info/sct", LOINC)}
 
+    async def for_patient(self, db: Any, patient_id: UUID, *, facility_ids: Sequence[UUID],
+                          status: str | None, date_from: date | None, date_to: date | None,
+                          limit: int, offset: int) -> list[schemas.EncounterSummary]:
+        found = [schemas.EncounterSummary(id=i, status=e.status, class_="AMB",
+                                          facility_id=e.facility_id, started_at=NOW)
+                 for i, e in self.world.encounters.items()
+                 if e.patient_id == patient_id and e.clinic == db.tenant_id
+                 and e.facility_id in facility_ids
+                 and (e.status == status if status else e.status != "entered-in-error")]
+        return found[offset:offset + limit]
+
     async def vitals(self, db: Any, patient_id: UUID, *, encounter_id: UUID | None = None,
                      ids: Sequence[UUID] | None = None, vital_type: str | None = None,
                      date_from: date | None = None, date_to: date | None = None,
