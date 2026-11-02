@@ -23,11 +23,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_check_constraint("ck_schedule_availability_rule_before_midnight",
+    op.create_check_constraint(op.f("ck_schedule_availability_rule_before_midnight"),
                                "schedule_availability_rule", "end_time < '24:00'",
                                schema="admin")
 
 
 def downgrade() -> None:
-    op.drop_constraint("ck_schedule_availability_rule_before_midnight",
+    op.drop_constraint(op.f("ck_schedule_availability_rule_before_midnight"),
                        "schedule_availability_rule", schema="admin", type_="check")
