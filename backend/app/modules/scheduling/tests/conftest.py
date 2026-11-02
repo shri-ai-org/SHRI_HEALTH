@@ -68,6 +68,7 @@ class Practice:
     types: dict[str, UUID]
     patients: dict[str, UUID] = field(default_factory=dict)
     day: dt.date = field(default_factory=demo_day)
+    site: UUID | None = None  # A1's site Location (a schedule rule names it)
 
 
 def _site(db: Session, tenant: UUID, org: Any, code: str, name: str) -> tuple[Any, Any]:
@@ -150,7 +151,7 @@ def build_practice(admin: Engine) -> Practice:
             patients[key] = b.patient(db, family, given).id
         db.execute(text("UPDATE clinical.patient SET meta_security = ARRAY['R'] WHERE id = :p"),
                    {"p": patients["restricted"]})
-        ids = (fac.id, fac2.id, room.id)  # before the commit expires the rows
+        ids = (fac.id, fac2.id, room.id, site.id)  # before the commit expires the rows
         db.commit()
     finally:
         db.close()
@@ -166,7 +167,7 @@ def build_practice(admin: Engine) -> Practice:
     finally:
         db.close()
     return Practice(clinic, clinic_b, ids[0], ids[1], facility_b, ids[2], provider, other,
-                    types, patients)
+                    types, patients, site=ids[3])
 
 
 @pytest.fixture
