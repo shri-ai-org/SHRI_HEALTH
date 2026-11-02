@@ -1,15 +1,16 @@
 """The rooming operations of the encounters API with the in-memory fakes (fakes.py): getEncounter,
-updateEncounter, recordVitals and listPatientVitals, each with a success, a permission-denied and
-a validation-error case, plus their rules. Synthetic data only."""
+updateEncounter, recordVitals, listPatientVitals and markVitalEnteredInError, each with a success,
+a permission-denied and a validation-error case, plus their rules. Synthetic data only."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
-from app.core.deps import CLINIC_B, FACILITY_B
+from app.core.deps import CLINIC_B, DEV_USERS, FACILITY_B
 
 from .fakes import DOCTOR, ROOM, World
 
@@ -199,6 +200,82 @@ def test_list_patient_vitals_refusals(as_user: Client, world: World) -> None:
     world.restricted.add(patient)
     refused = as_user("md").get(path)
     assert refused.status_code == 403 and refused.json()["code"] == "break-glass-required"
+
+
+# -------------------------------------------------------------------- markVitalEnteredInError
+def _recorded(as_user: Client, world: World, *, by: str = "ma") -> tuple[UUID, str]:
+    """A visit's vitals, recorded by ``by``; the patient and the body weight's ID."""
+    encounter = world.add_encounter()
+    done = as_user("ma").post(f"{API}/encounters/{encounter}/vitals", json=ROOMING_VITALS)
+    assert done.status_code == 201, done.text
+    for v in done.json()["vitals"]:
+        world.vital_owner[UUID(v["id"])] = DEV_USERS[by].id
+    weight: str = done.json()["vitals"][1]["id"]
+    return world.encounters[encounter].patient_id, weight
+
+
+def test_mark_vital_entered_in_error(as_user: Client, world: World) -> None:
+    patient, weight = _recorded(as_user, world)
+    path = f"{API}/patients/{patient}/vitals/{weight}/entered-in-error"
+    marked = as_user("md").post(path, json={"reason": "  Weight typed with an extra digit. "})
+    assert marked.status_code == 200, marked.text
+    assert marked.json()["id"] == weight and marked.json()["status"] == "entered-in-error"
+    assert marked.headers["ETag"] == '"2"'
+    assert world.provenance == [(UUID(weight), "Weight typed with an extra digit.")]
+    listed = as_user("md").get(f"{API}/patients/{patient}/vitals").json()["items"]
+    assert weight not in {v["id"] for v in listed}  # left out of the chart, kept
+    kept = as_user("md").get(f"{API}/patients/{patient}/vitals",
+                             params={"includeEnteredInError": "true"}).json()["items"]
+    assert weight in {v["id"] for v in kept}
+    again = as_user("md").post(path, json={"reason": "Twice."})
+    assert again.status_code == 409 and again.json()["currentState"] == "entered-in-error"
+
+
+def test_a_nurse_marks_only_her_own_vitals(as_user: Client, world: World) -> None:
+    patient, theirs = _recorded(as_user, world, by="ma")
+    path = f"{API}/patients/{patient}/vitals/{theirs}/entered-in-error"
+    refused = as_user("rn").post(path, json={"reason": "Wrong patient."})
+    assert refused.status_code == 403 and refused.json()["code"] == "permission-denied"
+    patient, own = _recorded(as_user, world, by="rn")
+    done = as_user("rn").post(f"{API}/patients/{patient}/vitals/{own}/entered-in-error",
+                              json={"reason": "Wrong patient."})
+    assert done.status_code == 200, done.text
+
+
+def test_mark_vital_entered_in_error_refusals(as_user: Client, world: World) -> None:
+    patient, weight = _recorded(as_user, world)
+    path = f"{API}/patients/{patient}/vitals/{weight}/entered-in-error"
+    body = {"reason": "Wrong patient."}
+    assert as_user("ma").post(path, json=body).status_code == 403  # MA lacks the permission
+    assert as_user("fd").post(path, json=body).status_code == 403
+    assert as_user("none").post(path, json=body).status_code == 403
+    assert as_user("md-b").post(path, json=body).status_code == 404  # clinic B
+    for bad in ({}, {"reason": ""}, {"reason": "x" * 501}, {"reason": "ok", "extra": 1}):
+        refused = as_user("md").post(path, json=bad)
+        assert refused.status_code == 422 and refused.json()["code"] == "validation-failed", bad
+    blank = as_user("md").post(path, json={"reason": "   "})
+    assert blank.status_code == 422 and _errors(blank)[0]["pointer"] == "/reason"
+    assert as_user("md").post(f"{API}/patients/{patient}/vitals/nope/entered-in-error",
+                              json=body).status_code == 422
+    other = world.add_encounter()
+    stranger = world.encounters[other].patient_id
+    wrong_patient = as_user("md").post(
+        f"{API}/patients/{stranger}/vitals/{weight}/entered-in-error", json=body)
+    assert wrong_patient.status_code == 404  # not this patient's vital
+    unknown = as_user("md").post(f"{API}/patients/{patient}/vitals/{uuid4()}/entered-in-error",
+                                 json=body)
+    assert unknown.status_code == 404
+    elsewhere_patient, elsewhere = _recorded(as_user, world)
+    visit = next(v.encounter_id for v in world.vitals if v.id == UUID(elsewhere))
+    assert visit is not None
+    world.encounters[visit].facility_id = FACILITY_B  # the visit was at another facility
+    at_b = as_user("md").post(
+        f"{API}/patients/{elsewhere_patient}/vitals/{elsewhere}/entered-in-error", json=body)
+    assert at_b.status_code == 404  # a visit at a facility not the user's (#180)
+    world.restricted.add(patient)
+    restricted = as_user("md").post(path, json=body)
+    assert restricted.status_code == 403 and restricted.json()["code"] == "break-glass-required"
+    assert world.provenance == []  # nothing was marked
 
 
 # ------------------------------------------------------------------------- listPatientEncounters

@@ -1,6 +1,6 @@
 """Encounter rules: check-in opens the visit's encounter and its undo marks it entered-in-error
 (D16, D55); rooming moves it to ``triaged`` and puts it in a room, ``with-provider`` starts it
-(DATA_OWNERSHIP §5.2); the workspace read and edit (inventory #63-64) and vitals (#68-69, D69).
+(DATA_OWNERSHIP §5.2); the workspace read and edit (inventory #63-64) and vitals (#68-70, D69).
 
 Resources are written through Anand's FHIR write helpers (``app.db.fhir_store``), in the caller's
 transaction; the encounter's reasons, room and participants through this module's repository (no
@@ -31,6 +31,7 @@ from app.core.errors import (
     ValidationFailed,
     field_error,
 )
+from app.core.permissions import roles_allow
 from app.db.fhir_store import (
     Coded,
     EncounterIn,
@@ -59,6 +60,8 @@ RECORDING = ("arrived", "triaged", "in-progress")
 FROZEN = ("finished", "entered-in-error")
 #: Who may change more than the reasons (updateEncounter: MA and RN change `reasons` only).
 FULL_EDIT_ROLES = frozenset({"MD", "APP"})
+#: A vital's entered-in-error (markVitalEnteredInError): RN only for their own entries.
+VITAL_ENTERED_IN_ERROR = "vitals:entered-in-error"
 #: UCUM units accepted per vital sign, stored as entered (D69; the contract's Vital).
 VITAL_UNITS: dict[str, frozenset[str]] = {
     "body-weight": frozenset({"kg", "g", "[lb_av]"}),
@@ -358,6 +361,52 @@ async def record_vitals(db: AsyncSession, repo: EncounterRepository, store: Fhir
     found = {v.id: v for v in await repo.vitals(db, head.patient_id, ids=ids,
                                                include_entered_in_error=True, limit=len(ids))}
     return [found[i] for i in ids if i in found]
+
+
+def may_mark_others_vitals(user: CurrentUser) -> bool:
+    """RN marks only their own vitals entered-in-error (the contract); a user with another role
+    that grants it (MD, APP) may mark anyone's."""
+    return any(roles_allow({role}, VITAL_ENTERED_IN_ERROR) for role in user.roles if role != "RN")
+
+
+async def mark_vital_entered_in_error(db: AsyncSession, repo: EncounterRepository,
+                                      store: FhirStore, check: ChartCheck, user: CurrentUser,
+                                      patient_id: UUID, vital_id: UUID, reason: str
+                                      ) -> Versioned[schemas.Vital]:
+    """markVitalEnteredInError (#70; D14). In order: the chart (404 unknown patient, 403
+    break-glass-required, D37); the vital (404 when it isn't this patient's, or was taken at a
+    visit at a facility not the user's, SECURITY_MODEL §5.1); a blank reason (422); already
+    entered in error (409); then who: RN only their own entries (403). The helper writes the
+    status and its Provenance (the reason) under the row lock, in this one transaction; the
+    vital is kept, and left out of the chart. No If-Match (the contract has none) and no event
+    (the contract lists none). Core audits it against the path's patient (x-audit)."""
+    await check(db, user, patient_id)
+    head = await repo.vital_head(db, vital_id)
+    if head.patient_id != patient_id:
+        raise NotFound()
+    require_facility(user, head.facility_id)
+    text = reason.strip()
+    if not text:
+        raise ValidationFailed(errors=[field_error("body", "/reason", "too-short")])
+    if head.status == "entered-in-error":
+        raise _state(head.status)
+    if not may_mark_others_vitals(user) and head.created_by_user_id != user.id:
+        raise Forbidden("A nurse marks only their own entries entered in error",
+                        code="permission-denied")
+    try:
+        written = await store.vital_entered_in_error(db, vital_id, Reason(text=text))
+    except ResourceNotFound as gone:
+        raise NotFound() from gone
+    except InvalidTransition as done:
+        raise _state(done.current_state) from done
+    except InvalidInput as refused:  # a blank reason after trimming
+        raise ValidationFailed(errors=[field_error("body", "/reason", "too-short")]) from refused
+    await db.commit()
+    found = await repo.vitals(db, patient_id, ids=[vital_id], include_entered_in_error=True,
+                              limit=1)
+    if not found:
+        raise NotFound()
+    return Versioned(found[0], written.version)
 
 
 def check_range(date_from: date | None, date_to: date | None) -> None:
