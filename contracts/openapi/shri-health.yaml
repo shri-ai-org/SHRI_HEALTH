@@ -120,6 +120,8 @@ paths:
     $ref: 'modules/files.yaml#/paths/~1files~1{fileId}~1complete'
   /files/{fileId}/download-url:
     $ref: 'modules/files.yaml#/paths/~1files~1{fileId}~1download-url'
+  /files/{fileId}/content:
+    $ref: 'modules/files.yaml#/paths/~1files~1{fileId}~1content'
   /patients/search:
     $ref: 'modules/patients.yaml#/paths/~1patients~1search'
   /patients:
@@ -430,6 +432,8 @@ paths:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1vitals'
   /portal/practices/{practiceLinkId}/pre-registrations:
     $ref: 'modules/portal.yaml#/paths/~1portal~1practices~1{practiceLinkId}~1pre-registrations'
+  /portal/bot-challenge:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1bot-challenge'
 components:
   schemas:
     Address:

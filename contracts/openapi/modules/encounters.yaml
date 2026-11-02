@@ -247,7 +247,10 @@ paths:
       operationId: updateEncounter
       summary: Edit an encounter
       description: 'Edits the reasons, room and participants of an encounter that is not `finished` or `entered-in-error`
-        (inventory #64). Status changes only through actions.'
+        (inventory #64). Status changes only through actions. MA and RN hold `encounters:update` for rooming and may change
+        only `reasons` (the reason for visit, recorded at rooming, #114); a request from them that changes anything else is
+        `403 permission-denied`. MD and APP may change every field here. The role matrix row lands with core''s change (NOTE_FOR_THULASI
+        T52), and it is a clinical row (‡, Q21).'
       tags:
       - encounters
       x-owner: vimal
@@ -301,9 +304,9 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `encounters:update`); `csrf-check-failed` (missing or wrong
-            CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass
-            grant and is not on the care team (D37)).
+          description: '403. `permission-denied` (the role lacks `encounters:update`, or an MA or RN changes a field other
+            than `reasons`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient''s
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).'
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
@@ -4662,7 +4665,8 @@ components:
           type: string
           format: uri
           maxLength: 2000
-          description: The download link. Short-lived; never logged.
+          description: 'A one-time link to `GET /files/{fileId}/content` (D105): for this user only, valid for about one minute,
+            accepted once. Never logged.'
           x-phi: none
         expiresAt:
           $ref: ../components/schemas/Timestamp.yaml

@@ -20,6 +20,9 @@ export type SignedOutReason = 'not-signed-in' | 'expired' | 'signed-out'
 
 export type SessionState =
   | { status: 'loading' }
+  // The first read failed for a reason other than "not signed in" (network, 5xx): nobody knows
+  // yet whether the user is signed in, so the app offers a retry instead of a blank page.
+  | { status: 'unreachable' }
   | { status: 'signed-in'; session: Session }
   | { status: 'signed-out'; reason: SignedOutReason }
 
@@ -74,6 +77,11 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
     setState({ status: 'signed-out', reason })
   }, [])
 
+  const unreachable = useCallback(() => {
+    statusRef.current = 'unreachable'
+    setState({ status: 'unreachable' })
+  }, [])
+
   const now = useCallback(() => Date.now() + clockOffsetMs, [clockOffsetMs])
 
   const reload = useCallback(async () => {
@@ -82,17 +90,28 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
     else if (result !== 'unchanged') signedIn(result)
   }, [end, signedIn])
 
+  // The first read decides what the page shows. A failed one shows "can't reach the server", not
+  // nothing; a signed-in tab keeps its session through a failed re-read, as before.
+  const settleFirstRead = useCallback(
+    (result: SessionRead | null | 'unchanged') => {
+      if (result === null) end('not-signed-in')
+      else if (result === 'unchanged') unreachable()
+      else signedIn(result)
+    },
+    [end, signedIn, unreachable],
+  )
+
+  const retryFirstRead = useCallback(async () => settleFirstRead(await readSession()), [settleFirstRead])
+
   useEffect(() => {
     let cancelled = false
     void readSession().then((result) => {
-      if (cancelled) return
-      if (result === null) end('not-signed-in')
-      else if (result !== 'unchanged') signedIn(result)
+      if (!cancelled) settleFirstRead(result)
     })
     return () => {
       cancelled = true
     }
-  }, [end, signedIn])
+  }, [settleFirstRead])
 
   // A user request may have extended the idle timer on the server: re-read the new expiries.
   const timer = useRef<number | undefined>(undefined)
@@ -196,6 +215,8 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
         </>
       ) : state.status === 'signed-out' ? (
         (signedOut?.(state.reason) ?? <SignInPrompt reason={state.reason} />)
+      ) : state.status === 'unreachable' ? (
+        <UnreachablePrompt onRetry={retryFirstRead} />
       ) : null}
     </SessionContext.Provider>
   )
@@ -247,6 +268,37 @@ function SignInPrompt({ reason }: { reason: SignedOutReason }) {
       <p className="mt-2 text-ink-muted">{text}</p>
       <div className="mt-6">
         <Button onClick={goToSignIn}>Sign in</Button>
+      </div>
+    </main>
+  )
+}
+
+/** The first session read failed (network, 5xx). Retrying reads it again; nothing signs in on its own. */
+function UnreachablePrompt({ onRetry }: { onRetry: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  const [tries, setTries] = useState(0)
+  async function retry() {
+    setBusy(true)
+    try {
+      await onRetry()
+    } finally {
+      setBusy(false)
+      setTries((n) => n + 1)
+    }
+  }
+  return (
+    <main className="mx-auto mt-24 max-w-md px-4 text-center">
+      <h1 className="text-xl font-semibold text-ink">Can’t reach Shri Health</h1>
+      <p className="mt-2 text-ink-muted">The server didn’t answer. Check your connection, then try again.</p>
+      {tries > 0 ? (
+        <p role="status" className="mt-2 text-sm text-ink-muted">
+          Still no answer. If this keeps happening, contact your practice’s support.
+        </p>
+      ) : null}
+      <div className="mt-6">
+        <Button loading={busy} onClick={() => void retry()}>
+          Try again
+        </Button>
       </div>
     </main>
   )

@@ -3748,11 +3748,13 @@ components:
           x-phi: none
         facilityIds: &id050
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 50
           items:
             $ref: ../components/schemas/Id.yaml
-          description: Facilities where the provider works (one PractitionerRole each).
+          description: 'Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active
+            role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such
+            a provider.'
           x-phi: internal-id
         phone: &id051
           $ref: ../components/schemas/PhoneNumber.yaml

@@ -232,3 +232,32 @@ class PracticePayer(Out):
 class PracticePayerList(Out):
     items: list[PracticePayer]
     next_cursor: str | None = None
+
+
+# ----------------------------------------------------------------------------------- note templates
+class NoteTemplateSection(Out):
+    sequence: int
+    section_code: str
+    title: str
+    default_text: str | None = None
+    required: bool
+
+
+class NoteTemplate(Out):
+    id: UUID
+    code: str
+    version: int  # optional in the contract; always sent, the ETag of the single GET
+    name: str
+    specialty_code: str | None = None
+    note_type_loinc: str
+    personal: bool
+    sections: list[NoteTemplateSection] = []
+    owner_user_id: UUID | None = None
+    active: bool
+    created_at: Timestamp
+    updated_at: Timestamp
+
+
+class NoteTemplateList(Out):
+    items: list[NoteTemplate]
+    next_cursor: str | None = None

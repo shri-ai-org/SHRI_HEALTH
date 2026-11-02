@@ -8,10 +8,13 @@ name: terraform
 
 on:
   pull_request:
-    paths: ["infra/terraform/**", ".github/workflows/terraform.yml"]
+    # No CI on drafts: a PR runs only once it's ready for review, and again on each push to it.
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Markdown alone doesn't run this; docs.yml checks its links.
+    paths: ["infra/terraform/**", "!**/*.md", ".github/workflows/terraform.yml"]
   push:
     branches: [main]
-    paths: ["infra/terraform/**", ".github/workflows/terraform.yml"]
+    paths: ["infra/terraform/**", "!**/*.md", ".github/workflows/terraform.yml"]
 
 permissions:
   contents: read
@@ -29,6 +32,8 @@ env:
 
 jobs:
   check:
+    # Skipped on a draft PR (it runs when the PR is marked ready for review); always on main.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:

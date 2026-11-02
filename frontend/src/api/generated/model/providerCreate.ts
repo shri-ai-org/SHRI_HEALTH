@@ -47,8 +47,8 @@ export interface ProviderCreate {
      */
   specialties?: SetupCoding[];
   /**
-     * Facilities where the provider works (one PractitionerRole each).
-     * @minItems 1
+     * Facilities where the provider works (one PractitionerRole each). Empty when the provider has no active role at any facility, so an admin can still find and reactivate them; the booking lists (D49) never show such a provider.
+     * @minItems 0
      * @maxItems 50
      */
   facilityIds: Id[];

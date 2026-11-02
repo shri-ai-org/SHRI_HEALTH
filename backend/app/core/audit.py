@@ -47,6 +47,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from fastapi import FastAPI
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,9 +56,11 @@ from sqlalchemy.sql.elements import TextClause
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.core.config import Settings
 from app.core.errors import InternalError, problem
 from app.core.operations import Operation, operation_for
 from app.core.request_id import current_request_id
+from app.core.safe_logging import log_failure
 
 if TYPE_CHECKING:
     from app.core.deps import CurrentUser, PortalPatient
@@ -393,7 +396,7 @@ async def record_denial(request: Request, user: "CurrentUser", permission: str) 
             await session.commit()
     except Exception:
         # The request is refused either way; a lost denial row must still be seen.
-        log.exception("Could not audit a permission denial (request %s)", current_request_id())
+        log_failure(log, "Could not audit a permission denial (request %s)", current_request_id())
 
 
 class AuditMiddleware:
@@ -419,7 +422,7 @@ class AuditMiddleware:
                     try:
                         await trail.write_now()
                     except Exception:
-                        log.exception("Audit write failed; the request fails (request %s)",
+                        log_failure(log, "Audit write failed; the request fails (request %s)",
                                       trail.request_id)
                         replaced = True
                         response = problem(Request(scope), "internal-error",
@@ -429,3 +432,8 @@ class AuditMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_after_audit)
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """AuditMiddleware (innermost: it sees the final status)."""
+    app.add_middleware(AuditMiddleware)

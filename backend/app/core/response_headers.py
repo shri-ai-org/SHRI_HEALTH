@@ -1,8 +1,11 @@
 """Cache-Control: no-store on every response (API_STANDARDS §7.2), so PHI never sits in browser
 or proxy caches. An endpoint that sets its own Cache-Control keeps it."""
 
+from fastapi import FastAPI
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from app.core.config import Settings
 
 
 class NoStoreMiddleware:
@@ -22,3 +25,8 @@ class NoStoreMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_no_store)
+
+
+def register(app: FastAPI, settings: Settings) -> None:
+    """NoStoreMiddleware (Cache-Control: no-store on API answers)."""
+    app.add_middleware(NoStoreMiddleware)

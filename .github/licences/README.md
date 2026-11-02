@@ -22,6 +22,7 @@ CI runs them in `contracts.yml`, `frontend.yml` and `backend.yml`, right after i
 
 - **`allowed`:** the D75 list for code, exactly as D75 names it.
 - **`fonts_and_data.licences`:** OFL for fonts; CC0, CC-BY and CDLA-Permissive-2.0 for data and model weights. D75 allows these **only** for fonts and data. So they pass only for a package listed under `packages` with kind `font` or `data`, never for a code library.
+- **`separate_programs.licences`:** OSI-approved licences that only an image marked `"scope": "separate-program"` may use (D75's scope). Never a package.
 - **`not_packages`:** what D75 allows by name that isn't a package (LOINC), so the file and D75 visibly match.
 - **`packages`:** one entry per package that needs more than `allowed`. Each entry is checked before any package is:
 
@@ -40,6 +41,8 @@ CI runs them in `contracts.yml`, `frontend.yml` and `backend.yml`, right after i
 - the version tag;
 - the `sha256` digest it's pinned to;
 - where it's used, and where its licence comes from.
+
+An image we only run as a separate program, never linked into our code, may instead carry `"scope": "separate-program"` and a licence from `separate_programs` (D75's scope: separate programs may use any OSI-approved licence). ClamAV (GPL-2.0) is the one such image today. A package can never use this.
 
 Every reference in compose and the workflows must be exactly `name:version@digest`, so an unlisted image, a moved tag or a missing pin fails CI. A new image, or a new version of one, follows the 7-day rule (a release at least 7 days old) and changes its entry in the same PR.
 

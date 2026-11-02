@@ -13,6 +13,10 @@
   "not_packages": {
     "LOINC": "Terminology data, allowed by name in D75. It isn't a package, so no lockfile carries it."
   },
+  "separate_programs": {
+    "note": "D75's scope: separate programs (here, container images we run but never link into our code) may use any OSI-approved licence. Only an image entry with \"scope\": \"separate-program\" may use these; a package never can.",
+    "licences": ["GPL-2.0-only", "GPL-2.0-or-later"]
+  },
   "aliases": {
     "Apache 2.0": "Apache-2.0",
     "Apache License 2.0": "Apache-2.0",
@@ -69,6 +73,21 @@
       "digest": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
       "use": "Local development reverse proxy (infra/compose).",
       "source": "https://nginx.org/LICENSE (the image has no licence label)"
+    },
+    "chrislusf/seaweedfs": {
+      "licence": "Apache-2.0",
+      "version": "4.48",
+      "digest": "sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d",
+      "use": "Development only: the file store with its S3 API, chunks encrypted (infra/compose/seaweedfs).",
+      "source": "https://github.com/seaweedfs/seaweedfs (OCI label org.opencontainers.image.licenses=Apache-2.0); image built 2026-09-28"
+    },
+    "clamav/clamav": {
+      "licence": "GPL-2.0-only",
+      "scope": "separate-program",
+      "version": "1.5.3-debian",
+      "digest": "sha256:741e6c447241220e0792a901befcaec1d55a755c5097fc9cd88d7fd8be251a5c",
+      "use": "Development: clamd for the upload scan (the file service talks to it over TCP; nothing is linked).",
+      "source": "https://github.com/Cisco-Talos/clamav (COPYING.txt, GPL-2.0; the image has no licence label); image built 2026-08-03. 1.5.4 (2026-10-26) is too new for the 7-day rule"
     }
   }
 }
