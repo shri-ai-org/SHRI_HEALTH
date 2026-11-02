@@ -33,7 +33,7 @@ from app.modules.scheduling.tests.conftest import (  # noqa: F401 (fixtures)
 from app.modules.scheduling.tests.test_check_in_live import _sql
 from app.modules.scheduling.tests.test_scheduling_live import _booking
 
-from .. import partner, service
+from .. import partner, partner_bridge, service
 from ..repository import NOT_SENT
 from .test_eligibility_live import (
     OPENBAO,
@@ -247,9 +247,10 @@ def test_the_batch_queues_only_the_missing_ones(
     assert _count(practice, "integration_message") == 2
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError,
+@pytest.mark.xfail(not partner_bridge.REGISTERED, strict=True, raises=ValueError,
                    reason="core: session_user_id() reads the system session's empty user as a "
-                          "UUID, so enqueue() fails outside a user's session (app/core/db.py:118)")
+                          "UUID, so enqueue() fails outside a user's session (app/core/db.py:118; "
+                          "fixed by #186, 56bace3, which the bridge registers with)")
 def test_the_batch_in_the_jobs_system_session(practice: Practice) -> None:  # noqa: F811
     """How the job runner will call it: one clinic's system session, no user. Passes once core's
     session_user_id returns None for an empty user."""
