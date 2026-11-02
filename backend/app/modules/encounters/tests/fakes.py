@@ -158,9 +158,11 @@ class FakeRepository:
     async def vitals(self, db: Any, patient_id: UUID, *, encounter_id: UUID | None = None,
                      ids: Sequence[UUID] | None = None, vital_type: str | None = None,
                      date_from: date | None = None, date_to: date | None = None,
-                     include_entered_in_error: bool = False, limit: int = 50, offset: int = 0
-                     ) -> list[schemas.Vital]:
+                     include_entered_in_error: bool = False, limit: int = 50, offset: int = 0,
+                     facility_ids: Sequence[UUID] | None = None) -> list[schemas.Vital]:
         found = [v for v in reversed(self.world.vitals) if v.patient_id == patient_id
                  and (ids is None or v.id in ids) and (vital_type is None or v.type == vital_type)
-                 and (encounter_id is None or v.encounter_id == encounter_id)]
+                 and (encounter_id is None or v.encounter_id == encounter_id)
+                 and (facility_ids is None or v.encounter_id is None
+                      or self.world.encounters[v.encounter_id].facility_id in facility_ids)]
         return found[offset:offset + limit]
