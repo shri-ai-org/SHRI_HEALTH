@@ -105,7 +105,8 @@ def test_cash_has_no_check_number_or_note_and_a_long_note_wraps() -> None:
 
 
 def test_letters_outside_winansi_lose_only_their_accent() -> None:
-    _, texts = _parse(render(_details(patient_name="Trần412 Thị Nguyễn88", practice_name="Café 中")))
+    _, texts = _parse(render(_details(patient_name="Trần412 Thị Nguyễn88",
+                                      practice_name="Café 中")))
 
     assert "Patient: Tran412 Thi Nguyen88" in texts
     assert texts[0] == "Café ?"

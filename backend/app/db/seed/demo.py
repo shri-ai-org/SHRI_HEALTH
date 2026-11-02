@@ -154,7 +154,8 @@ def _coverage(db: Session, p: DemoPatient) -> None:
 #: names are #152's (infra/keycloak/reset-demo-users.sh): Keycloak's names are the source of
 #: truth, so a person has one name on every screen and in sign-in (D112).
 DEMO_USERS = (
-    (1, "demo.frontdesk", "bfb3e893-5380-4260-b1b9-420ee3a9e6e4", "Marlo512 Ferreira77", "FD", None),
+    (1, "demo.frontdesk", "bfb3e893-5380-4260-b1b9-420ee3a9e6e4", "Marlo512 Ferreira77", "FD",
+     None),
     (2, "demo.ma", "8474b553-c2bb-4a7b-a098-cc4bfdf5f4ac", "Tobias289 Lindqvist45", "MA", None),
     (3, "demo.doctor", "490ef6d1-2e36-40ed-88eb-132538695ad9", "Rowan318 Halvorsen64", "MD", 3),
     (4, "demo.admin", "9a805285-df36-4ce9-abcc-3844ab784dfa", "Sasha627 Brennan52", "ADM", None),
