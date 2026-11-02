@@ -104,12 +104,14 @@ CREATE POLICY tenant_read ON admin.app_user FOR SELECT USING (tenant_id IS NULL 
 CREATE POLICY tenant_write ON admin.app_user USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.appointment TO shri_fhir_reader;
+GRANT SELECT ON clinical.appointment TO shri_integration;
 GRANT SELECT, INSERT, UPDATE ON clinical.appointment TO shri_app;
 ALTER TABLE clinical.appointment ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.appointment FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.appointment USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.appointment_participant TO shri_fhir_reader;
+GRANT SELECT ON clinical.appointment_participant TO shri_integration;
 GRANT SELECT, INSERT, UPDATE, DELETE ON clinical.appointment_participant TO shri_app;
 ALTER TABLE clinical.appointment_participant ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.appointment_participant FORCE ROW LEVEL SECURITY;
@@ -350,6 +352,7 @@ ALTER TABLE admin.cosign_rule FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.cosign_rule USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.coverage TO shri_fhir_reader;
+GRANT SELECT ON clinical.coverage TO shri_integration;
 GRANT SELECT, INSERT, UPDATE ON clinical.coverage TO shri_app;
 ALTER TABLE clinical.coverage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.coverage FORCE ROW LEVEL SECURITY;
@@ -362,6 +365,7 @@ ALTER TABLE clinical.coverage_card_image FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.coverage_card_image USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.coverage_class TO shri_fhir_reader;
+GRANT SELECT ON clinical.coverage_class TO shri_integration;
 GRANT SELECT, INSERT, UPDATE, DELETE ON clinical.coverage_class TO shri_app;
 ALTER TABLE clinical.coverage_class ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.coverage_class FORCE ROW LEVEL SECURITY;
@@ -374,6 +378,7 @@ ALTER TABLE clinical.coverage_cost_to_beneficiary FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.coverage_cost_to_beneficiary USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.coverage_payor TO shri_fhir_reader;
+GRANT SELECT ON clinical.coverage_payor TO shri_integration;
 GRANT SELECT, INSERT, UPDATE, DELETE ON clinical.coverage_payor TO shri_app;
 ALTER TABLE clinical.coverage_payor ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.coverage_payor FORCE ROW LEVEL SECURITY;
@@ -484,6 +489,7 @@ ALTER TABLE clinical.document_reference_relates_to FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.document_reference_relates_to USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.dosage TO shri_fhir_reader;
+GRANT SELECT ON clinical.dosage TO shri_integration;
 GRANT SELECT, INSERT, UPDATE, DELETE ON clinical.dosage TO shri_app;
 ALTER TABLE clinical.dosage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.dosage FORCE ROW LEVEL SECURITY;
@@ -504,11 +510,14 @@ ALTER TABLE admin.eligibility_benefit ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.eligibility_benefit FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.eligibility_benefit USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+GRANT SELECT ON admin.eligibility_check TO shri_integration;
+GRANT UPDATE (status, error_code, error_message, updated_by_user_id, updated_at) ON admin.eligibility_check TO shri_integration;
 GRANT SELECT, INSERT, UPDATE ON admin.eligibility_check TO shri_app;
 ALTER TABLE admin.eligibility_check ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.eligibility_check FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.eligibility_check USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+GRANT SELECT ON admin.eligibility_service_type TO shri_integration;
 GRANT SELECT, INSERT, UPDATE, DELETE ON admin.eligibility_service_type TO shri_app;
 ALTER TABLE admin.eligibility_service_type ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.eligibility_service_type FORCE ROW LEVEL SECURITY;
@@ -520,6 +529,7 @@ ALTER TABLE admin.employer FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.employer USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.encounter TO shri_fhir_reader;
+GRANT SELECT ON clinical.encounter TO shri_integration;
 GRANT SELECT, INSERT, UPDATE ON clinical.encounter TO shri_app;
 ALTER TABLE clinical.encounter ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.encounter FORCE ROW LEVEL SECURITY;
@@ -579,6 +589,7 @@ ALTER TABLE admin.event_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.event_log FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.event_log USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+GRANT SELECT ON admin.facility TO shri_integration;
 GRANT SELECT, INSERT, UPDATE ON admin.facility TO shri_app;
 ALTER TABLE admin.facility ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.facility FORCE ROW LEVEL SECURITY;
@@ -618,6 +629,7 @@ ALTER TABLE clinical.fhir_resource_history FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.fhir_resource_history USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.human_name TO shri_fhir_reader;
+GRANT SELECT ON clinical.human_name TO shri_integration;
 GRANT SELECT, INSERT, UPDATE, DELETE ON clinical.human_name TO shri_app;
 ALTER TABLE clinical.human_name ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.human_name FORCE ROW LEVEL SECURITY;
@@ -629,6 +641,7 @@ ALTER TABLE admin.idempotency_record FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.idempotency_record USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.identifier TO shri_fhir_reader;
+GRANT SELECT ON clinical.identifier TO shri_integration;
 GRANT SELECT, INSERT, UPDATE, DELETE ON clinical.identifier TO shri_app;
 ALTER TABLE clinical.identifier ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.identifier FORCE ROW LEVEL SECURITY;
@@ -726,6 +739,7 @@ ALTER TABLE clinical.medication_ingredient FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.medication_ingredient USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.medication_request TO shri_fhir_reader;
+GRANT SELECT ON clinical.medication_request TO shri_integration;
 GRANT SELECT, INSERT, UPDATE ON clinical.medication_request TO shri_app;
 ALTER TABLE clinical.medication_request ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.medication_request FORCE ROW LEVEL SECURITY;
@@ -872,6 +886,7 @@ ALTER TABLE admin.order_set_item FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.order_set_item USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.organization TO shri_fhir_reader;
+GRANT SELECT ON clinical.organization TO shri_integration;
 GRANT SELECT, INSERT, UPDATE ON clinical.organization TO shri_app;
 ALTER TABLE clinical.organization ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.organization FORCE ROW LEVEL SECURITY;
@@ -888,6 +903,7 @@ ALTER TABLE admin.outbound_communication_param FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.outbound_communication_param USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.patient TO shri_fhir_reader;
+GRANT SELECT ON clinical.patient TO shri_integration;
 GRANT SELECT, INSERT, UPDATE ON clinical.patient TO shri_app;
 ALTER TABLE clinical.patient ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.patient FORCE ROW LEVEL SECURITY;
@@ -938,7 +954,9 @@ ALTER TABLE clinical.patient_race_ethnicity ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.patient_race_ethnicity FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.patient_race_ethnicity USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+GRANT SELECT ON admin.payer TO shri_integration;
 GRANT SELECT ON admin.payer TO shri_app;
+GRANT SELECT ON admin.payer_clearinghouse_id TO shri_integration;
 GRANT SELECT ON admin.payer_clearinghouse_id TO shri_app;
 GRANT SELECT, INSERT, UPDATE ON admin.payer_enrollment TO shri_app;
 ALTER TABLE admin.payer_enrollment ENABLE ROW LEVEL SECURITY;
@@ -946,6 +964,7 @@ ALTER TABLE admin.payer_enrollment FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.payer_enrollment USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON admin.permission TO shri_app;
+GRANT SELECT ON admin.pharmacy TO shri_integration;
 GRANT SELECT ON admin.pharmacy TO shri_app;
 GRANT SELECT ON admin.pharmacy_service_level TO shri_app;
 GRANT SELECT, INSERT, UPDATE ON admin.picklist TO shri_app;
@@ -1084,6 +1103,7 @@ ALTER TABLE clinical.provenance_signature FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clinical.provenance_signature USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
 GRANT SELECT ON clinical.related_person TO shri_fhir_reader;
+GRANT SELECT ON clinical.related_person TO shri_integration;
 GRANT SELECT, INSERT, UPDATE ON clinical.related_person TO shri_app;
 ALTER TABLE clinical.related_person ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.related_person FORCE ROW LEVEL SECURITY;
@@ -1242,6 +1262,7 @@ ALTER TABLE admin.superbill ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.superbill FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.superbill USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+GRANT SELECT (id, timezone) ON admin.tenant TO shri_integration;
 ALTER TABLE admin.tenant ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.tenant FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_self ON admin.tenant USING (id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);

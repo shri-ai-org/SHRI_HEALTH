@@ -107,6 +107,20 @@ def test_an_allergy_recorded_at_the_visit(as_user: Client, world: World) -> None
     assert _add(as_user, patient, encounterId=str(visit)).status_code == 422
 
 
+def test_a_visit_at_another_facility_is_refused(as_user: Client, world: World) -> None:
+    """SECURITY_MODEL §5.1: a visit at a facility the user isn't assigned to is one they can't
+    see, so an allergy can't name it."""
+    patient = world.patient()
+    visit = uuid.uuid4()
+    world.visits[visit] = (patient, "triaged")
+    world.visit_facilities[visit] = uuid.uuid4()
+    refused = _add(as_user, patient, encounterId=str(visit))
+    assert refused.status_code == 422
+    assert refused.json()["errors"][0] == {"in": "body", "pointer": "/encounterId",
+                                           "code": "invalid-reference"}
+    assert world.allergies == {}
+
+
 def test_update_with_if_match(as_user: Client, world: World) -> None:
     patient = world.patient()
     allergy = _add(as_user, patient).json()["id"]

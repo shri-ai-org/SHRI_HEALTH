@@ -21,6 +21,7 @@ from sqlalchemy.pool import NullPool
 from app.db.tests.conftest import TEST_DATABASE_URL, sync_url
 
 from .conftest import Practice, local, setup_session
+from .test_check_in_live import _check_in, _sql, _today_appointment
 
 pytestmark = [
     pytest.mark.db,
@@ -208,6 +209,39 @@ def test_a_merged_patient_cannot_be_booked(client: Any, practice: Practice) -> N
     admin.dispose()
     merged = client("fd").post(f"{API}/appointments", json=_booking(practice, "marcus"))
     assert merged.status_code == 409 and _code(merged) == "patient-merged"
+
+
+def test_a_follow_up_is_booked_only_from_the_users_facilities(client: Any,
+                                                             practice: Practice) -> None:
+    """D98: booking with followUpOfEncounterId books the visit's open request. A visit at a
+    facility the user isn't assigned to (A2) is one they can't see (SECURITY_MODEL §5.1), so its
+    request is refused like one that isn't open, and nothing changes; at A1 it is booked."""
+    done = _check_in(client, _today_appointment(practice, "marcus"), selfPay=True)
+    assert done.status_code == 200, done.text
+    encounter = done.json()["encounterId"]
+    _sql(practice, "INSERT INTO clinical.encounter_follow_up (id, tenant_id, encounter_id, "
+         "patient_id, interval_value, interval_unit, requested_by_user_id) VALUES "
+         "(gen_random_uuid(), :t, :e, :p, 2, 'week', (SELECT id FROM admin.app_user "
+         "WHERE tenant_id = :t LIMIT 1))", t=practice.clinic, e=encounter,
+         p=practice.patients["marcus"])
+    body = _booking(practice, "marcus", hour=10, followUpOfEncounterId=encounter)
+    _sql(practice, "UPDATE clinical.encounter SET ext_facility_id = :f WHERE id = :e",
+         f=practice.other_facility, e=encounter)
+    refused = client("fd").post(f"{API}/appointments", json=body)
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["errors"][0]["pointer"] == "/followUpOfEncounterId"
+    assert refused.json()["errors"][0]["code"] == "invalid-reference"
+    assert _sql(practice, "SELECT status FROM clinical.encounter_follow_up "
+                "WHERE encounter_id = :e", e=encounter) == [("open",)]
+    assert _sql(practice, "SELECT count(*) FROM clinical.appointment WHERE tenant_id = :t "
+                "AND start > now() + interval '1 day'", t=practice.clinic)[0][0] == 0
+    _sql(practice, "UPDATE clinical.encounter SET ext_facility_id = :f WHERE id = :e",
+         f=practice.facility, e=encounter)
+    booked = client("fd").post(f"{API}/appointments", json=body)
+    assert booked.status_code == 201, booked.text
+    assert [tuple(r) for r in _sql(
+        practice, "SELECT status, booked_appointment_id::text FROM clinical.encounter_follow_up "
+        "WHERE encounter_id = :e", e=encounter)] == [("booked", booked.json()["id"])]
 
 
 # ---------------------------------------------------------------------------- one appointment

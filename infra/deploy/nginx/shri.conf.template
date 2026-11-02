@@ -1,0 +1,136 @@
+# The test server's edge (infra/deploy), from infra/nginx/nginx.conf: the same routes and limits,
+# with the hostname, public port and certificate from the deploy settings. The nginx image fills
+# ${SHRI_HOSTNAME} and ${SHRI_HTTPS_PORT} at start (templates -> conf.d); nginx's own $variables
+# are left alone. HTTPS only: port 80 is not published.
+#   /api/     -> FastAPI          /hooks/ -> FastAPI (partner callbacks, signed)
+#   /health   -> FastAPI          /kc/    -> Keycloak
+# /ready and /hooks/keycloak/ are never exposed here.
+
+server_tokens off;
+client_max_body_size 25m;
+
+log_format no_query '$remote_addr - $remote_user [$time_local] "$request_method $uri $server_protocol" '
+                    '$status $body_bytes_sent "$http_referer" "$http_user_agent"';
+# The default format logs query strings; every route here logs the path only (download tokens,
+# D105; nothing else should carry data in a query, D13).
+access_log /dev/stdout no_query;
+
+limit_req_zone $binary_remote_addr zone=public_forms:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=portal_sign_in:10m rate=30r/m;
+limit_req_status 429;
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ""      close;
+}
+
+server {
+    listen 443 ssl default_server;
+    http2 on;
+    server_name ${SHRI_HOSTNAME};
+
+    ssl_certificate     /etc/nginx/certs/server.crt;
+    ssl_certificate_key /etc/nginx/certs/server.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+
+    # Only for the configured host: anything else (a scanner using the IP) gets nothing.
+    if ($host != "${SHRI_HOSTNAME}") {
+        return 444;
+    }
+
+    # All proxy headers at server level (never inside a location: nginx would drop these there).
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host:${SHRI_HTTPS_PORT};
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host  $host:${SHRI_HTTPS_PORT};
+    proxy_set_header X-Forwarded-Port  ${SHRI_HTTPS_PORT};
+    proxy_set_header Upgrade           $http_upgrade;
+    proxy_set_header Connection        $connection_upgrade;
+
+    location /api/ {
+        proxy_pass http://api:8000;
+        proxy_buffering off;  # Server-Sent Events
+        proxy_read_timeout 1h;
+    }
+
+    location ~ ^/api/v1/files/[^/]+/content$ {
+        error_log /dev/stderr crit;  # error lines quote the request line, token included
+        proxy_pass http://api:8000;
+    }
+
+    location ^~ /api/v1/portal/practices/ {
+        limit_req zone=public_forms burst=5 nodelay;
+        client_max_body_size 64k;
+        error_page 429 = @rate_limited;
+        proxy_pass http://api:8000;
+    }
+
+    location = /api/v1/portal/bot-challenge {
+        limit_req zone=public_forms burst=5 nodelay;
+        error_page 429 = @rate_limited;
+        proxy_pass http://api:8000;
+    }
+
+    location ^~ /api/v1/portal/auth/ {
+        limit_req zone=portal_sign_in burst=10 nodelay;
+        error_page 429 = @rate_limited;
+        proxy_pass http://api:8000;
+    }
+
+    location = /api/v1/portal/enrollments {
+        limit_req zone=portal_sign_in burst=5 nodelay;
+        client_max_body_size 4k;
+        error_page 429 = @rate_limited;
+        proxy_pass http://api:8000;
+    }
+
+    location @rate_limited {
+        default_type application/problem+json;
+        return 429 '{"type":"tag:company-domain.invalid,2026:problem/rate-limited","title":"Too many requests","status":429,"code":"rate-limited"}';
+    }
+
+    location = /health {
+        proxy_pass http://api:8000;
+    }
+
+    location ^~ /hooks/keycloak/ {
+        return 404;  # Keycloak calls the API over the internal network
+    }
+
+    location /hooks/ {
+        client_max_body_size 64k;
+        proxy_pass http://api:8000;
+    }
+
+    location ^~ /kc/realms/shri-patients/ {
+        limit_req zone=portal_sign_in burst=10 nodelay;
+        proxy_pass http://keycloak:8080;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+    }
+
+    # Keycloak's admin console stays off the public host: use an SSH tunnel (README).
+    location ^~ /kc/admin/ {
+        return 404;
+    }
+
+    location /kc/ {
+        proxy_pass http://keycloak:8080;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+    }
+
+    location / {
+        return 404;  # the frontend is served here once it exists
+    }
+}

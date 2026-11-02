@@ -2,7 +2,7 @@
 (contracts/openapi/modules/encounters.yaml). Field names are the contract's camelCase (aliases);
 bodies the contract closes (`additionalProperties: false`) forbid unknown fields. Only the
 operations built so far are here: getEncounter, updateEncounter, listPatientEncounters,
-recordVitals, listPatientVitals.
+recordVitals, listPatientVitals, markVitalEnteredInError.
 """
 
 from __future__ import annotations
@@ -93,6 +93,10 @@ class VitalEntry(Closed):
 class VitalsCreate(Closed):
     effective_at: AwareDatetime | None = None
     entries: Annotated[list[VitalEntry], Field(max_length=12)]
+
+
+class VitalEnteredInError(Closed):
+    reason: Annotated[str, _text(500, min_length=1)]
 
 
 class VitalsRecorded(Out):

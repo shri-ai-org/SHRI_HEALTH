@@ -243,7 +243,8 @@ async def book(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
         overbook=body.overbook, same_day_add_on=body.same_day_add_on, now=now)
     follow_up = None
     if body.follow_up_of_encounter_id is not None:
-        follow_up = await repo.open_follow_up(db, body.follow_up_of_encounter_id, body.patient_id)
+        follow_up = await repo.open_follow_up(db, body.follow_up_of_encounter_id, body.patient_id,
+                                              user.facility_ids)
         if follow_up is None:
             raise business_rule("/followUpOfEncounterId", "invalid-reference")
     new = _with_text(new, body.reason_for_visit, body.comment, body.patient_instruction)

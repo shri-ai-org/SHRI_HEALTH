@@ -107,7 +107,19 @@ INTEGRATION_READ_TABLES = {
     "service_request", "service_request_category", "service_request_coding",
     "service_request_performer", "service_request_reason", "service_request_insurance",
     "service_request_specimen", "service_request_aoe_answer",
+    # The NewRx the worker builds at send time, and its prescription.* events (Vimal on #85;
+    # medications new_rx_data and event_scope; migration 0018).
+    "medication_request", "dosage", "patient", "human_name", "identifier", "encounter",
+    "pharmacy",
+    # The eligibility request (270) it builds at send time (Vimal on #157; eligibility
+    # request_data; migration 0018). The reply is filed by the inbound handler as shri_app.
+    "eligibility_service_type", "coverage", "coverage_payor", "coverage_class",
+    "related_person", "payer", "payer_clearinghouse_id", "appointment",
+    "appointment_participant", "facility", "organization",
 }
+#: Read only these columns: the request's service date needs the clinic's time zone, and
+#: nothing else of the clinic (never its pre-registration code). Migration 0018.
+INTEGRATION_COLUMN_READ = {"tenant": ("id", "timezone")}
 #: Write access for filing the result itself.
 INTEGRATION_WRITE_TABLES = {
     "diagnostic_report", "diagnostic_report_category", "diagnostic_report_coding",
@@ -124,6 +136,10 @@ INTEGRATION_COLUMN_UPDATE = {
     # updated_at too: the ORM's onupdate sets it on every update (Thulasi on #138).
     "erx_transaction": ("status", "error_message", "vendor_message_id", "updated_by_user_id",
                         "updated_at"),
+    # A request that ran out of retries times out (eligibility mark_timed_out, the worker's
+    # dead-letter hook; migration 0018). Read for the request too.
+    "eligibility_check": ("status", "error_code", "error_message", "updated_by_user_id",
+                          "updated_at"),
 }
 
 EDITABLE_RESULT = "registered,partial,preliminary,amended,corrected,appended,cancelled,unknown"
@@ -416,6 +432,9 @@ def rls_sql(only: set[str] | None = None) -> str:
         elif name in INTEGRATION_COLUMN_UPDATE:
             _grant(out, "shri_integration", ["SELECT"], qt)
             out.append(f"GRANT UPDATE ({', '.join(INTEGRATION_COLUMN_UPDATE[name])}) ON {qt} "
+                       "TO shri_integration;")
+        elif name in INTEGRATION_COLUMN_READ:
+            out.append(f"GRANT SELECT ({', '.join(INTEGRATION_COLUMN_READ[name])}) ON {qt} "
                        "TO shri_integration;")
 
         # --------------------------------------------------- shri_app
