@@ -122,6 +122,23 @@ async def record_vitals(
     return schemas.VitalsRecorded(vitals=vitals)
 
 
+@router.get("/patients/{patientId}/encounters", operation_id="listPatientEncounters",
+            response_model=schemas.EncounterList, response_model_exclude_none=True)
+async def list_patient_encounters(
+    user: Annotated[CurrentUser, Depends(require("encounters:read"))],
+    patient_id: PatientId, db: DB, repo: Repo, check: Check,
+    encounter_status: Annotated[schemas.EncounterStatus | None, Query(alias="status")] = None,
+    date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
+    date_to: Annotated[date | None, Query(alias="dateTo")] = None,
+    limit: Limit = 25, cursor: Cursor = None,
+) -> schemas.EncounterList:
+    """Core audits the read against the path's patientId (x-audit)."""
+    items, next_cursor = await service.list_for_patient(
+        db, repo, check, user, patient_id, status=encounter_status, date_from=date_from,
+        date_to=date_to, limit=limit, cursor=cursor)
+    return schemas.EncounterList(items=items, next_cursor=next_cursor)
+
+
 @router.get("/patients/{patientId}/vitals", operation_id="listPatientVitals",
             response_model=schemas.VitalList, response_model_exclude_none=True)
 async def list_patient_vitals(
@@ -138,3 +155,10 @@ async def list_patient_vitals(
         date_to=date_to, include_entered_in_error=include_entered_in_error, limit=limit,
         cursor=cursor)
     return schemas.VitalList(items=items, next_cursor=next_cursor)
+
+
+# Diagnoses, notes and closing the visit live in their own files (diagnoses_api.py, notes_api.py).
+from . import diagnoses_api, notes_api  # noqa: E402
+
+router.include_router(diagnoses_api.router)
+router.include_router(notes_api.router)

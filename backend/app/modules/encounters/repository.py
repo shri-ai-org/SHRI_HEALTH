@@ -126,7 +126,13 @@ class EncounterRepository(Protocol):
                      encounter_id: UUID | None = None, ids: Sequence[UUID] | None = None,
                      vital_type: str | None = None, date_from: date | None = None,
                      date_to: date | None = None, include_entered_in_error: bool = False,
-                     limit: int = 50, offset: int = 0) -> list[schemas.Vital]: ...
+                     limit: int = 50, offset: int = 0,
+                     facility_ids: Sequence[UUID] | None = None) -> list[schemas.Vital]: ...
+
+    async def for_patient(self, db: AsyncSession, patient_id: UUID, *,
+                          facility_ids: Sequence[UUID], status: str | None,
+                          date_from: date | None, date_to: date | None, limit: int,
+                          offset: int) -> list[schemas.EncounterSummary]: ...
 
 
 # ------------------------------------------------------------------------------------- SQL
@@ -153,6 +159,41 @@ SELECT e.id, e.subject_patient_id, e.status, e.class, e.appointment_id, e.ext_fa
          ORDER BY l.period_start DESC NULLS LAST LIMIT 1) AS location_id
 FROM clinical.encounter e LEFT JOIN admin.facility f ON f.id = e.ext_facility_id
 WHERE e.id = :id
+""")
+# A patient's encounters at the user's facilities, newest first (listPatientEncounters). The
+# start is the period's, or, before the visit starts (arrived, triaged), when it was opened;
+# dateFrom and dateTo are days in each encounter's facility time zone.
+_FOR_PATIENT = text("""
+SELECT e.id, e.status, e.class, e.ext_facility_id, e.period_end,
+       coalesce(e.period_start, e.created_at) AS started_at,
+       rp.practitioner_id AS provider_id, rp.name AS provider_name
+FROM clinical.encounter e
+LEFT JOIN admin.facility f ON f.id = e.ext_facility_id
+LEFT JOIN LATERAL (
+  SELECT p.individual_practitioner_id AS practitioner_id,
+         (SELECT concat_ws(' ', array_to_string(n.prefix, ' '), array_to_string(n.given, ' '),
+                           n.family, array_to_string(n.suffix, ' '))
+            FROM clinical.human_name n WHERE n.practitioner_id = p.individual_practitioner_id
+           ORDER BY (n.use = 'official') DESC, n.created_at LIMIT 1) AS name
+    FROM clinical.encounter_participant p
+   WHERE p.encounter_id = e.id AND p.type_code = :rendering
+     AND p.individual_practitioner_id IS NOT NULL
+   ORDER BY p.created_at, p.id LIMIT 1) rp ON true
+WHERE e.subject_patient_id = :patient
+  AND e.ext_facility_id = ANY(CAST(:facilities AS uuid[]))
+  AND (CASE WHEN CAST(:status AS text) IS NULL THEN e.status <> 'entered-in-error'
+            ELSE e.status = CAST(:status AS text) END)
+  AND (CAST(:day_from AS date) IS NULL OR (coalesce(e.period_start, e.created_at)
+       AT TIME ZONE coalesce(f.timezone, 'UTC'))::date >= CAST(:day_from AS date))
+  AND (CAST(:day_to AS date) IS NULL OR (coalesce(e.period_start, e.created_at)
+       AT TIME ZONE coalesce(f.timezone, 'UTC'))::date <= CAST(:day_to AS date))
+ORDER BY coalesce(e.period_start, e.created_at) DESC, e.id
+LIMIT :limit OFFSET :offset
+""")
+_TYPES_OF = text("""
+SELECT encounter_id, type_system, type_code, type_display, type_text
+FROM clinical.encounter_type WHERE encounter_id = ANY(CAST(:ids AS uuid[]))
+ORDER BY created_at, id
 """)
 _TYPES = text("""
 SELECT type_system, type_code, type_display, type_text FROM clinical.encounter_type
@@ -203,6 +244,8 @@ LEFT JOIN LATERAL (SELECT x.practitioner_id FROM clinical.composition_author x
                     WHERE x.composition_id = c.id AND x.practitioner_id IS NOT NULL
                     ORDER BY x.created_at LIMIT 1) au ON true
 WHERE c.encounter_id = :id
+  AND NOT EXISTS (SELECT 1 FROM clinical.composition_relates_to r
+                   WHERE r.composition_id = c.id AND r.code = 'appends')  -- an addendum
   AND (NOT :signed_only OR c.status IN ('final', 'amended'))
 ORDER BY c.date DESC, c.id
 LIMIT 50
@@ -235,6 +278,9 @@ WHERE o.subject_patient_id = :patient
   AND EXISTS (SELECT 1 FROM clinical.observation_category k
                WHERE k.observation_id = o.id AND k.category_code = 'vital-signs')
   AND (CAST(:encounter AS uuid) IS NULL OR o.encounter_id = :encounter)
+  AND (CAST(:facilities AS uuid[]) IS NULL OR EXISTS (
+        SELECT 1 FROM clinical.encounter fe
+         WHERE fe.id = o.encounter_id AND fe.ext_facility_id = ANY(:facilities)))
   AND (CAST(:ids AS uuid[]) IS NULL OR o.id = ANY(:ids))
   AND (:include_eie OR o.status <> 'entered-in-error')
   AND (CAST(:day_from AS date) IS NULL OR o.effective_date_time >= CAST(:day_from AS date))
@@ -418,16 +464,36 @@ class SqlEncounterRepository:
             return set()
         return {r[0] for r in (await db.execute(_CODE_SYSTEMS, {"uris": list(uris)})).all()}
 
+    async def for_patient(self, db: AsyncSession, patient_id: UUID, *,
+                          facility_ids: Sequence[UUID], status: str | None,
+                          date_from: date | None, date_to: date | None, limit: int,
+                          offset: int) -> list[schemas.EncounterSummary]:
+        rows = (await db.execute(_FOR_PATIENT, {
+            "patient": patient_id, "facilities": list(facility_ids), "status": status,
+            "day_from": date_from, "day_to": date_to, "rendering": ROLE_CODE["rendering"],
+            "limit": limit, "offset": offset})).mappings().all()
+        types: dict[UUID, list[schemas.CodeableConcept]] = {}
+        if rows:
+            for r in (await db.execute(_TYPES_OF, {"ids": [r["id"] for r in rows]})).all():
+                types.setdefault(r[0], []).append(_coded(*r[1:]))
+        return [schemas.EncounterSummary(
+            id=r["id"], status=r["status"], class_=r["class"], types=types.get(r["id"]),
+            facility_id=r["ext_facility_id"],
+            rendering_provider=_who(r["provider_id"], r["provider_name"]),
+            started_at=r["started_at"], ended_at=r["period_end"]) for r in rows]
+
     async def vitals(self, db: AsyncSession, patient_id: UUID, *,
                      encounter_id: UUID | None = None, ids: Sequence[UUID] | None = None,
                      vital_type: str | None = None, date_from: date | None = None,
                      date_to: date | None = None, include_entered_in_error: bool = False,
-                     limit: int = 50, offset: int = 0) -> list[schemas.Vital]:
+                     limit: int = 50, offset: int = 0,
+                     facility_ids: Sequence[UUID] | None = None) -> list[schemas.Vital]:
         codes = [VITAL_LOINC[vital_type]] if vital_type else list(VITAL_LOINC.values())
         rows = (await db.execute(_VITALS, {
             "patient": patient_id, "loinc": systems.LOINC, "codes": codes,
             "systolic": SYSTOLIC, "diastolic": DIASTOLIC,
             "encounter": encounter_id, "ids": list(ids) if ids is not None else None,
             "include_eie": include_entered_in_error, "day_from": date_from, "day_to": date_to,
+            "facilities": list(facility_ids) if facility_ids is not None else None,
             "limit": limit, "offset": offset})).mappings()
         return [vital_out(r) for r in rows]

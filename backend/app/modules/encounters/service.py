@@ -365,6 +365,22 @@ def check_range(date_from: date | None, date_to: date | None) -> None:
         raise ValidationFailed(errors=[field_error("query", "dateTo", "out-of-range")])
 
 
+async def list_for_patient(db: AsyncSession, repo: EncounterRepository, check: ChartCheck,
+                           user: CurrentUser, patient_id: UUID, *, status: str | None,
+                           date_from: date | None, date_to: date | None, limit: int,
+                           cursor: str | None
+                           ) -> tuple[list[schemas.EncounterSummary], str | None]:
+    """listPatientEncounters (#65): newest first, at the user's facilities only (as a single
+    encounter is 404 elsewhere); entered-in-error ones only when ``status`` asks for them."""
+    check_range(date_from, date_to)
+    offset = decode_cursor(cursor)
+    await check(db, user, patient_id)  # 404 for an unknown patient, 403 for a restricted one
+    found = await repo.for_patient(db, patient_id, facility_ids=sorted(user.facility_ids),
+                                   status=status, date_from=date_from, date_to=date_to,
+                                   limit=limit + 1, offset=offset)
+    return page(found, limit, offset)
+
+
 async def list_vitals(db: AsyncSession, repo: EncounterRepository, check: ChartCheck,
                       user: CurrentUser, patient_id: UUID, *, vital_type: str | None,
                       date_from: date | None, date_to: date | None,
@@ -375,7 +391,10 @@ async def list_vitals(db: AsyncSession, repo: EncounterRepository, check: ChartC
     check_range(date_from, date_to)
     offset = decode_cursor(cursor)
     await check(db, user, patient_id)  # 404 for an unknown patient, 403 for a restricted one
+    # SECURITY_MODEL §5.1: a list without facilityId still keeps to the user's facilities, so
+    # vitals taken at another facility's visit are left out.
     found = await repo.vitals(db, patient_id, vital_type=vital_type, date_from=date_from,
                               date_to=date_to, include_entered_in_error=include_entered_in_error,
-                              limit=limit + 1, offset=offset)
+                              limit=limit + 1, offset=offset,
+                              facility_ids=list(user.facility_ids))
     return page(found, limit, offset)

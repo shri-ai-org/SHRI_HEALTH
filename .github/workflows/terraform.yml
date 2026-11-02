@@ -65,3 +65,11 @@ jobs:
 
       - name: Tests (mock AWS provider)
         run: tofu test
+
+      # The test server (infra/deploy) is its own root, with its own state: the same checks.
+      - name: Test server (init, validate, tests)
+        working-directory: infra/terraform/test-server
+        run: |
+          tofu init -backend=false -lockfile=readonly
+          tofu validate
+          tofu test

@@ -1,6 +1,7 @@
 #!/bin/sh
-# Sets up OpenBao's Transit engine for the API, on the DEVELOPMENT server only (compose and CI).
-# Never for the test server or production: those get a real OpenBao, set up separately.
+# Sets up OpenBao's Transit engine for the API: on the development server (compose and CI), and on
+# the test server's real OpenBao after deploy.sh unseals it (infra/deploy). Never for production,
+# which gets a managed OpenBao set up separately.
 #
 # Needs: BAO_ADDR, BAO_TOKEN (the dev server's root token) and OPENBAO_API_TOKEN (the token the
 # API will use). Safe to run again: each step checks first.

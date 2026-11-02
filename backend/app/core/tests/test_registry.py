@@ -21,6 +21,7 @@ from app.core import (
     events,
     health,
     long_running,
+    me_api,
     portal_auth_api,
     portal_sign_in,
     public_form,
@@ -80,6 +81,7 @@ def _legacy_app(settings: Settings) -> FastAPI:
     application.include_router(health.router)
     backchannel.register_routes(application, settings)  # added after the registry
     application.include_router(auth_api.router, prefix=API_PREFIX)
+    me_api.register(application, settings)  # added after the registry
     public_form.include_routes(application, API_PREFIX)
     portal_auth_api.register(application, settings)  # added after the registry
     application.include_router(events.router, prefix=API_PREFIX)

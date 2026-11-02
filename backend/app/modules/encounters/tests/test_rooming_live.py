@@ -133,6 +133,19 @@ def test_vitals_are_stored_as_entered(client: Any, practice: Practice) -> None:
     assert undo.status_code == 409
 
 
+def test_vitals_from_another_facility_are_not_listed(client: Any, practice: Practice) -> None:
+    """SECURITY_MODEL §5.1: the trend list keeps to the user's facilities, so vitals from a visit
+    at another facility of the clinic (A2, where nobody here works) are left out."""
+    encounter = _visit(client, practice)
+    assert client("md").post(f"{API}/encounters/{encounter}/vitals",
+                             json=VITALS).status_code == 201
+    path = f"{API}/patients/{practice.patients['kaia']}/vitals"
+    assert len(client("ma").get(path).json()["items"]) == 3
+    _sql(practice, "UPDATE clinical.encounter SET ext_facility_id = :f WHERE id = :e",
+         f=practice.other_facility, e=encounter)
+    assert client("ma").get(path).json()["items"] == []
+
+
 def test_vitals_refusals(client: Any, practice: Practice) -> None:
     encounter = _visit(client, practice)
     path = f"{API}/encounters/{encounter}/vitals"
