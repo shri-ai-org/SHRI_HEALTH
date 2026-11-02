@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { MotionConfig } from 'framer-motion'
 import './index.css'
 import App from './App.tsx'
+import { SessionProvider } from '../../src/api/session'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
 // Last-resort logging for errors outside React's render (event handlers,
@@ -16,9 +17,11 @@ createRoot(document.getElementById('root')!).render(
     {/* Honours the OS "reduce motion" setting for every framer-motion animation. */}
     <MotionConfig reducedMotion="user">
       <ErrorBoundary scope="root">
-        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <App />
-        </BrowserRouter>
+        <SessionProvider>
+          <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <App />
+          </BrowserRouter>
+        </SessionProvider>
       </ErrorBoundary>
     </MotionConfig>
   </StrictMode>,
