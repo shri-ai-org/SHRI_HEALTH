@@ -154,7 +154,7 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 71 | POST | `/encounters/{encounterId}/diagnoses` | V | Cl | `diagnoses:create` | pw | S | | | FR-ENC-02 | B4 | |
 | 72 | POST | `/encounters/{encounterId}/diagnoses/{diagnosisId}/remove` | V | Cl | `diagnoses:remove` | pw | – | | | FR-ENC-02 | B4 | **Was `DELETE`** (VD-G1); only while unsigned |
 | 73 | POST | `/encounters/{encounterId}/diagnoses/{diagnosisId}/entered-in-error` | V | Cl | `diagnoses:entered-in-error` | pw | – | | | FR-ENC-02 | B4 | **New** (VD-G1, VD-G6); after signing |
-| 74 | GET | `/codes` | V | Ad | `codes:read` | – | – | | | FR-ENC-02 | B4 | Query `system`, `q` (reference data, not PHI). **Was `/codes/search`** (batch 2, 2026-10-24): the `/search` suffix is POST-only for PHI searches (`shri-search-post`), so code search is a GET on `/codes`, like `/pharmacies` |
+| 74 | GET | `/codes` | A | Ad | `codes:read` | – | – | | | FR-ENC-02 | B4 | Query `system`, `q` (reference data, not PHI). **Was `/codes/search`** (batch 2, 2026-10-24): the `/search` suffix is POST-only for PHI searches (`shri-search-post`), so code search is a GET on `/codes`, like `/pharmacies` |
 | 75 | POST | `/encounters/{encounterId}/notes` | V | Cl | `notes:create` | pw | S | | | FR-ENC-01, FR-ENC-04 | B4 | |
 | 76 | GET | `/encounters/{encounterId}/notes` | V | Cl | `notes:read` | pr | – | | | FR-ENC-01 | B4 | **New** (Stage 1 gap) |
 | 77 | GET | `/notes/{noteId}` | V | Cl | `notes:read` | pr | – | | | FR-ENC-01 | B4 | **New** (Stage 1 gap) |

@@ -1511,7 +1511,7 @@ paths:
         name for a branded product, and the DEA schedule for a controlled substance.'
       tags:
       - encounters
-      x-owner: vimal
+      x-owner: anand
       x-permission: codes:read
       x-audit:
         action: R
