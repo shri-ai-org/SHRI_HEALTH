@@ -299,8 +299,11 @@ ORDER BY created_at, id
 """)
 _LOCK = text("SELECT status FROM admin.eligibility_check WHERE id = :id FOR UPDATE")
 _PATIENT_OF = text("SELECT patient_id FROM admin.eligibility_check WHERE id = :id")
+# The payer's clock may be behind ours, or its time whole seconds (the simulated payer's): a reply
+# is never recorded as answered before it was asked (ck_eligibility_check_response_after_request).
 _REPLY = text("""
-UPDATE admin.eligibility_check SET status = :status, responded_at = :responded_at,
+UPDATE admin.eligibility_check SET status = :status,
+       responded_at = GREATEST(CAST(:responded_at AS timestamptz), requested_at),
        plan_name = :plan_name, coverage_start = :coverage_start, coverage_end = :coverage_end,
        error_code = :error_code, error_message = :error_message, expires_at = :expires_at,
        updated_at = now(),

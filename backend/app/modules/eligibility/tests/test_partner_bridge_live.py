@@ -155,3 +155,21 @@ def test_a_dead_lettered_270_times_out_the_check_and_its_operation(
     assert (failed["status"], failed["error"]["code"]) == ("failed", "upstream-timeout")
     assert _in_clinic(practice, dead) is False  # only from pending
 
+
+
+def test_a_reply_stamped_before_the_request_is_filed_as_answered_when_asked(
+        client: Any, practice: Practice) -> None:  # noqa: F811
+    """A payer clock behind ours, or whole-second times (the simulated payer's), must not lose
+    the 271 to the check's response-after-request constraint."""
+    _, payload = _started(client, practice)
+    check_id = UUID(payload["eligibilityCheckId"])
+    early = _reply("response-active-copay.json", check_id) | {
+        "respondedAt": "2026-01-01T00:00:00Z"}
+
+    async def file(db: AsyncSession) -> bridge.Answered:  # an automatic check: no operation
+        return await bridge.file_271(db, early, {"eligibilityCheckId": str(check_id)})
+
+    assert _in_clinic(practice, file).status == "active"
+    ((requested, responded),) = _sql(practice, "SELECT requested_at, responded_at FROM "
+                                     "admin.eligibility_check WHERE id = :c", c=check_id)
+    assert responded == requested
