@@ -228,6 +228,9 @@ up() {
         echo "deploy: starting again in 10 seconds (attempt $attempt of 3)" >&2
         sleep 10
     done
+    # Nginx renders its template only when it starts, and compose doesn't restart it for a
+    # changed mounted file: recreate it so this commit's template (and certificate) is what runs.
+    $DC up -d --no-deps --force-recreate nginx
     say "Migrations (shri_migrator)"
     migrate
     if [ "${SHRI_DEMO:-false}" = true ]; then
