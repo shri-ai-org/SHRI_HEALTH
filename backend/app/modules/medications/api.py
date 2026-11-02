@@ -34,7 +34,11 @@ from app.core import access as core_access
 from app.core import audit as core_audit
 from app.core.deps import CurrentUser, require, tenant_db
 
-from . import schemas, service
+from . import (
+    partner_bridge,  # noqa: F401  (registers with core's partner registries)
+    schemas,
+    service,
+)
 from .partner import Partner, partner
 from .repository import MedicationRepository, PrescriptionRow, SqlMedicationRepository
 
