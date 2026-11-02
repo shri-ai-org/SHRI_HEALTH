@@ -9,7 +9,7 @@ The development stack (`infra/compose/docker-compose.yml`) with the overlay `doc
 | Service | On the test host |
 |---|---|
 | Nginx | The only public port: HTTPS on `SHRI_HTTPS_PORT` (443), for `SHRI_HOSTNAME` only. Keycloak's admin console (`/kc/admin/`), `/ready` and `/hooks/keycloak/` are not served |
-| API, outbox worker | Built from the checked-out commit and tagged with it; `ENVIRONMENT=staging`; staff and patient sign-in through Keycloak (the `X-Dev-*` stand-ins are refused outside development and test) |
+| API, outbox worker | Built from the checked-out commit and tagged with it; `ENVIRONMENT=staging`; staff sign-in through Keycloak. **Patient sign-in is off** on every server until #148's account-state bug is fixed (its routes answer 503). The `X-Dev-*` development sign-in is refused outside development and test, and Nginx strips its headers |
 | Keycloak | Production mode (`start`), its own `keycloak` database and role; the admin console only on `127.0.0.1:SHRI_KC_ADMIN_PORT` |
 | OpenBao | A real server (integrated storage), sealed at every start; `deploy.sh` unseals it and sets up Transit |
 | PostgreSQL, SeaweedFS, ClamAV | As in development; no port published |
@@ -73,7 +73,9 @@ Run by `up` and `check`. It passes only if all of these hold:
 - the API's internal `/ready` passes (database, OpenBao, the operations map);
 - both realms publish their issuer at the public URL;
 - staff sign-in starts at Keycloak;
-- the admin console is **not** reachable on the public host.
+- the admin console is **not** reachable on the public host;
+- a request with `X-Dev-User` is refused (401), and patient sign-in answers 503;
+- a download URL's token never reaches Nginx's log (a probe request, then the last two minutes of the log).
 
 ## Admin access
 
