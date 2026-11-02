@@ -191,7 +191,7 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `ai-settings:read\|update`, `cosign-rules:*`, `practice-setup:*`, `onboarding:import`, `message-templates:*` | – | – | – | – | – | – | ✓ | R | – | – |
 | `users:*`, `roles:read`, `user-roles:update` | – | – | – | – | – | – | ✓ | R | R | – |
 | Medications and prescriptions: read ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
-| `prescriptions:create\|update\|entered-in-error` (drafts), `medication-reconciliations:create` ‡ | – | ✓ (reconcile) | ✓ | ✓ | ✓ | – | – | – | – | – |
+| `prescriptions:create\|update\|entered-in-error` (drafts), `medication-reconciliations:create` ‡ | – | ✓ (reconcile) | ✓ (reconcile) | ✓ | ✓ | – | – | – | – | – |
 | `prescriptions:sign-and-send\|cancel\|change`, `alerts:override`, `refill-requests:respond`, `medications:discontinue` ‡ | – | – | – | ✓ | ✓ | – | – | – | – | – |
 | Orders: `orders:create\|entered-in-error` (drafts), `in-office-results:create` ‡ | – | ✓ (point-of-care results) | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `orders:sign-and-send\|cancel`, `results:acknowledge` ‡ | – | – | – | ✓ | ✓ | – | – | – | – | – |
@@ -226,6 +226,7 @@ Notes on the matrix:
 - 2026-10-24 (D49–D67): the `appointments:create|update|cancel|check-in` row had ADM `–` and CO `✓`, the reverse of DATA_OWNERSHIP §5.1 (FD, ADM) and of core; corrected to ADM `✓`, CO `–`. Duplicate review moved to ADM only (D64). Provider self-service on schedules is P1 (D66).
 - 2026-10-24 (post-merge review of core PR #21): the clinician-writes row had APP `–` and BIL `✓`, a column shift from adding the DSP column on 2026-10-23; corrected to APP `✓`, BIL `–`, as in core. `medications:discontinue` (MD, APP) added to the prescribing row. APP's billing cell reads `superbills:read` only, as MD's and as core. BIL reads billing documents through `documents:read` only, with no `fax-inbox:read` (D71).
 - 2026-10-26 (T42; batch 2 plan Q2–Q4, D73): RN signs and writes addenda for nursing notes only; the notes service refuses other note types for RN (DATA_OWNERSHIP §5.3). `note-templates:read` lets clinicians pick a practice or personal template (the D49 pattern); practice templates are still written under `practice-setup:create|update`. A personal template is created with `note-templates:create-personal`; the server sets the owner, and only the owner edits it.
+- 2026-11-02 (D110): prescriptions are MD and APP only in the MVP. RN keeps medication reconciliation, recording a medication and fetching medication history, but no longer drafts, updates, safety-checks or marks a prescription entered-in-error. Pending the clinical advisors (Q21).
 
 ### 4.4 Matrix gaps filled in core — gap, pending clinical advisors
 
@@ -233,9 +234,9 @@ The draft matrix in §4.3 has no row for 12 permissions in the catalogue. Thulas
 
 | Permission | FD | MA | RN | MD | APP | BIL | ADM | CO | SUP | DSP | Follows (in core) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `prescriptions:update` | – | – | ✓ | ✓ | ✓ | – | – | – | – | – | Prescription-draft row |
-| `prescriptions:safety-check` | – | – | ✓ | ✓ | ✓ | – | – | – | – | – | Prescription-draft row |
-| `prescriptions:entered-in-error` | – | – | ✓ | ✓ | ✓ | – | – | – | – | – | Prescription-draft row |
+| `prescriptions:update` | – | – | – | ✓ | ✓ | – | – | – | – | – | Prescription-draft row |
+| `prescriptions:safety-check` | – | – | – | ✓ | ✓ | – | – | – | – | – | Prescription-draft row |
+| `prescriptions:entered-in-error` | – | – | – | ✓ | ✓ | – | – | – | – | – | Prescription-draft row |
 | `medications:create` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | Prescription-draft row; MA for rooming |
 | `medication-history:fetch` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | Prescription-draft row; MA for rooming |
 | `orders:read` | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | Order-create row |
