@@ -199,3 +199,41 @@ def test_list_patient_vitals_refusals(as_user: Client, world: World) -> None:
     world.restricted.add(patient)
     refused = as_user("md").get(path)
     assert refused.status_code == 403 and refused.json()["code"] == "break-glass-required"
+
+
+# ------------------------------------------------------------------------- listPatientEncounters
+def test_list_patient_encounters(as_user: Client, world: World) -> None:
+    first = world.add_encounter(status="finished")
+    patient = world.encounters[first].patient_id
+    second = world.add_encounter(patient_id=patient, status="in-progress")
+    wrong = world.add_encounter(patient_id=patient, status="entered-in-error")
+    elsewhere = world.add_encounter(patient_id=patient, facility_id=FACILITY_B)
+    path = f"{API}/patients/{patient}/encounters"
+    found = as_user("md").get(path)
+    assert found.status_code == 200, found.text
+    ids = [e["id"] for e in found.json()["items"]]
+    assert set(ids) == {str(first), str(second)}  # not entered in error, not another facility
+    assert str(elsewhere) not in ids and "nextCursor" not in found.json()
+    assert found.json()["items"][0]["class"] == "AMB"
+    paged = as_user("md").get(path, params={"limit": 1})
+    assert len(paged.json()["items"]) == 1 and paged.json()["nextCursor"]
+    asked = as_user("md").get(path, params={"status": "entered-in-error"}).json()["items"]
+    assert [e["id"] for e in asked] == [str(wrong)]
+
+
+def test_list_patient_encounters_refusals(as_user: Client, world: World) -> None:
+    encounter = world.add_encounter()
+    patient = world.encounters[encounter].patient_id
+    path = f"{API}/patients/{patient}/encounters"
+    assert as_user("fd").get(path).status_code == 403
+    assert as_user("none").get(path).status_code == 403
+    assert as_user("md-b").get(path).status_code == 404
+    assert as_user("md").get(path, params={"status": "open"}).status_code == 422
+    assert as_user("md").get(path, params={"limit": 0}).status_code == 422
+    backwards = as_user("md").get(path, params={"dateFrom": "2026-11-03",
+                                                "dateTo": "2026-11-01"})
+    assert backwards.status_code == 422 and _errors(backwards)[0]["name"] == "dateTo"
+    assert as_user("md").get(path, params={"cursor": "bm9wZQ"}).status_code == 400
+    world.restricted.add(patient)
+    refused = as_user("md").get(path)
+    assert refused.status_code == 403 and refused.json()["code"] == "break-glass-required"

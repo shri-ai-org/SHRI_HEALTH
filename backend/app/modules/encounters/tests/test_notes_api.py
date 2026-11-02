@@ -346,3 +346,59 @@ def test_cosign_validation_and_preconditions(as_user: Client, world: World,
                               headers={"If-Match": '"1"'}).status_code == 422
     assert as_user("md").post(f"{API}/notes/{uuid4()}/cosign", json={"decision": "cosign"},
                               headers={"If-Match": '"1"'}).status_code == 404
+
+
+# --------------------------------------------------------------------------- entered in error
+def test_a_signed_note_is_marked_entered_in_error(as_user: Client, world: World,
+                                                  notes: NotesWorld) -> None:
+    encounter = _encounter(world)
+    note = _started(as_user, encounter)
+    path = f"{API}/notes/{note['id']}"
+    body = {"sections": [{"id": note["sections"][0]["id"], "text": "Headache."}]}
+    as_user("md").patch(path, json=body, headers={"If-Match": '"1"', **MERGE})
+    assert as_user("md").post(f"{path}/sign", headers={"If-Match": '"2"'}).status_code == 200
+    marked = as_user("md").post(f"{path}/entered-in-error",
+                                json={"reason": "  Written on the wrong patient.  "})
+    assert marked.status_code == 200, marked.text
+    assert marked.json()["status"] == "entered-in-error" and marked.headers["ETag"] == '"4"'
+    assert ("note.entered-in-error", f"note/{note['id']}") in notes.published
+    assert world.audited[-1] == world.encounters[encounter].patient_id
+    again = as_user("md").post(f"{path}/entered-in-error", json={"reason": "Again."})
+    assert again.status_code == 409 and again.json()["currentState"] == "entered-in-error"
+    # Kept, and marked: still listed and readable, never deleted (D14).
+    listed = as_user("md").get(f"{API}/encounters/{encounter}/notes").json()["items"]
+    assert [(n["id"], n["status"]) for n in listed] == [(note["id"], "entered-in-error")]
+
+
+def test_marking_a_note_entered_in_error_permission_and_validation(
+        as_user: Client, world: World, notes: NotesWorld) -> None:
+    encounter = _encounter(world)
+    note = _started(as_user, encounter)
+    url = f"{API}/notes/{note['id']}/entered-in-error"
+    for user in ("fd", "ma", "bil", "none"):  # no notes:entered-in-error
+        refused_role = as_user(user).post(url, json={"reason": "Wrong."})
+        assert refused_role.status_code == 403, user
+        assert refused_role.json()["code"] == "permission-denied", user
+    # RN holds the permission but is not the author of this draft.
+    notes.practitioners[DEV_USERS["rn"].id] = uuid4()
+    refused = as_user("rn").post(url, json={"reason": "Wrong."})
+    assert refused.status_code == 403 and refused.json()["code"] == "permission-denied"
+    assert as_user("md").post(url, json={}).status_code == 422
+    assert as_user("md").post(url, json={"reason": ""}).status_code == 422
+    blank = as_user("md").post(url, json={"reason": "   "})
+    assert blank.status_code == 422 and blank.json()["errors"] == [
+        {"in": "body", "pointer": "/reason", "code": "required"}]
+    assert as_user("md").post(url, json={"reason": "x" * 501}).status_code == 422
+    assert as_user("md").post(url, json={"reason": "Wrong.", "extra": 1}).status_code == 422
+    assert as_user("md").post(f"{API}/notes/{uuid4()}/entered-in-error",
+                              json={"reason": "Wrong."}).status_code == 404
+    assert notes.notes[UUID(note["id"])].status == "preliminary"
+    # The author marks the draft (kept for audit).
+    done = as_user("md").post(url, json={"reason": "Started on the wrong visit."})
+    assert done.status_code == 200 and done.json()["status"] == "entered-in-error"
+    restricted = _encounter(world)
+    other = _started(as_user, restricted)
+    world.restricted.add(world.encounters[restricted].patient_id)
+    blocked = as_user("md").post(f"{API}/notes/{other['id']}/entered-in-error",
+                                 json={"reason": "Wrong."})
+    assert blocked.status_code == 403 and blocked.json()["code"] == "break-glass-required"
