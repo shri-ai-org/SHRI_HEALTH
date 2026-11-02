@@ -46,6 +46,7 @@ import type {
   ListPatientMergesParams,
   ListPreRegistrationsParams,
   ListRelatedPersonsParams,
+  MarkCoverageEnteredInErrorHeaders,
   MergeDuplicateHeaders,
   MergeRequest,
   NotFoundResponse,
@@ -1483,7 +1484,8 @@ export const getMarkCoverageEnteredInErrorUrl = (patientId: Id,
  */
 export const markCoverageEnteredInError = async (patientId: Id,
     coverageId: Id,
-    enteredInErrorRequest: EnteredInErrorRequest, options?: Parameters<typeof apiFetch>[1]): Promise<markCoverageEnteredInErrorResponse> => {
+    enteredInErrorRequest: EnteredInErrorRequest,
+    headers?: MarkCoverageEnteredInErrorHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<markCoverageEnteredInErrorResponse> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1503,7 +1505,7 @@ return apiFetch<markCoverageEnteredInErrorResponse>(getMarkCoverageEnteredInErro
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(enteredInErrorRequest)
   }
 );}

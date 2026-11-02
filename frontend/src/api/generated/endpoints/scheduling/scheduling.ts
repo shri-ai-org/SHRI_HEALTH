@@ -44,6 +44,7 @@ import type {
   NotFoundResponse,
   PreconditionFailedResponse,
   PreconditionRequiredResponse,
+  RecordVisitStatusHeaders,
   RescheduleAppointmentHeaders,
   RescheduleRequest,
   SlotList,
@@ -51,6 +52,7 @@ import type {
   StatusChangeRequest,
   TooManyRequestsResponse,
   UnauthorizedResponse,
+  UndoCheckInHeaders,
   UndoCheckInRequest,
   UnprocessableContentResponse,
   UpdateAppointmentHeaders
@@ -741,11 +743,12 @@ export const getRecordVisitStatusUrl = (appointmentId: Id,) => {
 }
 
 /**
- * Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment's `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out` (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names `/status`).
+ * Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). Each status has its own roles, checked by the service on top of `appointments:status`: `arrived` and `noshow` FD; `roomed` MA and RN; `with-provider` MD, APP and RN. Any other role gets `403 permission-denied`, and nothing changes. `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment's `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out` (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names `/status`).
  * @summary Record a visit step
  */
 export const recordVisitStatus = async (appointmentId: Id,
-    statusChangeRequest: StatusChangeRequest, options?: Parameters<typeof apiFetch>[1]): Promise<recordVisitStatusResponse> => {
+    statusChangeRequest: StatusChangeRequest,
+    headers?: RecordVisitStatusHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<recordVisitStatusResponse> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -765,7 +768,7 @@ return apiFetch<recordVisitStatusResponse>(getRecordVisitStatusUrl(appointmentId
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(statusChangeRequest)
   }
 );}
@@ -1415,7 +1418,8 @@ export const getUndoCheckInUrl = (appointmentId: Id,) => {
  * @summary Undo a check-in
  */
 export const undoCheckIn = async (appointmentId: Id,
-    undoCheckInRequest: UndoCheckInRequest, options?: Parameters<typeof apiFetch>[1]): Promise<undoCheckInResponse> => {
+    undoCheckInRequest: UndoCheckInRequest,
+    headers?: UndoCheckInHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<undoCheckInResponse> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1435,7 +1439,7 @@ return apiFetch<undoCheckInResponse>(getUndoCheckInUrl(appointmentId),
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(undoCheckInRequest)
   }
 );}
