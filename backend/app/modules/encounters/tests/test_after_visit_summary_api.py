@@ -1,20 +1,23 @@
 """The after-visit summary's hand-off (#86, D98) with the in-memory fakes (fakes.py):
 createAfterVisitSummary and getAfterVisitSummaryDownloadUrl, each with a success, a
 permission-denied and a validation-error case, plus their rules. Anand's store (#157) and the
-file service's link are fakes here; the app's own placeholders answer 503 (last test).
+file service's link are fakes here; the last tests check the app's own adapters, which the live
+tests run for real (test_after_visit_summary_live.py).
 getAfterVisitSummaryDownloadUrl waits for core's T50 permission; the test app grants it as T50
 proposes. Synthetic data only."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import fields
+from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.deps import DEV_USERS
 
+from .. import after_visit_summary as avs
 from .. import api
 from ..repository import ReasonIn
 from .fakes import DOCTOR, World
@@ -148,15 +151,34 @@ def test_a_restricted_summary_needs_break_glass_at_the_desk(as_user: Client, wor
     assert world.audited[-2:] == [patient, patient]
 
 
-def test_until_the_documents_service_is_wired_it_is_503(fake_app: FastAPI,
-                                                      as_user: Client, world: World) -> None:
-    """The app's own placeholders (after_visit_summary.py), not the fakes."""
-    fake_app.dependency_overrides.pop(api.summary_store)
-    fake_app.dependency_overrides.pop(api.summary_links)
-    encounter = world.add_encounter(status="finished")
-    world.sign_note(encounter)
-    created = _create(as_user("md"), encounter)
-    assert created.status_code == 503 and created.json()["code"] == "service-unavailable"
-    link = as_user("fd").get(f"{API}/encounters/{encounter}/after-visit-summary/download-url")
-    assert link.status_code == 503
-    assert world.audited == [] and world.operations[-1].status == "queued"  # never finished
+def test_the_app_wires_157_and_the_files_link() -> None:
+    """The app's own dependencies: #157's store through the adapter, and the files module's
+    download link (no placeholder answers 503 any more)."""
+    assert isinstance(api.summary_store(), avs.DocumentsSummaryStore)
+    unused: Any = None  # the request, file repository and tokens, used only when linking
+    assert isinstance(api.summary_links(unused, unused, unused), avs.FileServiceLinks)
+
+
+def test_the_details_reach_157_field_for_field() -> None:
+    """The adapter's conversion to #157's ``AfterVisitSummaryDetails``: the same fields, in the
+    same order, each value carried over (``medications`` as #157's ``Medication``)."""
+    from app.modules.documents import after_visit_summary as documents
+
+    assert [f.name for f in fields(avs.SummaryDetails)] == [
+        f.name for f in fields(documents.AfterVisitSummaryDetails)]
+    assert [f.name for f in fields(avs.Medication)] == [
+        f.name for f in fields(documents.Medication)]
+    details = avs.SummaryDetails(
+        practice_name="Riverbend test practice (synthetic)", patient_name="Kaia401 Lindgren118",
+        visit_start=datetime(2026, 11, 3, 15, 0, tzinfo=UTC), time_zone="America/Chicago",
+        clinician_name="Dr. Avery401 Lindqvist58", facility_name="Main office (synthetic)",
+        reason_for_visit="Headaches.", diagnoses=("Tension-type headache (G44.209)",),
+        medications=(avs.Medication("Synthetic tablet 10 mg", "One a day."),),
+        orders=("Synthetic panel",), instructions="Rest.", follow_up="In 2 weeks.")
+    converted = avs.documents_details(details)
+    assert type(converted) is documents.AfterVisitSummaryDetails
+    assert converted.medications == (documents.Medication("Synthetic tablet 10 mg",
+                                                          "One a day."),)
+    for f in fields(avs.SummaryDetails):
+        if f.name != "medications":
+            assert getattr(converted, f.name) == getattr(details, f.name), f.name

@@ -316,9 +316,9 @@ class FakeSummaryStore:
     def __init__(self, world: World) -> None:
         self.world = world
 
-    async def store(self, db: Any, file_store: Any, *, patient_id: UUID, encounter_id: UUID,
-                    note_id: UUID, author_practitioner_id: UUID, details: SummaryDetails
-                    ) -> Stored:
+    async def store(self, db: Any, file_store: Any, crypto: Any, *, patient_id: UUID,
+                    encounter_id: UUID, note_id: UUID, author_practitioner_id: UUID,
+                    details: SummaryDetails) -> Stored:
         self.world.details.append(details)
         stored = Stored(uuid.uuid4(), uuid.uuid4(), NOW)
         self.world.summaries.setdefault(encounter_id, []).append(stored)

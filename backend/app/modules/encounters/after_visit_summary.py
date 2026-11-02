@@ -1,35 +1,27 @@
 """The after-visit summary's hand-off to Anand's documents module (inventory #86, FRS FR-ENC-06,
 D98): this module gathers the visit; his makes the PDF, stores it through the file service and
-records it as a DocumentReference (``app.modules.documents.after_visit_summary``, draft PR #157).
+records it as a DocumentReference (``app.modules.documents.after_visit_summary``, PR #157).
 
-#157 isn't merged, so nothing here imports it. ``SummaryStore`` is the shape of its two
-functions, parameter for parameter:
+``SummaryStore`` is the shape of #157's two functions, parameter for parameter:
 
-    store(db, file_store, *, patient_id, encounter_id, note_id, author_practitioner_id, details)
-        -> StoredSummary          # renders, stores and records it; never commits
+    store(db, file_store, crypto, *, patient_id, encounter_id, note_id, author_practitioner_id,
+          details) -> StoredSummary   # renders, seals, stores and records it; never commits
     latest(db, encounter_id) -> StoredSummary | None
 
-and ``SummaryDetails``/``Medication`` mirror its ``AfterVisitSummaryDetails``/``Medication``
-field for field, so the wiring is a conversion and nothing else. ``SummaryLinks`` makes the
-short-lived download link for the stored PDF (the file service's, D105). ``SummaryOperations``
-is core's long-running work (``create_operation``/``finish_operation``), a seam so the API tests
-need no database.
+``DocumentsSummaryStore`` is the adapter: it converts ``SummaryDetails``/``Medication`` to #157's
+``AfterVisitSummaryDetails``/``Medication``, field for field, and calls those two functions.
+**#157's module is imported lazily**, inside the adapter's methods, not when this module is
+imported, so the encounters module (and the app) still imports where #157 isn't merged; there,
+only generating or linking a summary fails. The type checker reads it at the top
+(``TYPE_CHECKING``).
 
-Until they are wired, ``UnwiredSummaryStore`` and ``UnwiredSummaryLinks`` answer
-``503 service-unavailable`` at the moment they are used, so every check before the hand-off
-(permission, clinic, facility, restricted chart, state, signed note) still runs for real.
-
-**Wiring left for when #157 merges** (only ``api.summary_store`` and ``api.summary_links``
-change):
-
-- ``summary_store()`` returns an adapter whose ``store`` calls
-  ``documents.after_visit_summary.store(...)`` with ``details`` converted to its
-  ``AfterVisitSummaryDetails`` (``medications`` as its ``Medication``), and whose ``latest`` is
-  its ``latest``. Its ``StoredSummary`` (document_id, file_id, generated_at) already fits
-  ``StoredSummary`` below.
-- ``summary_links()`` returns the file service's link for a stored file (a decrypting
-  ``GET /files/{fileId}/content`` link with core's one-time download token, D105), checked as a
-  chart read.
+``FileServiceLinks`` makes the download link for the stored PDF with the files module's own
+service function (``createDownloadUrl``'s): a one-time link to ``GET /files/{fileId}/content``
+with core's download token (D105), bound to this user and file. That function runs its own
+checks before it signs anything, among them core's restricted-chart check for the patient of the
+document the file is attached to (D37), on top of the encounter's own check (D109).
+``SummaryOperations`` is core's long-running work (``create_operation``/``finish_operation``), a
+seam so the API tests need no database.
 """
 
 from __future__ import annotations
@@ -37,15 +29,22 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 from app.core.deps import CurrentUser
-from app.core.errors import ServiceUnavailable
+from app.core.download_tokens import DownloadTokens
 from app.core.long_running import Operation, create_operation, finish_operation
+from app.modules.files import service as files_service
+from app.modules.files.crypto import FileCrypto
+from app.modules.files.repository import FileRepository
 from app.modules.files.storage import FileStore
+
+if TYPE_CHECKING:
+    from app.modules.documents import after_visit_summary as documents
 
 #: The core operation kind of createAfterVisitSummary (contract; core's time limit is 10 minutes).
 OPERATION_KIND = "encounter.after-visit-summary"
@@ -93,9 +92,10 @@ class StoredSummary(Protocol):
 class SummaryStore(Protocol):
     """#157's ``store`` and ``latest``."""
 
-    async def store(self, db: AsyncSession, file_store: FileStore, *, patient_id: UUID,
-                    encounter_id: UUID, note_id: UUID, author_practitioner_id: UUID,
-                    details: SummaryDetails) -> StoredSummary: ...
+    async def store(self, db: AsyncSession, file_store: FileStore, crypto: FileCrypto, *,
+                    patient_id: UUID, encounter_id: UUID, note_id: UUID,
+                    author_practitioner_id: UUID, details: SummaryDetails
+                    ) -> StoredSummary: ...
 
     async def latest(self, db: AsyncSession, encounter_id: UUID) -> StoredSummary | None: ...
 
@@ -114,26 +114,55 @@ class SummaryLinks(Protocol):
 #: answers 503 when no store is configured, which must not hide the checks before it).
 FileStoreSource = Callable[[], FileStore]
 
-_NOT_WIRED = "The after-visit summary's document service is not available yet"
 
 
-class UnwiredSummaryStore:
-    """Until #157 is wired: 503 when the summary would be stored or read."""
+def documents_details(details: SummaryDetails) -> documents.AfterVisitSummaryDetails:
+    """``details`` as #157's ``AfterVisitSummaryDetails``, field for field."""
+    from app.modules.documents import after_visit_summary as documents  # lazy: docstring
 
-    async def store(self, db: AsyncSession, file_store: FileStore, *, patient_id: UUID,
-                    encounter_id: UUID, note_id: UUID, author_practitioner_id: UUID,
-                    details: SummaryDetails) -> StoredSummary:
-        raise ServiceUnavailable(_NOT_WIRED)
+    return documents.AfterVisitSummaryDetails(
+        practice_name=details.practice_name, patient_name=details.patient_name,
+        visit_start=details.visit_start, time_zone=details.time_zone,
+        clinician_name=details.clinician_name, facility_name=details.facility_name,
+        reason_for_visit=details.reason_for_visit, diagnoses=details.diagnoses,
+        medications=tuple(documents.Medication(name=m.name, instructions=m.instructions)
+                          for m in details.medications),
+        orders=details.orders, instructions=details.instructions,
+        follow_up=details.follow_up)
+
+
+class DocumentsSummaryStore:
+    """#157's ``store`` and ``latest`` (``app.modules.documents.after_visit_summary``)."""
+
+    async def store(self, db: AsyncSession, file_store: FileStore, crypto: FileCrypto, *,
+                    patient_id: UUID, encounter_id: UUID, note_id: UUID,
+                    author_practitioner_id: UUID, details: SummaryDetails) -> StoredSummary:
+        from app.modules.documents import after_visit_summary as documents  # lazy: docstring
+
+        return await documents.store(
+            db, file_store, crypto, patient_id=patient_id, encounter_id=encounter_id,
+            note_id=note_id, author_practitioner_id=author_practitioner_id,
+            details=documents_details(details))
 
     async def latest(self, db: AsyncSession, encounter_id: UUID) -> StoredSummary | None:
-        raise ServiceUnavailable(_NOT_WIRED)
+        from app.modules.documents import after_visit_summary as documents  # lazy: docstring
+
+        return await documents.latest(db, encounter_id)
 
 
-class UnwiredSummaryLinks:
-    """Until the file service's link is wired: 503."""
+class FileServiceLinks:
+    """The files module's download link (``createDownloadUrl``'s service function, D105): its
+    checks, then core's one-time token. Nothing here signs or builds a token."""
+
+    def __init__(self, request: Request, repo: FileRepository, tokens: DownloadTokens) -> None:
+        self._request = request
+        self._repo = repo
+        self._tokens = tokens
 
     async def link(self, db: AsyncSession, user: CurrentUser, file_id: UUID) -> SummaryLink:
-        raise ServiceUnavailable(_NOT_WIRED)
+        issued = await files_service.create_download_url(self._request, db, self._repo,
+                                                         self._tokens, user, file_id)
+        return SummaryLink(url=issued.link.url, expires_at=issued.link.expires_at)
 
 
 class SummaryOperations(Protocol):

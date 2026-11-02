@@ -51,6 +51,7 @@ from app.db.fhir_store import (
     SqlFhirStore,
     VitalIn,
 )
+from app.modules.files.crypto import FileCrypto
 
 from . import repository, schemas
 from .after_visit_summary import (
@@ -691,9 +692,9 @@ def summary_details(encounter: schemas.Encounter, context: SummaryContext, note:
 
 async def create_summary(db: AsyncSession, repo: EncounterRepository, check: ChartCheck,
                          operations: SummaryOperations, summaries: SummaryStore,
-                         files: FileStoreSource, user: CurrentUser, encounter_id: UUID,
-                         body: schemas.AfterVisitSummaryRequest, name_patient: NamePatient
-                         ) -> Operation:
+                         files: FileStoreSource, crypto: FileCrypto, user: CurrentUser,
+                         encounter_id: UUID, body: schemas.AfterVisitSummaryRequest,
+                         name_patient: NamePatient) -> Operation:
     """createAfterVisitSummary (#86): from a signed note, the latest one unless ``noteId``
     names one. The PDF is small, so it is made in the request: the operation, the stored PDF,
     its document and the finished operation commit together, and the 202 carries the operation
@@ -714,7 +715,7 @@ async def create_summary(db: AsyncSession, repo: EncounterRepository, check: Cha
         raise business_rule([field_error("body", "/noteId", "invalid-reference")])
     details = summary_details(found.value, context, note)
     operation = await operations.start(db)
-    stored = await summaries.store(db, files(), patient_id=head.patient_id,
+    stored = await summaries.store(db, files(), crypto, patient_id=head.patient_id,
                                    encounter_id=encounter_id, note_id=note.id,
                                    author_practitioner_id=author, details=details)
     finished = await operations.succeed(db, operation, stored.document_id)

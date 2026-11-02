@@ -11,8 +11,8 @@ Operations whose x-audit takes the patient from the result hand it to core's aud
 The follow-up request (D98, demo step 10): the clinician sets it and may withdraw it; the front
 desk declines it at check-out. The after-visit summary (#86, D98): generated from a signed note
 (``202``, core's operation) and its download link for the front desk; the PDF and its document
-are Anand's (draft #157), reached through ``after_visit_summary``'s seam, which answers ``503``
-until it is wired.
+are Anand's (#157), reached through ``after_visit_summary``'s adapter, which imports #157's
+module only when a summary is generated or linked; the link is the files module's (D105).
 
 **Waiting for core (T50):** ``follow-ups:decline`` and ``after-visit-summaries:read`` are not in
 core's permission catalogue yet, and ``require()`` refuses an unknown name at import, so
@@ -38,9 +38,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import access as core_access
 from app.core import audit as core_audit
 from app.core.deps import CurrentUser, require, tenant_db
+from app.core.download_tokens import DownloadTokens, download_tokens
 from app.core.long_running import accepted
 from app.core.permissions import is_known_permission
 from app.db.fhir_store import FhirStore, SqlFhirStore
+from app.modules.files import api as files_api
+from app.modules.files.crypto import FileCrypto, file_crypto
+from app.modules.files.repository import FileRepository
 from app.modules.files.storage import file_store
 
 from ..scheduling.reference import reference
@@ -97,13 +101,17 @@ def summary_operations() -> avs.SummaryOperations:
 
 
 def summary_store() -> avs.SummaryStore:
-    """Anand's after-visit summary (#157): 503 until it is wired (after_visit_summary.py)."""
-    return avs.UnwiredSummaryStore()
+    """Anand's after-visit summary (#157): its ``store`` and ``latest``, through the adapter,
+    which imports #157's module only when it is used (after_visit_summary.py)."""
+    return avs.DocumentsSummaryStore()
 
 
-def summary_links() -> avs.SummaryLinks:
-    """The file service's download link: 503 until it is wired (after_visit_summary.py)."""
-    return avs.UnwiredSummaryLinks()
+def summary_links(
+    request: Request, repo: Annotated[FileRepository, Depends(files_api.repository)],
+    tokens: Annotated[DownloadTokens, Depends(download_tokens)],
+) -> avs.SummaryLinks:
+    """The files module's download link (createDownloadUrl's service, core's token, D105)."""
+    return avs.FileServiceLinks(request, repo, tokens)
 
 
 def summary_files(request: Request) -> avs.FileStoreSource:
@@ -125,6 +133,7 @@ Operations = Annotated[avs.SummaryOperations, Depends(summary_operations)]
 Summaries = Annotated[avs.SummaryStore, Depends(summary_store)]
 Links = Annotated[avs.SummaryLinks, Depends(summary_links)]
 Files = Annotated[avs.FileStoreSource, Depends(summary_files)]
+Crypto = Annotated[FileCrypto, Depends(file_crypto)]
 IfMatch = Annotated[str | None, Header(alias="If-Match", max_length=128)]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Cursor = Annotated[str | None, Query(max_length=512, pattern=r"^[A-Za-z0-9_-]+$")]
@@ -270,13 +279,13 @@ async def withdraw_follow_up_request(
 async def create_after_visit_summary(
     user: Annotated[CurrentUser, Depends(require("after-visit-summaries:create"))],
     encounter_id: EncounterId, request: Request, db: DB, repo: Repo, check: Check,
-    audit: Audit, operations: Operations, summaries: Summaries, files: Files,
+    audit: Audit, operations: Operations, summaries: Summaries, files: Files, crypto: Crypto,
     body: Annotated[schemas.AfterVisitSummaryRequest | None, Body()] = None,
 ) -> JSONResponse:
     """The body is optional (the latest signed note). Idempotency-Key is optional
     (x-idempotency: supported): core claims and replays it."""
     finished = await service.create_summary(
-        db, repo, check, operations, summaries, files, user, encounter_id,
+        db, repo, check, operations, summaries, files, crypto, user, encounter_id,
         body or schemas.AfterVisitSummaryRequest(),
         lambda patient_id: audit(request, [patient_id]))
     return accepted(finished)  # 202, Location and Retry-After, as core answers
