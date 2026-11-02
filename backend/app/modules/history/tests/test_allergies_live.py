@@ -94,6 +94,25 @@ def test_add_read_edit_and_mark_an_allergy(client: Any, practice: Practice) -> N
     assert {r[0] for r in audit} >= {"read", "update"}
 
 
+def test_an_allergy_cannot_name_another_facilitys_visit(client: Any, practice: Practice) -> None:
+    """SECURITY_MODEL §5.1: the visit an allergy is recorded at must be at one of the user's
+    facilities; a visit at A2 (nobody here works there) is refused like an unknown one, and no
+    allergy is written. Back at A1, the same visit is accepted."""
+    encounter = _check_in(client, _today_appointment(practice), selfPay=True).json()["encounterId"]
+    _sql(practice, "UPDATE clinical.encounter SET ext_facility_id = :f WHERE id = :e",
+         f=practice.other_facility, e=encounter)
+    refused = client("ma").post(_base(practice), json={**PENICILLIN, "encounterId": encounter})
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["errors"][0] == {"in": "body", "pointer": "/encounterId",
+                                           "code": "invalid-reference"}
+    assert _sql(practice, "SELECT count(*) FROM clinical.allergy_intolerance "
+                "WHERE tenant_id = :t", t=practice.clinic)[0][0] == 0
+    _sql(practice, "UPDATE clinical.encounter SET ext_facility_id = :f WHERE id = :e",
+         f=practice.facility, e=encounter)
+    assert client("ma").post(_base(practice), json={**PENICILLIN, "encounterId": encounter}
+                             ).status_code == 201
+
+
 def test_allergies_are_refused(client: Any, practice: Practice) -> None:
     base = _base(practice)
     assert client("fd").post(base, json=PENICILLIN).status_code == 403
