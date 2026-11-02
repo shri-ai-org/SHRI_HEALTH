@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import base64
 import binascii
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -139,12 +139,16 @@ async def live_for_appointment(db: AsyncSession, appointment_id: UUID) -> UUID |
     return await repository.live_encounter(db, appointment_id)
 
 
-async def visit_of(db: AsyncSession, encounter_id: UUID) -> tuple[UUID, str] | None:
+async def visit_of(db: AsyncSession, encounter_id: UUID, facility_ids: Collection[UUID]
+                   ) -> tuple[UUID, str] | None:
     """The encounter's patient and status, for another module's record made at a visit
-    (an allergy recorded at rooming); None for an encounter the clinic can't see."""
+    (an allergy recorded at rooming); None for an encounter the clinic can't see, or at a
+    facility not in ``facility_ids`` (the user's: SECURITY_MODEL §5.1, as ``readable``)."""
     try:
         head = await repository.SqlEncounterRepository().head(db, encounter_id)
     except NotFound:
+        return None
+    if head.facility_id not in facility_ids:
         return None
     return head.patient_id, head.status
 
