@@ -1,0 +1,68 @@
+{
+  "id": "visit-08",
+  "synthetic": true,
+  "specialty": "sports medicine",
+  "visitType": "new-patient",
+  "template": "NEW-VISIT",
+  "noteType": "34117-2",
+  "patient": {"name": "Devin367 Kowalczyk55", "age": 24, "sex": "male"},
+  "clinician": "Dr. Imani207 Castellanos48",
+  "transcript": [
+    {"speaker": "clinician", "text": "Hi Mr. Kowalczyk. What happened to your knee?"},
+    {"speaker": "patient", "text": "I twisted my right knee playing soccer five days ago. I planted my foot and turned, and felt pain on the inside of the knee."},
+    {"speaker": "clinician", "text": "Could you keep playing? Did it swell?"},
+    {"speaker": "patient", "text": "I limped off. It swelled up the next day. Now it sometimes catches when I bend it, like something's stuck."},
+    {"speaker": "clinician", "text": "Has it given way or locked so you couldn't straighten it?"},
+    {"speaker": "patient", "text": "It hasn't given way. It caught once on the stairs but I could straighten it."},
+    {"speaker": "clinician", "text": "What have you taken for the pain?"},
+    {"speaker": "patient", "text": "Just ice. I don't like taking pills. No medical problems, no medicines, and no allergies."},
+    {"speaker": "clinician", "text": "Any knee injuries before?"},
+    {"speaker": "patient", "text": "No. I work at a desk, software, and I play soccer twice a week."},
+    {"speaker": "clinician", "text": "On exam, there's a small effusion in the right knee. You're tender along the medial joint line. McMurray's test is positive on the medial side. Lachman is negative and the ACL feels intact. The knee is stable to varus and valgus stress. Range of motion is 0 to 120 degrees, limited by pain. Pulses and sensation in the foot are normal."},
+    {"speaker": "clinician", "text": "This is most likely a tear of the medial meniscus. Because it's catching, I'm ordering an MRI of the right knee."},
+    {"speaker": "patient", "text": "Can I play this weekend?"},
+    {"speaker": "clinician", "text": "No soccer until we review the MRI. Use ice for 15 minutes three times a day, and you can take ibuprofen 400 mg every 8 hours with food for up to 7 days if you need it. Use crutches if walking hurts."},
+    {"speaker": "clinician", "text": "If the knee locks and you can't straighten it, call us the same day. We'll follow up once the MRI is done, in about a week."},
+    {"speaker": "patient", "text": "Got it."}
+  ],
+  "referenceNote": {
+    "sections": [
+      {"code": "10154-3", "title": "Chief complaint", "sequence": 1, "required": true,
+       "text": "Right knee pain after a twisting injury playing soccer five days ago."},
+      {"code": "10164-2", "title": "History of present illness", "sequence": 2, "required": true,
+       "text": "Twisted the right knee playing soccer five days ago: planted the foot and turned, with pain on the inside of the knee. Limped off; swelled the next day. Now sometimes catches when he bends it; caught once on the stairs but he could straighten it. Has not given way. Using ice only."},
+      {"code": "11348-0", "title": "Past medical history", "sequence": 3, "required": false,
+       "text": "No medical problems, no medicines, no allergies. No previous knee injuries."},
+      {"code": "10157-6", "title": "Family history", "sequence": 4, "required": false,
+       "text": ""},
+      {"code": "29762-2", "title": "Social history", "sequence": 5, "required": false,
+       "text": "Desk job in software. Plays soccer twice a week."},
+      {"code": "10187-3", "title": "Review of systems", "sequence": 6, "required": false,
+       "text": ""},
+      {"code": "29545-1", "title": "Physical exam", "sequence": 7, "required": true,
+       "text": "Right knee: small effusion. Tender along the medial joint line. McMurray's test positive on the medial side. Lachman negative, ACL intact. Stable to varus and valgus stress. Range of motion 0 to 120 degrees, limited by pain. Pulses and sensation in the foot normal."},
+      {"code": "51847-2", "title": "Assessment and plan", "sequence": 8, "required": true,
+       "text": "Right knee injury, most likely a medial meniscus tear, with catching. MRI of the right knee. No soccer until the MRI is reviewed. Ice 15 minutes three times a day; ibuprofen 400 mg every 8 hours with food for up to 7 days as needed; crutches if walking hurts. Follow-up after the MRI, in about a week."},
+      {"code": "69730-0", "title": "Patient instructions", "sequence": 9, "required": false,
+       "text": "No soccer until we review your MRI. Ice the knee for 15 minutes three times a day. You can take ibuprofen 400 mg every 8 hours with food for up to 7 days if you need it. Use crutches if walking hurts. If the knee locks and you can't straighten it, call us the same day. Return after the MRI, in about a week."}
+    ]
+  },
+  "keyFacts": [
+    {"id": "f1", "section": "10164-2", "anyOf": ["five days", "5 days"]},
+    {"id": "f2", "section": "10164-2", "anyOf": ["catches", "catching"]},
+    {"id": "f3", "section": "29545-1", "anyOf": ["effusion"]},
+    {"id": "f4", "section": "29545-1", "anyOf": ["McMurray"]},
+    {"id": "f5", "section": "29545-1", "anyOf": ["Lachman"]},
+    {"id": "f6", "section": "51847-2", "anyOf": ["medial meniscus", "meniscal tear", "meniscus tear"]},
+    {"id": "f7", "section": "51847-2", "anyOf": ["MRI"]},
+    {"id": "f8", "section": "51847-2", "anyOf": ["ibuprofen 400 mg"]}
+  ],
+  "mustNotInvent": [
+    {"id": "n1", "description": "No x-ray was taken or ordered.", "anyOf": ["x-ray", "radiograph"]},
+    {"id": "n2", "description": "Surgery and physical therapy were not discussed.", "anyOf": ["surgery", "arthroscopy", "physical therapy"]},
+    {"id": "n3", "description": "No fracture or ligament tear was diagnosed.", "anyOf": ["fracture", "ACL tear", "MCL"]},
+    {"id": "n4", "description": "No other pain medicine was discussed.", "anyOf": ["naproxen", "acetaminophen", "tramadol"]}
+  ],
+  "conflicts": [],
+  "medicalTerms": ["effusion", "medial meniscus", "McMurray", "Lachman", "MRI", "ibuprofen", "varus", "valgus"]
+}

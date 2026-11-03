@@ -114,9 +114,10 @@ _CLINICAL_ENTERED_IN_ERROR = _expand(
 _MED_READ = _expand("medications:read", "prescriptions:read", "refill-requests:read",
                     "pharmacies:read")
 # gap: the draft matrix has no rows for these; they follow the prescription-draft row.
-_RX_DRAFT = _expand("prescriptions:create|update|safety-check|entered-in-error",
-                    "medication-reconciliations:create", "medications:create",
-                    "medication-history:fetch")
+_MED_RECORD = _expand("medication-reconciliations:create", "medications:create",
+                      "medication-history:fetch")
+# Prescriptions are MD and APP only in the MVP (D110, pending the clinical advisors, Q21).
+_RX_DRAFT = _expand("prescriptions:create|update|safety-check|entered-in-error") | _MED_RECORD
 _RX_PRESCRIBE = _expand("prescriptions:sign-and-send|cancel|change", "alerts:override",
                         "refill-requests:respond", "medications:discontinue")
 # gap: orders:read, results:read, lab-compendium:read, medical-necessity-check and draft
@@ -184,7 +185,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "RN": frozenset().union(
         _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _CHART_READ, _ROOMING,
         _CLINICAL_ENTERED_IN_ERROR,
-        _MED_READ, _RX_DRAFT, _ORDER_DRAFT, _UNMATCHED, _DOCUMENTS, _INBOX, _COMMS, _FILES,
+        _MED_READ, _MED_RECORD, _ORDER_DRAFT, _UNMATCHED, _DOCUMENTS, _INBOX, _COMMS, _FILES,
         _AVS_READ,
         _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
                 # Nursing notes only: the notes service refuses other note types for RN (T42).

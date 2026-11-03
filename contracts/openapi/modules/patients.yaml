@@ -143,6 +143,7 @@ paths:
                   birthDate: '1984-07-19'
                   gender: female
                   birthSex: F
+                  generalPractitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                   preferredLanguage: en
                   phones:
                   - number: '+16175550123'
@@ -224,6 +225,7 @@ paths:
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
                     preferredName: Mona980
+                    generalPractitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     preferredPharmacy:
                       id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
                       name: Test Pharmacy 12
@@ -3763,6 +3765,11 @@ components:
           description: Preferred pharmacy, set with `PUT /patients/{patientId}/preferred-pharmacy` (D50). Absent when none
             is chosen.
           x-phi: clinical
+        generalPractitionerId: &idgp
+          $ref: ../components/schemas/Id.yaml
+          description: The patient's primary provider (FHIR `Patient.generalPractitioner`), chosen from `GET /booking/providers`
+            (D49). Absent when none is chosen.
+          x-phi: internal-id
         restricted:
           type: boolean
           description: True when the chart is restricted (sensitive or VIP); opening it needs break-glass unless the user
@@ -3812,6 +3819,7 @@ components:
         emails: *id036
         address: *id037
         employer: *id038
+        generalPractitionerId: *idgp
         identifiers:
           type: array
           maxItems: 10
@@ -3987,6 +3995,12 @@ components:
           description: Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand). Send
             `null` to clear it.
           x-phi: identifier
+        generalPractitionerId:
+          oneOf:
+          - $ref: ../components/schemas/Id.yaml
+          - type: 'null'
+          description: The patient's primary provider, from `GET /booking/providers` (D49). Send `null` to clear it.
+          x-phi: internal-id
     PatientSummary:
       description: 'Patient search result: minimum necessary (SECURITY_MODEL §8 rule 4).'
       type: object

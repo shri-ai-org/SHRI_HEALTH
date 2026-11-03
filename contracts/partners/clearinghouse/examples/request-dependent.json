@@ -1,0 +1,21 @@
+{
+  "messageType": "270",
+  "schemaVersion": "1.0",
+  "correlationId": "4b5c6d7e-8f9a-4b0c-8d1e-2f3a4b5c6d7e",
+  "createdAt": "2026-11-03T15:10:00Z",
+  "payer": {"name": "Example Health Plan (synthetic)"},
+  "provider": {"npi": "1234567893"},
+  "subscriber": {
+    "memberId": "TEST-S0098765",
+    "name": {"family": "Okafor904", "given": ["Ngozi311"]},
+    "birthDate": "1981-07-22"
+  },
+  "dependent": {
+    "name": {"family": "Okafor904", "given": ["Marcus217"]},
+    "birthDate": "2014-02-11",
+    "relationshipToSubscriber": "child",
+    "memberId": "TEST-S0098765-02"
+  },
+  "serviceDate": "2026-11-04",
+  "serviceTypeCodes": ["30", "98"]
+}

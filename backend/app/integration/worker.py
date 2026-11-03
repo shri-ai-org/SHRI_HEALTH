@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.db import Database
 from app.core.safe_logging import log_failure
+from app.integration import outbound
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class OutboundMessage:
     attempts: int
     max_attempts: int
     correlation_id: str | None
+    partner: str = ""  # admin.integration_endpoint.kind: lab, erx, clearinghouse, …
 
 
 @dataclass(frozen=True)
@@ -96,7 +98,7 @@ _CLAIM = text("SELECT id, tenant_id FROM admin.claim_outbound_messages(:n)")
 _LOAD = text(
     "SELECT m.id, m.tenant_id, m.endpoint_id, e.adapter, m.message_type, "
     "coalesce(m.payload, '{}'::jsonb) AS payload, m.idempotency_key, m.ordering_key, "
-    "m.attempts, m.max_attempts, m.correlation_id "
+    "m.attempts, m.max_attempts, m.correlation_id, e.kind AS partner "
     "FROM admin.integration_message m JOIN admin.integration_endpoint e ON e.id = m.endpoint_id "
     "WHERE m.id = :id AND m.status = 'sending' FOR UPDATE OF m")
 _SENT = text(
@@ -129,7 +131,13 @@ class OutboxWorker:
             claimed = (await session.execute(_CLAIM, {"n": self._batch})).all()
             await session.commit()
         for message_id, tenant_id in claimed:
-            counts[await self._deliver(message_id, tenant_id)] += 1
+            try:
+                counts[await self._deliver(message_id, tenant_id)] += 1
+            except Exception:  # e.g. the database went away: the others still get their turn,
+                # and this one is claimed again once its lease runs out
+                log_failure(log, "Outbox message %s (clinic %s) could not be delivered",
+                            message_id, tenant_id)
+                counts["failed"] += 1
         return counts
 
     async def _deliver(self, message_id: UUID, tenant_id: UUID) -> str:
@@ -147,7 +155,10 @@ class OutboxWorker:
         try:
             if adapter is None:
                 raise DeliveryError("no-adapter", permanent=True)
-            delivered = await adapter.send(message, session)
+            # A savepoint: if the adapter's or the module builder's SQL fails, only its work is
+            # rolled back, so the failure can still be recorded on this (locked) row (#186 review).
+            async with session.begin_nested():
+                delivered = await adapter.send(message, session)
         except DeliveryError as error:
             return await self._failed(message, session, error)
         except Exception as error:  # an adapter bug: its text may hold patient data, so not kept
@@ -157,6 +168,7 @@ class OutboxWorker:
         control = delivered.control_id[:60] if delivered.control_id else None
         await session.execute(_SENT, {"id": message.id, "control": control})
         await session.execute(_ENDPOINT_OK, {"id": message.endpoint_id})
+        await _notify("sent", message, session, control or "")
         return "sent"
 
     async def _failed(self, message: OutboundMessage, session: AsyncSession,
@@ -164,6 +176,7 @@ class OutboxWorker:
         await session.execute(_ENDPOINT_FAILED, {"id": message.endpoint_id})
         if error.permanent or message.attempts >= message.max_attempts:
             await session.execute(_DEAD, {"id": message.id, "error": error.code})
+            await _notify("dead-letter", message, session, error.code)
             # The alert: monitoring raises it from this line (no payload, no patient data).
             log.error("Outbox message %s (clinic %s, %s %s) dead-lettered after %s attempt(s): %s",
                       message.id, message.tenant_id, message.adapter, message.message_type,
@@ -177,10 +190,27 @@ class OutboxWorker:
         return "failed"
 
 
-def adapters() -> dict[str, Adapter]:
-    """The partner adapters by name (admin.integration_endpoint.adapter). The simulated payer and
-    pharmacy for the demo join here once their message shapes are in the contract (7 Nov)."""
-    return {}
+async def _notify(event: str, message: OutboundMessage, session: AsyncSession, detail: str) -> None:
+    """The module's on_sent / on_dead_letter hook (outbound.py), in a savepoint: a hook that
+    fails is logged (no text: it may hold patient data) and never undoes the recorded outcome."""
+    found = outbound.hook(event, message.partner, message.message_type)
+    if found is None:
+        return
+    try:
+        async with session.begin_nested():
+            await found(session, dict(message.payload), detail)
+    except Exception as error:
+        log.error("Outbox %s hook for message %s (%s %s) raised %s", event, message.id,
+                  message.partner, message.message_type, type(error).__name__)
+
+
+def adapters(settings: Settings) -> dict[str, Adapter]:
+    """The partner adapters by name (admin.integration_endpoint.adapter): for now the simulated
+    payer and pharmacy, when enabled (simulated.py; never in production)."""
+    from app.integration.simulated import simulated_adapters  # it builds on this module
+
+    found: dict[str, Adapter] = dict(simulated_adapters(settings))
+    return found
 
 
 async def run(settings: Settings, stop: asyncio.Event) -> None:
@@ -190,8 +220,10 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     if await db.role_bypasses_rls():
         await db.dispose()
         raise SystemExit("The worker's database role bypasses row-level security (D23)")
-    worker = OutboxWorker(db, adapters())
-    log.info("Outbox worker started")
+    outbound.load_modules()  # the modules' message builders and hooks
+    found = adapters(settings)
+    worker = OutboxWorker(db, found)
+    log.info("Outbox worker started (adapters: %s)", ", ".join(sorted(found)) or "none")
     try:
         while not stop.is_set():
             try:
@@ -205,6 +237,10 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                 except TimeoutError:
                     pass
     finally:
+        for adapter in found.values():
+            close = getattr(adapter, "aclose", None)
+            if close is not None:
+                await close()
         await db.dispose()
         log.info("Outbox worker stopped")
 

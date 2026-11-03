@@ -23,6 +23,7 @@ from pydantic import SecretStr
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
+from app.core import events
 from app.core import session as sessions
 from app.core.config import Settings
 from app.core.crypto import FieldCrypto
@@ -46,12 +47,14 @@ ORIGIN = "https://portal.example.test"
 
 
 class FakeKeycloak:
-    """The token and logout endpoints. `refuse_refresh`: the user was disabled in Keycloak."""
+    """The token and logout endpoints. `refuse_refresh`: the user was disabled in Keycloak;
+    `refreshes_left`: refresh that many times, then refuse (disabled while signed in)."""
 
     def __init__(self, subject: str) -> None:
         self.subject = subject
         self.nonce = ""
         self.refuse_refresh = False
+        self.refreshes_left: int | None = None
         self.calls: list[str] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -59,8 +62,12 @@ class FakeKeycloak:
         self.calls.append(form.get("grant_type", request.url.path.rsplit("/", 1)[-1]))
         if request.url.path.endswith("/logout"):
             return httpx.Response(204)
-        if form.get("grant_type") == "refresh_token" and self.refuse_refresh:
-            return httpx.Response(400, json={"error": "invalid_grant"})
+        if form.get("grant_type") == "refresh_token":
+            if self.refreshes_left is not None:
+                self.refreshes_left -= 1
+                self.refuse_refresh = self.refreshes_left < 0
+            if self.refuse_refresh:
+                return httpx.Response(400, json={"error": "invalid_grant"})
         now = int(time.time())
         claims = {"iss": ISSUER, "aud": "shri-web", "exp": now + 300, "iat": now,
                   "nonce": self.nonce, "sub": self.subject, "sid": "kc-session-1"}
@@ -247,6 +254,86 @@ def test_a_stale_token_is_refreshed_when_keycloak_agrees(
     assert client.post("/api/v1/auth/refresh", headers=headers).status_code == 200
     assert "refresh_token" in keycloak.calls
     assert _session_row(admin_engine, staff["tenant"]).keycloak_refresh_token_enc != before
+
+
+def _age_tokens(admin: Engine, tenant_id: UUID) -> None:
+    with admin.begin() as c:  # the stored tokens are more than 5 minutes old
+        c.execute(text("UPDATE admin.app_session SET tokens_refreshed_at = now() - interval "
+                       "'6 minutes' WHERE tenant_id = :t"), {"t": tenant_id})
+
+
+def test_a_disabled_user_loses_the_session_on_a_request_that_is_not_activity(
+        client: TestClient, keycloak: FakeKeycloak, staff: dict[str, Any],
+        admin_engine: Engine) -> None:  # noqa: F811
+    # An open screen only reads the session and the event stream; it must not outlive the user.
+    _sign_in(client, keycloak)
+    _age_tokens(admin_engine, staff["tenant"])
+    keycloak.refuse_refresh = True
+    ended = client.get("/api/v1/auth/session")
+    assert ended.status_code == 401 and ended.json()["code"] == "session-expired"
+    assert _session_row(admin_engine, staff["tenant"]).revoked_at is not None
+    assert client.get("/api/v1/events/stream").status_code == 401
+    assert _actions(admin_engine, staff["tenant"])[-1] == "logout"
+
+
+def test_a_refresh_on_a_session_read_never_moves_the_idle_timer(
+        client: TestClient, keycloak: FakeKeycloak, staff: dict[str, Any],
+        admin_engine: Engine) -> None:  # noqa: F811
+    _sign_in(client, keycloak)
+    _age_tokens(admin_engine, staff["tenant"])
+    before = _session_row(admin_engine, staff["tenant"])
+    assert client.get("/api/v1/auth/session").status_code == 200
+    after = _session_row(admin_engine, staff["tenant"])
+    assert "refresh_token" in keycloak.calls
+    assert after.keycloak_refresh_token_enc != before.keycloak_refresh_token_enc
+    assert after.idle_expires_at == before.idle_expires_at
+
+
+def test_an_open_event_stream_ends_when_the_user_is_disabled(
+        client: TestClient, keycloak: FakeKeycloak, staff: dict[str, Any],
+        admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    _sign_in(client, keycloak)
+    monkeypatch.setattr(events, "STREAM_MAX_SECONDS", 10.0)
+    monkeypatch.setattr(events, "POLL_SECONDS", 0.05)
+    monkeypatch.setattr(events, "SESSION_CHECK_SECONDS", 0.0)
+    settings = client.app.state.settings  # type: ignore[attr-defined]
+    monkeypatch.setattr(settings, "token_refresh_minutes", 0)
+    keycloak.refreshes_left = 1  # the connect refreshes; then the user is disabled
+    started = time.monotonic()
+    stream = client.get("/api/v1/events/stream")
+    assert stream.status_code == 200 and stream.text.startswith("retry: 5000")
+    assert time.monotonic() - started < 5.0  # ended by the check, not by STREAM_MAX_SECONDS
+    assert _session_row(admin_engine, staff["tenant"]).revoked_at is not None
+    assert _actions(admin_engine, staff["tenant"])[-1] == "logout"
+    assert client.get("/api/v1/events/stream").status_code == 401  # the reconnect
+
+
+def test_an_open_event_stream_ends_when_the_session_is_revoked(
+        client: TestClient, keycloak: FakeKeycloak, staff: dict[str, Any],
+        admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    # Back-channel logout (D94) revokes the row; the stream notices at its next check.
+    _sign_in(client, keycloak)
+    monkeypatch.setattr(events, "STREAM_MAX_SECONDS", 10.0)
+    monkeypatch.setattr(events, "POLL_SECONDS", 0.05)
+    monkeypatch.setattr(events, "SESSION_CHECK_SECONDS", 0.0)
+
+    async def revoked_at_first_poll() -> bool:
+        with admin_engine.begin() as c:
+            c.execute(text("UPDATE admin.app_session SET revoked_at = now() WHERE tenant_id = :t"),
+                      {"t": staff["tenant"]})
+        return False
+
+    real_stream = events.event_stream
+
+    def with_revoke(database: Any, user: Any, last_event_id: Any, _: Any, **kwargs: Any) -> Any:
+        return real_stream(database, user, last_event_id, revoked_at_first_poll, **kwargs)
+
+    monkeypatch.setattr(events, "event_stream", with_revoke)
+    started = time.monotonic()
+    stream = client.get("/api/v1/events/stream")
+    assert stream.status_code == 200
+    assert time.monotonic() - started < 5.0
+    assert client.get("/api/v1/auth/session").status_code == 401
 
 
 def test_logout_ends_ours_and_keycloaks_and_clears_the_cookie(

@@ -633,6 +633,174 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /hooks/clearinghouse:
+    servers:
+      - url: /
+        description: Outside /api/v1 (API_STANDARDS §2).
+    post:
+      operationId: receiveClearinghouseMessage
+      summary: Receive a clearinghouse message
+      description: 'A message from the clearinghouse, for the demo the simulated payer: a 271 answering an eligibility check (contracts/partners/clearinghouse). Verified by core before anything is read (API_STANDARDS §16.1): the Standard Webhooks v1 signature (HMAC-SHA256 with the partner''s secret over `webhook-id`, `webhook-timestamp`, `Shri-Clinic-Id` and the raw body, joined by dots), a timestamp within 5 minutes, and `webhook-id` used once per clinic and partner. The clinic comes only from the signed `Shri-Clinic-Id`. The message is recorded as an inbound partner message; its `correlationId` must name one of our requests to this partner from the same clinic, and it is then handed to the module that owns its `messageType` in the same request. Nothing about the outcome is returned. Not for browsers, so it is left out of the generated client.'
+      tags:
+        - partner-callbacks
+      x-owner: thulasi
+      x-permission: partner-signed
+      x-audit:
+        action: C
+        category: phi-write
+        actor: partner
+      x-storage: admin
+      x-release: P0
+      security: []
+      parameters:
+        - name: webhook-id
+          in: header
+          required: true
+          description: The partner's ID for this message; a second delivery with the same ID is accepted and ignored.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 60
+            pattern: ^[A-Za-z0-9_.:-]+$
+        - name: webhook-timestamp
+          in: header
+          required: true
+          description: When the partner signed it, in seconds since 1970-01-01 UTC; refused outside 5 minutes of the server's clock.
+          schema:
+            type: string
+            maxLength: 12
+            pattern: ^[0-9]{1,12}$
+        - name: webhook-signature
+          in: header
+          required: true
+          description: One or more space-separated signatures, each `v1,` and the base64 HMAC-SHA256 (Standard Webhooks).
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        - name: Shri-Clinic-Id
+          in: header
+          required: true
+          description: The clinic the message is for (an opaque ID, never a name); covered by the signature.
+          schema:
+            $ref: '#/components/schemas/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PartnerMessage'
+      responses:
+        '200':
+          description: Received (or a repeat of a message already received). No body.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not a valid partner message, or is over 64 KB).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (a missing or wrong signature, a timestamp outside 5 minutes, or an unknown clinic); never says which.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error; the partner retries).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (this partner's callbacks are not configured).
+  /hooks/erx:
+    servers:
+      - url: /
+        description: Outside /api/v1 (API_STANDARDS §2).
+    post:
+      operationId: receivePharmacyMessage
+      summary: Receive a pharmacy message
+      description: 'A message from the e-prescribing network, for the demo the simulated pharmacy: an RxStatus answering a NewRx (contracts/partners/pharmacy; D99). Verified and recorded exactly as `receiveClearinghouseMessage`, then handed to the medications module. Not for browsers, so it is left out of the generated client.'
+      tags:
+        - partner-callbacks
+      x-owner: thulasi
+      x-permission: partner-signed
+      x-audit:
+        action: C
+        category: phi-write
+        actor: partner
+      x-storage: admin
+      x-release: P0
+      security: []
+      parameters:
+        - name: webhook-id
+          in: header
+          required: true
+          description: The partner's ID for this message; a second delivery with the same ID is accepted and ignored.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 60
+            pattern: ^[A-Za-z0-9_.:-]+$
+        - name: webhook-timestamp
+          in: header
+          required: true
+          description: When the partner signed it, in seconds since 1970-01-01 UTC; refused outside 5 minutes of the server's clock.
+          schema:
+            type: string
+            maxLength: 12
+            pattern: ^[0-9]{1,12}$
+        - name: webhook-signature
+          in: header
+          required: true
+          description: One or more space-separated signatures, each `v1,` and the base64 HMAC-SHA256 (Standard Webhooks).
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        - name: Shri-Clinic-Id
+          in: header
+          required: true
+          description: The clinic the message is for (an opaque ID, never a name); covered by the signature.
+          schema:
+            $ref: '#/components/schemas/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PartnerMessage'
+      responses:
+        '200':
+          description: Received (or a repeat of a message already received). No body.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not a valid partner message, or is over 64 KB).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (a missing or wrong signature, a timestamp outside 5 minutes, or an unknown clinic); never says which.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error; the partner retries).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (this partner's callbacks are not configured).
   /operations/{operationId}:
     parameters:
       - name: operationId
@@ -1225,6 +1393,7 @@ paths:
                   birthDate: '1984-07-19'
                   gender: female
                   birthSex: F
+                  generalPractitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                   preferredLanguage: en
                   phones:
                     - number: '+16175550123'
@@ -1310,6 +1479,7 @@ paths:
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
                     preferredName: Mona980
+                    generalPractitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     preferredPharmacy:
                       id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
                       name: Test Pharmacy 12
@@ -1424,6 +1594,7 @@ paths:
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
                     preferredName: Mona980
+                    generalPractitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     preferredPharmacy:
                       id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
                       name: Test Pharmacy 12
@@ -1548,6 +1719,7 @@ paths:
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
                     preferredName: Mona980
+                    generalPractitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     preferredPharmacy:
                       id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
                       name: Test Pharmacy 12
@@ -22683,6 +22855,86 @@ components:
           $ref: '#/components/schemas/Timestamp'
           description: 'When it ends: 4 hours after `grantedAt`.'
           x-phi: none
+    PartnerMessage:
+      description: 'A partner reply as the partner contracts define it (contracts/partners): the clearinghouse''s 271 (`result`, `plan`, `benefits`, `errors`) or the pharmacy''s RxStatus (`status`, `rejection`). Core checks this envelope; the owning module validates the whole message against its own partner schema.'
+      type: object
+      additionalProperties: false
+      required:
+        - messageType
+        - schemaVersion
+        - correlationId
+        - responseId
+        - respondedAt
+      properties:
+        messageType:
+          type: string
+          enum:
+            - '271'
+            - RxStatus
+          description: The partner message type.
+          x-phi: none
+        schemaVersion:
+          type: string
+          maxLength: 10
+          pattern: ^[0-9]+\.[0-9]+$
+          description: The partner contract's version.
+          x-phi: none
+        correlationId:
+          $ref: '#/components/schemas/Id'
+          description: The ID of our request this answers.
+          x-phi: internal-id
+        responseId:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: The partner's ID for this reply.
+          x-phi: internal-id
+        respondedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the partner answered.
+          x-phi: none
+        result:
+          type: string
+          enum:
+            - active
+            - inactive
+            - member-not-found
+            - error
+          description: '271 only: the eligibility answer.'
+          x-phi: none
+        plan:
+          type: object
+          maxProperties: 20
+          description: '271 only: the plan (the clearinghouse partner schema).'
+          x-phi: financial
+        benefits:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            maxProperties: 20
+          description: '271 only: the benefit lines (the clearinghouse partner schema).'
+          x-phi: financial
+        errors:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            maxProperties: 10
+          description: '271 only: the payer''s error codes (the clearinghouse partner schema).'
+          x-phi: none
+        status:
+          type: string
+          enum:
+            - accepted
+            - rejected
+          description: 'RxStatus only: the pharmacy''s answer.'
+          x-phi: none
+        rejection:
+          type: object
+          maxProperties: 10
+          description: 'RxStatus only: why it was rejected (the pharmacy partner schema).'
+          x-phi: none
     FilePurpose:
       description: 'What the file is for (API_STANDARDS §15). Each purpose has its own allowed types and sizes (`insurance-card` and `identity` are JPEG or PNG up to 10 MB, M13) and its own read permission for `GET /files/{fileId}/download-url`: `insurance-card` → `coverages:read`; `identity` → `patients:read`; `receipt` → `payments:create` or `superbills:read`; `encounter-audio` → `transcriptions:read`; `after-visit-summary` → `encounters:read`; `document` → `documents:read`; `fax` → `fax-inbox:read`; `ccda` → `ccda:export`; `export` → `exports:read`; `onboarding-import` → `onboarding:import`. A purpose with no mapping is denied. `receipt` and `after-visit-summary` are generated by the server, never uploaded.'
       type: string
@@ -23193,6 +23445,10 @@ components:
           $ref: '#/components/schemas/Employer'
           description: Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand).
           x-phi: identifier
+        generalPractitionerId:
+          $ref: '#/components/schemas/Id'
+          description: The patient's primary provider (FHIR `Patient.generalPractitioner`), chosen from `GET /booking/providers` (D49). Absent when none is chosen.
+          x-phi: internal-id
         identifiers:
           type: array
           maxItems: 10
@@ -23449,6 +23705,10 @@ components:
           $ref: '#/components/schemas/PharmacyRef'
           description: Preferred pharmacy, set with `PUT /patients/{patientId}/preferred-pharmacy` (D50). Absent when none is chosen.
           x-phi: clinical
+        generalPractitionerId:
+          $ref: '#/components/schemas/Id'
+          description: The patient's primary provider (FHIR `Patient.generalPractitioner`), chosen from `GET /booking/providers` (D49). Absent when none is chosen.
+          x-phi: internal-id
         restricted:
           type: boolean
           description: True when the chart is restricted (sensitive or VIP); opening it needs break-glass unless the user is on the care team (D37).
@@ -23608,6 +23868,12 @@ components:
             - type: 'null'
           description: Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it.
           x-phi: identifier
+        generalPractitionerId:
+          oneOf:
+            - $ref: '#/components/schemas/Id'
+            - type: 'null'
+          description: The patient's primary provider, from `GET /booking/providers` (D49). Send `null` to clear it.
+          x-phi: internal-id
     PatientIdentifierList:
       description: One page of a patient's identifiers.
       type: object

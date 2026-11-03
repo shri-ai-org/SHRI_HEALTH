@@ -127,6 +127,16 @@ def test_support_staff_get_no_phi() -> None:
         ("RN", "notes:cosign", False),
         ("MA", "notes:sign", False),
         ("MA", "note-addenda:create", False),
+        # D110: prescriptions are MD and APP only; RN keeps reconciling and recording medications.
+        ("RN", "prescriptions:create", False),
+        ("RN", "prescriptions:update", False),
+        ("RN", "prescriptions:safety-check", False),
+        ("RN", "prescriptions:entered-in-error", False),
+        ("RN", "medication-reconciliations:create", True),
+        ("RN", "medications:create", True),
+        ("RN", "medication-history:fetch", True),
+        ("MD", "prescriptions:create", True),
+        ("APP", "prescriptions:safety-check", True),
         # T50 (D98): the desk checks out and declines a follow-up; desk and clinicians print the
         # after-visit summary; nobody else does either.
         ("FD", "appointments:check-out", True),

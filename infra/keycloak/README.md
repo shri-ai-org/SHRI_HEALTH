@@ -27,7 +27,7 @@ The build checks both SHA-256 values again and fails on any difference.
 
 ## Staff realm (`realms/shri-staff.json`)
 
-The staff realm, imported at startup with `start-dev --import-realm` (compose, CI). It is the Keycloak half of the real login; core's half (sessions, CSRF, keep-alive, back-channel logout) follows once migration 0005 (#52) is on `main`.
+The staff realm, imported at startup with `start-dev --import-realm` (compose, CI). It is the Keycloak half of the real login; core's half (sessions, CSRF, keep-alive, back-channel logout) is in `backend/app/core/session.py` and `backchannel.py`.
 
 | Setting | Value | Why |
 |---|---|---|
@@ -59,7 +59,7 @@ Every run also weakens a copy of the realm file four ways (reset on, code CONDIT
 
 `reset-demo-users.sh` puts the demo's synthetic users back, with fixed Keycloak user IDs that the
 database seed refers to (#85): `demo.frontdesk`, `demo.ma`, `demo.doctor` and `demo.admin` in
-`shri-staff`, and `demo.patient@example.com` in `shri-patients` (once that realm exists). Safe to
+`shri-staff`, and `demo.patient@example.com` in `shri-patients` (`realms/shri-patients.json`). Safe to
 run again; each run resets the password to `DEMO_PASSWORD` and asks for the one-time code to be
 set up again at the next sign-in.
 
