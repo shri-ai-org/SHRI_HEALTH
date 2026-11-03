@@ -18,10 +18,17 @@ from uuid import UUID, uuid4
 from fastapi import Request
 
 from app.core.deps import CurrentUser
-from app.core.errors import Forbidden, NotFound
+from app.core.errors import Forbidden, NotFound, ServiceUnavailable
 from app.core.long_running import Operation
 
-from ..repository import AppointmentRef, BenefitRow, CheckRow, CoverageRef
+from ..repository import (
+    NOT_SENT,
+    AppointmentRef,
+    AutoAppointment,
+    BenefitRow,
+    CheckRow,
+    CoverageRef,
+)
 
 NOW = datetime(2026, 11, 3, 15, 0, tzinfo=UTC)
 
@@ -48,11 +55,16 @@ class World:
     restricted: set[UUID] = field(default_factory=set)
     grants: set[tuple[UUID, UUID]] = field(default_factory=set)  # (user, patient)
     practice_npi: str | None = "1234567893"
-    sent: list[tuple[UUID, UUID]] = field(default_factory=list)  # (check, operation)
+    sent: list[tuple[UUID, UUID | None]] = field(default_factory=list)  # (check, operation)
     operations: list[Operation] = field(default_factory=list)
     audited: list[list[UUID]] = field(default_factory=list)
     npis: dict[UUID, str | None] = field(default_factory=dict)  # check → provider NPI
     linked: dict[UUID, UUID] = field(default_factory=dict)  # check → outbox message
+    connected: bool = True  # the clinic has a clearinghouse connection
+    encounter_of: dict[UUID, UUID | None] = field(default_factory=dict)  # check → encounter
+    not_required: set[UUID] = field(default_factory=set)  # appointments of a no-check type
+    cancelled: set[UUID] = field(default_factory=set)  # appointments not booked
+    locks: list[UUID] = field(default_factory=list)  # appointments locked for a check
 
     # ------------------------------------------------------------------- synthetic set-up
     def patient(self, clinic: UUID) -> UUID:
@@ -68,10 +80,10 @@ class World:
         return coverage_id
 
     def appointment(self, clinic: UUID, patient_id: UUID, facility_id: UUID,
-                    npi: str | None = "1234567893") -> UUID:
+                    npi: str | None = "1234567893", day: date = date(2026, 11, 3)) -> UUID:
         appointment_id = uuid4()
         self.appointments[appointment_id] = (clinic, AppointmentRef(
-            appointment_id, patient_id, facility_id, date(2026, 11, 3), npi))
+            appointment_id, patient_id, facility_id, day, npi))
         return appointment_id
 
     def check(self, clinic: UUID, coverage_id: UUID, appointment_id: UUID | None, *,
@@ -125,6 +137,7 @@ class FakeRepository:
         self.world.checks[check_id] = (clinic, replace(row, trigger=trigger))
         self.world.service_types[check_id] = tuple(service_type_codes)
         self.world.npis[check_id] = provider_npi
+        self.world.encounter_of[check_id] = encounter_id
         return check_id
 
     async def link_message(self, db: Any, check_id: UUID, message_id: UUID) -> None:
@@ -142,6 +155,58 @@ class FakeRepository:
         return rows[offset:offset + limit]
 
 
+    # ----------------------------------------- automatic checks (AutoCheckRepository)
+    async def auto_appointment(self, db: Any, appointment_id: UUID) -> AutoAppointment | None:
+        found = await self.appointment(db, appointment_id)
+        if found is None:
+            return None
+        return AutoAppointment(
+            id=found.id, patient_id=found.patient_id,
+            status="cancelled" if appointment_id in self.world.cancelled else "booked",
+            local_day=found.local_day, provider_npi=found.provider_npi,
+            required=appointment_id not in self.world.not_required)
+
+    async def primary_coverage(self, db: Any, patient_id: UUID, on: date) -> UUID | None:
+        found = [c for clinic, c in self.world.coverages.values()
+                 if clinic == db.tenant_id and c.patient_id == patient_id and c.status == "active"
+                 and (c.period_start is None or c.period_start <= on)
+                 and (c.period_end is None or c.period_end >= on)]
+        return found[0].id if found else None
+
+    async def lock_appointment_checks(self, db: Any, appointment_id: UUID) -> None:
+        self.world.locks.append(appointment_id)
+
+    async def existing_check(self, db: Any, appointment_id: UUID, trigger: str,
+                             encounter_id: UUID | None) -> UUID | None:
+        for check_id, (clinic, row) in self.world.checks.items():
+            if (clinic == db.tenant_id and row.appointment_id == appointment_id
+                    and row.trigger == trigger and (
+                        encounter_id is None
+                        or self.world.encounter_of.get(check_id) == encounter_id)):
+                return check_id
+        return None
+
+    async def fresh_check(self, db: Any, coverage_id: UUID, now: datetime,
+                          since: datetime) -> bool:
+        return any(clinic == db.tenant_id and row.coverage_id == coverage_id and (
+            (row.status == "pending" and row.requested_at > since)
+            or (row.status in ("active", "inactive", "not-found")
+                and row.expires_at is not None and row.expires_at > now))
+            for clinic, row in self.world.checks.values())
+
+    async def mark_not_sent(self, db: Any, check_id: UUID, message: str) -> None:
+        clinic, row = self.world.checks[check_id]
+        if row.status == "pending":
+            self.world.checks[check_id] = (clinic, replace(
+                row, status="error", error_code=NOT_SENT, error_message=message,
+                responded_at=row.requested_at))
+
+    async def booked_on(self, db: Any, day: date) -> list[UUID]:
+        return [a.id for clinic, a in self.world.appointments.values()
+                if clinic == db.tenant_id and a.local_day == day
+                and a.id not in self.world.cancelled]
+
+
 class FakePartner:
     def __init__(self, world: World) -> None:
         self.world = world
@@ -152,7 +217,9 @@ class FakePartner:
         self.world.operations.append(operation)
         return operation
 
-    async def send_270(self, db: Any, check_id: UUID, operation_id: UUID) -> UUID:
+    async def send_270(self, db: Any, check_id: UUID, operation_id: UUID | None) -> UUID:
+        if not self.world.connected:  # as core's enqueue: refused before anything is written
+            raise ServiceUnavailable("No clearinghouse connection is set up for this practice")
         self.world.sent.append((check_id, operation_id))
         return uuid4()
 
