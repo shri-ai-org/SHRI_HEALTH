@@ -81,7 +81,7 @@ def _rows(client: Any, practice: Practice, users: dict[str, CurrentUser]) -> lis
     theirs_in = appointment_today(p, "marcus", facility=p.other_facility,
                                   provider=p.other_provider, hour=13)
     their_visit = _checked_in(client, "fd-a2", theirs_in)
-    # A follow-up asked for at A2's visit (D98; its PUT isn't served yet, so it's written here).
+    # A follow-up asked for at A2's visit (D98), written straight to the table.
     _sql(p, "INSERT INTO clinical.encounter_follow_up (id, tenant_id, encounter_id, patient_id, "
          "interval_value, interval_unit, requested_by_user_id) VALUES (gen_random_uuid(), :t, "
          ":e, :p, 2, 'week', :u)", t=p.clinic, e=their_visit, p=p.patients["marcus"],
@@ -147,6 +147,7 @@ def _rows(client: Any, practice: Practice, users: dict[str, CurrentUser]) -> lis
             json={"selfPay": True}, headers=_key()),
         Row("undoCheckIn", "fd", "POST", f"{appt}/{theirs_in}/undo-check-in", 404,
             json={"reason": "Wrong patient."}),
+        Row("checkOutAppointment", "fd", "POST", f"{appt}/{theirs_in}/check-out", 404),
         Row("recordVisitStatus", "fd", "POST", f"{appt}/{theirs_today}/status", 404,
             json={"status": "arrived"}),
         Row("recordVisitStatus", "ma", "POST", f"{appt}/{theirs_in}/status", 404,
@@ -180,6 +181,7 @@ def _rows(client: Any, practice: Practice, users: dict[str, CurrentUser]) -> lis
             json={"selfPay": True}, headers=_key()),
         Row("undoCheckIn", "fd-b", "POST", f"{appt}/{mine_in}/undo-check-in", 404,
             json={"reason": "Wrong patient."}),
+        Row("checkOutAppointment", "fd-b", "POST", f"{appt}/{mine_in}/check-out", 404),
         Row("recordVisitStatus", "fd-b", "POST", f"{appt}/{mine_today}/status", 404,
             json={"status": "arrived"}),
         Row("getStatusBoard", "fd-b", "GET", f"{API}/status-board", 404,

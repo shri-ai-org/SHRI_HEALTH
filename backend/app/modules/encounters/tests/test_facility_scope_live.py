@@ -7,14 +7,18 @@ facility_scope.py runs it). Synthetic data only."""
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Iterator
 from typing import Any
 from uuid import UUID
 
 import pytest
 
+from app.core import download_tokens as core_tokens
 from app.core.deps import CurrentUser
 from app.db.tests.conftest import TEST_DATABASE_URL
-from app.modules.scheduling.tests.conftest import Practice
+from app.modules.files.tests.fakes import download_tokens
+from app.modules.scheduling.tests.conftest import Practice, make_client
 from app.modules.scheduling.tests.facility_scope import (
     API,
     Row,
@@ -39,8 +43,8 @@ pytestmark = [
 
 def _visit(client: Any, practice: Practice, *, at_a2: bool, front_desk: str, nurse: str,
            doctor: str, code: str) -> dict[str, Any]:
-    """A checked-in visit for Kaia with vitals, a diagnosis, a signed note and a draft note,
-    each written by that facility's own staff."""
+    """A checked-in visit for Kaia with vitals, a diagnosis, a signed note, a draft note and a
+    follow-up request, each written by that facility's own staff."""
     p = practice
     appointment = appointment_today(
         p, "kaia", facility=p.other_facility if at_a2 else p.facility,
@@ -57,6 +61,10 @@ def _visit(client: Any, practice: Practice, *, at_a2: bool, front_desk: str, nur
     signed = _signed_note(client, p, encounter, user=doctor)
     draft = client(doctor).post(f"{path}/notes", json={"templateId": _seeded_template(p)})
     assert draft.status_code == 201, draft.text
+    tag = client(doctor).get(path).headers["ETag"]
+    follow_up = client(doctor).put(f"{path}/follow-up", headers={"If-Match": tag},
+                                   json={"interval": {"value": 2, "unit": "week"}})
+    assert follow_up.status_code == 200, follow_up.text
     workspace = client(doctor).get(path)
     return {"encounter": encounter, "etag": workspace.headers["ETag"],
             "vitals": [v["id"] for v in vitals.json()["vitals"]],
@@ -65,10 +73,10 @@ def _visit(client: Any, practice: Practice, *, at_a2: bool, front_desk: str, nur
             "draft_etag": draft.headers["ETag"]}
 
 
-def _calls(user: str, nurse: str, v: dict[str, Any], template: str, patient: UUID,
+def _calls(user: str, nurse: str, desk: str, v: dict[str, Any], template: str, patient: UUID,
            mine: dict[str, Any] | None = None) -> list[Row]:
     """Every by-ID operation on visit ``v`` of ``patient``, each expected to be 404 for
-    ``user``."""
+    ``user`` (``nurse`` and ``desk`` for the operations only their roles hold)."""
     enc = f"{API}/encounters/{v['encounter']}"
     draft, signed = f"{API}/notes/{v['draft']}", f"{API}/notes/{v['signed']}"
     rows = [
@@ -101,6 +109,17 @@ def _calls(user: str, nurse: str, v: dict[str, Any], template: str, patient: UUI
             json={"reason": "Wrong chart."}),
         Row("listNoteVersions", user, "GET", f"{signed}/versions", 404),
         Row("closeEncounter", user, "POST", f"{enc}/close", 404),
+        Row("setFollowUpRequest", user, "PUT", f"{enc}/follow-up", 404,
+            json={"interval": {"value": 1, "unit": "month"}}, headers={"If-Match": v["etag"]}),
+        Row("withdrawFollowUpRequest", user, "POST", f"{enc}/follow-up/withdraw", 404,
+            json={"reason": "x"}, headers={"If-Match": v["etag"]}),
+        Row("declineFollowUpRequest", desk, "POST", f"{enc}/follow-up/decline", 404,
+            json={"reason": "x"},
+            headers={"If-Match": v["etag"], "Idempotency-Key": str(uuid.uuid4())}),
+        Row("createAfterVisitSummary", user, "POST", f"{enc}/after-visit-summary", 404,
+            headers={"Idempotency-Key": str(uuid.uuid4())}),
+        Row("getAfterVisitSummaryDownloadUrl", desk, "GET",
+            f"{enc}/after-visit-summary/download-url", 404),
     ]
     if mine is not None:  # the other visit's diagnosis through the user's own encounter
         rows.append(Row("removeEncounterDiagnosis", user, "POST",
@@ -141,16 +160,26 @@ def _rows(client: Any, practice: Practice, users: dict[str, CurrentUser]) -> lis
         Row("listEncounterNotes", "md", "GET", f"{API}/encounters/{mine['encounter']}/notes",
             200, hidden=hidden, shown=(mine["signed"], mine["draft"])),
         # --- every by-ID operation on the A2 visit: 404, nothing changes
-        *_calls("md", "ma", theirs, template, kaia, mine),
+        *_calls("md", "ma", "fd", theirs, template, kaia, mine),
         # --- clinic B: clinic A's visit and patient are 404 (RLS)
         Row("listPatientEncounters", "md-b", "GET", f"{API}/patients/{kaia}/encounters", 404),
         Row("listPatientVitals", "md-b", "GET", f"{API}/patients/{kaia}/vitals", 404),
-        *_calls("md-b", "md-b", mine, template, kaia),
+        *_calls("md-b", "md-b", "fd-b", mine, template, kaia),
     ]
 
 
+@pytest.fixture
+def swept(users: dict[str, CurrentUser]) -> Iterator[Any]:
+    """The live client with the files module's test download tokens (no token secret here),
+    so the summary's download link reaches its chart check."""
+    tokens = download_tokens()
+    yield from make_client(users, pending=False,
+                           overrides={core_tokens.download_tokens: lambda: tokens})
+
+
 def test_every_encounter_operation_keeps_to_the_users_facilities(
-        client: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:
+        swept: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:
+    client = swept
     outcomes = sweep(client, practice, _rows(client, practice, users))
     assert not failures(outcomes), report(failures(outcomes))
     assert {o.row.operation for o in outcomes} == served_operations("encounters"), \
