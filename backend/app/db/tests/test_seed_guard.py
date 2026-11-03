@@ -13,6 +13,7 @@ from app.db.seed import __main__ as seed_main
 @pytest.fixture
 def calls(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     """Records each call of the stubbed layer; the engine is an in-memory SQLite one."""
+    monkeypatch.delenv("SEED_ALLOW_STAGING", raising=False)
     seen: list[Any] = []
     monkeypatch.setitem(seed_main.LAYERS, "starter", seen.append)
     monkeypatch.setattr(seed_main, "create_engine", lambda *a, **k: create_engine("sqlite://"))
@@ -30,6 +31,33 @@ def test_the_seed_refuses_every_environment_but_development_and_test(
         monkeypatch.setenv("ENVIRONMENT", environment)
     assert seed_main.main(["starter"]) == 1
     assert calls == []
+
+
+@pytest.mark.parametrize(("environment", "allow"), [
+    ("staging", None), ("staging", "0"), ("staging", "true"), ("staging", " 1"),
+    ("production", "1"), (None, "1")])
+def test_staging_needs_exactly_the_setting_and_production_never_seeds(
+        calls: list[Any], monkeypatch: pytest.MonkeyPatch, environment: str | None,
+        allow: str | None) -> None:
+    """#187: staging only with SEED_ALLOW_STAGING=1 (the synthetic-only test server, D12);
+    production, or unset (production), is refused whatever the setting says."""
+    if environment is None:
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+    else:
+        monkeypatch.setenv("ENVIRONMENT", environment)
+    if allow is None:
+        monkeypatch.delenv("SEED_ALLOW_STAGING", raising=False)
+    else:
+        monkeypatch.setenv("SEED_ALLOW_STAGING", allow)
+    assert seed_main.main(["starter"]) == 1
+    assert calls == []
+
+
+def test_staging_seeds_with_the_setting(calls: list[Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    monkeypatch.setenv("SEED_ALLOW_STAGING", "1")
+    assert seed_main.main(["starter"]) == 0
+    assert len(calls) == 1
 
 
 @pytest.mark.parametrize("environment", ["development", "test"])
@@ -54,6 +82,7 @@ def test_load_starter_refuses_too_before_touching_the_database(
     """The reset script and the tests call load_starter directly, not main."""
     from app.db.seed.starter import load_starter
 
+    monkeypatch.delenv("SEED_ALLOW_STAGING", raising=False)
     if environment is None:
         monkeypatch.delenv("ENVIRONMENT", raising=False)
     else:

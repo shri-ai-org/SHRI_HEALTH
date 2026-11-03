@@ -5,8 +5,17 @@ inserted only if missing, so a second run changes nothing; it runs as shri_migra
 clinic set, so forced RLS checks every row.
 
 Each patient's MRN comes from ``admin.next_mrn()`` when the patient is first created, as
-registration takes it. The demo users come later, with the Keycloak subjects of Thulasi's demo
-realm.
+registration takes it.
+
+The demo users are the accounts of Thulasi's realms (#152, IDs posted on #85), with fixed
+Keycloak user IDs: four staff users (an ``app_user`` each, ``keycloak_subject`` = the Keycloak
+user ID, and a ``user_role`` row at the main office for its role, against migration 0017's
+platform roles) and the demo patient's active portal account (``keycloak_user_id``), linked to
+the patient with the demo visit. No password is stored or seeded: they live in Keycloak.
+
+Every demo provider is also bookable all day, every day (``_all_day_schedules``): each run sets
+their all-day rules to start on each facility's own today and run for the next 7 days, so a
+rehearsal or the demo itself always has free times. The seed's environment guard is unchanged.
 """
 from __future__ import annotations
 
@@ -14,8 +23,9 @@ import datetime as dt
 import uuid
 from dataclasses import dataclass
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A, FACILITY_A
@@ -28,7 +38,7 @@ M = MAPPERS
 # Kinds of fixed ID, after the starter layer's.
 PHARMACY, CONSENT_REQUIREMENT, PATIENT, P_NAME, P_TELECOM, P_ADDRESS, P_MRN, P_LANGUAGE, \
     COVERAGE, C_PAYOR, C_MEMBER, C_GROUP, APPOINTMENT, A_PATIENT, A_PROVIDER, \
-    P_PHARMACY, A_LOCATION = range(21, 38)
+    P_PHARMACY, A_LOCATION, DEMO_USER, DEMO_USER_ROLE, PORTAL_ACCOUNT, ALL_DAY_RULE = range(21, 42)
 
 #: The demo day, Friday 20 November 2026, at the main office (America/Chicago, UTC-6 then).
 DEMO_DAY = dt.date(2026, 11, 20)
@@ -66,13 +76,13 @@ class DemoPatient:
 
 PATIENTS = (
     DemoPatient(1, "Kaia401", "Lindgren118", dt.date(1990, 3, 14), "female", "+12175550142",
-                "42 Sample Avenue", 1, (dt.time(9, 0), "NEW", 1)),
+                "42 Sample Avenue", 1, (dt.time(9, 0), "NEW", 3)),
     DemoPatient(2, "Marcus217", "Okafor904", dt.date(1958, 7, 2), "male", "+12175550117",
-                "17 Sample Avenue", 2, (dt.time(9, 40), "FU", 1)),
+                "17 Sample Avenue", 2, (dt.time(9, 40), "FU", 3)),
     DemoPatient(3, "Elena88", "Vasquez512", dt.date(1976, 11, 23), "female", "+12175550163",
                 "63 Sample Avenue", 3, (dt.time(10, 0), "FU", 2)),
     DemoPatient(4, "Theo343", "Brandt27", dt.date(2001, 1, 9), "male", "+12175550188",
-                "88 Sample Avenue", None, (dt.time(10, 20), "ANNUAL", 1)),
+                "88 Sample Avenue", None, (dt.time(10, 20), "ANNUAL", 3)),
     DemoPatient(5, "Priya765", "Raman431", dt.date(1983, 5, 30), "female", "+12175550129",
                 "29 Sample Avenue", 1, None),
 )
@@ -140,6 +150,37 @@ def _coverage(db: Session, p: DemoPatient) -> None:
     db.flush()
 
 
+#: (n, username, Keycloak user ID, display name, role, provider index or None). The IDs and
+#: names are #152's (infra/keycloak/reset-demo-users.sh): Keycloak's names are the source of
+#: truth, so a person has one name on every screen and in sign-in (D112).
+DEMO_USERS = (
+    (1, "demo.frontdesk", "bfb3e893-5380-4260-b1b9-420ee3a9e6e4", "Marlo512 Ferreira77", "FD",
+     None),
+    (2, "demo.ma", "8474b553-c2bb-4a7b-a098-cc4bfdf5f4ac", "Tobias289 Lindqvist45", "MA", None),
+    (3, "demo.doctor", "490ef6d1-2e36-40ed-88eb-132538695ad9", "Rowan318 Halvorsen64", "MD", 3),
+    (4, "demo.admin", "9a805285-df36-4ce9-abcc-3844ab784dfa", "Sasha627 Brennan52", "ADM", None),
+)
+#: The patient realm's demo account, and the demo patient whose chart it opens (the visit).
+DEMO_PATIENT_SUBJECT = "8e477695-3ea5-4082-8765-2b8edee9123c"
+DEMO_PORTAL_PATIENT = 1
+
+
+def _demo_users(db: Session) -> None:
+    starter._set_clinic(db, CLINIC_A)
+    roles = {r.code: r.id for r in db.execute(text(
+        "SELECT code, id FROM admin.role WHERE tenant_id IS NULL AND is_system"))}
+    for n, username, subject, name, role, provider in DEMO_USERS:
+        practitioner = starter.sid(starter.PRACTITIONER, provider) if provider else None
+        _ensure(db, "app_user", sid(DEMO_USER, n), tenant_id=CLINIC_A, keycloak_subject=subject,
+                username=username, display_name=name, practitioner_id=practitioner)
+        _ensure(db, "user_role", sid(DEMO_USER_ROLE, n), tenant_id=CLINIC_A,
+                user_id=sid(DEMO_USER, n), role_id=roles[role], facility_id=FACILITY_A)
+    _ensure(db, "portal_account", sid(PORTAL_ACCOUNT, 1), tenant_id=CLINIC_A,
+            keycloak_user_id=DEMO_PATIENT_SUBJECT,
+            patient_id=sid(PATIENT, DEMO_PORTAL_PATIENT), status="active",
+            enrolled_at=dt.datetime(2026, 10, 29, tzinfo=dt.UTC))
+
+
 def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> None:
     if p.visit is None or db.get(M["appointment"], sid(APPOINTMENT, p.n)) is not None:
         return
@@ -167,8 +208,52 @@ def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> N
     db.flush()
 
 
-def load_demo(db: Session) -> None:
-    """Loads the starter layer, then the demo layer, in the session's transaction."""
+#: Every demo provider is bookable all day, every day, in each facility's own time zone (Vimal,
+#: 2 Nov): one rule per weekday, 00:00 to 23:59 local, on top of the starter's office hours (free
+#: times are keyed by start and provider, so the two never double up). The rules hold from the
+#: facility's today for the next 7 days. Every seed run and reset moves them to that run's
+#: today, so a demo or rehearsal on any day has free times; the same day again changes nothing.
+ALL_DAY = (dt.time(0, 0), dt.time(23, 59))
+ALL_DAY_SLOT_MINUTES = 20
+ALL_DAY_AHEAD = 7
+DAYS_OF_WEEK = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def _all_day_schedules(db: Session, visits: dict[str, uuid.UUID], now: dt.datetime) -> None:
+    starter._set_clinic(db, CLINIC_A)
+    link = M["availability_rule_appointment_type"]
+    for i in range(1, len(starter.PROVIDERS) + 1):
+        for j in range(1, 3):                   # each provider's schedule at each facility
+            n = i * 10 + j
+            schedule = db.get_one(M["schedule"], sid(SCHEDULE, n))  # the starter layer's
+            facility = db.get_one(M["facility"], schedule.ext_facility_id)
+            today = now.astimezone(ZoneInfo(facility.timezone)).date()
+            values = {"tenant_id": CLINIC_A, "schedule_id": schedule.id,
+                      "start_time": ALL_DAY[0], "end_time": ALL_DAY[1],
+                      "slot_minutes": ALL_DAY_SLOT_MINUTES, "location_id": facility.location_id,
+                      "effective_from": today,
+                      "effective_to": today + dt.timedelta(days=ALL_DAY_AHEAD)}
+            for d, day in enumerate(DAYS_OF_WEEK, start=1):
+                rule = db.get(M["schedule_availability_rule"], sid(ALL_DAY_RULE, n * 10 + d))
+                if rule is None:
+                    rule = M["schedule_availability_rule"](
+                        id=sid(ALL_DAY_RULE, n * 10 + d), day_of_week=day, **values)
+                    db.add(rule)
+                else:                           # only what differs, so a same-day rerun is a no-op
+                    for name, value in values.items():
+                        if getattr(rule, name) != value:
+                            setattr(rule, name, value)
+                db.flush()
+                have = set(db.execute(select(link.appointment_type_id)
+                                      .where(link.rule_id == rule.id)).scalars())
+                db.add_all(link(tenant_id=CLINIC_A, rule_id=rule.id, appointment_type_id=v)
+                           for v in visits.values() if v not in have)
+    db.flush()
+
+
+def load_demo(db: Session, *, now: dt.datetime | None = None) -> None:
+    """Loads the starter layer, then the demo layer, in the session's transaction. ``now`` (UTC,
+    for tests) decides the all-day schedule's today; the real clock otherwise."""
     starter.load_starter(db)                    # checks the environment first
     _payers(db)
     _consent_requirements(db)
@@ -179,4 +264,6 @@ def load_demo(db: Session) -> None:
         _ensure(db, "patient_pharmacy", sid(P_PHARMACY, p.n), tenant_id=CLINIC_A,
                 patient_id=sid(PATIENT, p.n), pharmacy_id=PHARMACY_ID, is_default=True)
         _appointment(db, p, visits)
+    _demo_users(db)
+    _all_day_schedules(db, visits, now or dt.datetime.now(dt.UTC))
     db.flush()

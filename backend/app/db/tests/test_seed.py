@@ -93,14 +93,15 @@ def test_the_dev_users_see_their_practice_through_the_api_role(
             "ANNUAL", "FU", "NEW", "TELE-FU"]
         assert sorted(scalars("SELECT code FROM admin.note_template")) == [
             "ANNUAL", "FOLLOW-UP", "NEW-VISIT"]
-        assert len(scalars("SELECT id FROM clinical.schedule")) == 4
+        per_facility = 2 * len(starter.PROVIDERS)        # two facilities
+        assert len(scalars("SELECT id FROM clinical.schedule")) == per_facility
         # One PractitionerRole per provider and facility; each schedule uses its facility's role.
-        assert len(scalars("SELECT id FROM clinical.practitioner_role")) == 4
+        assert len(scalars("SELECT id FROM clinical.practitioner_role")) == per_facility
         assert scalars(
             "SELECT count(*) FROM clinical.schedule s JOIN admin.facility f ON f.id = "
             "s.ext_facility_id JOIN clinical.schedule_actor a ON a.schedule_id = s.id "
             "JOIN clinical.practitioner_role_location l ON l.practitioner_role_id = "
-            "a.practitioner_role_id WHERE l.location_id = f.location_id") == [4]
+            "a.practitioner_role_id WHERE l.location_id = f.location_id") == [per_facility]
         assert set(scalars("SELECT id FROM admin.app_user")) >= {
             u.id for u in DEV_USERS.values() if u.organization_id == CLINIC_A}
         # Staff sign-in finds each dev user's roles and facilities as core has them.
