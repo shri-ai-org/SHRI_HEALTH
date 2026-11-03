@@ -262,7 +262,7 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
       if (params.appointment) rebookUnpaidAppointment({ appointmentId: params.appointment, ...booking })
       else bookAppointment({ patientId: who.patientId, ...booking })
       // Booked: straight to the patient's profile, where the timeline shows the booking and prints its bill.
-      const profile = `/patients/${who.uhid}`
+      const profile = `/patients/${who.patientId}`
       if (location.pathname === profile) onClose()
       else navigate(profile, { replace: true })
     } catch (err) {

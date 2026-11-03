@@ -32,15 +32,15 @@ function readFilter(search: string): PatientFilter {
 }
 
 const EMPTY_TITLE: Record<PatientFilter, string> = {
-  all: 'No patients yet',
+  all: 'Search for a patient in the bar above',
   today: 'Nobody registered yet today',
   duplicates: 'No possible duplicates',
 }
 
 /**
- * Every registered patient, newest first — each figure is also the filter.
- * A row opens the patient's profile, where everything for them is done;
- * finding someone is the search in the app bar, so there is no second box.
+ * The patients found or registered at this desk in this session, newest first — each figure is
+ * also the filter. There is no list of every patient (SHRI_HEALTH D65): finding someone is the
+ * search in the app bar. A row opens the patient's profile, where everything for them is done.
  */
 export function PatientsPage() {
   const location = useLocation()
@@ -67,12 +67,12 @@ export function PatientsPage() {
   }
 
   const items: StatFilterItem<PatientFilter>[] = [
-    { key: 'all', label: 'All patients', value: rows.length, tone: 'info', icon: Users },
+    { key: 'all', label: 'Found this session', value: rows.length, tone: 'info', icon: Users },
     { key: 'today', label: 'Registered today', value: lists.today.length, tone: 'teal', icon: UserPlus },
     { key: 'duplicates', label: 'Possible duplicates', value: lists.duplicates.length, tone: 'warning', icon: Copy },
   ]
 
-  const openPatient = (uhid: string) => navigate(`/patients/${uhid}`)
+  const openPatient = (patientId: string) => navigate(`/patients/${patientId}`)
 
   const columns: Column<PatientListRow>[] = [
     {
@@ -160,7 +160,7 @@ export function PatientsPage() {
               rows={shown}
               columns={columns}
               rowKey={(row) => row.patient.patientId}
-              onRowClick={(row) => openPatient(row.patient.uhid)}
+              onRowClick={(row) => openPatient(row.patient.patientId)}
               rowLabel={(row) => `Open ${row.patient.name}`}
               caption="Patients"
             />

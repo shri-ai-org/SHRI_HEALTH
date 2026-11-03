@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { UserRound } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
@@ -22,6 +22,8 @@ import { getState } from '../domain/store'
 import { cancelAppointment } from '../domain/actions'
 import { useToast } from '../hooks/useToast'
 import { getPatientHeader, getPatientTimeline } from '../domain/patientSelectors'
+import { isApiPatientId, loadPatient } from '../../shri-health/patients'
+import { problemMessage } from '../../shri-health/client'
 
 /**
  * The patient's hub. Everything the front desk does for a patient starts
@@ -31,6 +33,8 @@ import { getPatientHeader, getPatientTimeline } from '../domain/patientSelectors
  * has happened at the desk.
  */
 export function PatientProfilePage() {
+  // The route's parameter is the patient's id: the API's opaque id for SHRI_HEALTH patients (never
+  // the UHID/MRN, which stays out of URLs, D13), and the UHID for Care Entry's own seed patients.
   const { uhid } = useParams<{ uhid: string }>()
   const navigate = useNavigate()
   const { openFlow } = useFlow()
@@ -46,6 +50,42 @@ export function PatientProfilePage() {
   const [cancelling, setCancelling] = useState<string | null>(null)
   // Payment History is shown on demand; the timeline has the page to itself otherwise.
   const [paymentsOpen, setPaymentsOpen] = useState(false)
+
+  // A SHRI_HEALTH patient is read from the API each time the profile opens, so a search result
+  // (which carries only the mobile's last four digits) becomes the full record.
+  const apiPatient = isApiPatientId(uhid ?? '')
+  const [loaded, setLoaded] = useState<{ id: string; error: string | null } | null>(null)
+  useEffect(() => {
+    if (!uhid || !isApiPatientId(uhid)) return undefined
+    let live = true
+    loadPatient(uhid)
+      .then(() => live && setLoaded({ id: uhid, error: null }))
+      .catch((error: unknown) => live && setLoaded({ id: uhid, error: problemMessage(error) }))
+    return () => {
+      live = false
+    }
+  }, [uhid])
+  const loadState = !apiPatient ? 'done' : !loaded || loaded.id !== uhid ? 'loading' : loaded.error ? 'error' : 'done'
+
+  if (apiPatient && loadState !== 'done' && (!patient || loadState === 'error')) {
+    return (
+      <div>
+        <PageHeader title={loadState === 'loading' ? 'Patient' : 'Patient not opened'} />
+        <div className="mt-5 sm:mt-6">
+          <Card accentTone="teal" className="max-w-xl">
+            <CardBody>
+              <EmptyState
+                icon={UserRound}
+                title={loadState === 'loading' ? 'Opening the patient…' : 'The patient could not be opened'}
+                {...(loadState === 'error' && loaded?.error ? { description: loaded.error } : {})}
+                action={<Button size="sm" onClick={() => navigate('/patients')}>Patients</Button>}
+              />
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    )
+  }
 
   // Nothing paid yet, so nothing to refund: cancelled at once, its bill withdrawn.
   function cancelUnpaid(appointmentId: string) {
@@ -86,9 +126,9 @@ export function PatientProfilePage() {
         patient={patient}
         summary={header}
         actions={{
-          schedule: () => openFlow('schedule', { uhid: patient.uhid }),
-          admit: () => openFlow('admit', { uhid: patient.uhid }),
-          discharge: () => openFlow('discharge', { uhid: patient.uhid }),
+          schedule: () => openFlow('schedule', { uhid: patient.patientId }),
+          admit: () => openFlow('admit', { uhid: patient.patientId }),
+          discharge: () => openFlow('discharge', { uhid: patient.patientId }),
           togglePayments: () => setPaymentsOpen((open) => !open),
         }}
         paymentsOpen={paymentsOpen}
@@ -109,7 +149,7 @@ export function PatientProfilePage() {
               onReschedule={(appointmentId, unpaid) =>
                 // Unpaid: simply pick another time — the new booking replaces this one. Paid: the reschedule flow.
                 unpaid
-                  ? openFlow('schedule', { uhid: patient.uhid, dept: getAppointmentById(getState(), appointmentId)?.department, appointment: appointmentId })
+                  ? openFlow('schedule', { uhid: patient.patientId, dept: getAppointmentById(getState(), appointmentId)?.department, appointment: appointmentId })
                   : openFlow('reschedule', { appointment: appointmentId })
               }
               onCancel={(appointmentId, unpaid) => (unpaid ? cancelUnpaid(appointmentId) : setCancelling(appointmentId))}

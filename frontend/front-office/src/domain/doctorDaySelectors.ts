@@ -22,8 +22,8 @@ export interface DoctorDay {
   work: Span[]
   /** The doctor's leave on the day. */
   leave: { leaveId: string; reason: string } | null
-  /** Each booking bar's patient UHID, by appointment id. */
-  uhids: Record<string, string>
+  /** Each booking bar's patient id (the profile's route parameter), by appointment id. */
+  patientIds: Record<string, string>
 }
 
 /**
@@ -56,13 +56,13 @@ export function getDoctorDay(state: AppState, providerId: string, now: number, d
 
   const blocks: DayBlock[] = leave ? [{ id: leave.leaveId, start: 0, end: 24 * 60, reason: leave.reason, allDay: true }] : []
 
-  const uhids: Record<string, string> = {}
+  const patientIds: Record<string, string> = {}
   const bookings: DayActivity[] = []
   for (const entry of board) {
     if (entry.status !== 'booked' || !entry.appointment) continue
     const appointment = entry.appointment
     const patient = getPatientById(state, appointment.patientId)
-    if (patient) uhids[appointment.appointmentId] = patient.uhid
+    if (patient) patientIds[appointment.appointmentId] = patient.patientId
     const start = minutesFrom(entry.slot)
     bookings.push({
       id: appointment.appointmentId,
@@ -80,7 +80,7 @@ export function getDoctorDay(state: AppState, providerId: string, now: number, d
     slotMinutes,
     work,
     leave: leave ? { leaveId: leave.leaveId, reason: leave.reason } : null,
-    uhids,
+    patientIds,
   }
 }
 
