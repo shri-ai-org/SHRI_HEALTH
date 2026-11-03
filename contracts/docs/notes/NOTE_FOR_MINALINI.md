@@ -295,7 +295,7 @@ In the same transaction, the follow-up request becomes `booked`, with `bookedApp
 
 **The rule (D115):** existing screens first. Port from the sources below, and change only what the U.S. contract requires. Build new only where no source screen exists. Angular sources are converted to React. The portal's visual design is modernized after the demo screens. The look is one shared design system (proposed: care-entry's). Every frontend PR names its source screen and says whether it is ported, adapted or new.
 
-**What is correct on `main` today:** patient registration, and the portal's structure, menus, fields and flows. Every other screen on `main` was built from the contract instead of being ported, so it is replaced by the port of its source, or built new where no source exists.
+**What is correct on `main` today:** the portal's structure, menus, fields and flows. Every other screen, registration included, on `main` was built from the contract instead of being ported, so it is replaced by the port of its source, or built new where no source exists.
 
 ### The three sources
 
@@ -309,12 +309,12 @@ Where a ported screen has AI, India-specific codes or rules we don't have (D68, 
 
 ### Verdict by step and function
 
-Verdicts: **KEEP** (correct today), **REPLACE BY PORT** (port the source screen; it replaces main's screen where one exists), **NEW** (no source exists; build it from the shared components), **MODERNIZE LATER** (after the demo screens).
+Verdicts: **KEEP** (correct today: the portal's structure and functions), **REPLACE BY PORT** (port the source screen; it replaces main's screen where one exists), **NEW** (no source exists; build it from the shared components), **MODERNIZE LATER** (after the demo screens).
 
 | Step | Function | Source screen (repo and path) | Current screen on `main` | Verdict |
 |---|---|---|---|---|
 | 1 | Front-desk patient search | care-entry `front-office/src/pages/PatientsPage.tsx`, `components/patient/PatientSearch.tsx` | `features/patients/PatientSearchPage.tsx` | REPLACE BY PORT |
-| 2 | Patient registration | care-entry `pages/RegisterPatientPage.tsx` (ABHA, Indian mobile) | `features/patients/RegisterPatientPage.tsx` (duplicate check, MRN) | KEEP |
+| 2 | Patient registration | The Angular portal's registration wizard (`patientportal_frontend`, `registration.component`), converted to React in care-entry's look; it replaces care-entry's own `pages/RegisterPatientPage.tsx` (ABHA, Indian mobile). On Minalini's local branch, running on the real API | `features/patients/RegisterPatientPage.tsx` (built from the contract, not a port) | REPLACE BY PORT (converted from Angular, care-entry's look) |
 | 3 | Patient chart (front desk) | care-entry `pages/PatientProfilePage.tsx`, `components/patient/PatientHeader.tsx`, `PatientDetailsCard.tsx`, `PatientTimeline.tsx` | `features/patients/PatientPage.tsx` | REPLACE BY PORT |
 | 3 | Insurance and eligibility | NONE (care-entry has no outpatient insurance; doctors-portal none) | `features/patients/insurance/` (coverages, card photos) | NEW |
 | 4–5 | Booking and schedule | care-entry `flows/schedule/ScheduleFlow.tsx`, `flows/reschedule/`, `components/appointment/BookingDialog.tsx`, `AppointmentsTable.tsx`, `components/clinician/DoctorDayChart.tsx`, `DoctorSlotCard.tsx` | `features/scheduling/SchedulePage.tsx`, `BookAppointmentDialog.tsx`, `RescheduleDialog.tsx` | REPLACE BY PORT |
@@ -332,7 +332,7 @@ Verdicts: **KEEP** (correct today), **REPLACE BY PORT** (port the source screen;
 | 12 | Portal: structure, menus, fields and flows | Angular portal (`patientportal_frontend`) | `features/portal/` (#39) | KEEP |
 | 12 | Portal: visual design | care-entry and doctors-portal (the shared look) | `features/portal/` (a 4–5-year-old design) | MODERNIZE LATER (after the demo screens; not on the demo path, D108) |
 
-**Counts:** KEEP 2, REPLACE BY PORT 10, NEW 5, MODERNIZE LATER 1.
+**Counts:** KEEP 1, REPLACE BY PORT 11, NEW 5, MODERNIZE LATER 1.
 
 **What stays from the earlier map:**
 - **Prescribing rules (D99, D110):** the alerts are fixed rules in code, and a `high` alert needs an override with a reason. Only MD and APP prescribe. doctors-portal's second-consultant sign-in and AI dose suggestion don't carry over.
@@ -368,15 +368,8 @@ Verdicts: **KEEP** (correct today), **REPLACE BY PORT** (port the source screen;
 
 **Recommendation (proposed, pending Vimal's confirmation):** care-entry's design system is the single base, and the best doctors-portal components (the board, the consultation side rail, the KPI strip) are borrowed into it and restyled with its tokens. Inter, the black pill, the lavender accent and the renamed breakpoints don't come over. That avoids a third look.
 
-### Order and dates (proposed, Minalini to confirm)
+### Order and dates (set by Minalini)
 
-| By | Screens |
-|---|---|
-| 7 November | Front desk: search, chart, insurance, booking and schedule |
-| 10 November | Check-in and status board, rooming, the clinical team's list |
-| 14 November | Consultation (with the problem list and history) and prescribing |
-| 17 November | Follow-up request, check-out with the copay, and the revisit |
-| 18 and 19 November | Rehearsals |
-| After 20 November | Portal modernization |
+The order follows the demo: front desk, then check-in, rooming and the clinical team's list, then consultation and prescribing, then follow-up, check-out and the revisit; rehearsals on 18 and 19 November; portal modernization after 20 November. **The dates are set by Minalini:** she posts one date per screen on #85 by 5 November, before the 10 November checkpoint.
 
 **Cut rule:** if the ports are behind on 10 November, keep what is ported and show the remaining steps through the backend script.
