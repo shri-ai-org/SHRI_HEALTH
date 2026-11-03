@@ -16,6 +16,9 @@
   professional attester and its Provenance (``cosigned``, ``note.cosigned``); ``return`` keeps
   the note signed and frozen with the comment (``returned``, ``note.cosign-returned``), and the
   author answers with an addendum, which makes it ``pending`` again.
+- **Entered in error** (``markNoteEnteredInError``, D14): a draft by its author only; a signed
+  note by its author, or by an MD or APP. The note is kept with its versions and Provenance,
+  marked in the chart, and ``note.entered-in-error`` tells billing in the same transaction.
 - **Close**: ``in-progress`` to ``finished`` with the Q22 default: a signed note, no open draft,
   and a diagnosis for a billable visit; publishes ``encounter.closed`` in the same transaction.
 
@@ -42,6 +45,7 @@ from app.db.fhir_store import (
     InvalidTransition,
     NoteChanges,
     NoteIn,
+    Reason,
     ResourceNotFound,
     SectionIn,
     SectionText,
@@ -324,6 +328,48 @@ async def add_addendum(db: AsyncSession, repo: EncounterRepository, nrepo: NoteR
     except InvalidTransition as done:
         raise _state(done.current_state) from done
     await publish(db, "note.amended", f"note/{note_id}", {"encounterId": str(note.encounter_id)},
+                  facility_id=encounter.facility_id, patient_id=note.patient_id)
+    name_patient(note.patient_id)
+    await db.commit()
+    return await nrepo.get(db, note_id)
+
+
+# ---------------------------------------------------------------------------- entered in error
+#: Who may mark someone else's signed note entered in error (BATCH2_PLAN §3.2).
+SIGNED_NOTE_CORRECTORS = frozenset({"MD", "APP"})
+
+
+async def enter_in_error(db: AsyncSession, repo: EncounterRepository, nrepo: NoteRepository,
+                         store: FhirStore, check: ChartCheck, user: CurrentUser, note_id: UUID,
+                         reason: str, name_patient: NamePatient) -> Versioned[nschemas.Note]:
+    """markNoteEnteredInError (#83; D14, BATCH2_PLAN §3.2). In order: the note (404) and the
+    chart (D37), a blank reason (422), a note already entered in error (409), then who: a draft
+    by its author only, a signed note by its author or an MD or APP (403). The helper writes
+    the status and its Provenance under the row lock; ``note.entered-in-error`` (EVENTS §4) is
+    how billing hears of it, in the same transaction. No If-Match: the contract has none, and
+    the action does not depend on the text."""
+    note, encounter = await _note(db, nrepo, repo, check, user, note_id)
+    text = reason.strip()
+    if not text:
+        raise business_rule([field_error("body", "/reason", "required")])
+    if note.status == "entered-in-error":
+        raise _state(note.status)
+    practitioner = await nrepo.user_practitioner(db, user.id)
+    author = practitioner is not None and practitioner == note.author_id
+    if not author and (note.status == "preliminary"
+                       or not user.roles & SIGNED_NOTE_CORRECTORS):
+        raise Forbidden("Only the note's author, or for a signed note an MD or APP, may mark "
+                        "it entered in error", code="permission-denied")
+    try:
+        await store.note_entered_in_error(db, note_id, Reason(text=text))
+    except ResourceNotFound as gone:
+        raise NotFound() from gone
+    except InvalidTransition as done:
+        raise _state(done.current_state) from done
+    except InvalidInput as refused:
+        raise business_rule([field_error("body", "/reason", "required")]) from refused
+    await publish(db, "note.entered-in-error", f"note/{note_id}",
+                  {"encounterId": str(note.encounter_id)},
                   facility_id=encounter.facility_id, patient_id=note.patient_id)
     name_patient(note.patient_id)
     await db.commit()

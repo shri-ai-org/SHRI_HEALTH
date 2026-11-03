@@ -13,13 +13,10 @@ ROOMING = frozenset({
     "recordVitals",
     "listPatientVitals",
     "markVitalEnteredInError",
+    "listPatientEncounters",
 })
 
-# Not built yet: markVitalEnteredInError needs a write helper for a vital's entered-in-error
-# (with its Provenance), which app.db.fhir_store does not have yet (note for Anand).
-PENDING = frozenset({
-    "markVitalEnteredInError",
-})
+PENDING: frozenset[str] = frozenset()
 
 
 # The doctor's part of the visit (demo step 8, IMPL_BATCH1_PLAN §8.3 PR-9).
@@ -30,9 +27,8 @@ NOTES = frozenset({
     "markNoteEnteredInError",
 })
 # markDiagnosisEnteredInError keeps the rank link, and app.db.fhir_store has no helper for a
-# Condition's entered-in-error (note for Anand); markNoteEnteredInError is not on the demo path
-# (D108).
-NOTES_PENDING = frozenset({"markDiagnosisEnteredInError", "markNoteEnteredInError"})
+# Condition's entered-in-error (note for Anand).
+NOTES_PENDING = frozenset({"markDiagnosisEnteredInError"})
 
 
 def test_rooming_operations_are_built_or_pending() -> None:

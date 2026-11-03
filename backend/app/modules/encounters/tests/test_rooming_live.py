@@ -1,8 +1,8 @@
 """Rooming against a live database (demo step 7), as shri_app, with core's tenant_db, facility
 filter, chart check, audit and idempotency and Anand's helpers running for real: the encounter
 opened at check-in is read, its reason for visit edited with If-Match, vitals recorded in the
-units entered (D69) and listed. Uses scheduling's live fixtures (conftest.py). Synthetic data
-only."""
+units entered (D69), listed and marked entered in error (D14). Uses scheduling's live fixtures
+(conftest.py). Synthetic data only."""
 
 from __future__ import annotations
 
@@ -168,3 +168,72 @@ def test_vitals_refusals(client: Any, practice: Practice) -> None:
                              json={"reason": "Wrong patient."}).status_code == 200
     closed = client("ma").post(path, json=VITALS)
     assert closed.status_code == 409 and closed.json()["currentState"] == "entered-in-error"
+
+
+def _weight(client: Any, practice: Practice, by: str = "ma") -> tuple[str, str, str]:
+    """A visit's vitals recorded by ``by``: the encounter, the patient and the body weight."""
+    encounter = _visit(client, practice)
+    done = client(by).post(f"{API}/encounters/{encounter}/vitals", json=VITALS)
+    assert done.status_code == 201, done.text
+    return encounter, str(practice.patients["kaia"]), done.json()["vitals"][1]["id"]
+
+
+def test_a_vital_is_marked_entered_in_error(client: Any, practice: Practice) -> None:
+    """D14: kept, with its Provenance (the reason), left out of the chart; RN only for their
+    own entries; a second time is 409; audited against the patient (x-audit)."""
+    _, patient, weight = _weight(client, practice)
+    path = f"{API}/patients/{patient}/vitals/{weight}/entered-in-error"
+    nurse = client("rn").post(path, json={"reason": "Wrong patient."})
+    assert nurse.status_code == 403  # recorded by the MA, not this nurse
+    marked = client("md").post(path, json={"reason": "Weight typed with an extra digit."})
+    assert marked.status_code == 200, marked.text
+    assert marked.json()["id"] == weight and marked.json()["status"] == "entered-in-error"
+    assert marked.json()["value"] == {"value": 182.4, "unit": "[lb_av]"}
+    version = _sql(practice, "SELECT meta_version_id, status FROM clinical.observation "
+                   "WHERE id = :o", o=weight)[0]
+    assert marked.headers["ETag"] == f'"{version[0]}"' and version[1] == "entered-in-error"
+    assert [tuple(r) for r in _sql(
+        practice, "SELECT activity_code, reason_text FROM clinical.provenance "
+        "WHERE target_id = :o", o=weight)] == [("NULLIFY", "Weight typed with an extra digit.")]
+    trend = f"{API}/patients/{patient}/vitals"
+    assert weight not in {v["id"] for v in client("md").get(trend).json()["items"]}
+    kept = client("md").get(trend, params={"includeEnteredInError": "true"}).json()["items"]
+    assert weight in {v["id"] for v in kept}
+    again = client("md").post(path, json={"reason": "Twice."})
+    assert again.status_code == 409 and again.json()["currentState"] == "entered-in-error"
+    audit = _sql(practice, "SELECT action FROM audit.audit_event WHERE entity_id = :o "
+                 "AND patient_id = :p", o=weight, p=patient)
+    assert "update" in {r[0] for r in audit}
+
+
+def test_a_nurse_marks_her_own_vital(client: Any, practice: Practice) -> None:
+    _, patient, weight = _weight(client, practice, by="rn")
+    done = client("rn").post(f"{API}/patients/{patient}/vitals/{weight}/entered-in-error",
+                             json={"reason": "Recorded on the wrong patient."})
+    assert done.status_code == 200, done.text
+    assert done.json()["status"] == "entered-in-error"
+
+
+def test_marking_a_vital_is_refused(client: Any, practice: Practice) -> None:
+    encounter, patient, weight = _weight(client, practice)
+    path = f"{API}/patients/{patient}/vitals/{weight}/entered-in-error"
+    body = {"reason": "Wrong patient."}
+    assert client("ma").post(path, json=body).status_code == 403  # MA lacks the permission
+    assert client("fd").post(path, json=body).status_code == 403
+    assert client("none").post(path, json=body).status_code == 403
+    assert client("md-b").post(path, json=body).status_code == 404  # another clinic
+    assert client("md").post(path, json={"reason": ""}).status_code == 422
+    blank = client("md").post(path, json={"reason": "   "})
+    assert blank.status_code == 422 and blank.json()["errors"][0]["pointer"] == "/reason"
+    other = str(practice.patients["restricted"])
+    restricted = client("md").post(f"{API}/patients/{other}/vitals/{weight}/entered-in-error",
+                                   json=body)
+    assert restricted.status_code == 403 and restricted.json()["code"] == "break-glass-required"
+    # A visit at another facility of the clinic (A2, where nobody here works): 404 (#180).
+    _sql(practice, "UPDATE clinical.encounter SET ext_facility_id = :f WHERE id = :e",
+         f=practice.other_facility, e=encounter)
+    assert client("md").post(path, json=body).status_code == 404
+    assert _sql(practice, "SELECT status FROM clinical.observation WHERE id = :o",
+                o=weight)[0][0] == "final"
+    assert _sql(practice, "SELECT count(*) FROM clinical.provenance WHERE target_id = :o",
+                o=weight)[0][0] == 0

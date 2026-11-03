@@ -664,6 +664,10 @@ class FhirStore(Protocol):
                             encounter_id: uuid.UUID | None, vitals: tuple[VitalIn, ...], *,
                             effective_at: datetime | None = None) -> list[Written]: ...
 
+    async def vital_entered_in_error(self, db: AsyncSession, observation_id: uuid.UUID,
+                                     reason: Reason, *, if_version: int | None = None
+                                     ) -> Written: ...
+
     # AllergyIntolerance (allergy_intolerance, its reactions and manifestations, a note)
     async def create_allergy(self, db: AsyncSession, data: AllergyIn) -> Written: ...
 
@@ -682,6 +686,14 @@ class FhirStore(Protocol):
                                          condition_id: uuid.UUID, reason: Reason) -> Written:
         """Before signing (D24): the Condition becomes entered-in-error with its Provenance, and
         its link goes, freeing its rank; the ranks after it close up. Returns the encounter."""
+        ...
+
+    async def diagnosis_entered_in_error(self, db: AsyncSession, condition_id: uuid.UUID,
+                                         reason: Reason, *, if_version: int | None = None
+                                         ) -> Written:
+        """After signing (D14, D24): the Condition becomes entered-in-error with its Provenance;
+        its rank link stays, so the signed visit keeps its record of what was diagnosed. Returns
+        the Condition."""
         ...
 
     # The medication list: a reported MedicationRequest, intent plan (D28; demo step 7)
@@ -804,7 +816,7 @@ def _given[T](value: T | _Unset) -> TypeIs[T]:
 
 
 async def _locked[R: (Patient, RelatedPerson, Coverage, Encounter, Condition, AllergyIntolerance,
-                     MedicationRequest, DetectedIssue, Composition)](
+                     Observation, MedicationRequest, DetectedIssue, Composition)](
         db: AsyncSession, model: type[R], row_id: uuid.UUID, if_version: int | None) -> R:
     row = (await db.execute(select(model).where(model.id == row_id).with_for_update()
                             .execution_options(populate_existing=True))).scalar_one_or_none()
@@ -1347,6 +1359,18 @@ class SqlFhirStore:
             rows.append(obs)
         return [await _written(db, obs) for obs in rows]
 
+    async def vital_entered_in_error(self, db: AsyncSession, observation_id: uuid.UUID,
+                                     reason: Reason, *, if_version: int | None = None
+                                     ) -> Written:
+        reason = _require_reason(reason)
+        obs = await _locked(db, Observation, observation_id, if_version)
+        if obs.status == "entered-in-error":
+            raise InvalidTransition(obs.status)
+        obs.status = "entered-in-error"
+        written = await _written(db, obs)
+        await _nullify_provenance(db, "Observation", written, reason)
+        return written
+
     # ------------------------------------------------------------------------- Allergy
     async def create_allergy(self, db: AsyncSession, data: AllergyIn) -> Written:
         allergy = AllergyIntolerance(
@@ -1444,6 +1468,18 @@ class SqlFhirStore:
             later.rank -= 1
             await db.flush()
         return await _written(db, enc)
+
+    async def diagnosis_entered_in_error(self, db: AsyncSession, condition_id: uuid.UUID,
+                                         reason: Reason, *, if_version: int | None = None
+                                         ) -> Written:
+        reason = _require_reason(reason)
+        cond = await _locked(db, Condition, condition_id, if_version)
+        if cond.verification_status == "entered-in-error":
+            raise InvalidTransition(cond.verification_status)
+        cond.verification_status, cond.clinical_status = "entered-in-error", None
+        written = await _written(db, cond)
+        await _nullify_provenance(db, "Condition", written, reason)
+        return written
 
     # ------------------------------------------------------------------------- Medication list
     async def record_medication(self, db: AsyncSession, data: MedicationIn) -> Written:

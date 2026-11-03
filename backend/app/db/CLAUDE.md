@@ -22,7 +22,8 @@ The implementation is the core's: `Database.tenant_session` in `backend/app/core
 `tenant_db` in `backend/app/core/deps.py`. This package owns no engine and no session.
 `app/db/session.py` only holds the hook that fills `tenant_id` on new rows from
 `session.info["tenant_id"]`, which the core's `tenant_session()` sets to the clinic UUID (PR #28,
-`app.core.db.TENANT_ID_INFO_KEY`). It fills only an empty `tenant_id` and never overwrites one.
+`app.core.db.TENANT_ID_INFO_KEY`). It fills only an empty `tenant_id` and never overwrites one. Importing `app.db.models` registers it, so every process that writes ORM rows has it; nobody imports
+`app.db.session` for it.
 
 ## The /fhir session
 
@@ -56,7 +57,7 @@ schema changes, never for serving a request.
 |---|---|---|
 | `shri_app` | the API | `clinical` + `admin` read/write per table (see `tools/gen_db_rules.py`'s classification); `audit.audit_event` select+insert, never update or delete (0004), `audit.break_glass_access` select+insert |
 | `shri_fhir_reader` | `/fhir` (read-only, machine-token access) | `clinical` schema, `SELECT` only; `audit.audit_event` `INSERT` only (migration 0003) |
-| `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into (select, insert, update; never delete; 0004), the three `integration_*` admin tables, and `audit.audit_event` `INSERT` only (0004) |
+| `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into (select, insert, update; never delete; 0004), the three `integration_*` admin tables, `admin.erx_transaction` read with a column-limited update of the status, error message, vendor message ID, updater and `updated_at` (0015, for a pharmacy's answer; `set_transmission_status` runs as it), read-only what the NewRx and the eligibility request it builds at send time need, `admin.tenant`'s `id` and `timezone` only, and a column-limited update of `admin.eligibility_check` to time a request out (0018; `gen_db_rules.INTEGRATION_READ_TABLES`), the columns `finish_operation` reads and sets on an operation assigned to it (0005, 0018), and `audit.audit_event` `INSERT` only (0004). Replies are filed as `shri_app`, by the inbound handlers |
 | `shri_reporting` | approved reports | nothing yet — no reporting views exist; grants come when they do |
 | `shri_migrator` | migrations only, and the development and test seed (`app.db.seed`); never production onboarding, which needs its own design | owns all three schemas |
 | `shri_maintenance` | the scheduled purges only (D23) | `USAGE` on `admin` and `EXECUTE` on the purge functions: `admin.purge_expired_runtime_rows()` (0005) and the file purge's `admin.list_unusable_files(integer)` and `admin.delete_unusable_files(uuid[])` (0014); no table privileges |
@@ -133,12 +134,16 @@ The visit helpers (batch 2), on the same rules:
   writes its Provenance, and nothing changes after it;
 - `record_vitals`: one vital-signs Observation per entry, with the contract's LOINC code, the
   value and UCUM unit as entered (D69), blood pressure as two components; at most one per type,
-  never in the future;
+  never in the future; `vital_entered_in_error` sets its status and writes the Provenance, as
+  `allergy_entered_in_error` does;
 - `create_allergy`, `update_allergy`, `allergy_entered_in_error`: reactions with their
   manifestations, and a note;
 - `add_encounter_diagnosis` and `remove_encounter_diagnosis`: a Condition (category
   `encounter-diagnosis`) and its ranked link, inserted or closed up in a safe order; removal is
-  D24's (entered-in-error with Provenance, the link deleted, the Condition kept).
+  D24's (entered-in-error with Provenance, the link deleted, the Condition kept);
+- `diagnosis_entered_in_error`: after signing, the Condition becomes entered-in-error with its
+  Provenance, as `allergy_entered_in_error` does, and its rank link **stays**, so the signed
+  visit still shows what was diagnosed;
 
 `record_medication` (D28; demo step 7): a medication the patient already takes, on the list. A
 MedicationRequest with intent `plan`, `reportedBoolean` true and the patient as requester (the
@@ -213,7 +218,14 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   `entered-in-error`. With no step after it, the appointment is `booked` again and has no visit
   status. `visit_flow_event` stays insert-only: the steps before the undo stay as history.
 - **Roles and permissions:** core's `ROLE_PERMISSIONS` (`backend/app/core/permissions.py`) is the
-  only catalogue. `admin.role`, `admin.permission` and `admin.role_permission` are not seeded.
+  only permission catalogue: `admin.permission` and `admin.role_permission` are not seeded.
+  Staff sign-in (#126) reads a user's roles from `admin.user_role` joined to `admin.role`, so
+  `admin.role` holds one platform row per role code there (`tenant_id` NULL, `is_system`;
+  migration 0017), generated by `gen_db_rules.platform_roles_sql()`, never typed by hand. Every
+  clinic reads them and none can change them, so onboarding creates no roles: it gives each
+  user a `user_role` row per role, with a facility or none (every facility).
+  `tests/test_staff_roles.py` fails when the codes and `ROLE_PERMISSIONS` differ; then write a
+  new migration with the generator for the change, never edit 0017.
 - **MRN (D41, migration 0007):** `create_patient` calls `SELECT system, value FROM
   admin.next_mrn()` in the registration's transaction and writes the patient's `identifier` row
   (type `MR`) with that system and value; only an import (`entry_source` `imported`) supplies
@@ -253,7 +265,8 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   `rejected`. Only a clean file is attached or downloaded. An uploaded file is clean only after a
   clean scan; a receipt or after-visit summary, made by the server, is clean from the start.
   `wrapped_data_key` is the file's data key as core wraps it, kept only once the file is
-  clean. An upload's row is written `pending-upload` in bucket `quarantine` with the declared
+  clean, and every clean file has one: its stored bytes are AES-256-GCM ciphertext
+  (`app.modules.files.crypto`), and `size_bytes` and `sha256` are the plaintext's. An upload's row is written `pending-upload` in bucket `quarantine` with the declared
   `size_bytes` and `sha256`; the scan checks the bytes against them, and a clean file moves to
   bucket `clean` under the same `storage_key` (`<clinic>/<file>`). `shri_app` never deletes a
   file.
@@ -335,6 +348,10 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   ETag, holds the window, the notice and the cancel and reschedule cut-offs.
   `admin.online_bookable_type` holds the visit types bookable at each facility; delete a row to
   stop offering one.
+- **Staff sign-in's lookup (migration 0016):** at the login callback core knows only the
+  Keycloak subject, so it calls `SELECT * FROM admin.lookup_staff_user(:sub)` as `shri_app`,
+  with no clinic set. It returns `(user_id, tenant_id, is_active)`, at most one row, or none;
+  core refuses an inactive user or one with no clinic (platform staff), then sets the clinic.
 - **Staff back-channel logout (D94, migration 0011):** after validating the logout token, core
   calls `SELECT * FROM admin.end_backchannel_sessions(:jti, :jti_expires_at, :sid, :sub)` as
   `shri_app`, with no clinic set.

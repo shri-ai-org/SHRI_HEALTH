@@ -9,7 +9,7 @@ read back from ``onset_date_time`` (see the service on partial dates).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import UUID
@@ -37,8 +37,10 @@ class AllergyRepository(Protocol):
 
     async def get(self, db: AsyncSession, patient_id: UUID, allergy_id: UUID) -> AllergyRow: ...
 
-    async def visit_of(self, db: AsyncSession, encounter_id: UUID) -> tuple[UUID, str] | None:
-        """The encounter's patient and status (the encounters service), or None."""
+    async def visit_of(self, db: AsyncSession, encounter_id: UUID,
+                       facility_ids: Collection[UUID]) -> tuple[UUID, str] | None:
+        """The encounter's patient and status (the encounters service), or None, also for a
+        visit at a facility not in ``facility_ids``."""
         ...
 
 
@@ -141,5 +143,6 @@ class SqlAllergyRepository:
         return AllergyRow(_allergy(r, reactions.get(allergy_id, [])), r["meta_version_id"],
                           r["created_by_user_id"])
 
-    async def visit_of(self, db: AsyncSession, encounter_id: UUID) -> tuple[UUID, str] | None:
-        return await encounters.visit_of(db, encounter_id)
+    async def visit_of(self, db: AsyncSession, encounter_id: UUID,
+                       facility_ids: Collection[UUID]) -> tuple[UUID, str] | None:
+        return await encounters.visit_of(db, encounter_id, facility_ids)

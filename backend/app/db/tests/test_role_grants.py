@@ -279,9 +279,10 @@ def test_integration_reads_nothing_else(role_engine: dict[str, Engine],
                                         tenant: uuid.UUID) -> None:
     with role_engine[INTEGRATION].connect() as conn:
         with_clinic(conn, tenant)
-        assert_refused(conn, "SELECT * FROM clinical.patient")
+        # It reads the patient and the prescription for the NewRx (0018), never the chart.
         assert_refused(conn, "SELECT * FROM clinical.condition")
-        assert_refused(conn, "SELECT * FROM clinical.medication_request")
+        assert_refused(conn, "SELECT * FROM clinical.allergy_intolerance")
+        assert_refused(conn, "SELECT * FROM clinical.composition")
 
 
 def test_integration_files_a_corrected_lab_result(db: Session, admin_engine: Engine,

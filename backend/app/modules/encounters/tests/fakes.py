@@ -15,10 +15,10 @@ from uuid import UUID
 
 from app.core.deps import CLINIC_A, FACILITY_A, CurrentUser
 from app.core.errors import Forbidden, NotFound
-from app.db.fhir_store import VitalIn, Written
+from app.db.fhir_store import InvalidInput, InvalidTransition, Reason, VitalIn, Written
 
 from .. import schemas
-from ..repository import EncounterHead, ReasonIn, Versioned
+from ..repository import EncounterHead, ReasonIn, Versioned, VitalHead
 
 NOW = datetime(2026, 11, 3, 15, 0, tzinfo=UTC)
 ROOM = UUID("9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f")
@@ -54,6 +54,9 @@ class World:
     restricted: set[UUID] = field(default_factory=set)
     patients: dict[UUID, UUID] = field(default_factory=dict)  # patient -> clinic
     audited: list[UUID] = field(default_factory=list)
+    vital_owner: dict[UUID, UUID] = field(default_factory=dict)  # vital -> who recorded it
+    vital_version: dict[UUID, int] = field(default_factory=dict)
+    provenance: list[tuple[UUID, str]] = field(default_factory=list)  # (vital, reason)
 
     def add_encounter(self, **kw: Any) -> UUID:
         patient = kw.pop("patient_id", uuid.uuid4())
@@ -104,8 +107,22 @@ class FakeStore:
                 value=quantity(v.value), blood_pressure=pressure,
                 effective_at=effective_at or NOW, status="final", entry_source="clinician",
                 recorded_at=NOW))
+            self.world.vital_version[vital_id] = 1
             out.append(Written(vital_id, 1, NOW))
         return out
+
+    async def vital_entered_in_error(self, db: Any, observation_id: UUID, reason: Reason, *,
+                                     if_version: int | None = None) -> Written:
+        if not reason.text.strip():
+            raise InvalidInput("a reason is required", field="reason")
+        i, vital = next((i, v) for i, v in enumerate(self.world.vitals) if v.id == observation_id)
+        if vital.status == "entered-in-error":
+            raise InvalidTransition(vital.status)
+        self.world.vitals[i] = vital.model_copy(update={"status": "entered-in-error"})
+        version = self.world.vital_version.get(observation_id, 1) + 1
+        self.world.vital_version[observation_id] = version
+        self.world.provenance.append((observation_id, reason.text))
+        return Written(observation_id, version, NOW)
 
 
 class FakeRepository:
@@ -155,6 +172,17 @@ class FakeRepository:
     async def known_code_systems(self, db: Any, uris: Sequence[str]) -> set[str]:
         return {u for u in uris if u in ("http://snomed.info/sct", LOINC)}
 
+    async def for_patient(self, db: Any, patient_id: UUID, *, facility_ids: Sequence[UUID],
+                          status: str | None, date_from: date | None, date_to: date | None,
+                          limit: int, offset: int) -> list[schemas.EncounterSummary]:
+        found = [schemas.EncounterSummary(id=i, status=e.status, class_="AMB",
+                                          facility_id=e.facility_id, started_at=NOW)
+                 for i, e in self.world.encounters.items()
+                 if e.patient_id == patient_id and e.clinic == db.tenant_id
+                 and e.facility_id in facility_ids
+                 and (e.status == status if status else e.status != "entered-in-error")]
+        return found[offset:offset + limit]
+
     async def vitals(self, db: Any, patient_id: UUID, *, encounter_id: UUID | None = None,
                      ids: Sequence[UUID] | None = None, vital_type: str | None = None,
                      date_from: date | None = None, date_to: date | None = None,
@@ -163,6 +191,17 @@ class FakeRepository:
         found = [v for v in reversed(self.world.vitals) if v.patient_id == patient_id
                  and (ids is None or v.id in ids) and (vital_type is None or v.type == vital_type)
                  and (encounter_id is None or v.encounter_id == encounter_id)
+                 and (include_entered_in_error or v.status != "entered-in-error")
                  and (facility_ids is None or v.encounter_id is None
                       or self.world.encounters[v.encounter_id].facility_id in facility_ids)]
         return found[offset:offset + limit]
+
+    async def vital_head(self, db: Any, vital_id: UUID) -> VitalHead:
+        vital = next((v for v in self.world.vitals if v.id == vital_id), None)
+        if vital is None or self.world.patients.get(vital.patient_id) != db.tenant_id:
+            raise NotFound()
+        facility = (self.world.encounters[vital.encounter_id].facility_id
+                    if vital.encounter_id else None)
+        return VitalHead(vital_id, vital.patient_id, facility, vital.status,
+                         self.world.vital_version.get(vital_id, 1),
+                         self.world.vital_owner.get(vital_id))

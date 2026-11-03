@@ -128,6 +128,28 @@ async def test_vitals_that_cannot_be_recorded(database: Database,
                 await STORE.record_vitals(s, patient.id, enc.id, vitals, effective_at=at)
 
 
+async def test_a_vital_is_entered_in_error(database: Database, clinic: dict[str, Any],
+                                           admin_engine: Engine) -> None:
+    patient, enc = await _visit(database, clinic)
+    async with session(database, clinic) as s:
+        written = (await STORE.record_vitals(s, patient.id, enc.id, (
+            fs.VitalIn("heart-rate", value=fs.Measured(Decimal(72), "/min")),), effective_at=NOW))
+        await s.commit()
+    w = written[0]
+    async with session(database, clinic) as s:
+        w2 = await STORE.vital_entered_in_error(s, w.id, WHY, if_version=w.version)
+        await s.commit()
+    assert w2.version == w.version + 1
+    row = _rows(admin_engine, "SELECT status FROM clinical.observation WHERE id = :o",
+               o=w.id)[0]
+    assert row.status == "entered-in-error"
+    assert _rows(admin_engine, "SELECT reason_text FROM clinical.provenance WHERE "
+                "target_id = :o", o=w.id)[0].reason_text == "Wrong patient"
+    async with session(database, clinic) as s:
+        with pytest.raises(fs.InvalidTransition):
+            await STORE.vital_entered_in_error(s, w.id, WHY, if_version=w2.version)
+
+
 # ====================================================================== Allergy
 async def test_an_allergy_with_reactions_is_updated_and_entered_in_error(
         database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
@@ -205,6 +227,41 @@ async def test_diagnoses_are_ranked_and_removed_before_signing(
         with pytest.raises(ValueError):
             await STORE.add_encounter_diagnosis(s, enc.id, fs.DiagnosisIn(
                 code=fs.Coded(system=systems.ICD10CM, code="J06.9"), rank=5))
+
+
+async def test_a_diagnosis_is_entered_in_error_after_signing_and_keeps_its_rank(
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
+    """Vimal's request on #85 (markDiagnosisEnteredInError): unlike removal before signing, the
+    rank link stays, so the signed visit still shows what was diagnosed, marked in error."""
+    _, enc = await _visit(database, clinic)
+    async with session(database, clinic) as s:
+        first = await STORE.add_encounter_diagnosis(s, enc.id, fs.DiagnosisIn(
+            code=fs.Coded(system=systems.ICD10CM, code="I10")))
+        second = await STORE.add_encounter_diagnosis(s, enc.id, fs.DiagnosisIn(
+            code=fs.Coded(system=systems.ICD10CM, code="R51.9")))
+        await s.commit()
+    cid = first.condition.id
+    async with session(database, clinic) as s:
+        w = await STORE.diagnosis_entered_in_error(s, cid, WHY,
+                                                   if_version=first.condition.version)
+        await s.commit()
+    assert w.id == cid and w.version == first.condition.version + 1
+    cond = _rows(admin_engine, "SELECT verification_status, clinical_status FROM "
+                 "clinical.condition WHERE id = :c", c=cid)[0]
+    assert tuple(cond) == ("entered-in-error", None)
+    assert _rows(admin_engine, "SELECT reason_text FROM clinical.provenance WHERE target_id = :c",
+                 c=cid)[0].reason_text == "Wrong patient"
+    links = [tuple(r) for r in _rows(
+        admin_engine, "SELECT condition_id, rank FROM clinical.encounter_diagnosis "
+        "WHERE encounter_id = :e ORDER BY rank", e=enc.id)]
+    assert links == [(cid, 1), (second.condition.id, 2)]         # the rank link stays
+    async with session(database, clinic) as s:
+        with pytest.raises(fs.InvalidTransition):
+            await STORE.diagnosis_entered_in_error(s, cid, WHY)
+        with pytest.raises(fs.StaleVersion):
+            await STORE.diagnosis_entered_in_error(s, second.condition.id, WHY, if_version=99)
+        with pytest.raises(fs.InvalidInput):
+            await STORE.diagnosis_entered_in_error(s, second.condition.id, fs.Reason(text=" "))
 
 
 # ====================================================================== who and when
