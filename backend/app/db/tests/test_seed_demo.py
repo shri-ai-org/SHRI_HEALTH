@@ -196,7 +196,7 @@ def test_the_rules_are_local_times_so_a_daylight_saving_day_is_still_all_day(
     """Seeded on Sat 31 Oct, the window covers Sun 1 Nov, when Chicago leaves daylight time: the
     rule is stored as 00:00 to 23:59 local, so that day's window is 24 h 59 min long in UTC
     (laid out by the scheduling module, as for every booking)."""
-    from app.modules.scheduling.reference import AvailabilityRule
+    from app.modules.scheduling.reference import AvailabilityRule, since_midnight
     from app.modules.scheduling.slots import windows
 
     _seed(migrator_engine, dt.datetime(2026, 10, 31, 15, 0, tzinfo=dt.UTC))
@@ -210,7 +210,8 @@ def test_the_rules_are_local_times_so_a_daylight_saving_day_is_still_all_day(
             "AND r.day_of_week = 'sun' AND r.start_time = '00:00' LIMIT 1")).one()
     assert row.effective_from <= dt.date(2026, 11, 1) <= row.effective_to
     rule = AvailabilityRule(row.schedule_id, row.schedule_id, str(row.day_of_week),
-                            row.start_time, row.end_time, row.slot_minutes, row.location_id,
+                            since_midnight(row.start_time), since_midnight(row.end_time),
+                            row.slot_minutes, row.location_id,
                             row.effective_from, row.effective_to, frozenset())
     ((_, start, end, _, _),) = windows([rule], [], dt.date(2026, 11, 1), "America/Chicago", None)
     assert start == dt.datetime(2026, 11, 1, 5, 0, tzinfo=dt.UTC)       # 00:00 CDT
