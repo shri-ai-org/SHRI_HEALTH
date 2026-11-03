@@ -3154,6 +3154,7 @@ CREATE TABLE admin.schedule_availability_rule (
 	updated_by_user_id UUID, 
 	CONSTRAINT pk_schedule_availability_rule PRIMARY KEY (id), 
 	CONSTRAINT ck_schedule_availability_rule_time_order CHECK (end_time > start_time), 
+	CONSTRAINT ck_schedule_availability_rule_before_midnight CHECK (end_time < '24:00'), 
 	CONSTRAINT ck_schedule_availability_rule_slot_minutes CHECK (slot_minutes BETWEEN 5 AND 240), 
 	CONSTRAINT ck_schedule_availability_rule_period CHECK (effective_to IS NULL OR effective_to >= effective_from), 
 	CONSTRAINT fk_schedule_availability_rule_schedule_id_schedule FOREIGN KEY(schedule_id) REFERENCES clinical.schedule (id) ON DELETE CASCADE, 
