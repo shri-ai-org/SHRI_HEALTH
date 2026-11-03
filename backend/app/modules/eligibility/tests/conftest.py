@@ -1,5 +1,7 @@
 """An app per test with the in-memory repository, partner, chart check and audit hook (fakes.py),
-and a client per development user (X-Dev-User; core/deps.py). Synthetic data only."""
+and a client per development user (X-Dev-User; core/deps.py). The live tests (the facility-scope
+sweep) use scheduling's live practice, users and client, since eligibility checks are written at
+check-in (D15). Synthetic data only."""
 
 from collections.abc import Callable, Iterator
 
@@ -10,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.deps import CurrentUser, current_user, tenant_db
 from app.main import create_app
+from app.modules.scheduling.tests.conftest import client, practice, users  # noqa: F401
 
 from .. import api, partner
 from .fakes import (
@@ -49,8 +52,8 @@ def app(world: World) -> Iterator[FastAPI]:
 
 @pytest.fixture
 def as_user(app: FastAPI) -> Callable[[str], TestClient]:
-    def client(name: str) -> TestClient:
+    def dev_client(name: str) -> TestClient:
         c = TestClient(app, raise_server_exceptions=False)
         c.headers["X-Dev-User"] = name
         return c
-    return client
+    return dev_client
