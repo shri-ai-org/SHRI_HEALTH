@@ -2,13 +2,16 @@
 
 Pure functions, no database: the rules are local facility times and are laid out on the day in
 the facility's IANA time zone (D40), so a clinic's 9:00 stays 9:00 across daylight-saving changes.
+A rule may end at 24:00, the end of its day: its window, and its last slot, end at the next local
+midnight, which on a daylight-saving day is 23 or 25 hours after the day began. No window
+crosses midnight; each day is its own (a booking that would cross it is outside the hours).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -46,6 +49,18 @@ def local_day(moment: datetime, zone: str) -> date:
     return moment.astimezone(ZoneInfo(zone)).date()
 
 
+def wall_clock(day: date, since_midnight: timedelta, zone: str) -> datetime:
+    """A facility wall-clock time on a local day, in UTC; 24:00 is the next local midnight.
+
+    The time is added to the day's local midnight on the wall clock (aware ``datetime`` +
+    ``timedelta`` keeps the zone and recomputes its offset), so 9:00 is 9:00 on a
+    daylight-saving day too. A repeated time (fall back) is its first occurrence, as
+    ``datetime.combine`` gives; a skipped one (spring forward) is read with the earlier
+    offset."""
+    local = datetime.combine(day, time(), ZoneInfo(zone)) + since_midnight
+    return local.astimezone(UTC)
+
+
 def _overlaps(a_start: datetime, a_end: datetime, b_start: datetime, b_end: datetime) -> bool:
     return a_start < b_end and b_start < a_end
 
@@ -56,7 +71,6 @@ def windows(rules: Iterable[AvailabilityRule], exceptions: Iterable[ScheduleExce
     """The provider's open windows on the day: (provider, start, end, step minutes, location),
     in UTC. Rules for the weekday that apply to the day and the type, plus extra-availability
     exceptions (with the provider's shortest rule step, or 20 minutes)."""
-    tz = ZoneInfo(zone)
     weekday = DAYS[day.weekday()]
     found = []
     steps: dict[UUID, int] = {}
@@ -65,8 +79,8 @@ def windows(rules: Iterable[AvailabilityRule], exceptions: Iterable[ScheduleExce
                                       rule.slot_minutes)
         if rule.day_of_week != weekday or not rule.applies(day, appointment_type_id):
             continue
-        start = datetime.combine(day, rule.start_time, tz).astimezone(UTC)
-        end = datetime.combine(day, rule.end_time, tz).astimezone(UTC)
+        start = wall_clock(day, rule.start, zone)
+        end = wall_clock(day, rule.end, zone)
         found.append((rule.provider_id, start, end, rule.slot_minutes, rule.location_id))
     day_start, day_end = day_bounds(day, zone)
     for exc in exceptions:

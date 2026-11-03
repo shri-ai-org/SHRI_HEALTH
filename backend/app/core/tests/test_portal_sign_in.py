@@ -18,7 +18,7 @@ from app.core import portal_sign_in as portal
 from app.core import session as sessions
 from app.core.config import Settings
 from app.core.deps import PATIENT_ROLE, PortalPatient, require_patient
-from app.core.errors import AppError, Forbidden, ValidationFailed
+from app.core.errors import AppError, Forbidden, ServiceUnavailable, ValidationFailed
 from app.core.permissions import PATIENT_PERMISSIONS
 
 PUBLIC = "https://portal.example.test/kc"
@@ -221,3 +221,11 @@ def test_unconfigured_patient_sign_in_answers_503() -> None:
         "invitationCode": "K7Q2-9MZD-4TXH", "birthDate": "1984-03-09",
         "email": "synthetic@example.com"})
     assert enrol.status_code == 503  # no portal origin set: never an open form
+
+
+async def test_issuing_an_invitation_without_its_secret_is_503_not_500() -> None:
+    """createPortalInvitation's contract (#190): not set up on this server is a 503. It is
+    refused before the database is touched, so no session is needed."""
+    with pytest.raises(ServiceUnavailable):
+        await portal.issue_invitation(None, Settings(environment="test"),  # type: ignore[arg-type]
+                                      uuid4(), uuid4())

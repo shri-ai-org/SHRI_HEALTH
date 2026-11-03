@@ -16,6 +16,7 @@ from app.core import (
     access_log,
     auth_api,
     backchannel,
+    break_glass_api,
     download_tokens,
     events,
     health,
@@ -87,6 +88,7 @@ def _legacy_app(settings: Settings) -> FastAPI:
     portal_auth_api.register(application, settings)  # added after the registry
     application.include_router(events.router, prefix=API_PREFIX)
     application.include_router(long_running.router, prefix=API_PREFIX)
+    break_glass_api.register(application, settings)  # added after the registry
     include_module_routers(application)
     return application
 

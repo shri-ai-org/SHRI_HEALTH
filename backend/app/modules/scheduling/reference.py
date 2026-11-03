@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Protocol
 from uuid import UUID
 
@@ -65,8 +65,11 @@ class AvailabilityRule:
     schedule_id: UUID
     provider_id: UUID
     day_of_week: str  # mon … sun
-    start_time: time  # facility local time
-    end_time: time
+    # Facility wall-clock times as the time since local midnight: PostgreSQL's ``time`` allows
+    # 24:00 (the end of the day), which Python's ``datetime.time`` can't hold, so 24:00 is
+    # ``timedelta(hours=24)`` here. Build one from a ``time`` with ``since_midnight()``.
+    start: timedelta
+    end: timedelta
     slot_minutes: int
     location_id: UUID | None
     effective_from: date
@@ -87,6 +90,15 @@ class ScheduleException:
     start_at: datetime
     end_at: datetime
     is_available: bool  # True: extra availability; False: a block (leave, meeting)
+
+
+def since_midnight(value: time) -> timedelta:
+    """A wall-clock ``time`` as the time since midnight (for rules built in code and tests)."""
+    return timedelta(hours=value.hour, minutes=value.minute, seconds=value.second,
+                     microseconds=value.microsecond)
+
+
+END_OF_DAY = timedelta(hours=24)  # a rule ending at 24:00
 
 
 class PracticeSetupReads(Protocol):
@@ -151,10 +163,14 @@ FROM admin.appointment_type t
 WHERE t.is_active AND (CAST(:ids AS uuid[]) IS NULL OR t.id = ANY(:ids))
 ORDER BY t.name, t.id
 """)
-# A schedule's provider is its actor: a practitioner, or a practitioner role.
+# A schedule's provider is its actor: a practitioner, or a practitioner role. The rule's times
+# are read as intervals since midnight, never as ``time``: the column allows 24:00:00 (the end of
+# the day), and the driver can't turn that into a Python ``time`` (it fails the whole read).
 _RULES = text("""
 SELECT s.id AS schedule_id, coalesce(a.practitioner_id, r.practitioner_id) AS provider_id,
-       ru.id AS rule_id, ru.day_of_week, ru.start_time, ru.end_time, ru.slot_minutes,
+       ru.id AS rule_id, ru.day_of_week,
+       ru.start_time - TIME '00:00' AS start_offset, ru.end_time - TIME '00:00' AS end_offset,
+       ru.slot_minutes,
        ru.location_id, ru.effective_from, ru.effective_to,
        (SELECT array_agg(t.appointment_type_id) FROM admin.availability_rule_appointment_type t
          WHERE t.rule_id = ru.id) AS type_ids
@@ -224,8 +240,8 @@ class SqlPracticeSetupReads:
                            ) -> tuple[list[AvailabilityRule], list[ScheduleException]]:
         params = {"facility": facility_id, "providers": _ids(provider_ids)}
         rules = [AvailabilityRule(
-            r["schedule_id"], r["provider_id"], str(r["day_of_week"]), r["start_time"],
-            r["end_time"], r["slot_minutes"], r["location_id"], r["effective_from"],
+            r["schedule_id"], r["provider_id"], str(r["day_of_week"]), r["start_offset"],
+            r["end_offset"], r["slot_minutes"], r["location_id"], r["effective_from"],
             r["effective_to"], frozenset(r["type_ids"] or ()))
             for r in (await db.execute(_RULES, params)).mappings()]
         exceptions = [ScheduleException(r["schedule_id"], r["provider_id"], r["start_at"],

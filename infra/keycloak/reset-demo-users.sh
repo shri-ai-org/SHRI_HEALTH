@@ -29,6 +29,9 @@ case "$DEMO_PASSWORD" in *'"'*|*'\'*)
 esac
 
 # Fixed IDs: never change them, the seed and the demo script refer to them (#85).
+# Names (D112): these display names are the source of truth, which the database seed reads, and
+# every one is obviously fictional (Synthea-style, with digits) so no demo person resembles a real
+# one. The doctor matches the seed's practitioner and the patient the seed's patient 1.
 FD_ID=bfb3e893-5380-4260-b1b9-420ee3a9e6e4
 MA_ID=8474b553-c2bb-4a7b-a098-cc4bfdf5f4ac
 MD_ID=490ef6d1-2e36-40ed-88eb-132538695ad9
@@ -69,15 +72,15 @@ $body
 EOF
 }
 
-import shri-staff "$(user "$FD_ID" demo.frontdesk demo.frontdesk@example.com Dana Frontdesk),\
-$(user "$MA_ID" demo.ma demo.ma@example.com Max Assistant),\
-$(user "$MD_ID" demo.doctor demo.doctor@example.com Rivera Doctor),\
-$(user "$ADM_ID" demo.admin demo.admin@example.com Alex Admin)"
+import shri-staff "$(user "$FD_ID" demo.frontdesk demo.frontdesk@example.com Marlo512 Ferreira77),\
+$(user "$MA_ID" demo.ma demo.ma@example.com Tobias289 Lindqvist45),\
+$(user "$MD_ID" demo.doctor demo.doctor@example.com Rowan318 Halvorsen64),\
+$(user "$ADM_ID" demo.admin demo.admin@example.com Sasha627 Brennan52)"
 echo "shri-staff: demo.frontdesk ($FD_ID), demo.ma ($MA_ID), demo.doctor ($MD_ID), demo.admin ($ADM_ID)"
 
 if $CURL -o /dev/null -K "$auth" "$KC_URL/admin/realms/shri-patients" 2>/dev/null; then
     # The patient signs in with the email as username (the realm's rule).
-    import shri-patients "$(user "$PATIENT_ID" demo.patient@example.com demo.patient@example.com Mai Nguyen)"
+    import shri-patients "$(user "$PATIENT_ID" demo.patient@example.com demo.patient@example.com Kaia401 Lindgren118)"
     echo "shri-patients: demo.patient@example.com ($PATIENT_ID)"
 else
     echo "shri-patients: the realm doesn't exist yet (#148); skipped"

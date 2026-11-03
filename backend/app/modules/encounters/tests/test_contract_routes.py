@@ -16,11 +16,7 @@ ROOMING = frozenset({
     "listPatientEncounters",
 })
 
-# Not built yet: markVitalEnteredInError needs a write helper for a vital's entered-in-error
-# (with its Provenance), which app.db.fhir_store does not have yet (note for Anand).
-PENDING = frozenset({
-    "markVitalEnteredInError",
-})
+PENDING: frozenset[str] = frozenset()
 
 
 # The doctor's part of the visit (demo step 8, IMPL_BATCH1_PLAN §8.3 PR-9).

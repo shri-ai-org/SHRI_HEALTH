@@ -6,8 +6,8 @@
 # What changes from development:
 # - OpenBao: a real server (integrated storage, sealed at start), initialised and unsealed by deploy.sh.
 # - Keycloak: production mode, its own database and role in the same PostgreSQL.
-# - API and worker: ENVIRONMENT staging, real staff and patient sign-in (the X-Dev-* stand-ins
-#   are refused outside development and test), images tagged with the commit.
+# - API and worker: ENVIRONMENT staging, real staff sign-in; patient sign-in off for now (the X-Dev-*
+#   stand-ins are refused outside development and test), images tagged with the commit.
 # - The simulated payer and pharmacy: only when SHRI_DEMO=true, never in production.
 # - Nginx: one public HTTPS port, the hostname and certificate from the settings; the internal
 #   S3 port is not published.
@@ -100,6 +100,12 @@ services:
       ENVIRONMENT: ${SHRI_ENVIRONMENT:-staging}
       AUTH_MODE: keycloak
       PATIENT_AUTH_MODE: keycloak
+      # Real patient sign-in stays OFF on every server until #148's account-state bug is fixed:
+      # without these secrets the portal's sign-in and enrolment routes answer 503. The
+      # development sign-in (X-Dev-*) is refused outside development and test, and Nginx strips
+      # its headers, so no patient sign-in of any kind is reachable here.
+      PORTAL_CLIENT_SECRET: ""
+      PORTAL_ADMIN_CLIENT_SECRET: ""
       KEYCLOAK_PUBLIC_URL: ${SHRI_PUBLIC_URL}/kc
       KEYCLOAK_REDIRECT_URI: ${SHRI_PUBLIC_URL}/api/v1/auth/callback
       ALLOWED_ORIGINS: '["${SHRI_PUBLIC_URL}"]'

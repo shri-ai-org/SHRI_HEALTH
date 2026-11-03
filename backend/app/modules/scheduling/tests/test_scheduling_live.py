@@ -9,6 +9,7 @@ overbook, the 31-day range, the shared board, restricted charts).
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 import uuid
 from datetime import timedelta
@@ -21,6 +22,7 @@ from sqlalchemy.pool import NullPool
 from app.db.tests.conftest import TEST_DATABASE_URL, sync_url
 
 from .conftest import Practice, local, setup_session
+from .test_check_in_live import _check_in, _sql, _today_appointment
 
 pytestmark = [
     pytest.mark.db,
@@ -103,6 +105,47 @@ def test_free_times_leave_out_booked_ones(client: Any, practice: Practice) -> No
     new_visits = client("fd").get(f"{API}/slots", params={
         **params, "appointmentTypeId": str(practice.types["NEW"])}).json()["items"]
     assert all(s["endAt"] > s["startAt"] for s in new_visits) and len(new_visits) < 23
+
+
+def test_a_rule_ending_at_2400_gives_slots_up_to_midnight(client: Any,
+                                                           practice: Practice) -> None:
+    """PostgreSQL's ``time`` allows 24:00 (the end of the day) and Python's can't hold it: a
+    rule seeded with it directly (practice setup's own write doesn't exist yet) must give slots
+    up to midnight, and a booking of the last one, never a 500."""
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    db = setup_session(admin, practice.clinic)
+    try:
+        db.execute(text("""
+            INSERT INTO admin.schedule_availability_rule
+                (id, tenant_id, schedule_id, day_of_week, start_time, end_time, slot_minutes,
+                 location_id, effective_from, created_at, updated_at)
+            SELECT gen_random_uuid(), tenant_id, schedule_id, day_of_week, TIME '22:00',
+                   TIME '24:00', slot_minutes, location_id, effective_from, now(), now()
+              FROM admin.schedule_availability_rule ru
+             WHERE ru.day_of_week = 'mon' AND ru.schedule_id IN (
+                   SELECT id FROM clinical.schedule WHERE ext_facility_id = :facility)"""),
+                   {"facility": practice.facility})
+        db.commit()
+    finally:
+        db.close()
+        admin.dispose()
+    params = {"date": practice.day.isoformat(), "facilityId": str(practice.facility),
+              "providerId": str(practice.provider), "limit": 100}
+    found = client("fd").get(f"{API}/slots", params=params)
+    assert found.status_code == 200, found.text
+    items = found.json()["items"]
+    assert len(items) == 24 + 6  # 9:00–17:00 and 22:00–24:00, 20 minutes
+    midnight = dt.datetime.fromisoformat(local(practice.day + timedelta(days=1), 0))
+    last = items[-1]
+    assert dt.datetime.fromisoformat(last["startAt"]) == midnight - timedelta(minutes=20)
+    assert dt.datetime.fromisoformat(last["endAt"]) == midnight
+    booked = client("fd").post(f"{API}/appointments", json=_booking(practice, hour=23,
+                                                                    minute=40))
+    assert booked.status_code == 201, booked.text
+    across = client("fd").post(f"{API}/appointments", json=_booking(
+        practice, patient="marcus", hour=23, minute=50))  # would end at 0:10, the next day
+    assert across.status_code == 422 and _code(across) == "business-rule-violation", across.text
+    assert len(client("fd").get(f"{API}/slots", params=params).json()["items"]) == 29
 
 
 def test_free_times_refuse(client: Any, practice: Practice) -> None:
@@ -208,6 +251,39 @@ def test_a_merged_patient_cannot_be_booked(client: Any, practice: Practice) -> N
     admin.dispose()
     merged = client("fd").post(f"{API}/appointments", json=_booking(practice, "marcus"))
     assert merged.status_code == 409 and _code(merged) == "patient-merged"
+
+
+def test_a_follow_up_is_booked_only_from_the_users_facilities(client: Any,
+                                                             practice: Practice) -> None:
+    """D98: booking with followUpOfEncounterId books the visit's open request. A visit at a
+    facility the user isn't assigned to (A2) is one they can't see (SECURITY_MODEL §5.1), so its
+    request is refused like one that isn't open, and nothing changes; at A1 it is booked."""
+    done = _check_in(client, _today_appointment(practice, "marcus"), selfPay=True)
+    assert done.status_code == 200, done.text
+    encounter = done.json()["encounterId"]
+    _sql(practice, "INSERT INTO clinical.encounter_follow_up (id, tenant_id, encounter_id, "
+         "patient_id, interval_value, interval_unit, requested_by_user_id) VALUES "
+         "(gen_random_uuid(), :t, :e, :p, 2, 'week', (SELECT id FROM admin.app_user "
+         "WHERE tenant_id = :t LIMIT 1))", t=practice.clinic, e=encounter,
+         p=practice.patients["marcus"])
+    body = _booking(practice, "marcus", hour=10, followUpOfEncounterId=encounter)
+    _sql(practice, "UPDATE clinical.encounter SET ext_facility_id = :f WHERE id = :e",
+         f=practice.other_facility, e=encounter)
+    refused = client("fd").post(f"{API}/appointments", json=body)
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["errors"][0]["pointer"] == "/followUpOfEncounterId"
+    assert refused.json()["errors"][0]["code"] == "invalid-reference"
+    assert _sql(practice, "SELECT status FROM clinical.encounter_follow_up "
+                "WHERE encounter_id = :e", e=encounter) == [("open",)]
+    assert _sql(practice, "SELECT count(*) FROM clinical.appointment WHERE tenant_id = :t "
+                "AND start > now() + interval '1 day'", t=practice.clinic)[0][0] == 0
+    _sql(practice, "UPDATE clinical.encounter SET ext_facility_id = :f WHERE id = :e",
+         f=practice.facility, e=encounter)
+    booked = client("fd").post(f"{API}/appointments", json=body)
+    assert booked.status_code == 201, booked.text
+    assert [tuple(r) for r in _sql(
+        practice, "SELECT status, booked_appointment_id::text FROM clinical.encounter_follow_up "
+        "WHERE encounter_id = :e", e=encounter)] == [("booked", booked.json()["id"])]
 
 
 # ---------------------------------------------------------------------------- one appointment
