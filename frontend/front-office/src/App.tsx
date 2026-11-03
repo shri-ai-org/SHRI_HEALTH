@@ -5,7 +5,7 @@ import { ThemeProvider } from './contexts/ThemeProvider'
 import { ToastProvider } from './components/ui/ToastProvider'
 import { FrontOfficeHomePage } from './pages/FrontOfficeHomePage'
 import { PatientsPage } from './pages/PatientsPage'
-import { RegisterPatientPage } from './pages/RegisterPatientPage'
+import { RegisterFromPortalPage } from './pages/register/RegisterFromPortalPage'
 import { PatientProfilePage } from './pages/PatientProfilePage'
 import { DoctorDirectoryPage } from './pages/DoctorDirectoryPage'
 import { RegisterDoctorPage } from './pages/RegisterDoctorPage'
@@ -109,7 +109,7 @@ function App() {
               path="/register/new"
               element={
                 <FreshOnQuery>
-                  <RegisterPatientPage />
+                  <RegisterFromPortalPage />
                 </FreshOnQuery>
               }
             />
