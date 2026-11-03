@@ -291,46 +291,92 @@ In the same transaction, the follow-up request becomes `booked`, with `bookedApp
 - `404 not-found`: the facility isn't one of the user's.
 - No `If-Match` and no `break-glass-required`: booking needs neither.
 
-## Screen port map for the demo (D115; 2026-11-02)
+## Screen port map for the demo (D115; 2026-11-03)
 
-**The rule (D115):** existing screens first. Port from `care-entry` and `AIEMR_mockups/doctors-portal`, and change only what the U.S. contract requires. Build new only where no screen exists. Every frontend PR names its source screen and its reuse level.
+**The rule (D115):** existing screens first. Port from the sources below, and change only what the U.S. contract requires. Build new only where no source screen exists. Angular sources are converted to React. The portal's visual design is modernized after the demo screens. The look is one shared design system (proposed: care-entry's). Every frontend PR names its source screen and says whether it is ported, adapted or new.
 
-**What the sources are:**
-- **care-entry** (`main`): an outpatient front desk built for India (ABHA, UHID, a billing counter, no outpatient insurance).
-- **doctors-portal** (`AIEMR_mockups`, branch `vimal`, routes in `src/atlas/registry.ts`): a hospital clinician app.
-- **AIEMR_mockups** has no front-desk, MA or patient portal.
+**What is correct on `main` today:** patient registration, and the portal's structure, menus, fields and flows. Every other screen on `main` was built from the contract instead of being ported, so it is replaced by the port of its source, or built new where no source exists.
+
+### The three sources
+
+| Source | Stack | Where it lives | What it covers |
+|---|---|---|---|
+| **care-entry** | React 19, Tailwind 4 (modern) | `shri-ai-org/care-entry` on GitHub; a read-only clone in `~/reference/care-entry` | An outpatient front desk built for India (ABHA, UHID, a billing counter, no outpatient insurance), in `front-office/`, plus `patient-self-registration/` (an India self-registration kiosk; its `src/portal/PatientPortal.tsx` is **not** our portal's source) |
+| **doctors-portal** | React, Tailwind 4 (modern) | `shri-ai-org/AIEMR_mockups`, branch `vimal`, folder `doctors-portal/`; a clone in `~/reference/AIEMR_mockups` | A hospital clinician app (`src/shri/`): my day, OPD queue, consultation, prescribing, problems, record. No front desk, MA rooming or patient portal |
+| **Earlier Shri patient portal** | Angular 16 (`patientportal_frontend`, 92 components) | Minalini's machine; **repository pending** | The patient portal. Minalini converted it to React in #39; the map of old to new is `frontend/src/features/portal/README.md` |
 
 Where a ported screen has AI, India-specific codes or rules we don't have (D68, D99, D110), those parts stay out; the layout and components carry over.
 
-| Step | Source screen (repo and path) | SHRI_HEALTH counterpart | Recommendation |
-|---|---|---|---|
-| 2 Register | care-entry `front-office/src/pages/RegisterPatientPage.tsx` (`/register/new`), `PatientsPage.tsx`, `components/patient/PatientSearch.tsx` | main: `features/patients/RegisterPatientPage.tsx`, `PatientSearchPage.tsx`, `PatientPage.tsx` | **Keep what is built.** It already runs on the contract (duplicate check, MRN). care-entry's form is ABHA, age and an Indian mobile number |
-| 3 Insurance, eligibility | care-entry: none for outpatients (only insurance fields in the inpatient `flows/admit/AdmitFlow.tsx`). doctors-portal: none | main: `features/patients/insurance/` (coverages, card photos). No eligibility result anywhere | **Keep** the coverages. **Build new:** a small eligibility status (coverage status, copay, deductible) once #166/#167 land |
-| 4 Booking | care-entry `flows/schedule/ScheduleFlow.tsx`, `flows/reschedule/RescheduleFlow.tsx`, `components/appointment/BookingDialog.tsx`, `components/clinician/DoctorDayChart.tsx` | main: `features/scheduling/BookAppointmentDialog.tsx`, `RescheduleDialog.tsx`, `SchedulePage.tsx` | **Keep what is built;** take layout ideas from `DoctorDayChart`. care-entry's flow is tied to a consultation fee and the billing counter |
-| 5 Portal code | None (cut by D108) | main: `features/patients/PortalAccountPanel.tsx` (development only) | **Keep** |
-| 6 Check-in, status board | care-entry `components/appointment/CheckInToggle.tsx`, `pages/OutpatientsPage.tsx` (stages as filters), `pages/FrontOfficeHomePage.tsx`. doctors-portal `shri/patients/OpdQueuePage.tsx` (board view) | main: `features/scheduling/CheckInDialogs.tsx`, `AppointmentTable.tsx`, `features/clinical/TodayPage.tsx`. `SharedStatusBoard` exists but no route mounts it | **Keep what is built;** consider `OutpatientsPage`'s stage filters. **Mount** the shared display (DSP) on a route |
-| 7 Rooming | None. doctors-portal has no MA or nurse rooming screen (vitals are read-only cards) | main: `features/clinical/RoomingPage.tsx`, `MedicationsSection.tsx` | **Keep** (no source exists) |
-| 8a Consultation: diagnoses, note, signing, addenda | doctors-portal `shri/notes/ConsultationPage.tsx` (`/encounter/:id/note`, S-06-03) with `NoteAuthoring.tsx`, `ProblemsPage.tsx`, `TemplatesPage.tsx` | #198: `features/clinical/VisitPage.tsx` (a new design) | **Port** `ConsultationPage` (side rail, header actions, components), and **keep #198's wiring** (review on #198). Its AI scribe, differential and AI coding stay hidden (D68) |
-| 8b History (problems, family, social, surgical) | doctors-portal `shri/notes/ProblemsPage.tsx` (problem list only), `shri/record/ConditionPage.tsx`, `RecordPage.tsx` | None | **Build new.** Use `ProblemsPage` for the problem list's layout; there is no source for family, social or surgical history |
-| 9 Prescription | doctors-portal `shri/notes/PrescriptionPage.tsx` (`/encounter/:id/rx`, S-06-07: an allergy gate, override with a reason), `shri/record/PrescriptionsPage.tsx` ("taking now") | #199: `features/medications/PrescriptionsSection.tsx`, `access.ts` (a new design) | **Port** `PrescriptionPage`, and **keep #199's wiring** (review on #199). Our rules replace its own: D99 fixed rules, override with a reason, D110 MD and APP only. The second-consultant sign-off and AI dose suggestion don't carry over |
-| 10 Follow-up request | None for outpatients. The nearest pattern is the "Follow-up" section of doctors-portal's inpatient `shri/discharge/DischargeFlow.tsx` | None. Backend: #161 | **Build new:** a small panel on the visit screen (`PUT …/follow-up`, withdraw; D98), using `DischargeFlow`'s section as a layout hint |
-| 11 Check-out | None in either repo. Pieces: care-entry `components/payment/BillAtCounter.tsx` and `pages/PaymentReceiptPage.tsx`; doctors-portal `shri/notes/InstructionsPage.tsx` (patient instructions, print), `shri/record/AppointmentsPage.tsx` | None. Backend: #161 | **Build new:** a check-out action on the appointment row that books the revisit with `BookAppointmentDialog` (`followUpOfEncounterId`) or declines with a reason, and prints the summary |
-| 11b Copay at check-out | care-entry `components/payment/BillAtCounter.tsx`, `pages/PaymentReceiptPage.tsx` | None. Backend: Anand's payments (D58, D100) | **Adapt** both, without the billing-counter fee: the copay per D100 (`POST /payments/card-session`, then `POST /patients/{patientId}/payments` with `appointmentId`), and its receipt from the same step (D104, `receiptFileId`) |
-| 12 Patient portal (development sign-in) | care-entry `patient-self-registration/src/portal/PatientPortal.tsx` | main: `features/portal/` (a port of the earlier Shri portal) | **Keep.** Its prescriptions page stays on the mock until B8b |
+### Verdict by step and function
 
-**Does doctors-portal have a follow-up request screen?**
-- No. The consultation page offers Prescribe, Order and Admit, and a follow-up can only be written in the note's Plan.
-- The one structured follow-up is in the inpatient discharge overlay.
+Verdicts: **KEEP** (correct today), **REPLACE BY PORT** (port the source screen; it replaces main's screen where one exists), **NEW** (no source exists; build it from the shared components), **MODERNIZE LATER** (after the demo screens).
 
-**A check-out screen?** No, in neither repo.
-- care-entry's desk only checks the patient in, and "done" is set from the doctor's room.
-- Its discharge flow is for inpatients.
+| Step | Function | Source screen (repo and path) | Current screen on `main` | Verdict |
+|---|---|---|---|---|
+| 1 | Front-desk patient search | care-entry `front-office/src/pages/PatientsPage.tsx`, `components/patient/PatientSearch.tsx` | `features/patients/PatientSearchPage.tsx` | REPLACE BY PORT |
+| 2 | Patient registration | care-entry `pages/RegisterPatientPage.tsx` (ABHA, Indian mobile) | `features/patients/RegisterPatientPage.tsx` (duplicate check, MRN) | KEEP |
+| 3 | Patient chart (front desk) | care-entry `pages/PatientProfilePage.tsx`, `components/patient/PatientHeader.tsx`, `PatientDetailsCard.tsx`, `PatientTimeline.tsx` | `features/patients/PatientPage.tsx` | REPLACE BY PORT |
+| 3 | Insurance and eligibility | NONE (care-entry has no outpatient insurance; doctors-portal none) | `features/patients/insurance/` (coverages, card photos) | NEW |
+| 4–5 | Booking and schedule | care-entry `flows/schedule/ScheduleFlow.tsx`, `flows/reschedule/`, `components/appointment/BookingDialog.tsx`, `AppointmentsTable.tsx`, `components/clinician/DoctorDayChart.tsx`, `DoctorSlotCard.tsx` | `features/scheduling/SchedulePage.tsx`, `BookAppointmentDialog.tsx`, `RescheduleDialog.tsx` | REPLACE BY PORT |
+| 6 | Check-in and status board | care-entry `components/appointment/CheckInToggle.tsx`, `pages/OutpatientsPage.tsx` (stage filters); doctors-portal `src/shri/patients/OpdQueuePage.tsx` (board) | `features/scheduling/CheckInDialogs.tsx`; `SharedStatusBoard` (not mounted on any route) | REPLACE BY PORT |
+| 7 | Rooming (MA: vitals, allergies, medications, reason) | NONE (doctors-portal shows vitals read-only) | `features/clinical/RoomingPage.tsx`, `MedicationsSection.tsx` | NEW |
+| 7–8 | The clinical team's list | doctors-portal `src/shri/myday/MyDayPage.tsx`, `PatientsToday.tsx`, `src/shri/patients/OpdQueuePage.tsx` | `features/clinical/TodayPage.tsx` | REPLACE BY PORT |
+| 8 | Consultation: diagnoses, templated note, sign, addenda, co-sign | doctors-portal `src/shri/notes/ConsultationPage.tsx`, `NoteAuthoring.tsx`, `TemplatesPage.tsx`, `CoSignPage.tsx` | NONE (#198's `VisitPage.tsx`, a new design, isn't merged) | REPLACE BY PORT |
+| 8 | Problem list | doctors-portal `src/shri/notes/ProblemsPage.tsx`, `src/shri/record/ConditionPage.tsx` | NONE | REPLACE BY PORT |
+| 8 | Family, social and surgical history | NONE | NONE | NEW |
+| 9 | Prescribing | doctors-portal `src/shri/notes/PrescriptionPage.tsx` (allergy gate, override with a reason), `src/shri/record/PrescriptionsPage.tsx` | `features/clinical/DrugPicker.tsx` only (#199's `PrescriptionsSection.tsx` isn't merged) | REPLACE BY PORT |
+| 10 | Follow-up request | NONE (layout hint: doctors-portal `src/shri/discharge/DischargeFlow.tsx`, its inpatient "Follow-up" section) | NONE | NEW |
+| 11 | Check-out (book or decline the revisit, print the summary) | NONE (pieces: doctors-portal `src/shri/notes/InstructionsPage.tsx`, `src/shri/record/AppointmentsPage.tsx`) | NONE | NEW |
+| 11 | Copay at check-out | care-entry `components/payment/BillAtCounter.tsx`, `pages/PaymentReceiptPage.tsx` | NONE | REPLACE BY PORT (adapted) |
+| 12 | Book the revisit | care-entry `flows/schedule/ScheduleFlow.tsx`, with `followUpOfEncounterId` | `features/scheduling/BookAppointmentDialog.tsx` | REPLACE BY PORT (with booking) |
+| 12 | Portal: structure, menus, fields and flows | Angular portal (`patientportal_frontend`) | `features/portal/` (#39) | KEEP |
+| 12 | Portal: visual design | care-entry and doctors-portal (the shared look) | `features/portal/` (a 4–5-year-old design) | MODERNIZE LATER (after the demo screens; not on the demo path, D108) |
 
-**The theme:** SHRI_HEALTH's design system stays the base, and ported screens take its tokens, so there's no third look.
-- The comparison (fonts, colours, radius, shadows, breakpoints) is with Vimal.
-- In short, care-entry and our design system already share one look. doctors-portal differs:
-  - Inter instead of Plus Jakarta Sans;
-  - a near-black pill as the primary button, with a lavender accent;
-  - 24px flat cards;
-  - breakpoints shifted one step.
-- The suggestion is to add only what we lack (a pending status pair, a 20px `radius-2xl`, an 8px `radius-md`, care-entry's tiles), and not to bring over Inter, the black pill, the lavender accent or the renamed breakpoints. Your call.
+**Counts:** KEEP 2, REPLACE BY PORT 10, NEW 5, MODERNIZE LATER 1.
+
+**What stays from the earlier map:**
+- **Prescribing rules (D99, D110):** the alerts are fixed rules in code, and a `high` alert needs an override with a reason. Only MD and APP prescribe. doctors-portal's second-consultant sign-in and AI dose suggestion don't carry over.
+- **Copay (step 11):** adapt care-entry's `BillAtCounter.tsx` and `PaymentReceiptPage.tsx` without the billing-counter fee. The copay goes through D100's operations (`POST /payments/card-session`, then `POST /patients/{patientId}/payments` with `appointmentId`), and the receipt comes from the same step (D104). Anand's suggestion on #205.
+- **The wiring from #198 and #199** moves into the ported screens: the generated client, `Idempotency-Key`, `If-Match`, error handling (Problem Details, field errors) and role gating.
+- **AI in ported screens:** the consultation's AI scribe, differential and AI coding stay hidden (D68).
+
+### How to port
+
+**React sources (care-entry, doctors-portal):**
+1. Move the source files into the feature folder.
+2. Swap their sample data and local state for the generated client (`frontend/src/api/generated/`).
+3. Apply the U.S. changes (MRN instead of UHID, no ABHA, U.S. phone and address, insurance, the contract's statuses and roles).
+4. Restyle to the shared look.
+5. Delete the replaced screen and update its end-to-end test in the same PR.
+
+**Angular source (the earlier portal):** convert it to React following its screens, menus, fields and flows, as #39 did.
+
+**Done means:** the screen matches the source's structure; no sample data is left; every call goes through the generated client; the U.S. changes are applied; its end-to-end test passes; the PR names its source screen and says ported, adapted or new.
+
+### The theme
+
+| Token | care-entry (`shared/design-system.css`, `DESIGN_SYSTEM.md`) | doctors-portal (`src/shri/theme/tokens.css`) |
+|---|---|---|
+| Font | Plus Jakarta Sans (Noto for Indian scripts) | Inter; DM Serif Display for display |
+| Colours | Cool blue-grey ground `#E8EDF4`, white cards; one blue action (`--color-primary-600` `#2563eb`) | Near-black primary `#0b0b10`; accent `#3d63ff`, lavender `#9b9cf7` in dark mode |
+| Radius | `sm` 4, `md` 8, `lg` 12 (buttons, inputs), `xl` 16, `2xl` 20, `3xl` 24 px | cards 24, KPI tiles 20, inner 16, modals 28 px |
+| Shadows | Soft layered navy-tinted `--shadow-card` (sm, md, lg), `--shadow-modal`, a blue glow for focus | `--shadow-pop`, `--shadow-drawer`, `--shadow-modal`; cards flat |
+| Spacing | Tailwind 4's 4 px scale; root 15 px from 1024 px for desk density | Tailwind 4's scale with fixed pixel values (`gap-[6px]`, `px-[12px]`) |
+| Breakpoints | Tailwind defaults: 640, 768, 1024, 1280, 1536 | Renamed and shifted: `sm` 768, `md` 1024, `lg` 1280, `xl` 1440, `wall` 1920 |
+| Buttons | `rounded-lg`, blue primary with a blue-tinted shadow | Near-black pill primary (`rounded-full`), 44 px controls |
+| Cards | White, hairline border, layered shadow | 24 px flat cards |
+
+**Recommendation (proposed, pending Vimal's confirmation):** care-entry's design system is the single base, and the best doctors-portal components (the board, the consultation side rail, the KPI strip) are borrowed into it and restyled with its tokens. Inter, the black pill, the lavender accent and the renamed breakpoints don't come over. That avoids a third look.
+
+### Order and dates (proposed, Minalini to confirm)
+
+| By | Screens |
+|---|---|
+| 7 November | Front desk: search, chart, insurance, booking and schedule |
+| 10 November | Check-in and status board, rooming, the clinical team's list |
+| 14 November | Consultation (with the problem list and history) and prescribing |
+| 17 November | Follow-up request, check-out with the copay, and the revisit |
+| 18 and 19 November | Rehearsals |
+| After 20 November | Portal modernization |
+
+**Cut rule:** if the ports are behind on 10 November, keep what is ported and show the remaining steps through the backend script.
