@@ -1,0 +1,79 @@
+{
+  "id": "visit-02",
+  "synthetic": true,
+  "specialty": "neurology",
+  "visitType": "new-patient",
+  "template": "NEW-VISIT",
+  "noteType": "34117-2",
+  "patient": {"name": "Elena718 Brightwater592", "age": 52, "sex": "female"},
+  "clinician": "Dr. Avery401 Lindqvist58",
+  "transcript": [
+    {"speaker": "clinician", "text": "Hello, Ms. Brightwater, I'm Dr. Lindqvist. Your primary care office sent you for numbness in your hands. Tell me about it."},
+    {"speaker": "patient", "text": "For about four months my right hand goes numb, mostly the thumb, index and middle fingers. It wakes me up at night and I shake my hand to get the feeling back."},
+    {"speaker": "clinician", "text": "Is the left hand involved at all?"},
+    {"speaker": "patient", "text": "A little in the last month, but the right is much worse. I'm right-handed."},
+    {"speaker": "clinician", "text": "Any neck pain, weakness, or dropping things?"},
+    {"speaker": "patient", "text": "No neck pain. I do drop my keys sometimes. My grip feels weaker."},
+    {"speaker": "clinician", "text": "What kind of work do you do?"},
+    {"speaker": "patient", "text": "I'm a dental hygienist, so I'm using small instruments with my hands all day."},
+    {"speaker": "clinician", "text": "Any other medical problems?"},
+    {"speaker": "patient", "text": "High cholesterol. I take atorvastatin 20 mg every night. And I had my gallbladder out years ago."},
+    {"speaker": "clinician", "text": "Do you smoke?"},
+    {"speaker": "patient", "text": "No, I don't smoke."},
+    {"speaker": "clinician", "text": "Any family history of nerve problems?"},
+    {"speaker": "patient", "text": "My mother had thyroid problems. Nothing with nerves that I know of. Oh, about smoking, I should be honest, I still have a few cigarettes on weekends."},
+    {"speaker": "clinician", "text": "Thanks for telling me. Any balance problems, numbness in your feet, or bowel or bladder changes?"},
+    {"speaker": "patient", "text": "No, none of that."},
+    {"speaker": "clinician", "text": "On exam, Tinel's sign is positive at the right wrist and Phalen's test is positive on the right after twenty seconds. There's mild weakness of right thumb abduction, 4 out of 5, and mild atrophy at the base of the right thumb. Sensation is reduced in the right thumb, index and middle fingers. Left hand strength is normal. Reflexes are 2 and symmetric, and neck range of motion is full."},
+    {"speaker": "clinician", "text": "This looks like carpal tunnel syndrome, right worse than left. Because there's weakness and some atrophy, I'd like a nerve conduction study and EMG of both arms. In the meantime, wear a wrist splint at night on the right, in a neutral position."},
+    {"speaker": "patient", "text": "Okay. Can I keep working?"},
+    {"speaker": "clinician", "text": "Yes. Take short breaks to rest your hands. I'd also encourage you to quit smoking completely; we can help with that. We'll follow up after the nerve study, in about four weeks."},
+    {"speaker": "patient", "text": "Sounds good."}
+  ],
+  "referenceNote": {
+    "sections": [
+      {"code": "10154-3", "title": "Chief complaint", "sequence": 1, "required": true,
+       "text": "Numbness in the hands, right worse than left, for four months."},
+      {"code": "10164-2", "title": "History of present illness", "sequence": 2, "required": true,
+       "text": "52-year-old right-handed woman with four months of numbness of the right thumb, index and middle fingers that wakes her at night; she shakes her hand to get the feeling back. The left hand is involved a little in the last month. Grip feels weaker and she drops her keys sometimes. No neck pain."},
+      {"code": "11348-0", "title": "Past medical history", "sequence": 3, "required": false,
+       "text": "High cholesterol, on atorvastatin 20 mg every night. Gallbladder removed years ago."},
+      {"code": "10157-6", "title": "Family history", "sequence": 4, "required": false,
+       "text": "Mother had thyroid problems. No known family history of nerve problems."},
+      {"code": "29762-2", "title": "Social history", "sequence": 5, "required": false,
+       "text": "Dental hygienist, using small instruments with her hands all day. Smokes a few cigarettes on weekends."},
+      {"code": "10187-3", "title": "Review of systems", "sequence": 6, "required": false,
+       "text": "No balance problems, no numbness in the feet, no bowel or bladder changes."},
+      {"code": "29545-1", "title": "Physical exam", "sequence": 7, "required": true,
+       "text": "Tinel's sign positive at the right wrist. Phalen's test positive on the right after twenty seconds. Right thumb abduction 4/5 with mild atrophy at the base of the right thumb. Sensation reduced in the right thumb, index and middle fingers. Left hand strength normal. Reflexes 2 and symmetric. Neck range of motion full."},
+      {"code": "51847-2", "title": "Assessment and plan", "sequence": 8, "required": true,
+       "text": "Carpal tunnel syndrome, right worse than left, with weakness and mild atrophy. Nerve conduction study and EMG of both arms. Wrist splint at night on the right, in a neutral position. Short breaks to rest the hands at work. Encouraged to quit smoking. Follow-up after the nerve study, in about four weeks."},
+      {"code": "69730-0", "title": "Patient instructions", "sequence": 9, "required": false,
+       "text": "Wear the wrist splint on your right wrist at night, in a neutral position. Take short breaks to rest your hands at work. We will schedule a nerve conduction study and EMG. Quitting smoking completely helps; we can help with that. Return in about four weeks, after the nerve study."}
+    ]
+  },
+  "keyFacts": [
+    {"id": "f1", "section": "10164-2", "anyOf": ["four months", "4 months"]},
+    {"id": "f2", "section": "10164-2", "anyOf": ["wakes her at night", "wakes her up at night", "nocturnal", "at night"]},
+    {"id": "f3", "section": "11348-0", "anyOf": ["atorvastatin"]},
+    {"id": "f4", "section": "29545-1", "anyOf": ["Tinel"]},
+    {"id": "f5", "section": "29545-1", "anyOf": ["Phalen"]},
+    {"id": "f6", "section": "29545-1", "anyOf": ["atrophy"]},
+    {"id": "f7", "section": "51847-2", "anyOf": ["carpal tunnel"]},
+    {"id": "f8", "section": "51847-2", "anyOf": ["nerve conduction"]},
+    {"id": "f9", "section": "51847-2", "anyOf": ["splint"]}
+  ],
+  "mustNotInvent": [
+    {"id": "n1", "description": "Diabetes was never mentioned.", "anyOf": ["diabetes", "diabetic"]},
+    {"id": "n2", "description": "No medication for nerve pain was discussed.", "anyOf": ["gabapentin", "pregabalin"]},
+    {"id": "n3", "description": "No injection or surgery was discussed.", "anyOf": ["injection", "surgery", "release"]},
+    {"id": "n4", "description": "No imaging was ordered.", "anyOf": ["MRI", "x-ray"]}
+  ],
+  "conflicts": [
+    {"id": "c1", "description": "She first says she doesn't smoke, then corrects it: a few cigarettes on weekends.",
+     "turns": [11, 13],
+     "resolvedAnyOf": ["few cigarettes", "cigarettes on weekends", "smokes occasionally", "occasional smoker"],
+     "supersededAnyOf": ["non-smoker", "nonsmoker", "never smoker", "does not smoke", "doesn't smoke", "denies smoking", "denies tobacco"]}
+  ],
+  "medicalTerms": ["carpal tunnel", "Tinel", "Phalen", "atrophy", "nerve conduction", "EMG", "atorvastatin", "splint"]
+}

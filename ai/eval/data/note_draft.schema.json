@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "shri-health:ai:note-draft/1",
+  "title": "AI-01 note draft (model output)",
+  "description": "What the model must return for a note draft: the template's sections by LOINC section code, and what it could not determine (kept unknown, never invented; FRS §3.4). The gateway's NOTE_DRAFT_SCHEMA (backend/app/modules/ai/schemas.py) is the same document; a backend test compares them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sections"],
+  "properties": {
+    "sections": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "text"],
+        "properties": {
+          "code": {"type": "string", "pattern": "^[0-9]{1,7}-[0-9]$"},
+          "text": {"type": "string", "maxLength": 20000}
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {"type": "string", "minLength": 1, "maxLength": 500}
+    }
+  }
+}
