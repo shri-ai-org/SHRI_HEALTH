@@ -15,12 +15,13 @@
 //   basicInfo.address, city, state, zip        ⇒ address (lines, city, state, postalCode); country is US
 //   basicInfo.maritalStatus, gender, email     ⇒ maritalStatus (v3 code), gender, emails[0]
 //   choicesForm.Language                       ⇒ preferredLanguage (BCP 47)
+//   choicesForm.provider                       ⇒ generalPractitionerId (#212), once the backend accepts it
 //   basicInfo.relation*                        ⇒ addRelatedPerson: v2-0131 C emergency contact + the relation
 //   choicesForm.ResponsibleParty               ⇒ "Same as Emergency Contact" adds v3 RoleCode GUAR to that person
 //   choicesForm.insuranceCompany, policyNumber,
 //     groupNumber, planName, relationship      ⇒ addCoverage (payerId, memberId, groupNumber, planName,
 //                                                relationshipToSubscriber), order 1
-//   Not sent (no place in the contract yet): provider (generalPractitionerId comes with #212), AllowPatientPortal, AllowEmail, the insurance
+//   Not sent (no place in the contract yet): AllowPatientPortal, AllowEmail, the insurance
 //   City/State/Country/Zip, Add Insurance, ResponsibleParty "Other".
 import {
   addCoverage as apiAddCoverage,
@@ -329,8 +330,8 @@ export async function loadPayers(): Promise<Option[]> {
 
 /**
  * Providers for the Provider select: `GET /booking/providers` (D49), which the front desk can read
- * (Vimal on #85, 2026-11-03). TODO(#212): send the choice as `generalPractitionerId` once #212 is on
- * main and the client is regenerated; until then it is shown, not sent.
+ * (Vimal on #85, 2026-11-03). TODO(backend after #212): send the choice as `generalPractitionerId`.
+ * The contract has it (#212), but the patients backend doesn't yet and refuses unknown fields (422).
  */
 export async function loadProviders(): Promise<Option[]> {
   const res = await apiListBookableProviders({ limit: 100 })
