@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://company-domain.invalid/contracts/partners/clearinghouse/eligibility-request.schema.json",
+  "title": "EligibilityRequest",
+  "description": "An eligibility request (the X12 270 equivalent, as JSON) for one coverage. Built at send time by the clearinghouse adapter from the eligibility check the outbox names (backend/app/modules/eligibility, build_request), sent to the simulated payer for the demo and, later, mapped to X12 270 by the real clearinghouse (Q11). Minimum necessary: no SSN (D27, D43), no address, no phone, no gender. Money and dates as strings (D40). x-phi marks each field's sensitivity as the API contract does (EXTENSIONS.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["messageType", "schemaVersion", "correlationId", "createdAt", "payer", "provider", "subscriber", "serviceDate", "serviceTypeCodes"],
+  "properties": {
+    "messageType": {
+      "description": "Always `270`.",
+      "const": "270",
+      "x-phi": "none"
+    },
+    "schemaVersion": {
+      "description": "This shape's version. A change that is not backward-compatible gets a new major version.",
+      "const": "1.0",
+      "x-phi": "none"
+    },
+    "correlationId": {
+      "description": "Our eligibility check ID (X12 2000C TRN02 trace number). The reply echoes it, and the reply is filed against it, once.",
+      "$ref": "#/$defs/Id",
+      "x-phi": "internal-id"
+    },
+    "createdAt": {
+      "description": "When the request was built (X12 BHT04/BHT05), UTC.",
+      "$ref": "#/$defs/Timestamp",
+      "x-phi": "none"
+    },
+    "payer": {
+      "description": "The payer asked (X12 2100A).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "description": "Payer name from our payer directory.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "x-phi": "financial"
+        },
+        "payerId": {
+          "description": "The payer's ID at this clearinghouse (admin.payer_clearinghouse_id). Absent when the practice has not mapped the payer for this clearinghouse; the simulated payer matches by name, a real clearinghouse refuses it.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]{1,40}$",
+          "maxLength": 40,
+          "x-phi": "financial"
+        }
+      },
+      "x-phi": "financial"
+    },
+    "provider": {
+      "description": "The provider asking (X12 2100B information receiver): the appointment's provider, otherwise the practice.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["npi"],
+      "properties": {
+        "npi": {
+          "description": "National Provider Identifier, 10 digits.",
+          "type": "string",
+          "pattern": "^[0-9]{10}$",
+          "maxLength": 10,
+          "x-phi": "none"
+        }
+      },
+      "x-phi": "none"
+    },
+    "subscriber": {
+      "description": "The policy holder (X12 2100C). The patient, unless `dependent` is present.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memberId", "name", "birthDate"],
+      "properties": {
+        "memberId": {
+          "description": "The member ID the payer knows the subscriber by: the coverage's subscriber ID, or the patient's member ID.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "x-phi": "identifier"
+        },
+        "name": {
+          "$ref": "#/$defs/PersonName",
+          "x-phi": "identifier"
+        },
+        "birthDate": {
+          "description": "Date of birth (X12 DMG02).",
+          "$ref": "#/$defs/Date",
+          "x-phi": "identifier"
+        },
+        "groupNumber": {
+          "description": "Group number on the card, when there is one.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "x-phi": "financial"
+        }
+      },
+      "x-phi": "identifier"
+    },
+    "dependent": {
+      "description": "The patient, when the patient is not the subscriber (X12 2100D). Absent otherwise.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "birthDate", "relationshipToSubscriber"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/PersonName",
+          "x-phi": "identifier"
+        },
+        "birthDate": {
+          "$ref": "#/$defs/Date",
+          "x-phi": "identifier"
+        },
+        "relationshipToSubscriber": {
+          "description": "FHIR subscriber-relationship code, as on the coverage (X12 INS02 is mapped by the clearinghouse).",
+          "type": "string",
+          "enum": ["spouse", "child", "parent", "common", "other", "injured"],
+          "x-phi": "financial"
+        },
+        "memberId": {
+          "description": "The patient's own member ID, when the card shows one different from the subscriber's.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "x-phi": "identifier"
+        }
+      },
+      "x-phi": "identifier"
+    },
+    "serviceDate": {
+      "description": "The date the coverage is asked about (X12 DTP*291): the appointment's day in the facility's time zone, otherwise the day the check was requested in the clinic's time zone.",
+      "$ref": "#/$defs/Date",
+      "x-phi": "identifier"
+    },
+    "serviceTypeCodes": {
+      "description": "X12 service type codes asked about (EQ01), `30` (health benefit plan coverage) by default.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/ServiceTypeCode"
+      },
+      "x-phi": "none"
+    }
+  },
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "maxLength": 36
+    },
+    "Date": {
+      "description": "A calendar date, YYYY-MM-DD.",
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "maxLength": 10
+    },
+    "Timestamp": {
+      "description": "An instant, RFC 3339, UTC with Z.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$",
+      "maxLength": 35
+    },
+    "ServiceTypeCode": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]{1,2}$",
+      "maxLength": 2
+    },
+    "PersonName": {
+      "description": "A person's legal name (X12 NM103 family, NM104 first, NM105 middle names).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family"],
+      "properties": {
+        "family": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "x-phi": "identifier"
+        },
+        "given": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "x-phi": "identifier"
+        }
+      }
+    }
+  }
+}
