@@ -17,13 +17,6 @@ import { cn } from '../../utils/cn'
 import { abhaKind } from '../../utils/validation'
 import type { Patient, PatientSearchMatch } from '../../types/patient'
 import type { Payment } from '../../types/payment'
-import { planSearch, searchPatientsOnServer } from '../../../shri-health/patients'
-import { problemMessage } from '../../../shri-health/client'
-
-/** The SHRI_HEALTH search for what was typed: its matches, or why there are none yet. */
-type ServerSearch = { query: string; patients: Patient[]; state: 'searching' | 'done' | 'hint' | 'error'; message?: string }
-
-const SERVER_SEARCH_DELAY_MS = 300
 
 const MAX_MATCHES = 8
 
@@ -77,43 +70,11 @@ export function PatientSearch(props: PatientSearchProps) {
   const inpatientsOnly = props.mode === 'pick' && props.scope === 'inpatients'
   const allowed = (patient: Patient) => !inpatientsOnly || Boolean(flags[patient.patientId]?.bed)
 
-  // Patients live on the SHRI_HEALTH API: what was typed is asked there too, a moment after the
-  // typing stops. The API needs a 10-digit mobile, the MRN, or the first and last name (it never
-  // lists every patient, SHRI_HEALTH D65). Its matches join the list; they are kept in the store.
-  const [server, setServer] = useState<ServerSearch | null>(null)
-  const trimmed = query.trim()
-  useEffect(() => {
-    if (!trimmed) return undefined
-    const plan = planSearch(trimmed)
-    const controller = new AbortController()
-    const timer = window.setTimeout(() => {
-      if ('needMore' in plan) {
-        setServer({ query: trimmed, patients: [], state: 'hint', message: plan.needMore })
-        return
-      }
-      setServer({ query: trimmed, patients: [], state: 'searching' })
-      searchPatientsOnServer(plan.criteria, controller.signal)
-        .then((patients) => setServer({ query: trimmed, patients, state: 'done' }))
-        .catch((error: unknown) => {
-          if (!controller.signal.aborted) setServer({ query: trimmed, patients: [], state: 'error', message: problemMessage(error) })
-        })
-    }, SERVER_SEARCH_DELAY_MS)
-    return () => {
-      window.clearTimeout(timer)
-      controller.abort()
-    }
-  }, [trimmed])
-  const serverNow = server && server.query === trimmed ? server : null
-
   const options: Option[] = []
   if (query.trim()) {
     if (bill && props.mode === 'navigate') options.push({ kind: 'bill', bill, section: 'Bill' })
     for (const match of matches.filter((m) => allowed(m.patient)).slice(0, MAX_MATCHES)) {
       options.push({ kind: 'patient', patient: match.patient, section: 'Patients', matchedOn: match.matchedOn })
-    }
-    const shown = new Set(options.map((o) => (o.kind === 'patient' ? o.patient.patientId : '')))
-    for (const patient of (serverNow?.patients ?? []).filter(allowed)) {
-      if (!shown.has(patient.patientId)) options.push({ kind: 'patient', patient, section: 'Patients' })
     }
   } else if (inpatientsOnly) {
     // Picking an inpatient: an empty box lists everyone in a bed.
@@ -166,7 +127,7 @@ export function PatientSearch(props: PatientSearchProps) {
       return
     }
     if (props.mode === 'pick') props.onPick(option.patient)
-    else navigate(`/patients/${option.patient.patientId}`)
+    else navigate(`/patients/${option.patient.uhid}`)
     inputRef.current?.blur()
   }
 
@@ -294,13 +255,7 @@ export function PatientSearch(props: PatientSearchProps) {
           </ul>
           {options.length === 0 ? (
             <div className="px-4 py-3">
-              <p className="text-sm text-ink-muted" role={serverNow?.state === 'error' ? 'alert' : undefined}>
-                {serverNow?.state === 'searching' || (trimmed && !serverNow)
-                  ? 'Searching…'
-                  : serverNow?.state === 'hint' || serverNow?.state === 'error'
-                    ? serverNow.message
-                    : 'No patient found.'}
-              </p>
+              <p className="text-sm text-ink-muted">No patient found.</p>
               {navigateMode && query.trim() ? (
                 // Not found from the search: register them, with what was typed filled in.
                 <button

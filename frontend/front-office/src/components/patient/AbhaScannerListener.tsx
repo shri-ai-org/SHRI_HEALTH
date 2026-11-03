@@ -3,9 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useToast } from '../../hooks/useToast'
 import { getState } from '../../domain/store'
 import { findAbhaHolder } from '../../domain/selectors'
-import { ABHA_SCAN_EVENT, parseAbhaScan } from '../../utils/abhaQr'
+import { registerPatient } from '../../domain/actions'
+import { ABHA_REGISTERED_EVENT, ABHA_SCAN_EVENT, parseAbhaScan } from '../../utils/abhaQr'
 import type { AbhaScan } from '../../utils/abhaQr'
+import { nextNameInput } from '../../utils/validation'
 import { takeAbhaScan } from '../../utils/abhaScanGate'
+import type { Patient } from '../../types/patient'
 
 // A USB QR scanner (Zebra DS2208 in its default keyboard mode) "types" the
 // code in a burst — a few milliseconds per key — usually ending with Enter.
@@ -44,10 +47,10 @@ function payloadOf(text: string): string {
 
 /**
  * Listens for ABHA cards scanned anywhere in the portal. A card already linked
- * to a patient opens their profile. A new card opens Register Patient filled
- * from the card: registration goes to the SHRI_HEALTH API, which needs the
- * date of birth and the first and last name (and has no ABHA field yet), so
- * the desk checks them and registers.
+ * to a patient opens their profile. A new card registers the patient from the
+ * card straight away — age from the date of birth — then shows the
+ * acknowledgement and their profile. A card missing something registration
+ * needs (a mobile number, say) opens Register Patient filled from the card.
  */
 export function AbhaScannerListener() {
   const navigate = useNavigate()
@@ -68,13 +71,29 @@ export function AbhaScannerListener() {
       const holder = (scan.abhaNumber ? findAbhaHolder(state, scan.abhaNumber) : null) ?? (scan.abhaAddress ? findAbhaHolder(state, scan.abhaAddress) : null)
       if (holder) {
         notify(`Opened ${holder.name}`, { detail: holder.uhid })
-        navigate(`/patients/${holder.patientId}`)
+        navigate(`/patients/${holder.uhid}`)
         return
       }
-      // A new card: Register Patient, filled from it, for the desk to complete and register.
-      notify('Complete the registration', { detail: 'Check the date of birth and the name, then register.' })
-      if (onRegisterPage()) window.dispatchEvent(new CustomEvent<AbhaScan>(ABHA_SCAN_EVENT, { detail: scan }))
-      else navigate('/register/new', { state: { abhaScan: scan } })
+      let patient: Patient
+      try {
+        patient = registerPatient({
+          name: nextNameInput(scan.name ?? '').trim(),
+          age: scan.age ?? '',
+          sex: scan.sex ?? '',
+          mobile: scan.mobile ?? '',
+          abhaId: scan.abhaAddress ?? scan.abhaNumber,
+          address: scan.address?.slice(0, 200),
+        })
+      } catch (err) {
+        // Something registration needs is missing or wrong on the card: the form, filled, with it marked.
+        notify('Complete the registration', { tone: 'error', detail: err instanceof Error ? err.message : String(err) })
+        if (onRegisterPage()) window.dispatchEvent(new CustomEvent<AbhaScan>(ABHA_SCAN_EVENT, { detail: scan }))
+        else navigate('/register/new', { state: { abhaScan: scan } })
+        return
+      }
+      // Registered: the acknowledgement, then the profile (Register Patient shows both).
+      if (onRegisterPage()) window.dispatchEvent(new CustomEvent<Patient>(ABHA_REGISTERED_EVENT, { detail: patient }))
+      else navigate('/register/new', { state: { registeredId: patient.patientId } })
     }
 
     function finish(viaEnter: boolean) {

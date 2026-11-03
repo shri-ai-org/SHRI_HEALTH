@@ -81,7 +81,7 @@ export function AppointmentsTable({
           <span className="flex min-w-0 items-center gap-1.5 text-ink tbl:max-w-[14rem]">
             {a.patient ? (
               <Link
-                to={`/patients/${a.patient.patientId}`}
+                to={`/patients/${a.patient.uhid}`}
                 title={`Open ${a.patient.name}'s profile`}
                 className="focus-ring -my-3 truncate rounded py-3 font-medium text-ink underline-offset-2 hover:text-primary-text hover:underline"
               >

@@ -148,8 +148,8 @@ export function DoctorDayChart({
         onBlocked={blocked}
         onOpen={(item) => {
           if (item.id === currentAppointmentId) return
-          const patientId = day.patientIds[item.id]
-          if (patientId) navigate(`/patients/${patientId}`)
+          const uhid = day.uhids[item.id]
+          if (uhid) navigate(`/patients/${uhid}`)
         }}
       />
       <DayTimelineKey model={model} hideKey={Boolean(sharedRange)} />
