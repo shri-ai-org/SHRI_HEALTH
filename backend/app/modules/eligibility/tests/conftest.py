@@ -52,8 +52,8 @@ def app(world: World) -> Iterator[FastAPI]:
 
 @pytest.fixture
 def as_user(app: FastAPI) -> Callable[[str], TestClient]:
-    def client(name: str) -> TestClient:
+    def dev_client(name: str) -> TestClient:
         c = TestClient(app, raise_server_exceptions=False)
         c.headers["X-Dev-User"] = name
         return c
-    return client
+    return dev_client
