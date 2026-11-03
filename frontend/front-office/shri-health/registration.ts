@@ -20,14 +20,15 @@
 //   choicesForm.insuranceCompany, policyNumber,
 //     groupNumber, planName, relationship      ⇒ addCoverage (payerId, memberId, groupNumber, planName,
 //                                                relationshipToSubscriber), order 1
-//   Not sent (no place in the contract): provider, AllowPatientPortal, AllowEmail, the insurance
+//   Not sent (no place in the contract yet): provider (generalPractitionerId comes with #212), AllowPatientPortal, AllowEmail, the insurance
 //   City/State/Country/Zip, Add Insurance, ResponsibleParty "Other".
 import {
   addCoverage as apiAddCoverage,
   addRelatedPerson as apiAddRelatedPerson,
   registerPatient as apiRegisterPatient,
 } from '../../src/api/generated/endpoints/patients/patients'
-import { listPayers as apiListPayers, listProviders as apiListProviders } from '../../src/api/generated/endpoints/practice-setup/practice-setup'
+import { listPayers as apiListPayers } from '../../src/api/generated/endpoints/practice-setup/practice-setup'
+import { listBookableProviders as apiListBookableProviders } from '../../src/api/generated/endpoints/scheduling/scheduling'
 import type {
   CodedValue,
   CoverageCreate,
@@ -326,14 +327,14 @@ export async function loadPayers(): Promise<Option[]> {
   return res.status === 200 ? res.data.items.map((payer) => ({ value: payer.id, label: payer.name })) : []
 }
 
-/** Providers for the Provider select (`GET /providers`). Shown only; the contract has no field for it. */
+/**
+ * Providers for the Provider select: `GET /booking/providers` (D49), which the front desk can read
+ * (Vimal on #85, 2026-11-03). TODO(#212): send the choice as `generalPractitionerId` once #212 is on
+ * main and the client is regenerated; until then it is shown, not sent.
+ */
 export async function loadProviders(): Promise<Option[]> {
-  const res = await apiListProviders({ active: true, limit: 100 })
-  if (res.status !== 200) return []
-  return res.data.items.map((provider) => ({
-    value: provider.id,
-    label: [...(provider.name.given ?? []), provider.name.family].filter(Boolean).join(' '),
-  }))
+  const res = await apiListBookableProviders({ limit: 100 })
+  return res.status === 200 ? res.data.items.map((provider) => ({ value: provider.id, label: provider.displayName })) : []
 }
 
 // ---- Validation: the Angular rules, changed to the U.S. contract (SCREEN_PORT.md) --------------

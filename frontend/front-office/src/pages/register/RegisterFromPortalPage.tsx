@@ -106,7 +106,7 @@ export function RegisterFromPortalPage() {
     loadPayers()
       .then((list) => live && setPayers(list))
       .catch((error: unknown) => live && setPayersError(problemMessage(error)))
-    // Shown only: the contract has no field for the patient's provider (TODO, SCREEN_PORT).
+    // Shown, not sent until #212 (generalPractitionerId) is on main.
     loadProviders()
       .then((list) => live && setProviders(list))
       .catch(() => undefined)
@@ -267,7 +267,7 @@ export function RegisterFromPortalPage() {
           <>
             <Section title="Choices">
               <FieldGrid>
-                {/* TODO(stage 1 gap): the contract has no field for the patient's provider; shown, not sent. */}
+                {/* TODO(#212): sent as generalPractitionerId once #212 is on main; listed from GET /booking/providers. */}
                 <SelectField id="reg-provider" name="provider" label="Provider" placeholder="Select Provider" options={providers} value={c.provider} onChange={(v) => set('choicesForm', 'provider', v)} />
                 {/* TODO(stage 1 gap): a portal invitation needs the photo-ID check at the desk; shown, not sent. */}
                 <RadioField id="reg-AllowPatientPortal" name="AllowPatientPortal" label="Allow Patient Portal" required options={['Yes', 'No']} value={c.AllowPatientPortal} onChange={(v) => set('choicesForm', 'AllowPatientPortal', v)} />
