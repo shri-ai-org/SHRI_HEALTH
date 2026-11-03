@@ -25661,7 +25661,7 @@ components:
           description: Unit.
           x-phi: none
     FollowUpSummary:
-      description: 'The visit''s follow-up request as the front desk needs it at check-out (D98): no clinical note beyond the request itself. For a restricted patient seen by a user without a break-glass grant who is not on the care team, it carries only `encounterId`, `interval`, `status` and `version` (D107).'
+      description: 'The visit''s follow-up request as the front desk needs it at check-out (D98): no clinical note beyond the request itself. For a restricted patient seen by a user without a break-glass grant who is not on the care team, it leaves out only the clinician''s `note`; the type, provider and booked revisit stay, since the desk books the revisit from them (D107).'
       type: object
       required:
         - encounterId

@@ -166,6 +166,10 @@ def test_check_out_refusals(pending_client: Any, practice: Practice) -> None:
     assert _check_out(client, appointment, "adm").status_code == 200
 
 
+#: What the desk sees of a restricted patient's open follow-up without access: all but the note.
+_DESK = {"encounterId", "interval", "appointmentTypeId", "providerId", "status", "version"}
+
+
 def _restricted_visit(client: Any, practice: Practice, users: dict[str, CurrentUser],
                       hour: int = 12) -> tuple[str, str]:
     """The restricted patient checked in (T16) with an open follow-up request on the visit,
@@ -197,14 +201,15 @@ def _audited(practice: Practice, encounter: str, action: str | None = None) -> i
 def test_a_restricted_chart_checks_out_without_break_glass(
         pending_client: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:
     """D107: the front desk declines a restricted patient's follow-up and checks them out
-    without break-glass. The follow-up shows only its interval, status and version, on the
-    appointment and the staff board; the decline is audited naming the patient and leaves out
-    the note."""
+    without break-glass. The follow-up leaves out only the clinician's note, on the appointment
+    and the staff board; the decline is audited naming the patient and leaves out the note."""
     client = pending_client
     appointment, encounter = _restricted_visit(client, practice, users)
     seen = _follow_up(client, appointment)
-    assert set(seen) == {"encounterId", "interval", "status", "version"}
+    assert set(seen) == _DESK  # no note
     assert seen["status"] == "open" and seen["interval"] == {"value": 2, "unit": "week"}
+    assert seen["appointmentTypeId"] == str(practice.types["FU"])
+    assert seen["providerId"] == str(practice.provider)
     assert _staff_board(client, practice) == seen
     blocked = _check_out(client, appointment)
     assert blocked.status_code == 409 and _pointers(blocked) == ["/followUp"]
@@ -220,31 +225,34 @@ def test_a_restricted_chart_checks_out_without_break_glass(
     assert "note" not in body
     after = _follow_up(client, appointment)
     assert declined.headers["ETag"] == after["version"] != seen["version"]
-    assert set(after) == {"encounterId", "interval", "status", "version"}
+    assert set(after) == _DESK
     assert _audited(practice, encounter) > before  # names the patient
     assert _audited(practice, encounter, "access-denied") == 0  # no break-glass refusal
     assert _sql(practice, "SELECT count(*) FROM audit.audit_event WHERE patient_id = :p AND "
                 "action = 'access-denied'", p=practice.patients["restricted"])[0][0] == 0
     done = _check_out(client, appointment)
     assert done.status_code == 200, done.text
-    assert set(done.json()["followUp"]) == {"encounterId", "interval", "status", "version"}
+    assert set(done.json()["followUp"]) == _DESK
     assert done.json()["followUp"]["status"] == "declined"
 
 
-def test_a_restricted_visits_booked_revisit_is_left_out_without_access(
+def test_a_restricted_visits_booked_revisit_shows_without_access(
         pending_client: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:
-    """Booking the revisit works without break-glass (T16); the summary still shows only the
-    four fields, so the revisit's ID is left out too (D107)."""
+    """Booking the revisit works without break-glass (T16); the desk then sees the booked
+    revisit, the type and the provider, and still no note (D107, Minalini's review on #161)."""
     client = pending_client
     appointment, encounter = _restricted_visit(client, practice, users)
     revisit = _revisit(client, practice, encounter, patient="restricted")
     assert revisit.status_code == 201, revisit.text
     seen = _follow_up(client, appointment)
-    assert set(seen) == {"encounterId", "interval", "status", "version"}
-    assert seen["status"] == "booked"
+    assert set(seen) == _DESK | {"bookedAppointmentId"}  # no note
+    assert seen["status"] == "booked" and seen["bookedAppointmentId"] == revisit.json()["id"]
+    assert seen["appointmentTypeId"] == str(practice.types["FU"])
+    assert seen["providerId"] == str(practice.provider)
+    assert _staff_board(client, practice) == seen
     done = _check_out(client, appointment)
     assert done.status_code == 200, done.text
-    assert set(done.json()["followUp"]) == {"encounterId", "interval", "status", "version"}
+    assert done.json()["followUp"] == seen
 
 
 def test_a_grant_or_the_care_team_still_sees_the_whole_follow_up(

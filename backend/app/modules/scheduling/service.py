@@ -4,8 +4,8 @@ and its undo, the visit steps and check-out.
 Restricted charts (SECURITY_MODEL §5.2 rule 2, agreed T16; D107): booking, check-in, check-out
 and the schedule views work without a break-glass grant, showing the name and the appointment
 only. The clinical text (reason for visit, comment, instructions) is left out for a restricted
-patient the user may not open (D60), and the visit's follow-up request shows only its interval,
-status and version (D107), using core's ``chart_access``, which reads and writes nothing else.
+patient the user may not open (D60), and the visit's follow-up request leaves out the clinician's
+note (D107), using core's ``chart_access``, which reads and writes nothing else.
 """
 
 from __future__ import annotations
@@ -356,21 +356,18 @@ def _type_ref(row: repo.AppointmentRow) -> schemas.AppointmentTypeRef:
 
 def _follow_up(row: repo.AppointmentRow, clinical: bool) -> schemas.FollowUpSummary | None:
     """The visit's follow-up request (D98), with the encounter's ETag as its ``version`` (D107).
-    For a restricted patient the user may not open, only its interval, status and version: the
-    note is clinical text (D60), and the type, provider and revisit are left out too (D107)."""
+    For a restricted patient the user may not open, everything but the clinician's note, which is
+    clinical text (D60): the desk still needs the type, provider and booked revisit (D107)."""
     f = row.follow_up
     if f is None:
         return None
     interval = schemas.FollowUpInterval(value=f.interval_value, unit=f.interval_unit)
     version = encounters.etag(f.encounter_version)
-    if not clinical:
-        return schemas.FollowUpSummary(encounter_id=f.encounter_id, interval=interval,
-                                       status=f.status, version=version)
     return schemas.FollowUpSummary(
         encounter_id=f.encounter_id, interval=interval,
         appointment_type_id=f.appointment_type_id, provider_id=f.practitioner_id,
-        note=f.note, status=f.status, booked_appointment_id=f.booked_appointment_id,
-        version=version)
+        note=f.note if clinical else None, status=f.status,
+        booked_appointment_id=f.booked_appointment_id, version=version)
 
 
 def _appointment(row: repo.AppointmentRow, people: dict[UUID, repo.PersonRef],

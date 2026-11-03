@@ -140,8 +140,7 @@ class FollowUpInterval(Out):
 
 class FollowUpSummary(Out):
     """The visit's follow-up request as the front desk needs it at check-out (D98). For a
-    restricted patient the user may not open, only ``encounterId``, ``interval``, ``status`` and
-    ``version`` (D107)."""
+    restricted patient the user may not open, everything but the clinician's ``note`` (D107)."""
     encounter_id: UUID
     interval: FollowUpInterval
     appointment_type_id: UUID | None = None
