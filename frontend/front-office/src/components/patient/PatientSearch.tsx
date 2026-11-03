@@ -5,9 +5,9 @@ import { IndianRupee, ReceiptText, Search, ShieldCheck, UserPlus } from 'lucide-
 import { Avatar } from '../ui/Avatar'
 import { useStoreValue } from '../../hooks/useStore'
 import { hasOpenLayer } from '../../hooks/useLayer'
-import { findBillByNumber, getPatientFlags, getPatientSearchSuggestions, searchPatients } from '../../domain/selectors'
+import { findBillByNumber, getPatientFlags, getPatientSearchSuggestions, searchPatients } from '../../../shri-health/selectors'
 import { getAdmittedPatients } from '../../domain/admissionSelectors'
-import type { PatientFlags } from '../../domain/selectors'
+import type { PatientFlags } from '../../../shri-health/selectors'
 import type { PatientCareStatus } from '../../domain/patientSelectors'
 import { usePatientCareStatus } from '../../hooks/useCareStatus'
 import { PatientStatusIcons } from './PatientStatusIcons'
@@ -127,7 +127,7 @@ export function PatientSearch(props: PatientSearchProps) {
       return
     }
     if (props.mode === 'pick') props.onPick(option.patient)
-    else navigate(`/patients/${option.patient.uhid}`)
+    else navigate(`/patients/${option.patient.patientId}`)
     inputRef.current?.blur()
   }
 
@@ -141,7 +141,7 @@ export function PatientSearch(props: PatientSearchProps) {
         : `?name=${encodeURIComponent(text)}`
     setOpen(false)
     setQuery('')
-    navigate(`/register/new${prefill}`)
+    navigate('/register/new', { state: prefill })
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
