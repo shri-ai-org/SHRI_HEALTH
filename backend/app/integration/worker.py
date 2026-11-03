@@ -131,7 +131,13 @@ class OutboxWorker:
             claimed = (await session.execute(_CLAIM, {"n": self._batch})).all()
             await session.commit()
         for message_id, tenant_id in claimed:
-            counts[await self._deliver(message_id, tenant_id)] += 1
+            try:
+                counts[await self._deliver(message_id, tenant_id)] += 1
+            except Exception:  # e.g. the database went away: the others still get their turn,
+                # and this one is claimed again once its lease runs out
+                log_failure(log, "Outbox message %s (clinic %s) could not be delivered",
+                            message_id, tenant_id)
+                counts["failed"] += 1
         return counts
 
     async def _deliver(self, message_id: UUID, tenant_id: UUID) -> str:
@@ -149,7 +155,10 @@ class OutboxWorker:
         try:
             if adapter is None:
                 raise DeliveryError("no-adapter", permanent=True)
-            delivered = await adapter.send(message, session)
+            # A savepoint: if the adapter's or the module builder's SQL fails, only its work is
+            # rolled back, so the failure can still be recorded on this (locked) row (#186 review).
+            async with session.begin_nested():
+                delivered = await adapter.send(message, session)
         except DeliveryError as error:
             return await self._failed(message, session, error)
         except Exception as error:  # an adapter bug: its text may hold patient data, so not kept

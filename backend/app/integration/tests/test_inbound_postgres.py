@@ -397,3 +397,56 @@ async def test_a_message_that_cant_be_built_is_dead_lettered_and_the_module_told
         row = c.execute(text("SELECT status, last_error FROM admin.integration_message "
                              "WHERE id = :i"), {"i": message_id}).one()
     assert (row.status, row.last_error) == ("dead-letter", "coverage-ended")
+
+
+async def test_a_builder_whose_sql_fails_fails_only_its_own_message(
+        admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    """#186 review: SQL that fails inside a builder used to abort the whole transaction, so no
+    outcome was recorded for it or for the rest of the round."""
+    clinic = _clinic(admin_engine)
+    bad, good = uuid4(), uuid4()
+    built: list[str] = []
+
+    async def build_270(db: AsyncSession, payload: dict[str, Any]) -> dict[str, Any]:
+        built.append(payload["eligibilityCheckId"])
+        if payload["eligibilityCheckId"] == str(bad):
+            await db.execute(text("SELECT 1/0"))  # the transaction would be aborted here
+        return {"messageType": "270", "schemaVersion": "1.0",
+                "correlationId": payload["eligibilityCheckId"],
+                "subscriber": {"memberId": "TEST-M0012345"}}
+
+    monkeypatch.setitem(outbound._BUILDERS, ("clearinghouse", "270"), build_270)
+    with admin_engine.begin() as c:
+        for check in (bad, good):
+            c.execute(text(
+                "INSERT INTO admin.integration_message (id, tenant_id, endpoint_id, direction, "
+                "message_type, status, idempotency_key, payload, attempts, max_attempts) "
+                "VALUES (:i, :t, :e, 'outbound', '270', 'queued', :k, CAST(:p AS jsonb), 0, 8)"),
+                {"i": check, "t": clinic["tenant"], "e": clinic["endpoint"],
+                 "k": f"270:{check}", "p": json.dumps({"eligibilityCheckId": str(check)})})
+    worker_db = Database(Settings(environment="test", database_url=TEST_DATABASE_URL))
+    switch_to_role(worker_db.engine.sync_engine, "shri_integration")
+    posted: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        posted.append(request)
+        return httpx.Response(200)
+
+    partner = SimulatedPartner(_settings(), "clearinghouse", delay=0,
+                               client=httpx.AsyncClient(transport=httpx.MockTransport(answer)))
+    try:
+        await OutboxWorker(worker_db, {"simulated-clearinghouse": partner}, batch=500).run_once()
+        await partner.drain()
+    finally:
+        await partner.aclose()
+        await worker_db.dispose()
+
+    assert {str(bad), str(good)} <= set(built)
+    with admin_engine.connect() as c:
+        rows = {r.id: r for r in c.execute(text(
+            "SELECT id, status, last_error, attempts FROM admin.integration_message "
+            "WHERE id IN (:a, :b)"), {"a": bad, "b": good})}
+    assert (rows[bad].status, rows[bad].last_error, rows[bad].attempts) == (
+        "failed", "internal-error", 1)
+    assert rows[good].status == "sent"
+    assert len(posted) == 1  # only the good message reached the partner

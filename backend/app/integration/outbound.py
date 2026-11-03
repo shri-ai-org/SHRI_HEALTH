@@ -20,6 +20,14 @@ failing hook never undoes the outcome the worker recorded):
     @on_sent("erx", "NewRx")              # (db, payload, control_id): e.g. the NewRx is `sent`
     @on_dead_letter("clearinghouse", "270")  # (db, payload, error_code): e.g. fail the check
 
+The send, the builder included, runs in a savepoint: a builder whose SQL fails is recorded as a
+failed attempt (`internal-error`) and the rest of the round goes on.
+
+**Not covered:** a message the claim gives up on in SQL (`admin.claim_outbound_messages`
+dead-letters one still `sending` after its last attempt, because a worker died mid-send) gets no
+`on_dead_letter` call. A module that must end its own state should also time it out (an
+operation's time limit does, `core/long_running.py`).
+
 The worker imports every module before it starts (`load_modules`), so the builders and hooks are
 registered in its process as they are in the API's. Builders and hooks run as `shri_integration`:
 whatever they read or write needs that role's grants (D23, Anand).

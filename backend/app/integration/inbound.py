@@ -124,7 +124,8 @@ _EXISTING = text("SELECT id FROM admin.integration_message WHERE endpoint_id = :
                  "AND direction = 'inbound' AND control_id = :control")
 _LOCK = text("SELECT status FROM admin.integration_message WHERE id = :id FOR UPDATE")
 # Our request this answers: an outbound message of this clinic (RLS) to this partner whose
-# payload holds the correlation ID among its IDs.
+# payload holds the correlation ID among its IDs. A scan of that clinic's messages to the
+# partner, fine at demo scale; later, match on an indexed key instead (#186 review).
 _REQUEST = text(
     "SELECT m.payload FROM admin.integration_message m "
     "JOIN admin.integration_endpoint e ON e.id = m.endpoint_id "
