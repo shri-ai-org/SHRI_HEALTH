@@ -96,6 +96,10 @@ export function RegisterFromPortalPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [duplicates, setDuplicates] = useState<Patient[]>([])
   const [allSet, setAllSet] = useState(false)
+  // A `409 possible-duplicate`: the candidates, and the desk's reason if it registers anyway.
+  const [duplicateFound, setDuplicateFound] = useState(false)
+  const [overrideReason, setOverrideReason] = useState('')
+  const [overrideTried, setOverrideTried] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -170,7 +174,7 @@ export function RegisterFromPortalPage() {
     go(page + 1)
   }
 
-  async function onDone() {
+  async function onDone(override?: string) {
     // The Basic Information page is what the server needs (name, date of birth: D44).
     if (hasErrors(errors.basicInfo)) {
       setAttempted((current) => ({ ...current, 0: true }))
@@ -179,18 +183,28 @@ export function RegisterFromPortalPage() {
     }
     setSubmitting(true)
     setSubmitError(null)
-    const result = await submitRegistration(form, submission)
+    const result = await submitRegistration(form, submission, override)
     setSubmission(result.submission)
     setSubmitting(false)
     if (result.kind === 'done') {
+      setDuplicateFound(false)
       setDuplicates([])
       setAllSet(true)
     } else if (result.kind === 'duplicate') {
+      setDuplicateFound(true)
       setDuplicates(await loadCandidates(result.candidateIds).catch(() => []))
-      setSubmitError('Possible existing patient found')
     } else {
       setSubmitError(`${STEP_LABEL[result.step]}: ${problemMessage(result.error)}`)
     }
+  }
+
+  function onRegisterAnyway() {
+    setOverrideTried(true)
+    if (!overrideReason.trim()) {
+      revealFirstInvalid()
+      return
+    }
+    void onDone(overrideReason)
   }
 
   const b = form.basicInfo
@@ -232,9 +246,9 @@ export function RegisterFromPortalPage() {
                 <SelectField id="reg-state" name="state" label="State" required placeholder="Select State" options={US_STATES} value={b.state} onChange={(v) => set('basicInfo', 'state', v)} onBlur={touch('basicInfo', 'state')} error={shown('basicInfo', 'state')} />
                 <SelectField id="reg-country" name="country" label="Country" required placeholder="Select Country" options={COUNTRIES} value={b.country} onChange={(v) => set('basicInfo', 'country', v)} onBlur={touch('basicInfo', 'country')} error={shown('basicInfo', 'country')} />
                 <TextField id="reg-zip" name="zip" inputMode="numeric" label="ZIP" required value={b.zip} onChange={(v) => set('basicInfo', 'zip', v)} onBlur={touch('basicInfo', 'zip')} error={shown('basicInfo', 'zip')} maxLength={10} />
-                <SelectField id="reg-maritalStatus" name="maritalStatus" label="Marital Status" required placeholder="Select Marital Status" options={MARITAL_STATUSES} value={b.maritalStatus} onChange={(v) => set('basicInfo', 'maritalStatus', v)} onBlur={touch('basicInfo', 'maritalStatus')} error={shown('basicInfo', 'maritalStatus')} />
+                <SelectField id="reg-maritalStatus" name="maritalStatus" label="Marital Status" placeholder="Select Marital Status" options={MARITAL_STATUSES} value={b.maritalStatus} onChange={(v) => set('basicInfo', 'maritalStatus', v)} onBlur={touch('basicInfo', 'maritalStatus')} error={shown('basicInfo', 'maritalStatus')} />
                 <RadioField id="reg-gender" name="gender" label="Gender" required options={['Male', 'Female']} value={b.gender} onChange={(v) => set('basicInfo', 'gender', v)} error={shown('basicInfo', 'gender')} />
-                <TextField id="reg-email" name="email" type="email" inputMode="email" label="Email" required value={b.email} onChange={(v) => set('basicInfo', 'email', v)} onBlur={touch('basicInfo', 'email')} error={shown('basicInfo', 'email')} maxLength={254} />
+                <TextField id="reg-email" name="email" type="email" inputMode="email" label="Email" value={b.email} onChange={(v) => set('basicInfo', 'email', v)} onBlur={touch('basicInfo', 'email')} error={shown('basicInfo', 'email')} maxLength={254} />
               </FieldGrid>
             </Section>
             <Section title="Emergency Contact">
@@ -515,7 +529,7 @@ export function RegisterFromPortalPage() {
           <Review form={form} payers={payers} providers={providers} onEdit={go} />
         ) : null}
 
-        {page === REVIEW && duplicates.length > 0 ? (
+        {page === REVIEW && duplicateFound ? (
           <Card accentTone="warning" className="border-warning-fg/25 bg-warning-bg/40">
             <CardHeader title="Possible existing patient found" />
             <div className="divide-y divide-border-soft">
@@ -537,10 +551,28 @@ export function RegisterFromPortalPage() {
                 </div>
               ))}
             </div>
+            {/* Not in the Angular form (Minalini, 2026-11-03): a false match, such as twins, must not block the desk (duplicateCheck: override). */}
+            <div className="flex flex-col gap-3 border-t border-border-soft px-5 py-4">
+              <TextAreaField
+                id="reg-overrideReason"
+                name="duplicateOverrideReason"
+                label="Reason for registering anyway"
+                required
+                maxLength={500}
+                value={overrideReason}
+                onChange={setOverrideReason}
+                error={overrideTried && !overrideReason.trim() ? 'Reason required' : undefined}
+              />
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={onRegisterAnyway} disabled={submitting}>
+                  Register anyway
+                </Button>
+              </div>
+            </div>
           </Card>
         ) : null}
 
-        {submitError && !(duplicates.length > 0 && page === REVIEW) ? (
+        {submitError ? (
           <Alert tone="critical" live>
             {submitError}
           </Alert>
@@ -561,7 +593,7 @@ export function RegisterFromPortalPage() {
                 Next
               </Button>
             ) : (
-              <Button type="button" onClick={onDone} disabled={submitting}>
+              <Button type="button" onClick={() => void onDone()} disabled={submitting}>
                 {submitting ? 'Loading...' : submitError && submission.patientId ? 'Try again' : 'Done'}
               </Button>
             )}
@@ -586,9 +618,8 @@ export function RegisterFromPortalPage() {
       >
         <div className="flex flex-col gap-2 text-sm text-ink">
           <h3 className="text-lg font-semibold text-ink">All Set !!</h3>
-          <p>
-            Once the administrator approved your request, an email containing your new account credentials will be sent to the email address you provided earlier. !!!
-          </p>
+          {/* Reworded (Minalini, 2026-11-03): the portal's "an email containing your new account credentials" isn't true at the desk. */}
+          <p>The patient is registered. Their medical record number is:</p>
           {submission.mrn ? <p className="text-2xl font-semibold tracking-wide tabular-nums text-primary-text">{submission.mrn}</p> : null}
           <h4 className="font-semibold text-ink">Thank You !!</h4>
         </div>

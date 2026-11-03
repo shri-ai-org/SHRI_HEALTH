@@ -407,9 +407,9 @@ export function basicInfoErrors(f: BasicInfo, today: string = todayIso()): Error
     state: needed(f.state, 'State required'),
     country: needed(f.country, 'Country required'),
     zip: needed(f.zip, 'Zip required') ?? pattern(f.zip, ZIP, 'Invalid Zip'),
-    maritalStatus: needed(f.maritalStatus, 'Marital Status required'),
+    maritalStatus: undefined,
     gender: needed(f.gender, 'Gender required'),
-    email: needed(f.email, 'Email required') ?? pattern(f.email, EMAIL, 'Invalid Email', 254),
+    email: pattern(f.email, EMAIL, 'Invalid Email', 254),
     relationFirstname: name(f.relationFirstname, true, 'FirstName required', 'Invalid FirstName'),
     relationLastname: name(f.relationLastname, true, 'LastName required', 'Invalid LastName'),
     relationPhoneno: !f.relationPhoneno.trim() ? 'Phoneno required' : isUsPhone(f.relationPhoneno) ? undefined : 'Invalid phoneno',
@@ -457,7 +457,8 @@ export function hasErrors(errors: Record<string, string | undefined>): boolean {
 
 // ---- To the contract ---------------------------------------------------------------------------
 
-export function toPatientCreate(form: RegistrationForm): PatientCreate {
+/** `overrideReason`: the desk registers despite a `409 possible-duplicate`, with its reason (recorded). */
+export function toPatientCreate(form: RegistrationForm, overrideReason?: string): PatientCreate {
   const b = form.basicInfo
   const c = form.choicesForm
   const given = [b.firstName.trim(), b.middleName.trim()].filter(Boolean)
@@ -470,6 +471,7 @@ export function toPatientCreate(form: RegistrationForm): PatientCreate {
     phones: [{ number: toE164(b.phoneNo), use: 'mobile', textMessages: c.AllowSMS === 'Yes' }],
     ...(b.email.trim() ? { emails: [{ address: b.email.trim(), use: 'home' }] } : {}),
     address: { lines: [b.address.trim()], city: b.city.trim(), state: b.state, postalCode: b.zip.trim(), country: 'US' },
+    ...(overrideReason?.trim() ? { duplicateCheck: 'override', duplicateOverrideReason: overrideReason.trim() } : {}),
   }
 }
 
@@ -531,11 +533,11 @@ export type SubmitResult =
   | { kind: 'duplicate'; candidateIds: string[]; submission: Submission }
   | { kind: 'failed'; step: 'patient' | 'contact' | 'coverage'; error: unknown; submission: Submission }
 
-export async function submitRegistration(form: RegistrationForm, current: Submission): Promise<SubmitResult> {
+export async function submitRegistration(form: RegistrationForm, current: Submission, overrideReason?: string): Promise<SubmitResult> {
   const submission = { ...current }
   if (!submission.patientId) {
     try {
-      const res = await apiRegisterPatient(toPatientCreate(form), { 'Idempotency-Key': submission.keys.patient })
+      const res = await apiRegisterPatient(toPatientCreate(form, overrideReason), { 'Idempotency-Key': submission.keys.patient })
       if (res.status !== 201) throw new Error('Registration did not complete')
       submission.patientId = res.data.id
       submission.mrn = res.data.mrn

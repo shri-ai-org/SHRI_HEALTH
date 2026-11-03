@@ -87,20 +87,22 @@ export function TextAreaField({
   id,
   name,
   label,
+  required,
   error,
   value,
   onChange,
   onBlur,
-}: Base & { value: string; onChange: (value: string) => void; onBlur?: () => void }) {
+  maxLength = 100,
+}: Base & { value: string; onChange: (value: string) => void; onBlur?: () => void; maxLength?: number }) {
   return (
     <div>
-      <Label id={id} label={label} />
+      <Label id={id} label={label} required={required} />
       <textarea
         id={id}
         name={name}
         value={value}
         rows={3}
-        maxLength={100}
+        maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
         aria-invalid={Boolean(error)}
