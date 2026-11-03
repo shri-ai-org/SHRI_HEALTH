@@ -247,12 +247,9 @@ def test_the_batch_queues_only_the_missing_ones(
     assert _count(practice, "integration_message") == 2
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError,
-                   reason="core: session_user_id() reads the system session's empty user as a "
-                          "UUID, so enqueue() fails outside a user's session (app/core/db.py:118)")
 def test_the_batch_in_the_jobs_system_session(practice: Practice) -> None:  # noqa: F811
-    """How the job runner will call it: one clinic's system session, no user. Passes once core's
-    session_user_id returns None for an empty user."""
+    """How the job runner will call it: one clinic's system session, no user (core's
+    session_user_id returns None for it since #186)."""
     _insured(practice, "marcus")
     _clearinghouse(practice)
     _appointment_on(practice, "marcus", practice.day, 10)
