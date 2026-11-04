@@ -125,9 +125,11 @@ class Database:
 
 
 def session_user_id(session: AsyncSession | Session) -> UUID | None:
-    """The signed-in user a tenant session was opened for (tenant_session's user_id)."""
+    """The signed-in user a tenant session was opened for (tenant_session's user_id); None for
+    a system session (system_session: the worker and partner callbacks), which has no user."""
     context = session.info.get(_CONTEXT_KEY)
-    return UUID(context[USER_SETTING]) if context else None
+    value = context.get(USER_SETTING) if context else None
+    return UUID(value) if value else None
 
 
 @event.listens_for(Session, "after_begin")

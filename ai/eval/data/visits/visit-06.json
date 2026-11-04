@@ -1,0 +1,59 @@
+{
+  "id": "visit-06",
+  "synthetic": true,
+  "specialty": "pulmonology",
+  "visitType": "follow-up",
+  "template": "FOLLOW-UP",
+  "noteType": "11506-3",
+  "patient": {"name": "Tomas512 Herrera330", "age": 29, "sex": "male"},
+  "clinician": "Dr. Imani207 Castellanos48",
+  "transcript": [
+    {"speaker": "clinician", "text": "Hi Mr. Herrera. How has your asthma been since the last visit?"},
+    {"speaker": "patient", "text": "Not great. I'm using the albuterol inhaler three or four times a week, and I wake up coughing about two nights a week."},
+    {"speaker": "clinician", "text": "And the fluticasone inhaler, 110 micrograms, two puffs twice a day?"},
+    {"speaker": "patient", "text": "I'll be honest, I usually only take it in the morning. I forget the evening dose."},
+    {"speaker": "clinician", "text": "What sets it off?"},
+    {"speaker": "patient", "text": "Cold air when I run, and when the pollen is high. I haven't been to urgent care this year."},
+    {"speaker": "clinician", "text": "Do you use a spacer?"},
+    {"speaker": "patient", "text": "No, I just spray it straight in."},
+    {"speaker": "clinician", "text": "Your oxygen saturation is 98 percent. Peak flow today is 410, and your personal best was 520. I hear a mild expiratory wheeze on both sides, no crackles."},
+    {"speaker": "clinician", "text": "Your asthma isn't well controlled. Instead of fluticasone, let's switch you to budesonide-formoterol 160/4.5, two puffs twice a day, with a spacer. Rinse your mouth after each use. Keep albuterol for quick relief, and use it 15 minutes before running in cold air."},
+    {"speaker": "patient", "text": "Okay, one inhaler instead of the old one."},
+    {"speaker": "clinician", "text": "Right. I'm giving you a written asthma action plan with your peak flow zones. If your peak flow drops below 260 or albuterol doesn't help, get care right away. Let's see you back in six weeks."},
+    {"speaker": "patient", "text": "Thanks."}
+  ],
+  "referenceNote": {
+    "sections": [
+      {"code": "10154-3", "title": "Chief complaint", "sequence": 1, "required": true,
+       "text": "Asthma follow-up; not well controlled."},
+      {"code": "10164-2", "title": "Interval history", "sequence": 2, "required": true,
+       "text": "Using albuterol three or four times a week and wakes up coughing about two nights a week. Prescribed fluticasone 110 micrograms, two puffs twice a day, but usually takes it only in the morning and forgets the evening dose. Triggers: cold air when running, high pollen. No urgent care visits this year. Does not use a spacer."},
+      {"code": "29545-1", "title": "Physical exam", "sequence": 3, "required": true,
+       "text": "Oxygen saturation 98 percent. Peak flow 410 (personal best 520). Mild expiratory wheeze on both sides, no crackles."},
+      {"code": "51847-2", "title": "Assessment and plan", "sequence": 4, "required": true,
+       "text": "Asthma, not well controlled, with missed evening doses. Switch fluticasone to budesonide-formoterol 160/4.5, two puffs twice a day, with a spacer; rinse the mouth after each use. Albuterol for quick relief and 15 minutes before running in cold air. Written asthma action plan with peak flow zones; get care right away if peak flow is below 260 or albuterol doesn't help. Follow-up in six weeks."},
+      {"code": "69730-0", "title": "Patient instructions", "sequence": 5, "required": false,
+       "text": "Stop fluticasone. Start budesonide-formoterol 160/4.5, two puffs twice a day, with a spacer, and rinse your mouth after each use. Use albuterol for quick relief and 15 minutes before running in cold air. Follow your asthma action plan; if your peak flow drops below 260 or albuterol doesn't help, get care right away. Return in six weeks."}
+    ]
+  },
+  "keyFacts": [
+    {"id": "f1", "section": "10164-2", "anyOf": ["three or four times a week", "3-4 times a week", "3 to 4 times a week"]},
+    {"id": "f2", "section": "10164-2", "anyOf": ["two nights a week", "2 nights a week"]},
+    {"id": "f3", "section": "10164-2", "anyOf": ["evening dose", "only in the morning"]},
+    {"id": "f4", "section": "29545-1", "anyOf": ["410"]},
+    {"id": "f5", "section": "29545-1", "anyOf": ["wheeze"]},
+    {"id": "f6", "section": "51847-2", "anyOf": ["budesonide-formoterol", "budesonide/formoterol"]},
+    {"id": "f7", "section": "51847-2", "anyOf": ["spacer"]},
+    {"id": "f8", "section": "51847-2", "anyOf": ["action plan"]},
+    {"id": "f9", "section": "51847-2", "anyOf": ["six weeks", "6 weeks"]}
+  ],
+  "mustNotInvent": [
+    {"id": "n1", "description": "No oral steroid was discussed.", "anyOf": ["prednisone", "steroid burst", "oral steroid"]},
+    {"id": "n2", "description": "No leukotriene or biologic was discussed.", "anyOf": ["montelukast", "omalizumab", "dupilumab"]},
+    {"id": "n3", "description": "No infection was found.", "anyOf": ["pneumonia", "bronchitis", "antibiotic"]},
+    {"id": "n4", "description": "Smoking was not discussed.", "anyOf": ["smoker", "smoking", "tobacco", "vaping"]},
+    {"id": "n5", "description": "No lung function test or x-ray was ordered.", "anyOf": ["spirometry", "x-ray", "PFT"]}
+  ],
+  "conflicts": [],
+  "medicalTerms": ["asthma", "albuterol", "fluticasone", "budesonide-formoterol", "spacer", "peak flow", "wheeze"]
+}

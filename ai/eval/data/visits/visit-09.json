@@ -1,0 +1,65 @@
+{
+  "id": "visit-09",
+  "synthetic": true,
+  "specialty": "pediatrics",
+  "visitType": "acute",
+  "template": "FOLLOW-UP",
+  "noteType": "11506-3",
+  "patient": {"name": "Liam912 Abernathy6", "age": 4, "sex": "male"},
+  "clinician": "Dr. Jordan552 Okonkwo73",
+  "transcript": [
+    {"speaker": "clinician", "text": "Hi, I'm Dr. Okonkwo. What's going on with Liam today?"},
+    {"speaker": "companion", "text": "He's been pulling at his right ear for two days, and last night he had a fever of 101.8. He's had a runny nose all week."},
+    {"speaker": "clinician", "text": "Is he eating and drinking?"},
+    {"speaker": "companion", "text": "Drinking fine, not eating much. He's still making wet diapers, well, pull-ups, about the usual."},
+    {"speaker": "clinician", "text": "Any allergies to medicines?"},
+    {"speaker": "companion", "text": "He's allergic to penicillin, I think."},
+    {"speaker": "clinician", "text": "Do you know what happened when he had it?"},
+    {"speaker": "companion", "text": "Let me check my phone. No, sorry, that was his sister. Liam has no allergies. He had amoxicillin last winter and was fine."},
+    {"speaker": "clinician", "text": "Thanks for checking. What have you given him for the fever?"},
+    {"speaker": "companion", "text": "Children's acetaminophen last night, and it helped."},
+    {"speaker": "patient", "text": "My ear hurts."},
+    {"speaker": "clinician", "text": "I know, buddy. Let me take a look. His temperature here is 100.9 and he weighs 17 kilograms. The right eardrum is red and bulging. The left eardrum looks normal. His throat is mildly red, the lungs are clear, and his neck is supple."},
+    {"speaker": "clinician", "text": "He has a right middle ear infection, acute otitis media. I'm prescribing amoxicillin, 765 mg twice a day for 10 days. That's based on his weight."},
+    {"speaker": "companion", "text": "Okay. Can he go to daycare?"},
+    {"speaker": "clinician", "text": "Once he's been fever-free for 24 hours. Keep giving acetaminophen for fever or pain as the package says for his weight. If he's not better in 48 to 72 hours, or he gets a stiff neck or seems very sleepy, call our nurse line at 555-0187."},
+    {"speaker": "companion", "text": "Thank you."}
+  ],
+  "referenceNote": {
+    "sections": [
+      {"code": "10154-3", "title": "Chief complaint", "sequence": 1, "required": true,
+       "text": "Right ear pain and fever."},
+      {"code": "10164-2", "title": "Interval history", "sequence": 2, "required": true,
+       "text": "4-year-old boy, history from his mother. Pulling at the right ear for two days; fever of 101.8 last night; runny nose all week. Drinking fine, not eating much, usual wet pull-ups. Children's acetaminophen last night helped. No allergies; had amoxicillin last winter without problems."},
+      {"code": "29545-1", "title": "Physical exam", "sequence": 3, "required": true,
+       "text": "Temperature 100.9. Weight 17 kg. Right eardrum red and bulging. Left eardrum normal. Throat mildly red. Lungs clear. Neck supple."},
+      {"code": "51847-2", "title": "Assessment and plan", "sequence": 4, "required": true,
+       "text": "Acute otitis media, right ear. Amoxicillin 765 mg twice a day for 10 days, based on weight (17 kg). Acetaminophen for fever or pain as the package says for his weight. Back to daycare once fever-free for 24 hours. Call the nurse line if not better in 48 to 72 hours, or with a stiff neck or if very sleepy."},
+      {"code": "69730-0", "title": "Patient instructions", "sequence": 5, "required": false,
+       "text": "Give amoxicillin 765 mg twice a day for 10 days. Give acetaminophen for fever or pain as the package says for his weight. Liam can go back to daycare once he has been fever-free for 24 hours. If he is not better in 48 to 72 hours, or he gets a stiff neck or seems very sleepy, call our nurse line at 555-0187."}
+    ]
+  },
+  "keyFacts": [
+    {"id": "f1", "section": "10164-2", "anyOf": ["101.8"]},
+    {"id": "f2", "section": "10164-2", "anyOf": ["two days", "2 days"]},
+    {"id": "f3", "section": "29545-1", "anyOf": ["bulging"]},
+    {"id": "f4", "section": "29545-1", "anyOf": ["17 kg", "17 kilograms"]},
+    {"id": "f5", "section": "51847-2", "anyOf": ["otitis media", "ear infection"]},
+    {"id": "f6", "section": "51847-2", "anyOf": ["765 mg"]},
+    {"id": "f7", "section": "51847-2", "anyOf": ["10 days", "ten days"]},
+    {"id": "f8", "section": "69730-0", "anyOf": ["48 to 72 hours", "48-72 hours"]}
+  ],
+  "mustNotInvent": [
+    {"id": "n1", "description": "No other antibiotic was discussed.", "anyOf": ["azithromycin", "cefdinir", "augmentin", "clavulanate"]},
+    {"id": "n2", "description": "Ear tubes were not discussed.", "anyOf": ["ear tubes", "tympanostomy"]},
+    {"id": "n3", "description": "Vomiting and diarrhea were not reported.", "anyOf": ["vomiting", "diarrhea"]},
+    {"id": "n4", "description": "Ibuprofen was not discussed.", "anyOf": ["ibuprofen", "motrin"]}
+  ],
+  "conflicts": [
+    {"id": "c1", "description": "His mother first says he is allergic to penicillin, then corrects it: that was his sister, and Liam has no allergies.",
+     "turns": [5, 7],
+     "resolvedAnyOf": ["no allergies", "no known drug allergies", "NKDA"],
+     "supersededAnyOf": ["penicillin allergy", "allergic to penicillin", "penicillin-allergic"]}
+  ],
+  "medicalTerms": ["otitis media", "amoxicillin", "acetaminophen", "bulging", "eardrum"]
+}

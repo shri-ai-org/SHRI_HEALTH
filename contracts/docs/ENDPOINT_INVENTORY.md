@@ -87,9 +87,9 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | # | Method | Path | Owner | Store | Permission | Audit | Idem | IfM | 202 | FRS | B | Change |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 28 | POST | `/patients/search` | V | Cl | `patients:search` | pr | – | | | FR-PAT-01 | B2 | **Was `GET /patients?search=`** (VD-G2) |
-| 29 | POST | `/patients` | V | Cl | `patients:create` | pw | S | | | FR-PAT-01 | B2 | Duplicate check → `409 possible-duplicate` |
-| 30 | GET | `/patients/{patientId}` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 | B2 | |
-| 31 | PATCH | `/patients/{patientId}` | V | Cl | `patients:update` | pw | – | ✓ | | FR-PAT-01 | B2 | |
+| 29 | POST | `/patients` | V | Cl | `patients:create` | pw | S | | | FR-PAT-01 | B2 | Duplicate check → `409 possible-duplicate`; optional `generalPractitionerId`, the primary provider from `GET /booking/providers` (D49; #85) |
+| 30 | GET | `/patients/{patientId}` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 | B2 | Returns optional `generalPractitionerId`, the primary provider from `GET /booking/providers` (D49; #85) |
+| 31 | PATCH | `/patients/{patientId}` | V | Cl | `patients:update` | pw | – | ✓ | | FR-PAT-01 | B2 | Sets or clears (`null`) optional `generalPractitionerId`, the primary provider from `GET /booking/providers` (D49; #85) |
 | 32 | GET | `/patients/{patientId}/identifiers` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 | B2 | |
 | 33 | POST | `/patients/{patientId}/identifiers` | V | Cl | `patients:update` | pw | S | | | FR-PAT-01 (license scan) | B2 | License image is a document (category `identity`), referenced by `documentId` (D56) |
 | 34 | GET | `/patients/{patientId}/related-persons` | V | Cl | `patients:read` | pr | – | | | FR-PAT-01 (emergency contacts) | B2 | **New** (Stage 1 gap) |

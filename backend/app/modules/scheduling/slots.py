@@ -2,8 +2,9 @@
 
 Pure functions, no database: the rules are local facility times and are laid out on the day in
 the facility's IANA time zone (D40), so a clinic's 9:00 stays 9:00 across daylight-saving changes.
-A rule may end at 24:00, the end of its day: its window, and its last slot, end at the next local
-midnight, which on a daylight-saving day is 23 or 25 hours after the day began. No window
+A rule may end at 24:00, the end of its day (the database refuses it since 0019, so rules end by
+23:59): its window, and its last slot, end at the next local midnight, which on a daylight-saving
+day is 23 or 25 hours after the day began. No window
 crosses midnight; each day is its own (a booking that would cross it is outside the hours).
 """
 

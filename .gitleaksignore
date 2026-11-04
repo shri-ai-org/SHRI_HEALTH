@@ -16,3 +16,12 @@ ac6db91bbdfc85dd8ef4dc2f635cd22c17b34cb5:infra/keycloak/Dockerfile:generic-api-k
 # HMAC, not a secret; replaced by a code made at run time in the next commit on the same branch.
 a0bcf4ac3e8db974875b72d40c7338cfef9081f5:backend/app/core/tests/test_portal_sign_in.py:generic-api-key:70
 a0bcf4ac3e8db974875b72d40c7338cfef9081f5:backend/app/core/tests/test_portal_sign_in.py:generic-api-key:71
+
+# The demo patient's fixed Keycloak user ID (a public UUID the seed refers to, #152), not a
+# secret; "KEYCLOAK_ID" in the name trips generic-api-key.
+25df7f8089405c3b398bdfe6ad0a3b338aea9cf9:backend/app/db/seed/demo.py:generic-api-key:157
+
+# Literal "a-synthetic-…" test values for the public-form HMAC secret, not secrets; replaced by
+# values made at run time in a later commit on the same branch.
+38ff803f353fb463c0393375f7b50e3b9cdc96e4:backend/app/core/tests/test_public_form.py:generic-api-key:26
+38ff803f353fb463c0393375f7b50e3b9cdc96e4:backend/app/core/tests/test_public_db_postgres.py:generic-api-key:39

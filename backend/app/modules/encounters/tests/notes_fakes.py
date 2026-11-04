@@ -203,6 +203,9 @@ class FakeNoteRepository:
                        ) -> UUID | None:
         return None
 
+    async def release_rejected_ai_sections(self, db: Any, note_id: UUID) -> int:
+        return 0
+
 
 class FakeClinicalStore(FakeStore):
     """FakeStore plus the diagnosis, note and encounter-status helpers."""

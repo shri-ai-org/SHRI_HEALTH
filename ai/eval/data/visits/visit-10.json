@@ -1,0 +1,65 @@
+{
+  "id": "visit-10",
+  "synthetic": true,
+  "specialty": "gastroenterology",
+  "visitType": "follow-up",
+  "template": "FOLLOW-UP",
+  "noteType": "11506-3",
+  "patient": {"name": "Anika330 Sorensen781", "age": 63, "sex": "female"},
+  "clinician": "Dr. Tobias330 Vandermeer19",
+  "transcript": [
+    {"speaker": "clinician", "text": "Hello Ms. Sorensen. Last time we started omeprazole for heartburn. How is it going?"},
+    {"speaker": "patient", "text": "Somewhat better, but I still get burning in my chest after dinner most nights."},
+    {"speaker": "clinician", "text": "How are you taking the omeprazole?"},
+    {"speaker": "patient", "text": "20 mg at bedtime, every night."},
+    {"speaker": "clinician", "text": "Any trouble swallowing, food sticking, black stools, or vomiting blood?"},
+    {"speaker": "patient", "text": "No, none of that."},
+    {"speaker": "clinician", "text": "Any weight loss?"},
+    {"speaker": "patient", "text": "No weight loss. Well, actually, I've lost about five pounds in two months, but I haven't been trying."},
+    {"speaker": "clinician", "text": "Thanks, that matters. When do you eat dinner?"},
+    {"speaker": "patient", "text": "Usually around 9, and I go to bed at 10. I have two cups of coffee a day and wine on weekends."},
+    {"speaker": "clinician", "text": "Your abdomen is soft and not tender, with no masses. Blood pressure is 132 over 80."},
+    {"speaker": "clinician", "text": "This is reflux that's only partly controlled. Omeprazole works best 30 to 60 minutes before breakfast, so let's move it to the morning and increase it to 40 mg a day. Try to finish dinner three hours before bed and raise the head of your bed."},
+    {"speaker": "clinician", "text": "Because you're over 60 and have lost weight without trying, I'd like you to have an upper endoscopy to look at your esophagus and stomach."},
+    {"speaker": "patient", "text": "Okay. Can you send the prep instructions by email? It's anika.sorensen@example.com."},
+    {"speaker": "clinician", "text": "We'll send them through the portal and to that email. Let's follow up in eight weeks, after the endoscopy."},
+    {"speaker": "patient", "text": "Thank you."}
+  ],
+  "referenceNote": {
+    "sections": [
+      {"code": "10154-3", "title": "Chief complaint", "sequence": 1, "required": true,
+       "text": "Heartburn follow-up on omeprazole."},
+      {"code": "10164-2", "title": "Interval history", "sequence": 2, "required": true,
+       "text": "Somewhat better on omeprazole 20 mg at bedtime, but still has burning in the chest after dinner most nights. No trouble swallowing, no food sticking, no black stools, no vomiting blood. Lost about five pounds in two months without trying. Dinner usually around 9, bed at 10. Two cups of coffee a day, wine on weekends."},
+      {"code": "29545-1", "title": "Physical exam", "sequence": 3, "required": true,
+       "text": "Blood pressure 132/80. Abdomen soft, not tender, no masses."},
+      {"code": "51847-2", "title": "Assessment and plan", "sequence": 4, "required": true,
+       "text": "Reflux, only partly controlled, with unintentional weight loss of about five pounds, age over 60. Increase omeprazole to 40 mg a day, taken 30 to 60 minutes before breakfast. Finish dinner three hours before bed; raise the head of the bed. Upper endoscopy to look at the esophagus and stomach; prep instructions through the portal and by email. Follow-up in eight weeks, after the endoscopy."},
+      {"code": "69730-0", "title": "Patient instructions", "sequence": 5, "required": false,
+       "text": "Take omeprazole 40 mg a day, 30 to 60 minutes before breakfast. Finish dinner three hours before bed and raise the head of your bed. You will get the endoscopy prep instructions through the portal and by email. Return in eight weeks, after the endoscopy."}
+    ]
+  },
+  "keyFacts": [
+    {"id": "f1", "section": "10164-2", "anyOf": ["20 mg"]},
+    {"id": "f2", "section": "10164-2", "anyOf": ["five pounds", "5 pounds", "5 lb"]},
+    {"id": "f3", "section": "10164-2", "anyOf": ["trouble swallowing", "dysphagia"]},
+    {"id": "f4", "section": "29545-1", "anyOf": ["not tender", "nontender", "non-tender"]},
+    {"id": "f5", "section": "51847-2", "anyOf": ["40 mg"]},
+    {"id": "f6", "section": "51847-2", "anyOf": ["before breakfast"]},
+    {"id": "f7", "section": "51847-2", "anyOf": ["endoscopy", "EGD"]},
+    {"id": "f8", "section": "51847-2", "anyOf": ["eight weeks", "8 weeks"]}
+  ],
+  "mustNotInvent": [
+    {"id": "n1", "description": "H. pylori testing was not discussed.", "anyOf": ["pylori"]},
+    {"id": "n2", "description": "No other acid medicine was discussed.", "anyOf": ["pantoprazole", "famotidine", "esomeprazole"]},
+    {"id": "n3", "description": "No diagnosis beyond reflux was made.", "anyOf": ["Barrett", "ulcer", "cancer", "hernia"]},
+    {"id": "n4", "description": "No blood tests were ordered.", "anyOf": ["anemia", "CBC", "blood count", "iron"]}
+  ],
+  "conflicts": [
+    {"id": "c1", "description": "She first denies weight loss, then says she lost about five pounds in two months without trying.",
+     "turns": [7, 7],
+     "resolvedAnyOf": ["five pounds", "5 pounds", "5 lb"],
+     "supersededAnyOf": ["no weight loss", "denies weight loss"]}
+  ],
+  "medicalTerms": ["reflux", "omeprazole", "endoscopy", "esophagus", "weight loss"]
+}

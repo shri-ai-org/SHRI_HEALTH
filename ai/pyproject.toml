@@ -1,0 +1,28 @@
+# Tool settings for Vimal's AI work (ai/). No dependencies of its own: the evaluation harness
+# (ai/eval/shri_eval) uses the Python standard library only, and its tests run in the backend's
+# locked environment (backend/requirements-dev.lock: pytest, ruff, mypy). CI does not run ai/
+# yet (.github/workflows/backend.yml watches backend/** only); run the tests locally with
+#   cd ai && pytest -p no:cacheprovider -q
+# or through the backend image, from backend/: pytest -c ../ai/pyproject.toml ../ai/eval/tests
+[tool.pytest.ini_options]
+testpaths = ["eval/tests"]
+pythonpath = ["eval"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["shri_eval"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = "eval"
+explicit_package_bases = true

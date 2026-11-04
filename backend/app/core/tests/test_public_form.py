@@ -295,12 +295,3 @@ def test_the_challenge_route_is_503_when_public_forms_are_not_configured(
 
     client = TestClient(create_app(Settings(environment="test", auth_mode="dev_header")))
     assert client.get("/api/v1/portal/bot-challenge").status_code == 503
-
-
-def test_the_challenge_route_stays_out_until_the_contract_has_it() -> None:
-    from app.main import create_app
-
-    if "getBotChallenge" in json.loads(operations_file().read_text(encoding="utf-8"))["operations"]:
-        pytest.skip("the contract has the operation (#136 merged)")
-    client = TestClient(create_app(_settings()))
-    assert client.get("/api/v1/portal/bot-challenge").status_code == 404

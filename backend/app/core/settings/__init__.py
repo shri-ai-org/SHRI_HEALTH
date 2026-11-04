@@ -5,7 +5,7 @@
     portal       the patient portal
     openbao      secrets at startup (KV) and field encryption (Transit)
     public_form  the public pre-registration form and its bot check
-    outbox       the partner worker
+    outbox       the partner worker and partner callbacks
     events       live events
     files        the file service
 
@@ -48,6 +48,18 @@ class Settings(BaseFields, AuthFields, PortalFields, OpenBaoFields, PublicFormFi
                 and self.environment not in ("development", "test")):
             raise ValueError(
                 "patient_auth_mode=dev_header is only allowed in development and test")
+        return self
+
+    @model_validator(mode="after")
+    def _simulated_partners_never_in_production(self) -> "Settings":
+        if self.simulated_partners and self.environment == "production":
+            raise ValueError("simulated_partners is never allowed in production")
+        if self.simulated_partners and not self.simulated_partner_callback_url:
+            raise ValueError("simulated_partners needs SIMULATED_PARTNER_CALLBACK_URL")
+        for name in ("hook_secret_clearinghouse", "hook_secret_erx"):
+            secret = getattr(self, name)
+            if secret is not None and len(secret.get_secret_value()) < 32:
+                raise ValueError(f"{name.upper()} must be at least 32 characters")
         return self
 
     @model_validator(mode="after")

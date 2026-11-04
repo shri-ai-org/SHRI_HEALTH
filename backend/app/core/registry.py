@@ -8,8 +8,8 @@ The order is the app's behaviour, so it is the one thing to keep in mind when ad
   innermost (it sees the final status); Idempotency sits outside it (it stores that status, audit
   500s included); NoStore; RequestId outermost (every answer carries X-Request-ID).
 - **Error handlers**, then the idempotent-replay handler, in that order.
-- **Routes last,** in the order they match: /health, sign-in, /me, the bot challenge, events,
-  operations, break-glass, then every module's router.
+- **Routes last,** in the order they match: /health, the /hooks callbacks, sign-in, /me, the bot
+  challenge, events, operations, break-glass, then every module's router.
 
 test_registry.py checks the result against the sequence create_app() used before the registry:
 the same middleware stack, routes, error handlers and app state.
@@ -44,6 +44,7 @@ from app.core import (
     session,
 )
 from app.core.config import Settings
+from app.integration import inbound
 
 Register = Callable[[FastAPI, Settings], None]
 
@@ -69,6 +70,7 @@ FEATURES: tuple[tuple[str, Register], ...] = (
     # Routes, in matching order
     ("health", health.register),
     ("back-channel logout route", backchannel.register_routes),
+    ("partner callbacks", inbound.register),
     ("staff sign-in", auth_api.register),
     ("current user", me_api.register),
     ("bot challenge", public_form.register_routes),

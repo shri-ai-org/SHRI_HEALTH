@@ -8,7 +8,9 @@
   a version (D73). A signed note is ``409 record-locked``.
 - **Sign**: the author only, with ``If-Match``. The batch 2 default of DECISIONS Q22 (D73): every
   required section has text, and every AI-drafted section has a decision; each refusal is named
-  in ``errors``. Signing locks the note and writes its Provenance in the same transaction (D8).
+  in ``errors``. A rejected AI section (its AI text already gone, decideAiSuggestion) signs as
+  the clinician's own text. Signing locks the note and writes its Provenance in the same
+  transaction (D8).
   A co-sign rule for the author names the co-signer (``cosignStatus: pending``).
 - **Addendum**: a new signed Composition that appends to a signed note, in one transaction.
 - **Co-sign** (``cosignNote``, D73): only the co-signer the co-sign rule named when the note was
@@ -289,8 +291,13 @@ async def sign(db: AsyncSession, repo: EncounterRepository, nrepo: NoteRepositor
     if errors:
         raise business_rule(errors)
     cosigner = await nrepo.cosigner(db, author, encounter.facility_id)
+    # A rejected AI section signs as the clinician's own text (notes_repository's bridge); the
+    # note's version moves once in this transaction, as for any signing.
+    signing_version = version
+    if await nrepo.release_rejected_ai_sections(db, note_id):
+        signing_version = version + 1
     try:
-        await store.sign_note(db, note_id, if_version=version,
+        await store.sign_note(db, note_id, if_version=signing_version,
                               cosigner_practitioner_id=cosigner)
     except StaleVersion as stale:
         raise PreconditionFailed(headers={"ETag": etag(stale.current_version)}) from stale

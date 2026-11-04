@@ -1,0 +1,64 @@
+{
+  "id": "visit-03",
+  "synthetic": true,
+  "specialty": "family medicine",
+  "visitType": "follow-up",
+  "template": "FOLLOW-UP",
+  "noteType": "11506-3",
+  "patient": {"name": "Marcus83 Delgado211", "age": 58, "sex": "male"},
+  "clinician": "Dr. Jordan552 Okonkwo73",
+  "transcript": [
+    {"speaker": "clinician", "text": "Hi Mr. Delgado. We're following up on your blood pressure. How have the home readings been?"},
+    {"speaker": "patient", "text": "Mostly in the 140s over 90s. A couple were 150 over 95."},
+    {"speaker": "clinician", "text": "And you're on lisinopril 10 mg once a day. Are you taking it every day?"},
+    {"speaker": "patient", "text": "Yes, every day."},
+    {"speaker": "clinician", "text": "Any headaches, swelling in your ankles, or a dry cough since starting it?"},
+    {"speaker": "patient", "text": "No cough, no swelling. Honestly, when I travel for work I forget it, probably twice a week."},
+    {"speaker": "clinician", "text": "That's helpful to know. How about salt and exercise?"},
+    {"speaker": "patient", "text": "I eat out a lot on the road. I walk maybe two days a week."},
+    {"speaker": "clinician", "text": "Your blood pressure here is 146 over 92, and the repeat is 144 over 90. Heart rate 78. Heart sounds are regular with no murmur, lungs are clear, and there's no ankle edema."},
+    {"speaker": "clinician", "text": "Your hypertension is still above goal, partly because of the missed doses. I'd like to increase lisinopril to 20 mg once a day. Set a phone alarm, and keep a spare pack in your travel bag."},
+    {"speaker": "patient", "text": "I can do that."},
+    {"speaker": "clinician", "text": "Because we're raising the dose, I want a basic metabolic panel in two weeks to check your potassium and kidney function. Try to cut back on salt, aim for walking 30 minutes five days a week, and keep checking your blood pressure at home."},
+    {"speaker": "patient", "text": "Should the nurse call me with the lab results? My cell is 555-0142."},
+    {"speaker": "clinician", "text": "Yes, the nurse will call you at that number. Let's see you back in four weeks with your home readings."},
+    {"speaker": "patient", "text": "Thanks, doc."}
+  ],
+  "referenceNote": {
+    "sections": [
+      {"code": "10154-3", "title": "Chief complaint", "sequence": 1, "required": true,
+       "text": "Blood pressure follow-up."},
+      {"code": "10164-2", "title": "Interval history", "sequence": 2, "required": true,
+       "text": "Home readings mostly in the 140s over 90s, a couple at 150/95. On lisinopril 10 mg once a day; forgets it about twice a week when he travels for work. No cough, no ankle swelling. Eats out a lot on the road; walks about two days a week."},
+      {"code": "29545-1", "title": "Physical exam", "sequence": 3, "required": true,
+       "text": "Blood pressure 146/92, repeat 144/90. Heart rate 78. Heart sounds regular, no murmur. Lungs clear. No ankle edema."},
+      {"code": "51847-2", "title": "Assessment and plan", "sequence": 4, "required": true,
+       "text": "Hypertension, above goal, partly from missed doses. Increase lisinopril to 20 mg once a day. Phone alarm and a spare pack in the travel bag for missed doses. Basic metabolic panel in two weeks for potassium and kidney function; the nurse will call with results. Cut back on salt, walking 30 minutes five days a week, home blood pressure checks. Follow-up in four weeks with home readings."},
+      {"code": "69730-0", "title": "Patient instructions", "sequence": 5, "required": false,
+       "text": "Take lisinopril 20 mg once a day. Set a phone alarm and keep a spare pack in your travel bag. Get your basic metabolic panel in two weeks; the nurse will call you with the results. Cut back on salt, walk 30 minutes five days a week, and keep checking your blood pressure at home. Return in four weeks with your home readings."}
+    ]
+  },
+  "keyFacts": [
+    {"id": "f1", "section": "10164-2", "anyOf": ["twice a week", "2 times a week", "two times a week"]},
+    {"id": "f2", "section": "10164-2", "anyOf": ["lisinopril 10 mg"]},
+    {"id": "f3", "section": "29545-1", "anyOf": ["146/92", "146 over 92"]},
+    {"id": "f4", "section": "51847-2", "anyOf": ["lisinopril to 20 mg", "lisinopril 20 mg"]},
+    {"id": "f5", "section": "51847-2", "anyOf": ["basic metabolic panel", "BMP"]},
+    {"id": "f6", "section": "51847-2", "anyOf": ["two weeks", "2 weeks"]},
+    {"id": "f7", "section": "51847-2", "anyOf": ["four weeks", "4 weeks"]},
+    {"id": "f8", "section": "69730-0", "anyOf": ["salt", "sodium"]}
+  ],
+  "mustNotInvent": [
+    {"id": "n1", "description": "Chest pain was never discussed.", "anyOf": ["chest pain"]},
+    {"id": "n2", "description": "No ECG was done or ordered.", "anyOf": ["EKG", "ECG", "electrocardiogram"]},
+    {"id": "n3", "description": "No second blood-pressure drug was discussed.", "anyOf": ["amlodipine", "hydrochlorothiazide", "chlorthalidone", "losartan"]},
+    {"id": "n4", "description": "No lipid or diabetes testing was ordered.", "anyOf": ["lipid", "A1c", "cholesterol"]}
+  ],
+  "conflicts": [
+    {"id": "c1", "description": "He first says he takes lisinopril every day, then says he forgets it about twice a week when travelling.",
+     "turns": [3, 5],
+     "resolvedAnyOf": ["twice a week", "missed doses", "forgets it"],
+     "supersededAnyOf": ["never misses", "no missed doses", "fully adherent", "good adherence", "adherent to"]}
+  ],
+  "medicalTerms": ["hypertension", "lisinopril", "basic metabolic panel", "potassium", "edema", "murmur"]
+}

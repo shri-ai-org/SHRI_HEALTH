@@ -1,0 +1,70 @@
+{
+  "id": "visit-07",
+  "synthetic": true,
+  "specialty": "dermatology",
+  "visitType": "new-patient",
+  "template": "NEW-VISIT",
+  "noteType": "34117-2",
+  "patient": {"name": "Grace870 Oyelaran14", "age": 34, "sex": "female"},
+  "clinician": "Dr. Henrik94 Sallow263",
+  "transcript": [
+    {"speaker": "clinician", "text": "Hi Ms. Oyelaran, I'm Dr. Sallow. What brings you in?"},
+    {"speaker": "patient", "text": "An itchy rash on the inside of my elbows and behind my knees. It's been about two months."},
+    {"speaker": "clinician", "text": "Have you had anything like it before?"},
+    {"speaker": "patient", "text": "I had eczema as a kid, but it went away. The itching is worst at night."},
+    {"speaker": "clinician", "text": "What have you tried?"},
+    {"speaker": "patient", "text": "Over-the-counter hydrocortisone 1 percent cream. It helps a little for a day or two."},
+    {"speaker": "clinician", "text": "Any new soaps, detergents, or lotions?"},
+    {"speaker": "patient", "text": "I started a scented body wash around when it began. And I'm a barista, so I wash my hands constantly."},
+    {"speaker": "clinician", "text": "Any other health problems or medicines?"},
+    {"speaker": "patient", "text": "Seasonal allergies. I take loratadine 10 mg in the spring. No other medicines."},
+    {"speaker": "clinician", "text": "Anyone in the family with eczema, asthma, or hay fever?"},
+    {"speaker": "patient", "text": "My brother has asthma."},
+    {"speaker": "clinician", "text": "On exam, there are red, thickened plaques with scratch marks on both inner elbows and behind both knees. There's no oozing, crusting, or pus. The hands show mild dryness. The rest of the skin is clear."},
+    {"speaker": "clinician", "text": "This is atopic dermatitis, a flare of eczema, probably made worse by the scented body wash and frequent handwashing. I'm prescribing triamcinolone 0.1 percent ointment twice a day to the elbows and knees for two weeks, then stop. Don't use it on your face."},
+    {"speaker": "patient", "text": "What about the body wash?"},
+    {"speaker": "clinician", "text": "Switch to a fragrance-free cleanser, take lukewarm showers, and put on a thick fragrance-free moisturizer right after bathing and after handwashing. Let's see you back in four weeks."},
+    {"speaker": "patient", "text": "Okay, thank you."}
+  ],
+  "referenceNote": {
+    "sections": [
+      {"code": "10154-3", "title": "Chief complaint", "sequence": 1, "required": true,
+       "text": "Itchy rash on the inner elbows and behind the knees for about two months."},
+      {"code": "10164-2", "title": "History of present illness", "sequence": 2, "required": true,
+       "text": "Itchy rash on the inside of both elbows and behind both knees for about two months; itching worst at night. Eczema as a child that went away. Over-the-counter hydrocortisone 1 percent cream helps a little for a day or two. Started a scented body wash around when the rash began. Works as a barista and washes her hands constantly."},
+      {"code": "11348-0", "title": "Past medical history", "sequence": 3, "required": false,
+       "text": "Childhood eczema. Seasonal allergies, loratadine 10 mg in the spring. No other medicines."},
+      {"code": "10157-6", "title": "Family history", "sequence": 4, "required": false,
+       "text": "Brother has asthma."},
+      {"code": "29762-2", "title": "Social history", "sequence": 5, "required": false,
+       "text": "Barista; washes her hands constantly."},
+      {"code": "10187-3", "title": "Review of systems", "sequence": 6, "required": false,
+       "text": ""},
+      {"code": "29545-1", "title": "Physical exam", "sequence": 7, "required": true,
+       "text": "Red, thickened plaques with scratch marks on both inner elbows and behind both knees. No oozing, crusting, or pus. Mild dryness of the hands. Rest of the skin clear."},
+      {"code": "51847-2", "title": "Assessment and plan", "sequence": 8, "required": true,
+       "text": "Atopic dermatitis, eczema flare, probably made worse by the scented body wash and frequent handwashing. Triamcinolone 0.1 percent ointment twice a day to the elbows and knees for two weeks, then stop; not on the face. Fragrance-free cleanser, lukewarm showers, thick fragrance-free moisturizer after bathing and handwashing. Follow-up in four weeks."},
+      {"code": "69730-0", "title": "Patient instructions", "sequence": 9, "required": false,
+       "text": "Apply triamcinolone 0.1 percent ointment twice a day to the elbows and knees for two weeks, then stop. Don't use it on your face. Switch to a fragrance-free cleanser, take lukewarm showers, and put on a thick fragrance-free moisturizer right after bathing and after handwashing. Return in four weeks."}
+    ]
+  },
+  "keyFacts": [
+    {"id": "f1", "section": "10164-2", "anyOf": ["two months", "2 months"]},
+    {"id": "f2", "section": "10164-2", "anyOf": ["scented body wash", "body wash"]},
+    {"id": "f3", "section": "10164-2", "anyOf": ["hydrocortisone"]},
+    {"id": "f4", "section": "10157-6", "anyOf": ["brother"]},
+    {"id": "f5", "section": "29545-1", "anyOf": ["plaques"]},
+    {"id": "f6", "section": "51847-2", "anyOf": ["atopic dermatitis", "eczema"]},
+    {"id": "f7", "section": "51847-2", "anyOf": ["triamcinolone 0.1"]},
+    {"id": "f8", "section": "51847-2", "anyOf": ["fragrance-free"]},
+    {"id": "f9", "section": "51847-2", "anyOf": ["four weeks", "4 weeks"]}
+  ],
+  "mustNotInvent": [
+    {"id": "n1", "description": "No systemic or biologic treatment was discussed.", "anyOf": ["dupilumab", "methotrexate", "prednisone"]},
+    {"id": "n2", "description": "No biopsy or patch testing was done.", "anyOf": ["biopsy", "patch test"]},
+    {"id": "n3", "description": "Psoriasis and infection were not diagnosed.", "anyOf": ["psoriasis", "impetigo", "cellulitis", "infection"]},
+    {"id": "n4", "description": "No systemic symptoms were discussed.", "anyOf": ["chills", "joint pain", "fatigue"]}
+  ],
+  "conflicts": [],
+  "medicalTerms": ["atopic dermatitis", "eczema", "triamcinolone", "hydrocortisone", "loratadine", "plaques", "asthma"]
+}
