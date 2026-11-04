@@ -3484,6 +3484,7 @@ paths:
           headers:
             Location:
               $ref: '#/components/headers/Location'
+              description: '`/api/v1/patients/{patientId}/portal-account`, the patient''s portal account: an invitation has no URL of its own.'
             X-Request-ID:
               $ref: '#/components/headers/XRequestId'
             Cache-Control:
@@ -3528,6 +3529,9 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: '503. `service-unavailable` (portal invitations are not set up on this server: the invitation secret is not configured).'
       tags:
         - patients
   /patients/{patientId}/portal-invitations/{invitationId}/revoke:
@@ -17595,6 +17599,7 @@ paths:
           headers:
             Location:
               $ref: '#/components/headers/Location'
+              description: '`/api/v1/patients/{patientId}/medications`, the list the entry was added to: a list entry has no URL of its own.'
             X-Request-ID:
               $ref: '#/components/headers/XRequestId'
             Cache-Control:
@@ -25903,7 +25908,7 @@ components:
           x-phi: internal-id
         eligibilityCheckId:
           $ref: '#/components/schemas/Id'
-          description: The real-time eligibility check started for the primary coverage; `pending` until the 271 arrives. Absent for self-pay.
+          description: 'The eligibility check that check-in started for the primary coverage (D15): `pending` until the 271 arrives, or `error` with `errorCode: not-sent` when the practice has no clearinghouse connection. Absent for a self-pay visit (`selfPay`) and for an appointment type that runs no checks (`requiresEligibilityCheck: false`).'
           x-phi: internal-id
     StatusChangeRequest:
       description: Body to record a visit step.
@@ -26477,7 +26482,7 @@ components:
         errorCode:
           type: string
           maxLength: 10
-          description: X12 AAA reject reason code, or `timeout`, when `error`.
+          description: 'When `error`: the X12 AAA reject reason code; `timeout` (no answer from the clearinghouse); or `not-sent` (an automatic check at booking, check-in or the pre-visit batch found no clearinghouse connection for the practice, so nothing was sent; the front desk can run the check by hand later).'
           x-phi: none
         errorMessage:
           type: string
@@ -27034,7 +27039,7 @@ components:
               items:
                 $ref: '#/components/schemas/CodeableConcept'
             - type: 'null'
-          description: Reason, coded or as text. Send `null` to clear it.
+          description: Reason, coded or as text. Send `null` to clear it. Until the coding child tables land (after the demo), the server stores one coding per reason and answers `422` for more than one.
           x-phi: clinical
         locationId:
           oneOf:
@@ -27212,7 +27217,7 @@ components:
           maxItems: 12
           items:
             $ref: '#/components/schemas/VitalEntry'
-          description: The vitals, at most one per type.
+          description: The vitals, at most one per type. An empty list is valid and records nothing (`201` with an empty `vitals`).
           x-phi: clinical
     VitalsRecorded:
       description: The vitals just recorded.
@@ -28609,7 +28614,7 @@ components:
           maxItems: 10
           items:
             $ref: '#/components/schemas/CodeableConcept'
-          description: What happened, e.g. hives, SNOMED CT or text.
+          description: What happened, e.g. hives, SNOMED CT or text. Until the coding child tables land (after the demo), the server stores one coding per manifestation and answers `422` for more than one.
           x-phi: clinical
         severity:
           type: string
@@ -28626,7 +28631,7 @@ components:
           x-phi: clinical
         onsetDate:
           $ref: '#/components/schemas/PartialDate'
-          description: When it happened.
+          description: 'When it happened. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted: `YYYY` and `YYYY-MM` get `422`.'
           x-phi: clinical
     Allergy:
       description: An allergy or intolerance (US Core AllergyIntolerance; FRS FR-PAT-03, FR-MED-01). The medications batch checks prescriptions against active, confirmed allergies.
@@ -28670,7 +28675,7 @@ components:
           x-phi: internal-id
         code:
           $ref: '#/components/schemas/CodeableConcept'
-          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003.'
+          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.'
           x-phi: clinical
         type:
           type: string
@@ -28701,7 +28706,7 @@ components:
           x-phi: clinical
         onsetDate:
           $ref: '#/components/schemas/PartialDate'
-          description: When it started.
+          description: 'When it started. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted: `YYYY` and `YYYY-MM` get `422`.'
           x-phi: clinical
         reactions:
           type: array
@@ -28780,7 +28785,7 @@ components:
           x-phi: internal-id
         code:
           $ref: '#/components/schemas/CodeableConcept'
-          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003.'
+          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.'
           x-phi: clinical
         type:
           type: string
@@ -28811,7 +28816,7 @@ components:
           x-phi: clinical
         onsetDate:
           $ref: '#/components/schemas/PartialDate'
-          description: When it started.
+          description: 'When it started. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted: `YYYY` and `YYYY-MM` get `422`.'
           x-phi: clinical
         reactions:
           type: array
@@ -32121,7 +32126,7 @@ components:
       properties:
         medication:
           $ref: '#/components/schemas/CodeableConcept'
-          description: 'The drug: RxNorm from `GET /codes?system=rxnorm`, or text.'
+          description: 'The drug: RxNorm from `GET /codes?system=rxnorm`, or text. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.'
           x-phi: clinical
         dosageText:
           type: string
@@ -32179,7 +32184,7 @@ components:
           x-phi: internal-id
         medication:
           $ref: '#/components/schemas/CodeableConcept'
-          description: The drug, from `GET /codes?system=rxnorm`.
+          description: The drug, from `GET /codes?system=rxnorm`. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.
           x-phi: clinical
         dosageText:
           type: string
@@ -32431,7 +32436,7 @@ components:
       properties:
         medication:
           $ref: '#/components/schemas/CodeableConcept'
-          description: The drug.
+          description: The drug. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.
           x-phi: clinical
         dosageText:
           type: string
@@ -33708,7 +33713,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/PortalAppointment'
           description: The items on this page.

@@ -2049,7 +2049,8 @@ components:
           maxItems: 10
           items:
             $ref: ../components/schemas/CodeableConcept.yaml
-          description: What happened, e.g. hives, SNOMED CT or text.
+          description: What happened, e.g. hives, SNOMED CT or text. Until the coding child tables land (after the demo),
+            the server stores one coding per manifestation and answers `422` for more than one.
           x-phi: clinical
         severity:
           type: string
@@ -2066,7 +2067,8 @@ components:
           x-phi: clinical
         onsetDate:
           $ref: ../components/schemas/PartialDate.yaml
-          description: When it happened.
+          description: 'When it happened. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted:
+            `YYYY` and `YYYY-MM` get `422`.'
           x-phi: clinical
     Allergy:
       description: An allergy or intolerance (US Core AllergyIntolerance; FRS FR-PAT-03, FR-MED-01). The medications batch
@@ -2112,7 +2114,8 @@ components:
         code: &id027
           $ref: ../components/schemas/CodeableConcept.yaml
           description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses
-            SNOMED CT 716186003.'
+            SNOMED CT 716186003. Until the coding child tables land (after the demo), the server stores one coding per concept
+            and answers `422` for more than one.'
           x-phi: clinical
         type: &id028
           type: string
@@ -2143,7 +2146,8 @@ components:
           x-phi: clinical
         onsetDate: &id031
           $ref: ../components/schemas/PartialDate.yaml
-          description: When it started.
+          description: 'When it started. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted:
+            `YYYY` and `YYYY-MM` get `422`.'
           x-phi: clinical
         reactions: &id032
           type: array

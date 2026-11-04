@@ -305,8 +305,6 @@ def vitals_in(body: schemas.VitalsCreate, now: datetime) -> tuple[VitalIn, ...]:
     (the contract's codes: a unit not allowed for the type, value with blood pressure or the
     reverse, the same type twice, a time in the future)."""
     errors: list[dict[str, str]] = []
-    if not body.entries:
-        errors.append(field_error("body", "/entries", "required"))
     if body.effective_at is not None and body.effective_at > now:
         errors.append(field_error("body", "/effectiveAt", "out-of-range"))
     seen: set[str] = set()
@@ -354,6 +352,9 @@ async def record_vitals(db: AsyncSession, repo: EncounterRepository, store: Fhir
     locked = await repo.head(db, encounter_id, lock=True)  # no status change meanwhile
     if locked.status not in RECORDING:
         raise _state(locked.status)
+    if not entries:  # an empty list is valid and records nothing (#190)
+        name_patient(head.patient_id)
+        return []
     try:
         written = await store.record_vitals(db, head.patient_id, encounter_id, entries,
                                             effective_at=body.effective_at)

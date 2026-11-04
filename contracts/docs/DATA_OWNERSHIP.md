@@ -384,6 +384,7 @@ stateDiagram-v2
 | — → `pending` | Booking, nightly pre-visit batch for next-day appointments, check-in (VD-G3), or `POST /eligibility-checks` (manual) | System; FD, BIL (`eligibility-checks:create`) | 270 queued via `integration.enqueue("clearinghouse", "270", …)` (VG Step 4); `202` + operation for manual checks |
 | `pending` → `complete` | 271 through Thulasi's webhook receiver | System | Coverage status (`active`, `inactive`, `unknown`), copay, deductible stored; `eligibility.completed` |
 | `pending` → `error` | Partner error or timeout | System | Front desk sees "unable to verify"; can retry manually |
+| — → `error` (`errorCode: not-sent`) | An automatic check (booking, pre-visit batch, check-in) when the practice has no clearinghouse connection | System | The check is recorded in the same transaction with a fixed message and nothing is sent; the front desk can run it by hand later |
 
 ### 5.9 Inbox item (admin `work_item`) — owner Anand; contract batch 3 (D77)
 

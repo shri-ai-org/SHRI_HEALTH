@@ -1991,6 +1991,8 @@ paths:
           headers:
             Location:
               $ref: ../components/headers/Location.yaml
+              description: '`/api/v1/patients/{patientId}/portal-account`, the patient''s portal account: an invitation has
+                no URL of its own.'
             X-Request-ID:
               $ref: ../components/headers/XRequestId.yaml
             Cache-Control:
@@ -2038,6 +2040,10 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: '503. `service-unavailable` (portal invitations are not set up on this server: the invitation secret
+            is not configured).'
       tags:
       - patients
   /patients/{patientId}/portal-invitations/{invitationId}/revoke:

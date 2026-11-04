@@ -164,7 +164,8 @@ def test_record_vitals_refusals(as_user: Client, world: World) -> None:
     future = as_user("ma").post(path, json={"effectiveAt": "2999-01-01T00:00:00Z",
                                             "entries": [pulse]})
     assert future.status_code == 422 and _errors(future)[0]["pointer"] == "/effectiveAt"
-    assert as_user("ma").post(path, json={"entries": []}).status_code == 422
+    empty = as_user("ma").post(path, json={"entries": []})  # valid; records nothing (#190)
+    assert empty.status_code == 201 and empty.json() == {"vitals": []}
     world.encounters[encounter].status = "finished"
     closed = as_user("ma").post(path, json={"entries": [pulse]})
     assert closed.status_code == 409 and closed.json()["currentState"] == "finished"

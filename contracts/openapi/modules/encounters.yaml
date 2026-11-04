@@ -3341,7 +3341,7 @@ components:
           maxItems: 12
           items:
             $ref: '#/components/schemas/VitalEntry'
-          description: The vitals, at most one per type.
+          description: The vitals, at most one per type. An empty list is valid and records nothing (`201` with an empty `vitals`).
           x-phi: clinical
     VitalsRecorded:
       description: The vitals just recorded.
@@ -3617,7 +3617,8 @@ components:
             items:
               $ref: ../components/schemas/CodeableConcept.yaml
           - type: 'null'
-          description: Reason, coded or as text. Send `null` to clear it.
+          description: Reason, coded or as text. Send `null` to clear it. Until the coding child tables land (after the demo),
+            the server stores one coding per reason and answers `422` for more than one.
           x-phi: clinical
         locationId:
           oneOf:
