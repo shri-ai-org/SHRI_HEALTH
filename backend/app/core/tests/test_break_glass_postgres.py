@@ -2,25 +2,34 @@
 the 4-hour grant, its audit row and event, the refusals, and that ensure_chart_access() opens
 the chart with it afterwards.
 
+A retry's replay needs the stored response, which core encrypts: the real OpenBao when
+OPENBAO_TRANSIT_ADDR is set (CI), otherwise a fake Transit, so the tests pass on a machine
+without one.
+
 Needs TEST_DATABASE_URL, migrated to head (app/db/tests/conftest.py). Skipped otherwise.
 Synthetic patients and staff only.
 """
 
 import datetime as dt
+import json
 import logging
+import os
 from collections.abc import Iterator
 from typing import Any
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import Engine, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.core.access import ensure_chart_access
 from app.core.config import Settings
+from app.core.crypto import FieldCrypto
 from app.core.deps import CurrentUser, current_user, require, tenant_db
 from app.core.routing import API_PREFIX
 from app.core.tests.stand_ins import include_first
@@ -57,6 +66,14 @@ def _chart_router() -> APIRouter:
     return router
 
 
+def _fake_transit(request: httpx.Request) -> httpx.Response:
+    body = json.loads(request.content)
+    if request.url.path.endswith("/encrypt/shri-fields"):
+        return httpx.Response(200, json={"data": {"ciphertext": f"vault:v1:{body['plaintext']}"}})
+    return httpx.Response(200, json={"data": {
+        "plaintext": body["ciphertext"].removeprefix("vault:v1:")}})
+
+
 @pytest.fixture
 def chart(db: Session, tenant: UUID) -> dict[str, Any]:  # noqa: F811
     staff = b.practitioner(db, "Halvorsen64", "Rowan318")
@@ -82,6 +99,11 @@ def client(signed_in: dict[str, CurrentUser]) -> Iterator[TestClient]:
     switch_to_role(app.state.db.engine.sync_engine, "shri_app")
     include_first(app, _chart_router(), prefix=API_PREFIX)
     app.dependency_overrides[current_user] = lambda: signed_in["user"]
+    if not os.environ.get("OPENBAO_TRANSIT_ADDR"):  # no OpenBao on this machine
+        app.state.crypto = FieldCrypto(
+            Settings(environment="test", openbao_transit_addr="http://bao.test:8200",
+                     openbao_transit_token=SecretStr("fake")),
+            transport=httpx.MockTransport(_fake_transit))
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
         assert c.portal is not None
