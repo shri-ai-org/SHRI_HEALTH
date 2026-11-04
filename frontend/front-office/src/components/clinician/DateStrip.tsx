@@ -2,7 +2,7 @@ import { cn } from '../../utils/cn'
 import { tintedChip } from '../../utils/chipTone'
 import type { DateStripDay } from '../../domain/selectors'
 import { addDaysToKey } from '../../domain/selectors'
-import { dayStartTimestamp } from '../../domain/time'
+import { calendarDate } from '../../domain/time'
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -32,7 +32,7 @@ export function DateStrip({
       {days.map((day) => {
         const selectable = day.state === 'open'
         const isSelected = day.date === selected
-        const date = new Date(dayStartTimestamp(day.date))
+        const date = calendarDate(day.date)
         const top = day.date === today ? 'Today' : day.date === tomorrow ? 'Tmrw' : WEEKDAY[date.getDay()]
         const bottom = day.state === 'open' ? `${day.open} open` : day.state === 'full' ? 'Full' : day.state === 'leave' ? 'Leave' : 'Off'
         const spoken = `${day.date === today ? 'Today, ' : day.date === tomorrow ? 'Tomorrow, ' : ''}${WEEKDAY[date.getDay()]} ${date.getDate()} ${MONTH[date.getMonth()]} — ${

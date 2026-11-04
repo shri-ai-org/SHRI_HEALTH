@@ -16,7 +16,7 @@ import { useNow } from '../hooks/useNow'
 import { getPatientRows } from '../domain/patientSelectors'
 import type { PatientListRow } from '../domain/patientSelectors'
 import { todayKey } from '../domain/time'
-import { formatRupees } from '../utils/billing'
+import { formatMoney } from '../utils/billing'
 import { initialsOf } from '../utils/format'
 import { PatientsTabs } from '../components/patient/PatientsTabs'
 import { PatientStatusIcons } from '../components/patient/PatientStatusIcons'
@@ -123,7 +123,7 @@ export function PatientsPage() {
           {isToday(row) ? <Badge tone="stable">Registered today</Badge> : null}
           {row.due > 0 ? (
             <Badge tone={row.failed ? 'critical' : 'warning'}>
-              {row.failed ? 'Payment failed' : 'Payment pending'} · {formatRupees(row.due)}
+              {row.failed ? 'Payment failed' : 'Payment pending'} · {formatMoney(row.due)}
             </Badge>
           ) : null}
           {row.duplicate ? <Badge tone="warning">Possible duplicate</Badge> : null}

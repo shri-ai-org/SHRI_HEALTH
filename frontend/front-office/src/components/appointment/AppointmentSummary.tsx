@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
 import { Building2, Clock, MapPin, Phone, Video } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
-import { formatRupees } from '../../utils/billing'
+import { formatMoney } from '../../utils/billing'
 import { formatDateKey, relativeDayLabel } from '../../utils/dates'
 import { initialsOf } from '../../utils/format'
-import { dayStartTimestamp, formatTime, slotLabel, slotToTimestamp } from '../../domain/time'
+import { formatTime, slotLabel, slotToTimestamp, calendarDate } from '../../domain/time'
 import type { Patient } from '../../types/patient'
 import type { Provider } from '../../types/doctor'
 import type { ConsultMode } from '../../types/appointment'
@@ -55,13 +55,13 @@ export function AppointmentSummary({
           {items.map((item, index) => (
             <li key={`${item.description}-${index}`} className="flex justify-between gap-3 text-ink-muted">
               <span className="min-w-0">{item.description}</span>
-              <span className="tabular-nums text-ink">{formatRupees(item.amount)}</span>
+              <span className="tabular-nums text-ink">{formatMoney(item.amount)}</span>
             </li>
           ))}
         </ul>
         <p className="mt-2 flex justify-between gap-3 border-t border-border-soft pt-2 font-semibold text-ink">
           <span>Total</span>
-          <span className="tabular-nums">{formatRupees(total)}</span>
+          <span className="tabular-nums">{formatMoney(total)}</span>
         </p>
       </div>
 
@@ -84,7 +84,7 @@ export function AppointmentWhen({
   mode: ConsultMode
   today: string
 }) {
-  const day = new Date(dayStartTimestamp(date))
+  const day = calendarDate(date)
   const minutes = provider.schedule.slotMinutes
   const end = slotLabel(slotToTimestamp(date, slot) + minutes * 60000)
   const relative = relativeDayLabel(date, today)

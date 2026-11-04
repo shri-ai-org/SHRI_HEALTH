@@ -3,12 +3,12 @@ import {
   ChartNoAxesCombined,
   FileWarning,
   IdCard,
-  IndianRupee,
   LayoutGrid,
   Receipt,
   Users,
 } from 'lucide-react'
 import type { IconTone } from '../../utils/toneHex'
+import { CurrencyIcon } from '../../utils/billing'
 
 // The shell never hard-codes menus (DESIGN_SYSTEM §8.4): the sidebar, the
 // tablet rail and the phone's scrolling nav row all render from this one
@@ -40,7 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
       // One place for patients — everyone, outpatients and inpatients are its
       // tabs, and a patient's profile lives under it too.
       { label: 'Patients', path: '/patients', icon: Users, hue: 'teal', description: 'Everyone, outpatients and inpatients' },
-      { label: 'Payments', path: '/billing', icon: IndianRupee, hue: 'amber', description: 'Whether each patient’s bill is pending or paid at the billing counter' },
+      { label: 'Payments', path: '/billing', icon: CurrencyIcon, hue: 'amber', description: 'Whether each patient’s bill is pending or paid at the billing counter' },
       { label: 'Activity & Analytics', path: '/activity-analytics', icon: ChartNoAxesCombined, hue: 'violet', description: 'Desk activity, trends and performance' },
     ],
   },

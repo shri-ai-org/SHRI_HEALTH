@@ -26,6 +26,7 @@ import { DoctorLeaveCard } from '../components/doctor/DoctorLeaveCard'
 import { initialsOf } from '../utils/format'
 import { useFlow } from '../flows/useFlow'
 import { formatTimeRange } from '../domain/time'
+import { formatMoney } from '../utils/billing'
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -121,7 +122,7 @@ export function DoctorProfilePage() {
                   <Row label="Registration no." value={provider.registrationNumber} />
                   <Row label="Experience" value={`${provider.experienceYears} yrs`} />
                   <Row label="Consultation" value={provider.consultationType} />
-                  <Row label="Fee" value={provider.consultationFee ? `₹${provider.consultationFee}` : '—'} />
+                  <Row label="Fee" value={provider.consultationFee ? formatMoney(provider.consultationFee) : '—'} />
                   <Row label="Room" value={provider.room ?? '—'} />
                   <Row label="Mobile" value={provider.mobile} />
                   <Row label="Email" value={provider.email ?? '—'} />

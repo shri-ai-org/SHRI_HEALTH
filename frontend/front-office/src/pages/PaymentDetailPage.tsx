@@ -12,7 +12,7 @@ import { getPaymentById } from '../domain/selectors'
 import { formatClock } from '../utils/format'
 import { formatDateKey } from '../utils/dates'
 import { todayKey } from '../domain/time'
-import { billNumberFor, formatRupees, isBillDue } from '../utils/billing'
+import { billNumberFor, formatMoney, isBillDue } from '../utils/billing'
 import { printBill } from '../utils/printBill'
 
 function timestampLabel(ts: number): string {
@@ -57,7 +57,7 @@ export function PaymentDetailPage() {
     if (!payment) return
     printBill(payment.paymentId)
     setPrinted(true)
-    notify(`Bill printed for ${payment.patientName}`, { detail: `${billNumberFor(payment)} · ${formatRupees(payment.balance)}` })
+    notify(`Bill printed for ${payment.patientName}`, { detail: `${billNumberFor(payment)} · ${formatMoney(payment.balance)}` })
   }
 
   const linkedTo = payment.admissionId
@@ -100,12 +100,12 @@ export function PaymentDetailPage() {
               {payment.items.map((item) => (
                 <div key={item.code} className="flex items-center justify-between px-5 py-2.5 text-sm">
                   <span className="text-ink">{item.description}</span>
-                  <span className="font-medium tabular-nums text-ink">{formatRupees(item.amount)}</span>
+                  <span className="font-medium tabular-nums text-ink">{formatMoney(item.amount)}</span>
                 </div>
               ))}
               <div className="flex items-center justify-between px-5 py-3">
                 <span className="text-sm font-semibold text-ink">Total</span>
-                <span className="text-base font-semibold tabular-nums text-ink">{formatRupees(payment.totalAmount)}</span>
+                <span className="text-base font-semibold tabular-nums text-ink">{formatMoney(payment.totalAmount)}</span>
               </div>
             </div>
 
@@ -140,7 +140,7 @@ export function PaymentDetailPage() {
                         </p>
                       </div>
                       <span className={row.failed ? 'font-medium tabular-nums text-critical-fg line-through' : 'font-medium tabular-nums text-success-fg'}>
-                        {formatRupees(row.amount)}
+                        {formatMoney(row.amount)}
                       </span>
                     </div>
                   ))}
@@ -152,7 +152,7 @@ export function PaymentDetailPage() {
                 <CardHeader title="Refund" />
                 <CardBody className="text-sm">
                   <p className="text-ink">
-                    {payment.refund.refundId} · {formatRupees(payment.refund.amount)}
+                    {payment.refund.refundId} · {formatMoney(payment.refund.amount)}
                     {payment.refund.methods.length > 0 ? ` to ${payment.refund.methods.join(' + ')}` : ''} · {timestampLabel(payment.refund.refundedAt)}
                   </p>
                   <p className="mt-1 text-xs text-ink-muted">{payment.refund.reason}</p>
@@ -172,9 +172,9 @@ export function PaymentDetailPage() {
               <CardHeader title="Summary" />
               <CardBody className="flex flex-col gap-3">
                 <dl className="space-y-2 text-sm">
-                  <Row label="Total" value={formatRupees(payment.totalAmount)} />
-                  <Row label="Paid" value={formatRupees(payment.paidAmount)} />
-                  <Row label="Due" value={formatRupees(payment.balance)} />
+                  <Row label="Total" value={formatMoney(payment.totalAmount)} />
+                  <Row label="Paid" value={formatMoney(payment.paidAmount)} />
+                  <Row label="Due" value={formatMoney(payment.balance)} />
                   <Row label="Raised" value={timestampLabel(payment.createdAt)} />
                 </dl>
                 <div className="flex flex-col gap-2 border-t border-border-soft pt-3">

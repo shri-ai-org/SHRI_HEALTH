@@ -13,7 +13,7 @@ import { currentFrontOfficeUser } from '../data/currentUser'
 import { formatClock } from '../utils/format'
 import { formatDateKey } from '../utils/dates'
 import { todayKey } from '../domain/time'
-import { formatRupees } from '../utils/billing'
+import { formatMoney } from '../utils/billing'
 
 function timestampLabel(ts: number): string {
   return `${formatDateKey(todayKey(new Date(ts)))} · ${formatClock(ts)}`
@@ -98,7 +98,7 @@ export function PaymentReceiptPage() {
                 {payment.items.map((item) => (
                   <div key={item.code} className="flex items-center justify-between">
                     <span className="text-ink">{item.description}</span>
-                    <span className="tabular-nums text-ink">{formatRupees(item.amount)}</span>
+                    <span className="tabular-nums text-ink">{formatMoney(item.amount)}</span>
                   </div>
                 ))}
               </div>
@@ -106,12 +106,12 @@ export function PaymentReceiptPage() {
 
             <div className="flex items-center justify-between border-t border-border-soft pt-3">
               <span className="text-sm font-semibold text-ink">Total Paid</span>
-              <span className="text-lg font-semibold tabular-nums text-ink">{formatRupees(payment.paidAmount)}</span>
+              <span className="text-lg font-semibold tabular-nums text-ink">{formatMoney(payment.paidAmount)}</span>
             </div>
             {payment.balance > 0 ? (
               <div className="flex items-center justify-between text-sm text-warning-fg">
                 <span>Balance Due</span>
-                <span className="tabular-nums">{formatRupees(payment.balance)}</span>
+                <span className="tabular-nums">{formatMoney(payment.balance)}</span>
               </div>
             ) : null}
 
@@ -126,7 +126,7 @@ export function PaymentReceiptPage() {
 
             {payment.refund ? (
               <div className="rounded-lg border border-info-fg/25 bg-info-bg px-3 py-2.5 text-xs text-info-fg">
-                Refunded {formatRupees(payment.refund.amount)} on {timestampLabel(payment.refund.refundedAt)} — {payment.refund.reason}
+                Refunded {formatMoney(payment.refund.amount)} on {timestampLabel(payment.refund.refundedAt)} — {payment.refund.reason}
               </div>
             ) : null}
 

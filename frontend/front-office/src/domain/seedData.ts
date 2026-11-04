@@ -33,7 +33,7 @@ import type { Admission } from '../types/admission'
 import { createAdmissionSeed } from './admissionSeedData'
 import type { StaySeed } from './admissionSeedData'
 import { PATIENT_HISTORY, contactFor } from './seedPatientHistory'
-import { admissionBillItems, formatRupees, stayDays, sumItems } from '../utils/billing'
+import { admissionBillItems, formatMoney, stayDays, sumItems } from '../utils/billing'
 import { NO_SHOW_GRACE_MINUTES } from '../utils/appointment'
 
 export { todayKey }
@@ -104,6 +104,34 @@ interface EncounterSeed {
   /** Today's encounters are in the queue; earlier days only leave a visit. */
   tokenStatus: QueueTokenStatus | null
   closedAt: number | null
+}
+
+/**
+ * With the SHRI_HEALTH API (SHRI_API=real): no sample patients, doctors, bookings, visits, bills,
+ * admissions or log — only what the server returns is shown. The ward's beds and the rate card stay:
+ * they are this app's own setup, not patient data.
+ */
+export function createEmptyState(): AppState {
+  const seed = createSeedState()
+  return {
+    ...seed,
+    patients: [],
+    providers: [],
+    leaves: [],
+    appointments: [],
+    visits: [],
+    queueTokens: [],
+    guestPasses: [],
+    estimates: [],
+    mlcRecords: [],
+    payments: [],
+    beds: seed.beds.map((bed) => (bed.currentAdmissionId ? { ...bed, status: 'Available' as const, currentAdmissionId: null } : bed)),
+    admissions: [],
+    registrationLog: [],
+    patientOpens: {},
+    activityLog: [],
+    tokenCounters: Object.fromEntries(Object.keys(seed.tokenCounters).map((prefix) => [prefix, 0])) as AppState['tokenCounters'],
+  }
 }
 
 export function createSeedState(): AppState {
@@ -625,9 +653,9 @@ export function createSeedState(): AppState {
       cancelReason: cancelled?.reason ?? null,
     }
     payments.push(bill)
-    for (const c of collections) logAt(c.at, 'Payment received at the billing counter', `${name} · ${formatRupees(c.amount)} · ${c.method}`)
-    for (const f of failed) logAt(f.at, 'Payment attempt failed', `${name} · ${formatRupees(f.amount)} · ${f.method} · ${f.reason}`)
-    if (refund) logAt(refund.at, 'Payment refunded', `${name} · ${formatRupees(paid)}`)
+    for (const c of collections) logAt(c.at, 'Payment received at the billing counter', `${name} · ${formatMoney(c.amount)} · ${c.method}`)
+    for (const f of failed) logAt(f.at, 'Payment attempt failed', `${name} · ${formatMoney(f.amount)} · ${f.method} · ${f.reason}`)
+    if (refund) logAt(refund.at, 'Payment refunded', `${name} · ${formatMoney(paid)}`)
     return bill
   }
 
@@ -1176,7 +1204,7 @@ export function createSeedState(): AppState {
     estimateId: 'EST/00001',
     collections: [{ amount: 650, method: 'UPI', at: daysAgo(2) + 13 * MINUTE }],
   })
-  for (const estimate of estimates) logAt(estimate.updatedAt, 'Estimate saved', `${estimate.estimateId} · ${estimate.patientName} · ${formatRupees(estimate.total)}`)
+  for (const estimate of estimates) logAt(estimate.updatedAt, 'Estimate saved', `${estimate.estimateId} · ${estimate.patientName} · ${formatMoney(estimate.total)}`)
 
   // Receipts, transactions and failed attempts are numbered in the order
   // they happened, as the desk numbers them.

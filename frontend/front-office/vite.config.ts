@@ -78,6 +78,9 @@ export default defineConfig({
   define: {
     __BUILD_STAMP__: JSON.stringify(buildStamp(new Date())),
     __BUILD_COMMIT__: JSON.stringify(buildCommit()),
+    // SHRI_API=real: the screens show only what the SHRI_HEALTH API holds (no sample data), in the
+    // clinic's time zone and currency (shri-health/client.ts REAL_API).
+    __SHRI_REAL_API__: JSON.stringify(Boolean(realApi)),
   },
   // Listen on all network interfaces so colleagues on the same LAN can open the app
   server: { host: true, ...(realApi ? { proxy: { '/api/v1': realApiProxy(realApi) } } : {}) },

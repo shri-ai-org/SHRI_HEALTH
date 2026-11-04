@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, BedDouble, CalendarPlus, ChartNoAxesCombined, IdCard, IndianRupee, ListChecks, LogOut, ReceiptText, UserCheck, UserPlus } from 'lucide-react'
+import { Activity, BedDouble, CalendarPlus, ChartNoAxesCombined, IdCard, ListChecks, LogOut, ReceiptText, UserCheck, UserPlus } from 'lucide-react'
 import { PageHeader } from '../components/layout/PageHeader'
 import { Card, CardHeader } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -26,7 +26,7 @@ import {
 } from '../domain/reportSelectors'
 import type { ActivityEvent, ActivityType, ReportPeriod, ReportRange } from '../domain/reportSelectors'
 import { addDaysToKey } from '../domain/selectors'
-import { formatRupees } from '../utils/billing'
+import { CurrencyIcon, formatMoney } from '../utils/billing'
 import { MONTH, timeLabel } from '../utils/activityFormat'
 import { ActivityDetails } from '../components/activity/ActivityDetails'
 import { TONE_HEX } from '../utils/toneHex'
@@ -216,7 +216,7 @@ export function ActivityAnalyticsPage() {
             selected={selected === 'PAYMENT_STATUS'}
             onSelect={() => setSelected('PAYMENT_STATUS')}
             hue="green"
-            icon={IndianRupee}
+            icon={CurrencyIcon}
             value={
               <span className="flex flex-col gap-0.5 text-base leading-tight">
                 <span>Pending: {payments.pendingBills}</span>
@@ -224,20 +224,20 @@ export function ActivityAnalyticsPage() {
               </span>
             }
             label="Payment Status"
-            hint={`${formatRupees(payments.pendingAmount)} pending`}
+            hint={`${formatMoney(payments.pendingAmount)} pending`}
           />
         </section>
 
         {/* The records behind the chosen card */}
         {selected === 'PAYMENT_STATUS' ? (
           <Card accentTone="stable">
-            <CardHeader icon={IndianRupee} iconTone="stable" title="Payment Status" />
+            <CardHeader icon={CurrencyIcon} iconTone="stable" title="Payment Status" />
             <div className="flex flex-col gap-3 p-4 sm:p-5">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
                 <StatCard hue="blue" icon={ReceiptText} value={payments.totalBills} label="Total Bills" />
-                <StatCard hue="indigo" icon={IndianRupee} value={formatRupees(payments.billedAmount)} label="Total Billed" />
-                <StatCard hue="green" icon={IndianRupee} value={formatRupees(payments.receivedAmount)} label="Payment Received" />
-                <StatCard hue="orange" icon={IndianRupee} value={formatRupees(payments.pendingAmount)} label="Pending Amount" />
+                <StatCard hue="indigo" icon={CurrencyIcon} value={formatMoney(payments.billedAmount)} label="Total Billed" />
+                <StatCard hue="green" icon={CurrencyIcon} value={formatMoney(payments.receivedAmount)} label="Payment Received" />
+                <StatCard hue="orange" icon={CurrencyIcon} value={formatMoney(payments.pendingAmount)} label="Pending Amount" />
                 <StatCard hue="teal" icon={ReceiptText} value={payments.paidBills} label="Paid Bills" />
                 <StatCard hue="red" icon={ReceiptText} value={payments.pendingBills} label="Pending Bills" />
               </div>
@@ -338,7 +338,7 @@ function activityColumns(withDate: boolean): Column<ActivityEvent>[] {
             <span className="flex items-center gap-2 font-medium text-ink">
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: TONE_HEX[info.hue] }} aria-hidden="true" />
               {info.event}
-              {event.amount !== undefined ? <span className="font-normal text-ink-muted">· {formatRupees(event.amount)}</span> : null}
+              {event.amount !== undefined ? <span className="font-normal text-ink-muted">· {formatMoney(event.amount)}</span> : null}
             </span>
             {event.detail ? <span className="mt-0.5 block truncate pl-4 text-xs font-normal text-ink-subtle">{event.detail}</span> : null}
           </>

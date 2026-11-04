@@ -7,7 +7,7 @@ import { currentFrontOfficeUser } from '../../data/currentUser'
 import { todayKey } from '../../domain/time'
 import { formatClock } from '../../utils/format'
 import { formatDateKey } from '../../utils/dates'
-import { billNumberFor, formatRupees, isBillDue } from '../../utils/billing'
+import { billNumberFor, formatMoney, isBillDue } from '../../utils/billing'
 import { finishBillPrint, getBillPrintJob, subscribeBillPrint } from '../../utils/printBill'
 import type { Payment } from '../../types/payment'
 
@@ -75,7 +75,7 @@ function PrintedBill({ bill, printedAt }: { bill: Payment; printedAt: number }) 
           {bill.items.map((item) => (
             <div key={item.code} className="flex items-baseline justify-between gap-4">
               <span>{item.description}</span>
-              <span className="tabular-nums">{formatRupees(item.amount)}</span>
+              <span className="tabular-nums">{formatMoney(item.amount)}</span>
             </div>
           ))}
         </div>
@@ -84,17 +84,17 @@ function PrintedBill({ bill, printedAt }: { bill: Payment; printedAt: number }) 
       <div className="mt-3 space-y-1.5 border-t border-border-soft pt-3 text-sm">
         <div className="flex items-baseline justify-between gap-4">
           <span>Total</span>
-          <span className="tabular-nums">{formatRupees(bill.totalAmount)}</span>
+          <span className="tabular-nums">{formatMoney(bill.totalAmount)}</span>
         </div>
         {bill.paidAmount > 0 ? (
           <div className="flex items-baseline justify-between gap-4">
             <span>Paid</span>
-            <span className="tabular-nums">− {formatRupees(bill.paidAmount)}</span>
+            <span className="tabular-nums">− {formatMoney(bill.paidAmount)}</span>
           </div>
         ) : null}
         <div className="flex items-baseline justify-between gap-4 border-t border-border-soft pt-2">
           <span className="font-semibold">{due ? 'To pay' : 'Balance'}</span>
-          <span className="text-lg font-semibold tabular-nums">{formatRupees(bill.balance)}</span>
+          <span className="text-lg font-semibold tabular-nums">{formatMoney(bill.balance)}</span>
         </div>
       </div>
 

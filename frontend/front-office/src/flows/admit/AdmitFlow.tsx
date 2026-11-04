@@ -15,7 +15,7 @@ import { getDepartments, getPatientById, getProviders } from '../../domain/selec
 import { getBedsForWard, getFirstFreeBed, getWardSummaries } from '../../domain/admissionSelectors'
 import { getCurrentAdmissionForPatient } from '../../domain/patientSelectors'
 import { admitPatient } from '../../domain/admissionActions'
-import { DAILY_BED_CHARGE, admissionBillItems, formatRupees } from '../../utils/billing'
+import { DAILY_BED_CHARGE, admissionBillItems, formatMoney } from '../../utils/billing'
 import { isValidMobile } from '../../utils/phone'
 import { mobileEarlyError, mobileError } from '../../utils/validation'
 import { revealFirstInvalid } from '../../utils/revealInvalid'
@@ -245,9 +245,9 @@ export function AdmitFlow({ params, onClose }: FlowProps) {
         <div className="flex flex-wrap items-center justify-between gap-3 xl:justify-end">
           <div className="text-right">
             <p className="text-sm text-ink-muted">First-day bill</p>
-            <p className="text-2xl font-bold tabular-nums text-ink">{billItems.length ? formatRupees(billTotal) : '—'}</p>
+            <p className="text-2xl font-bold tabular-nums text-ink">{billItems.length ? formatMoney(billTotal) : '—'}</p>
             {billItems.length ? (
-              <p className="text-xs text-ink-muted">{billItems.map((item) => `${item.description} ${formatRupees(item.amount)}`).join(' · ')}</p>
+              <p className="text-xs text-ink-muted">{billItems.map((item) => `${item.description} ${formatMoney(item.amount)}`).join(' · ')}</p>
             ) : null}
           </div>
           <Button size="lg" onClick={admit}>
@@ -387,7 +387,7 @@ export function AdmitFlow({ params, onClose }: FlowProps) {
                             </span>
                             {/* Only a full ward says so; otherwise the beds below show what is free. */}
                             {full ? <span className="text-xs font-semibold text-critical-fg">Full</span> : null}
-                            <span className="text-xs text-ink-muted">{formatRupees(DAILY_BED_CHARGE[roomType])}/day</span>
+                            <span className="text-xs text-ink-muted">{formatMoney(DAILY_BED_CHARGE[roomType])}/day</span>
                           </button>
                         )
                       })}

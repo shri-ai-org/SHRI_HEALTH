@@ -5,14 +5,14 @@ import { Avatar } from '../ui/Avatar'
 import { Badge } from '../ui/Badge'
 import { DoctorDayChart } from './DoctorDayChart'
 import { cn } from '../../utils/cn'
-import { formatRupees } from '../../utils/billing'
+import { formatMoney } from '../../utils/billing'
 import { relativeDayLabel, shortDayLabel } from '../../utils/dates'
 import { modesFor } from '../../utils/appointment'
 import { initialsOf } from '../../utils/format'
 import { useStoreValue } from '../../hooks/useStore'
 import { addDaysToKey, getDoctorDateStrip } from '../../domain/selectors'
 import type { DoctorSuggestion } from '../../domain/selectors'
-import { dayStartTimestamp, formatTime } from '../../domain/time'
+import { formatTime, calendarDate } from '../../domain/time'
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -73,6 +73,8 @@ export function DoctorSlotCard({
   const shownDay = sharedDay ?? ownDay ?? (chosen ? selectedDate : null) ?? firstOpen ?? today
   const modes = modesFor(provider)
   const tomorrow = addDaysToKey(today, 1)
+  // A SHRI_HEALTH doctor has no fee from the server: none is said or shown rather than a zero.
+  const feeSpoken = provider.consultationFee > 0 ? `, ${formatMoney(provider.consultationFee)}` : ''
 
   return (
     <article
@@ -101,8 +103,8 @@ export function DoctorSlotCard({
             }}
             aria-label={
               onOpen
-                ? `${provider.name}, ${provider.specialty}, ${formatRupees(provider.consultationFee)} — open profile`
-                : `${provider.name}, ${provider.specialty}, ${formatRupees(provider.consultationFee)}${
+                ? `${provider.name}, ${provider.specialty}${feeSpoken} — open profile`
+                : `${provider.name}, ${provider.specialty}${feeSpoken}${
                     next ? ` — take the earliest time, ${relativeDayLabel(next.date, today)} ${formatTime(next.slot)}` : ''
                   }`
             }
@@ -135,7 +137,13 @@ export function DoctorSlotCard({
                 ) : null}
               </span>
               <span className="mt-0.5 block text-xs text-ink-muted">
-                {provider.specialty} · <span className="font-semibold tabular-nums text-ink">{formatRupees(provider.consultationFee)}</span>
+                {provider.specialty}
+                {provider.consultationFee > 0 ? (
+                  <>
+                    {' '}
+                    · <span className="font-semibold tabular-nums text-ink">{formatMoney(provider.consultationFee)}</span>
+                  </>
+                ) : null}
               </span>
               <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-ink-subtle">
                 <span>{provider.department}</span>
@@ -178,7 +186,7 @@ export function DoctorSlotCard({
               {strip.map((d) => {
                 const open = d.state === 'open'
                 const active = d.date === shownDay
-                const date = new Date(dayStartTimestamp(d.date))
+                const date = calendarDate(d.date)
                 const label = d.date === today ? 'Today' : d.date === tomorrow ? 'Tmrw' : `${WEEKDAY[date.getDay()]} ${date.getDate()}`
                 const note = open ? String(d.open) : d.state === 'full' ? 'Full' : d.state === 'leave' ? 'Leave' : 'Off'
                 return (

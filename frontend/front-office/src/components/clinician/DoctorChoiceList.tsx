@@ -4,7 +4,7 @@ import { Avatar } from '../ui/Avatar'
 import { Badge } from '../ui/Badge'
 import { ModeBadge } from '../appointment/ModeBadge'
 import { cn } from '../../utils/cn'
-import { formatRupees } from '../../utils/billing'
+import { formatMoney } from '../../utils/billing'
 import { relativeDayLabel } from '../../utils/dates'
 import { modesFor } from '../../utils/appointment'
 import { initialsOf } from '../../utils/format'
@@ -76,7 +76,14 @@ export function DoctorChoiceList({
                   ) : null}
                 </span>
                 <span className="mt-0.5 block text-xs text-ink-muted">
-                  {s.provider.specialty} · <span className="font-semibold tabular-nums text-ink">{formatRupees(s.provider.consultationFee)}</span>
+                  {s.provider.specialty}
+                  {/* A SHRI_HEALTH doctor has no fee from the server: none is shown rather than a zero. */}
+                  {s.provider.consultationFee > 0 ? (
+                    <>
+                      {' '}
+                      · <span className="font-semibold tabular-nums text-ink">{formatMoney(s.provider.consultationFee)}</span>
+                    </>
+                  ) : null}
                 </span>
                 {s.provider.room ? (
                   <span className="mt-0.5 flex items-center gap-1 truncate text-xs text-ink-subtle">

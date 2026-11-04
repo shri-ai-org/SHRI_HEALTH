@@ -7,7 +7,6 @@ import {
   CalendarPlus,
   CheckCircle2,
   DoorOpen,
-  IndianRupee,
   LogIn,
   MoreHorizontal,
   UserCheck,
@@ -38,6 +37,7 @@ import { CheckInToggle } from '../components/appointment/CheckInToggle'
 import { todayKey } from '../domain/time'
 import { isServerAppointment, loadAppointments, markNoShowOnServer } from '../../shri-health/scheduling'
 import { problemMessage } from '../../shri-health/client'
+import { CurrencyIcon } from '../utils/billing'
 
 function readFilter(value: string | null): OutpatientFilter {
   return OUTPATIENT_FILTERS.includes(value as OutpatientFilter) ? (value as OutpatientFilter) : 'today'
@@ -128,7 +128,7 @@ export function OutpatientsPage() {
           // Paid at the billing counter; check-in opens once it is received.
           return bill ? (
             <Button size="sm" variant="secondary" onClick={() => navigate(`/payments/${bill.paymentId}`)}>
-              <IndianRupee className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <CurrencyIcon className="h-3.5 w-3.5" strokeWidth={1.75} />
               View bill
             </Button>
           ) : null

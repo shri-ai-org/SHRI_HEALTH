@@ -37,11 +37,11 @@ import type {
   BookableFacility,
   BookableProvider,
 } from '../../src/api/generated/model'
-import { newIdempotencyKey } from './client'
+import { REAL_API, newIdempotencyKey } from './client'
 import { loadCandidates } from './patients'
 import { getState, setState } from '../src/domain/store'
 import { addDaysToKey } from '../src/domain/selectors'
-import { todayKey } from '../src/domain/time'
+import { setClinicTimeZone, slotLabel, todayKey } from '../src/domain/time'
 import { formatDateKey } from '../src/utils/dates'
 import type { Appointment, AppointmentStatus, ConsultMode, UnavailableParty } from '../src/types/appointment'
 import type { Provider } from '../src/types/doctor'
@@ -67,14 +67,11 @@ let bookableTypes: BookableAppointmentType[] = []
 /** The server's exact start of each free time shown, by `providerId|date|slot`. */
 const startAtBySlot = new Map<string, string>()
 
-/** `startAt` as the facility's date and "HH:MM" (SHRI_HEALTH D40: appointments show in facility time). */
-export function facilityTime(startAt: string, timeZone: string): { date: string; slot: string } {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-      .formatToParts(new Date(startAt))
-      .map((p) => [p.type, p.value]),
-  )
-  return { date: `${parts.year}-${parts.month}-${parts.day}`, slot: `${parts.hour}:${parts.minute}` }
+/** `startAt` as the clinic's date and "HH:MM": the facility's time zone once it is the clinic's
+ *  (SHRI_API=real, D40), else the browser's, like the sample data it sits beside. */
+export function facilityTime(startAt: string): { date: string; slot: string } {
+  const at = Date.parse(startAt)
+  return { date: todayKey(new Date(at)), slot: slotLabel(at) }
 }
 
 function typeFor(mode: ConsultMode): BookableAppointmentType | null {
@@ -110,8 +107,8 @@ function fromProvider(p: BookableProvider, types: BookableAppointmentType[], slo
   }
 }
 
-function fromAppointment(a: AppointmentSummary | ApiAppointment, timeZone: string, existing: Appointment | undefined): Appointment {
-  const { date, slot } = facilityTime(a.startAt, timeZone)
+function fromAppointment(a: AppointmentSummary | ApiAppointment, existing: Appointment | undefined): Appointment {
+  const { date, slot } = facilityTime(a.startAt)
   const provider = getState().providers.find((p) => p.providerId === a.provider.id)
   const tele = bookableTypes.find((t) => t.id === a.appointmentType.id)?.telehealth ?? false
   const cancellation = 'cancellation' in a ? a.cancellation : undefined
@@ -136,9 +133,9 @@ function fromAppointment(a: AppointmentSummary | ApiAppointment, timeZone: strin
   }
 }
 
-function reconcileAppointments(items: (AppointmentSummary | ApiAppointment)[], timeZone: string): Appointment[] {
+function reconcileAppointments(items: (AppointmentSummary | ApiAppointment)[]): Appointment[] {
   const byId = new Map(getState().appointments.map((a) => [a.appointmentId, a]))
-  const mapped = items.map((a) => fromAppointment(a, timeZone, byId.get(a.id)))
+  const mapped = items.map((a) => fromAppointment(a, byId.get(a.id)))
   if (mapped.length === 0) return mapped
   setState((state) => {
     const next = new Map(state.appointments.map((a) => [a.appointmentId, a]))
@@ -164,6 +161,11 @@ async function fetchBookable(): Promise<Bookable> {
   const [providers, types] = await Promise.all([apiListBookableProviders({ facilityId: facility.id, limit: 100 }), apiListBookableAppointmentTypes({ limit: 100 })])
   const typeItems = types.status === 200 ? types.data.items : []
   bookableTypes = typeItems
+  // With the real server, the clinic's clock is the facility's (D40): today and every time follow it.
+  if (REAL_API) {
+    setClinicTimeZone(facility.timeZone)
+    setState((state) => ({ ...state, today: todayKey() }))
+  }
   const slotMinutes = typeItems.find((t) => !t.telehealth)?.defaultDurationMinutes ?? 15
   const incoming = providers.status === 200 ? providers.data.items.map((p) => fromProvider(p, typeItems, slotMinutes)) : []
   setState((state) => {
@@ -176,6 +178,12 @@ async function fetchBookable(): Promise<Bookable> {
     }
   })
   return { facility, types: typeItems }
+}
+
+/** The clinic: its facility and time zone (and, through them, today). main.tsx waits for it with
+ *  SHRI_API=real, so no screen draws a day in the browser's time zone first. */
+export function loadClinic(): Promise<void> {
+  return loadBookable().then(() => undefined)
 }
 
 /** The facility's bookings from `from` for `days` days, with their patients' summaries. */
@@ -193,7 +201,7 @@ export async function loadAppointments(from: string, days: number): Promise<Appo
   const known = new Set(getState().patients.map((p) => p.patientId))
   const missing = [...new Set(items.map((a) => a.patient.id))].filter((id) => !known.has(id))
   for (let i = 0; i < missing.length; i += 50) await loadCandidates(missing.slice(i, i + 50))
-  return reconcileAppointments(items, facility.timeZone)
+  return reconcileAppointments(items)
 }
 
 /** The doctors, their free times for `days` days from `from`, and the bookings in that range. */
@@ -208,7 +216,7 @@ export async function loadSchedule(from: string, days: number): Promise<void> {
   )
   const slots: Record<string, Record<string, string[]>> = {}
   for (const slot of perDay.flat()) {
-    const { date, slot: label } = facilityTime(slot.startAt, facility.timeZone)
+    const { date, slot: label } = facilityTime(slot.startAt)
     const byDate = (slots[slot.providerId] ??= {})
     ;(byDate[date] ??= []).push(label)
     startAtBySlot.set(`${slot.providerId}|${date}|${label}`, slot.startAt)
@@ -263,7 +271,7 @@ export async function bookOnServer(input: BookOnServerInput, key: string = newId
     if (!byDate) return state
     return { ...state, serverSlots: { ...state.serverSlots, [input.providerId]: { ...byDate, [input.date]: (byDate[input.date] ?? []).filter((s) => s !== input.slot) } } }
   })
-  return reconcileAppointments([res.data], facility.timeZone)[0]!
+  return reconcileAppointments([res.data])[0]!
 }
 
 /** Is this booking on the server (an opaque UUID, not one of Care Entry's own `apt-…` ids)? */
@@ -276,12 +284,12 @@ export async function checkInOnServer(appointmentId: string, key: string = newId
   // Care Entry's check-in that follows takes only today's bookings: say so before the server is asked.
   const booked = getState().appointments.find((a) => a.appointmentId === appointmentId)
   if (booked && booked.date !== todayKey()) throw new Error(`This booking is for ${formatDateKey(booked.date)} — check the patient in on that day.`)
-  const { facility } = await loadBookable()
+  await loadBookable()
   const res = await apiCheckInAppointment(appointmentId, { 'Idempotency-Key': key }, { selfPay: true })
   if (res.status !== 200) throw new Error('The check-in did not complete')
   // Care Entry's own check-in (domain/actions) then adds the visit and the token, so the booking
   // goes back to Confirmed here for it to move on.
-  reconcileAppointments([{ ...res.data.appointment, status: 'booked' }], facility.timeZone)
+  reconcileAppointments([{ ...res.data.appointment, status: 'booked' }])
 }
 
 /** Takes back a check-in on the server. The contract asks for a reason. */
@@ -298,8 +306,8 @@ export async function markNoShowOnServer(appointmentId: string): Promise<void> {
 
 /** Cancels on the server: who can't make it becomes the HL7 reason code (`pat` or `prov`), the note its text. */
 export async function cancelOnServer(appointmentId: string, by: UnavailableParty, note: string): Promise<void> {
-  const { facility } = await loadBookable()
+  await loadBookable()
   const res = await apiCancelAppointment(appointmentId, { reasonCode: by === 'Doctor' ? 'prov' : 'pat', ...(note.trim() ? { reasonText: note.trim() } : {}) })
   if (res.status !== 200) throw new Error('The booking could not be cancelled')
-  reconcileAppointments([res.data], facility.timeZone)
+  reconcileAppointments([res.data])
 }

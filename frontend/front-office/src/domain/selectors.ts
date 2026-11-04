@@ -3,7 +3,7 @@
 // matters) and computes a fresh value. This is the ONLY place doctor
 // status, slot availability, waiting time, queue position and the
 // dashboard's numbers are computed. No screen hardcodes any of them.
-import { slotToTimestamp, slotLabel, dayStartTimestamp, minutesBetween, todayKey } from './time'
+import { addDaysToKey, slotToTimestamp, slotLabel, minutesBetween, todayKey, weekdayOfKey } from './time'
 import type { AppState } from '../types/store'
 import type { Patient, PatientSearchMatch } from '../types/patient'
 import type { Provider, DoctorRow, DoctorStatus } from '../types/doctor'
@@ -13,7 +13,7 @@ import type { QueueTokenRow, QueueView } from '../types/queue'
 import type { GuestPass, Estimate, MlcRecord, Tariff } from '../types/frontDesk'
 import type { Connectivity } from '../types/connectivity'
 import type { Payment, PaymentItem, PaymentSummary } from '../types/payment'
-import { billDisplayStatus, billNumberFor, formatRupees, isBillDue } from '../utils/billing'
+import { billDisplayStatus, billNumberFor, formatMoney, isBillDue } from '../utils/billing'
 import { abhaError, abhaKind, normalizeAbha } from '../utils/validation'
 
 // Only a CANCELLED appointment releases its slot. Completed and No-show
@@ -120,7 +120,7 @@ export function getDoctorSchedule(state: AppState, providerId: string, date: str
   }
 
   const config = provider.schedule
-  const dayOfWeek = new Date(dayStartTimestamp(date)).getDay()
+  const dayOfWeek = weekdayOfKey(date)
   if (!config.workingDays.includes(dayOfWeek)) return null
 
   const leave = state.leaves.find((item) => item.providerId === providerId && item.date === date)
@@ -272,11 +272,8 @@ export function getDoctorRow(state: AppState, providerId: string, now: number = 
 
 const SUGGESTION_HORIZON_DAYS = 14
 
-/** The date `days` after a YYYY-MM-DD key, as a key. */
-export function addDaysToKey(dateKey: string, days: number): string {
-  const [year, month, day] = dateKey.split('-').map(Number)
-  return todayKey(new Date(year, month - 1, day + days))
-}
+/** The date `days` after a YYYY-MM-DD key, as a key (domain/time.ts; kept here for its importers). */
+export { addDaysToKey } from './time'
 
 export interface FreeSlot {
   date: string
@@ -639,7 +636,7 @@ export function getNeedsAttention(state: AppState, now: number = Date.now()): Ne
         id: `na-failed-${bill.paymentId}`,
         tone: 'critical',
         title: 'Payment failed',
-        detail: `${bill.patientName} · ${billNumberFor(bill)} · ${formatRupees(bill.balance)} still due.`,
+        detail: `${bill.patientName} · ${billNumberFor(bill)} · ${formatMoney(bill.balance)} still due.`,
         action: { kind: 'bill', patientId: bill.patientId, paymentId: bill.paymentId },
       })
     }

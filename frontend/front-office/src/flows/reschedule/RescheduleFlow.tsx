@@ -25,7 +25,7 @@ import {
   getToday,
 } from '../../domain/selectors'
 import { rescheduleAppointment } from '../../domain/actions'
-import { formatRupees } from '../../utils/billing'
+import { formatMoney } from '../../utils/billing'
 import { dayWithDate } from '../../utils/dates'
 import { appointmentStatusLabel, modesFor } from '../../utils/appointment'
 import { cn } from '../../utils/cn'
@@ -181,11 +181,11 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
 
   function moneyLine(): string {
     if (!provider) return ''
-    if (difference < 0) return `${formatRupees(-difference)} less · not refunded`
+    if (difference < 0) return `${formatMoney(-difference)} less · not refunded`
     if (difference === 0) return 'Same fee · nothing to pay'
-    if (by === 'Doctor') return `${formatRupees(difference)} more · absorbed by the hospital`
-    if (by === 'Patient') return `${formatRupees(difference)} more · the patient pays the difference`
-    return `${formatRupees(difference)} more`
+    if (by === 'Doctor') return `${formatMoney(difference)} more · absorbed by the hospital`
+    if (by === 'Patient') return `${formatMoney(difference)} more · the patient pays the difference`
+    return `${formatMoney(difference)} more`
   }
 
   const confirmBar = (
@@ -228,7 +228,7 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
         />
         <Button size="lg" disabled={!ready} onClick={move}>
           <CalendarCheck2 className="h-4 w-4" strokeWidth={1.75} />
-          {charge > 0 ? `Reschedule & print ${formatRupees(charge)} bill` : 'Reschedule'}
+          {charge > 0 ? `Reschedule & print ${formatMoney(charge)} bill` : 'Reschedule'}
         </Button>
       </div>
       {provider ? <p className={cn('text-xs', charge > 0 ? 'font-medium text-warning-fg' : 'text-ink-muted')}>{moneyLine()}</p> : null}
@@ -248,7 +248,7 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
             <span className="font-semibold">{wasProvider.name}</span>
             <span className="text-ink-muted">
               {' '}
-              · {dayWithDate(was.date, today)} · {formatTime(was.slot)} · {formatRupees(feePaid)} paid
+              · {dayWithDate(was.date, today)} · {formatTime(was.slot)} · {formatMoney(feePaid)} paid
             </span>
           </span>
         </div>

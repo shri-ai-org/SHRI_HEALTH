@@ -23,7 +23,7 @@ import {
 import { bookAppointment, rebookUnpaidAppointment } from '../../domain/actions'
 import { bookOnServer, isServerProvider, loadSchedule } from '../../../shri-health/scheduling'
 import { ApiError, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
-import { formatRupees, sumItems } from '../../utils/billing'
+import { formatMoney, sumItems } from '../../utils/billing'
 import { dayWithDate, relativeDayLabel } from '../../utils/dates'
 import { modesFor } from '../../utils/appointment'
 import { cn } from '../../utils/cn'
@@ -174,6 +174,8 @@ function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
   const listRange = useStoreValue(getDepartmentDayRange, department ?? '', now, listDay)
   const billItems = useStoreValue(getConsultationBillItems, patientId, providerId ?? '')
   const total = sumItems(billItems)
+  // A SHRI_HEALTH doctor: no bill is raised and the server sends no fee, so no total is shown.
+  const serverDoctor = useStoreValue((state: AppState, id: string) => Boolean(state.serverSlots?.[id]), providerId ?? '')
   const modes = provider ? modesFor(provider) : (['In person'] as ConsultMode[])
 
   const ready = Boolean(patient && department && provider && date && slot) && billItems.length > 0
@@ -396,11 +398,11 @@ function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
           <span className="hidden xl:block" aria-hidden="true" />
         )}
         <div className="flex items-center justify-between gap-3 xl:justify-end">
-          <div className="min-w-0 flex-1 text-left xl:flex-none xl:text-right">
-            <p className="hidden max-w-[16rem] truncate text-xs text-ink-muted sm:block" title={billItems.map((i) => `${i.description} ${formatRupees(i.amount)}`).join(' + ')}>
+          <div className={cn('min-w-0 flex-1 text-left xl:flex-none xl:text-right', serverDoctor && 'invisible')} aria-hidden={serverDoctor || undefined}>
+            <p className="hidden max-w-[16rem] truncate text-xs text-ink-muted sm:block" title={billItems.map((i) => `${i.description} ${formatMoney(i.amount)}`).join(' + ')}>
               {billItems.length ? billItems.map((i) => i.description).join(' + ') : 'Bill total'}
             </p>
-            <p className="text-lg font-bold tabular-nums tracking-tight text-ink">{formatRupees(total)}</p>
+            <p className="text-lg font-bold tabular-nums tracking-tight text-ink">{formatMoney(total)}</p>
           </div>
         </div>
       </div>
@@ -415,7 +417,7 @@ function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
           <AppointmentWhen provider={provider} date={date} slot={slot} mode={consultMode} today={today} />
           <div className="flex items-center justify-between gap-3 px-1 text-sm">
             <span className="min-w-0 truncate text-ink">
-              <span className="font-semibold">{provider.name}</span> · {provider.department} · {formatRupees(total)}
+              <span className="font-semibold">{provider.name}</span> · {provider.department} · {formatMoney(total)}
             </span>
             <button type="button" onClick={() => setPatientOnly(false)} className="focus-ring shrink-0 rounded text-xs font-semibold text-primary-text hover:underline">
               Change doctor or time

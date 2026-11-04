@@ -4,7 +4,7 @@ import { BillStatusBadge } from './BillStatusBadge'
 import { Button } from '../ui/Button'
 import { useStoreValue } from '../../hooks/useStore'
 import { getPaymentById } from '../../domain/selectors'
-import { billNumberFor, formatRupees, isBillDue } from '../../utils/billing'
+import { billNumberFor, formatMoney, isBillDue } from '../../utils/billing'
 import { printBill } from '../../utils/printBill'
 import { cn } from '../../utils/cn'
 
@@ -31,17 +31,17 @@ export function BillAtCounter({ paymentId, className, readOnly = false }: { paym
       <div className="flex flex-wrap items-center justify-between gap-2">
         {readOnly ? (
           <span className="text-sm font-semibold text-ink">
-            {billNumberFor(bill)} · {formatRupees(bill.totalAmount)}
+            {billNumberFor(bill)} · {formatMoney(bill.totalAmount)}
           </span>
         ) : (
           <Link to={`/payments/${bill.paymentId}`} className="text-sm font-semibold text-primary-text hover:underline">
-            {billNumberFor(bill)} · {formatRupees(bill.totalAmount)}
+            {billNumberFor(bill)} · {formatMoney(bill.totalAmount)}
           </Link>
         )}
         <BillStatusBadge payment={bill} />
       </div>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-        {due ? <p className="text-xs text-ink-muted">{formatRupees(bill.balance)} due</p> : null}
+        {due ? <p className="text-xs text-ink-muted">{formatMoney(bill.balance)} due</p> : null}
         {due && !readOnly ? (
           <Button size="xs" variant="secondary" onClick={() => printBill(bill.paymentId)}>
             <Printer className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />

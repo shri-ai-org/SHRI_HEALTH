@@ -14,10 +14,14 @@
 // "compute the next state locally" to "call the API, then reconcile the
 // response into state" (or apply a server-sent event). No component needs
 // to change.
-import { createSeedState } from './seedData'
+import { createEmptyState, createSeedState } from './seedData'
+import { REAL_API } from '../../shri-health/client'
 import type { AppState } from '../types/store'
 
-let state: AppState = createSeedState()
+// SHRI_API=real starts empty: only what the SHRI_HEALTH API returns is shown (seedData.createEmptyState).
+const initialState = (): AppState => (REAL_API ? createEmptyState() : createSeedState())
+
+let state: AppState = initialState()
 const listeners = new Set<() => void>()
 
 export function getState(): AppState {
@@ -37,6 +41,6 @@ export function subscribe(listener: () => void): () => void {
 // Dev-only escape hatch (not wired to any UI) for resetting between manual
 // test runs — never called from application code.
 export function __resetStoreForTesting(): void {
-  state = createSeedState()
+  state = initialState()
   for (const listener of listeners) listener()
 }

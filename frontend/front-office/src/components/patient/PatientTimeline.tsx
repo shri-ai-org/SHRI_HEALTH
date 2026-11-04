@@ -1,12 +1,12 @@
 import type { CSSProperties, ElementType } from 'react'
 import { Link } from 'react-router-dom'
-import { BedDouble, CalendarClock, FileWarning, IdCard, IndianRupee, LogOut, Printer, Stethoscope, Ticket, UserPlus, Video, XCircle } from 'lucide-react'
+import { BedDouble, CalendarClock, FileWarning, IdCard, LogOut, Printer, Stethoscope, Ticket, UserPlus, Video, XCircle } from 'lucide-react'
 import { Card, CardHeader } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { CheckInToggle } from '../appointment/CheckInToggle'
 import { EmptyState } from '../ui/EmptyState'
-import { BILL_STATUS_LABEL, BILL_STATUS_TONE, formatRupees } from '../../utils/billing'
+import { BILL_STATUS_LABEL, BILL_STATUS_TONE, CurrencyIcon, formatMoney } from '../../utils/billing'
 import { appointmentStatusLabel } from '../../utils/appointment'
 import { relativeDayLabel, formatDateKey } from '../../utils/dates'
 import { formatClock } from '../../utils/format'
@@ -19,7 +19,7 @@ const KIND_ICON: Record<TimelineKind, ElementType> = {
   registered: UserPlus,
   encounter: Stethoscope,
   'walk-in': Ticket,
-  bill: IndianRupee,
+  bill: CurrencyIcon,
   admitted: BedDouble,
   discharged: LogOut,
   'admission-cancelled': XCircle,
@@ -185,7 +185,7 @@ function UpcomingRow({
         <Badge status={appointment.status}>
           {appointmentStatusLabel(appointment.status)}
           {/* What is still owed for this visit, paid at the billing counter. */}
-          {unpaid ? <span className="tabular-nums"> · {formatRupees(bill.balance)} due</span> : null}
+          {unpaid ? <span className="tabular-nums"> · {formatMoney(bill.balance)} due</span> : null}
         </Badge>
       )}
       {/* The bill to take to the billing counter — the booking is confirmed once it is paid. */}

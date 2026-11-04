@@ -1,15 +1,10 @@
 import { DayTimelineAxis, DayTimelineLegend } from '../dayTimeline/DayTimeline'
 import { addDaysToKey } from '../../domain/selectors'
-import { dayStartTimestamp } from '../../domain/time'
+import { calendarDate, minutesOfDay } from '../../domain/time'
 import { cn } from '../../utils/cn'
 
 const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-/** Minutes after midnight, for the axis's Now label. */
-function minutesOfDay(timestamp: number): number {
-  const d = new Date(timestamp)
-  return d.getHours() * 60 + d.getMinutes()
-}
 
 /**
  * The booking pages' one date row and one time axis for every doctor below,
@@ -38,7 +33,7 @@ export function SharedDayHeader({
       <div className="flex gap-1.5" role="group" aria-label="Day">
         {days.filter((d, i) => i < 2 || d.date === day).map((d) => {
           const active = d.date === day
-          const dt = new Date(dayStartTimestamp(d.date))
+          const dt = calendarDate(d.date)
           const label = d.date === today ? 'Today' : d.date === addDaysToKey(today, 1) ? 'Tmrw' : `${WEEKDAY_SHORT[dt.getDay()]} ${dt.getDate()}`
           return (
             <button

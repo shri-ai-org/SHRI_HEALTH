@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode, CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { IndianRupee, ReceiptText, Search, ShieldCheck, UserPlus } from 'lucide-react'
+import { ReceiptText, Search, ShieldCheck, UserPlus } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
 import { useStoreValue } from '../../hooks/useStore'
 import { hasOpenLayer } from '../../hooks/useLayer'
@@ -11,7 +11,7 @@ import type { PatientFlags } from '../../../shri-health/selectors'
 import type { PatientCareStatus } from '../../domain/patientSelectors'
 import { usePatientCareStatus } from '../../hooks/useCareStatus'
 import { PatientStatusIcons } from './PatientStatusIcons'
-import { billNumberFor, formatRupees } from '../../utils/billing'
+import { billNumberFor, CURRENCY_SYMBOL, CurrencyIcon, formatMoney } from '../../utils/billing'
 import { initialsOf } from '../../utils/format'
 import { cn } from '../../utils/cn'
 import { abhaKind } from '../../utils/validation'
@@ -320,9 +320,9 @@ function PatientRow({
             className={cn('flex items-center gap-0.5 text-xs font-semibold tabular-nums', flags.failed ? 'text-critical-fg' : 'text-warning-fg')}
             title={flags.failed ? 'Payment failed' : 'Payment pending'}
           >
-            <IndianRupee className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            <CurrencyIcon className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
             <span className="sr-only">{flags.failed ? 'Payment failed,' : 'Payment pending,'}</span>
-            {formatRupees(flags.due).replace('₹', '')}
+            {formatMoney(flags.due).replace(CURRENCY_SYMBOL, '')}
           </span>
         ) : null}
       </span>
@@ -339,8 +339,8 @@ function BillRow({ bill }: { bill: Payment }) {
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-ink">{billNumberFor(bill)}</span>
         <span className="block truncate text-xs text-ink-muted">
-          {bill.patientName} · {formatRupees(bill.totalAmount)}
-          {bill.balance > 0 ? ` · ${formatRupees(bill.balance)} due` : ' · settled'}
+          {bill.patientName} · {formatMoney(bill.totalAmount)}
+          {bill.balance > 0 ? ` · ${formatMoney(bill.balance)} due` : ' · settled'}
         </span>
       </span>
     </>

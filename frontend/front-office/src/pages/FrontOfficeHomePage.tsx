@@ -5,7 +5,6 @@ import {
   CalendarClock,
   CircleAlert,
   CircleDot,
-  IndianRupee,
   Info,
   Undo2,
   UserCheck,
@@ -35,7 +34,7 @@ import type { NeedsAttentionItem } from '../domain/selectors'
 import { getInpatientRows } from '../domain/admissionSelectors'
 import { returnGuestPass } from '../domain/actions'
 import { CheckInToggle } from '../components/appointment/CheckInToggle'
-import { formatRupees } from '../utils/billing'
+import { CurrencyIcon, formatMoney } from '../utils/billing'
 import { appointmentStatusLabel } from '../utils/appointment'
 import { TONE_VAR } from '../utils/tone'
 
@@ -94,7 +93,7 @@ export function FrontOfficeHomePage() {
       case 'bill':
         return (
           <Button size="sm" variant="secondary" onClick={() => navigate(`/payments/${action.paymentId}`)}>
-            <IndianRupee className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <CurrencyIcon className="h-3.5 w-3.5" strokeWidth={1.75} />
             View bill
           </Button>
         )
@@ -171,8 +170,8 @@ export function FrontOfficeHomePage() {
           />
           <StatCard
             hue="red"
-            icon={IndianRupee}
-            value={formatRupees(billing.dueAmount)}
+            icon={CurrencyIcon}
+            value={formatMoney(billing.dueAmount)}
             label="Payment pending today"
             trend={trends.PAYMENT_COMPLETED}
             to="/billing?filter=due"

@@ -1,4 +1,4 @@
-import { todayKey } from '../domain/time'
+import { addDaysToKey, calendarDate, todayKey } from '../domain/time'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -18,12 +18,13 @@ export function buildDateOptions(count: number = 7, from: Date = new Date()): Da
   // week navigator), and a paged-away window must never mislabel some
   // other day as "Today".
   const realToday = todayKey()
-  const realTomorrow = todayKey(new Date(new Date().setDate(new Date().getDate() + 1)))
+  const realTomorrow = addDaysToKey(realToday, 1)
 
   const options: DateOption[] = []
+  const first = todayKey(from)
   for (let i = 0; i < count; i += 1) {
-    const date = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i)
-    const value = todayKey(date)
+    const value = addDaysToKey(first, i)
+    const date = calendarDate(value)
     let label: string
     if (value === realToday) label = 'Today'
     else if (value === realTomorrow) label = 'Tomorrow'

@@ -1,5 +1,5 @@
 import type { CSSProperties, ElementType } from 'react'
-import { BedDouble, CalendarPlus, Copy, IndianRupee, LogOut } from 'lucide-react'
+import { BedDouble, CalendarPlus, Copy, LogOut } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
 import { Badge } from '../ui/Badge'
 import { useToast } from '../../hooks/useToast'
@@ -11,6 +11,7 @@ import { cn } from '../../utils/cn'
 import type { PatientHeaderSummary } from '../../domain/patientSelectors'
 import type { Patient } from '../../types/patient'
 import type { Tone } from '../../utils/tone'
+import { CurrencyIcon } from '../../utils/billing'
 
 const RISK_TONE: Record<'High' | 'Watch' | 'Normal', Tone> = { High: 'critical', Watch: 'warning', Normal: 'info' }
 export interface PatientActions {
@@ -95,7 +96,7 @@ export function PatientHeader({
             <Action icon={BedDouble} label="Admit" hue={HUES.orange} onClick={actions.admit} />
           )}
           <Action
-            icon={IndianRupee}
+            icon={CurrencyIcon}
             label="Payment History"
             hue={HUES.green}
             onClick={actions.togglePayments}
