@@ -1,8 +1,9 @@
-"""The demo layer (issue #85; demo 20 Nov): the starter layer plus a pharmacy, more payers, the
-consent requirements, and synthetic patients with their coverage, preferred pharmacy and
-appointments on the demo day. The same rules as the starter layer: synthetic only, fixed IDs,
-inserted only if missing, so a second run changes nothing; it runs as shri_migrator with the
-clinic set, so forced RLS checks every row.
+"""The demo layer (issue #85; demo 20 Nov): the starter layer plus a pharmacy and the main
+practice's connection to the simulated pharmacy, more payers, the consent requirements, and
+synthetic patients with their coverage, preferred pharmacy and appointments on the demo day.
+The same rules as the starter layer: synthetic only, fixed IDs, inserted only if missing, so a
+second run changes nothing; it runs as shri_migrator with the clinic set, so forced RLS checks
+every row.
 
 Each patient's MRN comes from ``admin.next_mrn()`` when the patient is first created, as
 registration takes it.
@@ -38,7 +39,8 @@ M = MAPPERS
 # Kinds of fixed ID, after the starter layer's.
 PHARMACY, CONSENT_REQUIREMENT, PATIENT, P_NAME, P_TELECOM, P_ADDRESS, P_MRN, P_LANGUAGE, \
     COVERAGE, C_PAYOR, C_MEMBER, C_GROUP, APPOINTMENT, A_PATIENT, A_PROVIDER, \
-    P_PHARMACY, A_LOCATION, DEMO_USER, DEMO_USER_ROLE, PORTAL_ACCOUNT, ALL_DAY_RULE = range(21, 42)
+    P_PHARMACY, A_LOCATION, DEMO_USER, DEMO_USER_ROLE, PORTAL_ACCOUNT, ALL_DAY_RULE, \
+    ERX_ENDPOINT = range(21, 43)
 
 #: The demo day, Friday 20 November 2026, at the main office (America/Chicago, UTC-6 then).
 DEMO_DAY = dt.date(2026, 11, 20)
@@ -99,6 +101,12 @@ def _payers(db: Session) -> None:
     for n, _, _ in PAYERS:
         _ensure(db, "practice_payer", sid(PRACTICE_PAYER, n), tenant_id=CLINIC_A,
                 payer_id=sid(PAYER, n))
+    # The connection a signed prescription is sent through (D97, D99): Thulasi's simulated
+    # pharmacy, which answers only where SIMULATED_PARTNERS is on (never in production). No
+    # secret: the simulated adapter needs none.
+    _ensure(db, "integration_endpoint", sid(ERX_ENDPOINT, 1), tenant_id=CLINIC_A, kind="erx",
+            adapter="simulated-erx", name="Simulated pharmacy (demo)", environment="test",
+            baa_on_file=False, is_active=True)
 
 
 def _consent_requirements(db: Session) -> None:
