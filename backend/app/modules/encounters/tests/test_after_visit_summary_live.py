@@ -422,10 +422,8 @@ def test_the_files_link_keeps_d109_for_the_summary(
     url = link.json()["url"]
     # The ticket alone isn't enough: no session, or another user's, is refused and spends nothing.
     anonymous = TestClient(client("fd").app, raise_server_exceptions=False)  # no session at all
-    # Nothing is served. Core answers 500 today, not 401: its audit middleware can't write the
-    # row for a request with no user (note for Thulasi on #161).
     without = anonymous.get(url)
-    assert without.status_code != 200 and not without.content.startswith(b"%PDF")
+    assert without.status_code == 401 and without.json()["code"] == "unauthenticated"
     assert client("ma").get(url).status_code == 404
     pdf = client("fd").get(url)
     assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF-1.4")

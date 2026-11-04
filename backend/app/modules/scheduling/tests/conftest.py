@@ -24,6 +24,7 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings
 from app.core.deps import DEV_USER_HEADER, DEV_USERS, CurrentUser, current_user
+from app.core.errors import Unauthorized
 from app.db.models import MAPPERS, systems
 from app.db.tests import builders as b
 from app.db.tests.conftest import (
@@ -233,7 +234,10 @@ def make_client(users: dict[str, CurrentUser], pending: bool,
     switch_to_role(app.state.db.engine.sync_engine, "shri_app")
 
     def signed_in(request: Request) -> CurrentUser:
-        return users[request.headers[DEV_USER_HEADER]]
+        name = request.headers.get(DEV_USER_HEADER)
+        if name is None or name not in users:  # no session: 401, as core answers
+            raise Unauthorized("Sign in to continue")
+        return users[name]
 
     app.dependency_overrides[current_user] = signed_in
     with TestClient(app, raise_server_exceptions=False) as test_client:
