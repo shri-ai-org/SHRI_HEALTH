@@ -11,6 +11,8 @@ from uuid import UUID
 
 from pydantic import Field, StringConstraints
 
+from app.modules.ai.schemas import AiSuggestion
+
 from .schemas import ClinicianRef, Closed, CodeableConcept, NoteSummary, Out
 
 NoteStatus = Literal["preliminary", "final", "amended", "entered-in-error"]
@@ -27,6 +29,7 @@ class NoteSection(Out):
     entry_source: Literal["clinician", "ai-generated", "imported"]
     ai_suggestion_id: UUID | None = None
     ai_decision: Literal["pending", "accepted", "edited", "rejected"] | None = None
+    ai_suggestion: AiSuggestion | None = None
 
 
 class NoteAddendum(Out):

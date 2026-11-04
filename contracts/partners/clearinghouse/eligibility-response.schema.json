@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://company-domain.invalid/contracts/partners/clearinghouse/eligibility-response.schema.json",
+  "title": "EligibilityResponse",
+  "description": "The payer's answer to one eligibility request (the X12 271 equivalent, as JSON). Posted by the simulated payer, and later by the real clearinghouse after it maps the X12 271 (Q11), to /hooks/clearinghouse; the receiver hands the body to the eligibility module (record_response), which files it against `correlationId`, once. Amounts are decimal strings in USD, never numbers (D40). Copay, deductible, the deductible remaining and coinsurance are benefit lines (`benefits`, X12 EB loops); the eligibility module picks the front desk's copay and deductible from them. Payer error text is never stored or shown: the front desk sees a fixed message for each `errors[].code`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["messageType", "schemaVersion", "correlationId", "responseId", "respondedAt", "result"],
+  "properties": {
+    "messageType": {
+      "description": "Always `271`.",
+      "const": "271",
+      "x-phi": "none"
+    },
+    "schemaVersion": {
+      "description": "This shape's version.",
+      "const": "1.0",
+      "x-phi": "none"
+    },
+    "correlationId": {
+      "description": "The request's `correlationId`, echoed (X12 2000C TRN02).",
+      "$ref": "#/$defs/Id",
+      "x-phi": "internal-id"
+    },
+    "responseId": {
+      "description": "The payer's or clearinghouse's own ID for this reply (X12 ST02 or the clearinghouse's transaction ID), for tracing and dedupe.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,60}$",
+      "maxLength": 60,
+      "x-phi": "none"
+    },
+    "respondedAt": {
+      "description": "When the payer answered, UTC.",
+      "$ref": "#/$defs/Timestamp",
+      "x-phi": "none"
+    },
+    "result": {
+      "description": "`active` or `inactive`: the payer found the member and says whether the coverage is in force on the service date. `member-not-found`: the payer has no such member (X12 AAA03 75, or 67 for a dependent). `error`: the payer could not answer (any other AAA, listed in `errors`).",
+      "type": "string",
+      "enum": ["active", "inactive", "member-not-found", "error"],
+      "x-phi": "financial"
+    },
+    "plan": {
+      "description": "The plan, when the payer found the member.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Plan name (X12 EB05 or the 2100C REF/INS plan description).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "x-phi": "financial"
+        },
+        "groupNumber": {
+          "description": "Group number the payer has (X12 REF*6P).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "x-phi": "financial"
+        },
+        "coverageStartDate": {
+          "description": "Plan start (X12 DTP*346 or 356).",
+          "$ref": "#/$defs/Date",
+          "x-phi": "financial"
+        },
+        "coverageEndDate": {
+          "description": "Plan end (X12 DTP*347 or 357).",
+          "$ref": "#/$defs/Date",
+          "x-phi": "financial"
+        }
+      },
+      "x-phi": "financial"
+    },
+    "benefits": {
+      "description": "Benefit lines (X12 EB loops), normalized. At most 200.",
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "$ref": "#/$defs/Benefit"
+      },
+      "x-phi": "financial"
+    },
+    "errors": {
+      "description": "Why the payer could not answer (X12 AAA segments). Required when `result` is `error`.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/$defs/PayerError"
+      },
+      "x-phi": "none"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["result"],
+        "properties": {"result": {"const": "error"}}
+      },
+      "then": {"required": ["errors"]}
+    },
+    {
+      "if": {
+        "required": ["result"],
+        "properties": {"result": {"enum": ["error", "member-not-found"]}}
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["plan"]},
+            {"required": ["benefits"]}
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "maxLength": 36
+    },
+    "Date": {
+      "description": "A calendar date, YYYY-MM-DD.",
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "maxLength": 10
+    },
+    "Timestamp": {
+      "description": "An instant, RFC 3339, UTC with Z.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$",
+      "maxLength": 35
+    },
+    "Money": {
+      "description": "An amount in USD as a decimal string with two fraction digits, never negative (the API's Money; D40).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "currency"],
+      "properties": {
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9]{1,9}\\.[0-9]{2}$",
+          "maxLength": 12,
+          "x-phi": "financial"
+        },
+        "currency": {
+          "const": "USD",
+          "x-phi": "none"
+        }
+      }
+    },
+    "Benefit": {
+      "description": "One benefit line (X12 EB loop).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["benefitType"],
+      "properties": {
+        "benefitType": {
+          "description": "X12 EB01: 1 active-coverage, B copay, A coinsurance, C deductible, G out-of-pocket, F limitation, I non-covered. EB01 6 (inactive) is `result: inactive`, not a line.",
+          "type": "string",
+          "enum": ["active-coverage", "copay", "coinsurance", "deductible", "out-of-pocket", "limitation", "non-covered"],
+          "x-phi": "financial"
+        },
+        "serviceTypeCode": {
+          "description": "X12 EB03, e.g. `30` health benefit plan coverage, `98` professional physician visit, office.",
+          "type": "string",
+          "pattern": "^[A-Z0-9]{1,2}$",
+          "maxLength": 2,
+          "x-phi": "financial"
+        },
+        "coverageLevel": {
+          "description": "X12 EB02: IND individual, FAM family.",
+          "type": "string",
+          "enum": ["individual", "family"],
+          "x-phi": "financial"
+        },
+        "network": {
+          "description": "X12 EB12: Y in network, N out of network, W not applicable.",
+          "type": "string",
+          "enum": ["in", "out", "na"],
+          "x-phi": "financial"
+        },
+        "timePeriod": {
+          "description": "X12 EB06: 23 calendar year, 21 plan year (`plan-year`), 27 visit, 29 remaining, 32 lifetime.",
+          "type": "string",
+          "enum": ["calendar-year", "plan-year", "visit", "remaining", "lifetime"],
+          "x-phi": "financial"
+        },
+        "amount": {
+          "description": "X12 EB07, for copay, deductible, out-of-pocket and limitation lines.",
+          "$ref": "#/$defs/Money",
+          "x-phi": "financial"
+        },
+        "percent": {
+          "description": "X12 EB08 as a percentage from 0 to 100 with at most two decimals, a string (20% is \"20\"), for coinsurance.",
+          "type": "string",
+          "pattern": "^(100(\\.0{1,2})?|[0-9]{1,2}(\\.[0-9]{1,2})?)$",
+          "maxLength": 6,
+          "x-phi": "financial"
+        },
+        "authorizationRequired": {
+          "description": "X12 EB11: Y means prior authorization is required.",
+          "type": "boolean",
+          "x-phi": "financial"
+        },
+        "message": {
+          "description": "X12 MSG text for this line, at most 500 characters. Shown to staff with the benefits.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "x-phi": "financial"
+        }
+      }
+    },
+    "PayerError": {
+      "description": "One X12 AAA segment.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": {
+          "description": "X12 AAA03 reject reason code, e.g. `42` unable to respond now, `72` invalid or missing member ID, `75` subscriber not found.",
+          "type": "string",
+          "pattern": "^[A-Z0-9]{2}$",
+          "maxLength": 2,
+          "x-phi": "none"
+        },
+        "followUpAction": {
+          "description": "X12 AAA04: C correct and resubmit, N resubmission not allowed, P please resubmit original transaction, R resubmission allowed, S do not resubmit (inquiry initiated to a third party), W please wait 30 days and resubmit, X please wait 10 days and resubmit, Y do not resubmit (we will hold your request and respond again shortly).",
+          "type": "string",
+          "enum": ["C", "N", "P", "R", "S", "W", "X", "Y"],
+          "x-phi": "none"
+        },
+        "message": {
+          "description": "The payer's text. Never stored or shown: it may hold patient data.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "x-phi": "financial"
+        }
+      }
+    }
+  }
+}

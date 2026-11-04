@@ -124,9 +124,12 @@ def test_check_in_opens_the_encounter_and_records_eligibility(client: Any,
     encounter = _sql(practice, "SELECT status, appointment_id, ext_self_pay, ext_facility_id "
                      "FROM clinical.encounter WHERE id = :e", e=result["encounterId"])[0]
     assert tuple(encounter) == ("arrived", UUID(appointment), False, practice.facility)
-    check = _sql(practice, "SELECT coverage_id, status, trigger, encounter_id FROM "
+    check = _sql(practice, "SELECT coverage_id, status, error_code, trigger, encounter_id FROM "
                  "admin.eligibility_check WHERE id = :c", c=result["eligibilityCheckId"])[0]
-    assert tuple(check) == (coverage, "pending", "check-in", UUID(result["encounterId"]))
+    # This practice has no clearinghouse connection: the check is recorded as not sent, and
+    # check-in still succeeds (D15; eligibility's live tests queue it with one).
+    assert tuple(check) == (coverage, "error", "not-sent", "check-in",
+                            UUID(result["encounterId"]))
     board = client("ma").get(f"{API}/status-board", params={
         "facilityId": str(practice.facility), "view": "staff"}).json()["items"]
     assert [(b["visitStatus"], b["encounterId"]) for b in board] == [
@@ -234,7 +237,7 @@ def test_undo_returns_the_appointment_to_booked(client: Any, practice: Practice)
                       "WHERE target_id = :e", e=encounter)
     assert [tuple(p) for p in provenance] == [("NULLIFY", "Checked in the wrong patient.")]
     assert _sql(practice, "SELECT status FROM admin.eligibility_check WHERE id = :c",
-                c=checked["eligibilityCheckId"])[0][0] == "pending"  # kept
+                c=checked["eligibilityCheckId"])[0][0] == "error"  # kept (not sent: no connection)
     again = _check_in(client, appointment)
     assert again.status_code == 200 and again.json()["encounterId"] != encounter
 

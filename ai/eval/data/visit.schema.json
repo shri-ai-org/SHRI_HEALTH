@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "shri-health:ai-eval:visit/1",
+  "title": "Fictional visit for AI-01 evaluation",
+  "description": "One fictional US ambulatory visit: a transcript (speaker turns), the reference note in the note-template shape (sections keyed by LOINC section code, as encounters.yaml NoteSection and the seed templates), and the scoring keys. Synthetic only: Synthea-style names, @example.com email, 555-01xx phones.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "synthetic", "specialty", "visitType", "template", "noteType", "patient", "clinician", "transcript", "referenceNote", "keyFacts", "mustNotInvent", "conflicts", "medicalTerms"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^visit-[0-9]{2}$"},
+    "synthetic": {"const": true, "description": "Always true: every person and event is fictional."},
+    "specialty": {"type": "string", "minLength": 3, "maxLength": 60},
+    "visitType": {"enum": ["new-patient", "follow-up", "acute"]},
+    "template": {"enum": ["NEW-VISIT", "FOLLOW-UP"], "description": "The seed note template code (backend/app/db/seed/starter.py)."},
+    "noteType": {"$ref": "#/$defs/loinc", "description": "The note's LOINC type, as the template's (34117-2 history and physical, 11506-3 progress note)."},
+    "patient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "age", "sex"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Z][a-z]+[0-9]+ [A-Z][a-z]+[0-9]+$", "description": "Synthea style: digits in both names, so it can never match a real person."},
+        "age": {"type": "integer", "minimum": 0, "maximum": 110},
+        "sex": {"enum": ["female", "male"]}
+      }
+    },
+    "clinician": {"type": "string", "pattern": "^Dr\\. [A-Z][a-z]+[0-9]+ [A-Z][a-z]+[0-9]+$"},
+    "transcript": {
+      "type": "array",
+      "minItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["speaker", "text"],
+        "properties": {
+          "speaker": {"enum": ["clinician", "patient", "companion"]},
+          "text": {"type": "string", "minLength": 1, "maxLength": 2000}
+        }
+      }
+    },
+    "referenceNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sections"],
+      "properties": {
+        "sections": {"type": "array", "minItems": 3, "items": {"$ref": "#/$defs/section"}}
+      }
+    },
+    "keyFacts": {
+      "type": "array",
+      "minItems": 4,
+      "description": "Facts the note must keep (omissions). A fact is present when any of its terms appears in the draft.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "section", "anyOf"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^f[0-9]+$"},
+          "section": {"$ref": "#/$defs/loinc"},
+          "anyOf": {"$ref": "#/$defs/terms"}
+        }
+      }
+    },
+    "mustNotInvent": {
+      "type": "array",
+      "minItems": 2,
+      "description": "Plausible facts absent from the transcript. Any of their terms in a draft is an invention.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "anyOf"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^n[0-9]+$"},
+          "description": {"type": "string", "minLength": 5, "maxLength": 200},
+          "anyOf": {"$ref": "#/$defs/terms"}
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "description": "A statement the speaker later corrects. The note must keep the correction (resolvedAnyOf) and never state the superseded version (supersededAnyOf).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "turns", "resolvedAnyOf", "supersededAnyOf"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^c[0-9]+$"},
+          "description": {"type": "string", "minLength": 5, "maxLength": 300},
+          "turns": {"type": "array", "minItems": 2, "items": {"type": "integer", "minimum": 0}},
+          "resolvedAnyOf": {"$ref": "#/$defs/terms"},
+          "supersededAnyOf": {"$ref": "#/$defs/terms"}
+        }
+      }
+    },
+    "medicalTerms": {"$ref": "#/$defs/terms", "description": "The reference note's medical terms (drugs, diagnoses, tests, findings), for term recall."}
+  },
+  "$defs": {
+    "loinc": {"type": "string", "pattern": "^[0-9]{1,7}-[0-9]$"},
+    "terms": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 2, "maxLength": 80}},
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "title", "sequence", "required", "text"],
+      "properties": {
+        "code": {"$ref": "#/$defs/loinc"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "sequence": {"type": "integer", "minimum": 1, "maximum": 100},
+        "required": {"type": "boolean"},
+        "text": {"type": "string", "maxLength": 50000, "description": "Empty when the visit gave nothing for an optional section."}
+      }
+    }
+  }
+}

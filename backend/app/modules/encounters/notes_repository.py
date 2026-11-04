@@ -29,6 +29,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.fhir_store import section_text
+from app.modules.ai.repository import SqlAIRepository
 
 from . import notes_schemas as nschemas
 from . import schemas
@@ -85,6 +86,8 @@ class NoteRepository(Protocol):
 
     async def cosigner(self, db: AsyncSession, author_id: UUID, facility_id: UUID | None
                        ) -> UUID | None: ...
+
+    async def release_rejected_ai_sections(self, db: AsyncSession, note_id: UUID) -> int: ...
 
 
 # A note, never an addendum (a Composition that appends to another).
@@ -254,7 +257,22 @@ def _entry_source(source: str | None, ai_suggestion_id: UUID | None) -> str:
     return source if source in ("clinician", "ai-generated", "imported") else "clinician"
 
 
+# A bridge until Anand's sign_note and shri_composition_signed_check accept a rejected AI
+# section (decideAiSuggestion: rejected, with its AI text already gone): at signing, in the same
+# transaction, such a section is no longer linked to its suggestion, so it signs as the
+# clinician's own text. The suggestion keeps its target (the section) and its decision.
+_RELEASE_REJECTED = text("""
+UPDATE clinical.composition_section s SET ai_suggestion_id = NULL
+FROM admin.ai_suggestion a
+WHERE s.composition_id = :note AND a.id = s.ai_suggestion_id AND a.decision = 'rejected'
+""")
+
+
 class SqlNoteRepository:
+    async def release_rejected_ai_sections(self, db: AsyncSession, note_id: UUID) -> int:
+        result = await db.execute(_RELEASE_REJECTED, {"note": note_id})
+        return int(getattr(result, "rowcount", 0))
+
     async def head(self, db: AsyncSession, note_id: UUID, *, lock: bool = False
                    ) -> NoteHead | None:
         r = (await db.execute(_HEAD_LOCKED if lock else _HEAD, {"id": note_id})
@@ -280,6 +298,8 @@ class SqlNoteRepository:
         addenda = (await db.execute(_ADDENDA, {"id": note_id})).mappings().all()
         legal = next((a for a in attesters if a["mode"] == "legal"), None)
         professional = next((a for a in attesters if a["mode"] == "professional"), None)
+        suggestions = await SqlAIRepository().suggestion_views(
+            db, [s["ai_suggestion_id"] for s in sections if s["ai_suggestion_id"]])
         names = await _names(db, [n["author_id"], n["ext_cosigner_practitioner_id"],
                                   legal["party_practitioner_id"] if legal else None,
                                   professional["party_practitioner_id"] if professional else None,
@@ -307,7 +327,8 @@ class SqlNoteRepository:
                 text=_text(s["text_div"]),
                 entry_source=_entry_source(s["entry_source"], s["ai_suggestion_id"]),
                 ai_suggestion_id=s["ai_suggestion_id"],
-                ai_decision=s["ai_decision"] if s["ai_suggestion_id"] else None)
+                ai_decision=s["ai_decision"] if s["ai_suggestion_id"] else None,
+                ai_suggestion=suggestions.get(s["ai_suggestion_id"]))
                 for s in sections],
             addenda=[nschemas.NoteAddendum(
                 id=a["id"], text=_text(a["text_div"]),

@@ -41,7 +41,9 @@ async def get_patient(
 
 ## Stand-in login (development and test only)
 
-Until Keycloak login is built, pick a synthetic test user with the `X-Dev-User` header:
+Staff sign in through Keycloak (`AUTH_MODE=keycloak`, the default; `app/core/session.py`). For
+local development and tests only, `AUTH_MODE=dev_header` picks a synthetic test user with the
+`X-Dev-User` header instead (refused outside `development` and `test`):
 
 | `X-Dev-User` | Role | Clinic |
 |---|---|---|
@@ -181,11 +183,24 @@ down -v` once: data now lives in the `pgdata18` volume. Production is Amazon RDS
 
 ## Settings
 
-Environment variables (or an OpenBao KV secret when `OPENBAO_ADDR` and `OPENBAO_TOKEN` are set):
-`ENVIRONMENT`, `AUTH_MODE`, `PROBLEM_TYPE_BASE`, and one database URL per role (D23):
-`DATABASE_URL` (`shri_app`), `FHIR_DATABASE_URL` (`shri_fhir_reader`), `INTEGRATION_DATABASE_URL`
-(`shri_integration`), `REPORTING_DATABASE_URL` (`shri_reporting`), `MIGRATION_DATABASE_URL`
-(`shri_migrator`, migrations only, never given to the API). See `app/core/config.py`.
+Environment variables (or an OpenBao KV secret when `OPENBAO_ADDR` and `OPENBAO_TOKEN` are set),
+one group per file in `app/core/settings/`; `ENVIRONMENT` defaults to `production`:
+
+- **Base** (`base.py`): `ENVIRONMENT`, `PROBLEM_TYPE_BASE`, `DB_POOL_SIZE`, and one database URL
+  per role (D23, D93): `DATABASE_URL` (`shri_app`), `FHIR_DATABASE_URL` (`shri_fhir_reader`),
+  `REPORTING_DATABASE_URL` (`shri_reporting`), `MIGRATION_DATABASE_URL` (`shri_migrator`,
+  migrations only, never given to the API).
+- **Staff sign-in** (`auth.py`): `AUTH_MODE`, `KEYCLOAK_*`, `SESSION_SECRET`, `ALLOWED_ORIGINS`,
+  the session timers.
+- **Patient sign-in** (`portal.py`): `PATIENT_AUTH_MODE`, `PORTAL_*`, including
+  `PORTAL_DATABASE_URL` (`shri_portal`).
+- **Public forms** (`public_form.py`): `PUBLIC_DATABASE_URL` (`shri_public`), `PORTAL_ORIGIN`,
+  `PUBLIC_FORM_SECRET` and the rate limits.
+- **Encryption and secrets** (`openbao.py`): `OPENBAO_*`, including the Transit keys.
+- **Files** (`files.py`): `FILE_STORE_*`, `CLAMD_ADDRESS`.
+- **Outbox worker** (`outbox.py`): `INTEGRATION_DATABASE_URL` (`shri_integration`).
+
+`infra/compose/example.env` lists what the local stack sets.
 
 `BUILD_VERSION` and `BUILD_COMMIT` are not set by hand: CI passes them as image build arguments
 (`backend/Dockerfile`), and local builds show `dev` and `unknown` (Q31). They are shown to signed-in

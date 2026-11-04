@@ -1,0 +1,26 @@
+{
+  "description": "Medical lexicon for the lexical baseline (shri_eval/scoring.py). A term from this list in a draft must appear in the transcript (or the reference note); otherwise it counts as a medical-term error. `drugs` are also checked for dose: a drug followed by a dose that the reference note doesn't give for it is a dose error. Generic names and plain terms only, no product data.",
+  "drugs": [
+    "acetaminophen", "albuterol", "amitriptyline", "amlodipine", "amoxicillin", "apixaban", "aspirin",
+    "atorvastatin", "augmentin", "azithromycin", "botox", "budesonide", "budesonide-formoterol", "cefdinir",
+    "cephalexin", "chlorthalidone", "clavulanate", "clopidogrel", "doxycycline", "dupilumab", "empagliflozin",
+    "esomeprazole", "famotidine", "fluticasone", "formoterol", "furosemide", "gabapentin", "hydrochlorothiazide",
+    "hydrocortisone", "ibuprofen", "insulin", "levothyroxine", "liraglutide", "lisinopril", "loratadine",
+    "lorazepam", "losartan", "metformin", "methotrexate", "metoprolol", "metoprolol succinate", "montelukast",
+    "motrin", "naproxen", "omalizumab", "omeprazole", "oxycodone", "pantoprazole", "prednisone", "pregabalin",
+    "propranolol", "rivaroxaban", "rosuvastatin", "semaglutide", "sertraline", "simvastatin", "sumatriptan",
+    "tirzepatide", "topiramate", "tramadol", "triamcinolone", "warfarin"
+  ],
+  "terms": [
+    "a1c", "ablation", "acl tear", "anemia", "arthroscopy", "asthma", "atopic dermatitis", "atrial fibrillation",
+    "atrophy", "aura", "barrett", "biopsy", "bmi", "bmp", "bronchitis", "cancer", "cardioversion", "carpal tunnel",
+    "cbc", "cellulitis", "colonoscopy", "copd", "creatinine", "ct scan", "diabetes", "diarrhea", "dizziness",
+    "ecg", "echo", "echocardiogram", "eczema", "effusion", "egd", "ekg", "electrocardiogram", "emg", "endoscopy",
+    "fever", "fracture", "glp-1", "hernia", "holter", "hypertension", "hypoglycemia", "impetigo", "infection",
+    "lachman", "lipid", "mcl", "mcmurray", "meniscus", "microalbumin", "migraine", "monofilament", "mri",
+    "murmur", "nausea", "nerve conduction", "neuropathy", "otitis media", "papilledema", "patch test",
+    "pacemaker", "peak flow", "pft", "phalen", "physical therapy", "pneumonia", "psoriasis", "pylori",
+    "radiograph", "reflux", "retinopathy", "seizure", "sepsis", "spirometry", "stroke", "surgery", "syncope",
+    "tinel", "tympanostomy", "ulcer", "vomiting", "wheeze", "x-ray"
+  ]
+}
