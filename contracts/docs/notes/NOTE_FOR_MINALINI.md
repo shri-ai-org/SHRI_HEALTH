@@ -290,3 +290,86 @@ In the same transaction, the follow-up request becomes `booked`, with `bookedApp
 - `422 business-rule-violation`: outside the provider's hours, or the overbook limit is reached.
 - `404 not-found`: the facility isn't one of the user's.
 - No `If-Match` and no `break-glass-required`: booking needs neither.
+
+## Screen port map for the demo (D115; 2026-11-03)
+
+**The rule (D115):** existing screens first. Port from the sources below, and change only what the U.S. contract requires. Build new only where no source screen exists. Angular sources are converted to React. The portal's visual design is modernized after the demo screens. The look is one shared design system (proposed: care-entry's). Every frontend PR names its source screen and says whether it is ported, adapted or new.
+
+**What is correct on `main` today:** the portal's structure, menus, fields and flows. Every other screen, registration included, on `main` was built from the contract instead of being ported, so it is replaced by the port of its source, or built new where no source exists.
+
+### The three sources
+
+| Source | Stack | Where it lives | What it covers |
+|---|---|---|---|
+| **care-entry** | React 19, Tailwind 4 (modern) | `shri-ai-org/care-entry` on GitHub; a read-only clone in `~/reference/care-entry` | An outpatient front desk built for India (ABHA, UHID, a billing counter, no outpatient insurance), in `front-office/`, plus `patient-self-registration/` (an India self-registration kiosk; its `src/portal/PatientPortal.tsx` is **not** our portal's source) |
+| **doctors-portal** | React, Tailwind 4 (modern) | `shri-ai-org/AIEMR_mockups`, branch `vimal`, folder `doctors-portal/`; a clone in `~/reference/AIEMR_mockups` | A hospital clinician app (`src/shri/`): my day, OPD queue, consultation, prescribing, problems, record. No front desk, MA rooming or patient portal |
+| **Earlier Shri patient portal** | Angular 16 (`patientportal_frontend`, 92 components) | Minalini's machine; **repository pending** | The patient portal. Minalini converted it to React in #39; the map of old to new is `frontend/src/features/portal/README.md` |
+
+Where a ported screen has AI, India-specific codes or rules we don't have (D68, D99, D110), those parts stay out; the layout and components carry over.
+
+### Verdict by step and function
+
+Verdicts: **KEEP** (correct today: the portal's structure and functions), **REPLACE BY PORT** (port the source screen; it replaces main's screen where one exists), **NEW** (no source exists; build it from the shared components), **MODERNIZE LATER** (after the demo screens).
+
+| Step | Function | Source screen (repo and path) | Current screen on `main` | Verdict | Workflow changes (AI and others) |
+|---|---|---|---|---|---|
+| 1 | Front-desk patient search | care-entry `front-office/src/pages/PatientsPage.tsx`, `components/patient/PatientSearch.tsx` | `features/patients/PatientSearchPage.tsx` | REPLACE BY PORT | MRN instead of UHID; no ABHA |
+| 2 | Patient registration | The Angular portal's registration wizard (`patientportal_frontend`, `registration.component`), converted to React in care-entry's look; it replaces care-entry's own `pages/RegisterPatientPage.tsx` (ABHA, Indian mobile). On Minalini's local branch, running on the real API | `features/patients/RegisterPatientPage.tsx` (built from the contract, not a port) | REPLACE BY PORT (converted from Angular, care-entry's look) | U.S. fields (D39, D44); no ABHA |
+| 3 | Patient chart (front desk) | care-entry `pages/PatientProfilePage.tsx`, `components/patient/PatientHeader.tsx`, `PatientDetailsCard.tsx`, `PatientTimeline.tsx` | `features/patients/PatientPage.tsx` | REPLACE BY PORT | MRN and U.S. insurance status in the header; no ABHA |
+| 3 | Insurance and eligibility | NONE (care-entry has no outpatient insurance; doctors-portal none) | `features/patients/insurance/` (coverages, card photos) | NEW | — |
+| 4–5 | Booking and schedule | care-entry `flows/schedule/ScheduleFlow.tsx`, `flows/reschedule/`, `components/appointment/BookingDialog.tsx`, `AppointmentsTable.tsx`, `components/clinician/DoctorDayChart.tsx`, `DoctorSlotCard.tsx` | `features/scheduling/SchedulePage.tsx`, `BookAppointmentDialog.tsx`, `RescheduleDialog.tsx` | REPLACE BY PORT | — |
+| 6 | Check-in and status board | care-entry `components/appointment/CheckInToggle.tsx`, `pages/OutpatientsPage.tsx` (stage filters); doctors-portal `src/shri/patients/OpdQueuePage.tsx` (board) | `features/scheduling/CheckInDialogs.tsx`; `SharedStatusBoard` (not mounted on any route) | REPLACE BY PORT | Shared view shows initials only (D47) |
+| 7 | Rooming (MA: vitals, allergies, medications, reason) | NONE (doctors-portal shows vitals read-only) | `features/clinical/RoomingPage.tsx`, `MedicationsSection.tsx` | NEW | — |
+| 7–8 | The clinical team's list | doctors-portal `src/shri/myday/MyDayPage.tsx`, `PatientsToday.tsx`, `src/shri/patients/OpdQueuePage.tsx` | `features/clinical/TodayPage.tsx` | REPLACE BY PORT | — |
+| 8 | Consultation: diagnoses, templated note, sign, addenda, co-sign | doctors-portal `src/shri/notes/ConsultationPage.tsx`, `NoteAuthoring.tsx`, `TemplatesPage.tsx`, `CoSignPage.tsx` | NONE (#198's `VisitPage.tsx`, a new design, isn't merged) | REPLACE BY PORT | **Now (demo):** the screen as in the source: four sections (Subjective, Objective, Assessment, Plan), each with a mic button that fills that box through the browser's speech recognition; typing always works; the text saves through the real note API; Save draft, autosave, sign. Hidden: "Draft with AI", the Differential panel and the assistant bubble (no backend yet), and Admit, Order and the Test results, Imaging reports and Latest scan tabs. India header items (ABHA, the ISH ID, the UPI payer, the partner logo) become the MRN and U.S. insurance status. **Demo-only stand-in:** browser dictation may send audio to the browser vendor's cloud service, so synthetic data only. It is gated by an explicit deployment setting, not by the build: default OFF, ON only for the demo and preview servers, and OFF wherever real patient data is present (pilot gate, Still open Q36). Dictation is one swappable adapter (a `useDictation` hook). **After the demo (proposed):** the adapter is replaced by our AI pipeline on the same screen: whole-visit recording with the patient's recording consent, transcription, and a SOAP draft filling the four sections; the doctor edits, accepts or rejects each part and signs; the draft is labeled AI-generated and never signed automatically (D70); with AI off the screen works as now. It uses the AI contract's (batch 7) operations and shapes, and invents no fields. |
+| 8 | Problem list | doctors-portal `src/shri/notes/ProblemsPage.tsx`, `src/shri/record/ConditionPage.tsx` | NONE | REPLACE BY PORT | — |
+| 8 | Family, social and surgical history | NONE | NONE | NEW | — |
+| 9 | Prescribing | doctors-portal `src/shri/notes/PrescriptionPage.tsx` (allergy gate, override with a reason), `src/shri/record/PrescriptionsPage.tsx` | `features/clinical/DrugPicker.tsx` only (#199's `PrescriptionsSection.tsx` isn't merged) | REPLACE BY PORT | Fixed-rule alerts with an override reason (D99); MD and APP only (D110); no second-consultant sign-off or AI dose suggestion |
+| 10 | Follow-up request | NONE (layout hint: doctors-portal `src/shri/discharge/DischargeFlow.tsx`, its inpatient "Follow-up" section) | NONE | NEW | — |
+| 11 | Check-out (book or decline the revisit, print the summary) | NONE (pieces: doctors-portal `src/shri/notes/InstructionsPage.tsx`, `src/shri/record/AppointmentsPage.tsx`) | NONE | NEW | — |
+| 11 | Copay at check-out | care-entry `components/payment/BillAtCounter.tsx`, `pages/PaymentReceiptPage.tsx` | NONE | REPLACE BY PORT (adapted) | No billing-counter fee (D100, D104) |
+| 12 | Book the revisit | care-entry `flows/schedule/ScheduleFlow.tsx`, with `followUpOfEncounterId` | `features/scheduling/BookAppointmentDialog.tsx` | REPLACE BY PORT (with booking) | — |
+| 12 | Portal: structure, menus, fields and flows | Angular portal (`patientportal_frontend`) | `features/portal/` (#39) | KEEP | — |
+| 12 | Portal: visual design | care-entry and doctors-portal (the shared look) | `features/portal/` (a 4–5-year-old design) | MODERNIZE LATER (after the demo screens; not on the demo path, D108) | — |
+
+**Counts:** KEEP 1, REPLACE BY PORT 11, NEW 5, MODERNIZE LATER 1.
+
+**What stays from the earlier map:**
+- **Prescribing rules (D99, D110):** the alerts are fixed rules in code, and a `high` alert needs an override with a reason. Only MD and APP prescribe. doctors-portal's second-consultant sign-in and AI dose suggestion don't carry over.
+- **Copay (step 11):** adapt care-entry's `BillAtCounter.tsx` and `PaymentReceiptPage.tsx` without the billing-counter fee. The copay goes through D100's operations (`POST /payments/card-session`, then `POST /patients/{patientId}/payments` with `appointmentId`), and the receipt comes from the same step (D104). Anand's suggestion on #205.
+- **The wiring from #198 and #199** moves into the ported screens: the generated client, `Idempotency-Key`, `If-Match`, error handling (Problem Details, field errors) and role gating.
+- **AI in ported screens:** the consultation's AI scribe, differential and AI coding stay hidden (D68).
+
+### How to port
+
+**React sources (care-entry, doctors-portal):**
+1. Move the source files into the feature folder.
+2. Swap their sample data and local state for the generated client (`frontend/src/api/generated/`).
+3. Apply the U.S. changes (MRN instead of UHID, no ABHA, U.S. phone and address, insurance, the contract's statuses and roles).
+4. Restyle to the shared look.
+5. Delete the replaced screen and update its end-to-end test in the same PR.
+
+**Angular source (the earlier portal):** convert it to React following its screens, menus, fields and flows, as #39 did.
+
+**Done means:** the screen matches the source's structure; no sample data is left; every call goes through the generated client; the U.S. changes are applied; its end-to-end test passes; the PR names its source screen and says ported, adapted or new.
+
+### The theme
+
+| Token | care-entry (`shared/design-system.css`, `DESIGN_SYSTEM.md`) | doctors-portal (`src/shri/theme/tokens.css`) |
+|---|---|---|
+| Font | Plus Jakarta Sans (Noto for Indian scripts) | Inter; DM Serif Display for display |
+| Colours | Cool blue-grey ground `#E8EDF4`, white cards; one blue action (`--color-primary-600` `#2563eb`) | Near-black primary `#0b0b10`; accent `#3d63ff`, lavender `#9b9cf7` in dark mode |
+| Radius | `sm` 4, `md` 8, `lg` 12 (buttons, inputs), `xl` 16, `2xl` 20, `3xl` 24 px | cards 24, KPI tiles 20, inner 16, modals 28 px |
+| Shadows | Soft layered navy-tinted `--shadow-card` (sm, md, lg), `--shadow-modal`, a blue glow for focus | `--shadow-pop`, `--shadow-drawer`, `--shadow-modal`; cards flat |
+| Spacing | Tailwind 4's 4 px scale; root 15 px from 1024 px for desk density | Tailwind 4's scale with fixed pixel values (`gap-[6px]`, `px-[12px]`) |
+| Breakpoints | Tailwind defaults: 640, 768, 1024, 1280, 1536 | Renamed and shifted: `sm` 768, `md` 1024, `lg` 1280, `xl` 1440, `wall` 1920 |
+| Buttons | `rounded-lg`, blue primary with a blue-tinted shadow | Near-black pill primary (`rounded-full`), 44 px controls |
+| Cards | White, hairline border, layered shadow | 24 px flat cards |
+
+**Recommendation (proposed, pending Vimal's confirmation):** care-entry's design system is the single base, and the best doctors-portal components (the board, the consultation side rail, the KPI strip) are borrowed into it and restyled with its tokens. Inter, the black pill, the lavender accent and the renamed breakpoints don't come over. That avoids a third look.
+
+### Order and dates (set by Minalini)
+
+The order follows the demo: front desk, then check-in, rooming and the clinical team's list, then consultation and prescribing, then follow-up, check-out and the revisit; rehearsals on 18 and 19 November; portal modernization after 20 November. **The dates are set by Minalini:** she posts one date per screen on #85 by 5 November, before the 10 November checkpoint.
+
+**Cut rule:** if the ports are behind on 10 November, keep what is ported and show the remaining steps through the backend script.
