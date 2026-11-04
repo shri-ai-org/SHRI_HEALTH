@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { UserRound } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
@@ -22,6 +22,7 @@ import { getState } from '../domain/store'
 import { cancelAppointment } from '../domain/actions'
 import { useToast } from '../hooks/useToast'
 import { getPatientHeader, getPatientTimeline } from '../domain/patientSelectors'
+import { isApiPatientId, loadPatient } from '../../shri-health/patients'
 
 /**
  * The patient's hub. Everything the front desk does for a patient starts
@@ -39,6 +40,11 @@ export function PatientProfilePage() {
   const today = useStoreValue(getToday)
 
   const patient = useStoreValue(getPatientById, uhid ?? '')
+  // A SHRI_HEALTH patient: the full record (registration time, phone, email, address), not only the
+  // search summary the page may have been opened from (SCREEN_PORT gap 45).
+  useEffect(() => {
+    if (uhid && isApiPatientId(uhid)) void loadPatient(uhid).catch(() => undefined)
+  }, [uhid])
   useCountPatientOpen(patient?.patientId)
   const header = useStoreValue(getPatientHeader, uhid ?? '', now)
   const timeline = useStoreValue(getPatientTimeline, uhid ?? '')
