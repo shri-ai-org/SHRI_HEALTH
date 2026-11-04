@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { CSSProperties, ElementType } from 'react'
 import {
   AlertTriangle,
@@ -37,6 +38,9 @@ import { CheckInToggle } from '../components/appointment/CheckInToggle'
 import { CurrencyIcon, formatMoney } from '../utils/billing'
 import { appointmentStatusLabel } from '../utils/appointment'
 import { TONE_VAR } from '../utils/tone'
+import { Alert } from '../components/ui/Alert'
+import { loadAppointments } from '../../shri-health/scheduling'
+import { problemMessage } from '../../shri-health/client'
 
 const ATTENTION_ICON: Record<NeedsAttentionItem['tone'], ElementType> = {
   critical: CircleAlert,
@@ -70,6 +74,18 @@ export function FrontOfficeHomePage() {
   const patientRows = useStoreValue(getPatientRows)
   const today = todayKey(new Date(now))
   const registeredToday = patientRows.filter((row) => todayKey(new Date(row.patient.createdAt)) === today).length
+
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // Today's SHRI_HEALTH bookings, read again on each tick of the clock (15 s), as the outpatient list does.
+  useEffect(() => {
+    let live = true
+    loadAppointments(today, 1)
+      .then(() => live && setLoadError(null))
+      .catch((err: unknown) => live && setLoadError(problemMessage(err)))
+    return () => {
+      live = false
+    }
+  }, [today, now])
 
   const booked = appointments.filter((a) => a.status !== 'Cancelled')
   const toCheckIn = appointments.filter((a) => a.status === 'Confirmed')
@@ -139,6 +155,7 @@ export function FrontOfficeHomePage() {
       />
 
       <div className="flex flex-col gap-4 sm:gap-5 mt-4 sm:mt-5">
+        {loadError ? <Alert tone="warning">{`Today's bookings could not be read from the server: ${loadError}`}</Alert> : null}
         {/* Five figures, one purpose each — each card opens the place that holds it. */}
         <section aria-label="Today at a glance" className={figureRowClass('sm:grid-cols-3 xl:grid-cols-5')}>
           <StatCard
