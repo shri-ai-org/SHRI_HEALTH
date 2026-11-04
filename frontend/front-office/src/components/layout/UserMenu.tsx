@@ -1,5 +1,5 @@
 import { Avatar } from '../ui/Avatar'
-import { useCurrentUser } from '../../hooks/useCurrentUser'
+import { useCurrentUser } from '../../../shri-health/user'
 
 /** Who is signed in at this desk (DESIGN_SYSTEM §8.6 identity). There is one
  *  user for now, so this is a name card, not a menu. */
