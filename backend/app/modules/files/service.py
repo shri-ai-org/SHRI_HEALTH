@@ -99,7 +99,8 @@ READ_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "insurance-card": ("coverages:read",),
     "identity": ("patients:read",),
     "receipt": ("payments:create", "superbills:read"),
-    "after-visit-summary": ("encounters:read",),
+    # The front desk prints the latest summary at check-out without encounters:read (D98, T50).
+    "after-visit-summary": ("encounters:read", "after-visit-summaries:read"),
 }
 #: How each accepted media type starts, so a file can't claim to be what it isn't.
 SIGNATURES: dict[str, bytes] = {
