@@ -1,8 +1,9 @@
 """The demo layer (issue #85; demo 20 Nov): the starter layer plus a pharmacy and the main
 practice's connection to the simulated pharmacy, more payers, the consent requirements, and
-synthetic patients with their coverage, preferred pharmacy and appointments on the demo day. The same rules as the starter layer: synthetic only, fixed IDs,
-inserted only if missing, so a second run changes nothing; it runs as shri_migrator with the
-clinic set, so forced RLS checks every row.
+synthetic patients with their coverage, preferred pharmacy and appointments on the demo day.
+The same rules as the starter layer: synthetic only, fixed IDs, inserted only if missing, so a
+second run changes nothing; it runs as shri_migrator with the clinic set, so forced RLS checks
+every row.
 
 Each patient's MRN comes from ``admin.next_mrn()`` when the patient is first created, as
 registration takes it.
