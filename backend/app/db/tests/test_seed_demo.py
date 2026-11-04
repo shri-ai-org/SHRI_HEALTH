@@ -25,7 +25,7 @@ COUNTED = ("admin.pharmacy", "admin.payer", "admin.practice_payer", "admin.conse
            "clinical.patient", "clinical.coverage", "clinical.appointment",
            "clinical.appointment_participant", "admin.patient_pharmacy", "clinical.identifier",
            "admin.mrn_counter", "admin.schedule_availability_rule",
-           "admin.availability_rule_appointment_type")
+           "admin.availability_rule_appointment_type", "admin.integration_endpoint")
 #: A fixed clock for the seed's all-day schedule (any time well inside a day in both zones).
 NOON = dt.datetime(2026, 11, 20, 18, 0, tzinfo=dt.UTC)
 
@@ -83,6 +83,22 @@ def test_the_front_desk_sees_the_demo_day(migrator_engine: Engine,
     pharmacy = rows("SELECT p.name FROM admin.patient_pharmacy pp JOIN admin.pharmacy p "
                     "ON p.id = pp.pharmacy_id WHERE pp.is_default")
     assert {r.name for r in pharmacy} == {"Demo Pharmacy (synthetic)"}
+
+
+def test_a_signed_prescription_has_one_connection_to_send_through(
+        migrator_engine: Engine, front_desk: Session, app_engine: Engine) -> None:
+    """The outbox's lookup (app.integration.api): one active erx connection, or signing is 503."""
+    _seed(migrator_engine)
+    erx = ("SELECT adapter, environment FROM admin.integration_endpoint "
+           "WHERE kind = 'erx' AND is_active")
+    assert [tuple(r) for r in front_desk.execute(text(erx))] == [("simulated-erx", "test")]
+    db = open_session(app_engine, CLINIC_B)
+    try:
+        assert list(db.execute(text(erx))) == []        # the other clinic has none of its own
+    finally:
+        conn = db.bind
+        db.close()
+        conn.close()  # type: ignore[union-attr]
 
 
 def test_no_provider_is_double_booked(migrator_engine: Engine, front_desk: Session) -> None:
