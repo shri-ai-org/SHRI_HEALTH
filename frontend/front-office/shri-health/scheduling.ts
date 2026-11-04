@@ -28,6 +28,7 @@ import {
   listBookableProviders as apiListBookableProviders,
   listSlots as apiListSlots,
   recordVisitStatus as apiRecordVisitStatus,
+  rescheduleAppointment as apiRescheduleAppointment,
   undoCheckIn as apiUndoCheckIn,
 } from '../../src/api/generated/endpoints/scheduling/scheduling'
 import type {
@@ -292,6 +293,64 @@ export async function bookOnServer(input: BookOnServerInput, key: string = newId
     return { ...state, serverSlots: { ...state.serverSlots, [input.providerId]: { ...byDate, [input.date]: (byDate[input.date] ?? []).filter((s) => s !== input.slot) } } }
   })
   return reconcileAppointments([res.data])[0]!
+}
+
+export interface RescheduleOnServerInput {
+  providerId: string
+  date: string
+  slot: string
+  mode: ConsultMode
+  by: UnavailableParty
+  note?: string
+}
+
+/**
+ * Moves a server booking (POST /appointments/{id}/reschedule, D61): the old one is cancelled with
+ * the reason (who can't make it: HL7 `pat` or `prov`, the note its text) and a new one is booked in
+ * one transaction. Returns the new booking; both go into the store. `key` is this attempt's
+ * Idempotency-Key.
+ */
+export async function rescheduleOnServer(appointmentId: string, input: RescheduleOnServerInput, key: string = newIdempotencyKey()): Promise<Appointment> {
+  const { facility } = await loadBookable()
+  const startAt = startAtBySlot.get(`${input.providerId}|${input.date}|${input.slot}`)
+  if (!startAt) throw new Error('That time is no longer offered — choose another time.')
+  const type = typeFor(input.mode)
+  const res = await apiRescheduleAppointment(
+    appointmentId,
+    {
+      startAt,
+      providerId: input.providerId,
+      facilityId: facility.id,
+      ...(type ? { appointmentTypeId: type.id } : {}),
+      reasonCode: input.by === 'Doctor' ? 'prov' : 'pat',
+      ...(input.note?.trim() ? { reasonText: input.note.trim() } : {}),
+    },
+    { 'Idempotency-Key': key },
+  )
+  if (res.status !== 201) throw new Error('The booking was not moved')
+  setState((state) => {
+    const byDate = state.serverSlots?.[input.providerId]
+    if (!byDate) return state
+    return { ...state, serverSlots: { ...state.serverSlots, [input.providerId]: { ...byDate, [input.date]: (byDate[input.date] ?? []).filter((s) => s !== input.slot) } } }
+  })
+  // The old booking is now cancelled on the server: read it again so the store shows it so.
+  const old = getState().appointments.find((a) => a.appointmentId === appointmentId)
+  if (old) await loadAppointments(old.date, 1).catch(() => undefined)
+  return reconcileAppointments([res.data])[0]!
+}
+
+/** A patient's bookings about three months back and ahead (31-day windows, D62), into the store. */
+export async function loadPatientAppointments(patientId: string): Promise<Appointment[]> {
+  const { facility } = await loadBookable()
+  const start = addDaysToKey(todayKey(), -93)
+  const windows = Array.from({ length: 6 }, (_, i) => addDaysToKey(start, i * 31))
+  const pages = await Promise.all(
+    windows.map(async (from) => {
+      const res = await apiListAppointments({ facilityId: facility.id, patientId, dateFrom: from, dateTo: addDaysToKey(from, 30), limit: 100 })
+      return res.status === 200 ? res.data.items : []
+    }),
+  )
+  return reconcileAppointments(pages.flat())
 }
 
 /** Is this booking on the server (an opaque UUID, not one of Care Entry's own `apt-…` ids)? */

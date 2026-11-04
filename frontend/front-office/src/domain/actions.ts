@@ -494,7 +494,7 @@ export function rescheduleAppointment({ appointmentId, providerId, date, slot, m
   const state = getState()
   const now = Date.now()
   const appointment = requireAppointment(state, appointmentId)
-  // Moving a SHRI_HEALTH booking (POST /appointments/{id}/reschedule) is not connected yet.
+  // A SHRI_HEALTH booking moves on the API (shri-health/scheduling.ts rescheduleOnServer), not here.
   if (isServerAppointment(appointmentId)) {
     throw new DomainError('INVALID_TRANSITION', 'This booking is on the server and cannot be moved here yet — cancel it and book the new time.')
   }

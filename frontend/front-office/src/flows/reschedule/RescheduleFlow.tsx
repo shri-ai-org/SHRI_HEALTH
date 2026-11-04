@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Building2, CalendarCheck2, CalendarClock, Video } from 'lucide-react'
 import { FlowSheet } from '../../components/flow/FlowSheet'
@@ -25,6 +25,8 @@ import {
   getToday,
 } from '../../domain/selectors'
 import { rescheduleAppointment } from '../../domain/actions'
+import { isServerAppointment, loadSchedule, rescheduleOnServer } from '../../../shri-health/scheduling'
+import { ApiError, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
 import { formatMoney } from '../../utils/billing'
 import { dayWithDate } from '../../utils/dates'
 import { appointmentStatusLabel, modesFor } from '../../utils/appointment'
@@ -70,6 +72,13 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<{ appointment: Appointment; differenceBill: Payment | null } | null>(null)
+  // SHRI_HEALTH: the server's doctors and free times (as Schedule Appointment loads them), and one
+  // Idempotency-Key per attempt to move a server booking.
+  const [moving, setMoving] = useState(false)
+  const attempt = useRef<{ key: string; pick: string } | null>(null)
+  useEffect(() => {
+    void loadSchedule(today, 14).catch((err: unknown) => setError(problemMessage(err)))
+  }, [today])
 
   const departments = useStoreValue(getDepartments)
   const suggestions = useStoreValue(getDoctorSuggestions, department, now)
@@ -164,6 +173,7 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
   function move() {
     if (!providerId || !date || !slot || !by) return
     setError(null)
+    if (isServerAppointment(was!.appointmentId)) return void moveOnServer(providerId, date, slot, by)
     try {
       const result = rescheduleAppointment({ appointmentId: was!.appointmentId, providerId, date, slot, mode, by, note })
       // A fee difference is paid at the billing counter, not here: its bill is
@@ -176,6 +186,29 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
       if (/slot/i.test(message)) {
         setSlot(null)
       }
+    }
+  }
+
+  // A server booking moves on the API (D61): no fee difference, no bill.
+  async function moveOnServer(nextProvider: string, nextDate: string, nextSlot: string, who: UnavailableParty) {
+    if (moving) return
+    const id = `${nextProvider}|${nextDate}|${nextSlot}|${mode}|${who}`
+    if (attempt.current?.pick !== id) attempt.current = { key: newIdempotencyKey(), pick: id }
+    setMoving(true)
+    try {
+      const appointment = await rescheduleOnServer(was!.appointmentId, { providerId: nextProvider, date: nextDate, slot: nextSlot, mode, by: who, note }, attempt.current.key)
+      attempt.current = null
+      setDone({ appointment, differenceBill: null })
+    } catch (err) {
+      setError(problemMessage(err))
+      // A time taken a moment ago: refresh the times and reopen them.
+      if (err instanceof ApiError && err.status === 409) {
+        attempt.current = null
+        setSlot(null)
+        void loadSchedule(today, 14).catch(() => undefined)
+      }
+    } finally {
+      setMoving(false)
     }
   }
 
