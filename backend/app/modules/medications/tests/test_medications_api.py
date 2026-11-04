@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS, FACILITY_A, FACILITY_B
 from app.db.models.systems import RXNORM
 
+from ..repository import PharmacyRow
 from .fakes import AMOXICILLIN, World
 
 Client = Callable[[str], TestClient]
@@ -68,6 +69,65 @@ def _sign(as_user: Client, rx_id: str, etag: str, user: str = "md") -> Any:
 def _etag(as_user: Client, rx_id: str) -> str:
     found: str = as_user("md").get(f"{API}/prescriptions/{rx_id}").headers["ETag"]
     return found
+
+
+# ---------------------------------------------------------------------------- listPharmacies
+def _pharmacy(world: World, name: str, **extra: Any) -> PharmacyRow:
+    fields: dict[str, Any] = {
+        "id": uuid4(), "ncpdp_id": f"{len(world.directory) + 1:07d}", "npi": None,
+        "name": name, "phone": None, "fax": None, "line": None, "city": None, "state": None,
+        "postal_code": None, "mail_order": False, "active": True, **extra}
+    row = PharmacyRow(**fields)
+    world.directory.append(row)
+    return row
+
+
+def test_pharmacies_by_name_for_the_desk_and_the_clinicians(as_user: Client,
+                                                             world: World) -> None:
+    town = _pharmacy(world, "Town Pharmacy (synthetic)", phone="+12175550130",
+                     line="300 Test Road", city="Springfield", state="IL", postal_code="62703")
+    mail = _pharmacy(world, "Mail Pharmacy (synthetic)", mail_order=True, active=False)
+    for user in ("fd", "ma", "rn", "md", "app"):
+        response = as_user(user).get(f"{API}/pharmacies")
+        assert response.status_code == 200, (user, response.text)
+        assert [i["id"] for i in response.json()["items"]] == [str(mail.id), str(town.id)]
+    items = as_user("fd").get(f"{API}/pharmacies").json()["items"]
+    assert items[0] == {"id": str(mail.id), "ncpdpId": mail.ncpdp_id, "name": mail.name,
+                        "mailOrder": True, "active": False}  # nothing empty is sent
+    assert items[1]["address"] == {"line": "300 Test Road", "city": "Springfield",
+                                   "state": "IL", "postalCode": "62703"}
+    assert items[1]["phone"] == "+12175550130"
+    found = as_user("fd").get(f"{API}/pharmacies", params={
+        "q": "town", "postalCode": "62703", "mailOrder": "false"}).json()
+    assert [i["id"] for i in found["items"]] == [str(town.id)] and "nextCursor" not in found
+
+
+def test_pharmacies_page(as_user: Client, world: World) -> None:
+    for n in range(3):
+        _pharmacy(world, f"Pharmacy {n} (synthetic)")
+    first = as_user("fd").get(f"{API}/pharmacies", params={"limit": 2}).json()
+    assert len(first["items"]) == 2 and first["nextCursor"]
+    second = as_user("fd").get(f"{API}/pharmacies",
+                               params={"limit": 2, "cursor": first["nextCursor"]}).json()
+    assert [i["name"] for i in second["items"]] == ["Pharmacy 2 (synthetic)"]
+    assert "nextCursor" not in second
+    bad = as_user("fd").get(f"{API}/pharmacies", params={"cursor": "zzzz"})
+    assert bad.status_code == 400 and _code(bad) == "invalid-cursor"
+
+
+def test_pharmacies_permission_denied(as_user: Client, world: World) -> None:
+    _pharmacy(world, "Town Pharmacy (synthetic)")
+    for user in ("none", "bil", "adm", "dsp"):
+        response = as_user(user).get(f"{API}/pharmacies")
+        assert response.status_code == 403 and _code(response) == "permission-denied", user
+
+
+def test_pharmacies_validation_errors(as_user: Client, world: World) -> None:
+    for params in ({"q": "a"}, {"q": "x" * 201}, {"postalCode": "6270"},
+                   {"postalCode": "62703-1234"}, {"mailOrder": "maybe"}, {"limit": 0},
+                   {"limit": 101}):
+        response = as_user("fd").get(f"{API}/pharmacies", params=params)
+        assert response.status_code == 422, params
 
 
 # --------------------------------------------------------------------------- listMedications

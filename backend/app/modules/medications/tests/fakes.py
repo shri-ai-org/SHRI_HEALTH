@@ -31,6 +31,7 @@ from ..repository import (
     EncounterRef,
     MedicationRow,
     PatientRef,
+    PharmacyRow,
     PrescriptionRow,
     SafetyFacts,
     TransmissionRow,
@@ -62,6 +63,7 @@ class World:
     grants: set[tuple[UUID, UUID]] = field(default_factory=set)  # (user, patient)
     encounters: dict[UUID, tuple[UUID, EncounterRef]] = field(default_factory=dict)
     pharmacies: dict[UUID, bool] = field(default_factory=dict)  # platform-wide: active?
+    directory: list[PharmacyRow] = field(default_factory=list)  # listPharmacies, by name
     practitioners: dict[UUID, UUID] = field(default_factory=dict)  # user → practitioner
     entries: dict[UUID, tuple[UUID, MedicationRow]] = field(default_factory=dict)
     prescriptions: dict[UUID, tuple[UUID, PrescriptionRow]] = field(default_factory=dict)
@@ -139,6 +141,15 @@ class FakeRepository:
 
     async def pharmacy_active(self, db: Any, pharmacy_id: UUID) -> bool | None:
         return self.world.pharmacies.get(pharmacy_id)
+
+    async def pharmacies(self, db: Any, *, name: str | None, postal_code: str | None,
+                         mail_order: bool | None, limit: int, offset: int
+                         ) -> list[PharmacyRow]:
+        rows = [r for r in sorted(self.world.directory, key=lambda r: (r.name, str(r.id)))
+                if (name is None or name.lower() in r.name.lower())
+                and (postal_code is None or (r.postal_code or "").startswith(postal_code))
+                and (mail_order is None or r.mail_order == mail_order)]
+        return rows[offset:offset + limit]
 
     async def practitioner_of_user(self, db: Any, user_id: UUID) -> UUID | None:
         return self.world.practitioners.get(user_id)

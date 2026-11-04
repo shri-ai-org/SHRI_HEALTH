@@ -55,7 +55,7 @@ from .partner import Partner, announce
 from .repository import Drug, MedicationRepository, PrescriptionRow
 
 ChartCheck = Callable[[AsyncSession, CurrentUser, UUID], Any]
-PAGE_MAX = 100  # MedicationList.items maxItems
+PAGE_MAX = 100  # MedicationList.items and PharmacyList.items maxItems
 LIST_STATUSES = ("active", "completed", "stopped")
 DRUG_SYSTEMS = (RXNORM, NDC)
 #: Who may draft, edit, check, override for, sign and send, or mark a draft entered-in-error in
@@ -193,6 +193,16 @@ def _helper_error(error: Exception, *, locked_code: str = "invalid-state-transit
 
 
 # ------------------------------------------------------------------------- read models
+def to_pharmacy(row: repository.PharmacyRow) -> schemas.Pharmacy:
+    parts = (row.line, row.city, row.state, row.postal_code)
+    return schemas.Pharmacy(
+        id=row.id, ncpdp_id=row.ncpdp_id, npi=row.npi, name=row.name, phone=row.phone,
+        fax=row.fax, mail_order=row.mail_order, active=row.active,
+        address=schemas.PharmacyDirectoryAddress(
+            line=row.line, city=row.city, state=row.state, postal_code=row.postal_code)
+        if any(parts) else None)
+
+
 def to_medication(row: repository.MedicationRow) -> schemas.Medication:
     prescribed = row.intent == "order"
     return schemas.Medication(
@@ -263,6 +273,20 @@ async def list_medications(db: AsyncSession, repo: MedicationRepository, check: 
     return schemas.MedicationList(items=[to_medication(r) for r in rows[:size]],
                                   next_cursor=encode_cursor(offset + size)
                                   if len(rows) > size else None)
+
+
+async def list_pharmacies(db: AsyncSession, repo: MedicationRepository, *, name: str | None,
+                          postal_code: str | None, mail_order: bool | None, limit: int,
+                          cursor: str | None) -> schemas.PharmacyList:
+    """The platform pharmacy directory by name (D50). Reference data about pharmacies, not
+    patients: no chart check, and core audits nothing (x-audit category none)."""
+    offset = decode_cursor(cursor)
+    size = min(limit, PAGE_MAX)
+    rows = await repo.pharmacies(db, name=name, postal_code=postal_code, mail_order=mail_order,
+                                 limit=size + 1, offset=offset)
+    return schemas.PharmacyList(items=[to_pharmacy(r) for r in rows[:size]],
+                                next_cursor=encode_cursor(offset + size)
+                                if len(rows) > size else None)
 
 
 async def record_medication(db: AsyncSession, repo: MedicationRepository, check: ChartCheck,

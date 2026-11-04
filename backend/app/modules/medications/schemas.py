@@ -90,6 +90,31 @@ class MedicationList(Out):
     next_cursor: str | None = None
 
 
+# --------------------------------------------------------------- the pharmacy directory
+class PharmacyDirectoryAddress(Out):
+    line: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+
+
+class Pharmacy(Out):
+    id: UUID
+    ncpdp_id: str
+    npi: str | None = None
+    name: str
+    phone: str | None = None
+    fax: str | None = None
+    address: PharmacyDirectoryAddress | None = None
+    mail_order: bool
+    active: bool
+
+
+class PharmacyList(Out):
+    items: list[Pharmacy]
+    next_cursor: str | None = None
+
+
 # ------------------------------------------------------------------------- prescriptions
 class PrescriptionCreate(Closed):
     patient_id: UUID
