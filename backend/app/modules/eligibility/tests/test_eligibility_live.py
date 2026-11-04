@@ -187,7 +187,11 @@ def _in_clinic[T](practice: Practice,  # noqa: F811
 
 
 def _reply(name: str, check_id: UUID) -> dict[str, Any]:
-    return example(name) | {"correlationId": str(check_id)}
+    """The example 271, answering this check now: its fixed ``respondedAt`` would fall before a
+    check requested on a later day (ck_eligibility_check_response_after_request)."""
+    now = dt.datetime.now(dt.UTC).replace(microsecond=0) + dt.timedelta(seconds=1)  # after it
+    return example(name) | {"correlationId": str(check_id),
+                            "respondedAt": now.isoformat().replace("+00:00", "Z")}
 
 
 def _local_today() -> str:
@@ -319,7 +323,8 @@ def test_the_270_and_the_active_reply_through_the_real_tables(
     assert body["copay"] == {"value": "25.00", "currency": "USD"}
     assert body["deductible"] == {"value": "1500.00", "currency": "USD"}
     assert body["deductibleRemainingAmount"] == {"value": "640.00", "currency": "USD"}
-    assert len(body["benefits"]) == 9 and body["respondedAt"].startswith("2026-11-03T14:52:09")
+    assert len(body["benefits"]) == 9 and (dt.datetime.fromisoformat(body["respondedAt"])
+                                             >= dt.datetime.fromisoformat(body["requestedAt"]))
     done = client("fd").get(f"{API}/operations/{operation['id']}").json()
     assert done["status"] == "succeeded"
     assert done["result"] == {"type": "eligibility-check", "id": str(check_id)}
