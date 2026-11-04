@@ -23,6 +23,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 
@@ -302,14 +303,10 @@ def test_an_addendum_never_replaces_the_note(summary_client: Any, practice: Prac
     assert document.ext_composition_id == note
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "files.service.create_download_url checks READ_PERMISSIONS['after-visit-summary'] = "
-    "encounters:read, which FD doesn't hold; FD holds after-visit-summaries:read (T50). Needs "
-    "the files service to issue a link under the issuing operation's permission (note for "
-    "Anand). Remove this mark when it lands; strict, so it fails then."))
 def test_the_front_desk_prints_the_summary(summary_client: Any, practice: Practice,
                                            users: dict[str, CurrentUser]) -> None:
-    """D98: the front desk prints the latest summary at check-out."""
+    """D98: the front desk prints the latest summary at check-out (after-visit-summaries:read
+    on the files module's link since #216)."""
     client = summary_client
     _, encounter = _visit(client, practice)
     _signed_note(practice, users, encounter)
@@ -352,8 +349,7 @@ def test_a_restricted_summary_needs_break_glass_at_the_desk(
     module's link and download: on a restricted chart the front desk without a grant gets 403
     break-glass-required, and the refusal is audited as an access denial naming the patient; a
     care-team member (ma) gets the link and the PDF, and a user with a current break-glass grant
-    (rn) the link, without break-glass (D37). The front desk with a grant waits on the files
-    module (test_the_front_desk_prints_the_summary)."""
+    (rn) the link, without break-glass (D37)."""
     client = summary_client
     patient = practice.patients["restricted"]
     _, encounter = _visit(client, practice, "restricted", hour=15)
@@ -386,6 +382,54 @@ def test_a_restricted_summary_needs_break_glass_at_the_desk(
     granted = _link(client, encounter, "rn")
     assert granted.status_code == 200, granted.text
     assert denials() == before + 1
+
+
+def test_the_files_link_keeps_d109_for_the_summary(
+        summary_client: Any, practice: Practice, users: dict[str, CurrentUser],
+        spy: Spy) -> None:
+    """D109 on the files module's own route (createDownloadUrl, D105), not only this module's:
+    the front desk without a grant gets 403 break-glass-required for a restricted chart's
+    summary; a care-team member and the MD with a grant read it; the front desk prints a normal
+    chart's summary. The content route needs the same user's session and the one-time ticket."""
+    client = summary_client
+
+    def files_link(file_id: UUID, user: str) -> Any:
+        return client(user).get(f"{API}/files/{file_id}/download-url")
+
+    patient = practice.patients["restricted"]
+    _, restricted = _visit(client, practice, "restricted", hour=15)
+    _signed_note(practice, users, restricted, patient="restricted")
+    _grant(practice, users, "md", patient)
+    assert _create(client, restricted).status_code == 202
+    (hidden,) = spy.stored
+    refused = files_link(hidden.file_id, "fd")
+    assert refused.status_code == 403 and refused.json()["code"] == "break-glass-required"
+    _sql(practice, "INSERT INTO admin.care_team_member (id, tenant_id, patient_id, user_id, "
+         "role_code, period_start) VALUES (:i, :t, :p, :u, 'care-manager', :s)",
+         i=uuid.uuid4(), t=practice.clinic, p=patient, u=users["ma"].id,
+         s=dt.date.today() - dt.timedelta(days=30))
+    for user in ("ma", "md"):  # care team; the MD under the grant
+        link = files_link(hidden.file_id, user)
+        assert link.status_code == 200, (user, link.text)
+        assert client(user).get(link.json()["url"]).status_code == 200, user
+    # A normal chart: the front desk prints it.
+    _, normal = _visit(client, practice, hour=16)
+    _signed_note(practice, users, normal)
+    assert _create(client, normal).status_code == 202
+    shown = spy.stored[-1]
+    link = files_link(shown.file_id, "fd")
+    assert link.status_code == 200, link.text
+    url = link.json()["url"]
+    # The ticket alone isn't enough: no session, or another user's, is refused and spends nothing.
+    anonymous = TestClient(client("fd").app, raise_server_exceptions=False)  # no session at all
+    # Nothing is served. Core answers 500 today, not 401: its audit middleware can't write the
+    # row for a request with no user (note for Thulasi on #161).
+    without = anonymous.get(url)
+    assert without.status_code != 200 and not without.content.startswith(b"%PDF")
+    assert client("ma").get(url).status_code == 404
+    pdf = client("fd").get(url)
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF-1.4")
+    assert client("fd").get(url).status_code == 404  # accepted once
 
 
 def test_without_a_data_key_nothing_is_left_behind(
