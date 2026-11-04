@@ -129,7 +129,7 @@ function startFrom(params: FlowProps['params'], now: number): Start {
   }
 }
 
-function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
+function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId }: FlowProps) {
   const now = useNow(15000)
   const today = useStoreValue(getToday)
 
@@ -283,7 +283,7 @@ function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
       else {
         const { appointment } = bookAppointment({ patientId: who.patientId, ...booking })
         // The revisit, booked from check-out: back to check-out instead of the profile.
-        // TODO(#161 and the booking port): bookAppointment with followUpOfEncounterId and an Idempotency-Key.
+        // A sample-data doctor books in the store; a server doctor books on the API with followUpOfEncounterId (bookOnServerPick).
         if (onBooked) {
           onBooked(appointment.appointmentId)
           return
@@ -309,8 +309,13 @@ function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
     if (attempt.current?.pick !== id) attempt.current = { key: newIdempotencyKey(), pick: id }
     setBooking(true)
     try {
-      await bookOnServer({ patientId: who.patientId, ...pick, mode, reason: reason.trim() || undefined }, attempt.current.key)
+      const booked = await bookOnServer({ patientId: who.patientId, ...pick, mode, reason: reason.trim() || undefined, followUpOfEncounterId }, attempt.current.key)
       attempt.current = null
+      // The revisit, booked from check-out: back to check-out instead of the profile.
+      if (onBooked) {
+        onBooked(booked.appointmentId)
+        return
+      }
       const profile = `/patients/${who.patientId}`
       if (location.pathname === profile) onClose()
       else navigate(profile, { replace: true })

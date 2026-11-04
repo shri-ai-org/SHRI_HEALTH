@@ -99,6 +99,7 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
     return (
       <ScheduleFlow
         params={{ uhid: patient.patientId, doctor: followUp?.providerId }}
+        followUpOfEncounterId={appointment.serverEncounterId}
         onClose={() => setBooking(false)}
         onBooked={(bookedId) => {
           markRevisitBooked(appointmentId, providerId, bookedId)

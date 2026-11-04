@@ -130,6 +130,7 @@ function fromAppointment(a: AppointmentSummary | ApiAppointment, existing: Appoi
     cancelReason: cancellation?.reasonText ?? null,
     reschedules: existing?.reschedules ?? [],
     ...(a.visitStatus ? { serverVisitStatus: a.visitStatus } : {}),
+    ...('encounterId' in a && a.encounterId ? { serverEncounterId: a.encounterId } : { serverEncounterId: existing?.serverEncounterId }),
   }
 }
 
@@ -244,6 +245,8 @@ export interface BookOnServerInput {
   slot: string
   mode: ConsultMode
   reason?: string
+  /** The revisit, booked from check-out: the visit whose follow-up it answers. */
+  followUpOfEncounterId?: string
 }
 
 /** Books on the server and puts the booking in the store. `key` is this attempt's Idempotency-Key. */
@@ -261,6 +264,7 @@ export async function bookOnServer(input: BookOnServerInput, key: string = newId
       appointmentTypeId: type.id,
       startAt,
       ...(input.reason ? { reasonForVisit: input.reason } : {}),
+      ...(input.followUpOfEncounterId ? { followUpOfEncounterId: input.followUpOfEncounterId } : {}),
     },
     { 'Idempotency-Key': key },
   )
