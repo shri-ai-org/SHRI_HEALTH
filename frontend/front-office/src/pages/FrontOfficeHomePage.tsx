@@ -41,6 +41,7 @@ import { TONE_VAR } from '../utils/tone'
 import { Alert } from '../components/ui/Alert'
 import { loadAppointments } from '../../shri-health/scheduling'
 import { problemMessage } from '../../shri-health/client'
+import { REAL_API } from '../../shri-health/client'
 
 const ATTENTION_ICON: Record<NeedsAttentionItem['tone'], ElementType> = {
   critical: CircleAlert,
@@ -114,6 +115,8 @@ export function FrontOfficeHomePage() {
           </Button>
         )
       case 'admit':
+        // Admit (India's inpatient flow): hidden with the SHRI_HEALTH API (US display change, 2026-11-04).
+        if (REAL_API) return null
         return (
           <Button size="sm" onClick={() => openFlow('admit', { uhid: action.patientId })}>
             <BedDouble className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -143,7 +146,8 @@ export function FrontOfficeHomePage() {
         pinActions
         actions={
           <>
-          <AbhaScanButton />
+          {/* ABHA (India, ABDM): hidden with the SHRI_HEALTH API (US display change, 2026-11-04). */}
+          {REAL_API ? null : <AbhaScanButton />}
           <Button onClick={() => navigate('/register/new')}>
             <UserPlus className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
             {/* "Register" alone fits beside the title on a phone. */}

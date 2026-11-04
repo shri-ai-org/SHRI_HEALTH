@@ -18,6 +18,7 @@ import type { PatientListRow } from '../domain/patientSelectors'
 import { todayKey } from '../domain/time'
 import { formatMoney } from '../utils/billing'
 import { initialsOf } from '../utils/format'
+import { REAL_API } from '../../shri-health/client'
 import { PatientsTabs } from '../components/patient/PatientsTabs'
 import { PatientStatusIcons } from '../components/patient/PatientStatusIcons'
 import { usePatientCareStatus } from '../hooks/useCareStatus'
@@ -102,9 +103,10 @@ export function PatientsPage() {
       sortValue: (row) => row.patient.age ?? -1,
       cell: ({ patient }) => `${patient.age ?? '—'} · ${patient.sex}`,
     },
-    { key: 'uhid', header: 'UHID', className: 'whitespace-nowrap tabular-nums text-ink-muted', sortValue: (row) => row.patient.uhid, cell: ({ patient }) => patient.uhid },
-    { key: 'mobile', header: 'Mobile', className: 'whitespace-nowrap tabular-nums text-ink-muted', cell: ({ patient }) => patient.mobile },
-    {
+    // With the SHRI_HEALTH API: the practice's MRN (D41), the US phone, and no ABHA column (US display change, 2026-11-04).
+    { key: 'uhid', header: REAL_API ? 'MRN' : 'UHID', className: 'whitespace-nowrap tabular-nums text-ink-muted', sortValue: (row) => row.patient.uhid, cell: ({ patient }) => patient.uhid },
+    { key: 'mobile', header: REAL_API ? 'Phone' : 'Mobile', className: 'whitespace-nowrap tabular-nums text-ink-muted', cell: ({ patient }) => patient.mobile },
+    ...(REAL_API ? [] : ([{
       key: 'abha',
       header: 'ABHA',
       className: 'text-ink-muted',
@@ -113,7 +115,7 @@ export function PatientsPage() {
           {patient.abhaId ?? '—'}
         </span>
       ),
-    },
+    }] as Column<PatientListRow>[])),
     {
       key: 'now',
       header: 'Now',

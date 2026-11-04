@@ -22,7 +22,7 @@ import {
 } from '../../domain/selectors'
 import { bookAppointment, rebookUnpaidAppointment } from '../../domain/actions'
 import { bookOnServer, isServerProvider, loadSchedule } from '../../../shri-health/scheduling'
-import { ApiError, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
+import { ApiError, REAL_API, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
 import { formatMoney, sumItems } from '../../utils/billing'
 import { dayWithDate, relativeDayLabel } from '../../utils/dates'
 import { modesFor } from '../../utils/appointment'
@@ -430,7 +430,7 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId }: F
           </div>
           <section aria-label="Patient" className="flex flex-col gap-2 rounded-2xl border border-border-soft bg-surface-1 p-4 shadow-card-sm">
             <h3 className="text-sm font-semibold text-ink">Patient</h3>
-            <PatientSearch mode="pick" inline onPick={choosePatient} autoFocus placeholder="Search for the patient by name, mobile, UHID or ABHA" />
+            <PatientSearch mode="pick" inline onPick={choosePatient} autoFocus placeholder={REAL_API ? 'Search for the patient by name, phone, MRN or date of birth' : 'Search for the patient by name, mobile, UHID or ABHA'} />
           </section>
           {error ? <Alert tone="critical" live>{error}</Alert> : null}
         </div>
@@ -476,7 +476,7 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId }: F
         <Quadrant id="book-patient" step={1} title="Patient" done={Boolean(patient)} current={currentIndex === 0} scrollFrom="xl" className="lg:col-span-2 lg:row-start-1">
           {showPatientSearch ? (
             <div className="flex flex-col gap-2">
-              <PatientSearch mode="pick" inline onPick={choosePatient} autoFocus placeholder="Search for the patient by name, mobile, UHID or ABHA" />
+              <PatientSearch mode="pick" inline onPick={choosePatient} autoFocus placeholder={REAL_API ? 'Search for the patient by name, phone, MRN or date of birth' : 'Search for the patient by name, mobile, UHID or ABHA'} />
               {patient ? (
                 <button type="button" onClick={() => setChangingPatient(false)} className="self-start text-xs font-semibold text-primary-text hover:underline">
                   Keep {patient.name}
@@ -491,13 +491,13 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId }: F
                 </p>
               </div>
               <dl className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
-                <dt className="text-ink-subtle">UHID</dt>
+                <dt className="text-ink-subtle">{REAL_API ? 'MRN' : 'UHID'}</dt>
                 <dd className="truncate font-medium tabular-nums text-ink">{patient.uhid}</dd>
                 <dt className="text-ink-subtle">Age · sex</dt>
                 <dd className="truncate text-ink">{patient.age ? `${patient.age} · ${patient.sex}` : patient.sex}</dd>
                 {patient.mobile ? (
                   <>
-                    <dt className="text-ink-subtle">Mobile</dt>
+                    <dt className="text-ink-subtle">{REAL_API ? 'Phone' : 'Mobile'}</dt>
                     <dd className="truncate tabular-nums text-ink">{patient.mobile}</dd>
                   </>
                 ) : null}

@@ -14,6 +14,9 @@ import type { Tone } from '../../utils/tone'
 import { CurrencyIcon } from '../../utils/billing'
 import { REAL_API } from '../../../shri-health/client'
 
+/** The record number's name: the practice's MRN with the SHRI_HEALTH API (D41), else India's UHID. */
+const RECORD_NO = REAL_API ? 'MRN' : 'UHID'
+
 const RISK_TONE: Record<'High' | 'Watch' | 'Normal', Tone> = { High: 'critical', Watch: 'warning', Normal: 'info' }
 export interface PatientActions {
   schedule: () => void
@@ -45,8 +48,8 @@ export function PatientHeader({
 
   function copyUhid() {
     void navigator.clipboard?.writeText(patient.uhid).then(
-      () => notify('UHID copied', { detail: patient.uhid }),
-      () => notify('Could not copy the UHID', { tone: 'error' }),
+      () => notify(`${RECORD_NO} copied`, { detail: patient.uhid }),
+      () => notify(`Could not copy the ${RECORD_NO}`, { tone: 'error' }),
     )
   }
 
@@ -75,8 +78,8 @@ export function PatientHeader({
                 type="button"
                 onClick={copyUhid}
                 className="focus-ring -my-2 inline-flex min-h-11 items-center gap-1 rounded-lg font-semibold tabular-nums text-ink hover:text-primary-text"
-                title="Copy UHID"
-                aria-label={`Copy UHID ${patient.uhid}`}
+                title={`Copy ${RECORD_NO}`}
+                aria-label={`Copy ${RECORD_NO} ${patient.uhid}`}
               >
                 {patient.uhid}
                 <Copy className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />

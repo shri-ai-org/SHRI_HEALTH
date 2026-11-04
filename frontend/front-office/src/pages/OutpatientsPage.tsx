@@ -37,6 +37,7 @@ import { CheckInToggle } from '../components/appointment/CheckInToggle'
 import { todayKey } from '../domain/time'
 import { isServerAppointment, loadAppointments, markNoShowOnServer } from '../../shri-health/scheduling'
 import { problemMessage } from '../../shri-health/client'
+import { REAL_API } from '../../shri-health/client'
 import { CurrencyIcon } from '../utils/billing'
 
 function readFilter(value: string | null): OutpatientFilter {
@@ -113,7 +114,8 @@ export function OutpatientsPage() {
 
   function actionsFor(row: OutpatientRow) {
     const name = row.patient?.name
-    const admit = row.patient ? (
+    // Admit (India's inpatient flow): hidden with the SHRI_HEALTH API (US display change, 2026-11-04).
+    const admit = row.patient && !REAL_API ? (
       <Button size="sm" variant="secondary" onClick={() => openFlow('admit', { uhid: row.patient!.patientId })}>
         <BedDouble className="h-3.5 w-3.5" strokeWidth={1.75} />
         Admit
