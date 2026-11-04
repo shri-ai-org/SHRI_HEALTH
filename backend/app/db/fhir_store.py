@@ -51,7 +51,7 @@ from app.db.errors import db_error_detail
 from app.db.models import systems
 from app.db.models.admin.ai import AISuggestion
 from app.db.models.admin.core import AppUser, MrnCounter
-from app.db.models.admin.medication import ErxTransaction, Pharmacy
+from app.db.models.admin.medication import ErxTransaction, PatientPharmacy, Pharmacy
 from app.db.models.admin.practice import CdsRule
 from app.db.models.admin.rcm import Employer
 from app.db.models.enums import ErxTransactionStatus
@@ -497,6 +497,21 @@ class DispenseQuantity:
 
 
 @dataclass(frozen=True)
+class PreferredPharmacy:
+    """The patient's default pharmacy (D50): what ``PreferredPharmacy`` and ``Patient``'s
+    ``preferredPharmacy`` show. ``updated_at`` is when it was chosen."""
+    pharmacy_id: uuid.UUID
+    name: str
+    ncpdp_id: str
+    phone: str | None
+    address_line: str | None
+    city: str | None
+    state: str | None
+    postal_code: str | None
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
 class MedicationIn:
     """A medication the patient already takes, for the list (MedicationCreate; D28): a
     MedicationRequest with intent ``plan``, reported. Prescriptions reach the list by signing."""
@@ -621,6 +636,15 @@ class FhirStore(Protocol):
                                    labels: frozenset[str], *, if_version: int | None = None
                                    ) -> Written:
         """Restrict (R or V) or unrestrict (empty): replaces the confidentiality labels only."""
+        ...
+
+    async def set_preferred_pharmacy(self, db: AsyncSession, patient_id: uuid.UUID,
+                                     pharmacy_id: uuid.UUID, *, if_version: int) -> Written:
+        """Makes the pharmacy the patient's default (``admin.patient_pharmacy``, one default per
+        patient) and returns the patient's new version: the preferred pharmacy is part of the
+        patient record, so the patient's version and ``_history`` move. An earlier choice stays as
+        a non-default row. ``ResourceNotFound`` for a pharmacy not in the directory,
+        ``InvalidInput`` for an inactive one. The same pharmacy again changes nothing."""
         ...
 
     # RelatedPerson (related_person, related_person_relationship, human_name, contact_point,
@@ -1173,6 +1197,32 @@ class SqlFhirStore:
         pt = await _locked(db, Patient, patient_id, if_version)
         pt.meta_security = ([label for label in pt.meta_security
                              if label not in _CONFIDENTIALITY] + sorted(labels))
+        return await _written(db, pt)
+
+    async def set_preferred_pharmacy(self, db: AsyncSession, patient_id: uuid.UUID,
+                                     pharmacy_id: uuid.UUID, *, if_version: int) -> Written:
+        pt = await _locked(db, Patient, patient_id, if_version)
+        await _check_pharmacy(db, pharmacy_id)
+        rows = {r.pharmacy_id: r for r in (await db.execute(
+            select(PatientPharmacy).where(PatientPharmacy.patient_id == patient_id)
+            .with_for_update())).scalars()}
+        chosen = rows.get(pharmacy_id)
+        if chosen is not None and chosen.is_default:
+            return Written(pt.id, pt.meta_version_id, pt.meta_last_updated)
+        user_id = await _user_id(db)
+        for row in rows.values():                   # the old default first: one per patient
+            if row.is_default:
+                row.is_default, row.updated_by_user_id = False, user_id
+        await db.flush()
+        if chosen is None:
+            db.add(PatientPharmacy(patient_id=patient_id, pharmacy_id=pharmacy_id,
+                                   is_default=True, created_by_user_id=user_id,
+                                   updated_by_user_id=user_id))
+        else:
+            chosen.is_default, chosen.updated_by_user_id = True, user_id
+        # patient_pharmacy has no touch trigger, so the patient row is updated here, as
+        # employer's trigger does, and the version trigger gives it its new version.
+        pt.meta_last_updated = func.now()
         return await _written(db, pt)
 
     # ------------------------------------------------------------------------- RelatedPerson
@@ -1999,6 +2049,22 @@ def _alerts_of(mr: MedicationRequest) -> Any:
                    DetectedIssue.identified_date_time == mr.ext_safety_checked_at,
                    DetectedIssue.status.not_in(("cancelled", "entered-in-error")))
             .order_by(DetectedIssue.id))
+
+
+async def preferred_pharmacy(db: AsyncSession, patient_id: uuid.UUID
+                             ) -> PreferredPharmacy | None:
+    """The patient's default pharmacy, or None when none is set. ``ResourceNotFound`` for a
+    patient the session can't see."""
+    if (await db.execute(select(Patient.id).where(Patient.id == patient_id))
+            ).scalar_one_or_none() is None:
+        raise ResourceNotFound
+    row = (await db.execute(
+        select(Pharmacy.id, Pharmacy.name, Pharmacy.ncpdp_id, Pharmacy.phone,
+               Pharmacy.address_line, Pharmacy.city, Pharmacy.state, Pharmacy.postal_code,
+               PatientPharmacy.updated_at)
+        .join(PatientPharmacy, PatientPharmacy.pharmacy_id == Pharmacy.id)
+        .where(PatientPharmacy.patient_id == patient_id, PatientPharmacy.is_default))).first()
+    return PreferredPharmacy(*row) if row is not None else None
 
 
 async def prescription_alert_ids(db: AsyncSession, prescription_id: uuid.UUID
