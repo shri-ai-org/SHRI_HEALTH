@@ -61,6 +61,41 @@ async def has_clinical_data(db: AsyncSession, encounter_id: UUID) -> bool:
     return found
 
 
+# An AI draft (D70; ai/service.py): each drafted section points at its own AI suggestion, and
+# the note is marked AI-assisted. Written in the transaction that created the draft, so the
+# note's version doesn't move. entry_source stays ``clinician`` (db/CLAUDE.md, "A pending AI
+# section"); the database refuses to sign the note until a person accepts or edits each
+# suggestion (shri_composition_signed_check). A bridge: once fhir_store's SectionIn takes an
+# ai_suggestion_id (asked of Anand), create_note writes these and this goes.
+_AI_SECTION = text("""
+UPDATE clinical.composition_section SET ai_suggestion_id = :suggestion
+WHERE composition_id = :note AND code_code = :code AND ai_suggestion_id IS NULL
+""")
+_AI_NOTE = text("""
+UPDATE clinical.composition SET ext_is_ai_assisted = true
+WHERE id = :note AND status = 'preliminary'
+""")
+_NOTE_SECTIONS = text("""
+SELECT id, code_code FROM clinical.composition_section
+WHERE composition_id = :note ORDER BY sequence
+""")
+
+
+async def mark_ai_drafted(db: AsyncSession, note_id: UUID,
+                          suggestions: Sequence[tuple[str, UUID]]) -> dict[str, UUID]:
+    """Links each drafted section (by LOINC section code) to its suggestion; returns every
+    section's ID by code."""
+    for code, suggestion_id in suggestions:
+        await db.execute(_AI_SECTION, {"suggestion": suggestion_id, "note": note_id,
+                                       "code": code})
+    if suggestions:
+        await db.execute(_AI_NOTE, {"note": note_id})
+    sections: dict[str, UUID] = {}
+    for r in (await db.execute(_NOTE_SECTIONS, {"note": note_id})).mappings():
+        sections.setdefault(r["code_code"], r["id"])
+    return sections
+
+
 # ------------------------------------------------------------------------------- vocabulary
 #: VitalType -> LOINC (the contract's VitalType; the helpers write the same codes).
 VITAL_LOINC: dict[str, str] = {

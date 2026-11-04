@@ -219,12 +219,12 @@ stateDiagram-v2
 | `checked-in` → `booked` | `POST /appointments/{appointmentId}/undo-check-in` `{ reason }` | FD, ADM (`appointments:undo-check-in`, D55) | Not roomed; the encounter has no vitals, notes or diagnoses | Encounter → `entered-in-error` with Provenance (§5.2); the eligibility check is kept; `appointment.status-changed`, `encounter.entered-in-error` |
 | `booked` → `arrived` | `POST /appointments/{appointmentId}/status` `{ "status": "arrived" }` | FD (`appointments:status`) | Same day | `appointment.status-changed` |
 | `booked`/`arrived` → `checked-in` | `POST /appointments/{appointmentId}/check-in` | FD (`appointments:check-in`) | Same day; insurance or self-pay recorded | Encounter created by the encounter service (VD-G4); real-time eligibility check (VD-G3); copay prompt; `appointment.checked-in` |
-| `checked-in` → `fulfilled` | `POST /appointments/{appointmentId}/status` `{ "status": "checked-out" }` | FD | Encounter at least `in-progress` | `appointment.checked-out`. The encounter may stay open until notes are signed |
+| `checked-in` → `fulfilled` | `POST /appointments/{appointmentId}/check-out` (D98) | FD, ADM (`appointments:check-out`) | Checked in or later; no open follow-up request (D98). An unpaid copay or an unsigned note never blocks it; a restricted chart needs no break-glass (D107) | `appointment.checked-out`. The encounter may stay open until notes are signed |
 | `booked`/`arrived` → `cancelled` | `POST /appointments/{appointmentId}/cancel` `{ reasonCode, reasonText? }` | FD, ADM (`appointments:cancel`) | Reason required | Slot freed; reminders cancelled; `appointment.cancelled` |
 | `checked-in` → `cancelled` | Same, `reasonCode: left-without-being-seen` | FD, ADM | Encounter not `in-progress` | Encounter → `cancelled`; `appointment.cancelled` |
 | `booked` → `noshow` | `POST /appointments/{appointmentId}/status` `{ "status": "noshow" }` | FD | Start time passed | `appointment.status-changed` |
 
-**Visit status** (FRS FR-SCH-02: arrived, checked in, roomed, with provider, checked out) is shown on the status board and derived from appointment + encounter states. `POST /appointments/{appointmentId}/status` accepts `arrived`, `roomed`, `with-provider`, `checked-out`, `noshow`; `roomed` and `with-provider` change the **encounter** (§5.2). **PROPOSED**: one command endpoint for the front-desk and rooming screens, with each state stored where it belongs.
+**Visit status** (FRS FR-SCH-02: arrived, checked in, roomed, with provider, checked out) is shown on the status board and derived from appointment + encounter states. `POST /appointments/{appointmentId}/status` accepts `arrived`, `roomed`, `with-provider`, `noshow` (check-out is its own action, D98); `roomed` and `with-provider` change the **encounter** (§5.2). **PROPOSED**: one command endpoint for the front-desk and rooming screens, with each state stored where it belongs.
 
 ### 5.2 Encounter (clinical `Encounter`; FHIR R4 Encounter.status) — owner Vimal
 
@@ -384,6 +384,7 @@ stateDiagram-v2
 | — → `pending` | Booking, nightly pre-visit batch for next-day appointments, check-in (VD-G3), or `POST /eligibility-checks` (manual) | System; FD, BIL (`eligibility-checks:create`) | 270 queued via `integration.enqueue("clearinghouse", "270", …)` (VG Step 4); `202` + operation for manual checks |
 | `pending` → `complete` | 271 through Thulasi's webhook receiver | System | Coverage status (`active`, `inactive`, `unknown`), copay, deductible stored; `eligibility.completed` |
 | `pending` → `error` | Partner error or timeout | System | Front desk sees "unable to verify"; can retry manually |
+| — → `error` (`errorCode: not-sent`) | An automatic check (booking, pre-visit batch, check-in) when the practice has no clearinghouse connection | System | The check is recorded in the same transaction with a fixed message and nothing is sent; the front desk can run it by hand later |
 
 ### 5.9 Inbox item (admin `work_item`) — owner Anand; contract batch 3 (D77)
 

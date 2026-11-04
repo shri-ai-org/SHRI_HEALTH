@@ -61,7 +61,7 @@ In order:
 4. Runs the migrations as `shri_migrator` (the extensions first, as the master user).
 5. With `SHRI_DEMO=true`:
    - puts the demo accounts back with their fixed IDs (`infra/keycloak/reset-demo-users.sh`);
-   - loads the demo data (`python -m app.db.seed demo`).
+   - loads the demo data (`python -m app.db.seed demo`, with `SEED_ALLOW_STAGING=1`: the seed refuses staging otherwise).
 6. Runs the health check, below.
 
 `deploy.sh check FILE` runs the health check alone; `deploy.sh down FILE` stops the stack and keeps its volumes. After a reboot, run `up` again: it unseals OpenBao.
@@ -117,6 +117,5 @@ CI checks it without an account: `tofu validate` and `tofu test` against a mock 
 
 - **No frontend yet:** `/` answers 404. After sign-in, the browser lands on that 404 until the screens are served.
 - **File upload links** (`FILE_STORE_PUBLIC_URL`) point at SeaweedFS's S3 port, which isn't published here. Uploads that use them need an Nginx route first (Anand's file service).
-- **The seed's guard:** the demo seed allows only `ENVIRONMENT` development or test. On this staging host, deploy.sh runs that one seed step as `test` until the seed also allows `staging` (asked of Anand). The API and worker stay `staging`.
 - **OpenBao's root token is kept** in `openbao.env`, so a later deploy can create the API's Transit token again when it expires (32 days). Production gets a managed unseal (AWS KMS) and no root token at rest (Q25).
 - **No backups:** synthetic data only. `docker compose down -v` (or a new instance) starts clean.

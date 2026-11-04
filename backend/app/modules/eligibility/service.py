@@ -2,7 +2,14 @@
 (IMPL_BATCH1_PLAN §2.3, D15), the 270 the clearinghouse adapter sends and the 271 it gets back.
 
 - **Recording a check** (``record_check``): a ``pending`` row for a coverage, in the caller's
-  transaction. Check-in uses it today; the row waits there until something sends it.
+  transaction, nothing sent.
+- **Automatic checks** (``queue_for_appointment``, D15, FR-RCM-01): booking, check-in and the
+  pre-visit batch (``queue_pre_visit_checks``) queue the 270 for the appointment's primary
+  coverage in the caller's transaction, once per appointment and trigger. They **never block the
+  front desk**: no coverage (self-pay) or a type that runs no checks records nothing; no
+  clearinghouse connection records the check as ``error`` with ``errorCode: not-sent`` and a
+  fixed message, so the front desk sees it wasn't checked and can run it by hand later. They
+  have no operation (nobody waits on a ``202``); the answer arrives as ``eligibility.completed``.
 - **Running a check** (``queue_check``, ``POST /eligibility-checks``): the ``pending`` row, an
   operation of kind ``eligibility.check`` and the outbox message ``clearinghouse`` / ``270``, all
   in the caller's one transaction (D25, ADR-0011). The outbox row holds IDs only
@@ -42,6 +49,7 @@ from app.core.errors import (
     Conflict,
     InvalidCursor,
     NotFound,
+    ServiceUnavailable,
     ValidationFailed,
     field_error,
 )
@@ -49,17 +57,21 @@ from app.core.events import publish
 from app.core.long_running import Operation, finish_operation, problem_body
 
 from . import messages, repository, schemas
-from .partner import Partner
+from .partner import CorePartner, Partner
 from .repository import (
     CLEARINGHOUSE,
+    NOT_SENT,
+    AutoCheckRepository,
     BenefitRow,
     CheckRow,
     EligibilityRepository,
     Reply,
     RequestData,
+    SqlEligibilityRepository,
 )
 
 TRIGGERS = ("booking", "pre-visit-batch", "check-in", "manual")  # D15
+AUTO_TRIGGERS = ("booking", "pre-visit-batch", "check-in")  # started by the system, not a user
 DEFAULT_SERVICE_TYPES = ("30",)  # health benefit plan coverage
 RESULT_TYPE = "eligibility-check"
 #: How long an answer is good for: after this the front desk checks again before relying on it.
@@ -100,6 +112,8 @@ AAA_MESSAGES: dict[str, str] = {
     "T4": "The payer's name or ID is missing.",
 }
 GENERIC_ERROR = "The payer could not verify the coverage."
+NOT_SENT_MESSAGE = ("Not checked: no clearinghouse connection is set up for this practice. "
+                    "Run the check again once it is.")
 TIMEOUT_MESSAGE = "The payer did not answer in time. Run the check again."
 
 # Our status columns (backend/app/db/CLAUDE.md, "Eligibility").
@@ -199,7 +213,9 @@ def to_contract(row: CheckRow) -> schemas.EligibilityCheck:
             for b in row.benefits] or None,
         error_code=row.error_code if status == "error" else None,
         error_message=row.error_message if status == "error" else None,
-        requested_at=row.requested_at, responded_at=row.responded_at,
+        requested_at=row.requested_at,
+        # A check never sent has no answer: its responded_at only satisfies the table's check.
+        responded_at=row.responded_at if row.error_code != NOT_SENT else None,
         expires_at=row.expires_at if answered else None)
 
 
@@ -219,6 +235,100 @@ async def record_check(db: AsyncSession, *, coverage_id: UUID, patient_id: UUID,
     return await repository.insert_pending(db, coverage_id=coverage_id, patient_id=patient_id,
                                            appointment_id=appointment_id,
                                            encounter_id=encounter_id, trigger=trigger)
+
+
+# ------------------------------------------------- automatic checks: booking, batch, check-in
+@dataclass(frozen=True)
+class AutoCheck:
+    """What an automatic check did. ``check_id`` is set for ``queued``, ``not-sent`` and
+    ``already-queued`` (the earlier check)."""
+
+    outcome: str  # queued, not-sent, already-queued, fresh, no-coverage, not-required
+    check_id: UUID | None = None
+
+
+async def queue_for_appointment(
+        db: AsyncSession, appointment_id: UUID, *, trigger: str,
+        encounter_id: UUID | None = None, coverage_id: UUID | None = None,
+        skip_fresh_at: datetime | None = None, repo: AutoCheckRepository | None = None,
+        partner: Partner | None = None) -> AutoCheck:
+    """Queues the 270 for the appointment's primary coverage on its day, in the caller's
+    transaction (no commit), and never raises for a business reason (see the module docstring):
+
+    - ``already-queued``: this appointment already has a check for this trigger (for check-in,
+      for this encounter), so a retry queues nothing;
+    - ``not-required``: the appointment type runs no checks (``requiresEligibilityCheck``);
+    - ``no-coverage``: no active coverage on the day (self-pay), nothing recorded;
+    - ``fresh``: with ``skip_fresh_at`` (the batch), the coverage has a fresh check;
+    - ``queued``: the pending check and its 270 in the outbox;
+    - ``not-sent``: no clearinghouse connection; the check is recorded as ``error`` /
+      ``not-sent``.
+
+    ``coverage_id`` is the coverage the caller already chose (check-in); otherwise the primary
+    coverage on the appointment's day."""
+    if trigger not in AUTO_TRIGGERS:
+        raise ValueError(f"not an automatic eligibility trigger: {trigger!r}")
+    repo = repo or SqlEligibilityRepository()
+    partner = partner or CorePartner()
+    await repo.lock_appointment_checks(db, appointment_id)
+    earlier = await repo.existing_check(db, appointment_id, trigger, encounter_id)
+    if earlier is not None:
+        return AutoCheck("already-queued", earlier)
+    appointment = await repo.auto_appointment(db, appointment_id)
+    if appointment is None:
+        raise NotFound()  # the caller's own appointment: a programming error, not the user's
+    if not appointment.required:
+        return AutoCheck("not-required")
+    coverage = coverage_id or await repo.primary_coverage(db, appointment.patient_id,
+                                                          appointment.local_day)
+    if coverage is None:
+        return AutoCheck("no-coverage")
+    if skip_fresh_at is not None and await repo.fresh_check(
+            db, coverage, skip_fresh_at, skip_fresh_at - VALID_FOR):
+        return AutoCheck("fresh")
+    check_id = await repo.insert_pending(
+        db, coverage_id=coverage, patient_id=appointment.patient_id,
+        appointment_id=appointment_id, encounter_id=encounter_id, trigger=trigger,
+        provider_npi=appointment.provider_npi, service_type_codes=DEFAULT_SERVICE_TYPES)
+    try:
+        message_id = await partner.send_270(db, check_id, None)
+    except ServiceUnavailable:  # no connection: enqueue wrote nothing, the transaction is fine
+        await repo.mark_not_sent(db, check_id, NOT_SENT_MESSAGE)
+        return AutoCheck("not-sent", check_id)
+    await repo.link_message(db, check_id, message_id)
+    return AutoCheck("queued", check_id)
+
+
+@dataclass(frozen=True)
+class BatchResult:
+    """How many of the day's booked appointments each outcome had (counts only, no IDs)."""
+
+    queued: int = 0
+    not_sent: int = 0
+    already_queued: int = 0
+    fresh: int = 0
+    no_coverage: int = 0
+    not_required: int = 0
+
+
+async def queue_pre_visit_checks(db: AsyncSession, *, for_date: date, now: datetime,
+                                 repo: AutoCheckRepository | None = None,
+                                 partner: Partner | None = None) -> BatchResult:
+    """The pre-visit batch (D15) for one clinic: the session is that clinic's system session
+    (``Database.system_session``), and the caller commits. For each appointment booked on
+    ``for_date`` (each in its facility's time zone; the job passes tomorrow), queues a check
+    unless its coverage has a fresh one (pending within ``VALID_FOR``, or answered and not yet
+    expired at ``now``). Idempotent per appointment and day: an appointment that already has a
+    pre-visit check is skipped, so running the batch again queues nothing."""
+    repo = repo or SqlEligibilityRepository()
+    partner = partner or CorePartner()
+    counts: dict[str, int] = {}
+    for appointment_id in await repo.booked_on(db, for_date):
+        done = await queue_for_appointment(db, appointment_id, trigger="pre-visit-batch",
+                                           skip_fresh_at=now, repo=repo, partner=partner)
+        key = done.outcome.replace("-", "_")
+        counts[key] = counts.get(key, 0) + 1
+    return BatchResult(**counts)
 
 
 # ------------------------------------------------------------------- the API's operations

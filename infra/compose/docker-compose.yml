@@ -206,6 +206,10 @@ services:
   # The outbox worker (T29, D25): sends what the API queued for partners, with retries and the
   # dead-letter queue. The API's image, run as shri_integration, never with the API's login.
   integration-worker:
+    # The API image's HEALTHCHECK calls the API's /health over HTTP; the worker serves none, so
+    # it would always show unhealthy.
+    healthcheck:
+      disable: true
     build:
       context: ../../backend
       additional_contexts:

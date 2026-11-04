@@ -10,6 +10,9 @@ set -eu
 : "${FILE_STORE_ACCESS_KEY_ID:?}" "${FILE_STORE_SECRET_ACCESS_KEY:?}"
 CONFIG=/tmp/s3.json
 
+# A restart (a reboot, a crash) finds the last start's file, owned by seaweed; the kernel's
+# protected_regular rule stops even root from opening it in /tmp, so remove it first.
+rm -f "$CONFIG"
 umask 077
 cat > "$CONFIG" <<JSON
 {"identities": [{"name": "shri-api",

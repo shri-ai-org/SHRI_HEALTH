@@ -140,10 +140,12 @@ The visit helpers (batch 2), on the same rules:
   manifestations, and a note;
 - `add_encounter_diagnosis` and `remove_encounter_diagnosis`: a Condition (category
   `encounter-diagnosis`) and its ranked link, inserted or closed up in a safe order; removal is
-  D24's (entered-in-error with Provenance, the link deleted, the Condition kept);
+  D24's (entered-in-error with Provenance, the link deleted, the Condition kept), and refuses a
+  Condition already entered-in-error (`InvalidTransition`);
 - `diagnosis_entered_in_error`: after signing, the Condition becomes entered-in-error with its
   Provenance, as `allergy_entered_in_error` does, and its rank link **stays**, so the signed
-  visit still shows what was diagnosed;
+  visit still shows what was diagnosed. It takes only the Condition: the caller checks that it
+  is an `encounter-diagnosis` of the visit in the request and that the visit is signed;
 
 `record_medication` (D28; demo step 7): a medication the patient already takes, on the list. A
 MedicationRequest with intent `plan`, `reportedBoolean` true and the patient as requester (the

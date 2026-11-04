@@ -371,7 +371,8 @@ def test_another_clinics_file_is_not_found(as_user: Client, world: World,
     ("insurance-card", ["fd", "bil", "md"], ["co"]),        # coverages:read
     ("identity", ["fd", "co", "md"], []),                   # patients:read
     ("receipt", ["fd", "bil", "md"], ["ma", "rn", "co"]),   # payments:create or superbills:read
-    ("after-visit-summary", ["md", "bil", "co"], ["fd", "adm"]),  # encounters:read
+    # encounters:read or after-visit-summaries:read (D98)
+    ("after-visit-summary", ["md", "bil", "co", "fd", "adm"], []),
 ])
 def test_the_purpose_decides_who_downloads(as_user: Client, world: World,
                                            store: MemoryFileStore, purpose: str,
@@ -382,6 +383,24 @@ def test_the_purpose_decides_who_downloads(as_user: Client, world: World,
         assert _download(as_user(name), record.id).status_code == 200, (name, purpose)
     for name in refused:
         _problem(_download(as_user(name), record.id), 403, "permission-denied")
+
+
+def test_the_front_desk_gets_a_summary_link(as_user: Client, world: World,
+                                            store: MemoryFileStore) -> None:
+    """D98: FD prints the latest after-visit summary at check-out through
+    after-visit-summaries:read, without encounters:read. Another clinic's summary stays
+    not found, and FD's other purposes keep their own permission."""
+    fd = as_user("fd")
+    summary = _file(world, store, purpose="after-visit-summary", owner="md")
+    world.attachments[summary.id] = {PATIENT}
+    assert _download(fd, summary.id).status_code == 200
+    elsewhere = _file(world, store, purpose="after-visit-summary", owner="md-b",
+                      clinic=CLINIC_B)
+    world.attachments[elsewhere.id] = {PATIENT}
+    _problem(_download(fd, elsewhere.id), 404, "not-found")
+    audio = _file(world, store, purpose="encounter-audio", owner="md")
+    world.attachments[audio.id] = {PATIENT}
+    _problem(_download(fd, audio.id), 403, "permission-denied")
 
 
 @pytest.mark.parametrize("purpose", ["encounter-audio", "document", "fax", "ccda", "export",

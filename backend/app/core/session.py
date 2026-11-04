@@ -14,9 +14,11 @@
   keeps only its SHA-256 hash, and Keycloak's tokens only as Transit ciphertext (crypto.py).
 - **Idle and absolute limits** (15 minutes, 12 hours): only user-initiated requests move the
   idle timer; reading the session, the event stream and operation polling don't.
-- **The 5-minute backstop** (D94): a user-initiated request refreshes the stored Keycloak tokens
-  when they are older than token_refresh_minutes. If Keycloak refuses (the user was disabled or
-  their sessions ended), the session ends there: 401 `session-expired`.
+- **The 5-minute backstop** (D94): any request, user-initiated or not, refreshes the stored
+  Keycloak tokens when they are older than token_refresh_minutes. If Keycloak refuses (the user
+  was disabled or their sessions ended), the session ends there: 401 `session-expired`. Reading
+  the session and the event stream count too, so an open screen can't outlive a disabled user;
+  the event stream also checks its session every SESSION_CHECK_SECONDS while open (events.py).
 - **CSRF** (§2.2): on POST, PUT, PATCH and DELETE the `Origin` must be allowed and
   `X-CSRF-Token` must equal an HMAC of the session token with SESSION_SECRET, compared in
   constant time. The token is bound to the session and changes at every login.
@@ -386,7 +388,8 @@ async def revoke(request: Request, session: StaffSession, *, reason: str | None 
 
 async def session_from_cookie(request: Request) -> StaffSession:
     """The live session the cookie names; 401 otherwise. Moves the idle timer for user-initiated
-    requests, and refreshes Keycloak's tokens when they are older than the backstop allows."""
+    requests only, and on any request refreshes Keycloak's tokens when they are older than the
+    backstop allows (a refresh never moves the idle timer)."""
     token = request.cookies.get(SESSION_COOKIE)
     if not token or len(token) > 100:
         raise Unauthorized("Not signed in")
@@ -412,7 +415,7 @@ async def session_from_cookie(request: Request) -> StaffSession:
                            row.expires_at, row.tokens_refreshed_at)
     stale = datetime.now(UTC) - row.tokens_refreshed_at > timedelta(
         minutes=settings.token_refresh_minutes)
-    if activity and stale:
+    if stale:
         await _refresh_tokens(request, session, row.keycloak_refresh_token_enc)
     return session
 

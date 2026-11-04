@@ -24,7 +24,9 @@ CloudEvents envelope per `data:` line. Each event goes to a user only if:
 The same filter runs again on every replay. `Last-Event-ID` replays the last 5 minutes;
 anything older gets `stream.reset`. A comment line every 25 seconds keeps proxies open. At most
 5 streams per user (429). A stream ends after STREAM_MAX_SECONDS and the browser reconnects,
-which re-checks the sign-in (until piece 6 adds the session check inside the stream).
+which re-checks the sign-in. While open, a signed-in staff stream checks its session every
+SESSION_CHECK_SECONDS, with session.py's 5-minute backstop (D94): a revoked, timed-out or
+disabled user's stream ends there, and the reconnect gets 401.
 
 Per-process for now: the stream count is this process's (as core/public_form.py's counters).
 """
@@ -35,7 +37,7 @@ import logging
 import re
 import time
 from collections import Counter
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -50,7 +52,7 @@ from app.core import access
 from app.core.config import Settings
 from app.core.db import TENANT_ID_INFO_KEY, Database
 from app.core.deps import CurrentUser, require
-from app.core.errors import AppError, ServiceUnavailable
+from app.core.errors import AppError, ServiceUnavailable, Unauthorized
 from app.core.request_id import current_request_id
 from app.core.routing import API_PREFIX
 
@@ -95,6 +97,7 @@ READ_PERMISSION: Mapping[str, str] = {
 REPLAY_SECONDS = 300
 KEEP_ALIVE_SECONDS = 25.0
 POLL_SECONDS = 1.0
+SESSION_CHECK_SECONDS = 30.0  # a disabled user's open stream ends within this (D94)
 STREAM_MAX_SECONDS = 300.0
 MAX_STREAMS_PER_USER = 5
 BATCH = 200
@@ -242,15 +245,21 @@ async def _start(db: Database, user: CurrentUser, last_event_id: str | None) -> 
 
 async def event_stream(db: Database, user: CurrentUser, last_event_id: str | None,
                        disconnected: Callable[[], Any],
-                       clock: Callable[[], float] = time.monotonic) -> AsyncIterator[str]:
+                       clock: Callable[[], float] = time.monotonic, *,
+                       signed_in: Callable[[], Awaitable[bool]] | None = None,
+                       ) -> AsyncIterator[str]:
     seq, reset = await _start(db, user, last_event_id)
     yield "retry: 5000\n\n"
     if reset:
         yield reset_message()
-    started = last_sent = clock()
+    started = last_sent = last_check = clock()
     while clock() - started < STREAM_MAX_SECONDS:
         if await disconnected():
             return
+        if signed_in is not None and clock() - last_check >= SESSION_CHECK_SECONDS:
+            if not await signed_in():
+                return  # the browser reconnects and gets 401
+            last_check = clock()
         async with db.tenant_session(user.organization_id, user.id, current_request_id()) as s:
             rows = (await s.execute(_AFTER, {"seq": seq, "window": REPLAY_SECONDS,
                                              "n": BATCH})).mappings().all()
@@ -284,9 +293,21 @@ async def stream_events(
         raise TooManyStreams(f"At most {MAX_STREAMS_PER_USER} open streams per user")
     _open_streams[user.id] += 1
 
+    from app.core import session as sessions  # session builds on deps, as this module does
+
+    async def signed_in() -> bool:
+        try:
+            await sessions.session_from_cookie(request)  # not activity: the idle timer stays
+        except (Unauthorized, ServiceUnavailable):
+            return False  # fail closed: ended, disabled, or Keycloak can't confirm
+        return True
+
+    staff_session = getattr(request.state, sessions.SESSION_STATE, None) is not None
+
     async def body() -> AsyncIterator[str]:
         try:
-            async for chunk in event_stream(db, user, last_event_id, request.is_disconnected):
+            async for chunk in event_stream(db, user, last_event_id, request.is_disconnected,
+                                            signed_in=signed_in if staff_session else None):
                 yield chunk
         finally:
             _open_streams[user.id] -= 1

@@ -1,0 +1,65 @@
+{
+  "id": "visit-04",
+  "synthetic": true,
+  "specialty": "endocrinology",
+  "visitType": "follow-up",
+  "template": "FOLLOW-UP",
+  "noteType": "11506-3",
+  "patient": {"name": "Priya245 Raman870", "age": 47, "sex": "female"},
+  "clinician": "Dr. Tobias330 Vandermeer19",
+  "transcript": [
+    {"speaker": "clinician", "text": "Hi Ms. Raman. Your A1c from last month came back at 8.1, up from 7.4 in the spring. How has your diabetes been going?"},
+    {"speaker": "patient", "text": "Work has been stressful, and I've been snacking more in the evenings."},
+    {"speaker": "clinician", "text": "Are you taking the metformin 1000 mg twice a day?"},
+    {"speaker": "patient", "text": "Yes, with breakfast and dinner. My stomach is fine with it now."},
+    {"speaker": "clinician", "text": "Any low blood sugars?"},
+    {"speaker": "patient", "text": "No, no lows."},
+    {"speaker": "clinician", "text": "What do your morning readings look like?"},
+    {"speaker": "patient", "text": "Usually 150 to 170. Oh, actually, there was one time last month I felt shaky before lunch and it was 68. I drank some juice and it came up."},
+    {"speaker": "clinician", "text": "Good that you treated it. Any numbness or burning in your feet, or any sores?"},
+    {"speaker": "patient", "text": "No, my feet are fine."},
+    {"speaker": "clinician", "text": "Your blood pressure is 124 over 78. Your feet look healthy, no sores, pulses are normal, and monofilament sensation is normal on both feet."},
+    {"speaker": "clinician", "text": "Your type 2 diabetes is above goal. I'd like to add empagliflozin 10 mg once a day in the morning, along with the metformin. It can cause genital yeast infections, so keep the area clean and dry, and drink enough water."},
+    {"speaker": "patient", "text": "Okay. Should I worry about lows with the new pill?"},
+    {"speaker": "clinician", "text": "On its own it rarely causes lows. If you feel shaky, check your sugar, and if it's under 70, have juice and recheck in 15 minutes. You're also due for your yearly eye exam, so I'll send a referral to ophthalmology."},
+    {"speaker": "clinician", "text": "We'll repeat the A1c in three months and see you then."},
+    {"speaker": "patient", "text": "Thank you."}
+  ],
+  "referenceNote": {
+    "sections": [
+      {"code": "10154-3", "title": "Chief complaint", "sequence": 1, "required": true,
+       "text": "Type 2 diabetes follow-up; A1c up to 8.1."},
+      {"code": "10164-2", "title": "Interval history", "sequence": 2, "required": true,
+       "text": "A1c 8.1 last month, up from 7.4 in the spring. Stressful work, snacking more in the evenings. Taking metformin 1000 mg twice a day with breakfast and dinner; stomach fine. Morning readings 150 to 170. One low of 68 last month, felt shaky before lunch, treated with juice. No numbness or burning in the feet, no sores."},
+      {"code": "29545-1", "title": "Physical exam", "sequence": 3, "required": true,
+       "text": "Blood pressure 124/78. Feet healthy, no sores, pulses normal, monofilament sensation normal on both feet."},
+      {"code": "51847-2", "title": "Assessment and plan", "sequence": 4, "required": true,
+       "text": "Type 2 diabetes, above goal. Add empagliflozin 10 mg once a day in the morning; continue metformin 1000 mg twice a day. Counseled on genital yeast infections and drinking enough water. Low sugar plan: check if shaky, juice if under 70, recheck in 15 minutes. Referral to ophthalmology for the yearly eye exam. Repeat A1c in three months; follow-up then."},
+      {"code": "69730-0", "title": "Patient instructions", "sequence": 5, "required": false,
+       "text": "Start empagliflozin 10 mg once a day in the morning, and keep taking metformin 1000 mg twice a day. Keep the genital area clean and dry and drink enough water. If you feel shaky, check your sugar; if it is under 70, have juice and recheck in 15 minutes. We are sending a referral to ophthalmology for your yearly eye exam. Return in three months for a repeat A1c."}
+    ]
+  },
+  "keyFacts": [
+    {"id": "f1", "section": "10164-2", "anyOf": ["8.1"]},
+    {"id": "f2", "section": "10164-2", "anyOf": ["68"]},
+    {"id": "f3", "section": "10164-2", "anyOf": ["metformin 1000 mg"]},
+    {"id": "f4", "section": "29545-1", "anyOf": ["monofilament"]},
+    {"id": "f5", "section": "51847-2", "anyOf": ["empagliflozin 10 mg"]},
+    {"id": "f6", "section": "51847-2", "anyOf": ["yeast"]},
+    {"id": "f7", "section": "51847-2", "anyOf": ["ophthalmology", "eye exam"]},
+    {"id": "f8", "section": "51847-2", "anyOf": ["three months", "3 months"]}
+  ],
+  "mustNotInvent": [
+    {"id": "n1", "description": "Insulin was never discussed.", "anyOf": ["insulin"]},
+    {"id": "n2", "description": "No GLP-1 medicine was discussed.", "anyOf": ["semaglutide", "GLP-1", "liraglutide", "tirzepatide"]},
+    {"id": "n3", "description": "No eye disease was found or mentioned.", "anyOf": ["retinopathy"]},
+    {"id": "n4", "description": "Weight and kidney tests were not discussed.", "anyOf": ["weight", "creatinine", "microalbumin", "kidney"]}
+  ],
+  "conflicts": [
+    {"id": "c1", "description": "She first denies low sugars, then recalls one low of 68 last month.",
+     "turns": [5, 7],
+     "resolvedAnyOf": ["68"],
+     "supersededAnyOf": ["no hypoglycemia", "denies hypoglycemia", "no low blood sugars", "no lows", "denies lows"]}
+  ],
+  "medicalTerms": ["type 2 diabetes", "A1c", "metformin", "empagliflozin", "monofilament", "ophthalmology", "yeast"]
+}

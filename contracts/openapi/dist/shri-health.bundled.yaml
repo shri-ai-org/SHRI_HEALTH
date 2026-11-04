@@ -1393,6 +1393,7 @@ paths:
                   birthDate: '1984-07-19'
                   gender: female
                   birthSex: F
+                  generalPractitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                   preferredLanguage: en
                   phones:
                     - number: '+16175550123'
@@ -1478,6 +1479,7 @@ paths:
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
                     preferredName: Mona980
+                    generalPractitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     preferredPharmacy:
                       id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
                       name: Test Pharmacy 12
@@ -1592,6 +1594,7 @@ paths:
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
                     preferredName: Mona980
+                    generalPractitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     preferredPharmacy:
                       id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
                       name: Test Pharmacy 12
@@ -1716,6 +1719,7 @@ paths:
                     createdAt: '2026-11-03T14:30:00Z'
                     updatedAt: '2026-11-03T14:30:00Z'
                     preferredName: Mona980
+                    generalPractitionerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     preferredPharmacy:
                       id: 1c2d3e4f-5a6b-4c7d-9e8f-9a0b1c2d3e4f
                       name: Test Pharmacy 12
@@ -3480,6 +3484,7 @@ paths:
           headers:
             Location:
               $ref: '#/components/headers/Location'
+              description: '`/api/v1/patients/{patientId}/portal-account`, the patient''s portal account: an invitation has no URL of its own.'
             X-Request-ID:
               $ref: '#/components/headers/XRequestId'
             Cache-Control:
@@ -3524,6 +3529,9 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: '503. `service-unavailable` (portal invitations are not set up on this server: the invitation secret is not configured).'
       tags:
         - patients
   /patients/{patientId}/portal-invitations/{invitationId}/revoke:
@@ -5248,6 +5256,7 @@ paths:
                     updatedAt: '2026-11-03T15:40:00Z'
                     followUp:
                       encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                      version: '"4"'
                       interval:
                         value: 3
                         unit: month
@@ -5732,7 +5741,7 @@ paths:
     post:
       operationId: checkOutAppointment
       summary: Check the patient out
-      description: 'Ends the visit flow at the desk (D98): the visit step becomes `checked-out` (kept with its time in `visit_flow_event`) and the appointment `fulfilled`. Front desk and ADM only (`appointments:check-out`). Refused with `409 invalid-state-transition` while something must be settled first; `errors` names each one, so the screen can point to the step: `/followUp` (the visit''s follow-up request is still `open`: book it or decline it) and `/status` (the patient is not checked in, or is already checked out; the problem carries `currentState`). An unpaid copay and an unsigned note never block check-out: the note is often signed later, and balances are P1. The encounter is closed separately (`POST /encounters/{encounterId}/close`).'
+      description: 'Ends the visit flow at the desk (D98): the visit step becomes `checked-out` (kept with its time in `visit_flow_event`) and the appointment `fulfilled`. Front desk and ADM only (`appointments:check-out`). Refused with `409 invalid-state-transition` while something must be settled first; `errors` names each one, so the screen can point to the step: `/followUp` (the visit''s follow-up request is still `open`: book it or decline it) and `/status` (check-out needs the visit checked in or later, so it is refused before check-in and after check-out; the problem carries `currentState`). An unpaid copay and an unsigned note never block check-out: the note is often signed later, and balances are P1. The encounter is closed separately (`POST /encounters/{encounterId}/close`). A restricted chart needs no break-glass here (D107): the check-out is audited naming the patient, and the response carries no clinical text (a restricted patient''s follow-up shows only its interval and status).'
       tags:
         - scheduling
       x-owner: vimal
@@ -5796,6 +5805,7 @@ paths:
                     updatedAt: '2026-11-03T15:52:00Z'
                     followUp:
                       encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                      version: '"4"'
                       interval:
                         value: 3
                         unit: month
@@ -5814,13 +5824,13 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `appointments:check-out`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `appointments:check-out`); `csrf-check-failed` (missing or wrong CSRF header or Origin). A restricted chart needs no break-glass here (D107).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such appointment).
         '409':
           $ref: '#/components/responses/Conflict'
-          description: '409. `invalid-state-transition` (`errors` names what must be settled first: `/followUp`, an open follow-up request; `/status`, not checked in or already checked out, with `currentState`); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
+          description: '409. `invalid-state-transition` (`errors` names what must be settled first: `/followUp`, an open follow-up request; `/status`, not yet checked in (check-out needs the visit checked in or later) or already checked out, with `currentState`); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different request).
@@ -5929,6 +5939,7 @@ paths:
                         encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
                         followUp:
                           encounterId: 2f3a4b5c-6d7e-4f8a-8b9c-0d1e2f3a4b5c
+                          version: '"4"'
                           interval:
                             value: 3
                             unit: month
@@ -7460,7 +7471,7 @@ paths:
                     providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     note: Recheck blood pressure.
                     status: open
-                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedBy: d0000000-0000-4000-8000-000000000004
                     requestedAt: '2026-11-20T15:25:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -7503,7 +7514,7 @@ paths:
     post:
       operationId: declineFollowUpRequest
       summary: Record that the follow-up was not booked
-      description: At check-out, when the patient does not book the revisit (D98). Front desk and ADM only (`follow-ups:decline`); the clinician who asked for it withdraws it instead (`…/follow-up/withdraw`, D67). The request becomes `declined` with the reason. `If-Match` carries the encounter's `ETag`, so a decline never overwrites a request the clinician just changed.
+      description: 'At check-out, when the patient does not book the revisit (D98). Front desk and ADM only (`follow-ups:decline`); the clinician who asked for it withdraws it instead (`…/follow-up/withdraw`, D67). The request becomes `declined` with the reason. `If-Match` carries the follow-up summary''s `version` (the encounter''s `ETag`, which the front desk sees on the appointment and the staff status board), so a decline never overwrites a request the clinician just changed; the response returns the new `ETag`. A restricted chart needs no break-glass here (D107): the decline is audited naming the patient, and for a restricted patient the response leaves out `note`.'
       tags:
         - encounters
       x-owner: vimal
@@ -7532,6 +7543,8 @@ paths:
         '200':
           description: The follow-up request, declined.
           headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
             X-Request-ID:
               $ref: '#/components/headers/XRequestId'
             Cache-Control:
@@ -7555,7 +7568,7 @@ paths:
                     providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     note: Recheck blood pressure.
                     status: declined
-                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedBy: d0000000-0000-4000-8000-000000000004
                     requestedAt: '2026-11-20T15:25:00Z'
                     declinedReason: Patient will call to book.
         '400':
@@ -7566,7 +7579,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `follow-ups:decline`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: 403. `permission-denied` (the role lacks `follow-ups:decline`); `csrf-check-failed` (missing or wrong CSRF header or Origin). A restricted chart needs no break-glass here (D107).
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
@@ -7661,7 +7674,7 @@ paths:
                     providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                     note: Recheck blood pressure.
                     status: withdrawn
-                    requestedBy: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    requestedBy: d0000000-0000-4000-8000-000000000004
                     requestedAt: '2026-11-20T15:25:00Z'
                     withdrawnReason: Not needed after the results came back normal.
         '400':
@@ -9984,7 +9997,7 @@ paths:
           description: 403. `permission-denied` (the role lacks `after-visit-summaries:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such after-visit summary in this clinic or the user's facilities).
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
         '409':
           $ref: '#/components/responses/Conflict'
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (the encounter is entered in error).
@@ -17591,6 +17604,7 @@ paths:
           headers:
             Location:
               $ref: '#/components/headers/Location'
+              description: '`/api/v1/patients/{patientId}/medications`, the list the entry was added to: a list entry has no URL of its own.'
             X-Request-ID:
               $ref: '#/components/headers/XRequestId'
             Cache-Control:
@@ -22932,7 +22946,7 @@ components:
           description: 'RxStatus only: why it was rejected (the pharmacy partner schema).'
           x-phi: none
     FilePurpose:
-      description: 'What the file is for (API_STANDARDS §15). Each purpose has its own allowed types and sizes (`insurance-card` and `identity` are JPEG or PNG up to 10 MB, M13) and its own read permission for `GET /files/{fileId}/download-url`: `insurance-card` → `coverages:read`; `identity` → `patients:read`; `receipt` → `payments:create` or `superbills:read`; `encounter-audio` → `transcriptions:read`; `after-visit-summary` → `encounters:read`; `document` → `documents:read`; `fax` → `fax-inbox:read`; `ccda` → `ccda:export`; `export` → `exports:read`; `onboarding-import` → `onboarding:import`. A purpose with no mapping is denied. `receipt` and `after-visit-summary` are generated by the server, never uploaded.'
+      description: 'What the file is for (API_STANDARDS §15). Each purpose has its own allowed types and sizes (`insurance-card` and `identity` are JPEG or PNG up to 10 MB, M13) and its own read permission for `GET /files/{fileId}/download-url`: `insurance-card` → `coverages:read`; `identity` → `patients:read`; `receipt` → `payments:create` or `superbills:read`; `encounter-audio` → `transcriptions:read`; `after-visit-summary` → `encounters:read` or `after-visit-summaries:read` (D98); `document` → `documents:read`; `fax` → `fax-inbox:read`; `ccda` → `ccda:export`; `export` → `exports:read`; `onboarding-import` → `onboarding:import`. A purpose with no mapping is denied. `receipt` and `after-visit-summary` are generated by the server, never uploaded.'
       type: string
       enum:
         - insurance-card
@@ -23441,6 +23455,10 @@ components:
           $ref: '#/components/schemas/Employer'
           description: Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand).
           x-phi: identifier
+        generalPractitionerId:
+          $ref: '#/components/schemas/Id'
+          description: The patient's primary provider (FHIR `Patient.generalPractitioner`), chosen from `GET /booking/providers` (D49). Absent when none is chosen.
+          x-phi: internal-id
         identifiers:
           type: array
           maxItems: 10
@@ -23697,6 +23715,10 @@ components:
           $ref: '#/components/schemas/PharmacyRef'
           description: Preferred pharmacy, set with `PUT /patients/{patientId}/preferred-pharmacy` (D50). Absent when none is chosen.
           x-phi: clinical
+        generalPractitionerId:
+          $ref: '#/components/schemas/Id'
+          description: The patient's primary provider (FHIR `Patient.generalPractitioner`), chosen from `GET /booking/providers` (D49). Absent when none is chosen.
+          x-phi: internal-id
         restricted:
           type: boolean
           description: True when the chart is restricted (sensitive or VIP); opening it needs break-glass unless the user is on the care team (D37).
@@ -23856,6 +23878,12 @@ components:
             - type: 'null'
           description: Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it.
           x-phi: identifier
+        generalPractitionerId:
+          oneOf:
+            - $ref: '#/components/schemas/Id'
+            - type: 'null'
+          description: The patient's primary provider, from `GET /booking/providers` (D49). Send `null` to clear it.
+          x-phi: internal-id
     PatientIdentifierList:
       description: One page of a patient's identifiers.
       type: object
@@ -25633,12 +25661,13 @@ components:
           description: Unit.
           x-phi: none
     FollowUpSummary:
-      description: 'The visit''s follow-up request as the front desk needs it at check-out (D98): no clinical note beyond the request itself.'
+      description: 'The visit''s follow-up request as the front desk needs it at check-out (D98): no clinical note beyond the request itself. For a restricted patient seen by a user without a break-glass grant who is not on the care team, it carries only `encounterId`, `interval`, `status` and `version` (D107).'
       type: object
       required:
         - encounterId
         - interval
         - status
+        - version
       properties:
         encounterId:
           $ref: '#/components/schemas/Id'
@@ -25674,6 +25703,12 @@ components:
           $ref: '#/components/schemas/Id'
           description: 'Once `booked`: the revisit, so the screen can link it.'
           x-phi: internal-id
+        version:
+          type: string
+          pattern: ^"[^"]{1,126}"$
+          maxLength: 128
+          description: Opaque version of the request (the encounter's `ETag`). Send it unchanged as `If-Match` to decline the request (`POST /encounters/{encounterId}/follow-up/decline`), since the front desk can't read the encounter (D107).
+          x-phi: none
     Appointment:
       description: An appointment (FHIR-shaped `Appointment`). For a restricted patient seen without a break-glass grant or care-team membership, `reasonForVisit`, `comment`, `patientInstruction` and `cancellation.reasonText` are left out (SECURITY_MODEL §5.2).
       type: object
@@ -25885,7 +25920,7 @@ components:
           x-phi: internal-id
         eligibilityCheckId:
           $ref: '#/components/schemas/Id'
-          description: The real-time eligibility check started for the primary coverage; `pending` until the 271 arrives. Absent for self-pay.
+          description: 'The eligibility check that check-in started for the primary coverage (D15): `pending` until the 271 arrives, or `error` with `errorCode: not-sent` when the practice has no clearinghouse connection. Absent for a self-pay visit (`selfPay`) and for an appointment type that runs no checks (`requiresEligibilityCheck: false`).'
           x-phi: internal-id
     StatusChangeRequest:
       description: Body to record a visit step.
@@ -26459,7 +26494,7 @@ components:
         errorCode:
           type: string
           maxLength: 10
-          description: X12 AAA reject reason code, or `timeout`, when `error`.
+          description: 'When `error`: the X12 AAA reject reason code; `timeout` (no answer from the clearinghouse); or `not-sent` (an automatic check at booking, check-in or the pre-visit batch found no clearinghouse connection for the practice, so nothing was sent; the front desk can run the check by hand later).'
           x-phi: none
         errorMessage:
           type: string
@@ -26868,7 +26903,7 @@ components:
           x-phi: none
         requestedBy:
           $ref: '#/components/schemas/Id'
-          description: Who asked for it.
+          description: 'Who asked for it: the user''s ID (not a practitioner ID).'
           x-phi: none
         requestedAt:
           $ref: '#/components/schemas/Timestamp'
@@ -27016,7 +27051,7 @@ components:
               items:
                 $ref: '#/components/schemas/CodeableConcept'
             - type: 'null'
-          description: Reason, coded or as text. Send `null` to clear it.
+          description: Reason, coded or as text. Send `null` to clear it. Until the coding child tables land (after the demo), the server stores one coding per reason and answers `422` for more than one.
           x-phi: clinical
         locationId:
           oneOf:
@@ -27194,7 +27229,7 @@ components:
           maxItems: 12
           items:
             $ref: '#/components/schemas/VitalEntry'
-          description: The vitals, at most one per type.
+          description: The vitals, at most one per type. An empty list is valid and records nothing (`201` with an empty `vitals`).
           x-phi: clinical
     VitalsRecorded:
       description: The vitals just recorded.
@@ -28591,7 +28626,7 @@ components:
           maxItems: 10
           items:
             $ref: '#/components/schemas/CodeableConcept'
-          description: What happened, e.g. hives, SNOMED CT or text.
+          description: What happened, e.g. hives, SNOMED CT or text. Until the coding child tables land (after the demo), the server stores one coding per manifestation and answers `422` for more than one.
           x-phi: clinical
         severity:
           type: string
@@ -28608,7 +28643,7 @@ components:
           x-phi: clinical
         onsetDate:
           $ref: '#/components/schemas/PartialDate'
-          description: When it happened.
+          description: 'When it happened. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted: `YYYY` and `YYYY-MM` get `422`.'
           x-phi: clinical
     Allergy:
       description: An allergy or intolerance (US Core AllergyIntolerance; FRS FR-PAT-03, FR-MED-01). The medications batch checks prescriptions against active, confirmed allergies.
@@ -28652,7 +28687,7 @@ components:
           x-phi: internal-id
         code:
           $ref: '#/components/schemas/CodeableConcept'
-          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003.'
+          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.'
           x-phi: clinical
         type:
           type: string
@@ -28683,7 +28718,7 @@ components:
           x-phi: clinical
         onsetDate:
           $ref: '#/components/schemas/PartialDate'
-          description: When it started.
+          description: 'When it started. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted: `YYYY` and `YYYY-MM` get `422`.'
           x-phi: clinical
         reactions:
           type: array
@@ -28762,7 +28797,7 @@ components:
           x-phi: internal-id
         code:
           $ref: '#/components/schemas/CodeableConcept'
-          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003.'
+          description: 'The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.'
           x-phi: clinical
         type:
           type: string
@@ -28793,7 +28828,7 @@ components:
           x-phi: clinical
         onsetDate:
           $ref: '#/components/schemas/PartialDate'
-          description: When it started.
+          description: 'When it started. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted: `YYYY` and `YYYY-MM` get `422`.'
           x-phi: clinical
         reactions:
           type: array
@@ -32103,7 +32138,7 @@ components:
       properties:
         medication:
           $ref: '#/components/schemas/CodeableConcept'
-          description: 'The drug: RxNorm from `GET /codes?system=rxnorm`, or text.'
+          description: 'The drug: RxNorm from `GET /codes?system=rxnorm`, or text. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.'
           x-phi: clinical
         dosageText:
           type: string
@@ -32161,7 +32196,7 @@ components:
           x-phi: internal-id
         medication:
           $ref: '#/components/schemas/CodeableConcept'
-          description: The drug, from `GET /codes?system=rxnorm`.
+          description: The drug, from `GET /codes?system=rxnorm`. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.
           x-phi: clinical
         dosageText:
           type: string
@@ -32413,7 +32448,7 @@ components:
       properties:
         medication:
           $ref: '#/components/schemas/CodeableConcept'
-          description: The drug.
+          description: The drug. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one.
           x-phi: clinical
         dosageText:
           type: string
@@ -33690,7 +33725,7 @@ components:
       properties:
         items:
           type: array
-          maxItems: 50
+          maxItems: 100
           items:
             $ref: '#/components/schemas/PortalAppointment'
           description: The items on this page.
