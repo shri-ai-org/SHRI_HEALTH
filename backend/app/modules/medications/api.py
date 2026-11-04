@@ -3,6 +3,8 @@ D99). Built by Vimal under D97, reviewed by Thulasi as the medications owner. Ea
 operation_id is the contract's operationId, and the permission (`require`) is the first
 dependency, so a caller without it gets 401 or 403 before anything else runs.
 
+- ``listPharmacies``: the platform pharmacy directory (D50; built by Thulasi), for the desk's
+  preferred pharmacy and the prescriber's choice. Reference data: no chart check, not audited.
 - ``listMedications``, ``recordMedication``: the list (reported at rooming, or prescribed here).
 - ``createPrescription``, ``getPrescription``, ``updatePrescription`` (If-Match),
   ``markPrescriptionEnteredInError``: drafts.
@@ -14,11 +16,11 @@ Drafting, editing, the safety check, overrides, signing and sending, and marking
 are for MD and APP only (D110; for the clinical advisors to confirm, Q21): the service refuses
 any other role with 403 permission-denied before it reads or writes anything.
 
-Every route runs the restricted-chart check (D37) before it shows or changes anything, and names
-the patient for core's audit where x-audit takes it from the result or the body. The repository,
-the chart check, the audit hook and the partner (outbox and events) are dependencies the tests
-replace. Not built: listPharmacies (batch 1, Thulasi's, D50), discontinue, reconciliation, cancel,
-change, refills and outside history (after the demo; not in this contract yet, or Q13).
+Every patient route runs the restricted-chart check (D37) before it shows or changes anything,
+and names the patient for core's audit where x-audit takes it from the result or the body. The
+repository, the chart check, the audit hook and the partner (outbox and events) are dependencies
+the tests replace. Not built: discontinue, reconciliation, cancel, change, refills and outside
+history (after the demo; not in this contract yet, or Q13).
 """
 
 from __future__ import annotations
@@ -71,11 +73,26 @@ AlertId = Annotated[UUID, Path(alias="alertId")]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Cursor = Annotated[str | None, Query(max_length=512, pattern=r"^[A-Za-z0-9_-]+$")]
 IfMatch = Annotated[str | None, Header(alias="If-Match")]
+NameQuery = Annotated[str | None, Query(alias="q", min_length=2, max_length=200)]
+PostalCode = Annotated[str | None, Query(alias="postalCode", pattern=r"^\d{5}$", max_length=5)]
+MailOrder = Annotated[bool | None, Query(alias="mailOrder")]
 
 
 def _prescription(response: Response, row: PrescriptionRow) -> schemas.Prescription:
     response.headers["ETag"] = service.etag(row.version)
     return service.to_prescription(row)
+
+
+# ------------------------------------------------------------------- the pharmacy directory
+@router.get("/pharmacies", operation_id="listPharmacies", response_model=schemas.PharmacyList,
+            response_model_exclude_none=True)
+async def list_pharmacies(
+    user: Annotated[CurrentUser, Depends(require("pharmacies:read"))], db: DB, repo: Repo,
+    q: NameQuery = None, postal_code: PostalCode = None, mail_order: MailOrder = None,
+    limit: Limit = 25, cursor: Cursor = None,
+) -> schemas.PharmacyList:
+    return await service.list_pharmacies(db, repo, name=q, postal_code=postal_code,
+                                         mail_order=mail_order, limit=limit, cursor=cursor)
 
 
 # ------------------------------------------------------------------------------ the list

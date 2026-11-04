@@ -158,11 +158,32 @@ class NewRxData:
     pharmacy_npi: str | None
 
 
+@dataclass(frozen=True)
+class PharmacyRow:
+    """One entry of the platform pharmacy directory (D50): reference data, not patient data."""
+
+    id: UUID
+    ncpdp_id: str
+    npi: str | None
+    name: str
+    phone: str | None
+    fax: str | None
+    line: str | None
+    city: str | None
+    state: str | None
+    postal_code: str | None
+    mail_order: bool
+    active: bool
+
+
 class MedicationRepository(Protocol):
     # reads
     async def patient(self, db: AsyncSession, patient_id: UUID) -> PatientRef | None: ...
     async def encounter(self, db: AsyncSession, encounter_id: UUID) -> EncounterRef | None: ...
     async def pharmacy_active(self, db: AsyncSession, pharmacy_id: UUID) -> bool | None: ...
+    async def pharmacies(self, db: AsyncSession, *, name: str | None, postal_code: str | None,
+                         mail_order: bool | None, limit: int, offset: int
+                         ) -> list[PharmacyRow]: ...
     async def practitioner_of_user(self, db: AsyncSession, user_id: UUID) -> UUID | None: ...
     async def dea_schedule(self, db: AsyncSession, drug: Drug) -> str | None: ...
     async def known_rxnorm(self, db: AsyncSession, code: str) -> bool: ...
@@ -204,6 +225,18 @@ _ENCOUNTER = text("""
 SELECT id, subject_patient_id, status, ext_facility_id FROM clinical.encounter WHERE id = :id
 """)
 _PHARMACY = text("SELECT is_active FROM admin.pharmacy WHERE id = :id")
+# The directory by name (the name's trigram index serves the contains search); a 5-digit ZIP also
+# matches a stored ZIP+4. `name` arrives with LIKE's wildcards escaped (_contains).
+_PHARMACIES = text(r"""
+SELECT id, ncpdp_id, npi, name, phone, fax, address_line, city, state, postal_code,
+       is_mail_order, is_active
+FROM admin.pharmacy
+WHERE (CAST(:name AS text) IS NULL OR name ILIKE '%' || CAST(:name AS text) || '%' ESCAPE '\')
+  AND (CAST(:zip AS text) IS NULL OR postal_code = CAST(:zip AS text)
+       OR postal_code LIKE CAST(:zip AS text) || '-%')
+  AND (CAST(:mail AS boolean) IS NULL OR is_mail_order = CAST(:mail AS boolean))
+ORDER BY name, id
+LIMIT :limit OFFSET :offset""")
 _PRACTITIONER = text("SELECT practitioner_id FROM admin.app_user WHERE id = :id")
 _DEA = text("""
 SELECT p.value FROM admin.concept c
@@ -439,6 +472,11 @@ async def event_scope(db: AsyncSession, prescription_id: UUID) -> tuple[UUID | N
 _STORE = fs.SqlFhirStore()
 
 
+def _contains(value: str) -> str:
+    """Text for ILIKE ... ESCAPE '\\': a % or _ the user typed matches itself."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class SqlMedicationRepository:
     async def patient(self, db: AsyncSession, patient_id: UUID) -> PatientRef | None:
         r = (await db.execute(_PATIENT, {"id": patient_id})).one_or_none()
@@ -453,6 +491,16 @@ class SqlMedicationRepository:
         found: bool | None = (await db.execute(_PHARMACY, {"id": pharmacy_id})
                               ).scalar_one_or_none()
         return found
+
+    async def pharmacies(self, db: AsyncSession, *, name: str | None, postal_code: str | None,
+                         mail_order: bool | None, limit: int, offset: int
+                         ) -> list[PharmacyRow]:
+        rows = (await db.execute(_PHARMACIES, {
+            "name": _contains(name) if name is not None else None, "zip": postal_code,
+            "mail": mail_order, "limit": limit, "offset": offset})).all()
+        return [PharmacyRow(r.id, r.ncpdp_id, r.npi, r.name, r.phone, r.fax, r.address_line,
+                            r.city, r.state, r.postal_code, bool(r.is_mail_order),
+                            bool(r.is_active)) for r in rows]
 
     async def practitioner_of_user(self, db: AsyncSession, user_id: UUID) -> UUID | None:
         found: UUID | None = (await db.execute(_PRACTITIONER, {"id": user_id})
