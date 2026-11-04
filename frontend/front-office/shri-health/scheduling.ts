@@ -37,6 +37,7 @@ import type {
   BookableFacility,
   BookableProvider,
 } from '../../src/api/generated/model'
+import { API_BASE } from '../../src/api/client'
 import { REAL_API, newIdempotencyKey } from './client'
 import { loadCandidates } from './patients'
 import { getState, setState } from '../src/domain/store'
@@ -187,8 +188,23 @@ export function loadClinic(): Promise<void> {
   return loadBookable().then(() => undefined)
 }
 
+// Live updates: the event stream (GET /events/stream, streamEvents), one per tab, opened the first
+// time today's bookings are read with SHRI_API=real. A check-in, a visit-status change or an
+// encounter-status change reads today's bookings again; the screens' 15 s refresh stays as the
+// fallback. Events carry IDs and statuses only (core/events.py), and nothing from them is shown.
+const LIVE_TYPES = ['appointment.checked-in', 'appointment.status-changed', 'encounter.status-changed', 'stream.reset']
+let liveSource: EventSource | null = null
+
+function listenLive(): void {
+  if (liveSource || !REAL_API || typeof EventSource === 'undefined') return
+  liveSource = new EventSource(`${API_BASE}/events/stream`)
+  const reload = () => void loadAppointments(todayKey(), 1).catch(() => undefined)
+  for (const type of LIVE_TYPES) liveSource.addEventListener(type, reload)
+}
+
 /** The facility's bookings from `from` for `days` days, with their patients' summaries. */
 export async function loadAppointments(from: string, days: number): Promise<Appointment[]> {
+  listenLive()
   const { facility } = await loadBookable()
   const items: AppointmentSummary[] = []
   let cursor: string | undefined
