@@ -124,7 +124,7 @@ function startFrom(params: FlowProps['params'], now: number): Start {
   }
 }
 
-function AppointmentFlow({ params, onClose }: FlowProps) {
+function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
   const now = useNow(15000)
   const today = useStoreValue(getToday)
 
@@ -260,7 +260,15 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
       // Rescheduling an unpaid booking from the timeline: the old booking and its bill are removed, not
       // cancelled, so only the new time is seen anywhere. One save — if the new time can't be booked, nothing changes.
       if (params.appointment) rebookUnpaidAppointment({ appointmentId: params.appointment, ...booking })
-      else bookAppointment({ patientId: who.patientId, ...booking })
+      else {
+        const { appointment } = bookAppointment({ patientId: who.patientId, ...booking })
+        // The revisit, booked from check-out: back to check-out instead of the profile.
+        // TODO(#161 and the booking port): bookAppointment with followUpOfEncounterId and an Idempotency-Key.
+        if (onBooked) {
+          onBooked(appointment.appointmentId)
+          return
+        }
+      }
       // Booked: straight to the patient's profile, where the timeline shows the booking and prints its bill.
       const profile = `/patients/${who.uhid}`
       if (location.pathname === profile) onClose()

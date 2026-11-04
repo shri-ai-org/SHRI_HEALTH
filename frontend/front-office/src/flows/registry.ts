@@ -10,6 +10,8 @@ export interface FlowProps {
   params: FlowParams
   /** Closes the flow and returns to the page underneath. Safe to call twice. */
   onClose: () => void
+  /** Booked from check-out (the revisit): told the new booking instead of opening the patient's profile. */
+  onBooked?: (appointmentId: string) => void
 }
 
 /** Every flow FlowHost can open. A name in the URL that isn't here is

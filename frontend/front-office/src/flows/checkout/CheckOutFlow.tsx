@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { CalendarPlus, FileText, LogOut, XCircle } from 'lucide-react'
 import { FlowSheet } from '../../components/flow/FlowSheet'
+import { ScheduleFlow } from '../schedule/ScheduleFlow'
 import { AckCard } from '../../components/flow/AckCard'
 import { Quadrant, StepRail, SummaryItem, Waiting } from '../../components/flow/Quadrant'
 import { Button } from '../../components/ui/Button'
@@ -21,6 +22,7 @@ import {
   declineFollowUp,
   intervalLabel,
   loadCheckOut,
+  markRevisitBooked,
 } from '../../../shri-health/checkout'
 import type { DeskFollowUp } from '../../../shri-health/checkout'
 import { newIdempotencyKey } from '../../../shri-health/client'
@@ -58,10 +60,12 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
   const [summaryOpened, setSummaryOpened] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [booking, setBooking] = useState(false)
   // One key per attempt, reused only to retry the very same request.
   const [declineKey, setDeclineKey] = useState(newIdempotencyKey)
   const [checkOutKey] = useState(newIdempotencyKey)
   const followUpProvider = useStoreValue(getProviderById, followUp?.providerId ?? '')
+  const revisit = useStoreValue(getAppointmentById, followUp?.bookedAppointmentId ?? '')
 
   useEffect(() => {
     if (!appointmentId) return
@@ -88,6 +92,22 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
   if (!appointment || !patient || !provider) return sheet(<Alert tone="warning">That visit no longer exists.</Alert>)
   if (loadError) return sheet(<Alert tone="critical" live>The visit could not be loaded. {loadError}</Alert>)
   if (!loaded) return sheet(<Waiting>Loading the visit…</Waiting>)
+
+  // The revisit: care-entry's own Schedule Appointment, for this patient and the follow-up's doctor,
+  // opened in place (its patient stays out of the address, D13) and back here once booked.
+  if (booking) {
+    return (
+      <ScheduleFlow
+        params={{ uhid: patient.patientId, doctor: followUp?.providerId }}
+        onClose={() => setBooking(false)}
+        onBooked={(bookedId) => {
+          markRevisitBooked(appointmentId, providerId, bookedId)
+          setFollowUp((f) => (f ? { ...f, status: 'booked', bookedAppointmentId: bookedId } : f))
+          setBooking(false)
+        }}
+      />
+    )
+  }
 
   if (done) {
     return sheet(
@@ -211,6 +231,7 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
               <p className={cn('text-xs font-medium', followUp.status === 'open' ? 'text-warning-fg' : 'text-ink-muted')}>
                 {FOLLOW_UP_STATUS[followUp.status]}
                 {followUp.declinedReason ? ` · ${followUp.declinedReason}` : ''}
+                {revisit ? ` · ${dayWithDate(revisit.date, today)} · ${formatTime(revisit.slot)}` : ''}
               </p>
               {followUp.status === 'open' ? (
                 declining ? (
@@ -240,8 +261,7 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {/* TODO(next screen): opens the revisit booking (care-entry's ScheduleFlow, with followUpOfEncounterId). */}
-                    <Button variant="secondary" disabled title="The revisit booking comes next">
+                    <Button variant="secondary" onClick={() => setBooking(true)}>
                       <CalendarPlus className="h-4 w-4" strokeWidth={1.75} />
                       Book the revisit
                     </Button>
