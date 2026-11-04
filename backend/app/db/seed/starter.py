@@ -105,6 +105,11 @@ NOTE_TEMPLATES: tuple[tuple[str, str, str, tuple[tuple[str, str, bool], ...]], .
         ("69730-0", "Patient instructions", False))),
     ("ANNUAL", "Annual physical", "34117-2", _NEW_VISIT_SECTIONS + (
         ("11369-6", "Preventive care: immunizations", False),)),
+    # A SOAP progress note for any visit; picked by the clinician, no visit type's default.
+    ("SOAP", "SOAP progress note", "11506-3", (
+        ("61150-9", "Subjective", True), ("61149-1", "Objective", True),
+        ("51848-0", "Assessment", True), ("18776-5", "Plan", True),
+        ("69730-0", "Patient instructions", False))),
 )
 
 PAYER_ID = sid(PAYER, 1)

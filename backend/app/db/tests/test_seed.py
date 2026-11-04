@@ -92,7 +92,11 @@ def test_the_dev_users_see_their_practice_through_the_api_role(
         assert sorted(scalars("SELECT code FROM admin.appointment_type")) == [
             "ANNUAL", "FU", "NEW", "TELE-FU"]
         assert sorted(scalars("SELECT code FROM admin.note_template")) == [
-            "ANNUAL", "FOLLOW-UP", "NEW-VISIT"]
+            "ANNUAL", "FOLLOW-UP", "NEW-VISIT", "SOAP"]
+        assert scalars(
+            "SELECT s.title FROM admin.note_template_section s JOIN admin.note_template t "
+            "ON t.id = s.template_id WHERE t.code = 'SOAP' ORDER BY s.sequence") == [
+            "Subjective", "Objective", "Assessment", "Plan", "Patient instructions"]
         per_facility = 2 * len(starter.PROVIDERS)        # two facilities
         assert len(scalars("SELECT id FROM clinical.schedule")) == per_facility
         # One PractitionerRole per provider and facility; each schedule uses its facility's role.
