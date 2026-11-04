@@ -685,7 +685,8 @@ class FhirStore(Protocol):
     async def remove_encounter_diagnosis(self, db: AsyncSession, encounter_id: uuid.UUID,
                                          condition_id: uuid.UUID, reason: Reason) -> Written:
         """Before signing (D24): the Condition becomes entered-in-error with its Provenance, and
-        its link goes, freeing its rank; the ranks after it close up. Returns the encounter."""
+        its link goes, freeing its rank; the ranks after it close up. Returns the encounter.
+        ``InvalidTransition`` if the Condition is already entered-in-error."""
         ...
 
     async def diagnosis_entered_in_error(self, db: AsyncSession, condition_id: uuid.UUID,
@@ -693,7 +694,8 @@ class FhirStore(Protocol):
                                          ) -> Written:
         """After signing (D14, D24): the Condition becomes entered-in-error with its Provenance;
         its rank link stays, so the signed visit keeps its record of what was diagnosed. Returns
-        the Condition."""
+        the Condition. It takes only the Condition: the caller checks first that it is an
+        ``encounter-diagnosis`` of the visit named in the request, and that the visit is signed."""
         ...
 
     # The medication list: a reported MedicationRequest, intent plan (D28; demo step 7)
@@ -1456,6 +1458,10 @@ class SqlFhirStore:
         if row is None:
             raise ResourceNotFound
         cond = await _locked(db, Condition, condition_id, None)
+        # One marked in error after signing keeps its link (diagnosis_entered_in_error): removing
+        # it now would free a signed visit's rank and add a second Provenance (#194 review).
+        if cond.verification_status == "entered-in-error":
+            raise InvalidTransition(cond.verification_status)
         cond.verification_status, cond.clinical_status = "entered-in-error", None
         await _nullify_provenance(db, "Condition", await _written(db, cond), reason)
         removed = row.rank
