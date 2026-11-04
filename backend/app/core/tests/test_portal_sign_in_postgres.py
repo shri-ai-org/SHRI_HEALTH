@@ -237,12 +237,15 @@ async def test_enrolment_creates_a_pending_account_and_the_realm_sends_its_set_u
                              "audit.audit_event WHERE entity_id = :a"),
                         {"a": str(account.id)}).one()
     assert tuple(row) == ("patient", "create", "security", chart["patient"], "enrolled")
-    for value in (code, "mai.synthetic", "1984"):  # never the code, the email or the birth date
+    # Never the code, the email or the birth date, in this clinic's audit rows. The full date,
+    # not just its year: a random UUID elsewhere in the table can contain "1984" (a flaky match).
+    birth = chart["birth"]
+    for value in (code, "mai.synthetic", birth.isoformat(), birth.strftime("%m/%d/%Y")):
         with admin_engine.connect() as c:
-            assert not c.execute(text("SELECT 1 FROM audit.audit_event WHERE "
-                                      "coalesce(reason, '') || coalesce(entity_id, '') || "
+            assert not c.execute(text("SELECT 1 FROM audit.audit_event WHERE tenant_id = :t "
+                                      "AND coalesce(reason, '') || coalesce(entity_id, '') || "
                                       "coalesce(user_agent, '') LIKE :v"),
-                                 {"v": f"%{value}%"}).first()
+                                 {"t": chart["tenant"], "v": f"%{value}%"}).first()
 
 
 async def test_a_code_works_in_any_case_without_dashes_and_with_look_alikes(
