@@ -113,6 +113,13 @@ services:
       PORTAL_ORIGIN: ${SHRI_PUBLIC_URL}
       HOOK_SECRET_CLEARINGHOUSE: ${HOOK_SECRET_CLEARINGHOUSE:?}
       HOOK_SECRET_ERX: ${HOOK_SECRET_ERX:?}
+      # The file service uses the object store only when these are set (files/s3.py, until it
+      # reads core's settings); outside development and test it refuses the folder (503).
+      SHRI_S3_ENDPOINT: http://seaweedfs:8333
+      SHRI_S3_ACCESS_KEY_ID: shri-api
+      SHRI_S3_SECRET_ACCESS_KEY: ${FILE_STORE_SECRET_ACCESS_KEY:?}
+      SHRI_S3_BUCKET_CLEAN: shri-clean
+      SHRI_S3_BUCKET_QUARANTINE: shri-quarantine
     restart: unless-stopped
     depends_on: !override
       postgres:

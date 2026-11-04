@@ -157,11 +157,10 @@ demo_reset() {
         KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" DEMO_PASSWORD="$DEMO_PASSWORD" \
         sh "$REPO/infra/keycloak/reset-demo-users.sh"
     say "Demo data (python -m app.db.seed demo, as shri_migrator)"
-    # The seed allows only ENVIRONMENT development or test (its guard against real data). This
-    # host holds synthetic data only, so the seed process alone runs as test until the seed
-    # allows staging (asked on the PR). The API and worker stay staging.
+    # The seed refuses staging unless SEED_ALLOW_STAGING=1 (its guard against real data, #159).
+    # This host holds synthetic data only, and the demo never runs in production (checked above).
     MIGRATION_DATABASE_URL="postgresql+psycopg://shri_migrator:${SHRI_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB}" \
-        $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e ENVIRONMENT=test --entrypoint python api \
+        $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SEED_ALLOW_STAGING=1 --entrypoint python api \
         -m app.db.seed demo
 }
 
