@@ -101,6 +101,24 @@ export function getDoctorSchedule(state: AppState, providerId: string, date: str
   const provider = getProviderById(state, providerId)
   if (!provider || provider.status !== 'Active' || !provider.schedule) return null
 
+  // A SHRI_HEALTH doctor: the server's free times plus the bookings already made, nothing else.
+  const served = state.serverSlots?.[providerId]
+  if (served) {
+    const slots = [...new Set([...(served[date] ?? []), ...appointmentsFor(state, providerId, date).map((a) => a.slot)])].sort()
+    if (slots.length === 0) return null
+    return {
+      providerId,
+      date,
+      slots,
+      breaks: [],
+      onLeave: false,
+      leaveReason: null,
+      sessionStart: slots[0]!,
+      sessionEnd: slots[slots.length - 1]!,
+      slotMinutes: provider.schedule.slotMinutes,
+    }
+  }
+
   const config = provider.schedule
   const dayOfWeek = new Date(dayStartTimestamp(date)).getDay()
   if (!config.workingDays.includes(dayOfWeek)) return null

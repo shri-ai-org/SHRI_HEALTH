@@ -72,9 +72,10 @@ function base(id: string, mrn: string, name: { family: string; given?: string[] 
   }
 }
 
-/** A search result: the minimum-necessary summary, so the mobile is its last four digits only. */
+/** A search result: the minimum-necessary summary, so the mobile is its last four digits only. It has
+ *  no registration time, so it is never shown as registered today. */
 export function fromSummary(s: PatientSummary): Patient {
-  return { ...base(s.id, s.mrn, s.name, s.birthDate, s.gender), mobile: s.phoneLast4 ? `•••• ${s.phoneLast4}` : '' }
+  return { ...base(s.id, s.mrn, s.name, s.birthDate, s.gender), mobile: s.phoneLast4 ? `•••• ${s.phoneLast4}` : '', createdAt: 0 }
 }
 
 /** The full record (`GET /patients/{id}`, `POST /patients`). */

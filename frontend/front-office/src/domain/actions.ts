@@ -21,6 +21,7 @@ import {
 } from './selectors'
 import { dayStartTimestamp, formatTime, slotToTimestamp, todayKey } from './time'
 import { DomainError } from './errors'
+import { isServerAppointment } from '../../shri-health/scheduling'
 import { MOBILE_ERROR, formatMobile, isValidMobile } from '../utils/phone'
 import {
   abhaError,
@@ -493,6 +494,10 @@ export function rescheduleAppointment({ appointmentId, providerId, date, slot, m
   const state = getState()
   const now = Date.now()
   const appointment = requireAppointment(state, appointmentId)
+  // Moving a SHRI_HEALTH booking (POST /appointments/{id}/reschedule) is not connected yet.
+  if (isServerAppointment(appointmentId)) {
+    throw new DomainError('INVALID_TRANSITION', 'This booking is on the server and cannot be moved here yet — cancel it and book the new time.')
+  }
   if (appointment.status !== 'Confirmed') {
     throw new DomainError('INVALID_TRANSITION', `Only a confirmed booking can be moved — this one is ${appointmentStatusLabel(appointment.status).toLowerCase()}.`)
   }

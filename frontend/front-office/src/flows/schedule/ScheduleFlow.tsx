@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Building2, CalendarPlus, Video } from 'lucide-react'
 import { FlowSheet } from '../../components/flow/FlowSheet'
 import { PatientSearch } from '../../components/patient/PatientSearch'
@@ -21,6 +21,8 @@ import {
   getToday,
 } from '../../domain/selectors'
 import { bookAppointment, rebookUnpaidAppointment } from '../../domain/actions'
+import { bookOnServer, isServerProvider, loadSchedule } from '../../../shri-health/scheduling'
+import { ApiError, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
 import { formatRupees, sumItems } from '../../utils/billing'
 import { dayWithDate, relativeDayLabel } from '../../utils/dates'
 import { modesFor } from '../../utils/appointment'
@@ -41,6 +43,9 @@ interface Pick {
   date: string
   slot: string
 }
+
+/** How many days of SHRI_HEALTH free times to load: the date row's reach (doctorDaySelectors HORIZON_DAYS). */
+const SERVER_DAYS = 14
 
 /**
  * Schedule — booking an appointment: patient → department → Doctor
@@ -149,6 +154,18 @@ function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
   const navigate = useNavigate()
   const location = useLocation()
 
+  // The SHRI_HEALTH doctors, their free times for the days the page shows, and the bookings.
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [booking, setBooking] = useState(false)
+  // One Idempotency-Key per booking attempt; a new one once the time or the patient changes.
+  const attempt = useRef<{ key: string; pick: string } | null>(null)
+  useEffect(() => {
+    let live = true
+    loadSchedule(today, SERVER_DAYS).catch((err: unknown) => live && setServerError(problemMessage(err)))
+    return () => {
+      live = false
+    }
+  }, [today])
   const departments = useStoreValue(getDepartmentSummaries, now)
   const provider = useStoreValue(getProviderById, providerId ?? '')
   const suggestions = useStoreValue(getDoctorSuggestions, department ?? '', now)
@@ -254,8 +271,9 @@ function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
     const doctor = getProviderById(getState(), pick.providerId)
     if (!doctor) return
     setError(null)
+    const mode = pick.providerId === providerId ? consultMode : (modesFor(doctor)[0] ?? 'In person')
+    if (isServerProvider(doctor.providerId)) return void bookOnServerPick(who, pick, mode)
     try {
-      const mode = pick.providerId === providerId ? consultMode : (modesFor(doctor)[0] ?? 'In person')
       const booking = { providerId: doctor.providerId, date: pick.date, slot: pick.slot, mode, reason: reason.trim() || undefined }
       // Rescheduling an unpaid booking from the timeline: the old booking and its bill are removed, not
       // cancelled, so only the new time is seen anywhere. One save — if the new time can't be booked, nothing changes.
@@ -281,6 +299,32 @@ function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
     }
   }
 
+  // A SHRI_HEALTH doctor is booked on the server: no bill is raised (the contract takes no payment
+  // before a visit), so the booking is confirmed at once. Rebooking an unpaid booking does not apply.
+  async function bookOnServerPick(who: Patient, pick: Pick, mode: ConsultMode) {
+    if (booking) return
+    const id = `${who.patientId}|${pick.providerId}|${pick.date}|${pick.slot}|${mode}`
+    if (attempt.current?.pick !== id) attempt.current = { key: newIdempotencyKey(), pick: id }
+    setBooking(true)
+    try {
+      await bookOnServer({ patientId: who.patientId, ...pick, mode, reason: reason.trim() || undefined }, attempt.current.key)
+      attempt.current = null
+      const profile = `/patients/${who.patientId}`
+      if (location.pathname === profile) onClose()
+      else navigate(profile, { replace: true })
+    } catch (err) {
+      setError(problemMessage(err))
+      // A time taken a moment ago: refresh the times and reopen them so another can be picked.
+      if (err instanceof ApiError && err.status === 409) {
+        attempt.current = null
+        setSlot(null)
+        void loadSchedule(today, SERVER_DAYS).catch(() => undefined)
+      }
+    } finally {
+      setBooking(false)
+    }
+  }
+
   // The patient is named once, on the page itself — the title says what is left to do.
   // Patient and department both chosen: they shrink to one strip, and the doctors get the screen.
   const compact = Boolean(patient && department && !changingPatient)
@@ -303,6 +347,7 @@ function AppointmentFlow({ params, onClose, onBooked }: FlowProps) {
   const confirmBar = (
     <div className="flex flex-col gap-2.5">
       {error ? <Alert tone="critical" live>{error}</Alert> : null}
+      {serverError ? <Alert tone="critical" live>{`The server's doctors and times could not be loaded: ${serverError}`}</Alert> : null}
       <div className="grid grid-cols-1 items-center gap-3 xl:grid-cols-[minmax(0,1fr)_15rem_auto]">
         {/* Review — the booking as one sentence, or the next thing to do. */}
         <div className="min-w-0" aria-live="polite">
