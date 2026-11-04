@@ -22684,6 +22684,10 @@ components:
             $ref: '#/components/schemas/Id'
           description: Facilities the user is assigned to (SECURITY_MODEL §5.1).
           x-phi: internal-id
+        practitionerId:
+          $ref: '#/components/schemas/Id'
+          description: The user's own practitioner, the ID that `providerId` takes on the schedule, so a clinician's screens can show their own appointments. Present only for a user linked to a practitioner; absent for a user who isn't one (for example front desk or billing).
+          x-phi: internal-id
     SessionOrganization:
       description: The clinic (tenant) of the session. It comes from the server-side session only, never from token claims (D21).
       type: object

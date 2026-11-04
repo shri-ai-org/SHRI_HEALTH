@@ -1,5 +1,6 @@
 """GET /me against the real schema, as shri_app: every role's permissions straight from
-ROLE_PERMISSIONS, the clinic's own name, and the D39 practice setting.
+ROLE_PERMISSIONS, the clinic's own name, the D39 practice setting, and a clinician's own
+practitioner (never another clinic's).
 
 Needs TEST_DATABASE_URL, migrated to head (app/db/tests/conftest.py). Skipped otherwise.
 Synthetic users and clinics only.
@@ -136,3 +137,46 @@ def test_shows_only_the_users_own_clinic(client: TestClient, signed_in: dict[str
 
     assert client.get("/api/v1/me").json()["organization"] == {"id": str(mine),
                                                                "name": "Clinic Mine"}
+
+
+def _clinician(engine: Engine, tenant_id: UUID) -> tuple[UUID, UUID]:
+    """A synthetic user linked to their own practitioner in that clinic: (user, practitioner)."""
+    user, practitioner = uuid4(), uuid4()
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO clinical.practitioner (id, tenant_id, active) "
+                       "VALUES (:p, :t, true)"), {"p": practitioner, "t": tenant_id})
+        c.execute(text("INSERT INTO admin.app_user (id, tenant_id, display_name, "
+                       "keycloak_subject, username, practitioner_id) "
+                       "VALUES (:i, :t, 'Dev User', :k, :u, :p)"),
+                  {"i": user, "t": tenant_id, "k": str(uuid4()), "u": f"u-{user.hex[:12]}",
+                   "p": practitioner})
+    return user, practitioner
+
+
+def test_a_clinician_gets_their_own_practitioner(client: TestClient, signed_in: dict[str, Any],
+                                                 tenant: UUID,  # noqa: F811
+                                                 admin_engine: Engine) -> None:  # noqa: F811
+    """"My Day" filters the schedule by the user's own practitioner (providerId)."""
+    user, practitioner = _clinician(admin_engine, tenant)
+    signed_in["user"] = CurrentUser(id=user, organization_id=tenant, roles=frozenset({"MD"}),
+                                    facility_ids=frozenset({FACILITY}), display_name="Dev User")
+
+    body = client.get("/api/v1/me").json()
+
+    assert body["user"]["practitionerId"] == str(practitioner)
+    assert set(body["user"]) <= set(_schema("SessionUser")["properties"])
+
+
+def test_another_clinics_practitioner_link_is_never_shown(
+        client: TestClient, signed_in: dict[str, Any], tenant: UUID,  # noqa: F811
+        admin_engine: Engine) -> None:  # noqa: F811
+    """Row-level security: the same user ID signed in to this clinic can't read a link that
+    lives in another clinic's app_user row."""
+    other = make_tenant(admin_engine)
+    user, _ = _clinician(admin_engine, other)
+    signed_in["user"] = CurrentUser(id=user, organization_id=tenant, roles=frozenset({"MD"}),
+                                    facility_ids=frozenset({FACILITY}), display_name="Dev User")
+
+    body = client.get("/api/v1/me").json()
+
+    assert "practitionerId" not in body["user"]

@@ -297,7 +297,7 @@ _NEW_TOKENS = text(
     "WHERE id = :id")
 _REVOKE = text("UPDATE admin.app_session SET revoked_at = now(), updated_at = now() "
                "WHERE id = :id AND revoked_at IS NULL")
-_USER = text("SELECT display_name, is_active FROM admin.app_user WHERE id = :id")
+_USER = text("SELECT display_name, is_active, practitioner_id FROM admin.app_user WHERE id = :id")
 _ROLES = text(
     "SELECT r.code, ur.facility_id FROM admin.user_role ur JOIN admin.role r ON r.id = ur.role_id "
     "WHERE ur.user_id = :id AND (ur.valid_from IS NULL OR ur.valid_from <= current_date) "
@@ -466,11 +466,13 @@ class UserFacts:
     roles: frozenset[str]
     facility_ids: frozenset[UUID]
     clinic_name: str
+    practitioner_id: UUID | None = None  # a clinician's own provider ID on the schedule
 
 
 async def user_facts(db: Database, session: StaffSession) -> UserFacts:
-    """Who the session's user is today: name, roles and facilities (a role with no facility
-    covers every facility of the clinic). 403 for a deactivated account."""
+    """Who the session's user is today: name, roles, facilities (a role with no facility
+    covers every facility of the clinic) and their practitioner, if linked to one. 403 for a
+    deactivated account."""
     async with db.tenant_session(session.tenant_id, session.user_id, current_request_id()) as s:
         user = (await s.execute(_USER, {"id": session.user_id})).one_or_none()
         if user is None or not user.is_active:
@@ -482,7 +484,7 @@ async def user_facts(db: Database, session: StaffSession) -> UserFacts:
         clinic = (await s.execute(_CLINIC, {"id": session.tenant_id})).scalar_one_or_none()
         await s.rollback()
     return UserFacts(user.display_name, frozenset(r.code for r in roles), frozenset(facilities),
-                     clinic or "")
+                     clinic or "", user.practitioner_id)
 
 
 def set_session_cookie(response: Any, token: str) -> None:
