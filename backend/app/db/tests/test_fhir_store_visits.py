@@ -262,6 +262,14 @@ async def test_a_diagnosis_is_entered_in_error_after_signing_and_keeps_its_rank(
             await STORE.diagnosis_entered_in_error(s, second.condition.id, WHY, if_version=99)
         with pytest.raises(fs.InvalidInput):
             await STORE.diagnosis_entered_in_error(s, second.condition.id, fs.Reason(text=" "))
+        # Removal can't free the rank it kept, nor add a second Provenance (#194 review).
+        with pytest.raises(fs.InvalidTransition):
+            await STORE.remove_encounter_diagnosis(s, enc.id, cid, WHY)
+    assert [tuple(r) for r in _rows(
+        admin_engine, "SELECT condition_id, rank FROM clinical.encounter_diagnosis "
+        "WHERE encounter_id = :e ORDER BY rank", e=enc.id)] == links
+    assert len(_rows(admin_engine, "SELECT 1 FROM clinical.provenance WHERE target_id = :c",
+                     c=cid)) == 1
 
 
 # ====================================================================== who and when
