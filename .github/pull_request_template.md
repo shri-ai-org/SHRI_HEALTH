@@ -2,6 +2,13 @@
 
 <!-- One or two sentences. Link the issue if there is one. -->
 
+## Source screen (frontend PRs)
+
+<!-- D115: existing screens first. Leave out for PRs that change no screen. -->
+
+- Source screen (repo and path):
+- Reuse level: ported / adapted / new, and the reason:
+
 ## Definition of done
 
 - [ ] Contract exists (or was updated first) for every endpoint touched
