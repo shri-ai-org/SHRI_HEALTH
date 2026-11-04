@@ -11,7 +11,7 @@
 //   name           ⇐ name.given + name.family;  first and last name ⇒ name.given[0], name.family
 //   age            ⇐ birthDate (computed);       date of birth ⇒ birthDate (required, D44)
 //   sex            ⇄ gender (Male/Female/Other ⇄ male/female/other; unknown shows as Other)
-//   mobile         ⇄ phones[0] (10-digit Indian mobile ⇄ E.164 +91…; a search result has only phoneLast4)
+//   mobile         ⇄ phones[0] (10-digit US number ⇄ E.164 +1…, shown as (617) 555-0188; a search result has only phoneLast4)
 //   email          ⇐ emails[0].address
 //   address        ⇐ address (lines, city, state, postal code); free text is not sent (the contract's
 //                    address is structured: lines, city, two-letter state, ZIP)
@@ -25,7 +25,7 @@ import {
 import type { Patient as ApiPatient, PatientCreate, PatientSearchRequestCriteria, PatientSummary } from '../../src/api/generated/model'
 import { newIdempotencyKey } from './client'
 import { setState } from '../src/domain/store'
-import { formatMobile, nationalMobile } from '../src/utils/phone'
+import { formatMobile } from '../src/utils/phone'
 import type { Patient, Sex } from '../src/types/patient'
 
 const SEX_FROM_GENDER: Record<string, Sex> = { male: 'Male', female: 'Female', other: 'Other', unknown: 'Other' }
@@ -45,9 +45,10 @@ export function ageOn(birthDate: string | null | undefined, today: Date = new Da
   return age
 }
 
-/** A 10-digit Indian mobile as the contract stores phones (E.164). */
+/** A 10-digit US number as the contract stores phones (E.164, +1…; Minalini, 2026-11-04). */
 export function toE164(mobile: string): string {
-  return `+91${nationalMobile(mobile)}`
+  const digits = mobile.replace(/\D/g, '')
+  return `+1${digits.slice(-10)}`
 }
 
 function fromE164(number: string | undefined): string {
