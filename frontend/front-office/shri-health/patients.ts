@@ -52,6 +52,9 @@ export function toE164(mobile: string): string {
 
 function fromE164(number: string | undefined): string {
   if (!number) return ''
+  // A US number reads as (617) 555-0188 (display only; the contract keeps E.164).
+  const us = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(number)
+  if (us) return `(${us[1]}) ${us[2]}-${us[3]}`
   return number.startsWith('+91') ? formatMobile(number) : number
 }
 

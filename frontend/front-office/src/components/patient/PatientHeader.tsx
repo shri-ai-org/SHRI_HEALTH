@@ -12,6 +12,7 @@ import type { PatientHeaderSummary } from '../../domain/patientSelectors'
 import type { Patient } from '../../types/patient'
 import type { Tone } from '../../utils/tone'
 import { CurrencyIcon } from '../../utils/billing'
+import { REAL_API } from '../../../shri-health/client'
 
 const RISK_TONE: Record<'High' | 'Watch' | 'Normal', Tone> = { High: 'critical', Watch: 'warning', Normal: 'info' }
 export interface PatientActions {
@@ -92,7 +93,8 @@ export function PatientHeader({
           <Action icon={CalendarPlus} label="Schedule Appointment" hue={HUES.blue} onClick={actions.schedule} />
           {inpatient ? (
             <Action icon={LogOut} label="Discharge" hue={HUES.red} onClick={actions.discharge} />
-          ) : (
+          ) : REAL_API ? null : (
+            // Admit is India's inpatient flow: hidden with the SHRI_HEALTH API (US wording change, 2026-11-04).
             <Action icon={BedDouble} label="Admit" hue={HUES.orange} onClick={actions.admit} />
           )}
           <Action

@@ -172,7 +172,7 @@ export function PatientSearch(props: PatientSearchProps) {
   }
 
   const placeholder =
-    props.mode === 'pick' && props.placeholder ? props.placeholder : 'Search name, mobile, UHID, ABHA ID / number or bill no.'
+    props.mode === 'pick' && props.placeholder ? props.placeholder : 'name, phone, MRN or date of birth'
   const showList = open && (options.length > 0 || query.trim().length > 0)
 
   let lastSection = ''

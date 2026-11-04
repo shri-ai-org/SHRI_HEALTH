@@ -13,6 +13,7 @@ import { abhaError, addressError, ageError, ageNeedsConfirmation, emailError, mo
 import { cn } from '../../utils/cn'
 import { AgeConfirm, FieldError } from './AgeConfirm'
 import { CreateAbhaLink } from './CreateAbhaLink'
+import { REAL_API } from '../../../shri-health/client'
 import type { Patient, Sex } from '../../types/patient'
 import { errorClass, inputClass } from '../../utils/formClasses'
 
@@ -175,10 +176,11 @@ export function PatientDetailsStrip({ patient }: { patient: Patient }) {
       ) : (
         <div className="flex flex-col gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <CopyChip label="Mobile" value={patient.mobile} onCopy={copy} />
+            <CopyChip label="Phone" value={patient.mobile} onCopy={copy} />
             <CopyChip label="Address" value={patient.address} onCopy={copy} wide />
-            {/* ABHA: linked — its ID, copyable; not linked — link an existing one, or create one. */}
-            {patient.abhaId ? (
+            {/* ABHA: linked — its ID, copyable; not linked — link an existing one, or create one.
+                India only (ABDM): hidden with the SHRI_HEALTH API (US wording change, 2026-11-04). */}
+            {REAL_API ? null : patient.abhaId ? (
               <CopyChip label="ABHA linked" value={patient.abhaId} onCopy={copy} />
             ) : linking ? null : (
               // Two clear choices: the patient already has an ABHA ID → Link it;

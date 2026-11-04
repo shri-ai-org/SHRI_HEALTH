@@ -8,9 +8,15 @@ import { CheckInToggle } from '../appointment/CheckInToggle'
 import { EmptyState } from '../ui/EmptyState'
 import { BILL_STATUS_LABEL, BILL_STATUS_TONE, CurrencyIcon, formatMoney } from '../../utils/billing'
 import { appointmentStatusLabel } from '../../utils/appointment'
-import { relativeDayLabel, formatDateKey } from '../../utils/dates'
+import { relativeDayLabel } from '../../utils/dates'
 import { formatClock } from '../../utils/format'
 import { formatTime, todayKey } from '../../domain/time'
+
+/** A clinic date key (`2026-11-03`) as `Nov 3, 2026` (US wording change, 2026-11-04). */
+function usDate(key: string): string {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(Date.UTC(y, m - 1, d))
+}
 import { printBill } from '../../utils/printBill'
 import type { PatientTimeline as Timeline, TimelineKind, UpcomingItem } from '../../domain/patientSelectors'
 import type { BillDisplayStatus } from '../../types/payment'
@@ -112,7 +118,7 @@ export function PatientTimeline({
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     {badge}
                     <time className="text-2xs tabular-nums text-ink-subtle" dateTime={new Date(event.at).toISOString()}>
-                      {formatDateKey(todayKey(new Date(event.at)))} · {formatClock(event.at)}
+                      {usDate(todayKey(new Date(event.at)))}, {formatClock(event.at)}
                     </time>
                   </div>
                 </li>
