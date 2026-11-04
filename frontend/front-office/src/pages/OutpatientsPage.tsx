@@ -13,6 +13,7 @@ import {
   UserCheck,
   UserX,
   X,
+  LogOut,
 } from 'lucide-react'
 import { PageHeader } from '../components/layout/PageHeader'
 import { AppointmentIllustration } from '../components/ui/illustrations/AppointmentIllustration'
@@ -151,7 +152,18 @@ export function OutpatientsPage() {
         return token ? <>{admit}</> : null
       case 'done':
         // Admission is usually advised in the doctor's room.
-        return token?.status === 'Completed' || row.appointment?.status === 'Completed' ? admit : null
+        return token?.status === 'Completed' || row.appointment?.status === 'Completed' ? (
+          <>
+            {admit}
+            {/* Check-out (D98): the follow-up, the after-visit summary, then Check out. */}
+            {row.appointment ? (
+              <Button size="sm" variant="secondary" onClick={() => openFlow('checkout', { appointment: row.appointment!.appointmentId })}>
+                <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Check out
+              </Button>
+            ) : null}
+          </>
+        ) : null
       case 'upcoming':
         return row.appointment ? (
           <>
