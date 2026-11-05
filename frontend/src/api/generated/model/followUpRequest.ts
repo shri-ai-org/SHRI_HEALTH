@@ -36,7 +36,7 @@ export interface FollowUpRequest {
   note?: string;
   /** `open` (asked for, not yet booked); `booked` (a revisit is booked: `bookedAppointmentId`); `declined` (the patient did not book it, with the front desk's reason); `withdrawn` (the clinician who asked for it withdrew it). If the booked revisit is cancelled, the request goes back to `open` and loses `bookedAppointmentId`, in the same transaction; if the revisit is rescheduled, it stays `booked` and points at the new appointment (D98). */
   status: FollowUpRequestStatus;
-  /** Who asked for it. */
+  /** Who asked for it: the user's ID (not a practitioner ID). */
   requestedBy: Id;
   /** When. */
   requestedAt: Timestamp;

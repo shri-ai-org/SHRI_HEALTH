@@ -22,6 +22,7 @@ import type { Date } from './date';
 import type { Email } from './email';
 import type { Employer } from './employer';
 import type { HumanName } from './humanName';
+import type { Id } from './id';
 import type { PatientPatchMaritalStatus } from './patientPatchMaritalStatus';
 import type { Phone } from './phone';
 import type { RaceEthnicity } from './raceEthnicity';
@@ -80,4 +81,6 @@ export interface PatientPatch {
   address?: Address | null;
   /** Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand). Send `null` to clear it. */
   employer?: Employer | null;
+  /** The patient's primary provider, from `GET /booking/providers` (D49). Send `null` to clear it. */
+  generalPractitionerId?: Id | null;
 }

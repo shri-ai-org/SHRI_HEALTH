@@ -34,7 +34,7 @@ export interface AllergyCreate {
   verificationStatus?: AllergyCreateVerificationStatus;
   /** The encounter it is recorded in, if any. */
   encounterId?: Id;
-  /** The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003. */
+  /** The substance: RxNorm for drugs, SNOMED CT for others, or text. A "no known allergies" statement uses SNOMED CT 716186003. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one. */
   code: CodeableConcept;
   /** Allergy or intolerance. */
   type?: AllergyCreateType;
@@ -45,7 +45,7 @@ export interface AllergyCreate {
   categories?: AllergyCreateCategoriesItem[];
   /** Potential for a serious reaction. */
   criticality?: AllergyCreateCriticality;
-  /** When it started. */
+  /** When it started. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted: `YYYY` and `YYYY-MM` get `422`. */
   onsetDate?: PartialDate;
   /**
      * Reactions.

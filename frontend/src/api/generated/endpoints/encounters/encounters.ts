@@ -680,7 +680,7 @@ export const getDeclineFollowUpRequestUrl = (encounterId: Id,) => {
 }
 
 /**
- * At check-out, when the patient does not book the revisit (D98). Front desk and ADM only (`follow-ups:decline`); the clinician who asked for it withdraws it instead (`…/follow-up/withdraw`, D67). The request becomes `declined` with the reason. `If-Match` carries the encounter's `ETag`, so a decline never overwrites a request the clinician just changed.
+ * At check-out, when the patient does not book the revisit (D98). Front desk and ADM only (`follow-ups:decline`); the clinician who asked for it withdraws it instead (`…/follow-up/withdraw`, D67). The request becomes `declined` with the reason. `If-Match` carries the follow-up summary's `version` (the encounter's `ETag`, which the front desk sees on the appointment and the staff status board), so a decline never overwrites a request the clinician just changed; the response returns the new `ETag`. A restricted chart needs no break-glass here (D107): the decline is audited naming the patient, and for a restricted patient the response leaves out `note`.
  * @summary Record that the follow-up was not booked
  */
 export const declineFollowUpRequest = async (encounterId: Id,
@@ -2665,7 +2665,7 @@ export const getGetAfterVisitSummaryDownloadUrlUrl = (encounterId: Id,) => {
 }
 
 /**
- * A short-lived download link to the encounter's latest after-visit summary, generated from a signed note (D98), so the front desk can print it at check-out without generating one (`after-visit-summaries:create` stays with MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists.
+ * A short-lived download link to the encounter's latest after-visit summary, generated from a signed note (D98), so the front desk can print it at check-out without generating one (`after-visit-summaries:create` stays with MD and APP) and without the clinician's operation. Audited as a chart read. `404` until a summary exists. A restricted chart gets the normal chart check (D37; the front-desk exceptions of D107 don't cover it, D109). A user without a break-glass grant who is not on the care team, the front desk included, gets `403 break-glass-required`; care-team members, and users with a grant, read it without break-glass.
  * @summary Get the latest after-visit summary to print
  */
 export const getAfterVisitSummaryDownloadUrl = async (encounterId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getAfterVisitSummaryDownloadUrlResponse> => {

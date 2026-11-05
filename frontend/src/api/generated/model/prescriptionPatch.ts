@@ -22,7 +22,7 @@ import type { PrescriptionQuantity } from './prescriptionQuantity';
  * Changes to a draft; only what is sent. A signed prescription is locked (`409 record-locked`).
  */
 export interface PrescriptionPatch {
-  /** The drug. */
+  /** The drug. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one. */
   medication?: CodeableConcept;
   /**
      * Directions.

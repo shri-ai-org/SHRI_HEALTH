@@ -22,6 +22,7 @@ import type { Date } from './date';
 import type { Email } from './email';
 import type { Employer } from './employer';
 import type { HumanName } from './humanName';
+import type { Id } from './id';
 import type { PatientCreateDuplicateCheck } from './patientCreateDuplicateCheck';
 import type { PatientCreateMaritalStatus } from './patientCreateMaritalStatus';
 import type { PatientIdentifierCreate } from './patientIdentifierCreate';
@@ -86,6 +87,8 @@ export interface PatientCreate {
   address?: Address;
   /** Employer (approved P0 item, D38). Decided (D38/D39); its column is migration item A45 (Anand). */
   employer?: Employer;
+  /** The patient's primary provider (FHIR `Patient.generalPractitioner`), chosen from `GET /booking/providers` (D49). Absent when none is chosen. */
+  generalPractitionerId?: Id;
   /**
      * Identifiers to record at registration, e.g. the driver's license number from the scan. Never the MRN.
      * @maxItems 10
