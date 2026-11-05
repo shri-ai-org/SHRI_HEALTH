@@ -200,6 +200,9 @@ reset() {
         sh "$REPO/infra/keycloak/reset-demo-users.sh"
     say "Starting the API and the worker"
     $DC up -d api integration-worker
+    # Nginx resolves the API's address only when it starts, and a restarted API can come back on
+    # a new one (502 on every request): recreate it, as `up` does.
+    $DC up -d --no-deps --force-recreate nginx
     check
 }
 
