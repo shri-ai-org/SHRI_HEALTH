@@ -6,10 +6,14 @@
 #   KC_URL=https://localhost:8443/kc KC_ADMIN=admin KC_ADMIN_PASSWORD=... DEMO_PASSWORD=... \
 #       sh infra/keycloak/reset-demo-users.sh
 #
-# Safe to run again: Keycloak's partial import with ifResourceExists=OVERWRITE puts each user back
-# exactly as below (same ID, enabled, the password reset to DEMO_PASSWORD, the one-time code to
-# set up again at the next sign-in). The password comes from the environment, never from this
-# file; it must meet the realms' policy (at least 12 characters, not the username or email).
+# Safe to run again, and run by every demo `up` and `reset`: a missing user is created as below
+# (fixed ID, the password DEMO_PASSWORD, the one-time code to set up at the first sign-in); an
+# existing one keeps its password and its authenticator, so presenters don't enrol again between
+# rehearsals, and is enabled again (the demo disables one in the console, D101). Multi-factor
+# stays required either way. DEMO_USERS_RECREATE=1 puts every user back exactly as below
+# instead (the password reset, the authenticator removed): for a lost phone or password.
+# The password comes from the environment, never from this file; it must meet the realms' policy
+# (at least 12 characters, not the username or email).
 # The patient realm is skipped, with a note, until it exists (#148).
 #
 # Needs curl and sed only. No secret is ever printed or put on a command line (where `ps` would
@@ -65,22 +69,34 @@ user() {
 }
 
 import() {  # realm users-json
-    body=$(printf '{"ifResourceExists":"OVERWRITE","users":[%s]}' "$2")
+    existing=SKIP
+    [ "${DEMO_USERS_RECREATE:-}" = 1 ] && existing=OVERWRITE
+    body=$(printf '{"ifResourceExists":"%s","users":[%s]}' "$existing" "$2")
     $CURL -o /dev/null -K "$auth" -H "Content-Type: application/json" \
         --data-binary @- "$KC_URL/admin/realms/$1/partialImport" <<EOF
 $body
 EOF
 }
 
+enable() {  # realm user-id...: a skipped user may have been disabled in the console (D101)
+    realm=$1; shift
+    for id in "$@"; do
+        $CURL -o /dev/null -K "$auth" -X PUT -H "Content-Type: application/json" \
+            -d '{"enabled":true}' "$KC_URL/admin/realms/$realm/users/$id"
+    done
+}
+
 import shri-staff "$(user "$FD_ID" demo.frontdesk demo.frontdesk@example.com Marlo512 Ferreira77),\
 $(user "$MA_ID" demo.ma demo.ma@example.com Tobias289 Lindqvist45),\
 $(user "$MD_ID" demo.doctor demo.doctor@example.com Rowan318 Halvorsen64),\
 $(user "$ADM_ID" demo.admin demo.admin@example.com Sasha627 Brennan52)"
+enable shri-staff "$FD_ID" "$MA_ID" "$MD_ID" "$ADM_ID"
 echo "shri-staff: demo.frontdesk ($FD_ID), demo.ma ($MA_ID), demo.doctor ($MD_ID), demo.admin ($ADM_ID)"
 
 if $CURL -o /dev/null -K "$auth" "$KC_URL/admin/realms/shri-patients" 2>/dev/null; then
     # The patient signs in with the email as username (the realm's rule).
     import shri-patients "$(user "$PATIENT_ID" demo.patient@example.com demo.patient@example.com Kaia401 Lindgren118)"
+    enable shri-patients "$PATIENT_ID"
     echo "shri-patients: demo.patient@example.com ($PATIENT_ID)"
 else
     echo "shri-patients: the realm doesn't exist yet (#148); skipped"

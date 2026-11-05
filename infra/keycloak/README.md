@@ -60,8 +60,14 @@ Every run also weakens a copy of the realm file four ways (reset on, code CONDIT
 `reset-demo-users.sh` puts the demo's synthetic users back, with fixed Keycloak user IDs that the
 database seed refers to (#85): `demo.frontdesk`, `demo.ma`, `demo.doctor` and `demo.admin` in
 `shri-staff`, and `demo.patient@example.com` in `shri-patients` (`realms/shri-patients.json`). Safe to
-run again; each run resets the password to `DEMO_PASSWORD` and asks for the one-time code to be
-set up again at the next sign-in.
+run again, and every demo `deploy.sh up` and `reset` runs it:
+- a **missing** user is created with the password `DEMO_PASSWORD` and sets up the one-time code at its
+  first sign-in;
+- an **existing** user keeps its password and authenticator, so presenters enrol once, not before every
+  rehearsal; it is enabled again (the demo disables one in the console, D101).
+
+`DEMO_USERS_RECREATE=1` puts every user back exactly as defined instead: the password reset and the
+authenticator removed, for a lost phone or password. Multi-factor stays required in every case.
 
 ```bash
 read -rs -p "Keycloak admin password: " KC_ADMIN_PASSWORD; echo
