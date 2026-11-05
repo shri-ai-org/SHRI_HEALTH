@@ -14,8 +14,9 @@ test. The test server uses real sign-in, so this script doesn't run against it y
 the demo layer is enough for steps 1 to 4. Steps 5 and 6 also need the code releases loaded
 (``python -m app.db.terminology icd10cm …`` and ``… rxnorm …``); without them they fail with
 "no codes loaded". The seed's all-day schedules give free times from today, so the visit is
-booked today, at the first free time at least 5 minutes ahead. The revisit is booked from 14
-days after the visit; it fails if no provider has a free time within the following 2 weeks.
+booked today, at the first free time at least 5 minutes ahead. The revisit is booked exactly 14
+days after the visit, in the facility's time zone, with the same provider; it fails, and says
+so, if that day has no free time (the demo seed's weekly all-day rules have no end date).
 
 **The local difference: encryption.** The after-visit summary is stored encrypted and
 idempotent replies are kept encrypted, both through core's OpenBao Transit. The test server
@@ -45,6 +46,8 @@ import httpx
 API = "/api/v1"
 ICD10CM = "http://hl7.org/fhir/sid/icd-10-cm"
 RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm"
+#: The revisit is booked exactly this many days after the visit, in the facility's time zone.
+REVISIT_DAYS = 14
 STEPS = {1: "register the patient", 2: "book", 3: "check in", 4: "room",
          5: "doctor: diagnosis and signed note", 6: "prescribe and send",
          7: "check-out: follow-up, summary, revisit"}
@@ -60,6 +63,7 @@ class Visit:
     tag: str = field(default_factory=lambda: uuid.uuid4().hex[:6])
     patient: str = ""
     facility: str = ""
+    zone: str = "UTC"
     provider: str = ""
     visit_type: str = ""
     start: str = ""
@@ -189,8 +193,8 @@ def book(c: Client, v: Visit) -> str:
     soon = dt.datetime.now(dt.UTC) + dt.timedelta(minutes=5)
     start = None
     for facility in facilities:
-        v.facility = facility["id"]
-        today = soon.astimezone(ZoneInfo(facility["timeZone"])).date()
+        v.facility, v.zone = facility["id"], facility["timeZone"]
+        today = soon.astimezone(ZoneInfo(v.zone)).date()
         for provider in _items(c.call("fd", "GET", f"/booking/providers?facilityId={v.facility}")):
             v.provider = provider["id"]
             if start := _free_time(c, v, today, soon):
@@ -301,11 +305,13 @@ def check_out(c: Client, v: Visit) -> str:
                   {"noteId": v.note}, expect=(202,))
     c.wait(made, "md")
     c.call("fd", "GET", f"/encounters/{v.encounter}/after-visit-summary/download-url")
-    first = dt.date.fromisoformat(v.start[:10]) + dt.timedelta(days=14)
-    start = next((s for d in range(14) if (s := _free_time(
-        c, v, first + dt.timedelta(days=d), dt.datetime.now(dt.UTC)))), None)
+    visit_day = dt.datetime.fromisoformat(v.start.replace("Z", "+00:00")).astimezone(
+        ZoneInfo(v.zone)).date()
+    revisit_day = visit_day + dt.timedelta(days=REVISIT_DAYS)    # the follow-up's 2 weeks
+    start = _free_time(c, v, revisit_day, dt.datetime.now(dt.UTC))
     if start is None:
-        raise StepFailed("no free time for the revisit in the 2 weeks after the follow-up date")
+        raise StepFailed(f"no free time on {revisit_day}, {REVISIT_DAYS} days out, for the "
+                         "visit's provider (the demo seed's weekly all-day rules give some)")
     c.call("fd", "POST", "/appointments", {
         "patientId": v.patient, "providerId": v.provider, "facilityId": v.facility,
         "appointmentTypeId": v.visit_type, "startAt": start,
