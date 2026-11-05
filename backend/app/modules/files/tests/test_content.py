@@ -243,8 +243,10 @@ async def test_a_tampered_file_is_never_served(setup: Setup) -> None:
     """Refused before the first byte: the response never starts."""
     file = await setup.file()
     sealed, content_type = setup.store.objects[(CLEAN_BUCKET, file.storage_key)]
-    setup.store.objects[(CLEAN_BUCKET, file.storage_key)] = (sealed[:-1] + b"\x00",
-                                                             content_type)
+    # One bit of the tag flipped: setting the byte to a fixed value left it unchanged
+    # whenever the random tag already ended in it (1 run in 256).
+    setup.store.objects[(CLEAN_BUCKET, file.storage_key)] = (
+        sealed[:-1] + bytes([sealed[-1] ^ 0x01]), content_type)
     with pytest.raises(FileTampered) as refused:
         await setup.serve(file, setup.token(file))
     assert refused.value.status == 500
