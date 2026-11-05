@@ -83,9 +83,13 @@ function licenceOf(meta) {
 
 const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
 const failures = policyProblems();
+// Our own workspace folders (our code, AGPL-3.0, D76): only those the project lists, and only
+// when the lockfile shows they weren't fetched from a registry. Their dependencies are checked.
+const workspaces = new Set(lock.packages['']?.workspaces ?? []);
 let checked = 0;
 for (const [path, entry] of Object.entries(lock.packages)) {
   if (path === '' || entry.link) continue; // the project itself, and workspace links
+  if (workspaces.has(path) && !entry.resolved && !path.includes('node_modules/')) continue;
   checked += 1;
   const name = path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length);
   const listed = policy.packages[`npm:${name}`];
