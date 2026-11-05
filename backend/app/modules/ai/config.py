@@ -20,10 +20,16 @@ from collections.abc import Mapping, Sequence
 from urllib.parse import urlsplit
 
 from .model_client import ModelClient, ModelError, ModelReply, OpenAICompatibleClient
+from .speech_client import OpenAICompatibleSpeech, SpeechClient, UnconfiguredSpeech
 
 MODEL_URL_ENV = "SHRI_AI_MODEL_URL"
 MODEL_NAME_ENV = "SHRI_AI_MODEL_NAME"
 MODEL_TOKEN_ENV = "SHRI_AI_MODEL_TOKEN"  # noqa: S105 (the variable's name, not a secret)
+# The speech server (faster-whisper behind an OpenAI-compatible /v1/audio/transcriptions), the
+# same way: a URL, the served model's name and its machine credential.
+SPEECH_URL_ENV = "SHRI_AI_SPEECH_URL"
+SPEECH_MODEL_ENV = "SHRI_AI_SPEECH_MODEL"
+SPEECH_TOKEN_ENV = "SHRI_AI_SPEECH_TOKEN"  # noqa: S105 (the variable's name, not a secret)
 
 
 class UnconfiguredModel:
@@ -42,3 +48,12 @@ def configured_model() -> ModelClient:
         return UnconfiguredModel()
     return OpenAICompatibleClient(base_url=url, model=name,
                                   token=os.environ.get(MODEL_TOKEN_ENV) or None)
+
+
+def configured_speech() -> SpeechClient:
+    """FastAPI dependency: the configured speech server, or ``UnconfiguredSpeech``."""
+    url, name = os.environ.get(SPEECH_URL_ENV, ""), os.environ.get(SPEECH_MODEL_ENV, "")
+    if not url or not name or urlsplit(url).scheme not in ("http", "https"):
+        return UnconfiguredSpeech()
+    return OpenAICompatibleSpeech(base_url=url, model=name,
+                                  token=os.environ.get(SPEECH_TOKEN_ENV) or None)
