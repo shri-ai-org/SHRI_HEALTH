@@ -106,7 +106,7 @@ export function RegisterFromPortalPage() {
     loadPayers()
       .then((list) => live && setPayers(list))
       .catch((error: unknown) => live && setPayersError(problemMessage(error)))
-    // The Provider select: sent as generalPractitionerId once the backend accepts it (#212).
+    // The Provider select: sent as generalPractitionerId once #225 merges (TODO(#225)); left out until then.
     loadProviders()
       .then((list) => live && setProviders(list))
       .catch(() => undefined)
@@ -267,7 +267,7 @@ export function RegisterFromPortalPage() {
           <>
             <Section title="Choices">
               <FieldGrid>
-                {/* TODO(backend after #212): listed from GET /booking/providers; sent as generalPractitionerId once the backend accepts it. */}
+                {/* TODO(#225): listed from GET /booking/providers; sent as generalPractitionerId once #225 merges. */}
                 <SelectField id="reg-provider" name="provider" label="Provider" placeholder="Select Provider" options={providers} value={c.provider} onChange={(v) => set('choicesForm', 'provider', v)} />
                 {/* TODO(stage 1 gap): a portal invitation needs the photo-ID check at the desk; shown, not sent. */}
                 <RadioField id="reg-AllowPatientPortal" name="AllowPatientPortal" label="Allow Patient Portal" required options={['Yes', 'No']} value={c.AllowPatientPortal} onChange={(v) => set('choicesForm', 'AllowPatientPortal', v)} />

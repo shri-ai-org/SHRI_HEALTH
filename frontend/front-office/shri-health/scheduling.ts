@@ -345,16 +345,13 @@ export async function rescheduleOnServer(appointmentId: string, input: Reschedul
 
 /** A patient's bookings about three months back and ahead (31-day windows, D62), into the store. */
 export async function loadPatientAppointments(patientId: string): Promise<Appointment[]> {
-  const { facility } = await loadBookable()
-  const start = addDaysToKey(todayKey(), -93)
-  const windows = Array.from({ length: 6 }, (_, i) => addDaysToKey(start, i * 31))
-  const pages = await Promise.all(
-    windows.map(async (from) => {
-      const res = await apiListAppointments({ facilityId: facility.id, patientId, dateFrom: from, dateTo: addDaysToKey(from, 30), limit: 100 })
-      return res.status === 200 ? res.data.items : []
-    }),
-  )
-  return reconcileAppointments(pages.flat())
+  // TODO(listPatientAppointments): the visit history waits for its own operation (Vimal, 2026-11-05:
+  // cursor-paged, newest first, optional dateFrom/dateTo, no cap, the same facility and
+  // restricted-chart rules; contract PR not written yet). listAppointments is not a substitute (it
+  // reads 31 days a call), so until then the profile reads nothing more: its Visit History shows
+  // only the bookings this desk already has (today's schedule, a booking made here).
+  void patientId
+  return []
 }
 
 /**

@@ -59,7 +59,7 @@ export function PatientProfilePage() {
               : { uhid, state: err instanceof ApiError && err.status === 404 ? 'done' : 'failed', message: problemMessage(err) },
           ),
         )
-      // Its bookings too (the visit history), not only today's.
+      // The visit history: nothing read until listPatientAppointments exists (TODO in loadPatientAppointments).
       void loadPatientAppointments(uhid).catch(() => undefined)
     }
   }, [uhid])

@@ -15,7 +15,7 @@
 //   basicInfo.address, city, state, zip        ⇒ address (lines, city, state, postalCode); country is US
 //   basicInfo.maritalStatus, gender, email     ⇒ maritalStatus (v3 code), gender, emails[0]
 //   choicesForm.Language                       ⇒ preferredLanguage (BCP 47)
-//   choicesForm.provider                       ⇒ generalPractitionerId (#212), once the backend accepts it
+//   choicesForm.provider                       ⇒ generalPractitionerId once #225 merges (left out until then; it would be refused)
 //   basicInfo.relation*                        ⇒ addRelatedPerson: v2-0131 C emergency contact + the relation
 //   choicesForm.ResponsibleParty               ⇒ "Same as Emergency Contact" adds v3 RoleCode GUAR to that person
 //   choicesForm.insuranceCompany, policyNumber,
@@ -330,7 +330,7 @@ export async function loadPayers(): Promise<Option[]> {
 
 /**
  * Providers for the Provider select: `GET /booking/providers` (D49), which the front desk can read
- * (Vimal on #85, 2026-11-03). TODO(backend after #212): send the choice as `generalPractitionerId`.
+ * (Vimal on #85, 2026-11-03). TODO(#225): send the choice as `generalPractitionerId` once #225 merges; left out until then.
  * The contract has it (#212), but the patients backend doesn't yet and refuses unknown fields (422).
  */
 export async function loadProviders(): Promise<Option[]> {

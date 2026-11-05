@@ -43,7 +43,7 @@ export class DeskRefusal extends Error {
   }
 }
 
-/** The break-glass refusal (D109): the sheet offers break-glass for this patient, then retries. */
+/** The break-glass refusal (D109): a restricted chart, so the desk sends the care team to print the summary (gap 52, by design). */
 export class DeskBreakGlass extends Error {}
 
 function fromSummary(f: FollowUpSummary | FollowUpRequest): DeskFollowUp {

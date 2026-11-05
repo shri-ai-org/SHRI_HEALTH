@@ -161,8 +161,9 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
       }
       setSummaryNote(url ? 'Opened in a new tab.' : 'There is no after-visit summary for this visit yet.')
     } catch (e) {
-      // D109: a restricted chart's summary needs break-glass; the desk has no break-glass screen yet (gap 52).
-      setSummaryNote(e instanceof DeskBreakGlass ? 'This chart is restricted: the summary needs break-glass, which the clinician can record.' : e instanceof Error ? e.message : String(e))
+      // D109, by design (gap 52): on 403 break-glass-required the desk can't print a restricted chart's
+      // summary, and the desk gets no break-glass option; the care team prints it.
+      setSummaryNote(e instanceof DeskBreakGlass ? 'Restricted chart: ask the care team to print it.' : e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(null)
     }
