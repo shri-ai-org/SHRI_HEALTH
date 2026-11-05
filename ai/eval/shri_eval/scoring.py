@@ -11,6 +11,13 @@ Four families of scores, each in 0..1 where 1 is best, plus the raw findings beh
 - **format**: the draft is JSON matching note_draft.schema.json, uses only its template's
   section codes, once each, and fills every required section.
 
+Also measured, not weighted into ``overall`` (so ``overall`` stays comparable across versions):
+
+- **editSimilarity**: how close the draft is to the reference note, as a clinician would feel
+  it when editing: 1 minus the word-level edit distance (Levenshtein over ``text.tokens``) from
+  the draft's sections to the reference's, divided by the longer of the two. The findings give
+  the distance and each section's similarity, so the sections a clinician would rewrite stand out.
+
 Baseline (version ``SCORING_VERSION``)
 --------------------------------------
 The invention check is lexical, a floor to measure models against:
@@ -37,7 +44,7 @@ from . import text as tx
 from .dataset import DRAFT_SCHEMA, LEXICON, Visit, load_json
 from .schema import validate
 
-SCORING_VERSION = "lexical-baseline/1"
+SCORING_VERSION = "lexical-baseline/2"  # 2: adds editSimilarity (not weighted)
 SUPPORT_THRESHOLD = 0.6
 WEIGHTS = {"sectionCoverage": 0.2, "factRecall": 0.25, "invention": 0.25,
            "medicalTerms": 0.15, "format": 0.15}
@@ -54,6 +61,7 @@ class Scores:
     medicalTerms: float
     format: float
     overall: float = 0.0
+    editSimilarity: float = 0.0
     findings: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
@@ -135,6 +143,28 @@ def _doses(text_: str, drug: str) -> set[str]:
     return {tx.numbers(d).pop() for d in found if tx.numbers(d)}
 
 
+def edit_distance(a: list[str], b: list[str]) -> int:
+    """Levenshtein distance between two word lists (insert, delete or replace a word: 1 each)."""
+    if len(a) < len(b):
+        a, b = b, a
+    previous = list(range(len(b) + 1))
+    for i, word in enumerate(a, 1):
+        current = [i]
+        for j, other in enumerate(b, 1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1,
+                               previous[j - 1] + (word != other)))
+        previous = current
+    return previous[-1]
+
+
+def similarity(draft: str, reference: str) -> tuple[float, int]:
+    """1 - edit distance / the longer word count (1.0 when both are empty), and the distance."""
+    a, b = tx.tokens(draft), tx.tokens(reference)
+    distance = edit_distance(a, b)
+    longest = max(len(a), len(b))
+    return (1 - distance / longest if longest else 1.0), distance
+
+
 def score(visit: Visit, content: str) -> Scores:
     """Scores one model reply (the raw message content) for one visit."""
     draft, parse = parse_draft(content)
@@ -191,11 +221,21 @@ def score(visit: Visit, content: str) -> Scores:
     errors = format_errors(visit, draft, parse)
     fmt = 1.0 if not errors else 0.0
 
+    # Edit similarity to the reference note, section by section in the reference's order
+    by_section = {code: round(similarity(texts.get(code, ""), ref_text)[0], 4)
+                  for code, ref_text in visit.reference_sections.items()}
+    ordered = [texts.get(code, "") for code in visit.reference_sections] + [
+        t for code, t in texts.items() if code not in visit.reference_sections]
+    edit_similarity, edit_words = similarity("\n".join(ordered), reference)
+
     parts = {"sectionCoverage": section_coverage, "factRecall": fact_recall,
              "invention": invention, "medicalTerms": medical_terms, "format": fmt}
     overall = sum(WEIGHTS[k] * v for k, v in parts.items())
     return Scores(**{k: round(v, 4) for k, v in parts.items()}, overall=round(overall, 4),
+                  editSimilarity=round(edit_similarity, 4),
                   findings={
+                      "editDistanceWords": edit_words,
+                      "sectionEditSimilarity": by_section,
                       "missingSections": [c for c in expected if c not in covered],
                       "missingFacts": missing_facts,
                       "mustNotInventHits": must_not,
