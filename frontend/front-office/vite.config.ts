@@ -83,8 +83,7 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         main: resolve(import.meta.dirname, 'index.html'),
-        patientSelfRegistration: resolve(import.meta.dirname, 'patient-self-registration/index.html'),
-        patientSelfRegistrationDemo: resolve(import.meta.dirname, 'patient-self-registration/demo.html'),
+        // The patient self-registration pages are left out (D108: cut from the demo).
       },
     },
   },
