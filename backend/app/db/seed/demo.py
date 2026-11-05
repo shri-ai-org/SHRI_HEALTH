@@ -14,9 +14,9 @@ user ID, and a ``user_role`` row at the main office for its role, against migrat
 platform roles) and the demo patient's active portal account (``keycloak_user_id``), linked to
 the patient with the demo visit. No password is stored or seeded: they live in Keycloak.
 
-Every demo provider is also bookable all day, every day (``_all_day_schedules``): each run sets
-their all-day rules to start on each facility's own today and run for the next 7 days, so a
-rehearsal or the demo itself always has free times. The seed's environment guard is unchanged.
+Every demo provider is also bookable all day, every day (``_all_day_schedules``): weekly
+recurring rules with no end date, so a rehearsal, the demo or a revisit weeks ahead always has
+free times. The seed's environment guard is unchanged.
 """
 from __future__ import annotations
 
@@ -24,7 +24,6 @@ import datetime as dt
 import uuid
 from dataclasses import dataclass
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -217,17 +216,17 @@ def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> N
 
 
 #: Every demo provider is bookable all day, every day, in each facility's own time zone (Vimal,
-#: 2 Nov): one rule per weekday, 00:00 to 23:59 local, on top of the starter's office hours (free
-#: times are keyed by start and provider, so the two never double up). The rules hold from the
-#: facility's today for the next 7 days. Every seed run and reset moves them to that run's
-#: today, so a demo or rehearsal on any day has free times; the same day again changes nothing.
+#: 2 Nov and 5 Nov): one weekly rule per weekday, 00:00 to 23:59 local (never 24:00, which the
+#: database refuses, #204), on top of the starter's office hours (free times are keyed by start
+#: and provider, so the two never double up). The rules start with the starter's and have no end
+#: date, so any day, and a revisit weeks ahead, has free times. The same IDs as the earlier
+#: 8-day window, so a database seeded before is moved to these rules, with nothing left over.
 ALL_DAY = (dt.time(0, 0), dt.time(23, 59))
 ALL_DAY_SLOT_MINUTES = 20
-ALL_DAY_AHEAD = 7
 DAYS_OF_WEEK = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
-def _all_day_schedules(db: Session, visits: dict[str, uuid.UUID], now: dt.datetime) -> None:
+def _all_day_schedules(db: Session, visits: dict[str, uuid.UUID]) -> None:
     starter._set_clinic(db, CLINIC_A)
     link = M["availability_rule_appointment_type"]
     for i in range(1, len(starter.PROVIDERS) + 1):
@@ -235,19 +234,17 @@ def _all_day_schedules(db: Session, visits: dict[str, uuid.UUID], now: dt.dateti
             n = i * 10 + j
             schedule = db.get_one(M["schedule"], sid(SCHEDULE, n))  # the starter layer's
             facility = db.get_one(M["facility"], schedule.ext_facility_id)
-            today = now.astimezone(ZoneInfo(facility.timezone)).date()
             values = {"tenant_id": CLINIC_A, "schedule_id": schedule.id,
                       "start_time": ALL_DAY[0], "end_time": ALL_DAY[1],
                       "slot_minutes": ALL_DAY_SLOT_MINUTES, "location_id": facility.location_id,
-                      "effective_from": today,
-                      "effective_to": today + dt.timedelta(days=ALL_DAY_AHEAD)}
+                      "effective_from": starter.EFFECTIVE_FROM, "effective_to": None}
             for d, day in enumerate(DAYS_OF_WEEK, start=1):
                 rule = db.get(M["schedule_availability_rule"], sid(ALL_DAY_RULE, n * 10 + d))
                 if rule is None:
                     rule = M["schedule_availability_rule"](
                         id=sid(ALL_DAY_RULE, n * 10 + d), day_of_week=day, **values)
                     db.add(rule)
-                else:                           # only what differs, so a same-day rerun is a no-op
+                else:                           # only what differs, so a rerun is a no-op
                     for name, value in values.items():
                         if getattr(rule, name) != value:
                             setattr(rule, name, value)
@@ -259,9 +256,8 @@ def _all_day_schedules(db: Session, visits: dict[str, uuid.UUID], now: dt.dateti
     db.flush()
 
 
-def load_demo(db: Session, *, now: dt.datetime | None = None) -> None:
-    """Loads the starter layer, then the demo layer, in the session's transaction. ``now`` (UTC,
-    for tests) decides the all-day schedule's today; the real clock otherwise."""
+def load_demo(db: Session) -> None:
+    """Loads the starter layer, then the demo layer, in the session's transaction."""
     starter.load_starter(db)                    # checks the environment first
     _payers(db)
     _consent_requirements(db)
@@ -273,5 +269,5 @@ def load_demo(db: Session, *, now: dt.datetime | None = None) -> None:
                 patient_id=sid(PATIENT, p.n), pharmacy_id=PHARMACY_ID, is_default=True)
         _appointment(db, p, visits)
     _demo_users(db)
-    _all_day_schedules(db, visits, now or dt.datetime.now(dt.UTC))
+    _all_day_schedules(db, visits)
     db.flush()
