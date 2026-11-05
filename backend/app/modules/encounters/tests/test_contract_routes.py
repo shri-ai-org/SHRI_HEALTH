@@ -29,9 +29,7 @@ NOTES = frozenset({
     "addNoteAddendum", "listNoteVersions", "closeEncounter", "cosignNote",
     "markNoteEnteredInError",
 })
-# markDiagnosisEnteredInError keeps the rank link, and app.db.fhir_store has no helper for a
-# Condition's entered-in-error (note for Anand).
-NOTES_PENDING = frozenset({"markDiagnosisEnteredInError"})
+NOTES_PENDING: frozenset[str] = frozenset()
 
 
 # Check-out (demo steps 10-11, D98).

@@ -258,6 +258,14 @@ class FakeClinicalStore(FakeStore):
                 other.rank -= 1
         return Written(encounter_id, 1, NOW)
 
+    async def diagnosis_entered_in_error(self, db: Any, condition_id: UUID, reason: Reason, *,
+                                         if_version: int | None = None) -> Written:
+        d = self.notes_world.diagnoses[condition_id]
+        if d.status == "entered-in-error":
+            raise InvalidTransition(d.status)
+        d.status, d.version = "entered-in-error", d.version + 1  # the rank link stays
+        return Written(condition_id, d.version, NOW)
+
     async def create_note(self, db: Any, data: NoteIn) -> Written:
         e = self.world.encounters[data.encounter_id]
         n = FakeNote(uuid.uuid4(), data.encounter_id, e.patient_id, data.title,

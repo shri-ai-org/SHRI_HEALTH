@@ -3,7 +3,7 @@ route's operation_id is the contract's operationId; the permission (`require`) i
 dependency. Every route runs the facility and restricted-chart checks first (D37), and names the
 patient for core's audit (x-audit patient "result") before the commit.
 
-markDiagnosisEnteredInError (#73) is not built yet: see diagnoses_service.py.
+markDiagnosisEnteredInError (#73) works only on a signed visit: see diagnoses_service.py.
 """
 
 from typing import Annotated
@@ -64,3 +64,18 @@ async def remove_encounter_diagnosis(
                                     lambda patient_id: audit(request, [patient_id]))
     response.headers["ETag"] = service.etag(removed.version)
     return removed.value
+
+
+@router.post(DIAGNOSIS + "/entered-in-error", operation_id="markDiagnosisEnteredInError",
+             response_model=schemas.EncounterDiagnosis, response_model_exclude_none=True)
+async def mark_diagnosis_entered_in_error(
+    user: Annotated[CurrentUser, Depends(require("diagnoses:entered-in-error"))],
+    encounter_id: EncounterId, diagnosis_id: DiagnosisId, body: dschemas.DiagnosisEnteredInError,
+    request: Request, response: Response, db: DB, repo: Repo, drepo: DRepo, store: Store,
+    check: Check, audit: Audit,
+) -> schemas.EncounterDiagnosis:
+    marked = await dservice.mark_entered_in_error(
+        db, repo, drepo, store, check, user, encounter_id, diagnosis_id, body.reason,
+        lambda patient_id: audit(request, [patient_id]))
+    response.headers["ETag"] = service.etag(marked.version)
+    return marked.value

@@ -161,6 +161,46 @@ def test_diagnoses_are_ranked_and_removed_before_signing(client: Any,
                 p=practice.patients["kaia"])[0][0] >= 2
 
 
+def test_a_signed_visits_diagnosis_is_marked_entered_in_error(client: Any,
+                                                              practice: Practice) -> None:
+    """#73 on the real tables: refused before signing (remove instead); after it, the Condition
+    is entered-in-error with its Provenance and keeps its rank link; it leaves the workspace."""
+    from .test_doctor_visit_live import _signed_note  # its helpers import this module
+
+    _terminology(practice)
+    encounter = _visit(client, practice)
+    path = f"{API}/encounters/{encounter}/diagnoses"
+    first = client("md").post(path, json=_icd("I10"))
+    second = client("md").post(path, json=_icd("E11.9"))
+    assert first.status_code == 201 and second.status_code == 201
+    mark = f"{path}/{first.json()['id']}/entered-in-error"
+    early = client("md").post(mark, json={"reason": "Coded the wrong laterality."})
+    assert early.status_code == 409 and early.json()["currentState"] == "unsigned"
+    _signed_note(client, practice, encounter)
+    assert client("fd").post(mark, json={"reason": "Wrong."}).status_code == 403
+    assert client("md").post(mark, json={"reason": " "}).status_code == 422
+    assert client("md-b").post(mark, json={"reason": "Wrong."}).status_code == 404
+    elsewhere = f"{path}/{uuid.uuid4()}/entered-in-error"
+    assert client("md").post(elsewhere, json={"reason": "Wrong."}).status_code == 404
+    done = client("md").post(mark, json={"reason": "Coded the wrong laterality."})
+    assert done.status_code == 200, done.text
+    body = done.json()
+    assert body["verificationStatus"] == "entered-in-error" and body["rank"] == 1
+    assert done.headers["ETag"].startswith('"')
+    again = client("md").post(mark, json={"reason": "Again."})
+    assert again.status_code == 409 and again.json()["currentState"] == "entered-in-error"
+    workspace = client("md").get(f"{API}/encounters/{encounter}").json()
+    assert [d["code"]["code"] for d in workspace["diagnoses"]] == ["E11.9"]  # out of the chart
+    assert _sql(practice, "SELECT rank FROM clinical.encounter_diagnosis WHERE condition_id = :c",
+                c=first.json()["id"])[0][0] == 1  # the rank link stays (D24)
+    reason = _sql(practice, "SELECT reason_text, activity_code FROM clinical.provenance "
+                  "WHERE target_id = :c", c=first.json()["id"])
+    assert [tuple(r) for r in reason] == [("Coded the wrong laterality.", "NULLIFY")]
+    assert _sql(practice, "SELECT count(*) FROM audit.audit_event WHERE entity_type = "
+                "'diagnoses' AND entity_id = :d AND patient_id = :p AND action = 'update'",
+                d=first.json()["id"], p=practice.patients["kaia"])[0][0] == 1
+
+
 def test_a_restricted_chart_needs_break_glass_for_diagnoses_and_notes(
         client: Any, practice: Practice) -> None:
     _terminology(practice)
@@ -171,6 +211,9 @@ def test_a_restricted_chart_needs_break_glass_for_diagnoses_and_notes(
     assert note.status_code == 403 and _code(note) == "break-glass-required"
     listed = client("md").get(f"{API}/encounters/{encounter}/notes")
     assert listed.status_code == 403
+    marked = client("md").post(f"{API}/encounters/{encounter}/diagnoses/{uuid.uuid4()}"
+                               "/entered-in-error", json={"reason": "Wrong."})
+    assert marked.status_code == 403 and _code(marked) == "break-glass-required"
     assert _sql(practice, "SELECT count(*) FROM clinical.composition WHERE encounter_id = :e",
                 e=encounter)[0][0] == 0
 
