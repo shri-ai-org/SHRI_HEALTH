@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -24,6 +24,7 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings
 from app.core.deps import DEV_USER_HEADER, DEV_USERS, CurrentUser, current_user
+from app.core.errors import Unauthorized
 from app.db.models import MAPPERS, systems
 from app.db.tests import builders as b
 from app.db.tests.conftest import (
@@ -35,6 +36,8 @@ from app.db.tests.conftest import (
     sync_url,
 )
 from app.main import create_app
+
+from . import pending_permissions
 
 M = MAPPERS
 ZONE = "America/Chicago"
@@ -217,15 +220,24 @@ def users(practice: Practice) -> dict[str, CurrentUser]:
     return signed
 
 
-@pytest.fixture
-def client(users: dict[str, CurrentUser]) -> Iterator[Any]:
-    """One app and TestClient per test, as shri_app; X-Dev-User names one of ``users``."""
+def make_client(users: dict[str, CurrentUser], pending: bool,
+                overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None
+                ) -> Iterator[Any]:
+    """The live app (as shri_app) and a TestClient per user name. ``pending``: with the routes
+    waiting for T50 (call ``pending_permissions.grant`` first). ``overrides``: dependencies to
+    replace (another owner's piece that isn't wired yet)."""
     app: FastAPI = create_app(Settings(environment="test", auth_mode="dev_header",
                                        database_url=TEST_DATABASE_URL))
+    if pending:
+        pending_permissions.mount(app)
+    app.dependency_overrides.update(overrides or {})
     switch_to_role(app.state.db.engine.sync_engine, "shri_app")
 
     def signed_in(request: Request) -> CurrentUser:
-        return users[request.headers[DEV_USER_HEADER]]
+        name = request.headers.get(DEV_USER_HEADER)
+        if name is None or name not in users:  # no session: 401, as core answers
+            raise Unauthorized("Sign in to continue")
+        return users[name]
 
     app.dependency_overrides[current_user] = signed_in
     with TestClient(app, raise_server_exceptions=False) as test_client:
@@ -235,3 +247,18 @@ def client(users: dict[str, CurrentUser]) -> Iterator[Any]:
         yield as_user
         assert test_client.portal is not None
         test_client.portal.call(app.state.db.dispose)
+
+
+@pytest.fixture
+def client(users: dict[str, CurrentUser]) -> Iterator[Any]:
+    """One app and TestClient per test, as shri_app; X-Dev-User names one of ``users``."""
+    yield from make_client(users, pending=False)
+
+
+@pytest.fixture
+def pending_client(users: dict[str, CurrentUser], monkeypatch: pytest.MonkeyPatch
+                   ) -> Iterator[Any]:
+    """As ``client``, with T50's permissions granted and the routes that wait for them
+    (check-out, decline, the summary's link; pending_permissions.py)."""
+    pending_permissions.grant(monkeypatch)
+    yield from make_client(users, pending=True)
