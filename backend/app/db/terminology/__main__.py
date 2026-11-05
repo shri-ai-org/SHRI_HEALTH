@@ -1,5 +1,6 @@
 """python -m app.db.terminology {rxnorm|icd10cm} <release>: load a terminology release (see the
-package docstring)."""
+package docstring). ``python -m app.db.terminology all``: fetch the pinned ICD-10-CM and RxNorm
+releases (checksum-verified, cached) and load both (app.db.terminology.fetch)."""
 from __future__ import annotations
 
 import os
@@ -9,20 +10,22 @@ from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
+import httpx
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from app.db.seed.__main__ import bypasses_rls
-from app.db.terminology import icd10cm, rxnorm
+from app.db.terminology import fetch, icd10cm, rxnorm
 
 #: The date in an NLM release name: RxNorm_full_prescribe_10052026.zip is 2026-10-05.
 RELEASE_DATE = re.compile(r"(\d{2})(\d{2})(\d{4})")
 
 
 USAGE = ("usage: python -m app.db.terminology rxnorm <release .zip or rrf folder>\n"
-         "       python -m app.db.terminology icd10cm <icd10cm_order_YYYY.txt>")
+         "       python -m app.db.terminology icd10cm <icd10cm_order_YYYY.txt>\n"
+         "       python -m app.db.terminology all    (fetch the pinned releases, load both)")
 
 
 def _engine() -> Engine | None:
@@ -46,7 +49,34 @@ def _run(engine: Engine, load: Callable[[Session], dict[str, int]]) -> dict[str,
         engine.dispose()
 
 
+def load_all() -> int:
+    """Both pinned releases, fetched into the cache if needed, then loaded, each in its own
+    transaction. Nothing is loaded unless both files are the pinned ones."""
+    cache = fetch.cache_dir()
+    try:
+        codes_zip = fetch.fetch(fetch.ICD10CM, cache)
+        drugs_zip = fetch.fetch(fetch.RXNORM, cache)
+        year, codes = fetch.icd10cm_codes(codes_zip)
+    except (fetch.ChecksumMismatch, httpx.HTTPError, OSError, ValueError) as refused:
+        print(f"not loaded: {refused}", file=sys.stderr)
+        return 1
+    for load, label in (
+            (lambda db: icd10cm.load(db, codes, date(year - 1, 10, 1)), f"ICD-10-CM FY{year}"),
+            (lambda db: rxnorm.load(db, fetch.rxnorm_release(drugs_zip)),
+             f"RxNorm {fetch.RXNORM_VERSION}")):
+        engine = _engine()
+        if engine is None:
+            return 1
+        counts = _run(engine, load)
+        if counts is None:
+            return 1
+        print(f"loaded {label}: {counts}", file=sys.stderr)
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if argv == ["all"]:
+        return load_all()
     if len(argv) != 2 or argv[0] not in ("rxnorm", "icd10cm"):
         print(USAGE, file=sys.stderr)
         return 2
