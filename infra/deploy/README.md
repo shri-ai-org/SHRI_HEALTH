@@ -91,10 +91,11 @@ In order:
 2. Drops the application database and creates it again empty, as the master user (`postgres/recreate-database.sql`): UTF-8 with the builtin C.UTF-8 locale (D33), owned by `shri_migrator`, `CONNECT` for the service roles only. The service roles belong to the server, so they and their passwords stay. It refuses `postgres`, the templates and `keycloak`.
 3. Adds the extensions, as the master user.
 4. Runs `python -m app.db.seed reset` as `shri_migrator` (Anand's half): the migrations to head, then the demo data. It refuses a database that already has tables.
+   Then loads the diagnosis and drug codes (`python -m app.db.terminology all`, as `shri_migrator`): the pinned ICD-10-CM and RxNorm releases, checked by SHA-256. The downloads are kept in the `shri-terminology` volume, so a host fetches each release once.
 5. Puts the demo accounts back (`infra/keycloak/reset-demo-users.sh`): enabled again, with the authenticators they already have.
 6. Starts the API and the worker, and runs the health check.
 
-Everyone is signed out, because sessions live in the database. Keycloak's database, OpenBao's keys and the stored files stay. Files from earlier runs remain in the object store, unreferenced; they're synthetic. Steps 2 to 4 take about 10 seconds.
+Everyone is signed out, because sessions live in the database. Keycloak's database, OpenBao's keys and the stored files stay. Files from earlier runs remain in the object store, unreferenced; they're synthetic. Steps 2 to 4 take about 10 seconds, and the codes about 35 more (plus the first download on a new host).
 
 ## Admin access
 

@@ -165,6 +165,18 @@ demo_reset() {
         -m app.db.seed demo
 }
 
+load_codes() {
+    # Diagnosis and drug search need the code releases: Anand's loader fetches the pinned
+    # ICD-10-CM and RxNorm releases (SHA-256-checked, public with no licence, D75) and loads them
+    # as shri_migrator. The downloads are kept in a volume, so a host fetches each release once;
+    # the API image runs as uid 10001, so the volume is handed to it first (the only root step).
+    say "Diagnosis and drug codes (python -m app.db.terminology all, as shri_migrator)"
+    $DC run --rm --no-deps -T -u 0 -v shri-terminology:/terminology --entrypoint chown api 10001 /terminology
+    MIGRATION_DATABASE_URL="postgresql+psycopg://shri_migrator:${SHRI_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB}" \
+        $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SHRI_TERMINOLOGY_CACHE=/terminology \
+        -v shri-terminology:/terminology --entrypoint python api -m app.db.terminology all
+}
+
 reset() {
     # The demo between rehearsal runs (plan §8): the application database is dropped and
     # created again, then filled with the demo data only. Keycloak's own database, OpenBao and
@@ -200,6 +212,7 @@ reset() {
     MIGRATION_DATABASE_URL="postgresql+psycopg://shri_migrator:${SHRI_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB}" \
         $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SEED_ALLOW_STAGING=1 --entrypoint python api \
         -m app.db.seed reset
+    load_codes
     say "Demo accounts (Keycloak, fixed IDs)"
     KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
         KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" DEMO_PASSWORD="$DEMO_PASSWORD" \
