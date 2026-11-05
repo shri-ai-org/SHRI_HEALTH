@@ -92,10 +92,10 @@ export function PatientProfilePage() {
             <CardBody>
               <EmptyState
                 icon={UserRound}
-                title={restricted ? 'This chart is restricted' : read.state === 'loading' ? 'Opening the patient…' : 'The patient could not be opened'}
+                title={restricted ? 'Restricted chart: the care team can open it' : read.state === 'loading' ? 'Opening the patient…' : 'The patient could not be opened'}
                 description={
                   restricted
-                    ? 'Check-in and check-out still work from Outpatients. To open the chart, a clinician records break-glass.'
+                    ? 'Check-in and check-out still work from Outpatients.'
                     : read.state === 'failed'
                       ? read.message
                       : undefined

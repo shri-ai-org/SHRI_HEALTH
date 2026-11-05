@@ -11,6 +11,7 @@ import { FieldError } from '../../components/patient/AgeConfirm'
 import { useStoreValue } from '../../hooks/useStore'
 import { getAppointmentById, getPatientById, getProviderById, getToday } from '../../domain/selectors'
 import { dayWithDate } from '../../utils/dates'
+import { addDaysToKey } from '../../domain/time'
 import { formatTime } from '../../domain/time'
 import { cn } from '../../utils/cn'
 import { errorClass, inputClass, labelClass } from '../../utils/formClasses'
@@ -33,6 +34,18 @@ const FOLLOW_UP_STATUS: Record<DeskFollowUp['status'], string> = {
   booked: 'Revisit booked',
   declined: 'Declined',
   withdrawn: 'Withdrawn by the doctor',
+}
+
+
+/** The follow-up's day: the visit's date plus its interval, counted in the facility's calendar
+ *  (FollowUpInterval, D40). "In 2 weeks" from a Thursday visit is the Thursday two weeks on. */
+function followUpDay(visitDate: string, interval: { value: number; unit: 'day' | 'week' | 'month' }): string {
+  if (interval.unit === 'day') return addDaysToKey(visitDate, interval.value)
+  if (interval.unit === 'week') return addDaysToKey(visitDate, interval.value * 7)
+  const [y, m, d] = visitDate.split('-').map(Number)
+  const last = new Date(Date.UTC(y!, m! - 1 + interval.value + 1, 0)).getUTCDate()
+  const target = new Date(Date.UTC(y!, m! - 1 + interval.value, Math.min(d!, last)))
+  return target.toISOString().slice(0, 10)
 }
 
 /**
@@ -104,6 +117,7 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
       <ScheduleFlow
         params={{ uhid: patient.patientId, doctor: followUp?.providerId }}
         followUpOfEncounterId={encounterId ?? appointment.serverEncounterId}
+        followUpDate={followUp ? followUpDay(appointment.date, followUp.interval) : undefined}
         onClose={() => setBooking(false)}
         onBooked={(bookedId) => {
           markRevisitBooked(appointmentId, providerId, bookedId)

@@ -14,6 +14,9 @@ export interface FlowProps {
   onBooked?: (appointmentId: string) => void
   /** With onBooked: the visit the revisit follows up (SHRI_HEALTH followUpOfEncounterId). */
   followUpOfEncounterId?: string
+  /** With onBooked: the day the follow-up asks for (the visit's date plus its interval), which the
+   *  date row opens on; no time is chosen for the desk (gap 54). */
+  followUpDate?: string
 }
 
 /** Every flow FlowHost can open. A name in the URL that isn't here is

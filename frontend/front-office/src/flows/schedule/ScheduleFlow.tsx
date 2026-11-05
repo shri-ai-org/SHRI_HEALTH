@@ -36,6 +36,10 @@ import type { AppState } from '../../types/store'
 import { inputClass } from '../../utils/formClasses'
 import { dayStartTimestamp, formatTime } from '../../domain/time'
 import { getDepartmentDateStrip, getDepartmentDayRange } from '../../domain/doctorDaySelectors'
+import { addDaysToKey, calendarDate } from '../../domain/time'
+
+/** Whole days from one date key to a later one. */
+const daysBetween = (from: string, to: string) => Math.round((calendarDate(to).getTime() - calendarDate(from).getTime()) / 86400000)
 
 /** A doctor and a time, chosen together. */
 interface Pick {
@@ -44,8 +48,10 @@ interface Pick {
   slot: string
 }
 
-/** How many days of SHRI_HEALTH free times to load: the date row's reach (doctorDaySelectors HORIZON_DAYS). */
-const SERVER_DAYS = 14
+/** How many days of SHRI_HEALTH free times to load: a month, so the date field reaches a follow-up
+ *  "in 2 weeks" and beyond (gap 54); a follow-up further out is read up to its own day. */
+const SERVER_DAYS = 31
+const MAX_SERVER_DAYS = 100
 
 /**
  * Schedule — booking an appointment: patient → department → Doctor
@@ -129,13 +135,14 @@ function startFrom(params: FlowProps['params'], now: number): Start {
   }
 }
 
-function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId }: FlowProps) {
+function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, followUpDate }: FlowProps) {
   const now = useNow(15000)
   const today = useStoreValue(getToday)
 
   const [patientId, setPatientId] = useState(params.uhid ?? '')
   const patient = useStoreValue(getPatientById, patientId)
-  const [start] = useState(() => startFrom(params, now))
+  // A revisit opens on its follow-up day with no time chosen, so the desk never books today by mistake.
+  const [start] = useState(() => (followUpDate ? { ...startFrom(params, now), date: null, slot: null, smart: false } : startFrom(params, now)))
   const [department, setDepartment] = useState(start.department)
   const [providerId, setProviderId] = useState(start.providerId)
   const [date, setDate] = useState(start.date)
@@ -148,12 +155,14 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId }: F
   // Opened on a time already chosen on a doctor's chart: only the patient is left to choose.
   const [patientOnly, setPatientOnly] = useState(() => Boolean(params.doctor && !params.uhid && start.providerId && start.slot && !start.smart))
   // The day every doctor's row shows — one date for the whole list.
-  const [dayChoice, setDayChoice] = useState<string | null>(null)
+  const [dayChoice, setDayChoice] = useState<string | null>(followUpDate ?? null)
   // The smart choice on show — cleared the moment the desk picks another.
   const [smart, setSmart] = useState<Pick | null>(() => (start.smart && start.providerId && start.date && start.slot ? { providerId: start.providerId, date: start.date, slot: start.slot } : null))
   const navigate = useNavigate()
   const location = useLocation()
 
+  const serverDays = followUpDate && followUpDate > today ? Math.min(MAX_SERVER_DAYS, Math.max(SERVER_DAYS, daysBetween(today, followUpDate) + 1)) : SERVER_DAYS
+  const lastDay = REAL_API ? addDaysToKey(today, serverDays - 1) : undefined
   // The SHRI_HEALTH doctors, their free times for the days the page shows, and the bookings.
   const [serverError, setServerError] = useState<string | null>(null)
   const [booking, setBooking] = useState(false)
@@ -161,11 +170,11 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId }: F
   const attempt = useRef<{ key: string; pick: string } | null>(null)
   useEffect(() => {
     let live = true
-    loadSchedule(today, SERVER_DAYS).catch((err: unknown) => live && setServerError(problemMessage(err)))
+    loadSchedule(today, serverDays).catch((err: unknown) => live && setServerError(problemMessage(err)))
     return () => {
       live = false
     }
-  }, [today])
+  }, [today, serverDays])
   const departments = useStoreValue(getDepartmentSummaries, now)
   const provider = useStoreValue(getProviderById, providerId ?? '')
   const suggestions = useStoreValue(getDoctorSuggestions, department ?? '', now)
@@ -525,7 +534,7 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId }: F
             <div className="flex flex-col gap-3">
               {/* One date and one time axis for every doctor, pinned while the doctors scroll under it. */}
               {suggestions.length > 0 ? (
-                <SharedDayHeader days={departmentDays} day={listDay} onDay={setDayChoice} range={listRange} today={today} now={now} />
+                <SharedDayHeader days={departmentDays} day={listDay} onDay={setDayChoice} range={listRange} today={today} now={now} lastDay={lastDay} />
               ) : null}
               {suggestions.length === 0 ? (
                 <p className="text-sm text-ink-muted">No doctors in this department.</p>
