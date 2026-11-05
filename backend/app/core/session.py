@@ -40,7 +40,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
@@ -56,6 +56,9 @@ from app.core.db import Database
 from app.core.errors import Forbidden, ServiceUnavailable, Unauthorized, ValidationFailed
 from app.core.lifecycle import on_shutdown
 from app.core.request_id import current_request_id
+
+if TYPE_CHECKING:
+    from app.core.deps import CurrentUser
 
 log = logging.getLogger(__name__)
 
@@ -297,7 +300,7 @@ _NEW_TOKENS = text(
     "WHERE id = :id")
 _REVOKE = text("UPDATE admin.app_session SET revoked_at = now(), updated_at = now() "
                "WHERE id = :id AND revoked_at IS NULL")
-_USER = text("SELECT display_name, is_active FROM admin.app_user WHERE id = :id")
+_USER = text("SELECT display_name, is_active, practitioner_id FROM admin.app_user WHERE id = :id")
 _ROLES = text(
     "SELECT r.code, ur.facility_id FROM admin.user_role ur JOIN admin.role r ON r.id = ur.role_id "
     "WHERE ur.user_id = :id AND (ur.valid_from IS NULL OR ur.valid_from <= current_date) "
@@ -460,17 +463,30 @@ async def stored_refresh_token(request: Request, session: StaffSession) -> str |
     return (await decrypt_field(request.app, row.keycloak_refresh_token_enc)).decode()
 
 
+def user_body(user: "CurrentUser", practitioner_id: UUID | None) -> dict[str, Any]:
+    """The `user` object of GET /me and GET /auth/session (SessionUser), built in one place so
+    the two never drift. practitionerId only for a user linked to a practitioner."""
+    who: dict[str, Any] = {"id": str(user.id), "displayName": user.display_name,
+                           "roles": sorted(user.roles),
+                           "facilityIds": sorted(str(f) for f in user.facility_ids)}
+    if practitioner_id is not None:
+        who["practitionerId"] = str(practitioner_id)
+    return who
+
+
 @dataclass(frozen=True)
 class UserFacts:
     display_name: str
     roles: frozenset[str]
     facility_ids: frozenset[UUID]
     clinic_name: str
+    practitioner_id: UUID | None = None  # a clinician's own provider ID on the schedule
 
 
 async def user_facts(db: Database, session: StaffSession) -> UserFacts:
-    """Who the session's user is today: name, roles and facilities (a role with no facility
-    covers every facility of the clinic). 403 for a deactivated account."""
+    """Who the session's user is today: name, roles, facilities (a role with no facility
+    covers every facility of the clinic) and their practitioner, if linked to one. 403 for a
+    deactivated account."""
     async with db.tenant_session(session.tenant_id, session.user_id, current_request_id()) as s:
         user = (await s.execute(_USER, {"id": session.user_id})).one_or_none()
         if user is None or not user.is_active:
@@ -482,7 +498,7 @@ async def user_facts(db: Database, session: StaffSession) -> UserFacts:
         clinic = (await s.execute(_CLINIC, {"id": session.tenant_id})).scalar_one_or_none()
         await s.rollback()
     return UserFacts(user.display_name, frozenset(r.code for r in roles), frozenset(facilities),
-                     clinic or "")
+                     clinic or "", user.practitioner_id)
 
 
 def set_session_cookie(response: Any, token: str) -> None:

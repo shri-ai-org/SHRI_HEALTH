@@ -90,9 +90,7 @@ async def _session_body(request: Request, user: CurrentUser,
     settings: Settings = request.app.state.settings
     facts = await sessions.user_facts(request.app.state.db, found)
     return {
-        "user": {"id": str(user.id), "displayName": user.display_name,
-                 "roles": sorted(user.roles), "facilityIds": sorted(str(f) for f in
-                                                                    user.facility_ids)},
+        "user": sessions.user_body(user, facts.practitioner_id),
         "organization": {"id": str(user.organization_id), "name": facts.clinic_name},
         "csrfToken": sessions.csrf_token(settings, found.token),
         "idleExpiresAt": _time(found.idle_expires_at), "expiresAt": _time(found.expires_at),

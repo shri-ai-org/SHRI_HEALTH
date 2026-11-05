@@ -192,6 +192,24 @@ def test_the_session_tells_the_screen_who_and_until_when_without_moving_the_time
     assert _session_row(admin_engine, staff["tenant"]).idle_expires_at == before
 
 
+def test_the_session_names_the_users_own_practitioner_only_when_linked(
+        client: TestClient, keycloak: FakeKeycloak, staff: dict[str, Any],
+        admin_engine: Engine) -> None:  # noqa: F811
+    """The staff fixture's user is built as a practitioner (b.practitioner); unlinked, the field
+    is left out."""
+    _sign_in(client, keycloak)
+    with admin_engine.connect() as c:
+        linked = c.execute(text("SELECT practitioner_id FROM admin.app_user WHERE id = :u"),
+                           {"u": staff["user"]}).scalar_one()
+    assert linked is not None
+    user = client.get("/api/v1/auth/session").json()["user"]
+    assert user["practitionerId"] == str(linked)
+    with admin_engine.begin() as c:
+        c.execute(text("UPDATE admin.app_user SET practitioner_id = NULL WHERE id = :u"),
+                  {"u": staff["user"]})
+    assert "practitionerId" not in client.get("/api/v1/auth/session").json()["user"]
+
+
 def test_a_new_login_never_reuses_a_session(client: TestClient,
                                             keycloak: FakeKeycloak) -> None:
     _sign_in(client, keycloak)
