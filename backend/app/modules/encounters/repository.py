@@ -198,6 +198,8 @@ class SummaryContext:
 
 
 class EncounterRepository(Protocol):
+    async def billed(self, db: AsyncSession, encounter_id: UUID) -> bool: ...
+
     async def head(self, db: AsyncSession, encounter_id: UUID, *, lock: bool = False
                    ) -> EncounterHead: ...
 
@@ -532,7 +534,16 @@ def follow_up_out(f: FollowUpRow) -> schemas.FollowUpRequest:
         withdrawn_reason=f.reason if f.status == "withdrawn" else None)
 
 
+_BILLED = text("SELECT 1 FROM admin.superbill WHERE encounter_id = :e AND status = 'billed'")
+
+
 class SqlEncounterRepository:
+    async def billed(self, db: AsyncSession, encounter_id: UUID) -> bool:
+        """The visit's superbill has been billed (Anand's admin.superbill): too late to mark
+        the visit entered-in-error (DATA_OWNERSHIP §5.2)."""
+        found = await db.execute(_BILLED, {"e": encounter_id})
+        return found.first() is not None
+
     async def head(self, db: AsyncSession, encounter_id: UUID, *, lock: bool = False
                    ) -> EncounterHead:
         r = (await db.execute(_HEAD_LOCKED if lock else _HEAD, {"id": encounter_id})

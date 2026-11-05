@@ -421,6 +421,50 @@ async def close(db: AsyncSession, repo: EncounterRepository, nrepo: NoteReposito
 
 
 # ------------------------------------------------------------------------------------- co-sign
+async def entered_in_error(db: AsyncSession, repo: EncounterRepository, nrepo: NoteRepository,
+                           store: FhirStore, check: ChartCheck, user: CurrentUser,
+                           encounter_id: UUID, reason: str, name_patient: NamePatient
+                           ) -> Versioned[schemas.Encounter]:
+    """markEncounterEnteredInError (inventory #67; D14; DATA_OWNERSHIP §5.2): a wrong visit
+    (wrong patient, never happened), from any state, in one transaction with its Provenance.
+    Every note on it must be entered in error first, its superbill not billed, and ADM may do
+    it only when no note was ever signed (T14). Nothing is deleted."""
+    head = await readable(db, repo, check, user, encounter_id)
+    if not reason.strip():
+        raise business_rule([field_error("body", "/reason", "required")])
+    locked = await repo.head(db, encounter_id, lock=True)
+    if locked.status == "entered-in-error":
+        raise _state(locked.status)
+    counts = await nrepo.counts(db, encounter_id)
+    errors = []
+    if counts.signed or counts.drafts:
+        errors.append(field_error("body", "/notes", "not-allowed-value"))
+    clinician = bool({"MD", "APP"} & set(user.roles))
+    if not clinician and counts.ever_signed:  # ADM: only a visit with no note ever signed
+        errors.append(field_error("body", "/notes", "not-allowed-value"))
+    if await repo.billed(db, encounter_id):
+        errors.append(field_error("body", "/superbill", "not-allowed-value"))
+    if errors:
+        raise business_rule(errors)
+    try:
+        await store.set_encounter_status(db, encounter_id, "entered-in-error",
+                                         reason=Reason(text=reason))
+    except InvalidTransition as done:
+        raise _state(done.current_state) from done
+    except InvalidInput as refused:
+        raise business_rule([field_error("body", "/reason", "required")]) from refused
+    subject = f"encounter/{encounter_id}"
+    await publish(db, "encounter.entered-in-error", subject, {
+        "encounterId": str(encounter_id),
+        "appointmentId": str(locked.appointment_id) if locked.appointment_id else None},
+        facility_id=head.facility_id, patient_id=head.patient_id)
+    await publish(db, "encounter.status-changed", subject, {"status": "entered-in-error"},
+                  facility_id=head.facility_id, patient_id=head.patient_id)
+    name_patient(head.patient_id)
+    await db.commit()
+    return await repo.get(db, encounter_id, signed_notes_only=signed_notes_only(user))
+
+
 def _not_the_cosigner() -> Forbidden:
     return Forbidden("Only the co-signer the co-sign rule names may decide",
                      code="permission-denied")

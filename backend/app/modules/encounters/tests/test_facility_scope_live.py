@@ -109,6 +109,8 @@ def _calls(user: str, nurse: str, desk: str, v: dict[str, Any], template: str, p
             json={"reason": "Wrong chart."}),
         Row("listNoteVersions", user, "GET", f"{signed}/versions", 404),
         Row("closeEncounter", user, "POST", f"{enc}/close", 404),
+        Row("markEncounterEnteredInError", user, "POST", f"{enc}/entered-in-error", 404,
+            json={"reason": "Wrong patient."}),
         Row("setFollowUpRequest", user, "PUT", f"{enc}/follow-up", 404,
             json={"interval": {"value": 1, "unit": "month"}}, headers={"If-Match": v["etag"]}),
         Row("withdrawFollowUpRequest", user, "POST", f"{enc}/follow-up/withdraw", 404,

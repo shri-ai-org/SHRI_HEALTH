@@ -193,6 +193,21 @@ async def list_note_versions(
     return nschemas.NoteVersionList(items=items, next_cursor=next_cursor)
 
 
+@router.post("/encounters/{encounterId}/entered-in-error",
+             operation_id="markEncounterEnteredInError", response_model=schemas.Encounter,
+             response_model_exclude_none=True)
+async def mark_encounter_entered_in_error(
+    user: Annotated[CurrentUser, Depends(require("encounters:entered-in-error"))],
+    encounter_id: EncounterId, body: schemas.EncounterEnteredInError, request: Request,
+    response: Response, db: DB, repo: Repo, nrepo: NRepo, store: Store, check: Check,
+    audit: Audit,
+) -> schemas.Encounter:
+    marked = await nservice.entered_in_error(db, repo, nrepo, store, check, user, encounter_id,
+                                             body.reason, _named(request, audit))
+    response.headers["ETag"] = service.etag(marked.version)
+    return marked.value
+
+
 @router.post("/encounters/{encounterId}/close", operation_id="closeEncounter",
              response_model=schemas.Encounter, response_model_exclude_none=True)
 async def close_encounter(
