@@ -42,6 +42,9 @@ CHECK_OUT = frozenset({
 })
 # The current user's favorites (inventory #84-85).
 FAVORITES = frozenset({"getMyFavorites", "replaceMyFavorites"})
+# Co-signature rules (inventory #87-89, #251).
+COSIGN_RULES = frozenset({"listCosignRules", "createCosignRule", "getCosignRule",
+                          "updateCosignRule"})
 # declineFollowUpRequest and getAfterVisitSummaryDownloadUrl are built (api.mount_pending_routes)
 # but mounted only once core's catalogue has their permissions (T50); pending until then.
 CHECK_OUT_PENDING = frozenset(operation for operation, permission in PENDING_PERMISSIONS.items()
@@ -49,5 +52,5 @@ CHECK_OUT_PENDING = frozenset(operation for operation, permission in PENDING_PER
 
 
 def test_rooming_notes_and_check_out_operations_are_built_or_pending() -> None:
-    assert progress_problems(MODULE, ROOMING | NOTES | CHECK_OUT | FAVORITES,
+    assert progress_problems(MODULE, ROOMING | NOTES | CHECK_OUT | FAVORITES | COSIGN_RULES,
                              PENDING | NOTES_PENDING | CHECK_OUT_PENDING) == []

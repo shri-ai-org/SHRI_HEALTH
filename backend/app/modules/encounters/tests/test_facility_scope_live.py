@@ -176,6 +176,18 @@ def _rows(client: Any, practice: Practice, users: dict[str, CurrentUser]) -> lis
         Row("replaceMyFavorites", "md-b", "PUT", f"{API}/me/favorites", 422,
             json={"favorites": [{"kind": "note-template", "targetId": template}]},
             headers={"If-Match": '"stale"'}, note="clinic A's template isn't clinic B's to pick"),
+        # Co-signature rules are clinic-wide settings, no facility: an unknown or another
+        # clinic's rule is 404, and clinicians can't read or write them.
+        Row("listCosignRules", "md", "GET", f"{API}/cosign-rules", 403,
+            note="clinic-wide setting: ADM and CO only"),
+        Row("getCosignRule", "adm", "GET", f"{API}/cosign-rules/{uuid.uuid4()}", 404),
+        Row("createCosignRule", "md-b", "POST", f"{API}/cosign-rules", 403,
+            json={"superviseeProviderId": str(p.other_provider),
+                  "supervisingProviderId": str(p.provider), "effectiveFrom": "2026-11-05"},
+            writes=True),
+        Row("updateCosignRule", "adm", "PATCH", f"{API}/cosign-rules/{uuid.uuid4()}", 404,
+            json={"appliesToOrders": True},
+            headers={"If-Match": '"x"', "Content-Type": "application/merge-patch+json"}),
         *_calls("md-b", "md-b", "fd-b", mine, template, kaia),
     ]
 

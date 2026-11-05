@@ -237,13 +237,14 @@ async def mark_vital_entered_in_error(
     return marked.value
 
 
-# Diagnoses, notes and closing the visit, and the user's favorites, live in their own files
-# (diagnoses_api.py, notes_api.py, favorites_api.py).
-from . import diagnoses_api, favorites_api, notes_api  # noqa: E402
+# Diagnoses, notes and closing the visit, the user's favorites and the co-signature rules live in
+# their own files (diagnoses_api.py, notes_api.py, favorites_api.py, cosign_rules_api.py).
+from . import cosign_rules_api, diagnoses_api, favorites_api, notes_api  # noqa: E402
 
 router.include_router(diagnoses_api.router)
 router.include_router(notes_api.router)
 router.include_router(favorites_api.router)
+router.include_router(cosign_rules_api.router)
 # ------------------------------------------------------------------ follow-up request (D98)
 @router.put(ENCOUNTER + "/follow-up", operation_id="setFollowUpRequest",
             response_model=schemas.FollowUpRequest, response_model_exclude_none=True)
