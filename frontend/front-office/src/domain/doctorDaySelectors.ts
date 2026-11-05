@@ -62,7 +62,8 @@ export function getDoctorDay(state: AppState, providerId: string, now: number, d
     if (entry.status !== 'booked' || !entry.appointment) continue
     const appointment = entry.appointment
     const patient = getPatientById(state, appointment.patientId)
-    if (patient) uhids[appointment.appointmentId] = patient.uhid
+    // The profile's address is the patient's ID, never the MRN (D13).
+    if (patient) uhids[appointment.appointmentId] = patient.patientId
     const start = minutesFrom(entry.slot)
     bookings.push({
       id: appointment.appointmentId,

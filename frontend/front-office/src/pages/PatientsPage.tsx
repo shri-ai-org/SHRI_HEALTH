@@ -73,7 +73,8 @@ export function PatientsPage() {
     { key: 'duplicates', label: 'Possible duplicates', value: lists.duplicates.length, tone: 'warning', icon: Copy },
   ]
 
-  const openPatient = (uhid: string) => navigate(`/patients/${uhid}`)
+  // The profile's address is the patient's ID, never the MRN (D13).
+  const openPatient = (patientId: string) => navigate(`/patients/${patientId}`)
 
   const columns: Column<PatientListRow>[] = [
     {
@@ -162,7 +163,7 @@ export function PatientsPage() {
               rows={shown}
               columns={columns}
               rowKey={(row) => row.patient.patientId}
-              onRowClick={(row) => openPatient(row.patient.uhid)}
+              onRowClick={(row) => openPatient(row.patient.patientId)}
               rowLabel={(row) => `Open ${row.patient.name}`}
               caption="Patients"
             />

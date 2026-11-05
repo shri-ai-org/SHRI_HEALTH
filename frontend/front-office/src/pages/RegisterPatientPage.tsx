@@ -166,7 +166,7 @@ export function RegisterPatientPage() {
   }
 
   function openExistingPatient(patient: Patient) {
-    navigate(`/patients/${patient.uhid}`, { replace: true })
+    navigate(`/patients/${patient.patientId}`, { replace: true })
   }
 
   if (registered) {
@@ -179,7 +179,7 @@ export function RegisterPatientPage() {
             title="Registering Patient"
             icon={UserRoundCheck}
             durationMs={7000}
-            onDone={() => navigate(`/patients/${registered.uhid}`, { replace: true })}
+            onDone={() => navigate(`/patients/${registered.patientId}`, { replace: true })}
           >
             <p className="text-base font-semibold text-ink">{registered.name}</p>
             <p className="text-2xl font-semibold tracking-wide tabular-nums text-primary-text">{registered.uhid}</p>
