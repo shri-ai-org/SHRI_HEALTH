@@ -171,6 +171,12 @@ reset() {
     # the files stay; only the demo accounts are put back. Never on a non-demo host.
     [ "${SHRI_DEMO:-false}" = true ] || die "reset erases the database: it runs only on a demo host (SHRI_DEMO=true)"
     : "${POSTGRES_DB:?}"
+    # From the deployed commit only: the images are tagged by commit, so another checkout would
+    # build and start a different API mid-reset.
+    local running
+    running="$(docker inspect --format '{{.Config.Image}}' "$($DC ps -q api)" 2>/dev/null || true)"
+    [ "$running" = "shri-health/api:$SHRI_RELEASE" ] \
+        || die "the host runs ${running:-no API}; reset from the checkout of the last 'up' (this is $SHRI_RELEASE)"
     say "Reset $SHRI_PUBLIC_URL: the database $POSTGRES_DB is erased and refilled with the demo data"
     # Typed, not a flag: a reset by mistake loses the rehearsal's state.
     if [ "${RESET_CONFIRM:-}" != "$SHRI_HOSTNAME" ]; then
@@ -200,6 +206,9 @@ reset() {
         sh "$REPO/infra/keycloak/reset-demo-users.sh"
     say "Starting the API and the worker"
     $DC up -d api integration-worker
+    # Nginx resolves the API's address only when it starts, and a restarted API can come back on
+    # a new one (502 on every request): recreate it, as `up` does.
+    $DC up -d --no-deps --force-recreate nginx
     check
 }
 
