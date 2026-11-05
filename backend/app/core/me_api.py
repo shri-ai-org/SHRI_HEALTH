@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import permissions
+from app.core import session as sessions
 from app.core.config import Settings
 from app.core.deps import CurrentUser, require, tenant_db
 from app.core.routing import API_PREFIX
@@ -35,13 +36,8 @@ async def get_me(user: CurrentUser = Depends(require("authenticated")),
     clinic = (await db.execute(_CLINIC, {"id": user.organization_id})).scalar_one_or_none()
     show_sogi = (await db.execute(_SETTING, {"key": _SHOW_SOGI})).scalar_one_or_none()
     practitioner = (await db.execute(_PRACTITIONER, {"id": user.id})).scalar_one_or_none()
-    who: dict[str, Any] = {"id": str(user.id), "displayName": user.display_name,
-                           "roles": sorted(user.roles),
-                           "facilityIds": sorted(str(f) for f in user.facility_ids)}
-    if practitioner is not None:  # absent for a user who isn't a practitioner
-        who["practitionerId"] = str(practitioner)
     return {
-        "user": who,
+        "user": sessions.user_body(user, practitioner),
         "organization": {"id": str(user.organization_id), "name": clinic or ""},
         "permissions": sorted(permissions.permissions_of(user.roles)),
         "practiceSettings": {
