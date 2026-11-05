@@ -53,13 +53,9 @@ From: Vimal (drafted with Claude Code) · 2026-11-02.
 
 **Where the order comes from:** the preview run of 31 October (`demo_story.json` and the script that produced it). That run passed steps 7, 8, 10 and 12. Step 9 signed the prescription and queued it, but the worker had no simulated-pharmacy adapter yet, so it was never sent. The run records the operations and status codes only, not the bodies. So the requests below are the ones that run sent, and the responses are the contract's own examples. All data is synthetic. Examples marked *(shortened)* leave out fields; `…` marks where.
 
-**Step numbers:** these are D108's. D108, D109 and D110 are in Vimal's PR #164 (not merged yet); D107 is in #170.
+**Step numbers:** these are D108's. D107 to D110 are on main (#164, #170).
 
-**Backend status:**
-- Steps 7, 8 and 12 are built: diagnoses, notes, signing, addenda, co-sign and close are in PR #165, and booking is on main.
-- Step 10 (`setFollowUpRequest`, `withdrawFollowUpRequest`) is in draft PR #161.
-- Step 9 is in PR #169 (not merged).
-- Until those merge, the mock serves them.
+**Backend status (2026-11-05):** steps 7 to 12 are all on main: diagnoses, notes, signing, addenda, co-sign and close (#165), prescribing (#169), the follow-up request, check-out and the after-visit summary (#161, with the front desk's print from #216), and booking. Real calls and error answers for steps 8 to 12 are in "Demo steps 8 to 12: real calls from the preview" below.
 
 ### Errors every step can return
 
@@ -290,6 +286,187 @@ In the same transaction, the follow-up request becomes `booked`, with `bookedApp
 - `422 business-rule-violation`: outside the provider's hours, or the overbook limit is reached.
 - `404 not-found`: the facility isn't one of the user's.
 - No `If-Match` and no `break-glass-required`: booking needs neither.
+
+## Demo steps 8 to 12: real calls from the preview (2026-11-05)
+
+From: Vimal (drafted with Claude Code) · 2026-11-05.
+
+**Where these come from:** the local preview (`preview/integration` `943ae97`: main `cbbef52` plus the open PRs), running the 12-step story through the real API with the development sign-in, then the error cases on the same visit. Every answer below is what the API returned; nothing is copied from the contract. Data is synthetic, IDs are cut to their first 8 characters, responses are shortened to the fields that matter, and the download ticket is shown as `token=REDACTED`. (The story books the revisit before it checks out, so the final check-out is listed under step 12.)
+
+**What changes the encounter's `ETag`:** the encounter row or one of its child rows changing (the versioning trigger). So:
+- **It changes with:** `updateEncounter` (reasons, room, participants); adding or removing a diagnosis; setting, withdrawing or declining the follow-up request; booking, cancelling or rescheduling the revisit (the request moves with it); closing; entered-in-error.
+- **It doesn't change with:** vitals, notes (autosave, sign, addenda, co-sign), prescriptions, check-in, rooming and the other visit steps, or check-out itself.
+- **For the screen:** by check-out the clinician's changes are usually done. A `412` on decline means the follow-up request changed since the screen read it: read the appointment again and show the request's current state.
+
+### Step 8: Templated note, signed
+
+| Call | As | Sent | Answer | ETag |
+|---|---|---|---|---|
+| `GET /note-templates` (listNoteTemplates) | md | — | 200 | — |
+| `POST /encounters/58c4a710-…/notes` (createNote) | md | `Idempotency-Key` | 201 | "1" |
+| `PATCH /notes/b1e66825-…` (updateNoteDraft) | md | `If-Match` | 200 | "2" |
+| `POST /notes/b1e66825-…/sign` (sign) | md | `If-Match` | 200 | "3" |
+
+`POST /encounters/58c4a710-…/notes` → 201, ETag "1" (shortened):
+Request:
+```json
+{"templateId": "5eed000c-…"}
+```
+Response:
+```json
+{"id": "b1e66825-…", "status": "preliminary", "cosignStatus": "not-required", "title": "Annual physical", "templateId": "5eed000c-…"}
+```
+`PATCH /notes/b1e66825-…` → 200, ETag "2" (shortened):
+Request:
+```json
+{"sections": "\u2026"}
+```
+Response:
+```json
+{"id": "b1e66825-…", "status": "preliminary"}
+```
+`POST /notes/b1e66825-…/sign` → 200, ETag "3" (shortened):
+Response:
+```json
+{"id": "b1e66825-…", "status": "final", "signedAt": "2026-11-05T06:17:46.324556Z"}
+```
+
+### Step 9: Prescribe (search, alerts, sign and send)
+
+| Call | As | Sent | Answer | ETag |
+|---|---|---|---|---|
+| `GET /codes` (searchCodes) | md | query | 200 | — |
+| `POST /prescriptions` (createPrescription) | md | `Idempotency-Key` | 201 | "1" |
+| `POST /prescriptions/62aaa38e-…/safety-check` (checkPrescriptionSafety) | md | — | 200 | — |
+| `POST /alerts/666c5e44-…/override` (overrideAlert) | md | — | 200 | — |
+| `POST /prescriptions/62aaa38e-…/sign-and-send` (signAndSendPrescription) | md | `If-Match`, `Idempotency-Key` | 200 | "2" |
+
+`POST /prescriptions` → 201, ETag "1" (shortened):
+Request:
+```json
+{"patientId": "\u2026", "encounterId": "\u2026", "medication": "\u2026", "dosageText": "\u2026", "quantity": "\u2026", "daysSupply": "\u2026", "refills": "\u2026", "substitutionAllowed": "\u2026", "pharmacyId": "\u2026"}
+```
+Response:
+```json
+{"id": "62aaa38e-…", "status": "draft", "transmission": {"status": "not-sent"}, "alerts": []}
+```
+`POST /prescriptions/62aaa38e-…/safety-check` → 200 (shortened):
+Response:
+```json
+{"alerts": [{"id": "0608edd5-…", "kind": "duplicate-medication", "severity": "warning", "message": "amoxicillin 500 MG Oral Capsule is already on the active medication list (same ingredient: amoxicillin).", "medicationId": "b393c615-…", "overrideRequired": false}, {"id": "666c5e44-…", "kind": "allergy", "severity": "high", "message": "Active allergy to amoxicillin; amoxicillin 500 MG Oral Capsule contains amoxicillin.", "allergyId": "abc3cb9e-…", "overrideRequired": true}]}
+```
+`POST /alerts/666c5e44-…/override` → 200 (shortened):
+Request:
+```json
+{"reason": "Synthetic demo: tolerated it before."}
+```
+Response:
+```json
+{"id": "666c5e44-…", "kind": "allergy", "severity": "high", "override": {"reason": "Synthetic demo: tolerated it before.", "overriddenBy": "d0000000-…", "overriddenAt": "2026-11-05T06:17:46.439300Z"}}
+```
+`POST /prescriptions/62aaa38e-…/sign-and-send` → 200, ETag "2" (shortened):
+Response:
+```json
+{"id": "62aaa38e-…", "status": "active", "signedAt": "2026-11-05T06:17:46.463975Z", "transmission": {"status": "queued", "updatedAt": "2026-11-05T06:17:46.463975Z"}}
+```
+
+### Step 10: Follow-up request
+
+| Call | As | Sent | Answer | ETag |
+|---|---|---|---|---|
+| `GET /encounters/58c4a710-…` (getEncounter) | md | — | 200 | "5" |
+| `PUT /encounters/58c4a710-…/follow-up` (setFollowUpRequest) | md | `If-Match` | 200 | "6" |
+
+`PUT /encounters/58c4a710-…/follow-up` → 200, ETag "6" (shortened):
+Request:
+```json
+{"interval": {"value": 2, "unit": "week"}, "note": "Recheck blood pressure.", "appointmentTypeId": "5eed0009-…", "providerId": "5eed0005-…"}
+```
+Response:
+```json
+{"interval": {"value": 2, "unit": "week"}, "note": "Recheck blood pressure.", "status": "open", "requestedAt": "2026-11-05T06:17:48.565481Z"}
+```
+
+### Step 11: Check out and after-visit summary
+
+| Call | As | Sent | Answer | ETag |
+|---|---|---|---|---|
+| `POST /appointments/f93925b1-…/check-out` (checkOutAppointment) | fd | `Idempotency-Key` | 409 | — |
+| `POST /encounters/58c4a710-…/after-visit-summary` (createAfterVisitSummary) | md | `Idempotency-Key` | 202 | — |
+| `GET /encounters/58c4a710-…/after-visit-summary/download-url` (getAfterVisitSummaryDownloadUrl) | fd | — | 200 | — |
+| `GET /files/c2fe69b8-…/content` (downloadFileContent) | fd | query | 200 | — |
+| `GET /files/c2fe69b8-…/content` (downloadFileContent) | fd | query | 404 | — |
+| `POST /patients/96f11653-…/payments` (recordPayment) | fd | `Idempotency-Key` | 201 | "1" |
+
+`POST /appointments/f93925b1-…/check-out` → 409 (shortened):
+Response:
+```json
+{"status": 409, "code": "invalid-state-transition", "currentState": "checked-in", "errors": [{"in": "body", "pointer": "/followUp", "code": "not-allowed-value"}]}
+```
+`POST /encounters/58c4a710-…/after-visit-summary` → 202 (shortened):
+Response:
+```json
+{"id": "b951b299-…", "kind": "encounter.after-visit-summary", "status": "succeeded", "result": {"type": "document", "id": "0fd34a2c-…"}}
+```
+`GET /encounters/58c4a710-…/after-visit-summary/download-url` → 200 (shortened):
+Response:
+```json
+{"documentId": "0fd34a2c-…", "generatedAt": "2026-11-05T06:17:48.607718Z", "url": "/api/v1/files/c2fe69b8-…/content?token=REDACTED", "expiresAt": "2026-11-05T06:18:48Z"}
+```
+`POST /patients/96f11653-…/payments` → 201, ETag "1" (shortened):
+Request:
+```json
+{"amount": {"value": "25.00", "currency": "USD"}, "method": "cash", "appointmentId": "f93925b1-…", "encounterId": "58c4a710-…", "note": "Copay (synthetic demo)."}
+```
+Response:
+```json
+{"id": "5a834a84-…", "amount": {"value": "25.00", "currency": "USD"}, "method": "cash", "receiptFileId": "65b8f3c4-…"}
+```
+
+### Step 12: Book the revisit
+
+| Call | As | Sent | Answer | ETag |
+|---|---|---|---|---|
+| `GET /slots` (listSlots) | fd | query | 200 | — |
+| `POST /appointments` (bookAppointment) | fd | `Idempotency-Key` | 201 | "1" |
+| `POST /appointments/f93925b1-…/check-out` (checkOutAppointment) | fd | `Idempotency-Key` | 200 | — |
+
+`POST /appointments` → 201, ETag "1" (shortened):
+Request:
+```json
+{"patientId": "\u2026", "providerId": "\u2026", "facilityId": "\u2026", "appointmentTypeId": "\u2026", "startAt": "\u2026", "reasonForVisit": "\u2026", "followUpOfEncounterId": "\u2026"}
+```
+Response:
+```json
+{"id": "4453b316-…", "status": "booked", "startAt": "2026-11-06T15:40:00Z", "reasonForVisit": "Recheck blood pressure."}
+```
+`POST /appointments/f93925b1-…/check-out` → 200 (shortened):
+Response:
+```json
+{"id": "f93925b1-…", "status": "fulfilled", "visitStatus": "checked-out"}
+```
+
+### Error cases, each from the preview
+
+| Step | Case | As | Call | Answer |
+|---|---|---|---|---|
+| 8 | edit a signed note | md | `PATCH /notes/b1e66825-…` | 409 `record-locked` |
+| 8 | addendum to the signed note | md | `POST /notes/b1e66825-…/addenda` | 200 |
+| 8 | a second note on the visit (a draft) | md | `POST /encounters/58c4a710-…/notes` | 201 |
+| 8 | autosave without If-Match | md | `PATCH /notes/126364c0-…` | 428 `precondition-required` |
+| 8 | autosave with a stale If-Match | md | `PATCH /notes/126364c0-…` | 412 `precondition-failed`, ETag "1" |
+| 8 | the medical assistant edits the doctor's draft | ma | `PATCH /notes/126364c0-…` | 403 `permission-denied` |
+| 9 | a nurse drafts a prescription (D110) | rn | `POST /prescriptions` | 403 `permission-denied` |
+| 9 | sign and send without If-Match | md | `POST /prescriptions/35609182-…/sign-and-send` | 428 `precondition-required` |
+| 9 | sign and send before the safety check (a high alert unanswered) | md | `POST /prescriptions/35609182-…/sign-and-send` | 422 `business-rule-violation`, errors [{"pointer": "/alerts", "code": "safety-check-stale"}] |
+| 10 | change the follow-up without If-Match | md | `PUT /encounters/58c4a710-…/follow-up` | 428 `precondition-required` |
+| 10 | change the follow-up with a stale If-Match | md | `PUT /encounters/58c4a710-…/follow-up` | 412 `precondition-failed`, ETag "7" |
+| 10 | the front desk tries to ask for a follow-up | fd | `PUT /encounters/58c4a710-…/follow-up` | 403 `permission-denied` |
+| 11 | decline a follow-up that is already booked | fd | `POST /encounters/58c4a710-…/follow-up/decline` | 409 `invalid-state-transition`, `currentState: booked` |
+| 11 | check out twice | fd | `POST /appointments/f93925b1-…/check-out` | 409 `invalid-state-transition`, `currentState: fulfilled`, errors [{"pointer": "/status", "code": "not-allowed-value"}] |
+| 11 | a clinician checks out (D67) | md | `POST /appointments/f93925b1-…/check-out` | 403 `permission-denied` |
+| 8 | open a restricted patient's chart without a grant | md | `GET /patients/2cdab0fa-…` | 403 `break-glass-required` |
+| 11 | the summary link of a visit you can't open (another facility or clinic) | md-b | `GET /encounters/58c4a710-…/after-visit-summary/download-url` | 404 `not-found` |
 
 ## Screen port map for the demo (D115; 2026-11-03)
 
