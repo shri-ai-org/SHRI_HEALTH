@@ -27,7 +27,7 @@ NOTES = frozenset({
     "addEncounterDiagnosis", "removeEncounterDiagnosis", "markDiagnosisEnteredInError",
     "createNote", "listEncounterNotes", "getNote", "updateNoteDraft", "signNote",
     "addNoteAddendum", "listNoteVersions", "closeEncounter", "cosignNote",
-    "markNoteEnteredInError",
+    "markNoteEnteredInError", "markEncounterEnteredInError",
 })
 NOTES_PENDING: frozenset[str] = frozenset()
 

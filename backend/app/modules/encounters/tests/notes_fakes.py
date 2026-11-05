@@ -194,7 +194,9 @@ class FakeNoteRepository:
     async def counts(self, db: Any, encounter_id: UUID) -> NoteCounts:
         notes = [n for n in self.world.notes.values() if n.encounter_id == encounter_id]
         return NoteCounts(sum(n.status in ("final", "amended") for n in notes),
-                          sum(n.status == "preliminary" for n in notes))
+                          sum(n.status == "preliminary" for n in notes),
+                          sum("final" in n.versions or n.status in ("final", "amended")
+                              for n in notes))
 
     async def user_practitioner(self, db: Any, user_id: UUID) -> UUID | None:
         return self.world.practitioners.get(user_id)

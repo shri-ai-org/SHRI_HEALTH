@@ -64,6 +64,7 @@ class SectionHead:
 class NoteCounts:
     signed: int
     drafts: int
+    ever_signed: int = 0  # notes that were signed at any time, entered-in-error ones included
 
 
 class NoteRepository(Protocol):
@@ -184,7 +185,10 @@ LIMIT :limit OFFSET :offset
 """)
 _COUNTS = text("""
 SELECT count(*) FILTER (WHERE c.status IN ('final', 'amended')) AS signed,
-       count(*) FILTER (WHERE c.status = 'preliminary') AS drafts
+       count(*) FILTER (WHERE c.status = 'preliminary') AS drafts,
+       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM clinical.composition_attester a
+                                      WHERE a.composition_id = c.id AND a.mode = 'legal'))
+           AS ever_signed
 FROM clinical.composition c
 WHERE c.encounter_id = :e
   AND NOT EXISTS (SELECT 1 FROM clinical.composition_relates_to r
@@ -376,7 +380,7 @@ class SqlNoteRepository:
 
     async def counts(self, db: AsyncSession, encounter_id: UUID) -> NoteCounts:
         r = (await db.execute(_COUNTS, {"e": encounter_id})).one()
-        return NoteCounts(r[0], r[1])
+        return NoteCounts(r[0], r[1], r[2])
 
     async def user_practitioner(self, db: AsyncSession, user_id: UUID) -> UUID | None:
         found: UUID | None = (await db.execute(_USER_PRACTITIONER, {"id": user_id})

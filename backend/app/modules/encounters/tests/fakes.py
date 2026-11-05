@@ -75,6 +75,7 @@ class World:
     encounters: dict[UUID, FakeEncounter] = field(default_factory=dict)
     vitals: list[schemas.Vital] = field(default_factory=list)
     restricted: set[UUID] = field(default_factory=set)
+    billed: set[UUID] = field(default_factory=set)  # encounters whose superbill is billed
     #: (user, patient): a current break-glass grant or care-team membership (D37).
     may_open: set[tuple[UUID, UUID]] = field(default_factory=set)
     patients: dict[UUID, UUID] = field(default_factory=dict)  # patient -> clinic
@@ -176,6 +177,9 @@ class FakeStore:
 class FakeRepository:
     def __init__(self, world: World) -> None:
         self.world = world
+
+    async def billed(self, db: Any, encounter_id: UUID) -> bool:
+        return encounter_id in self.world.billed
 
     async def head(self, db: Any, encounter_id: UUID, *, lock: bool = False) -> EncounterHead:
         e = self.world.encounter(db, encounter_id)

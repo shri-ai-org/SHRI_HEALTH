@@ -96,6 +96,10 @@ class VitalsCreate(Closed):
     entries: Annotated[list[VitalEntry], Field(max_length=12)]
 
 
+class EncounterEnteredInError(Closed):
+    reason: Annotated[str, _text(500, min_length=1)]
+
+
 class VitalEnteredInError(Closed):
     reason: Annotated[str, _text(500, min_length=1)]
 
