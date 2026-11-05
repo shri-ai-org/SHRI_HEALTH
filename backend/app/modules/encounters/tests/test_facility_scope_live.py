@@ -167,6 +167,13 @@ def _rows(client: Any, practice: Practice, users: dict[str, CurrentUser]) -> lis
         # --- clinic B: clinic A's visit and patient are 404 (RLS)
         Row("listPatientEncounters", "md-b", "GET", f"{API}/patients/{kaia}/encounters", 404),
         Row("listPatientVitals", "md-b", "GET", f"{API}/patients/{kaia}/vitals", 404),
+        # Favorites are the user's own settings, no patient or facility: clinic B's doctor
+        # reads only their own (empty) list, and can't pick clinic A's template (422).
+        Row("getMyFavorites", "md-b", "GET", f"{API}/me/favorites", 200,
+            hidden=(template,), note="personal settings: no facility scope"),
+        Row("replaceMyFavorites", "md-b", "PUT", f"{API}/me/favorites", 422,
+            json={"favorites": [{"kind": "note-template", "targetId": template}]},
+            headers={"If-Match": '"stale"'}, note="clinic A's template isn't clinic B's to pick"),
         *_calls("md-b", "md-b", "fd-b", mine, template, kaia),
     ]
 
