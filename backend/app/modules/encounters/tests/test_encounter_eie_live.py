@@ -87,8 +87,16 @@ def test_a_wrong_visit_is_marked_after_its_notes(client: Any, practice: Practice
 def test_adm_only_when_no_note_was_ever_signed(client: Any, practice: Practice,
                                                users: dict[str, CurrentUser]) -> None:
     plain = _visit(client, practice)
+    rooming = client("ma").get(f"{API}/encounters/{plain}")
+    tag = rooming.headers["ETag"]
+    client("ma").patch(f"{API}/encounters/{plain}", json={"reasons": [{"text": "Headache."}]},
+                       headers={"If-Match": tag, "Content-Type": "application/merge-patch+json"})
     done = _mark(client, plain, "adm")  # no note at all
     assert done.status_code == 200, done.text
+    shown = done.json()  # ADM can't read a visit: its state only, no clinical content
+    assert shown["status"] == "entered-in-error" and shown["id"] == plain
+    assert "reasons" not in shown and shown["participants"] == []
+    assert shown["diagnoses"] == [] and shown["vitals"] == [] and shown["notes"] == []
     signed = _visit(client, practice, "marcus", hour=14)
     note = _signed_note(client, practice, signed)
     _note_entered_in_error(client, note["id"])

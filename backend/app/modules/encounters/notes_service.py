@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import CurrentUser
 from app.core.errors import Conflict, Forbidden, NotFound, PreconditionFailed, field_error
 from app.core.events import publish
+from app.core.permissions import permissions_of
 from app.db.fhir_store import (
     UNSET,
     Coded,
@@ -462,7 +463,14 @@ async def entered_in_error(db: AsyncSession, repo: EncounterRepository, nrepo: N
                   facility_id=head.facility_id, patient_id=head.patient_id)
     name_patient(head.patient_id)
     await db.commit()
-    return await repo.get(db, encounter_id, signed_notes_only=signed_notes_only(user))
+    marked = await repo.get(db, encounter_id, signed_notes_only=signed_notes_only(user))
+    if "encounters:read" in permissions_of(user.roles):
+        return marked
+    # ADM may mark a visit (T14) but can't read one (SECURITY_MODEL §4.3): the visit's state
+    # only, none of its clinical content (reasons, participants, diagnoses, vitals, notes).
+    return Versioned(marked.value.model_copy(update={
+        "types": None, "reasons": None, "participants": [], "diagnoses": [], "vitals": [],
+        "notes": [], "follow_up": None}), marked.version)
 
 
 def _not_the_cosigner() -> Forbidden:
