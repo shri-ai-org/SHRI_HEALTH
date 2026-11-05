@@ -461,6 +461,62 @@ def test_cancel(client: Any, practice: Practice) -> None:
                              json=_booking(practice, "marcus")).status_code == 201
 
 
+def test_update_appointment_edits_only_its_text_and_room(client: Any, practice: Practice) -> None:
+    """updateAppointment (D61): room, reason for visit, staff note and patient instructions,
+    with If-Match; null clears; nothing else is accepted; a booked appointment only."""
+    a = _book(client, practice)
+    url = f"{API}/appointments/{a['id']}"
+    merge = {"Content-Type": "application/merge-patch+json"}
+    tag = client("fd").get(url).headers["ETag"]
+    change = {"patientInstruction": "Arrive 15 minutes early."}
+    assert client("fd").patch(url, json=change, headers=merge).status_code == 428
+    stale = client("fd").patch(url, json=change, headers={"If-Match": '"999"', **merge})
+    assert stale.status_code == 412 and stale.headers["ETag"] == tag
+    assert client("ma").patch(url, json=change, headers={"If-Match": tag, **merge}
+                              ).status_code == 403  # clinicians are read-only (D67)
+    assert client("fd-b").patch(url, json=change, headers={"If-Match": tag, **merge}
+                                ).status_code == 404  # another clinic
+    for bad in ({"startAt": local(practice.day, 11)}, {"providerId": str(practice.provider)},
+                {"status": "cancelled"}, {"comment": "x" * 2001}):
+        refused = client("fd").patch(url, json=bad, headers={"If-Match": tag, **merge})
+        assert refused.status_code == 422, bad  # the body is closed (D61)
+    elsewhere = client("fd").patch(url, json={"locationId": str(uuid.uuid4())},
+                                   headers={"If-Match": tag, **merge})
+    assert elsewhere.status_code == 422
+    assert elsewhere.json()["errors"][0] == {"in": "body", "pointer": "/locationId",
+                                             "code": "invalid-reference"}
+    edited = client("fd").patch(url, json={**change, "comment": "Bring the glucose log.",
+                                           "reasonForVisit": "Blood pressure check."},
+                                headers={"If-Match": tag, **merge})
+    assert edited.status_code == 200, edited.text
+    body = edited.json()
+    assert body["patientInstruction"] == "Arrive 15 minutes early."
+    assert body["comment"] == "Bring the glucose log."
+    assert body["reasonForVisit"] == "Blood pressure check."
+    assert body["locationId"] == str(practice.room)  # absent: unchanged
+    assert body["startAt"] == a["startAt"] and body["status"] == "booked"
+    new_tag = edited.headers["ETag"]
+    assert new_tag != tag and client("fd").get(url).headers["ETag"] == new_tag
+    cleared = client("fd").patch(url, json={"locationId": None, "reasonForVisit": None,
+                                            "comment": None},
+                                 headers={"If-Match": new_tag, **merge})
+    assert cleared.status_code == 200, cleared.text
+    gone = cleared.json()
+    assert "locationId" not in gone and "reasonForVisit" not in gone and "comment" not in gone
+    assert gone["patientInstruction"] == "Arrive 15 minutes early."  # kept
+    back = client("fd").patch(url, json={"locationId": str(practice.room)},
+                              headers={"If-Match": cleared.headers["ETag"], **merge})
+    assert back.status_code == 200 and back.json()["locationId"] == str(practice.room)
+    assert _sql(practice, "SELECT count(*) FROM audit.audit_event WHERE entity_id = :a AND "
+                "patient_id = :p AND action = 'update'", a=a["id"],
+                p=practice.patients["kaia"])[0][0] == 3
+    cancelled = client("fd").post(f"{url}/cancel", json={"reasonCode": "patient-request"})
+    assert cancelled.status_code == 200
+    late = client("fd").patch(url, json=change,
+                              headers={"If-Match": cancelled.headers["ETag"], **merge})
+    assert late.status_code == 409 and _code(late) == "invalid-state-transition"
+
+
 # ------------------------------------------------------------------------------ status board
 def test_the_shared_board_shows_initials_time_and_status_only(client: Any,
                                                              practice: Practice) -> None:

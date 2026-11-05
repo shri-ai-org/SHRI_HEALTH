@@ -23,7 +23,7 @@ from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import audit_patients
@@ -167,6 +167,22 @@ async def get_appointment(
     audit_patients(request, [found.patient.id])  # x-audit patient "result"
     response.headers["ETag"] = service.etag(version)
     return found
+
+
+@router.patch(APPOINTMENT, operation_id="updateAppointment", response_model=schemas.Appointment,
+              response_model_exclude_none=True)
+async def update_appointment(
+    user: Annotated[CurrentUser, Depends(require("appointments:update"))],
+    appointment_id: AppointmentId, body: schemas.AppointmentPatch, request: Request,
+    response: Response, db: DB, ref: Ref,
+    if_match: Annotated[str | None, Header(alias="If-Match", max_length=128)] = None,
+) -> schemas.Appointment:
+    await service.edit(db, ref, user, appointment_id, body, if_match)
+    edited, version = await service.one(db, user, appointment_id)
+    audit_patients(request, [edited.patient.id])  # x-audit patient "result"
+    await db.commit()
+    response.headers["ETag"] = service.etag(version)
+    return edited
 
 
 @router.post(APPOINTMENT + "/reschedule", operation_id="rescheduleAppointment",

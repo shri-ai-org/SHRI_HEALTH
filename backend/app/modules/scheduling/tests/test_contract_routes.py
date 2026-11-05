@@ -33,7 +33,7 @@ BATCH_1 = frozenset({
 # still listed here.
 # checkOutAppointment is built (api.mount_pending_routes) but mounted only once core's catalogue
 # has appointments:check-out (T50), so it is pending until then.
-PENDING = frozenset({"updateAppointment"}) | frozenset(
+PENDING = frozenset(
     operation for operation, permission in PENDING_PERMISSIONS.items()
     if not is_known_permission(permission))
 
