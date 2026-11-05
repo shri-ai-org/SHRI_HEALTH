@@ -43,11 +43,18 @@ from app.modules.scheduling.tests.test_check_in_live import _sql
 
 from .. import service
 from .test_messages import NEW_RX, example
+from .transit import without_openbao
 
 pytestmark = [
     pytest.mark.db,
     pytest.mark.skipif(not TEST_DATABASE_URL, reason="needs a test database"),
 ]
+
+
+@pytest.fixture(autouse=True)
+def _transit(client: Any) -> None:
+    """A retry's replay needs Transit: the real OpenBao where configured, else a stand-in."""
+    without_openbao(client("md").app)
 API = "/api/v1"
 M = MAPPERS
 STORE = fs.SqlFhirStore()
