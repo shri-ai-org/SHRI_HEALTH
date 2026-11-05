@@ -5,7 +5,7 @@ CI fails if any package in our lockfiles has a licence that DECISIONS.md D75 doe
 | File | What it does |
 |---|---|
 | `allowed.json` | The licences D75 allows for code; the fonts-and-data licences; aliases for non-SPDX names; and the per-package entries |
-| `check-npm.mjs` | `contracts/` and `frontend/`, after `npm ci`. Reads each `package-lock.json` entry, falling back to the installed `package.json`, including the older `licenses` list |
+| `check-npm.mjs` | `contracts/` and `frontend/`, after `npm ci`. Reads each `package-lock.json` entry, falling back to the installed `package.json`, including the older `licenses` list. Skips the project itself and its own workspace folders (listed in `workspaces`, not fetched from a registry; our code, D76); their dependencies are checked |
 | `check_images.py` | Third-party container images in `infra/compose/docker-compose.yml` and the workflows (OpenBao, nginx), against `images` |
 | `check_python.py` | `backend/`, after installing `requirements-dev.lock`, which contains every runtime package too. Reads `License-Expression`, then the `License ::` classifiers, then the `License` field |
 
