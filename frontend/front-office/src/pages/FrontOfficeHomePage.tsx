@@ -174,7 +174,8 @@ export function FrontOfficeHomePage() {
           <StatCard
             hue="orange"
             icon={UserCheck}
-            value={queue.waiting.length}
+            // SHRI_HEALTH: the outpatient list's count, which knows a check-in made at another desk (gap 44).
+            value={REAL_API ? outpatients.counts.waiting : queue.waiting.length}
             label="Waiting for consultation"
             trend={trends.PATIENT_CHECKED_IN}
             to="/patients/outpatients?filter=waiting"

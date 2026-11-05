@@ -1,3 +1,4 @@
+import { REAL_API } from '../../../shri-health/client'
 import type { LucideIcon } from 'lucide-react'
 import {
   ChartNoAxesCombined,
@@ -44,14 +45,15 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Activity & Analytics', path: '/activity-analytics', icon: ChartNoAxesCombined, hue: 'violet', description: 'Desk activity, trends and performance' },
     ],
   },
-  {
+  // Guest Pass, Enquiry & Estimate and MLC are India's: hidden with the SHRI_HEALTH API (2026-11-05).
+  ...(REAL_API ? [] : ([{
     label: 'Services',
     items: [
       { label: 'Guest Pass', path: '/services/guest-pass', icon: IdCard, hue: 'pink', description: 'Passes for visitors and attendants' },
       { label: 'Enquiry & Estimate', path: '/services/enquiry', icon: Receipt, hue: 'orange', description: 'Service rates and cost estimates' },
       { label: 'MLC', path: '/services/mlc', icon: FileWarning, hue: 'red', description: 'Medico-legal case records' },
     ],
-  },
+  }] as NavGroup[])),
 ]
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items)

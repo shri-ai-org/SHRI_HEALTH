@@ -26,7 +26,7 @@ import {
 } from '../../domain/selectors'
 import { rescheduleAppointment } from '../../domain/actions'
 import { isServerAppointment, loadSchedule, rescheduleOnServer } from '../../../shri-health/scheduling'
-import { ApiError, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
+import { ApiError, REAL_API, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
 import { formatMoney } from '../../utils/billing'
 import { dayWithDate } from '../../utils/dates'
 import { appointmentStatusLabel, modesFor } from '../../utils/appointment'
@@ -39,7 +39,7 @@ import { formatTime } from '../../domain/time'
 
 /** One line for a booking's place: doctor · day date · time · mode. */
 function placeLine(place: BookingPlace, doctorName: string, today: string): string {
-  return `${doctorName} · ${dayWithDate(place.date, today)} · ${formatTime(place.slot)}${place.mode === 'Teleconsult' ? ' · Teleconsult' : ''}`
+  return `${doctorName} · ${dayWithDate(place.date, today)}${REAL_API ? ',' : ' ·'} ${formatTime(place.slot)}${place.mode === 'Teleconsult' ? ' · Teleconsult' : ''}`
 }
 
 /**
@@ -114,7 +114,7 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
       >
         <p className="text-base font-semibold text-ink">{movedDoctor}</p>
         <p>
-          {dayWithDate(moved.date, today)} · {formatTime(moved.slot)}
+          {dayWithDate(moved.date, today)}{REAL_API ? ',' : ' ·'} {formatTime(moved.slot)}
         </p>
         <p className="inline-flex items-center gap-1.5">
           {moved.mode === 'Teleconsult' ? <Video className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" /> : <Building2 className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
@@ -281,7 +281,7 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
             <span className="font-semibold">{wasProvider.name}</span>
             <span className="text-ink-muted">
               {' '}
-              · {dayWithDate(was.date, today)} · {formatTime(was.slot)} · {formatMoney(feePaid)} paid
+              · {dayWithDate(was.date, today)}{REAL_API ? ',' : ' ·'} {formatTime(was.slot)} · {formatMoney(feePaid)} paid
             </span>
           </span>
         </div>

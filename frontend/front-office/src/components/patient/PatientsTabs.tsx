@@ -1,3 +1,4 @@
+import { REAL_API } from '../../../shri-health/client'
 import { NavLink } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import { BedDouble, CalendarClock, Users } from 'lucide-react'
@@ -20,9 +21,13 @@ export function PatientsTabs() {
   const inpatients = useStoreValue(getInpatientRows, now).length
 
   const tabs: { to: string; label: string; icon: LucideIcon; count: number; end?: boolean; title: string }[] = [
-    { to: '/patients', label: 'All patients', icon: Users, count: all, end: true, title: 'Every registered patient' },
+    // SHRI_HEALTH: there is no all-patients list (D65); the tab holds the patients this session has
+    // read (today's bookings, searches, registrations), and Inpatients is India's (2026-11-05).
+    REAL_API
+      ? { to: '/patients', label: 'This session', icon: Users, count: all, end: true, title: 'Patients opened, searched or booked in this session (no all-patients list, D65)' }
+      : { to: '/patients', label: 'All patients', icon: Users, count: all, end: true, title: 'Every registered patient' },
     { to: '/patients/outpatients', label: 'Outpatients', icon: CalendarClock, count: outpatients, title: 'Booked for today' },
-    { to: '/patients/inpatients', label: 'Inpatients', icon: BedDouble, count: inpatients, title: 'Admitted now' },
+    ...(REAL_API ? [] : [{ to: '/patients/inpatients', label: 'Inpatients', icon: BedDouble, count: inpatients, title: 'Admitted now' }]),
   ]
 
   return (

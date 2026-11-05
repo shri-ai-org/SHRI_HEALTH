@@ -3,6 +3,7 @@
 // "risk" here is built only from facts this desk owns: where the patient is
 // admitted and whether a medico-legal case is open.
 import type { AppState } from '../types/store'
+import { REAL_API } from '../../shri-health/client'
 import type { Admission } from '../types/admission'
 import type { Payment } from '../types/payment'
 import type { ConsultMode, PatientAppointmentRow } from '../types/appointment'
@@ -188,7 +189,7 @@ export function getPatientTimeline(state: AppState, patientId: string): PatientT
       at: appointment.slotTimestamp,
       kind: 'encounter',
       title: `Doctor visit · ${doctor}`,
-      detail: `${appointment.department} · ${formatDateKey(appointment.date)} ${formatTime(appointment.slot)}`,
+      detail: `${appointment.department} · ${formatDateKey(appointment.date)}${REAL_API ? ',' : ''} ${formatTime(appointment.slot)}`,
       ...visitOutcome(appointment.status),
     })
   }

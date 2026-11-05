@@ -12,10 +12,10 @@ import { relativeDayLabel } from '../../utils/dates'
 import { formatClock } from '../../utils/format'
 import { formatTime, todayKey } from '../../domain/time'
 
-/** A clinic date key (`2026-11-03`) as `Nov 3, 2026` (US wording change, 2026-11-04). */
+/** A clinic date key (`2026-11-03`) as `Tue, Nov 3, 2026` (US display change, 2026-11-04/05). */
 function usDate(key: string): string {
   const [y, m, d] = key.split('-').map(Number)
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(Date.UTC(y, m - 1, d))
+  return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(Date.UTC(y, m - 1, d))
 }
 import { printBill } from '../../utils/printBill'
 import type { PatientTimeline as Timeline, TimelineKind, UpcomingItem } from '../../domain/patientSelectors'
