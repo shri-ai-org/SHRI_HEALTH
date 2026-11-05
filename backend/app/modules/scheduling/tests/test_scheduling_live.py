@@ -333,6 +333,30 @@ def test_a_restricted_chart_shows_name_and_appointment_only(client: Any,
     assert "reasonForVisit" not in got
 
 
+
+def test_the_desks_schedule_and_board_show_a_restricted_visit_without_clinical_text(
+        client: Any, practice: Practice) -> None:
+    """D37, D60, SECURITY_MODEL §5.2: the front desk finds a restricted patient's appointment on
+    its day list and the staff status board, so it can check them in, with the name and the
+    appointment only; reason for visit, staff note and patient instructions stay hidden."""
+    a = _book(client, practice, patient="restricted", patientInstruction="Fast overnight.")
+    day = practice.day.isoformat()
+    listed = client("fd").get(f"{API}/appointments", params={"date": day})
+    assert listed.status_code == 200, listed.text
+    (item,) = [x for x in listed.json()["items"] if x["id"] == a["id"]]
+    assert item["patient"]["displayName"] == "Elena88 Vasquez512"
+    assert item["patient"]["restricted"] is True and item["status"] == "booked"
+    for hidden in ("reasonForVisit", "comment", "patientInstruction"):
+        assert hidden not in item, hidden
+    board = client("fd").get(f"{API}/status-board", params={
+        "facilityId": str(practice.facility), "date": day, "view": "staff"})
+    assert board.status_code == 200, board.text
+    (row,) = [x for x in board.json()["items"] if x.get("appointmentId") == a["id"]]
+    assert "reasonForVisit" not in row
+    assert "Follow-up on headaches" not in board.text and "Prefers mornings" not in board.text
+    assert "Fast overnight" not in listed.text + board.text
+
+
 # --------------------------------------------------------------------------- the day and week
 def test_list_by_day_by_range_and_by_patient(client: Any, practice: Practice) -> None:
     first = _book(client, practice)
