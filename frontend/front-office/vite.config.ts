@@ -67,6 +67,8 @@ export default defineConfig({
   // Deployment sub-path, e.g. BASE_PATH=/dev/care-entry/ (defaults to the site root)
   base: process.env.BASE_PATH ?? '/',
   plugins: [react(), tailwindcss(), portalRoute()],
+  // SHRI_HEALTH: the screens import react-router-dom 7; SHRI_HEALTH ships react-router 8.
+  resolve: { alias: { 'react-router-dom': 'react-router' } },
   define: {
     __BUILD_STAMP__: JSON.stringify(buildStamp(new Date())),
     __BUILD_COMMIT__: JSON.stringify(buildCommit()),
