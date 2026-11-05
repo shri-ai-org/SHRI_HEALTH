@@ -161,7 +161,7 @@ export function FrontOfficeHomePage() {
       <div className="flex flex-col gap-4 sm:gap-5 mt-4 sm:mt-5">
         {loadError ? <Alert tone="warning">{`Today's bookings could not be read from the server: ${loadError}`}</Alert> : null}
         {/* Five figures, one purpose each — each card opens the place that holds it. */}
-        <section aria-label="Today at a glance" className={figureRowClass(REAL_API ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3 xl:grid-cols-5')}>
+        <section aria-label="Today at a glance" className={figureRowClass(REAL_API ? 'sm:grid-cols-3' : 'sm:grid-cols-3 xl:grid-cols-5')}>
           <StatCard
             hue="blue"
             icon={CalendarClock}
@@ -193,15 +193,18 @@ export function FrontOfficeHomePage() {
               title="Show who is admitted, and the beds"
             />
           )}
-          <StatCard
-            hue="red"
-            icon={CurrencyIcon}
-            value={formatMoney(billing.dueAmount)}
-            label="Payment pending today"
-            trend={trends.PAYMENT_COMPLETED}
-            to="/billing?filter=due"
-            title="Bills raised today still to pay at the billing counter — opens every bill with payment pending"
-          />
+          {/* SHRI_HEALTH: bills at the counter are India-only. */}
+          {REAL_API ? null : (
+            <StatCard
+              hue="red"
+              icon={CurrencyIcon}
+              value={formatMoney(billing.dueAmount)}
+              label="Payment pending today"
+              trend={trends.PAYMENT_COMPLETED}
+              to="/billing?filter=due"
+              title="Bills raised today still to pay at the billing counter — opens every bill with payment pending"
+            />
+          )}
           <StatCard
             hue="teal"
             icon={UserPlus}

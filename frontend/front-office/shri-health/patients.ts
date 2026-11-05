@@ -21,8 +21,10 @@ import {
   getPatientSummaries as apiGetPatientSummaries,
   registerPatient as apiRegisterPatient,
   searchPatients as apiSearchPatients,
+  updatePatient as apiUpdatePatient,
 } from '../../src/api/generated/endpoints/patients/patients'
-import type { Patient as ApiPatient, PatientCreate, PatientSearchRequestCriteria, PatientSummary } from '../../src/api/generated/model'
+import type { Patient as ApiPatient, PatientCreate, PatientPatch, PatientSearchRequestCriteria, PatientSummary } from '../../src/api/generated/model'
+import { etagOf } from '../../src/api/client'
 import { newIdempotencyKey } from './client'
 import { setState } from '../src/domain/store'
 import { formatMobile } from '../src/utils/phone'
@@ -191,6 +193,48 @@ export async function loadCandidates(ids: string[]): Promise<Patient[]> {
 export async function loadPatient(patientId: string): Promise<Patient> {
   const res = await apiGetPatient(patientId)
   if (res.status !== 200) throw new Error('The patient could not be read')
+  const patient = fromPatient(res.data)
+  reconcile([patient], true)
+  return patient
+}
+
+export interface DemographicsChange {
+  name?: string
+  sex?: Sex
+  mobile?: string
+  email?: string | null
+}
+
+/**
+ * The profile's "Edit details" on the server: PATCH /patients/{id} with the record's ETag as
+ * If-Match (read just before, so a change made elsewhere is never overwritten silently: a 412
+ * means read again). Only what changed is sent. The full name splits at its last space into given
+ * names and the family name; the mobile replaces the record's mobile phone and keeps any others;
+ * the email replaces the first. Age and address are read-only here: the U.S. record keeps the date
+ * of birth (D44) and a structured address, which registration edits.
+ */
+export async function updatePatientOnServer(patientId: string, change: DemographicsChange): Promise<Patient> {
+  const current = await apiGetPatient(patientId)
+  if (current.status !== 200) throw new Error('The patient could not be read')
+  const etag = etagOf(current) ?? ''
+  const p = current.data
+  const patch: PatientPatch = {}
+  if (change.name !== undefined) {
+    const words = change.name.trim().split(/\s+/)
+    const family = words.pop() ?? ''
+    patch.name = { ...p.name, family, given: words.length ? words : undefined }
+  }
+  if (change.sex !== undefined) patch.gender = GENDER_FROM_SEX[change.sex]
+  if (change.mobile !== undefined) {
+    const others = (p.phones ?? []).filter((ph) => ph.use !== 'mobile')
+    patch.phones = [{ number: toE164(change.mobile), use: 'mobile' }, ...others]
+  }
+  if (change.email !== undefined) {
+    const rest = (p.emails ?? []).slice(1)
+    patch.emails = change.email ? [{ ...(p.emails?.[0] ?? {}), address: change.email.trim() }, ...rest] : rest
+  }
+  const res = await apiUpdatePatient(patientId, patch, { 'If-Match': etag })
+  if (res.status !== 200) throw new Error('The details were not saved')
   const patient = fromPatient(res.data)
   reconcile([patient], true)
   return patient

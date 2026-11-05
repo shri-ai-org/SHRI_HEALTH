@@ -100,14 +100,17 @@ export function PatientHeader({
             // Admit is India's inpatient flow: hidden with the SHRI_HEALTH API (US wording change, 2026-11-04).
             <Action icon={BedDouble} label="Admit" hue={HUES.orange} onClick={actions.admit} />
           )}
-          <Action
-            icon={CurrencyIcon}
-            label="Payment History"
-            hue={HUES.green}
-            onClick={actions.togglePayments}
-            pressed={paymentsOpen}
-            title={paymentsOpen ? 'Hide payment history' : 'Show payment history'}
-          />
+          {/* Bills at the counter are India-only: hidden with the SHRI_HEALTH API. */}
+          {REAL_API ? null : (
+            <Action
+              icon={CurrencyIcon}
+              label="Payment History"
+              hue={HUES.green}
+              onClick={actions.togglePayments}
+              pressed={paymentsOpen}
+              title={paymentsOpen ? 'Hide payment history' : 'Show payment history'}
+            />
+          )}
         </div>
       </div>
       {/* Contact and ABHA across the full width, lined up under the name. */}
