@@ -161,7 +161,7 @@ export function FrontOfficeHomePage() {
       <div className="flex flex-col gap-4 sm:gap-5 mt-4 sm:mt-5">
         {loadError ? <Alert tone="warning">{`Today's bookings could not be read from the server: ${loadError}`}</Alert> : null}
         {/* Five figures, one purpose each — each card opens the place that holds it. */}
-        <section aria-label="Today at a glance" className={figureRowClass('sm:grid-cols-3 xl:grid-cols-5')}>
+        <section aria-label="Today at a glance" className={figureRowClass(REAL_API ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3 xl:grid-cols-5')}>
           <StatCard
             hue="blue"
             icon={CalendarClock}
@@ -181,15 +181,18 @@ export function FrontOfficeHomePage() {
             to="/patients/outpatients?filter=waiting"
             title="Show who is waiting for consultation"
           />
-          <StatCard
-            hue="violet"
-            icon={BedDouble}
-            value={inpatients.length}
-            label="Inpatients"
-            trend={trends.PATIENT_ADMITTED}
-            to="/patients/inpatients"
-            title="Show who is admitted, and the beds"
-          />
+          {/* Inpatients are India's: hidden with the SHRI_HEALTH API (2026-11-05). */}
+          {REAL_API ? null : (
+            <StatCard
+              hue="violet"
+              icon={BedDouble}
+              value={inpatients.length}
+              label="Inpatients"
+              trend={trends.PATIENT_ADMITTED}
+              to="/patients/inpatients"
+              title="Show who is admitted, and the beds"
+            />
+          )}
           <StatCard
             hue="red"
             icon={CurrencyIcon}
