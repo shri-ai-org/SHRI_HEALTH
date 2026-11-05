@@ -1,6 +1,8 @@
 # Model shortlist: AI-01 note drafting and AI-02 chart summaries
 
-**Status:** a research note for choosing what to benchmark. Nothing here is a decision. Sources were read on 2 November 2026.
+**Status:** a research note for choosing what to benchmark. Sources were read on 2 November 2026; the two model cards' licence fields were read again on 5 November 2026.
+
+**Candidates for the first benchmark (Vimal, 2026-11-05):** **MedGemma 1.5 4B** (`google/medgemma-1.5-4b-it`) is the primary candidate and **Qwen 3.5 4B** (`Qwen/Qwen3.5-4B`) the fallback. This picks what to benchmark first, not the model: the choice is made on the harness's scores (`ai/eval/RUNNING.md`). **MedGemma can't be served, even for the benchmark, until Sena records its licence exception** (below).
 
 ## What this covers
 
@@ -9,6 +11,9 @@
   - Weights must be Apache-2.0 or MIT.
   - Gemma-family terms do not pass. Gemma 4 needs a check first (see the table).
   - MedGemma needs a line in the licence exceptions register. D75 has not granted that line.
+  - **The two candidates' licences, from their model cards** (Hugging Face, read 2026-11-05):
+    - `google/medgemma-1.5-4b-it`: `license: other`, `license_name: health-ai-developer-foundations`, terms at <https://developers.google.com/health-ai-developer-foundations/terms>; gated (accept the terms to download). **Not on the D75 allowlist: it needs Sena's exception in the register first.**
+    - `Qwen/Qwen3.5-4B`: `license: apache-2.0` (its `LICENSE` file). On the D75 allowlist.
 - **The next step:** run each candidate the shortlist keeps through the evaluation harness (`ai/eval`, `python -m shri_eval --endpoint … --model …`) and pick on its scores (guide Step 7.7).
 
 ## How to read the numbers
@@ -57,7 +62,8 @@ GB means 10⁹ bytes.
 | microsoft/phi-4 | mit | 14.7B | 29.3 / 14.7 / 7.3 | 1.68 / (n/a) | 16K | none on card | **Reserve.** 16K context limits long visits and charts |
 | mistralai/Mistral-Small-3.2-24B-Instruct-2506 | apache-2.0 | 24.0B | 48.0 / 24.0 / 12.0 | 1.34 / 5.37 | 128k (3.1 card) | card: `vLLM >= 0.9.1`; "~55 GB of GPU RAM in bf16" | **Out** for one GPU with Whisper, except quantized on 48 GB |
 | google/gemma-4-E4B-it, gemma-4-12B-it | apache-2.0 (link: ai.google.dev/gemma/docs/gemma_4_license) | 8.0B with embeddings; 12.0B | 16.0; 23.9 at BF16 | not computed (shared and unified K/V layers) | 128K; 256K | supported-models page lists `Gemma4…ForConditionalGeneration` | **Hold.** The metadata says Apache-2.0, but the licence page links separate Gemma terms of use and prohibited-use pages. Whether those apply was not verified, so it needs a D75 check before any use |
-| google/medgemma-4b-it, medgemma-27b-text-it, medgemma-1.5-4b-it | other: `health-ai-developer-foundations` | 4.3B; 27.0B | — | — | — | — | **Excluded** (D75 register line not granted) |
+| google/medgemma-1.5-4b-it | other: `health-ai-developer-foundations` | 4.3B (4,300,079,472) | 8.6 / 4.3 / 2.2 | — | — | — | **Primary candidate** (Vimal, 2026-11-05), served only once Sena's D75 exception is in the register |
+| google/medgemma-4b-it, medgemma-27b-text-it | other: `health-ai-developer-foundations` | 4.3B; 27.0B | — | — | — | — | Not benchmarked (the 1.5 4B supersedes the 4B; the 27B doesn't fit one 24 GB card) |
 | google/gemma-3-4b-it, gemma-3-12b-it | `gemma` | — | — | — | — | — | **Excluded** (D75) |
 | meta-llama/Llama-3.1-8B-Instruct | `llama3.1` | 8.0B | — | — | — | — | **Excluded** (D75) |
 | mistralai/Ministral-8B-Instruct-2410 | other: `mrl` (Mistral AI Research License) | 8.0B | — | — | — | — | **Excluded** (D75) |
@@ -128,7 +134,9 @@ The README publishes no large-v3 or turbo figures. Turbo has about half large-v3
 
 ## GPU sizing
 
-**Recommendation: one NVIDIA L40S, 48 GB** (AWS `g6e.xlarge`). The floor is one 24 GB L4 (`g6.xlarge`), with an 8-bit model.
+**Recommendation (2026-11-05): one 24 GB card of the L4 class** (AWS `g6.xlarge` or `g6.2xlarge`, 1 × L4). It holds **one** 4B model at BF16 (MedGemma 1.5 4B 8.6 GB, or Qwen 3.5 4B 9.3 GB), Whisper and a few concurrent requests. **Both candidates loaded side by side need 48 GB**; that is only for a side-by-side benchmark, which can also run one model at a time on the 24 GB card. An 8–9B model at BF16 is no longer the plan, so a 48 GB L40S is not the minimum.
+
+The arithmetic for one 4B model on 24 GB: about 6 GB for Whisper and the CUDA context leaves about 17 GB for vLLM (`--gpu-memory-utilization` about 0.7); the weights take 8.6 to 9.3 GB, leaving about 8 GB of KV cache, enough for a few concurrent requests of a visit transcript's length. Two 4B models (about 18 GB of weights together) plus Whisper exceed 24 GB.
 
 **Reasoning, for one pilot clinic.** The card holds one LLM, its KV cache and Whisper together.
 
@@ -166,11 +174,11 @@ The README publishes no large-v3 or turbo figures. Turbo has about half large-v3
 
 ### Paragraph for Thulasi
 
-> **GPU for the pilot (AI-01 notes, AI-02 summaries, speech):** one NVIDIA L40S, 48 GB (AWS g6e.xlarge), running vLLM and faster-whisper side by side.
+> **GPU for the pilot (AI-01 notes, AI-02 summaries, speech), updated 2026-11-05:** one 24 GB L4-class card (AWS g6.xlarge or g6.2xlarge), running vLLM with one 4B model and faster-whisper side by side. Candidates: MedGemma 1.5 4B (primary, once Sena's D75 exception is recorded) and Qwen 3.5 4B (fallback, Apache-2.0). Both loaded at once would need 48 GB; that isn't needed.
 >
 > - **Whisper:** large-v3-turbo needs about 4.5 to 6 GB. That is the faster-whisper README's large-v2 figure, which turbo should not exceed. Cap vLLM with `--gpu-memory-utilization` so Whisper keeps its share; vLLM 0.32 otherwise takes 92%.
-> - **The LLM:** on 48 GB, any of the 8 to 9B Apache-2.0 candidates (Qwen3-8B, Qwen3.5-9B, Granite 4.2 8B) runs at BF16 (16 to 19 GB weights), with room for several 32k-token requests at once. A 14B model at 8-bit also fits if the 8B models fall short.
-> - **The floor is a 24 GB L4** (g6.xlarge). It runs a 4B model at BF16, or an 8B at 8-bit, beside Whisper, with little headroom and a third of the L40S's memory bandwidth (300 vs 864 GB/s), so generation is slower.
+> - **The LLM:** one 4B model at BF16 (8.6 to 9.3 GB of weights) with about 8 GB of KV cache, enough for a few concurrent requests.
+> - **Bandwidth:** the L4's 300 GB/s makes generation slower than a 48 GB L40S (864 GB/s); the benchmark measures whether a 4B model's latency is acceptable on it.
 > - **Sources and arithmetic:** `ai/docs/MODEL_SHORTLIST.md`.
 > - **Still to measure on the card:** Whisper turbo's real footprint and both models' latency.
 
