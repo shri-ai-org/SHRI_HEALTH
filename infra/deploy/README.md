@@ -77,6 +77,24 @@ Run by `up` and `check`. It passes only if all of these hold:
 - a request with `X-Dev-User` is refused (401), and patient sign-in answers 503;
 - a download URL's token never reaches Nginx's log (a probe request, then the last two minutes of the log).
 
+## Demo reset (between rehearsals)
+
+```bash
+infra/deploy/deploy.sh reset /etc/shri/deploy.env
+```
+
+This puts the demo host back to the demo data, synthetic patients only (plan §8). It runs only with `SHRI_DEMO=true`, and asks you to type the hostname first. Without a terminal, set `RESET_CONFIRM` to the hostname.
+
+In order:
+1. Stops the API and the worker.
+2. Drops the application database and creates it again empty, as the master user (`postgres/recreate-database.sql`): UTF-8 with the builtin C.UTF-8 locale (D33), owned by `shri_migrator`, `CONNECT` for the service roles only. The service roles belong to the server, so they and their passwords stay. It refuses `postgres`, the templates and `keycloak`.
+3. Adds the extensions, as the master user.
+4. Runs `python -m app.db.seed reset` as `shri_migrator` (Anand's half): the migrations to head, then the demo data. It refuses a database that already has tables.
+5. Puts the demo accounts back (`infra/keycloak/reset-demo-users.sh`).
+6. Starts the API and the worker, and runs the health check.
+
+Everyone is signed out, because sessions live in the database. Keycloak's database, OpenBao's keys and the stored files stay. Files from earlier runs remain in the object store, unreferenced; they're synthetic. Steps 2 to 4 take about 10 seconds.
+
 ## Admin access
 
 - **SSH:** only from `admin_cidr` (OpenTofu, below), with the administrator's key.

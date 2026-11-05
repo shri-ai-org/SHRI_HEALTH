@@ -4,6 +4,7 @@
 #   infra/deploy/deploy.sh init-env /etc/shri/deploy.env   # once: a new settings file, random secrets
 #   infra/deploy/deploy.sh up       /etc/shri/deploy.env   # build, start, migrate, demo reset, check
 #   infra/deploy/deploy.sh check    /etc/shri/deploy.env   # the health check only
+#   infra/deploy/deploy.sh reset    /etc/shri/deploy.env   # demo only: erase the database, back to the demo data
 #   infra/deploy/deploy.sh down     /etc/shri/deploy.env   # stop (volumes, and so the data, stay)
 #
 # The settings file holds every secret: it must be mode 600 and outside the repository. Secrets
@@ -164,6 +165,44 @@ demo_reset() {
         -m app.db.seed demo
 }
 
+reset() {
+    # The demo between rehearsal runs (plan §8): the application database is dropped and
+    # created again, then filled with the demo data only. Keycloak's own database, OpenBao and
+    # the files stay; only the demo accounts are put back. Never on a non-demo host.
+    [ "${SHRI_DEMO:-false}" = true ] || die "reset erases the database: it runs only on a demo host (SHRI_DEMO=true)"
+    : "${POSTGRES_DB:?}"
+    say "Reset $SHRI_PUBLIC_URL: the database $POSTGRES_DB is erased and refilled with the demo data"
+    # Typed, not a flag: a reset by mistake loses the rehearsal's state.
+    if [ "${RESET_CONFIRM:-}" != "$SHRI_HOSTNAME" ]; then
+        [ -t 0 ] || die "set RESET_CONFIRM=$SHRI_HOSTNAME to reset without a terminal"
+        read -r -p "Type the hostname ($SHRI_HOSTNAME) to go on: " answer
+        [ "$answer" = "$SHRI_HOSTNAME" ] || die "not reset"
+    fi
+    say "Stopping the API and the worker"
+    $DC stop api integration-worker
+    $DC up -d postgres
+    for _ in $(seq 1 30); do $DC exec -T postgres pg_isready -q -h 127.0.0.1 && break; sleep 1; done
+    say "Dropping and recreating $POSTGRES_DB (master user)"
+    $DC exec -T -e DBNAME="$POSTGRES_DB" postgres sh -c \
+        'PGPASSWORD="$POSTGRES_PASSWORD" psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -U "$POSTGRES_USER" -d postgres -v target="$DBNAME"' \
+        <"$DEPLOY/postgres/recreate-database.sql"
+    $DC exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+        <"$REPO/backend/app/db/sql/00_extensions.sql"
+    say "Migrations and the demo data (python -m app.db.seed reset, as shri_migrator)"
+    # The reset refuses a database that has tables and, like the seed, staging without
+    # SEED_ALLOW_STAGING=1 (#159); this host is a demo host (checked above).
+    MIGRATION_DATABASE_URL="postgresql+psycopg://shri_migrator:${SHRI_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB}" \
+        $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SEED_ALLOW_STAGING=1 --entrypoint python api \
+        -m app.db.seed reset
+    say "Demo accounts (Keycloak, fixed IDs)"
+    KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
+        KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" DEMO_PASSWORD="$DEMO_PASSWORD" \
+        sh "$REPO/infra/keycloak/reset-demo-users.sh"
+    say "Starting the API and the worker"
+    $DC up -d api integration-worker
+    check
+}
+
 wait_for() {  # url, what
     for _ in $(seq 1 90); do
         curl -fsS "${CURL_TLS[@]}" --resolve "$SHRI_HOSTNAME:$SHRI_HTTPS_PORT:127.0.0.1" -o /dev/null "$1" 2>/dev/null && return 0
@@ -239,11 +278,12 @@ up() {
     check
 }
 
-[ $# -eq 2 ] || die "usage: deploy.sh {init-env|up|check|down} SETTINGS_FILE"
+[ $# -eq 2 ] || die "usage: deploy.sh {init-env|up|check|reset|down} SETTINGS_FILE"
 case "$1" in
     init-env) init_env "$2" ;;
     up) load_env "$2"; up ;;
     check) load_env "$2"; check ;;
+    reset) load_env "$2"; reset ;;
     down) load_env "$2"; $DC down ;;
-    *) die "usage: deploy.sh {init-env|up|check|down} SETTINGS_FILE" ;;
+    *) die "usage: deploy.sh {init-env|up|check|reset|down} SETTINGS_FILE" ;;
 esac
