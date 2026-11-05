@@ -219,6 +219,16 @@ class CancelRequest(Closed):
     reason_text: Annotated[str, _text(500)] | None = None
 
 
+class AppointmentPatch(Closed):
+    """JSON merge patch (D61): only the room, reason for visit, staff note and patient
+    instructions; an absent field is unchanged, null clears it. No time, provider, facility,
+    type or length (those go through reschedule)."""
+    location_id: UUID | None = None
+    reason_for_visit: Annotated[str, _text(1000)] | None = None
+    comment: Annotated[str, _text(2000)] | None = None
+    patient_instruction: Annotated[str, _text(2000)] | None = None
+
+
 class RescheduleRequest(Closed):
     start_at: AwareDatetime
     provider_id: UUID | None = None

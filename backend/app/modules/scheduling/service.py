@@ -27,6 +27,8 @@ from app.core.errors import (
     Forbidden,
     InvalidCursor,
     NotFound,
+    PreconditionFailed,
+    PreconditionRequired,
     ValidationFailed,
     field_error,
 )
@@ -301,6 +303,40 @@ async def reschedule(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
     await events.booked(db, new_id, patient_id=new.patient_id, provider_id=new.provider_id,
                         facility_id=new.facility_id, start=new.start, rescheduled=True)
     return new_id
+
+
+def if_match_version(header: str | None) -> int:
+    if header is None:
+        raise PreconditionRequired()
+    value = header.strip()
+    if value.startswith('"') and value.endswith('"') and value[1:-1].isdigit():
+        return int(value[1:-1])
+    raise PreconditionFailed()  # a weak or malformed tag never matches a strong one
+
+
+async def edit(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
+               appointment_id: UUID, body: schemas.AppointmentPatch, if_match: str | None
+               ) -> None:
+    """updateAppointment (D61): a booked appointment's room, reason for visit, staff note and
+    patient instructions, with If-Match. Another facility's appointment is 404."""
+    version = if_match_version(if_match)
+    current = await repo.get(db, appointment_id)
+    require_facility(user, current.facility_id)
+    fields = set(body.model_fields_set)
+    if "location_id" in fields and body.location_id is not None:
+        fac = await facility(db, ref, user, current.facility_id)
+        if body.location_id != fac.location_id and body.location_id not in {
+                loc.id for loc in await ref.locations(db, [fac.id])}:
+            raise business_rule("/locationId", "invalid-reference")
+    row = await repo.locked(db, appointment_id)
+    if row.meta_version_id != version:
+        raise PreconditionFailed(headers={"ETag": etag(row.meta_version_id)})
+    if row.status != "booked":
+        raise Conflict(code="invalid-state-transition", currentState=row.status)
+    if fields:
+        await repo.edit(db, row, fields, location_id=body.location_id,
+                        reason=body.reason_for_visit, comment=body.comment,
+                        patient_instruction=body.patient_instruction)
 
 
 async def cancel(db: AsyncSession, user: CurrentUser, appointment_id: UUID,

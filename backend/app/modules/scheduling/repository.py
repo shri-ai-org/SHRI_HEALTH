@@ -392,6 +392,36 @@ async def locked(db: AsyncSession, appointment_id: UUID) -> Any:
     return row
 
 
+async def edit(db: AsyncSession, row: Any, fields: set[str], *, location_id: UUID | None,
+               reason: str | None, comment: str | None, patient_instruction: str | None
+               ) -> None:
+    """updateAppointment (D61): only the fields sent. The room is the appointment's location
+    participant and the reason its appointment_reason row, so those are replaced; the touch
+    triggers move the appointment's version with them, once per transaction."""
+    user_id = await _user_id(db)
+    if "comment" in fields:
+        row.comment = comment
+    if "patient_instruction" in fields:
+        row.patient_instruction = patient_instruction
+    row.updated_by_user_id = user_id
+    if "location_id" in fields:
+        await db.execute(_CLEAR_LOCATION, {"id": row.id})
+        if location_id is not None:
+            db.add(M["appointment_participant"](appointment_id=row.id,
+                                                actor_location_id=location_id,
+                                                required="required", status="accepted"))
+    if "reason_for_visit" in fields:
+        await db.execute(_CLEAR_REASON, {"id": row.id})
+        if reason:
+            db.add(M["appointment_reason"](appointment_id=row.id, reason_code_text=reason))
+    await db.flush()
+
+
+_CLEAR_LOCATION = text("DELETE FROM clinical.appointment_participant WHERE appointment_id = :id "
+                       "AND actor_location_id IS NOT NULL")
+_CLEAR_REASON = text("DELETE FROM clinical.appointment_reason WHERE appointment_id = :id")
+
+
 async def cancel(db: AsyncSession, row: Any, reason_code: str, reason_text: str | None) -> None:
     user_id = await _user_id(db)
     now = await db_now(db)  # before any change: a query would autoflush a half-cancelled row
