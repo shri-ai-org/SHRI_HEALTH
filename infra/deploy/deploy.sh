@@ -252,6 +252,16 @@ check() {
     if $DC logs --no-log-prefix --since 2m nginx 2>&1 | grep -q "$probe"; then
         die "a query string reached Nginx's access log"
     fi
+    # The screens: the app's page at /, a screen route falls back to it, and the security
+    # headers apply there too (an add_header in a location replaces the server's).
+    local page headers
+    page="$("${curl[@]}" "$SHRI_PUBLIC_URL/")"
+    case "$page" in *'<div id="root"'*) ;; *) die "/ does not serve the screens" ;; esac
+    [ "$("${curl[@]}" "$SHRI_PUBLIC_URL/patients")" = "$page" ] || die "a screen route does not get index.html"
+    headers="$("${curl[@]}" -o /dev/null -D - "$SHRI_PUBLIC_URL/")"
+    for h in "content-security-policy: default-src 'self'" "x-frame-options: DENY" "strict-transport-security:" "cache-control: no-store"; do
+        printf '%s' "$headers" | grep -qi "^$h" || die "/ is missing the header: $h"
+    done
     say "All checks passed: $SHRI_PUBLIC_URL (release $SHRI_RELEASE, ${SHRI_ENVIRONMENT:-staging}, demo ${SHRI_DEMO:-false})"
 }
 
@@ -262,7 +272,7 @@ up() {
     fi
     say "Images: third-party ones pinned by digest, ours built from this commit"
     $DC pull --quiet --ignore-buildable
-    $DC build --quiet postgres keycloak api
+    $DC build --quiet postgres keycloak api nginx
     say "Database and OpenBao"
     $DC up -d postgres openbao
     unseal

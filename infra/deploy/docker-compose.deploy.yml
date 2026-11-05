@@ -145,6 +145,11 @@ services:
     restart: unless-stopped
 
   nginx:
+    # The screens, built from this commit into the edge's image (nginx/Dockerfile).
+    image: shri-health/web:${SHRI_RELEASE:?run through deploy.sh}
+    build:
+      context: ../../frontend
+      dockerfile: ../infra/deploy/nginx/Dockerfile
     ports: !override
       - "${SHRI_HTTPS_PORT:-443}:443"
     environment:
