@@ -147,6 +147,13 @@ The visit helpers (batch 2), on the same rules:
   visit still shows what was diagnosed. It takes only the Condition: the caller checks that it
   is an `encounter-diagnosis` of the visit in the request and that the visit is signed;
 
+`set_preferred_pharmacy(db, patient_id, pharmacy_id, *, if_version)` (D50): the patient's one
+default in `admin.patient_pharmacy` (an earlier choice stays, not default), from the platform
+directory (`ResourceNotFound` if unknown, `InvalidInput` if inactive). It updates the patient
+row too, so the patient's version and `_history` move: `If-Match` and the returned `Written`
+are the patient's. The same pharmacy again changes nothing. `preferred_pharmacy(db,
+patient_id)` reads it back (name, NCPDP ID, phone, address, when chosen), or None.
+
 `record_medication` (D28; demo step 7): a medication the patient already takes, on the list. A
 MedicationRequest with intent `plan`, `reportedBoolean` true and the patient as requester (the
 prescriber isn't known), with the sig and a note; never signed, and the database never lets one
