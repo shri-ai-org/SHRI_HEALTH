@@ -22,3 +22,7 @@ class DiagnosisCreate(Closed):
 
 class DiagnosisRemove(Closed):
     reason: Annotated[str, StringConstraints(min_length=1, max_length=500)]
+
+
+class DiagnosisEnteredInError(Closed):
+    reason: Annotated[str, StringConstraints(min_length=1, max_length=500)]

@@ -9,8 +9,11 @@ the request's transaction.
 - **Remove** (before signing) makes the Condition ``entered-in-error`` with the reason in its
   Provenance and deletes only its rank link, so the ranks after it close up (D24, D73). Nothing
   is deleted from the record.
-- **Entered-in-error after signing** (#73) is not built: it keeps the rank link, and
-  ``app.db.fhir_store`` has no helper for a Condition's entered-in-error yet (note for Anand).
+- **Entered-in-error after signing** (#73) makes the Condition ``entered-in-error`` with the
+  reason in its Provenance and keeps its rank link for the audit trail; before signing, the
+  answer is ``409 invalid-state-transition`` (use remove). Anand's helper (#194, #217) checks only
+  the Condition; this module checks that it is this visit's encounter diagnosis and that the
+  visit is signed.
 """
 
 from __future__ import annotations
@@ -139,6 +142,41 @@ async def remove(db: AsyncSession, repo: EncounterRepository, drepo: DiagnosisRe
     try:
         await store.remove_encounter_diagnosis(db, encounter_id, diagnosis_id,
                                                Reason(text=reason))
+    except ResourceNotFound as gone:
+        raise NotFound() from gone
+    except InvalidTransition as done:
+        raise _state(done.current_state) from done
+    except InvalidInput as refused:
+        raise business_rule([field_error("body", "/reason", "required")]) from refused
+    name_patient(head.patient_id)
+    await db.commit()
+    found = await drepo.get(db, encounter_id, diagnosis_id)
+    if found is None:
+        raise NotFound()
+    return found
+
+
+async def mark_entered_in_error(db: AsyncSession, repo: EncounterRepository,
+                                drepo: DiagnosisRepository, store: FhirStore, check: ChartCheck,
+                                user: CurrentUser, encounter_id: UUID, diagnosis_id: UUID,
+                                reason: str, name_patient: NamePatient
+                                ) -> Versioned[schemas.EncounterDiagnosis]:
+    """markDiagnosisEnteredInError (#73): only on a signed visit, in one transaction with its
+    Provenance. The rank link stays, so the claim keeps its numbering and the audit trail its
+    history; the database refuses a charge or claim line pointing at it (D24)."""
+    head = await readable(db, repo, check, user, encounter_id)
+    if not reason.strip():
+        raise business_rule([field_error("body", "/reason", "required")])
+    await repo.head(db, encounter_id, lock=True)
+    current = await drepo.get(db, encounter_id, diagnosis_id)
+    if current is None:
+        raise NotFound()
+    if current.value.verification_status == "entered-in-error":
+        raise _state("entered-in-error")
+    if not await drepo.encounter_signed(db, encounter_id):
+        raise _state("unsigned")  # before signing, remove it instead
+    try:
+        await store.diagnosis_entered_in_error(db, diagnosis_id, Reason(text=reason))
     except ResourceNotFound as gone:
         raise NotFound() from gone
     except InvalidTransition as done:

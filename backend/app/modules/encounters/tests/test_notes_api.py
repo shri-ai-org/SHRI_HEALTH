@@ -5,6 +5,7 @@ reads). The real database is test_notes_live.py's. Synthetic data only."""
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable, Iterator
 from typing import Any
 from uuid import UUID, uuid4
@@ -105,6 +106,35 @@ def test_remove_a_diagnosis(as_user: Client, world: World, notes: NotesWorld) ->
     assert done.status_code == 200 and done.json()["verificationStatus"] == "entered-in-error"
     again = as_user("md").post(remove, json={"reason": "Again."})
     assert again.status_code == 409
+
+
+def test_mark_a_signed_visits_diagnosis_entered_in_error(as_user: Client, world: World,
+                                                         notes: NotesWorld) -> None:
+    """#73: only after signing (before it, remove); the rank link stays (D24)."""
+    encounter = _encounter(world)
+    path = f"{API}/encounters/{encounter}/diagnoses"
+    first = as_user("md").post(path, json={"code": {"system": ICD10CM, "code": "I10"}}).json()
+    mark = f"{path}/{first['id']}/entered-in-error"
+    early = as_user("md").post(mark, json={"reason": "Wrong code."})
+    assert early.status_code == 409 and early.json()["currentState"] == "unsigned"
+    note = _started(as_user, encounter)
+    body = {"sections": [{"id": note["sections"][0]["id"], "text": "Headache."}]}
+    as_user("md").patch(f"{API}/notes/{note['id']}", json=body,
+                        headers={"If-Match": '"1"', **MERGE})
+    assert as_user("md").post(f"{API}/notes/{note['id']}/sign",
+                              headers={"If-Match": '"2"'}).status_code == 200
+    assert as_user("fd").post(mark, json={"reason": "Wrong code."}).status_code == 403
+    assert as_user("md").post(mark, json={"reason": " "}).status_code == 422
+    assert as_user("md").post(mark, json={}).status_code == 422
+    assert as_user("md").post(mark, json={"reason": "x", "extra": 1}).status_code == 422
+    done = as_user("md").post(mark, json={"reason": "Coded the wrong laterality."})
+    assert done.status_code == 200, done.text
+    assert done.json()["verificationStatus"] == "entered-in-error"
+    assert done.json()["rank"] == 1 and done.headers["ETag"] == '"2"'  # the rank link stays
+    again = as_user("md").post(mark, json={"reason": "Again."})
+    assert again.status_code == 409 and again.json()["currentState"] == "entered-in-error"
+    assert as_user("md").post(f"{path}/{uuid.uuid4()}/entered-in-error",
+                              json={"reason": "No such diagnosis."}).status_code == 404
 
 
 # ------------------------------------------------------------------------------------ notes
