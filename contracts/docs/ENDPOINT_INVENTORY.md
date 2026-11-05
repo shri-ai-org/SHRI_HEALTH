@@ -445,6 +445,7 @@ Minalini's portal screens (#39) and her endpoint note (`frontend/src/features/po
 | 289 | POST | `/patients/{patientId}/portal-account/reset-factors` | T | Ad | `portal-accounts:reset-factors` | sec | – | | | §3.8 | B8a | **New** (staff): after an ID check, never on a call or email (ADR-0013 §2) |
 | 290 | POST | `/patients/{patientId}/portal-account/disable` | T | Ad | `portal-accounts:disable` | sec | – | | | §3.8 | B8a | **New** (staff, ADM; D92): reason required; ends every portal session at once |
 | 291 | POST | `/patients/{patientId}/portal-account/enable` | T | Ad | `portal-accounts:enable` | sec | – | | | §3.8 | B8a | **New** (staff, ADM; D92): reason required |
+| 292 | GET | `/patients/{patientId}/appointments` | V | Cl | `appointments:read` | pr | – | | | FR-SCH-01 | B3 | **New** (Minalini's gap on #85): a patient's appointments, newest first, cursor-paged; optional `dateFrom`/`dateTo` with no cap; the user's facilities only; a restricted chart needs break-glass (D37) |
 
 **Ruled out by the decisions, with their replacements:**
 

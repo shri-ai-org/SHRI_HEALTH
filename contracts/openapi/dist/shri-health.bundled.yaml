@@ -5390,6 +5390,123 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/appointments:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: listPatientAppointments
+      summary: List a patient's appointments
+      description: 'A patient''s appointments, newest first, at the user''s facilities only (SECURITY_MODEL §5.1; new inventory row #292, Minalini''s gap on #85). `dateFrom` and `dateTo` (facility time zone, inclusive) are optional and the range has no cap: page with `cursor`. Cancelled and no-show appointments are included, with their status. A restricted chart needs a break-glass grant or care-team membership (D37), like every patient-scoped read: the front-desk schedule exceptions (SECURITY_MODEL §5.2) cover the day views, not a patient''s history.'
+      tags:
+        - scheduling
+      x-owner: vimal
+      x-permission: appointments:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: dateFrom
+          in: query
+          required: false
+          description: First day, inclusive, in the facility's time zone.
+          schema:
+            $ref: '#/components/schemas/Date'
+        - name: dateTo
+          in: query
+          required: false
+          description: Last day, inclusive.
+          schema:
+            $ref: '#/components/schemas/Date'
+      responses:
+        '200':
+          description: One page of the patient's appointments, newest first.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentList'
+              examples:
+                history:
+                  summary: A revisit and the visit it follows
+                  value:
+                    items:
+                      - id: 2f3a4b5c-6d7e-4f8a-9b0c-1d2e3f4a5b6c
+                        patient:
+                          id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                          displayName: Kuhlman72, Ramona980
+                        provider:
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+                        facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                        appointmentType:
+                          id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                          code: FOLLOWUP
+                          name: Follow-up visit
+                        status: booked
+                        startAt: '2026-11-17T15:00:00Z'
+                        endAt: '2026-11-17T15:20:00Z'
+                        reasonForVisit: Recheck blood pressure.
+                        sameDayAddOn: false
+                        overbook: false
+                      - id: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
+                        patient:
+                          id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                          displayName: Kuhlman72, Ramona980
+                        provider:
+                          id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                          displayName: Dr. Lowe58
+                        facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                        appointmentType:
+                          id: 0d1e2f3a-4b5c-4d6e-8f7a-8b9c0d1e2f3a
+                          code: FOLLOWUP
+                          name: Follow-up visit
+                        status: fulfilled
+                        startAt: '2026-11-03T15:00:00Z'
+                        endAt: '2026-11-03T15:20:00Z'
+                        reasonForVisit: Follow-up on blood pressure
+                        sameDayAddOn: false
+                        overbook: false
+                    nextCursor: bzoyMA
+                    timeZone: America/Chicago
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `appointments:read`); `break-glass-required` (the patient''s chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient in this clinic).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`dateTo` before `dateFrom`).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /appointments/{appointmentId}/cancel:
     parameters:
       - name: appointmentId
