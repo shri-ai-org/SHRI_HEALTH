@@ -115,6 +115,12 @@ export function OutpatientsPage() {
   function actionsFor(row: OutpatientRow) {
     const name = row.patient?.name
     // Admit (India's inpatient flow): hidden with the SHRI_HEALTH API (US display change, 2026-11-04).
+    const checkOutButton = (appointmentId: string) => (
+      <Button size="sm" variant="secondary" onClick={() => openFlow('checkout', { appointment: appointmentId })}>
+        <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} />
+        Check out
+      </Button>
+    )
     const admit = row.patient && !REAL_API ? (
       <Button size="sm" variant="secondary" onClick={() => openFlow('admit', { uhid: row.patient!.patientId })}>
         <BedDouble className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -174,6 +180,9 @@ export function OutpatientsPage() {
       case 'called':
         return admit
       case 'in-room':
+        // On the server a visit is "done" only once checked out (VisitStatus has no "ready" state),
+        // so check-out opens from the room (SCREEN_PORT gap 53).
+        if (REAL_API) return row.appointment ? checkOutButton(row.appointment.appointmentId) : null
         return token ? <>{admit}</> : null
       case 'done':
         // Admission is usually advised in the doctor's room.
@@ -181,12 +190,7 @@ export function OutpatientsPage() {
           <>
             {admit}
             {/* Check-out (D98): the follow-up, the after-visit summary, then Check out. */}
-            {row.appointment ? (
-              <Button size="sm" variant="secondary" onClick={() => openFlow('checkout', { appointment: row.appointment!.appointmentId })}>
-                <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} />
-                Check out
-              </Button>
-            ) : null}
+            {row.appointment && !REAL_API ? checkOutButton(row.appointment.appointmentId) : null}
           </>
         ) : null
       case 'upcoming':

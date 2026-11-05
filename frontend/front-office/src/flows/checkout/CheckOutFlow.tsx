@@ -16,6 +16,7 @@ import { cn } from '../../utils/cn'
 import { errorClass, inputClass, labelClass } from '../../utils/formClasses'
 import type { FlowProps } from '../registry'
 import {
+  DeskBreakGlass,
   DeskRefusal,
   afterVisitSummaryUrl,
   checkOut,
@@ -60,6 +61,8 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
   const [summaryOpened, setSummaryOpened] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  // The visit's encounter, from the appointment itself (list rows don't carry it).
+  const [encounterId, setEncounterId] = useState<string | undefined>()
   const [booking, setBooking] = useState(false)
   // One key per attempt, reused only to retry the very same request.
   const [declineKey, setDeclineKey] = useState(newIdempotencyKey)
@@ -74,6 +77,7 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
       .then((v) => {
         if (!live) return
         setFollowUp(v.followUp)
+        setEncounterId(v.encounterId ?? undefined)
         setLoaded(true)
       })
       .catch((e: unknown) => live && setLoadError(e instanceof Error ? e.message : String(e)))
@@ -99,7 +103,7 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
     return (
       <ScheduleFlow
         params={{ uhid: patient.patientId, doctor: followUp?.providerId }}
-        followUpOfEncounterId={appointment.serverEncounterId}
+        followUpOfEncounterId={encounterId ?? appointment.serverEncounterId}
         onClose={() => setBooking(false)}
         onBooked={(bookedId) => {
           markRevisitBooked(appointmentId, providerId, bookedId)
@@ -155,8 +159,10 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
         window.open(url, '_blank', 'noopener')
         setSummaryOpened(true)
       }
-      // TODO(#161): there is no link to open until #161 merges.
-      setSummaryNote(url ? 'Opened in a new tab.' : 'Not available yet: the after-visit summary opens here once the backend is ready.')
+      setSummaryNote(url ? 'Opened in a new tab.' : 'There is no after-visit summary for this visit yet.')
+    } catch (e) {
+      // D109: a restricted chart's summary needs break-glass; the desk has no break-glass screen yet (gap 52).
+      setSummaryNote(e instanceof DeskBreakGlass ? 'This chart is restricted: the summary needs break-glass, which the clinician can record.' : e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(null)
     }

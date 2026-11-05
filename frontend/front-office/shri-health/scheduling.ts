@@ -66,6 +66,10 @@ interface Bookable {
 let bookable: Promise<Bookable> | null = null
 /** The appointment types, once loaded (for the mode of a booking). */
 let bookableTypes: BookableAppointmentType[] = []
+/** A bookable appointment type's name, once the schedule is loaded. */
+export function appointmentTypeName(id?: string): string | undefined {
+  return id ? bookableTypes.find((t) => t.id === id)?.name : undefined
+}
 /** The server's exact start of each free time shown, by `providerId|date|slot`. */
 const startAtBySlot = new Map<string, string>()
 
