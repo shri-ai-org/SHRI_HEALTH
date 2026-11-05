@@ -27,6 +27,7 @@ BATCH_1 = frozenset({
     "rescheduleAppointment",
     "undoCheckIn",
     "checkOutAppointment",  # demo step 11 (D98)
+    "listPatientAppointments",  # #292 (Minalini's gap on #85)
 })
 
 # Not built yet. Each PR removes the operations it builds; the test fails if a built one is

@@ -141,6 +141,22 @@ async def list_appointments(
     return schemas.AppointmentList(items=items, next_cursor=next_cursor, time_zone=zone)
 
 
+@router.get("/patients/{patientId}/appointments", operation_id="listPatientAppointments",
+            response_model=schemas.AppointmentList, response_model_exclude_none=True)
+async def list_patient_appointments(
+    user: Annotated[CurrentUser, Depends(require("appointments:read"))],
+    patient_id: Annotated[UUID, Path(alias="patientId")], db: DB, ref: Ref,
+    date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
+    date_to: Annotated[date | None, Query(alias="dateTo")] = None,
+    limit: Limit = 50, cursor: Cursor = None,
+) -> schemas.AppointmentList:
+    """x-audit patient "patientId": core names the path's patient."""
+    items, next_cursor, zone = await service.patient_history(
+        db, ref, user, patient_id, date_from=date_from, date_to=date_to, limit=limit,
+        offset=service.decode_cursor(cursor))
+    return schemas.AppointmentList(items=items, next_cursor=next_cursor, time_zone=zone)
+
+
 @router.post("/appointments", operation_id="bookAppointment",
              status_code=status.HTTP_201_CREATED, response_model=schemas.Appointment,
              response_model_exclude_none=True)

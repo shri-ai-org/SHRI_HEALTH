@@ -20,7 +20,7 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.access import chart_access, facility_scope, require_facility
+from app.core.access import chart_access, ensure_chart_access, facility_scope, require_facility
 from app.core.deps import CurrentUser
 from app.core.errors import (
     Conflict,
@@ -485,6 +485,30 @@ async def list_view(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser
         db, facilities=[f.id for f in facilities], start=start, end=end,
         provider_id=provider_id, patient_id=patient_id, statuses=statuses,
         limit=limit + 1, offset=offset, days=days)
+    chunk, next_cursor = fetched(rows, limit, offset)
+    out = [summary(a) for a in await appointments_out(db, user, chunk)]
+    return out, next_cursor, zones.pop() if len(zones) == 1 else None
+
+
+async def patient_history(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
+                          patient_id: UUID, *, date_from: date | None, date_to: date | None,
+                          limit: int, offset: int
+                          ) -> tuple[list[schemas.AppointmentSummary], str | None, str | None]:
+    """listPatientAppointments (#292): newest first, the user's facilities only, no cap on the
+    range. A patient-scoped read, so a restricted chart needs a grant or the care team (D37):
+    404 for a patient the clinic can't see, 403 break-glass-required (audited) otherwise."""
+    await ensure_chart_access(db, user, patient_id)
+    if date_from and date_to and date_to < date_from:
+        raise business_rule("dateTo", "out-of-range", location="query")
+    days = None
+    if date_from or date_to:
+        days = (date_from or date.min, date_to or date.max)
+    facilities = await ref.facilities(db, facility_scope(user))
+    zones = {f.time_zone for f in facilities}
+    rows = await repo.list_appointments(
+        db, facilities=[f.id for f in facilities], start=None, end=None, provider_id=None,
+        patient_id=patient_id, statuses=None, limit=limit + 1, offset=offset, days=days,
+        newest_first=True)
     chunk, next_cursor = fetched(rows, limit, offset)
     out = [summary(a) for a in await appointments_out(db, user, chunk)]
     return out, next_cursor, zones.pop() if len(zones) == 1 else None

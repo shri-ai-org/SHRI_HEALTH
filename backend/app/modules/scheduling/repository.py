@@ -162,6 +162,19 @@ WHERE a.status = ANY(:statuses)
 ORDER BY a.start, a.id
 LIMIT :limit OFFSET :offset
 """)
+# A patient's history (listPatientAppointments): the same filters, newest first.
+_LIST_NEWEST = text(_SELECT + """
+WHERE a.status = ANY(:statuses)
+  AND a.ext_facility_id = ANY(:facilities)
+  AND (CAST(:start AS timestamptz) IS NULL OR a.start >= :start)
+  AND (CAST(:end AS timestamptz) IS NULL OR a.start < :end)
+  AND (CAST(:provider AS uuid) IS NULL OR pp.actor_practitioner_id = :provider)
+  AND (CAST(:patient AS uuid) IS NULL OR a.subject_patient_id = :patient)
+  AND (CAST(:day_from AS date) IS NULL
+       OR CAST(a.start AT TIME ZONE f.timezone AS date) BETWEEN :day_from AND :day_to)
+ORDER BY a.start DESC, a.id DESC
+LIMIT :limit OFFSET :offset
+""")
 _PEOPLE = text("""
 SELECT p.id, p.active, p.meta_security && CAST(:labels AS varchar[]) AS restricted,
        EXISTS (SELECT 1 FROM clinical.patient_link l
@@ -246,10 +259,11 @@ async def list_appointments(db: AsyncSession, *, facilities: Iterable[UUID],
                             start: datetime | None, end: datetime | None,
                             provider_id: UUID | None, patient_id: UUID | None,
                             statuses: Sequence[str] | None, limit: int, offset: int,
-                            days: tuple[date, date] | None = None) -> list[AppointmentRow]:
+                            days: tuple[date, date] | None = None,
+                            newest_first: bool = False) -> list[AppointmentRow]:
     """Ordered by start and ID, paged in SQL. ``days`` keeps only appointments whose start falls
     on those local days in their own facility's time zone (D40, D62)."""
-    rows = (await db.execute(_LIST, {
+    rows = (await db.execute(_LIST_NEWEST if newest_first else _LIST, {
         "statuses": list(statuses or LISTED_STATUSES), "facilities": list(facilities),
         "start": start, "end": end, "provider": provider_id, "patient": patient_id,
         "day_from": days[0] if days else None, "day_to": days[1] if days else None,
