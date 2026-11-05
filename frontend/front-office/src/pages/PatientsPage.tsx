@@ -33,7 +33,7 @@ function readFilter(search: string): PatientFilter {
 }
 
 const EMPTY_TITLE: Record<PatientFilter, string> = {
-  all: 'No patients yet',
+  all: REAL_API ? 'No patients booked in the last 31 days' : 'No patients yet',
   today: 'Nobody registered yet today',
   duplicates: 'No possible duplicates',
 }
@@ -68,7 +68,7 @@ export function PatientsPage() {
   }
 
   const items: StatFilterItem<PatientFilter>[] = [
-    { key: 'all', label: 'All patients', value: rows.length, tone: 'info', icon: Users },
+    { key: 'all', label: REAL_API ? 'Recent patients' : 'All patients', value: rows.length, tone: 'info', icon: Users },
     { key: 'today', label: 'Registered today', value: lists.today.length, tone: 'teal', icon: UserPlus },
     { key: 'duplicates', label: 'Possible duplicates', value: lists.duplicates.length, tone: 'warning', icon: Copy },
   ]

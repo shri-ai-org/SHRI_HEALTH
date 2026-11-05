@@ -357,6 +357,28 @@ export async function loadPatientAppointments(patientId: string): Promise<Appoin
   return reconcileAppointments(pages.flat())
 }
 
+/**
+ * Recent patients (D65: reached through the schedule, never a list of everyone): the patients booked
+ * at this facility in the last 31 days, today included, most recent first, up to 50, with their
+ * summaries put in the store. listAppointments (one 31-day window, D62, every page) then
+ * POST /patients/summaries. Returns their IDs in that order.
+ */
+export async function loadRecentPatients(): Promise<string[]> {
+  const { facility } = await loadBookable()
+  const to = todayKey()
+  const items: AppointmentSummary[] = []
+  let cursor: string | undefined
+  do {
+    const res = await apiListAppointments({ facilityId: facility.id, dateFrom: addDaysToKey(to, -30), dateTo: to, limit: 100, ...(cursor ? { cursor } : {}) })
+    if (res.status !== 200) break
+    items.push(...res.data.items)
+    cursor = res.data.nextCursor ?? undefined
+  } while (cursor && items.length < 500)
+  const ids = [...new Set([...items].sort((a, b) => (a.startAt < b.startAt ? 1 : -1)).map((a) => a.patient.id))].slice(0, 50)
+  await loadCandidates(ids)
+  return ids
+}
+
 /** Is this booking on the server (an opaque UUID, not one of Care Entry's own `apt-…` ids)? */
 export function isServerAppointment(appointmentId: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(appointmentId)
