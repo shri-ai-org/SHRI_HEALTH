@@ -17,6 +17,7 @@
     "jsx": "react-jsx",
 
     /* Linting */
+    "paths": { "react-router-dom": ["../node_modules/react-router/dist/production/index.d.ts"] },
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
