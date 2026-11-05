@@ -17,16 +17,23 @@ the demo layer is enough for steps 1 to 4. Steps 5 and 6 also need the code rele
 booked today, at the first free time at least 5 minutes ahead. The revisit is booked from 14
 days after the visit; it fails if no provider has a free time within the following 2 weeks.
 
-**The one local difference: encryption.** Signing writes idempotent replies and the after-visit
-summary is stored encrypted, both through core's OpenBao Transit. The test server runs a real
-OpenBao. A laptop without one must start the API with a Transit stand-in (the tests' fake), or
-step 7's summary fails with 503; nothing else changes.
+**The local difference: encryption.** The after-visit summary is stored encrypted and
+idempotent replies are kept encrypted, both through core's OpenBao Transit. The test server
+runs a real OpenBao. A laptop without one must start the API with an in-memory Transit
+stand-in (never on a server), or step 7's summary fails. The summary's download link is also
+signed with ``SESSION_SECRET``, which every server sets; a laptop sets a random one per run, or
+step 7 answers ``503 Downloads are not configured``. Nothing else differs.
+
+**Time of day.** Check-in is same-day only in the facility's time zone: late in the evening
+there, when no free time is left that day, step 2 fails and says so. Run it after midnight
+there.
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import sys
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -82,6 +89,27 @@ class Client:
             raise StepFailed(f"{method} {_template(path)} answered {r.status_code} "
                              f"{_problem(r)}")
         return r
+
+    def wait(self, accepted: httpx.Response, who: str, limit: float = 60) -> None:
+        """Follows a 202's ``Location`` (core's long-running operation) until it ends, within
+        ``limit`` seconds, at its own ``Retry-After`` pace."""
+        location = accepted.headers.get("location", "")
+        path = location.split(API, 1)[-1] if API in location else location
+        waited = 0.0
+        while path:
+            status = self.call(who, "GET", path).json().get("status")
+            if status == "succeeded":
+                return
+            if status in ("failed", "cancelled"):
+                raise StepFailed(f"the operation behind {_template(path)} {status}")
+            if waited >= limit:
+                raise StepFailed(f"the operation behind {_template(path)} is still {status} "
+                                 f"after {limit:.0f} s")
+            pause = float(accepted.headers.get("retry-after", "1"))
+            time.sleep(pause)
+            waited += pause
+        if not path:
+            raise StepFailed("a 202 without a Location to follow")
 
     def close(self) -> None:
         self._http.close()
@@ -192,7 +220,13 @@ def check_in(c: Client, v: Visit) -> str:
 
 
 def room(c: Client, v: Visit) -> str:
-    c.call("ma", "POST", f"/appointments/{v.appointment}/status", {"status": "roomed"})
+    rooms = [loc for loc in _items(c.call("ma", "GET",
+                                          f"/booking/locations?facilityId={v.facility}"))
+             if loc.get("physicalType") == "ro"]
+    if not rooms:
+        raise StepFailed("no room at the visit's facility to put the patient in")
+    c.call("ma", "POST", f"/appointments/{v.appointment}/status",
+           {"status": "roomed", "roomLocationId": rooms[0]["id"]})
     c.call("ma", "POST", f"/encounters/{v.encounter}/vitals", {"entries": [
         {"type": "blood-pressure", "bloodPressure": {
             "systolic": {"value": 128, "unit": "mm[Hg]"},
@@ -263,7 +297,9 @@ def check_out(c: Client, v: Visit) -> str:
     etag = c.call("md", "GET", f"/encounters/{v.encounter}").headers["etag"]
     c.call("md", "PUT", f"/encounters/{v.encounter}/follow-up",
            {"interval": {"value": 2, "unit": "week"}}, etag=etag)
-    c.call("md", "POST", f"/encounters/{v.encounter}/after-visit-summary", {"noteId": v.note})
+    made = c.call("md", "POST", f"/encounters/{v.encounter}/after-visit-summary",
+                  {"noteId": v.note}, expect=(202,))
+    c.wait(made, "md")
     c.call("fd", "GET", f"/encounters/{v.encounter}/after-visit-summary/download-url")
     first = dt.date.fromisoformat(v.start[:10]) + dt.timedelta(days=14)
     start = next((s for d in range(14) if (s := _free_time(
