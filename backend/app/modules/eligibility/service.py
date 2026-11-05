@@ -37,7 +37,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -534,6 +534,18 @@ def reply_from(response: messages.EligibilityResponse) -> Reply:
         benefits=benefits)
 
 
+async def _finish(db: AsyncSession, operation_id: UUID, status: Literal["succeeded", "failed"],
+                  *, result: tuple[str, UUID] | None = None,
+                  error: dict[str, Any] | None = None) -> None:
+    """Ends the check's operation unless it has ended already: core fails an operation its
+    creator polls after its time limit, and the late answer (or the dead-letter) must still be
+    filed on the check, not undone by core's ``409``."""
+    try:
+        await finish_operation(db, operation_id, status, result=result, error=error)
+    except Conflict:
+        pass
+
+
 async def record_response(db: AsyncSession, payload: Mapping[str, Any], *,
                           operation_id: UUID | None = None) -> Filed:
     """Files a 271 in the caller's transaction (no commit); the session must be the check's
@@ -560,7 +572,7 @@ async def record_response(db: AsyncSession, payload: Mapping[str, Any], *,
         await publish(db, "eligibility.completed", f"eligibility-check/{check_id}", data,
                       facility_id=row.facility_id, patient_id=row.patient_id)
     if operation_id is not None:
-        await finish_operation(db, operation_id, "succeeded", result=(RESULT_TYPE, check_id))
+        await _finish(db, operation_id, "succeeded", result=(RESULT_TYPE, check_id))
     return Filed(check_id, reply.status, duplicate=False)
 
 
@@ -571,6 +583,6 @@ async def mark_timed_out(db: AsyncSession, check_id: UUID, *,
     with ``upstream-timeout``. False when the check was no longer pending."""
     changed = await repository.mark_timed_out(db, check_id, TIMEOUT_MESSAGE)
     if changed and operation_id is not None:
-        await finish_operation(db, operation_id, "failed", error=problem_body(
+        await _finish(db, operation_id, "failed", error=problem_body(
             "upstream-timeout", "The payer did not answer in time"))
     return changed

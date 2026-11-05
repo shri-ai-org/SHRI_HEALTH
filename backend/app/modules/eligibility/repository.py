@@ -298,8 +298,12 @@ FROM admin.eligibility_benefit WHERE eligibility_check_id = ANY(:ids)
 ORDER BY created_at, id
 """)
 _LOCK = text("SELECT status FROM admin.eligibility_check WHERE id = :id FOR UPDATE")
+_PATIENT_OF = text("SELECT patient_id FROM admin.eligibility_check WHERE id = :id")
+# The payer's clock may be behind ours, or its time whole seconds (the simulated payer's): a reply
+# is never recorded as answered before it was asked (ck_eligibility_check_response_after_request).
 _REPLY = text("""
-UPDATE admin.eligibility_check SET status = :status, responded_at = :responded_at,
+UPDATE admin.eligibility_check SET status = :status,
+       responded_at = GREATEST(CAST(:responded_at AS timestamptz), requested_at),
        plan_name = :plan_name, coverage_start = :coverage_start, coverage_end = :coverage_end,
        error_code = :error_code, error_message = :error_message, expires_at = :expires_at,
        updated_at = now(),
@@ -416,6 +420,12 @@ async def insert_pending(db: AsyncSession, *, coverage_id: UUID, patient_id: UUI
 async def lock_status(db: AsyncSession, check_id: UUID) -> str | None:
     """The check's status, its row locked until the transaction ends; None if not found."""
     found: str | None = (await db.execute(_LOCK, {"id": check_id})).scalar_one_or_none()
+    return found
+
+
+async def patient_of(db: AsyncSession, check_id: UUID) -> UUID | None:
+    """The check's patient (for the partner callback's audit row); None if not this clinic's."""
+    found: UUID | None = (await db.execute(_PATIENT_OF, {"id": check_id})).scalar_one_or_none()
     return found
 
 
