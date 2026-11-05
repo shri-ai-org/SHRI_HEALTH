@@ -332,3 +332,21 @@ def test_a_revisit_must_book_an_open_request_of_the_same_patient(pending_client:
                 "subject_patient_id = :p", p=practice.patients["marcus"])[0][0] == 0
     assert _sql(practice, "SELECT status FROM clinical.encounter_follow_up WHERE "
                 "encounter_id = :e", e=UUID(encounter))[0][0] == "open"
+
+
+def test_a_follow_up_two_weeks_out_can_be_booked(pending_client: Any, practice: Practice) -> None:
+    """A revisit 14 days after the visit, in the provider's hours: booked from the follow-up
+    request, which becomes booked (D98)."""
+    client = pending_client
+    appointment, encounter = _visit(client, practice)
+    _ask(client, practice, encounter)
+    later = practice.day + timedelta(days=14)
+    revisit = client("fd").post(f"{API}/appointments", json={
+        "patientId": str(practice.patients["kaia"]), "providerId": str(practice.provider),
+        "facilityId": str(practice.facility), "appointmentTypeId": str(practice.types["FU"]),
+        "startAt": local(later, 10), "reasonForVisit": "Recheck blood pressure.",
+        "followUpOfEncounterId": encounter})
+    assert revisit.status_code == 201, revisit.text
+    follow_up = client("md").get(f"{API}/encounters/{encounter}").json()["followUp"]
+    assert follow_up["status"] == "booked"
+    assert follow_up["bookedAppointmentId"] == revisit.json()["id"]
