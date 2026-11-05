@@ -12,14 +12,16 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build -w doctors-portal -w front-office",
     "preview": "vite preview",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && npm run typecheck -w front-office && tsc -b doctors-portal",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest",
     "generate": "orval --config orval.config.ts",
-    "e2e": "playwright test"
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "dev:doctors": "npm run dev -w doctors-portal",
+    "dev:front-office": "npm run dev -w front-office"
   },
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "5.3.0",
