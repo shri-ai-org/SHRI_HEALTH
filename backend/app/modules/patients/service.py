@@ -50,6 +50,15 @@ from .store import (
 )
 
 
+async def check_provider(db: AsyncSession, repo: PatientRepository, provider_id: UUID | None
+                         ) -> None:
+    """The primary provider must be an active practitioner of the user's clinic (another
+    clinic's is invisible through row-level security, so it reads as unknown)."""
+    if provider_id is not None and not await repo.is_provider(db, provider_id):
+        raise ValidationFailed(errors=[field_error("body", "/generalPractitionerId",
+                                                   "invalid-reference")])
+
+
 def business_rule(location: str, where: str, code: str) -> ValidationFailed:
     return ValidationFailed(code="business-rule-violation",
                             errors=[field_error(location, where, code)])
@@ -218,6 +227,7 @@ async def create_registered(db: AsyncSession, repo: PatientRepository, store: Fh
         if mrn_system and identifier.system == mrn_system:
             # An MRN only ever comes from the practice's counter (D41).
             raise business_rule("body", f"/identifiers/{n}/system", "not-allowed-value")
+    await check_provider(db, repo, body.general_practitioner_id)
     if body.duplicate_check == "default":
         new = Person(family=body.name.family, given=tuple(body.name.given),
                      birth_date=body.birth_date, phones=frozenset(p.number for p in body.phones),
@@ -232,6 +242,8 @@ async def create_registered(db: AsyncSession, repo: PatientRepository, store: Fh
     # Last: create_patient takes the next MRN from the practice's counter (D41), which stays
     # locked until commit.
     written = await store.create_patient(db, patient_in(body, entry_source))
+    if body.general_practitioner_id is not None:  # same transaction as the patient
+        await repo.set_general_practitioner(db, written.id, body.general_practitioner_id)
     return written.id
 
 
@@ -369,12 +381,17 @@ async def update_patient(db: AsyncSession, repo: PatientRepository, store: FhirS
     version = if_match_version(if_match)
     writable(current)
     changes = patient_changes(current, patch)
+    provider_sent = "general_practitioner_id" in patch.model_fields_set
+    if provider_sent:
+        await check_provider(db, repo, patch.general_practitioner_id)
     try:
         await store.update_patient(db, current.id, changes, if_version=version)
     except StaleVersion as changed:
         raise stale(changed) from changed
     except ResourceNotFound as gone:
         raise NotFound() from gone
+    if provider_sent:  # after the version check, in the same transaction
+        await repo.set_general_practitioner(db, current.id, patch.general_practitioner_id)
     await db.commit()
     return await repo.get_patient(db, current.id)
 

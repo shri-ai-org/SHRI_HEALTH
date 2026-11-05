@@ -62,6 +62,15 @@ class PatientRepository(Protocol):
     async def get_related(self, db: AsyncSession, patient_id: UUID, related_person_id: UUID
                           ) -> Versioned[schemas.RelatedPerson]: ...
 
+    async def is_provider(self, db: AsyncSession, practitioner_id: UUID) -> bool:
+        """An active practitioner of the user's clinic (row-level security hides the others)."""
+        ...
+
+    async def set_general_practitioner(self, db: AsyncSession, patient_id: UUID,
+                                       practitioner_id: UUID | None) -> None:
+        """The patient's primary provider, in the caller's transaction; None clears it."""
+        ...
+
 
 # ----------------------------------------------------------------------------------- SQL reads
 _PATIENT = text("""
@@ -101,6 +110,20 @@ SELECT patient_id, related_person_id, name, phone, address_lines, address_city, 
        address_postal_code, address_country
 FROM admin.employer WHERE patient_id = ANY(:ids) OR related_person_id = ANY(:ids)
 """)
+# The patient's primary provider (FHIR Patient.generalPractitioner, a Practitioner here): the
+# one row the API manages, so a write replaces it (the row's trigger bumps the patient's version).
+_GENERAL_PRACTITIONER = text("""
+SELECT practitioner_id FROM clinical.patient_general_practitioner
+WHERE patient_id = :id AND practitioner_id IS NOT NULL ORDER BY created_at, id LIMIT 1
+""")
+_CLEAR_GENERAL_PRACTITIONER = text(
+    "DELETE FROM clinical.patient_general_practitioner WHERE patient_id = :id "
+    "AND practitioner_id IS NOT NULL")
+_ADD_GENERAL_PRACTITIONER = text("""
+INSERT INTO clinical.patient_general_practitioner (id, tenant_id, patient_id, practitioner_id)
+SELECT gen_random_uuid(), p.tenant_id, p.id, :practitioner FROM clinical.patient p WHERE p.id = :id
+""")
+_PROVIDER = text("SELECT 1 FROM clinical.practitioner WHERE id = :id AND active")
 _IDENTIFIERS = text("""
 SELECT id, type_code, system, value, assigner_display, supporting_document_id, use, created_at
 FROM clinical.identifier WHERE patient_id = :id AND type_code IN ('MR', 'DL', 'PI')
@@ -259,6 +282,8 @@ class SqlPatientRepository:
         race_rows = [dict(r) for r in (await db.execute(_RACE_ETHNICITY, {"id": patient_id})
                                        ).mappings()]
         language = (await db.execute(_LANGUAGE, {"id": patient_id})).scalar_one_or_none()
+        general_practitioner = (await db.execute(_GENERAL_PRACTITIONER, {"id": patient_id})
+                                ).scalar_one_or_none()
         mrn = next((i.value for i in identifiers if i.type == "MR"), "")
         patient = schemas.Patient(
             id=row["id"], mrn=mrn,
@@ -276,6 +301,7 @@ class SqlPatientRepository:
             phones=phones, emails=emails,
             address=_address(addresses[0]) if addresses else None,
             employer=_employer(employers[0]) if employers else None,
+            general_practitioner_id=general_practitioner,
             identifiers=identifiers,
             restricted=bool(RESTRICTED_LABELS & set(row["meta_security"] or [])),
             active=row["active"], merged_into_id=row["merged_into_id"],
@@ -364,6 +390,16 @@ class SqlPatientRepository:
                 active=r["active"], created_at=r["created_at"],
                 updated_at=r["meta_last_updated"]), r["meta_version_id"]))
         return out
+
+    async def is_provider(self, db: AsyncSession, practitioner_id: UUID) -> bool:
+        return (await db.execute(_PROVIDER, {"id": practitioner_id})).first() is not None
+
+    async def set_general_practitioner(self, db: AsyncSession, patient_id: UUID,
+                                       practitioner_id: UUID | None) -> None:
+        await db.execute(_CLEAR_GENERAL_PRACTITIONER, {"id": patient_id})
+        if practitioner_id is not None:
+            await db.execute(_ADD_GENERAL_PRACTITIONER,
+                             {"id": patient_id, "practitioner": practitioner_id})
 
     async def list_related(self, db: AsyncSession, patient_id: UUID, *, limit: int, offset: int
                            ) -> list[schemas.RelatedPerson]:

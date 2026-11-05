@@ -324,3 +324,61 @@ def test_search_and_register_name_their_patients_for_the_audit(as_user: Client,
         phones=[], duplicateCheck="override", duplicateOverrideReason="Checked the ID."))
     assert override.status_code == 201
     assert ("create", "Checked the ID.") in world.details
+
+
+# ------------------------------------------------------------------- primary provider (#212)
+PROVIDER = UUID("6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c")
+OTHER_CLINICS = UUID("7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d")
+
+
+def _providers(world: World) -> None:
+    world.providers[DEV_USERS["fd"].organization_id] = {PROVIDER}
+    world.providers[DEV_USERS["md-b"].organization_id] = {OTHER_CLINICS}
+
+
+def test_register_and_patch_the_primary_provider(as_user: Client, world: World) -> None:
+    _providers(world)
+    created = register(as_user, generalPractitionerId=str(PROVIDER))
+    assert created["generalPractitionerId"] == str(PROVIDER)
+    path = f"/api/v1/patients/{created['id']}"
+    assert as_user("fd").get(path).json()["generalPractitionerId"] == str(PROVIDER)
+    cleared = as_user("fd").patch(path, json={"generalPractitionerId": None},
+                                  headers={"If-Match": '"1"', **MERGE_PATCH})
+    assert cleared.status_code == 200, cleared.text
+    assert "generalPractitionerId" not in cleared.json() and cleared.headers["ETag"] == '"2"'
+    untouched = as_user("fd").patch(path, json={"preferredName": "Kai"},
+                                    headers={"If-Match": '"2"', **MERGE_PATCH})
+    assert "generalPractitionerId" not in untouched.json()
+    set_again = as_user("fd").patch(path, json={"generalPractitionerId": str(PROVIDER)},
+                                    headers={"If-Match": '"3"', **MERGE_PATCH})
+    assert set_again.json()["generalPractitionerId"] == str(PROVIDER)
+    kept = as_user("fd").patch(path, json={"preferredName": "Kaia"},
+                               headers={"If-Match": '"4"', **MERGE_PATCH})
+    assert kept.json()["generalPractitionerId"] == str(PROVIDER)  # absent means unchanged
+
+
+def test_the_primary_provider_must_be_this_clinics(as_user: Client, world: World) -> None:
+    _providers(world)
+    for provider in (OTHER_CLINICS, UUID("00000000-0000-4000-8000-000000000009")):
+        refused = as_user("fd").post("/api/v1/patients",
+                                     json=new_patient(generalPractitionerId=str(provider)))
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["errors"] == [
+            {"in": "body", "pointer": "/generalPractitionerId", "code": "invalid-reference"}]
+    assert not world.patients.get(DEV_USERS["fd"].organization_id)  # nothing was registered
+    created = register(as_user)
+    path = f"/api/v1/patients/{created['id']}"
+    bad = as_user("fd").patch(path, json={"generalPractitionerId": str(OTHER_CLINICS)},
+                              headers={"If-Match": '"1"', **MERGE_PATCH})
+    assert bad.status_code == 422 and bad.json()["errors"][0]["pointer"] == "/generalPractitionerId"
+    assert as_user("fd").get(path).headers["ETag"] == '"1"'  # nothing changed
+    assert as_user("fd").patch(path, json={"generalPractitionerId": "x"},
+                               headers={"If-Match": '"1"', **MERGE_PATCH}).status_code == 422
+    change = {"generalPractitionerId": str(PROVIDER)}
+    assert as_user("fd").patch(path, json=change, headers=MERGE_PATCH).status_code == 428
+    stale = as_user("fd").patch(path, json=change, headers={"If-Match": '"9"', **MERGE_PATCH})
+    assert stale.status_code == 412 and stale.headers["ETag"] == '"1"'
+    assert as_user("ma").patch(path, json=change,
+                               headers={"If-Match": '"1"', **MERGE_PATCH}).status_code == 403
+    other = as_user("md-b").patch(path, json=change, headers={"If-Match": '"1"', **MERGE_PATCH})
+    assert other.status_code in (403, 404)
