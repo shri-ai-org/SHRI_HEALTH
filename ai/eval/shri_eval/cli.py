@@ -26,7 +26,8 @@ from .client import ChatClient, EndpointError, messages, redact_url
 from .dataset import load_visits
 from .scoring import SCORING_VERSION, WEIGHTS, Scores, score
 
-KEYS = ("overall", "sectionCoverage", "factRecall", "invention", "medicalTerms", "format")
+KEYS = ("overall", "sectionCoverage", "factRecall", "invention", "medicalTerms", "format",
+        "editSimilarity")
 
 
 def run(client: ChatClient, out: Path, visit_ids: list[str] | None = None,
@@ -77,13 +78,13 @@ def markdown(report: dict[str, Any]) -> str:
              f"- Prompt `{report['harness']['promptVersion']}`, scoring "
              f"`{report['harness']['scoringVersion']}`", "",
              "| Visit | Specialty | Overall | Sections | Facts | Invention | Terms | Format "
-             "| Invented items | Latency ms |",
-             "|---|---|---|---|---|---|---|---|---|---|"]
+             "| Edit similarity | Invented items | Latency ms |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in report["visits"]:
         s = r.get("scores")
         if not s:
             lines.append(f"| {r['id']} | {r['specialty']} | failed: {r['error']} "
-                         "| | | | | | | |")
+                         "| | | | | | | | |")
             continue
         f = s["findings"]
         invented = (len(f["mustNotInventHits"]) + len(f["supersededStatements"])
@@ -91,12 +92,12 @@ def markdown(report: dict[str, Any]) -> str:
         lines.append(f"| {r['id']} | {r['specialty']} | {s['overall']:.3f} "
                      f"| {s['sectionCoverage']:.2f} | {s['factRecall']:.2f} "
                      f"| {s['invention']:.2f} | {s['medicalTerms']:.2f} | {s['format']:.0f} "
-                     f"| {invented} | {r['latencyMs']} |")
+                     f"| {s['editSimilarity']:.2f} | {invented} | {r['latencyMs']} |")
     m = report["summary"]
     if m["overall"] is not None:
         lines.append(f"| **Mean** | | **{m['overall']:.3f}** | {m['sectionCoverage']:.2f} "
                      f"| {m['factRecall']:.2f} | {m['invention']:.2f} | {m['medicalTerms']:.2f} "
-                     f"| {m['format']:.2f} | | |")
+                     f"| {m['format']:.2f} | {m['editSimilarity']:.2f} | | |")
     lines += ["", "Scores are 0 to 1, higher is better. The invention check is a lexical "
               "baseline (shri_eval/scoring.py): compare models on the same set, don't read "
               "the numbers as absolute.", ""]

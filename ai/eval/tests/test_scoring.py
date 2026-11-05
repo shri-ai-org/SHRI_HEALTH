@@ -9,7 +9,7 @@ import pytest
 
 from shri_eval.dataset import Visit, load_visits
 from shri_eval.schema import validate
-from shri_eval.scoring import parse_draft, score
+from shri_eval.scoring import WEIGHTS, edit_distance, parse_draft, score, similarity
 
 from .drafts import with_inventions, with_omissions
 
@@ -110,3 +110,28 @@ def test_the_validator_handles_refs_enums_and_bounds() -> None:
     assert validate({"a": 1, "b": "x", "c": 3}, schema) == []
     assert validate({"a": 3, "b": "y", "c": True}, schema) == [
         "/a: above 2", "/b: not one of the allowed values", "/c: expected integer"]
+
+
+def test_edit_distance_counts_word_edits() -> None:
+    assert edit_distance([], []) == 0
+    assert edit_distance(["a", "b", "c"], ["a", "b", "c"]) == 0
+    assert edit_distance(["a", "b", "c"], ["a", "x", "c"]) == 1  # one replaced
+    assert edit_distance(["a", "b", "c"], ["a", "c"]) == 1  # one deleted
+    assert edit_distance(["a"], ["b", "c", "d"]) == 3
+    assert similarity("", "") == (1.0, 0)
+    assert similarity("headache for two days", "headache for three days") == (0.75, 1)
+
+
+def test_edit_similarity_is_measured_and_not_weighted(migraine: Visit) -> None:
+    reference = score(migraine, json.dumps(migraine.reference_draft()))
+    assert reference.editSimilarity == 1.0 and reference.findings["editDistanceWords"] == 0
+    assert set(reference.findings["sectionEditSimilarity"].values()) == {1.0}
+    code = next(iter(migraine.reference_sections))
+    changed = score(migraine, _with(migraine, code, "Patient seen today."))
+    assert 0 < changed.editSimilarity < 1
+    by_section = changed.findings["sectionEditSimilarity"]
+    assert by_section[code] < 1 and all(v == 1.0 for c, v in by_section.items() if c != code)
+    empty = score(migraine, json.dumps({"sections": []}))
+    assert empty.editSimilarity == 0.0
+    weighted = sum(WEIGHTS[k] * getattr(reference, k) for k in WEIGHTS)
+    assert reference.overall == round(weighted, 4)  # editSimilarity isn't in overall
