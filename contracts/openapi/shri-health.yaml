@@ -192,6 +192,8 @@ paths:
     $ref: 'modules/scheduling.yaml#/paths/~1appointments'
   /appointments/{appointmentId}:
     $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}'
+  /patients/{patientId}/appointments:
+    $ref: 'modules/scheduling.yaml#/paths/~1patients~1{patientId}~1appointments'
   /appointments/{appointmentId}/cancel:
     $ref: 'modules/scheduling.yaml#/paths/~1appointments~1{appointmentId}~1cancel'
   /appointments/{appointmentId}/check-in:
