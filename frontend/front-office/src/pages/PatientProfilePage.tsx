@@ -138,9 +138,9 @@ export function PatientProfilePage() {
         patient={patient}
         summary={header}
         actions={{
-          schedule: () => openFlow('schedule', { uhid: patient.uhid }),
-          admit: () => openFlow('admit', { uhid: patient.uhid }),
-          discharge: () => openFlow('discharge', { uhid: patient.uhid }),
+          schedule: () => openFlow('schedule', { uhid: patient.patientId }),
+          admit: () => openFlow('admit', { uhid: patient.patientId }),
+          discharge: () => openFlow('discharge', { uhid: patient.patientId }),
           togglePayments: () => setPaymentsOpen((open) => !open),
         }}
         paymentsOpen={paymentsOpen}
@@ -161,7 +161,7 @@ export function PatientProfilePage() {
               onReschedule={(appointmentId, unpaid) =>
                 // Unpaid: simply pick another time — the new booking replaces this one. Paid: the reschedule flow.
                 unpaid
-                  ? openFlow('schedule', { uhid: patient.uhid, dept: getAppointmentById(getState(), appointmentId)?.department, appointment: appointmentId })
+                  ? openFlow('schedule', { uhid: patient.patientId, dept: getAppointmentById(getState(), appointmentId)?.department, appointment: appointmentId })
                   : openFlow('reschedule', { appointment: appointmentId })
               }
               onCancel={(appointmentId, unpaid) => (unpaid ? cancelUnpaid(appointmentId) : setCancelling(appointmentId))}

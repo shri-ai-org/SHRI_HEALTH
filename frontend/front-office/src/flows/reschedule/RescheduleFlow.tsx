@@ -120,10 +120,13 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
           {moved.mode === 'Teleconsult' ? <Video className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" /> : <Building2 className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
           {moved.mode === 'Teleconsult' ? 'Teleconsult' : 'In person'}
         </p>
-        <p>
-          {moved.appointmentId.toUpperCase()}
-          {done.differenceBill ? null : ' · nothing to pay'}
-        </p>
+        {/* With the API the booking has no desk number (its ID is internal) and no counter fee. */}
+        {REAL_API ? null : (
+          <p>
+            {moved.appointmentId.toUpperCase()}
+            {done.differenceBill ? null : ' · nothing to pay'}
+          </p>
+        )}
         {done.differenceBill ? <BillAtCounter paymentId={done.differenceBill.paymentId} className="mt-1 w-full" /> : null}
       </AckCard>
         </div>
@@ -264,7 +267,8 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
           {charge > 0 ? `Reschedule & print ${formatMoney(charge)} bill` : 'Reschedule'}
         </Button>
       </div>
-      {provider ? <p className={cn('text-xs', charge > 0 ? 'font-medium text-warning-fg' : 'text-ink-muted')}>{moneyLine()}</p> : null}
+      {/* The fee line is the counter's consultation fee (sample data): India-only, hidden with the API. */}
+      {provider && !REAL_API ? <p className={cn('text-xs', charge > 0 ? 'font-medium text-warning-fg' : 'text-ink-muted')}>{moneyLine()}</p> : null}
     </div>
   )
 
@@ -281,7 +285,7 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
             <span className="font-semibold">{wasProvider.name}</span>
             <span className="text-ink-muted">
               {' '}
-              · {dayWithDate(was.date, today)}{REAL_API ? ',' : ' ·'} {formatTime(was.slot)} · {formatMoney(feePaid)} paid
+              · {dayWithDate(was.date, today)}{REAL_API ? ',' : ' ·'} {formatTime(was.slot)}{REAL_API ? null : ` · ${formatMoney(feePaid)} paid`}
             </span>
           </span>
         </div>

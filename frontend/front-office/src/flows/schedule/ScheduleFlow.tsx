@@ -403,7 +403,7 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId }: F
           <span className="hidden xl:block" aria-hidden="true" />
         )}
         <div className="flex items-center justify-between gap-3 xl:justify-end">
-          <div className={cn('min-w-0 flex-1 text-left xl:flex-none xl:text-right', serverDoctor && 'invisible')} aria-hidden={serverDoctor || undefined}>
+          <div className={cn('min-w-0 flex-1 text-left xl:flex-none xl:text-right', (serverDoctor || REAL_API) && 'invisible')} aria-hidden={serverDoctor || REAL_API || undefined}>
             <p className="hidden max-w-[16rem] truncate text-xs text-ink-muted sm:block" title={billItems.map((i) => `${i.description} ${formatMoney(i.amount)}`).join(' + ')}>
               {billItems.length ? billItems.map((i) => i.description).join(' + ') : 'Bill total'}
             </p>
