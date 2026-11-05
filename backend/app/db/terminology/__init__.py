@@ -11,4 +11,7 @@ release changes nothing, and a concept a later release drops is made inactive, n
 since allergies and prescriptions keep its code.
 
 Usage:  python -m app.db.terminology rxnorm <release .zip or its rrf/ folder>
+        python -m app.db.terminology icd10cm <icd10cm_order_YYYY.txt>
+        python -m app.db.terminology all     (``fetch``: the pinned ICD-10-CM and RxNorm
+                                              releases, checksum-verified and cached, both loaded)
 """

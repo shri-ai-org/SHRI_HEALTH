@@ -409,6 +409,13 @@ The drug search and the safety checks read these. The allergy and duplicate chec
 `ingredient`. A re-run of the same release changes nothing. A concept a later release drops
 is made inactive, never deleted.
 
+**After a reset, one command:** `python -m app.db.terminology all` fetches the pinned
+ICD-10-CM (CMS FY2026) and RxNorm (NLM, 2 Nov 2026) releases, each checked against its pinned
+SHA-256, into a cache folder (`SHRI_TERMINOLOGY_CACHE`, or `~/.cache/shri-terminology`; a
+download is made once and a file that doesn't match is refused, never cached or loaded), then
+loads both as `shri_migrator`. About 35 s, and a rerun changes nothing. A new release is a new
+pin in `terminology/fetch.py`, in a reviewed PR.
+
 ## Rules that never bend
 
 - Every computed column is `STORED` (`persisted=True` on `Computed(...)`); a schema test
