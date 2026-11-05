@@ -70,6 +70,7 @@ class _Patient:
     labels: set[str] = field(default_factory=set)
     identifiers: list[schemas.PatientIdentifier] = field(default_factory=list)
     merged_into_id: UUID | None = None
+    general_practitioner_id: UUID | None = None
 
 
 @dataclass
@@ -107,6 +108,7 @@ class World:
     consents: dict[UUID, dict[UUID, _Consent]] = field(default_factory=dict)
     payers: dict[UUID, tuple[str, bool]] = field(default_factory=dict)  # name, usable
     clean_files: set[UUID] = field(default_factory=set)
+    providers: dict[UUID, set[UUID]] = field(default_factory=dict)  # clinic -> practitioners
 
     def clinic(self, db: Any) -> dict[UUID, _Patient]:
         return self.patients.setdefault(db.tenant_id, {})
@@ -272,7 +274,9 @@ class FakeRepository:
             preferred_name=next((n.text for n in d.names if n.use == "nickname"), None),
             marital_status=cast(schemas.MaritalStatus | None, d.marital_status),
             restricted=bool(found.labels & {"R", "V"}), active=d.active,
-            merged_into_id=found.merged_into_id, created_at=_NOW, updated_at=_NOW), found.version)
+            merged_into_id=found.merged_into_id,
+            general_practitioner_id=found.general_practitioner_id,
+            created_at=_NOW, updated_at=_NOW), found.version)
 
     async def get_patient(self, db: Any, patient_id: UUID) -> Versioned[schemas.Patient]:
         return self._patient(db, patient_id)
@@ -308,6 +312,15 @@ class FakeRepository:
 
     async def mrn_system(self, db: Any) -> str | None:
         return MRN_SYSTEM
+
+    async def is_provider(self, db: Any, practitioner_id: UUID) -> bool:
+        return practitioner_id in self.world.providers.get(db.tenant_id, set())
+
+    async def set_general_practitioner(self, db: Any, patient_id: UUID,
+                                       practitioner_id: UUID | None) -> None:
+        # No version bump of its own: it always follows create_patient or update_patient in the
+        # same request, and the database bumps a resource once per transaction.
+        self.world.patient(db, patient_id).general_practitioner_id = practitioner_id
 
     async def list_identifiers(self, db: Any, patient_id: UUID, *, limit: int, offset: int
                                ) -> list[schemas.PatientIdentifier]:

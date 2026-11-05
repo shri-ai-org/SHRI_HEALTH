@@ -135,6 +135,7 @@ class PatientCreate(Closed):
     emails: Annotated[list[Email], Field(max_length=3)] = []
     address: Address | None = None
     employer: Employer | None = None
+    general_practitioner_id: UUID | None = None  # a provider from GET /booking/providers
     identifiers: Annotated[list[PatientIdentifierCreate], Field(max_length=10)] = []
     duplicate_check: Literal["default", "override"] = "default"
     duplicate_override_reason: Annotated[str, _text(500)] | None = None
@@ -162,6 +163,7 @@ class Patient(Out):
     emails: list[Email] = []
     address: Address | None = None
     employer: Employer | None = None
+    general_practitioner_id: UUID | None = None
     identifiers: list[PatientIdentifier] = []
     restricted: bool
     active: bool
@@ -276,6 +278,7 @@ class PatientPatch(Closed):
     emails: Annotated[list[Email], Field(max_length=3)] | None = None
     address: Address | None = None
     employer: Employer | None = None
+    general_practitioner_id: UUID | None = None  # null clears it
 
 
 class PatientSummariesRequest(Closed):

@@ -264,6 +264,86 @@ def test_update_patient_against_the_real_helpers(client: Any) -> None:
     assert stale.status_code == 412 and stale.headers["ETag"] == patched.headers["ETag"]
 
 
+def _practitioner(clinics: dict[UUID, UUID], users: dict[str, CurrentUser], name: str) -> str:
+    """The practitioner linked to that test user, in its own clinic."""
+    engine = create_engine(sync_url(), poolclass=NullPool)
+    switch_to_role(engine, "shri_app")
+    session = open_session(engine, users[name].organization_id, users[name].id)
+    try:
+        found = session.execute(text("SELECT practitioner_id FROM admin.app_user WHERE id = :u"),
+                                {"u": users[name].id}).scalar_one()
+        return str(found)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_the_primary_provider_is_set_cleared_and_kept_to_the_clinic(
+        client: Any, clinics: dict[UUID, UUID], users: dict[str, CurrentUser]) -> None:
+    """#212: generalPractitionerId on register and patch (null clears it), on every response,
+    and only a provider of the user's own clinic (another clinic's reads as unknown: 422)."""
+    mine = _practitioner(clinics, users, "md")
+    theirs = _practitioner(clinics, users, "md-b")
+    family = f"Tran{uuid.uuid4().hex[:6]}"
+    refused = client("fd").post("/api/v1/patients",
+                                json=_body(family, generalPractitionerId=theirs))
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["errors"] == [
+        {"in": "body", "pointer": "/generalPractitionerId", "code": "invalid-reference"}]
+    assert client("fd").post("/api/v1/patients/search", json={"criteria": {
+        "family": family, "birthDate": "1984-03-09"}}).json()["items"] == []  # nothing written
+    created = client("fd").post("/api/v1/patients", json=_body(family, generalPractitionerId=mine))
+    assert created.status_code == 201, created.text
+    assert created.json()["generalPractitionerId"] == mine
+    path = f"/api/v1/patients/{created.json()['id']}"
+    got = client("ma").get(path)
+    assert got.json()["generalPractitionerId"] == mine
+    assert got.headers["ETag"] == created.headers["ETag"]
+    merge = {"Content-Type": "application/merge-patch+json"}
+    assert client("fd").patch(path, json={"generalPractitionerId": None},
+                              headers=merge).status_code == 428
+    bad = client("fd").patch(path, json={"generalPractitionerId": theirs},
+                             headers={"If-Match": created.headers["ETag"], **merge})
+    assert bad.status_code == 422 and bad.json()["errors"][0]["code"] == "invalid-reference"
+    cleared = client("fd").patch(path, json={"generalPractitionerId": None},
+                                 headers={"If-Match": created.headers["ETag"], **merge})
+    assert cleared.status_code == 200, cleared.text
+    assert "generalPractitionerId" not in cleared.json()
+    assert cleared.headers["ETag"] != created.headers["ETag"]  # the patient's version moved
+    stale = client("fd").patch(path, json={"generalPractitionerId": mine},
+                               headers={"If-Match": created.headers["ETag"], **merge})
+    assert stale.status_code == 412 and stale.headers["ETag"] == cleared.headers["ETag"]
+    again = client("fd").patch(path, json={"generalPractitionerId": mine},
+                               headers={"If-Match": cleared.headers["ETag"], **merge})
+    assert again.status_code == 200 and again.json()["generalPractitionerId"] == mine
+    kept = client("fd").patch(path, json={"maritalStatus": "S"},
+                              headers={"If-Match": again.headers["ETag"], **merge})
+    assert kept.json()["generalPractitionerId"] == mine  # absent: unchanged
+    assert client("ma").patch(path, json={"generalPractitionerId": None},
+                              headers={"If-Match": kept.headers["ETag"], **merge}
+                              ).status_code == 403
+    assert client("md-b").get(path).status_code == 404  # another clinic
+
+
+def test_a_restricted_charts_provider_needs_break_glass(
+        client: Any, clinics: dict[UUID, UUID], users: dict[str, CurrentUser]) -> None:
+    mine = _practitioner(clinics, users, "md")
+    created = client("fd").post("/api/v1/patients",
+                                json=_body(f"Ha{uuid.uuid4().hex[:6]}", generalPractitionerId=mine))
+    engine = create_engine(sync_url(), poolclass=NullPool)
+    switch_to_role(engine, "shri_app")
+    session = open_session(engine, clinics[CLINIC_A], users["fd"].id)
+    session.execute(text("UPDATE clinical.patient SET meta_security = ARRAY['R'] WHERE id = :i"),
+                    {"i": created.json()["id"]})
+    session.commit()
+    session.close()
+    engine.dispose()
+    path = f"/api/v1/patients/{created.json()['id']}"
+    refused = client("fd").patch(path, json={"generalPractitionerId": None}, headers={
+        "If-Match": '"99"', "Content-Type": "application/merge-patch+json"})
+    assert refused.status_code == 403 and refused.json()["code"] == "break-glass-required"
+
+
 def test_restrict_unrestrict_and_summaries(client: Any) -> None:
     first = client("fd").post("/api/v1/patients", json=_body(f"Ly{uuid.uuid4().hex[:6]}")).json()
     second = client("fd").post("/api/v1/patients", json=_body(
@@ -289,10 +369,12 @@ def test_restrict_unrestrict_and_summaries(client: Any) -> None:
 @pytest.mark.skipif(not os.environ.get("OPENBAO_TRANSIT_ADDR")
                     and os.environ.get("REQUIRE_OPENBAO") != "1",
                     reason="OPENBAO_TRANSIT_ADDR not set (the stored response is encrypted)")
-def test_a_keyed_registration_is_replayed_not_repeated(client: Any) -> None:
+def test_a_keyed_registration_is_replayed_not_repeated(
+        client: Any, clinics: dict[UUID, UUID], users: dict[str, CurrentUser]) -> None:
     family = f"Kim{uuid.uuid4().hex[:6]}"
     key = {"Idempotency-Key": str(uuid.uuid4())}
-    body = _body(family)  # one body, sent twice (_body draws a new license number each call)
+    # one body, sent twice (_body draws a new license number each call), with its provider
+    body = _body(family, generalPractitionerId=_practitioner(clinics, users, "md"))
     first = client("fd").post("/api/v1/patients", json=body, headers=key)
     assert first.status_code == 201, first.text
     replay = client("fd").post("/api/v1/patients", json=body, headers=key)
