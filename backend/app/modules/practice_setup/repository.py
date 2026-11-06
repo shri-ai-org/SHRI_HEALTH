@@ -599,3 +599,99 @@ async def _note_templates(db: AsyncSession, rows: Sequence[Row[Any]]
             updated_at=r.updated_at)
         for r in rows
     ]
+
+
+# ------------------------------------------------------------------------- one facility
+class FacilityRepository(Protocol):
+    async def get_facility(self, db: AsyncSession, facility_id: UUID
+                           ) -> tuple[schemas.Facility, int] | None: ...
+
+    async def update_facility(self, db: AsyncSession, facility_id: UUID,
+                              changes: schemas.FacilityPatch, *, if_version: int) -> int | None:
+        """The facility's new version, or None when ``if_version`` isn't the current one."""
+        ...
+
+
+_FACILITY = text("""
+SELECT f.id, f.code, f.name, f.timezone, f.npi, f.clia_number, f.place_of_service_code,
+       f.is_billing_location, f.is_active, f.created_at, f.location_id, f.version,
+       GREATEST(f.updated_at, l.meta_last_updated) AS updated_at
+FROM admin.facility f JOIN clinical.location l ON l.id = f.location_id
+WHERE f.id = :id
+""")
+#: The contract's names for the facility's own columns (the rest live on its site).
+_FACILITY_COLUMNS = {"name": "name", "time_zone": "timezone", "npi": "npi",
+                     "clia_number": "clia_number", "place_of_service_code": "place_of_service_code",
+                     "billing_location": "is_billing_location", "active": "is_active"}
+# Every column is set to itself unless the patch gives it (`set_<name>`), and the row is always
+# updated, so the version (the ETag) moves when only the site's address or phone changes; the
+# trigger bumps it (A41) and refuses a time zone that isn't IANA's.
+_UPDATE_FACILITY = text("""
+UPDATE admin.facility SET
+  name = CASE WHEN :set_name THEN :name ELSE name END,
+  timezone = CASE WHEN :set_time_zone THEN :time_zone ELSE timezone END,
+  npi = CASE WHEN :set_npi THEN :npi ELSE npi END,
+  clia_number = CASE WHEN :set_clia_number THEN :clia_number ELSE clia_number END,
+  place_of_service_code = CASE WHEN :set_place_of_service_code THEN :place_of_service_code
+                               ELSE place_of_service_code END,
+  is_billing_location = CASE WHEN :set_billing_location THEN :billing_location
+                             ELSE is_billing_location END,
+  is_active = CASE WHEN :set_active THEN :active ELSE is_active END,
+  updated_by_user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+WHERE id = :id AND version = :version RETURNING version
+""")
+_SITE = text("SELECT location_id FROM admin.facility WHERE id = :id")
+# The site's address and phone are replaced whole: the read shows one of each (_LOCATION_*),
+# so an edit leaves exactly one. Other contact points (email, fax) are kept.
+_DROP_ADDRESSES = text("DELETE FROM clinical.address WHERE location_id = :location")
+_ADD_ADDRESS = text("""
+INSERT INTO clinical.address (id, tenant_id, location_id, line, city, state, postal_code,
+                             country, use)
+VALUES (gen_random_uuid(), NULLIF(current_setting('app.current_tenant_id', true), '')::uuid,
+        :location, :line, :city, :state, :postal_code, :country, 'work')
+""")
+_DROP_PHONES = text(
+    "DELETE FROM clinical.contact_point WHERE location_id = :location AND system = 'phone'")
+_ADD_PHONE = text("""
+INSERT INTO clinical.contact_point (id, tenant_id, location_id, system, value, use, rank)
+VALUES (gen_random_uuid(), NULLIF(current_setting('app.current_tenant_id', true), '')::uuid,
+        :location, 'phone', :value, 'work', 1)
+""")
+
+
+class SqlFacilityRepository:
+    async def get_facility(self, db: AsyncSession, facility_id: UUID
+                           ) -> tuple[schemas.Facility, int] | None:
+        r = (await db.execute(_FACILITY, {"id": facility_id})).one_or_none()
+        if r is None:
+            return None
+        addresses = await _children(db, _LOCATION_ADDRESSES, [r.location_id], "location_id")
+        phones = await _children(db, _LOCATION_PHONES, [r.location_id], "location_id")
+        found = schemas.Facility(
+            id=r.id, code=r.code, name=r.name, time_zone=r.timezone,
+            address=_address(next(iter(addresses.get(r.location_id, [])), None)),
+            phone=next((p.value for p in phones.get(r.location_id, [])), None),
+            npi=r.npi, clia_number=r.clia_number, place_of_service_code=r.place_of_service_code,
+            billing_location=r.is_billing_location, active=r.is_active,
+            created_at=r.created_at, updated_at=r.updated_at)
+        return found, int(r.version)
+
+    async def update_facility(self, db: AsyncSession, facility_id: UUID,
+                              changes: schemas.FacilityPatch, *, if_version: int) -> int | None:
+        given = changes.model_dump(include=set(_FACILITY_COLUMNS))
+        params = {**given, **{f"set_{k}": k in changes.model_fields_set for k in _FACILITY_COLUMNS},
+                  "id": facility_id, "version": if_version}
+        version = (await db.execute(_UPDATE_FACILITY, params)).scalar_one_or_none()
+        if version is None:
+            return None
+        location = (await db.execute(_SITE, {"id": facility_id})).scalar_one()
+        if changes.address is not None:
+            a = changes.address
+            await db.execute(_DROP_ADDRESSES, {"location": location})
+            await db.execute(_ADD_ADDRESS, {"location": location, "line": a.lines, "city": a.city,
+                                            "state": a.state, "postal_code": a.postal_code,
+                                            "country": a.country})
+        if changes.phone is not None:
+            await db.execute(_DROP_PHONES, {"location": location})
+            await db.execute(_ADD_PHONE, {"location": location, "value": changes.phone})
+        return int(version)

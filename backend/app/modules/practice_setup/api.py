@@ -1,5 +1,5 @@
-"""Practice setup API (contracts/openapi/modules/practice-setup.yaml): the six list reads and the
-note-template reads.
+"""Practice setup API (contracts/openapi/modules/practice-setup.yaml): the six list reads, the
+note-template reads, and one facility's read and JSON Merge Patch.
 
 Each route's operation_id is the contract's operationId, with require() on its x-permission
 (`payers:read` for the payer directory, `note-templates:read` for the note templates (D73, A54),
@@ -14,13 +14,18 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi import APIRouter, Depends, Header, Path, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser, require, tenant_db
 
 from . import schemas, service
-from .repository import SetupRepository, SqlSetupRepository
+from .repository import (
+    FacilityRepository,
+    SetupRepository,
+    SqlFacilityRepository,
+    SqlSetupRepository,
+)
 
 router = APIRouter(tags=["practice-setup"])
 
@@ -29,9 +34,17 @@ def repository() -> SetupRepository:
     return SqlSetupRepository()
 
 
+def facility_repository() -> FacilityRepository:
+    return SqlFacilityRepository()
+
+
 Repo = Annotated[SetupRepository, Depends(repository)]
+FacilityRepo = Annotated[FacilityRepository, Depends(facility_repository)]
 DB = Annotated[AsyncSession, Depends(tenant_db)]
 SetupRead = Annotated[CurrentUser, Depends(require("practice-setup:read"))]
+SetupUpdate = Annotated[CurrentUser, Depends(require("practice-setup:update"))]
+IfMatch = Annotated[str | None, Header(alias="If-Match")]
+FacilityPathId = Annotated[UUID, Path(alias="facilityId")]
 PayersRead = Annotated[CurrentUser, Depends(require("payers:read"))]
 TemplatesRead = Annotated[CurrentUser, Depends(require("note-templates:read"))]
 Limit = Annotated[int, Query(ge=1, le=100)]
@@ -123,3 +136,23 @@ async def get_note_template(user: TemplatesRead, note_template_id: NoteTemplateI
     found = await service.get_note_template(db, repo, note_template_id)
     response.headers["ETag"] = service.etag(found.version)
     return found
+
+
+@router.get("/facilities/{facilityId}", operation_id="getFacility",
+            response_model=schemas.Facility, response_model_exclude_none=True)
+async def get_facility(user: SetupRead, facility_id: FacilityPathId, response: Response, db: DB,
+                       repo: FacilityRepo) -> schemas.Facility:
+    found, version = await service.get_facility(db, repo, user, facility_id)
+    response.headers["ETag"] = service.etag(version)
+    return found
+
+
+@router.patch("/facilities/{facilityId}", operation_id="updateFacility",
+              response_model=schemas.Facility, response_model_exclude_none=True)
+async def update_facility(user: SetupUpdate, facility_id: FacilityPathId,
+                          body: schemas.FacilityPatch, response: Response, db: DB,
+                          repo: FacilityRepo, if_match: IfMatch = None) -> schemas.Facility:
+    updated, version = await service.update_facility(db, repo, user, facility_id, body, if_match)
+    await db.commit()
+    response.headers["ETag"] = service.etag(version)
+    return updated
