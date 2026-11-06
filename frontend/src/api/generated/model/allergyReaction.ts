@@ -23,7 +23,7 @@ import type { PartialDate } from './partialDate';
  */
 export interface AllergyReaction {
   /**
-     * What happened, e.g. hives, SNOMED CT or text.
+     * What happened, e.g. hives, SNOMED CT or text. Until the coding child tables land (after the demo), the server stores one coding per manifestation and answers `422` for more than one.
      * @maxItems 10
      */
   manifestations: CodeableConcept[];
@@ -34,6 +34,6 @@ export interface AllergyReaction {
      * @maxLength 1000
      */
   description?: string;
-  /** When it happened. */
+  /** When it happened. Until the database stores partial dates, only a full date (`YYYY-MM-DD`) is accepted: `YYYY` and `YYYY-MM` get `422`. */
   onsetDate?: PartialDate;
 }

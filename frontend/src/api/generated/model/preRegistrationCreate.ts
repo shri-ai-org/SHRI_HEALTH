@@ -25,7 +25,7 @@ export interface PreRegistrationCreate {
   /** The person agrees to be contacted about their request. */
   contactConsent: true;
   /**
-     * The solved challenge from the form's ALTCHA widget (MIT, self-hosted), for a challenge from `GET /portal/bot-challenge`. Checked by the server, and accepted only once; nothing about the visitor goes to anyone else.
+     * The solved challenge from the form's ALTCHA widget (MIT, self-hosted), for a challenge from `GET /portal/bot-challenge`. Checked by the server, and accepted only once (a retry of the same request, with the same `Idempotency-Key`, may send it again; after a 400 or 422, get a new challenge); nothing about the visitor goes to anyone else.
      * @maxLength 4000
      */
   botCheck: string;

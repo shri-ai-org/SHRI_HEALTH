@@ -22,7 +22,7 @@ import type { Id } from './id';
  * JSON Merge Patch for an encounter that is not `finished` or `entered-in-error`: reasons, room and participants. Status changes only through actions (DATA_OWNERSHIP §5).
  */
 export interface EncounterPatch {
-  /** Reason, coded or as text. Send `null` to clear it. */
+  /** Reason, coded or as text. Send `null` to clear it. Until the coding child tables land (after the demo), the server stores one coding per reason and answers `422` for more than one. */
   reasons?: CodeableConcept[] | null;
   /** Room or site. Send `null` to clear it. */
   locationId?: Id | null;

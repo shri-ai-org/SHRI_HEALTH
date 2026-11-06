@@ -23,7 +23,7 @@ import type { EligibilityCheck } from './eligibilityCheck';
 export interface EligibilityCheckList {
   /**
      * The items on this page.
-     * @maxItems 50
+     * @maxItems 100
      */
   items: EligibilityCheck[];
   /** Cursor for the next page. Absent on the last page. */
