@@ -277,7 +277,8 @@ def _constraint_names(table: Table, kind: type, composite_fk: bool = False) -> l
 def _table_section(name: str, cls: type[Any], children: dict[str, list[str]],
                    resources: list[Resource], contract: Contract) -> list[str]:
     table: Table = cls.__table__
-    out = [f"## `{table.schema}.{name}`", "", f"{_kind(name, cls)}. {_doc(cls)}".rstrip(), ""]
+    out = [f"## `{table.schema}.{name}`", "", f"{_kind(name, cls)}. {_doc(cls)}".rstrip(), "",
+           f"Release: **{table.info['release']}**.", ""]
     pcol = patient_column(table)
     if pcol is not None:
         out += [f"Patient-owned via `{pcol.name}` (same-patient foreign keys apply).", ""]
@@ -338,6 +339,24 @@ def _table_section(name: str, cls: type[Any], children: dict[str, list[str]],
     return out
 
 
+def _release_summary() -> list[str]:
+    """How many tables each release tag has, by schema."""
+    from app.db.models.release import RELEASES
+
+    counts: dict[tuple[str, str], int] = {}
+    for cls in MAPPERS.values():
+        table: Table = cls.__table__
+        key = (str(table.schema), table.info["release"])
+        counts[key] = counts.get(key, 0) + 1
+    schemas = sorted({schema for schema, _ in counts})
+    out = ["| Release | " + " | ".join(f"`{s}`" for s in schemas) + " | Total |",
+           "|---|" + "---|" * (len(schemas) + 1)]
+    for r in RELEASES:
+        row = [counts.get((s, r), 0) for s in schemas]
+        out.append(f"| {r} | " + " | ".join(str(n) for n in row) + f" | {sum(row)} |")
+    return [*out, ""]
+
+
 def data_dictionary() -> str:
     resources = ownership()
     contract = Contract()
@@ -361,7 +380,11 @@ def data_dictionary() -> str:
            "`name`, say) counts as one property, so its child table's columns show no "
            "same-named property.",
            "- Resources that DATA_OWNERSHIP.md does not yet map to tables are listed in the last "
-           "section, with what the document says.", ""]
+           "section, with what the document says.",
+           "- **Release**: the table's priority from `docs/context/P0_SCHEMA_SCOPE.md` "
+           "(`app.db.models.release`): P0 is what the pilot needs, P0 stretch is wanted for it, "
+           "P1 and P2 come later. A child table takes its resource's.", ""]
+    out += _release_summary()
     ordered = sorted(MAPPERS.items(), key=lambda kv: (str(kv[1].__table__.schema), kv[0]))
     for name, cls in ordered:
         out += _table_section(name, cls, children, resources, contract)
