@@ -15,7 +15,7 @@ from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, PlainSerializer
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
 from pydantic.alias_generators import to_camel
 
 
@@ -261,3 +261,36 @@ class NoteTemplate(Out):
 class NoteTemplateList(Out):
     items: list[NoteTemplate]
     next_cursor: str | None = None
+
+
+# ------------------------------------------------------------------------- facility update
+class In(BaseModel):
+    """A request body: unknown fields are refused (the contract's additionalProperties: false)."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid",
+                              strict=True)
+
+
+class AddressIn(In):
+    lines: Annotated[list[Annotated[str, Field(max_length=100)]],
+                     Field(min_length=1, max_length=3)]
+    city: Annotated[str, Field(min_length=1, max_length=60)]
+    state: Annotated[str, Field(pattern=r"^[A-Z]{2}$")]
+    postal_code: Annotated[str, Field(pattern=r"^\d{5}(-\d{4})?$")]
+    country: Literal["US"]
+
+
+class FacilityPatch(In):
+    """JSON Merge Patch on a facility (minProperties 1). A field left out is unchanged. No field
+    is nullable in the contract, so ``null`` is refused; ``code`` is fixed once created."""
+
+    name: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    time_zone: Annotated[str, Field(max_length=64,
+                                    pattern=r"^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$")] | None = None
+    address: AddressIn | None = None
+    phone: Annotated[str, Field(pattern=r"^\+[1-9]\d{6,14}$")] | None = None
+    npi: Annotated[str, Field(pattern=r"^\d{10}$")] | None = None
+    clia_number: Annotated[str, Field(pattern=r"^\d{2}D\d{7}$")] | None = None
+    place_of_service_code: Annotated[str, Field(pattern=r"^\d{2}$")] | None = None
+    billing_location: bool | None = None
+    active: bool | None = None
