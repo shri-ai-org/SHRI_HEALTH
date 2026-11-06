@@ -58,7 +58,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import time
+from datetime import datetime, time
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -599,3 +599,73 @@ async def _note_templates(db: AsyncSession, rows: Sequence[Row[Any]]
             updated_at=r.updated_at)
         for r in rows
     ]
+
+
+# ------------------------------------------------------------------------- practice settings
+@dataclass(frozen=True)
+class SettingsRow:
+    """The practice's settings as stored: ``version`` is 0 while the practice has never set one
+    (the platform default applies), so the first PATCH sends ``If-Match: "0"``."""
+    show_sogi: bool
+    version: int
+    updated_at: datetime
+    mrn_prefix: str
+    mrn_system: str
+
+
+class SettingsRepository(Protocol):
+    async def get_settings(self, db: AsyncSession) -> SettingsRow | None: ...
+
+    async def set_show_sogi(self, db: AsyncSession, value: bool, *, if_version: int
+                            ) -> int | None:
+        """The new version, or None when ``if_version`` isn't the current one."""
+        ...
+
+
+#: A49: the contract's showSexualOrientationAndGenderIdentity (D39).
+SHOW_SOGI = "registration.show_sogi_fields"
+
+# One row per practice (RLS): the setting, its platform default, and the MRN counter set at
+# onboarding. A practice without an MRN counter has no settings to show (None).
+_SETTINGS = text("""
+SELECT COALESCE(ts.value, d.default_value) AS value, COALESCE(ts.version, 0) AS version,
+       COALESCE(ts.updated_at, m.created_at) AS updated_at, m.prefix, m.system
+FROM admin.mrn_counter m
+CROSS JOIN admin.setting_definition d
+LEFT JOIN admin.tenant_setting ts ON ts.setting_key = d.key
+WHERE d.key = :key
+""")
+_UPDATE_SETTING = text("""
+UPDATE admin.tenant_setting SET value = :value, updated_by_user_id = :user
+WHERE setting_key = :key AND version = :version RETURNING version
+""")
+# The first value a practice sets: version 1. A concurrent first write loses on the
+# (tenant_id, setting_key) key, as a stale If-Match would.
+_INSERT_SETTING = text("""
+INSERT INTO admin.tenant_setting (id, tenant_id, setting_key, value, created_by_user_id,
+                                  updated_by_user_id)
+VALUES (gen_random_uuid(), NULLIF(current_setting('app.current_tenant_id', true), '')::uuid,
+        :key, :value, :user, :user)
+ON CONFLICT (tenant_id, setting_key) DO NOTHING RETURNING version
+""")
+_USER = text("SELECT NULLIF(current_setting('app.current_user_id', true), '')::uuid")
+
+
+class SqlSettingsRepository:
+    async def get_settings(self, db: AsyncSession) -> SettingsRow | None:
+        row = (await db.execute(_SETTINGS, {"key": SHOW_SOGI})).one_or_none()
+        if row is None:
+            return None
+        return SettingsRow(row.value == "true", row.version, row.updated_at, row.prefix,
+                           row.system)
+
+    async def set_show_sogi(self, db: AsyncSession, value: bool, *, if_version: int
+                            ) -> int | None:
+        params = {"key": SHOW_SOGI, "value": "true" if value else "false",
+                  "user": (await db.execute(_USER)).scalar_one()}
+        if if_version == 0:
+            version = (await db.execute(_INSERT_SETTING, params)).scalar_one_or_none()
+        else:
+            version = (await db.execute(_UPDATE_SETTING, {**params, "version": if_version})
+                       ).scalar_one_or_none()
+        return None if version is None else int(version)

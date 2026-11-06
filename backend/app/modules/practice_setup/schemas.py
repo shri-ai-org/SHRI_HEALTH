@@ -261,3 +261,33 @@ class NoteTemplate(Out):
 class NoteTemplateList(Out):
     items: list[NoteTemplate]
     next_cursor: str | None = None
+
+
+# ------------------------------------------------------------------------- practice settings
+class In(BaseModel):
+    """A request body: unknown fields are refused (the contract's additionalProperties: false)."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid",
+                              strict=True)
+
+
+class PracticeRegistrationSettings(Out):
+    show_sexual_orientation_and_gender_identity: bool
+
+
+class PracticeSettings(Out):
+    registration: PracticeRegistrationSettings
+    mrn_prefix: str
+    mrn_system: str
+    updated_at: Timestamp
+
+
+class PracticeRegistrationSettingsPatch(In):
+    show_sexual_orientation_and_gender_identity: bool | None = None
+
+
+class PracticeSettingsPatch(In):
+    """JSON Merge Patch (minProperties 1 at each level). A field left out is unchanged; ``null``
+    is refused, since every setting is a boolean with a default."""
+
+    registration: PracticeRegistrationSettingsPatch | None = None
