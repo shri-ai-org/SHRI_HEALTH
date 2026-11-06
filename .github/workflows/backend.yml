@@ -25,7 +25,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: backend-${{ github.event.pull_request.number || github.ref }}
+  # A draft's skipped run has its own group, so it never cancels the real run started when the
+  # PR is marked ready a few seconds after a push (#214, #213).
+  group: backend-${{ github.event.pull_request.number || github.ref }}${{ github.event.pull_request.draft && '-draft' || '' }}
   # Cancel superseded PR runs only; every commit on main gets a complete run.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
