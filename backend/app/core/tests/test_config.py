@@ -65,6 +65,27 @@ def test_openbao_values_are_loaded(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.database_url.get_secret_value() == "postgresql+asyncpg://from-bao/db"
 
 
+def test_the_claude_api_key_comes_from_openbao_and_is_never_shown(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    key = "sk-ant-synthetic-test-value"  # noqa: S105 (not a real key)
+    _fake_openbao(monkeypatch, {"CLAUDE_API_KEY": key})
+    monkeypatch.setenv("OPENBAO_ADDR", "https://bao.internal:8200")
+    monkeypatch.setenv("OPENBAO_TOKEN", "test-token")
+    monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
+
+    settings = Settings()
+
+    assert settings.claude_api_key is not None
+    assert settings.claude_api_key.get_secret_value() == key
+    assert key not in repr(settings) and key not in str(settings)
+
+
+def test_no_claude_api_key_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENBAO_ADDR", raising=False)
+    assert Settings().claude_api_key is None
+
+
 def test_environment_variables_override_openbao(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_openbao(monkeypatch, {"problem_type_base": "tag:bao.example,2026:problem/"})
     monkeypatch.setenv("OPENBAO_ADDR", "https://bao.internal:8200")

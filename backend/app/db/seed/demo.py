@@ -1,6 +1,7 @@
 """The demo layer (issue #85; demo 20 Nov): the starter layer plus a pharmacy and the main
 practice's connection to the simulated pharmacy, more payers, the consent requirements, and
-synthetic patients with their coverage, preferred pharmacy and appointments on the demo day.
+synthetic patients with their coverage, preferred pharmacy and appointments on the demo day, plus
+500 more synthetic patients without appointments (``population()``).
 The same rules as the starter layer: synthetic only, fixed IDs, inserted only if missing, so a
 second run changes nothing; it runs as shri_migrator with the clinic set, so forced RLS checks
 every row.
@@ -21,6 +22,7 @@ free times. The seed's environment guard is unchanged.
 from __future__ import annotations
 
 import datetime as dt
+import random
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -87,6 +89,36 @@ PATIENTS = (
     DemoPatient(5, "Priya765", "Raman431", dt.date(1983, 5, 30), "female", "+12175550129",
                 "29 Sample Avenue", 1, None),
 )
+
+
+#: The rest of the practice's synthetic patients (Vimal's order, 10 Nov): enough for a realistic
+#: patient search and schedule, with no appointments, so the demo day above is unchanged. They
+#: come from a fixed seed, so every run makes the same people with the same IDs (n 1001 to
+#: 1500), and the names are obviously fictional, Synthea-style with digits (D112).
+POPULATION_SIZE = 500
+POPULATION_FIRST = 1001
+_GIVEN = ("Avery", "Jordan", "Riley", "Morgan", "Casey", "Quinn", "Rowan", "Sage", "Emery",
+          "Harper", "Reese", "Dakota", "Skyler", "Finley", "Hayden", "Kendall", "Marlowe",
+          "Oakley", "Peyton", "Tatum")
+_FAMILY = ("Abernathy", "Brightwater", "Castellan", "Dunmore", "Elsworth", "Fairbanks",
+           "Greystone", "Halloway", "Ironwood", "Juniper", "Kingsley", "Lockridge", "Merriweather",
+           "Northcott", "Oakhurst", "Pemberton", "Quillfeather", "Ravensworth", "Stonebridge",
+           "Thistlewood")
+
+
+def population() -> tuple[DemoPatient, ...]:
+    """The 500 patients, the same on every run: a fixed seed, never the clock or chance."""
+    rng = random.Random(20261120)  # noqa: S311 (the same people every run, not a secret)
+    out = []
+    for n in range(POPULATION_FIRST, POPULATION_FIRST + POPULATION_SIZE):
+        gender = rng.choice(("female", "male"))
+        born = dt.date(1940, 1, 1) + dt.timedelta(days=rng.randrange(80 * 365))
+        out.append(DemoPatient(
+            n, f"{rng.choice(_GIVEN)}{rng.randrange(100, 1000)}",
+            f"{rng.choice(_FAMILY)}{rng.randrange(10, 1000)}", born, gender,
+            f"+1217555{rng.randrange(100, 200):04d}",     # the fictional 555-01xx range
+            f"{rng.randrange(1, 999)} Sample Avenue", rng.choice((1, 2, 3, None)), None))
+    return tuple(out)
 
 
 def _payers(db: Session) -> None:
@@ -262,7 +294,7 @@ def load_demo(db: Session) -> None:
     _payers(db)
     _consent_requirements(db)
     visits = {code: sid(VISIT, i) for i, (code, *_) in enumerate(starter.VISIT_TYPES, start=1)}
-    for p in PATIENTS:
+    for p in PATIENTS + population():
         _patient(db, p)
         _coverage(db, p)
         _ensure(db, "patient_pharmacy", sid(P_PHARMACY, p.n), tenant_id=CLINIC_A,

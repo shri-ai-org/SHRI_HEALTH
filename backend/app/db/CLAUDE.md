@@ -147,6 +147,34 @@ The visit helpers (batch 2), on the same rules:
   visit still shows what was diagnosed. It takes only the Condition: the caller checks that it
   is an `encounter-diagnosis` of the visit in the request and that the visit is signed;
 
+The problem list (FRS FR-PAT-03), on the same rules: a Condition with category
+`problem-list-item`, ICD-10-CM or SNOMED CT.
+- `create_problem(db, ProblemIn)`, `update_problem(db, id, ProblemChanges, *, if_version)` and
+  `problem_entered_in_error(db, id, reason)`. The code never changes; a wrong one is marked
+  entered-in-error and the right one added. A note is one annotation, replaced or cleared.
+- Onset and abatement take the contract's `PartialDate`: a full date goes in `*_date_time`, a
+  year or a month in `*_period_start`/`*_period_end` spanning it (the convention below), and
+  `problem_dates(condition)` reads both back as given. `partial_date_span()` is the parsing.
+- `InvalidInput` names its field: a malformed date, an end before the start, or an end on a
+  problem that is still active (FHIR con-4, at `clinicalStatus`).
+- An encounter diagnosis is not a problem here (`ResourceNotFound`): it has its own helpers.
+
+Family, social and surgical history (FRS FR-PAT-03), on the same rules. Each is insert-only: a
+wrong entry is marked entered-in-error, with its Provenance, and a new one added.
+- `create_family_history(db, FamilyHistoryIn)`: one relative's FamilyMemberHistory, its
+  conditions (an onset age in years is a UCUM `a` Age) and a note. No conditions needs status
+  `health-unknown`. `sex` is stored as `sex_text`: AdministrativeGender isn't a registered code
+  system. A condition's own note has no column yet, so the helper takes none.
+- `record_social_history(db, SocialHistoryIn)`: an Observation, category `social-history`,
+  status `final`, a LOINC code and exactly one value (a code, a UCUM quantity or text); the
+  effective date is a `PartialDate` (as the problem list's), today when absent.
+- `create_surgical_history(db, SurgicalHistoryIn)`: a `completed` Procedure with category
+  SNOMED CT `387713003` (D73), a `PartialDate` performed date, a body site and a note.
+- `family_history_entered_in_error`, `social_history_entered_in_error` and
+  `surgical_history_entered_in_error`: each only for its own kind (`ResourceNotFound`
+  otherwise), `InvalidTransition` when already entered-in-error.
+- Dates in the future are refused, at the field that has them.
+
 `set_preferred_pharmacy(db, patient_id, pharmacy_id, *, if_version)` (D50): the patient's one
 default in `admin.patient_pharmacy` (an earlier choice stays, not default), from the platform
 directory (`ResourceNotFound` if unknown, `InvalidInput` if inactive). It updates the patient

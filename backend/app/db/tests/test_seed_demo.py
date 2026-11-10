@@ -32,6 +32,9 @@ COUNTED = ("admin.pharmacy", "admin.payer", "admin.practice_payer", "admin.conse
 @pytest.fixture(autouse=True)
 def _test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "test")
+    # Five of the 500, so each database test seeds in seconds; the full population is checked
+    # without a database below, and loads in the reset.
+    monkeypatch.setattr(demo, "POPULATION_SIZE", 5)
 
 
 def _seed(engine: Engine) -> None:
@@ -269,3 +272,21 @@ def test_the_starters_office_hours_stay(migrator_engine: Engine, admin_engine: E
             "WHERE id = ANY(:ids)"), {"ids": ids}).all()
     assert len(hours) == len(ids)
     assert {tuple(h) for h in hours} == {(dt.time(9, 0), dt.time(17, 0), None)}
+
+
+# ======================================================================= the population
+def test_the_500_are_the_same_people_every_run_and_obviously_fictional(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.undo()                                  # the full 500, not the fixture's 5
+    first, again = demo.population(), demo.population()
+    assert first == again and len(first) == demo.POPULATION_SIZE == 500
+    numbers = [p.n for p in first]
+    assert len(set(numbers)) == 500 and not set(numbers) & {p.n for p in demo.PATIENTS}
+    synthea = re.compile(r"^[A-Z][a-z]+\d{2,3}$")         # D112: names with digits
+    assert all(synthea.match(p.given) and synthea.match(p.family) for p in first)
+    assert all(re.fullmatch(r"\+12175550[12]\d\d", p.phone) for p in first)  # 555-01xx
+    assert all(p.visit is None for p in first)         # the demo day is unchanged
+    ages = [(dt.date(2026, 11, 20) - p.birth_date).days // 365 for p in first]
+    assert min(ages) >= 6 and max(ages) <= 86
+    assert {p.payer for p in first} == {1, 2, 3, None} and {p.gender for p in first} == {
+        "female", "male"}

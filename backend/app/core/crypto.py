@@ -168,6 +168,18 @@ async def unwrap_data_key(app: Any, wrapped: str) -> bytes:
     return await field_crypto(app).unwrap_data_key(wrapped)
 
 
+def check_production(settings: Settings) -> None:
+    """Run when the server starts (main.lifespan): in production the API refuses to start
+    without OpenBao Transit. Sessions, idempotent replays and files all need it, so it would
+    otherwise fail later, request by request (fail closed, but at the worst time)."""
+    if settings.environment != "production":
+        return
+    missing = settings.missing("openbao_transit_addr", "openbao_transit_token")
+    if missing:
+        raise RuntimeError("Cannot start in production without OpenBao Transit: set "
+                           + ", ".join(missing))
+
+
 def register(app: FastAPI, settings: Settings) -> None:
     """Field encryption through Transit; unconfigured, encryption fails closed (500)."""
     app.state.crypto = FieldCrypto(settings) if settings.openbao_transit_addr else None

@@ -179,6 +179,10 @@ services:
       # Field encryption through OpenBao Transit, with the narrow token only (never the root).
       OPENBAO_TRANSIT_ADDR: http://openbao:8200
       OPENBAO_TRANSIT_TOKEN: ${OPENBAO_API_TOKEN:?set OPENBAO_API_TOKEN in infra/compose/.env}
+      # Startup secrets (OpenBao KV, secret/shri-health/api; e.g. CLAUDE_API_KEY), read with the
+      # same narrow token, which may only read that one path.
+      OPENBAO_ADDR: http://openbao:8200
+      OPENBAO_TOKEN: ${OPENBAO_API_TOKEN:?set OPENBAO_API_TOKEN in infra/compose/.env}
       # The file service (core/settings/files.py). The folder survives a restart (its volume),
       # so demo receipts do too; SHRI_FILE_STORE_DIR is #128's name for it until it reads
       # FILE_STORE_DIR.

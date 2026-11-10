@@ -9,10 +9,12 @@ Every resource and admin table is named once in ``TAGS``. A FHIR child or dataty
 its resource's tag, through its parent columns; one shared by several resources takes the
 highest of theirs. A new table without a tag fails ``tests/test_release_tags.py``.
 
-The calls not named in P0_SCHEMA_SCOPE.md, agreed with Anand on 5 Nov 2026:
+The calls not named in P0_SCHEMA_SCOPE.md:
 ``consumed_logout_token`` is P0 (staff back-channel logout, D94, a security control);
-``openemr_column_map`` and ``ai_request_retrieved_chunk`` are P1 with the migration tooling and
-RAG. ``pre_registration`` and the portal tables are P1 until Vimal's product call on #85.
+``openemr_column_map`` is P0, since it is FR-MIG-00's column-level mapping, which FRS §5 keeps
+in P0, while the migration runs, record maps and issues stay P1 (Vimal on #251, 10 Nov 2026);
+``ai_request_retrieved_chunk`` is P1 with RAG. ``pre_registration`` and the portal tables are
+P1 (FRS §3.8, D89, D108; Vimal on #85 and #251).
 """
 from __future__ import annotations
 
@@ -105,7 +107,7 @@ TAGS: dict[str, str] = {
     "migration_reconciliation": P1,
     "migration_record_map": P1,
     "migration_run": P1,
-    "openemr_column_map": P1,
+    "openemr_column_map": P0,
     "patient_merge": P0,
     # admin.portal
     "consumed_logout_token": P0,

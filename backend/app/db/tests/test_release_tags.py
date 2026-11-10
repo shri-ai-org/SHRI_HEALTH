@@ -32,6 +32,16 @@ def test_a_child_table_takes_its_resources_tag() -> None:
     assert tag("human_name") == P0               # shared: Patient, Practitioner, RelatedPerson
 
 
+def test_the_openemr_mapping_is_p0_and_the_migration_tooling_p1() -> None:
+    """FRS §5: FR-MIG-00 (the column-level mapping) is P0, the migration workflow P1."""
+    def tag(name: str) -> Any:
+        return MAPPERS[name].__table__.info["release"]
+
+    assert tag("openemr_column_map") == P0
+    assert {tag(t) for t in ("migration_run", "migration_record_map", "migration_issue",
+                             "migration_reconciliation")} == {P1}
+
+
 def test_a_new_table_not_in_the_list_gets_no_tag() -> None:
     class NewTable:                              # an admin table nobody has tagged yet
         pass
