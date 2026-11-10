@@ -372,7 +372,11 @@ export const useClinical = create<NoteState>()((set, get) => {
       const replace = (row?: AddedProblem) =>
         set({ diagnoses: { ...get().diagnoses, [encounterId]: (get().diagnoses[encounterId] ?? []).flatMap((pr) => (pr.id === pending.id ? (row ? [row] : []) : [pr])) } })
       addEncounterDiagnosis(encounterId, { code: { system: 'http://hl7.org/fhir/sid/icd-10-cm', code: dx.icd10, display: dx.label } }, { 'Idempotency-Key': newIdempotencyKey() })
-        .then((res) => replace(toProblem(res.data as EncounterDiagnosis, '')))
+        .then((res) => {
+          replace(toProblem(res.data as EncounterDiagnosis, ''))
+          // Said once the server has it, never before: a refusal must not follow an "added".
+          useUI.getState().toast({ tone: 'success', title: `${dx.label} added`, detail: `Coded ${dx.icd10}` })
+        })
         .catch((error: unknown) => {
           replace()
           toastProblem(error, `${dx.label} was not added`)

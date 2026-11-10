@@ -66,7 +66,7 @@ function Problems({ encounterId }: { encounterId: string }) {
       return
     }
     audit({ event: 'PROBLEM.ADDED', actor: me.name, actorId: me.id, subject: p.id, detail: `${d.label} · ICD-10 ${d.icd10} · ${encounterLabel(enc)}` })
-    toast({ tone: 'success', title: `${d.label} added`, detail: `Coded ${d.icd10}` })
+    // SHRI_HEALTH: "added" is said by shri-health/clinical.ts once the server has the diagnosis.
   }
 
   function confirmList() {

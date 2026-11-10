@@ -58,7 +58,10 @@ export function NoSuchEncounter({ id, screenId }: { id?: string; screenId: strin
     <div data-screen-id={spec.id} className="flex flex-col gap-[16px] pb-[8px]">
       <ScreenHeader spec={spec} sub="No encounter at this address." />
       <Card className="max-w-[640px]">
-        <EmptyState icon={SearchX} why={`There is no encounter with the id “${id ?? ''}” in this sample record. Open the patient's record, or search with /.`} />
+        <EmptyState
+          icon={SearchX}
+          why={REAL_API ? 'There is no visit with this ID. Open the patient’s record, or search with /.' : `There is no encounter with the id “${id ?? ''}” in this sample record. Open the patient's record, or search with /.`}
+        />
       </Card>
     </div>
   )
