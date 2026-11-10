@@ -35,6 +35,7 @@ services:
         condition: service_healthy
 
   keycloak:
+    networks: [default, backend]  # the API reaches it on backend (egress below)
     command: !override ["start", "--import-realm"]
     # The admin console and admin API are never on the public host (Nginx refuses /kc/admin/):
     # only on this host's loopback, reached over an SSH tunnel (README) and by deploy.sh.
@@ -60,6 +61,7 @@ services:
         condition: service_completed_successfully
 
   openbao:
+    networks: [default, backend]  # the API reaches it on backend (egress below)
     # A real server: integrated storage in a volume, sealed at every start until deploy.sh
     # unseals it. Its files live outside /openbao/config, which the image's entrypoint takes over.
     command: !override ["server", "-config=/etc/shri-openbao/openbao.hcl"]
@@ -81,16 +83,22 @@ services:
     profiles: ["development-only"]
 
   seaweedfs:
+    networks: [default, backend]  # the API reaches it on backend (egress below)
     ports: !reset []
     restart: unless-stopped
 
   clamav:
+    networks: [default, backend]  # the API reaches it on backend (egress below)
     restart: unless-stopped
 
   postgres:
+    networks: [default, backend]  # the API reaches it on backend (egress below)
     restart: unless-stopped
 
   api:
+    # No route to the internet: backend only. Its one way out is the egress proxy below, and only
+    # to api.anthropic.com (Vimal, 10 Nov). Nginx reaches it on backend, from a fixed address.
+    networks: [backend]
     image: shri-health/api:${SHRI_RELEASE:?run through deploy.sh}
     build:
       args:
@@ -98,6 +106,7 @@ services:
         BUILD_COMMIT: ${SHRI_RELEASE}
     environment:
       ENVIRONMENT: ${SHRI_ENVIRONMENT:-staging}
+      FORWARDED_ALLOW_IPS: 172.31.251.10  # Nginx's address on backend
       AUTH_MODE: keycloak
       PATIENT_AUTH_MODE: keycloak
       # Real patient sign-in stays OFF on every server until #148's account-state bug is fixed:
@@ -134,6 +143,9 @@ services:
         condition: service_started
 
   integration-worker:
+    # Backend only, like the API: the simulated partners need no internet. Real partners will be
+    # added to the egress proxy's list when they are chosen (Q11-Q17).
+    networks: [backend]
     image: shri-health/api:${SHRI_RELEASE}
     environment:
       ENVIRONMENT: ${SHRI_ENVIRONMENT:-staging}
@@ -145,6 +157,9 @@ services:
     restart: unless-stopped
 
   nginx:
+    networks:
+      backend:
+        ipv4_address: 172.31.251.10  # the API trusts only this address (FORWARDED_ALLOW_IPS)
     # The screens, built from this commit into the edge's image (nginx/Dockerfile).
     image: shri-health/web:${SHRI_RELEASE:?run through deploy.sh}
     build:
@@ -161,5 +176,34 @@ services:
       - ${TLS_KEY_FILE:?}:/etc/nginx/certs/server.key:ro
     restart: unless-stopped
 
+  egress:
+    # The API's only way out: api.anthropic.com over HTTPS, by name, never decrypted
+    # (egress/nginx.conf). The same pinned Nginx image as the development edge.
+    image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+    volumes:
+      - ../deploy/egress/nginx.conf:/etc/nginx/nginx.conf:ro
+    read_only: true
+    tmpfs: [/tmp, /var/cache/nginx, /var/run]
+    networks:
+      default: {}
+      backend:
+        aliases: [api.anthropic.com]
+    restart: unless-stopped
+
+  code-loader:
+    # deploy.sh's code load (load_codes) downloads the ICD-10-CM and RxNorm releases, so it runs
+    # here, with internet, rather than as the API, which has none. Run only by deploy.sh.
+    image: shri-health/api:${SHRI_RELEASE:?run through deploy.sh}
+    profiles: ["tools"]
+    networks: [default]
+
 volumes:
   openbao:
+
+networks:
+  # Internal: no route to the internet. The API and the worker are on it alone.
+  backend:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.251.0/24

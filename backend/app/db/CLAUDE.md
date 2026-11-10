@@ -147,6 +147,18 @@ The visit helpers (batch 2), on the same rules:
   visit still shows what was diagnosed. It takes only the Condition: the caller checks that it
   is an `encounter-diagnosis` of the visit in the request and that the visit is signed;
 
+The problem list (FRS FR-PAT-03), on the same rules: a Condition with category
+`problem-list-item`, ICD-10-CM or SNOMED CT.
+- `create_problem(db, ProblemIn)`, `update_problem(db, id, ProblemChanges, *, if_version)` and
+  `problem_entered_in_error(db, id, reason)`. The code never changes; a wrong one is marked
+  entered-in-error and the right one added. A note is one annotation, replaced or cleared.
+- Onset and abatement take the contract's `PartialDate`: a full date goes in `*_date_time`, a
+  year or a month in `*_period_start`/`*_period_end` spanning it (the convention below), and
+  `problem_dates(condition)` reads both back as given. `partial_date_span()` is the parsing.
+- `InvalidInput` names its field: a malformed date, an end before the start, or an end on a
+  problem that is still active (FHIR con-4, at `clinicalStatus`).
+- An encounter diagnosis is not a problem here (`ResourceNotFound`): it has its own helpers.
+
 `set_preferred_pharmacy(db, patient_id, pharmacy_id, *, if_version)` (D50): the patient's one
 default in `admin.patient_pharmacy` (an earlier choice stays, not default), from the platform
 directory (`ResourceNotFound` if unknown, `InvalidInput` if inactive). It updates the patient

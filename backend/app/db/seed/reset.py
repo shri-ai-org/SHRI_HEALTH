@@ -26,7 +26,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A
-from app.db.seed.demo import PATIENTS, load_demo
+from app.db.seed.demo import PATIENTS, load_demo, population
 from app.db.seed.starter import require_dev_environment
 
 ALEMBIC_INI = pathlib.Path(__file__).resolve().parents[1] / "alembic.ini"
@@ -76,7 +76,8 @@ def reset(engine: Engine) -> ResetSummary:
         load_demo(db)
     with Session(engine) as db, db.begin():
         found = summary(db)
-    if found.patients < len(PATIENTS):
+    expected = len(PATIENTS) + len(population())
+    if found.patients < expected:
         raise RuntimeError(f"the demo layer loaded {found.patients} patients, "
-                           f"expected {len(PATIENTS)}")
+                           f"expected {expected}")
     return found
