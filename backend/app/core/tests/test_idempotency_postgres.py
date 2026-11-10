@@ -14,6 +14,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
+import httpx2
 import pytest
 from fastapi import APIRouter, Depends, Response
 from fastapi.testclient import TestClient
@@ -172,10 +173,10 @@ def client(stand: Stand) -> Iterator[TestClient]:
 
 
 def _post(client: TestClient, body: Any = BODY, key: str | None = ATTEMPT,
-          url: str = FACILITIES) -> httpx.Response:
+          url: str = FACILITIES) -> httpx2.Response:
     headers = {"Idempotency-Key": key} if key is not None else {}
     content = body if isinstance(body, str) else json.dumps(body)
-    response: httpx.Response = client.post(
+    response = client.post(
         url, content=content, headers={**headers, "Content-Type": "application/json"})
     return response
 
