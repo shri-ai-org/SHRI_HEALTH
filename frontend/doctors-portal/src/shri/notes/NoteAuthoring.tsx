@@ -27,7 +27,8 @@ import { useNavigate } from 'react-router-dom'
 import { can, canSignNotes } from '@/atlas/personas'
 import { bannedIn } from '@/data/abbreviations'
 import { CODE_SUGGESTIONS, type Encounter, type NoteSectionSeed, type SectionKey } from '@/data/clinical'
-import { NOW, formatDateTime, formatTime } from '@/data/format'
+import { NOW, formatDateTime, formatTime as sampleTime } from '@/data/format'
+import { formatTime as clinicTime } from '../../../shri-health/format'
 import { icdLabel } from '@/data/icd10'
 import { DIAGNOSES, type Patient } from '@/data/kit'
 import { useScribeDrafts, type ScribeDraft } from '@/data/scribe'
@@ -51,6 +52,10 @@ import { Card, Chip, Icon, Pill, PillTag, RoundButton } from '../ui/primitives'
 import { PrintPreview } from '../ui/PrintPreview'
 import { LockedBanner, ValidationSummary } from '../ui/states'
 import { VoiceField, type DictatedMeta } from '../ui/VoiceField'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+/** The clinic's US time with the API, the sample's otherwise. */
+const formatTime = (d: Date) => (REAL_API ? clinicTime(d) : sampleTime(d))
 
 export interface NoteAuthoringProps {
   screenId: string
@@ -201,7 +206,8 @@ export function NoteAuthoring({
       toast({
         tone: 'success',
         title: 'Note signed',
-        detail: `Stamped ${me.name} · ${me.identifierKind} ${me.identifier} · ${formatTime(NOW)}. Queued to publish to ABDM.`,
+        // SHRI_HEALTH: India's registration number (HPR) and ABDM publishing aren't part of the US record.
+        detail: REAL_API ? `Stamped ${me.name} · ${formatTime(new Date())}.` : `Stamped ${me.name} · ${me.identifierKind} ${me.identifier} · ${formatTime(NOW)}. Queued to publish to ABDM.`,
       })
       onSigned?.()
     } else {
@@ -272,7 +278,7 @@ export function NoteAuthoring({
             </PillTag>
             {enc.encounterNo && <span title={encounterLabel(enc)}><Chip word={enc.encounterNo} tone="neu" /></span>}
             {/* Only once it has left the building — "not published" is the silent default. */}
-            {record.publishStatus !== undefined && (
+            {!REAL_API && record.publishStatus !== undefined && (
               <PillTag tone={record.publishStatus === 'failed' ? 'warn' : 'norm'} size="sm" icon={Upload}>
                 ABDM {record.publishStatus}
               </PillTag>
@@ -342,7 +348,8 @@ export function NoteAuthoring({
                 {canSignNow ? (
                   // CMP-NABH-11 — the attestation is stamped on sign, never typed. Stated once, when it is about to happen.
                   <span className="text-[12px] tabular-nums text-sh-text-2">
-                    Signing will stamp {me.name} · {me.identifierKind} {me.identifier}
+                    Signing will stamp {me.name}
+                    {REAL_API ? '' : ` · ${me.identifierKind} ${me.identifier}`}
                   </span>
                 ) : (
                   <span className="text-[13px] font-medium text-sh-warn-fg">
@@ -544,7 +551,9 @@ export function NoteAuthoring({
         title={maySign ? 'Sign this note?' : 'Save for co-sign?'}
         consequence={
           maySign
-            ? 'Signing is irreversible. The note is committed to the legal record, stamped with your name, registration number and the time, and queued to publish to ABDM. After this it can only be amended, never edited.'
+            ? REAL_API
+              ? 'Signing is irreversible. The note is committed to the legal record, stamped with your name and the time. After this it can only be amended, never edited.'
+              : 'Signing is irreversible. The note is committed to the legal record, stamped with your name, registration number and the time, and queued to publish to ABDM. After this it can only be amended, never edited.'
             : "The note will be saved and sent to the consultant's co-sign queue. You will not be able to change it after that without an addendum."
         }
         confirmLabel={maySign ? 'Sign' : 'Save for co-sign'}

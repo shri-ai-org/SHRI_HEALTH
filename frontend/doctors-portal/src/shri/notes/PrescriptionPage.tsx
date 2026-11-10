@@ -57,6 +57,8 @@ import { VoiceField } from '../ui/VoiceField'
 
 import { NoSuchEncounter } from './ConsultationPage'
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 export function PrescriptionPage() {
   const { id } = useParams()
   const enc = maybeEncounter(id)
@@ -169,7 +171,7 @@ function Prescription({ enc }: { enc: Encounter }) {
     if (!lineId) return
     if (hardStopFor(drug, p.allergies)) {
       setGateFor(lineId)
-    } else if (entry?.nlem) {
+    } else if (!REAL_API && entry?.nlem) {
       toast({ tone: 'info', title: `${drug} is on the NLEM`, detail: `DPCO ceiling ${formatRupees(entry.ceilingPrice)}. Substitution is permitted by default.` })
     }
   }
@@ -221,7 +223,7 @@ function Prescription({ enc }: { enc: Encounter }) {
       subject: p.id,
       detail: `${basket.length} ${basket.length === 1 ? 'item' : 'items'} · ${encounterLabel(enc)}${overridden.length > 0 ? ` · ${overridden.length} past a hard stop, dual-signed` : ''}${coded.length > 0 ? ` · indications ICD-10 ${coded.map((l) => `${l.drug}: ${l.indicationCode!.code}`).join('; ')}` : ''}`,
     })
-    toast({ tone: 'success', title: 'Prescription signed', detail: `HPR ${me.identifier} printed on it. Now in the pharmacy queue.` })
+    toast({ tone: 'success', title: 'Prescription signed', detail: REAL_API ? 'Sent to the pharmacy.' : `HPR ${me.identifier} printed on it. Now in the pharmacy queue.` })
   }
 
   const items = `${basket.length} ${basket.length === 1 ? 'item' : 'items'} · ${p.payer}`
@@ -387,7 +389,8 @@ function Prescription({ enc }: { enc: Encounter }) {
               {matches.length === 0 && <li className="px-[12px] py-[10px] text-[13px] text-sh-text-3">No drug in the formulary matches “{search.trim()}”.</li>}
               {matches.map((f) => {
                 const wouldBlock = hardStopFor(f.drug, p.allergies) !== undefined
-                const listing = `${f.nlem ? 'NLEM-listed' : 'Not on the NLEM'} · DPCO ceiling ${formatRupees(f.ceilingPrice)}`
+                // SHRI_HEALTH: the NLEM listing and DPCO ceiling are India's, so not with SHRI_API=real (US market).
+                const listing = REAL_API ? '' : `${f.nlem ? 'NLEM-listed' : 'Not on the NLEM'} · DPCO ceiling ${formatRupees(f.ceilingPrice)}`
                 return (
                   <li key={f.drug}>
                     <button
@@ -395,14 +398,14 @@ function Prescription({ enc }: { enc: Encounter }) {
                       disabled={locked}
                       onClick={() => addDrug(f.drug)}
                       // The listing and ceiling live on hover (and for a screen reader); the toast repeats them on add.
-                      title={listing}
+                      title={listing || undefined}
                       className="flex min-h-[44px] w-full items-center gap-[10px] rounded-[12px] px-[12px] py-[8px] text-left transition-colors duration-150 hover:bg-sh-hover disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Icon icon={PillIcon} size={15} className="shrink-0 text-sh-text-3" />
                       <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-sh-text">{f.drug}</span>
                       <span className="sr-only">
                         {' '}
-                        · {listing}
+                        {listing && `· ${listing}`}
                         {wouldBlock ? ' · blocked, contraindicated by a documented allergy' : ''}
                       </span>
                       {wouldBlock && (
@@ -415,12 +418,14 @@ function Prescription({ enc }: { enc: Encounter }) {
                 )
               })}
             </ul>
-            <Why label="Pricing and substitution" className="mt-[8px]">
-              <p>
-                An NLEM-listed equivalent is prompted as a substitution, and the DPCO ceiling is shown rather than the sticker price (CMP-DRUG-03). Hover a drug for its listing
-                and ceiling.
-              </p>
-            </Why>
+            {!REAL_API && (
+              <Why label="Pricing and substitution" className="mt-[8px]">
+                <p>
+                  An NLEM-listed equivalent is prompted as a substitution, and the DPCO ceiling is shown rather than the sticker price (CMP-DRUG-03). Hover a drug for its listing
+                  and ceiling.
+                </p>
+              </Why>
+            )}
           </Card>
 
           <Card titleSize="sm" title="Prescription" headerClassName="mb-[4px]">
@@ -493,7 +498,12 @@ function Prescription({ enc }: { enc: Encounter }) {
       <ConfirmDialog
         open={confirmSign}
         title="Sign this prescription?"
-        consequence={`Signing is irreversible. The prescription is committed with your name and ${me.identifierKind} ${me.identifier}, printed bilingually on A5, sent to the pharmacy dispensing queue, and queued to publish to ABDM.`}
+        consequence={
+          // SHRI_HEALTH: HPR, A5, bilingual printing and ABDM are India's, so not with SHRI_API=real.
+          REAL_API
+            ? 'Signing is irreversible. The prescription is committed with your name and sent to the pharmacy.'
+            : `Signing is irreversible. The prescription is committed with your name and ${me.identifierKind} ${me.identifier}, printed bilingually on A5, sent to the pharmacy dispensing queue, and queued to publish to ABDM.`
+        }
         confirmLabel="Sign prescription"
         onConfirm={doSign}
         onCancel={() => setConfirmSign(false)}
@@ -720,7 +730,7 @@ function RxLineCard({
         value={line.instructions ?? ''}
         onChange={(v) => onEdit({ instructions: v })}
         placeholder="How to take it, and what to avoid…"
-        hint="Printed bilingually — English plus the patient's language"
+        hint={REAL_API ? undefined : "Printed bilingually — English plus the patient's language"}
       />
     </li>
   )
@@ -778,12 +788,15 @@ function RxRail({ encounterId, ceilingLines }: { encounterId: string; ceilingLin
           <div>
             <p className="font-medium text-sh-text">On signing</p>
             <ul className="mt-[4px] flex flex-col gap-[4px]">
-              {[
-                'Printed A5, bilingual, with your HPR number on it',
-                'Sent to the pharmacy dispensing queue',
-                'Queued to publish to ABDM as a Prescription record',
-                'No patient health information is sent by SMS. The message only links back to the app.',
-              ].map((t) => (
+              {(REAL_API
+                ? ['Sent to the patient’s pharmacy', 'No patient health information is sent by SMS. The message only links back to the app.']
+                : [
+                    'Printed A5, bilingual, with your HPR number on it',
+                    'Sent to the pharmacy dispensing queue',
+                    'Queued to publish to ABDM as a Prescription record',
+                    'No patient health information is sent by SMS. The message only links back to the app.',
+                  ]
+              ).map((t) => (
                 <li key={t} className="flex gap-[8px]">
                   <Icon icon={Check} size={13} className="mt-[4px] shrink-0 text-sh-norm-fg" />
                   {t}
