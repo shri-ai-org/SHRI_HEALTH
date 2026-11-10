@@ -46,7 +46,6 @@ import { ValidationSummary } from '../ui/states'
 import { VoiceField } from '../ui/VoiceField'
 
 import { NoSuchEncounter } from './ConsultationPage'
-import { FollowUpSection } from './FollowUpSection'
 
 const CHANNELS: { key: InstructionChannel; label: string }[] = [
   { key: 'print', label: 'Printed, Letter size' },
@@ -410,7 +409,6 @@ function Instructions({ enc }: { enc: Encounter }) {
           </Card>
         )}
 
-        <FollowUpSection encounterId={enc.id} />
       </ScreenFrame>
 
       <PrintPreview

@@ -23,6 +23,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { can, canPrescribe } from '@/atlas/personas'
+import { signedInUser } from '../../../shri-health/opd'
 import { FORMULARY, PENICILLIN_HARD_STOP, type Encounter } from '@/data/clinical'
 import { NOW, formatDateTime, formatRupees, formatTime } from '@/data/format'
 import type { IcdCode } from '@/data/icd10'
@@ -56,6 +57,7 @@ import { LockedBanner, ValidationSummary } from '../ui/states'
 import { VoiceField } from '../ui/VoiceField'
 
 import { NoSuchEncounter } from './ConsultationPage'
+
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
@@ -106,7 +108,10 @@ function Prescription({ enc }: { enc: Encounter }) {
   const [printOpen, setPrintOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const mayPrescribe = canPrescribe(persona)
+  // D110: with the API, only a physician (MD) or advanced practice provider (APP) signs, by the
+  // signed-in user's role; the sample personas keep their own rule.
+  const mayPrescribe = REAL_API ? (signedInUser()?.roles.some((r) => r === 'MD' || r === 'APP') ?? false) : canPrescribe(persona)
+  const signRule = REAL_API ? 'Only a physician (MD) or an advanced practice provider (APP) can sign prescriptions' : 'This persona may draft, not sign — controlled classes need a consultant'
   const mayOverride = can(persona, 'rx.override')
   const locked = record.status === 'signed' || forced === 'LOCKED'
 
@@ -139,7 +144,7 @@ function Prescription({ enc }: { enc: Encounter }) {
   if (basket.length === 0) {
     problems.push({ field: 'Prescription', message: 'Nothing prescribed yet. Search the formulary on the left and press Enter to add the first item.', target: `${enc.id}:formulary` })
   }
-  if (!mayPrescribe) problems.push({ field: 'Signing', message: 'This persona may draft, not sign — controlled classes need a consultant', target: `${enc.id}:formulary` })
+  if (!mayPrescribe) problems.push({ field: 'Signing', message: signRule, target: `${enc.id}:formulary` })
   const canSign = !locked && problems.length === 0
 
   const matches = useFormulary(search)
@@ -296,7 +301,7 @@ function Prescription({ enc }: { enc: Encounter }) {
                 ) : incomplete.length > 0 ? (
                   <span className="text-[13px] font-medium text-sh-warn-fg">{incomplete.length} incomplete</span>
                 ) : null}
-                {!mayPrescribe && <span className="text-[13px] font-medium text-sh-warn-fg">This persona may draft, not sign — controlled classes need a consultant</span>}
+                {!mayPrescribe && <span className="text-[13px] font-medium text-sh-warn-fg">{signRule}</span>}
                 <Pill
                   variant="primary"
                   size="lg"

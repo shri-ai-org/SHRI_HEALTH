@@ -1,7 +1,0 @@
-/* TEMPORARY — the shared design system, for main's rooming screen only (TemporaryRooming.tsx).
-   Loaded as a string and added to the page only while that screen is open. */
-@import '../../shared/design-system.css';
-
-@source './TemporaryRooming.tsx';
-@source '../../src/features/clinical';
-@source '../../src/design-system';

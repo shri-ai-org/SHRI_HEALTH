@@ -197,15 +197,6 @@ export function mayCall(): boolean {
   return signedIn?.roles.some((r) => r === 'MD' || r === 'APP' || r === 'RN') ?? false
 }
 
-/** TEMPORARY (demo step 6, shri-health/TemporaryRooming.tsx): the encounter to room while the
- *  patient is checked in and not yet roomed. */
-export function roomingOf(patientId: string): string | undefined {
-  // Only MA and RN may mark a patient roomed (the server's visit-status rule).
-  if (!signedIn?.roles.some((r) => r === 'MA' || r === 'RN')) return undefined
-  return useBoard.getState().items.find((i) => i.patient?.id === patientId && i.encounterId && (i.visitStatus === 'arrived' || i.visitStatus === 'checked-in'))?.encounterId
-}
-
-export const roomingPath = (encounterId: string) => `/temporary/rooming/${encounterId}`
 
 /** The doctor's "Call": src/shri/state/opd.ts `useOpd`, with start() recording with-provider. */
 export const useOpd = <T>(select: (s: { start: (patientId: string) => void; finish: (patientId: string) => void }) => T): T =>

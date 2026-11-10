@@ -21,7 +21,6 @@ import { useSession } from '@/store/session'
 
 import { AppShell } from './app/AppShell'
 import { PatientDemoPage } from './telehealth/PatientDemoPage'
-import { TemporaryRooming, TemporaryToday } from '../../shri-health/TemporaryRooming'
 import { landingFor, mayOpen } from './app/landing'
 import { NightPrompt } from './app/NightPrompt'
 import { canonical } from './app/paths'
@@ -134,13 +133,6 @@ export default function ShriApp() {
               <Route path="/patient/:id/record" element={<Moved />} />
               {/* The patient portal's stand-in, for demonstrations: outside the doctor's shell. */}
               <Route path="/demo/patient" element={<PatientDemoPage />} />
-              {/* TEMPORARY (demo step 6): main's rooming screen, with SHRI_API=real only (shri-health/TemporaryRooming.tsx). */}
-              {typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__ ? (
-                <>
-                  <Route path="/temporary/rooming/:encounterId" element={<TemporaryRooming />} />
-                  <Route path="/today" element={<TemporaryToday />} />
-                </>
-              ) : null}
               <Route element={<AppShell />}>
                 <Route index element={<Home />} />
                 <Route path="/patient/:id" element={<Screen spec={RECORD} element={<RecordPage />} />} />
