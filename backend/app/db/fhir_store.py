@@ -61,9 +61,13 @@ from app.db.models.fhir.clinical import (
     AllergyReactionManifestation,
     Condition,
     ConditionCategory,
+    FamilyMemberHistory,
+    FamilyMemberHistoryCondition,
     Observation,
     ObservationCategory,
     ObservationComponent,
+    Procedure,
+    ProcedureBodySite,
 )
 from app.db.models.fhir.datatypes import (
     Address,
@@ -509,6 +513,52 @@ class ProblemChanges:
 
 
 @dataclass(frozen=True)
+class FamilyConditionIn:
+    code: Coded  # SNOMED CT or ICD-10-CM, or text only
+    onset_age: int | None = None  # years
+    contributed_to_death: bool | None = None
+
+
+@dataclass(frozen=True)
+class FamilyHistoryIn:
+    """One relative's history (FamilyMemberHistory, FRS FR-PAT-03). ``conditions``, or status
+    ``health-unknown``. ``sex`` is an AdministrativeGender code, stored as text: that code
+    system isn't registered."""
+    patient_id: uuid.UUID
+    relationship: Coded  # v3 RoleCode: MTH, FTH, SIS ...
+    status: str = "completed"
+    sex: str | None = None
+    deceased: bool | None = None
+    conditions: tuple[FamilyConditionIn, ...] = ()
+    note: str | None = None
+    entry_source: str = "clinician"
+
+
+@dataclass(frozen=True)
+class SocialHistoryIn:
+    """A social-history Observation. ``value`` is exactly one of a code, a quantity or text;
+    ``effective`` a ``PartialDate``, today when absent."""
+    patient_id: uuid.UUID
+    code: Coded  # LOINC: what was asked
+    value: Coded | Measured | str
+    effective: str | None = None
+    encounter_id: uuid.UUID | None = None
+    entry_source: str = "clinician"
+
+
+@dataclass(frozen=True)
+class SurgicalHistoryIn:
+    """A past surgery: a completed Procedure with category SNOMED CT 387713003 (D73)."""
+    patient_id: uuid.UUID
+    code: Coded
+    performed: str  # PartialDate; US Core needs one on a completed procedure
+    body_site: Coded | None = None
+    note: str | None = None
+    encounter_id: uuid.UUID | None = None
+    entry_source: str = "clinician"
+
+
+@dataclass(frozen=True)
 class DiagnosisWritten:
     condition: Written
     encounter: Written  # the encounter's new version: the link is its child row
@@ -769,6 +819,39 @@ class FhirStore(Protocol):
         ``update_problem``."""
         ...
 
+    # Family, social and surgical history (FRS FR-PAT-03): insert-only, corrected by
+    # entered-in-error and a new entry
+    async def create_family_history(self, db: AsyncSession, data: FamilyHistoryIn) -> Written:
+        """``InvalidInput`` at ``conditions`` for none without status ``health-unknown``, or at
+        ``status``/``sex`` for an unknown value; ``ResourceNotFound`` for an unseen patient."""
+        ...
+
+    async def family_history_entered_in_error(self, db: AsyncSession, history_id: uuid.UUID,
+                                              reason: Reason, *, if_version: int | None = None
+                                              ) -> Written: ...
+
+    async def record_social_history(self, db: AsyncSession, data: SocialHistoryIn) -> Written:
+        """``InvalidInput`` for a code that isn't LOINC, a malformed or future
+        ``effectiveDate``, or an encounter that isn't this patient's live visit."""
+        ...
+
+    async def social_history_entered_in_error(self, db: AsyncSession, observation_id: uuid.UUID,
+                                              reason: Reason, *, if_version: int | None = None
+                                              ) -> Written:
+        """``ResourceNotFound`` for an Observation that isn't social history."""
+        ...
+
+    async def create_surgical_history(self, db: AsyncSession, data: SurgicalHistoryIn
+                                      ) -> Written:
+        """``InvalidInput`` at ``performedDate`` for a malformed or future date."""
+        ...
+
+    async def surgical_history_entered_in_error(self, db: AsyncSession, procedure_id: uuid.UUID,
+                                                reason: Reason, *, if_version: int | None = None
+                                                ) -> Written:
+        """``ResourceNotFound`` for a Procedure that isn't surgical history."""
+        ...
+
     # The medication list: a reported MedicationRequest, intent plan (D28; demo step 7)
     async def record_medication(self, db: AsyncSession, data: MedicationIn) -> Written: ...
 
@@ -889,7 +972,8 @@ def _given[T](value: T | _Unset) -> TypeIs[T]:
 
 
 async def _locked[R: (Patient, RelatedPerson, Coverage, Encounter, Condition, AllergyIntolerance,
-                     Observation, MedicationRequest, DetectedIssue, Composition)](
+                     Observation, MedicationRequest, DetectedIssue, Composition,
+                     FamilyMemberHistory, Procedure)](
         db: AsyncSession, model: type[R], row_id: uuid.UUID, if_version: int | None) -> R:
     row = (await db.execute(select(model).where(model.id == row_id).with_for_update()
                             .execution_options(populate_existing=True))).scalar_one_or_none()
@@ -902,7 +986,7 @@ async def _locked[R: (Patient, RelatedPerson, Coverage, Encounter, Condition, Al
 
 type _Resource = (Patient | RelatedPerson | Coverage | Consent | Encounter | Condition
                   | AllergyIntolerance | Observation | MedicationRequest | DetectedIssue
-                  | Composition)
+                  | Composition | FamilyMemberHistory | Procedure)
 
 
 async def _written(db: AsyncSession, row: _Resource) -> Written:
@@ -1082,7 +1166,8 @@ async def _user_id(db: AsyncSession) -> uuid.UUID | None:
 
 
 async def _new[R: (Patient, RelatedPerson, Coverage, Consent, Encounter, Condition, Observation,
-                  AllergyIntolerance, MedicationRequest, DetectedIssue, Composition)](
+                  AllergyIntolerance, MedicationRequest, DetectedIssue, Composition,
+                  FamilyMemberHistory, Procedure)](
         db: AsyncSession, row: R) -> R:
     """A new resource row records who created it (``app.current_user_id``)."""
     row.created_by_user_id = await _user_id(db)
@@ -1638,6 +1723,128 @@ class SqlFhirStore:
         cond.verification_status, cond.clinical_status = "entered-in-error", None
         written = await _written(db, cond)
         await _nullify_provenance(db, "Condition", written, reason)
+        return written
+
+    # ------------------------------------------------------------------------- History
+    async def create_family_history(self, db: AsyncSession, data: FamilyHistoryIn) -> Written:
+        if data.status not in _FAMILY_STATUSES:
+            raise InvalidInput(f"status is one of {sorted(_FAMILY_STATUSES)}", field="status")
+        if not data.conditions and data.status != "health-unknown":
+            raise InvalidInput("give conditions, or status health-unknown", field="conditions")
+        if data.sex is not None and data.sex not in _SEXES:
+            raise InvalidInput(f"sex is one of {sorted(_SEXES)}", field="sex")
+        await _patient_seen(db, data.patient_id)
+        fmh = FamilyMemberHistory(
+            status=data.status, patient_id=data.patient_id, date=await _db_now(db),
+            relationship_system=data.relationship.system, relationship_code=data.relationship.code,
+            relationship_display=data.relationship.display,
+            relationship_text=data.relationship.text, sex_text=data.sex,
+            deceased_boolean=data.deceased, entry_source=data.entry_source)
+        fmh.condition = [FamilyMemberHistoryCondition(
+            code_system=c.code.system, code_code=c.code.code, code_display=c.code.display,
+            code_text=c.code.text, contributed_to_death=c.contributed_to_death,
+            **_age_years(c.onset_age)) for c in data.conditions]
+        db.add(await _new(db, fmh))
+        await db.flush()
+        if data.note:
+            db.add(Annotation(family_member_history_id=fmh.id, text=data.note,
+                              time=await _db_now(db)))
+        return await _written(db, fmh)
+
+    async def family_history_entered_in_error(self, db: AsyncSession, history_id: uuid.UUID,
+                                              reason: Reason, *, if_version: int | None = None
+                                              ) -> Written:
+        reason = _require_reason(reason)
+        fmh = await _locked(db, FamilyMemberHistory, history_id, if_version)
+        if fmh.status == "entered-in-error":
+            raise InvalidTransition(fmh.status)
+        fmh.status = "entered-in-error"
+        written = await _written(db, fmh)
+        await _nullify_provenance(db, "FamilyMemberHistory", written, reason)
+        return written
+
+    async def record_social_history(self, db: AsyncSession, data: SocialHistoryIn) -> Written:
+        if data.code.system != systems.LOINC or not data.code.code:
+            raise InvalidInput("a social-history code is LOINC", field="code")
+        await _patient_seen(db, data.patient_id)
+        if data.encounter_id is not None:
+            await _live_visit_of(db, data.encounter_id, data.patient_id)
+        now = await _db_now(db)
+        at, start, end = (now, None, None) if data.effective is None else \
+            _partial_columns(data.effective, "effectiveDate", now)
+        obs = Observation(status="final", code_system=data.code.system,
+                          code_code=data.code.code, code_display=data.code.display,
+                          code_text=data.code.text, subject_patient_id=data.patient_id,
+                          encounter_id=data.encounter_id, effective_date_time=at,
+                          effective_period_start=start, effective_period_end=end, issued=now,
+                          entry_source=data.entry_source)
+        v = data.value
+        if isinstance(v, Measured):
+            obs.value_quantity_value = v.value
+            obs.value_quantity_unit = obs.value_quantity_code = v.unit
+            obs.value_quantity_system = systems.UCUM
+        elif isinstance(v, Coded):
+            obs.value_codeable_concept_system, obs.value_codeable_concept_code = v.system, v.code
+            obs.value_codeable_concept_display = v.display
+            obs.value_codeable_concept_text = v.text
+        else:
+            obs.value_string = v
+        obs.category = [ObservationCategory(category_system=systems.OBSERVATION_CATEGORY,
+                                            category_code=SOCIAL_HISTORY)]
+        db.add(await _new(db, obs))
+        return await _written(db, obs)
+
+    async def social_history_entered_in_error(self, db: AsyncSession, observation_id: uuid.UUID,
+                                              reason: Reason, *, if_version: int | None = None
+                                              ) -> Written:
+        reason = _require_reason(reason)
+        if (await db.execute(select(ObservationCategory.observation_id).where(
+                ObservationCategory.observation_id == observation_id,
+                ObservationCategory.category_code == SOCIAL_HISTORY))).first() is None:
+            raise ResourceNotFound
+        obs = await _locked(db, Observation, observation_id, if_version)
+        if obs.status == "entered-in-error":
+            raise InvalidTransition(obs.status)
+        obs.status = "entered-in-error"
+        written = await _written(db, obs)
+        await _nullify_provenance(db, "Observation", written, reason)
+        return written
+
+    async def create_surgical_history(self, db: AsyncSession, data: SurgicalHistoryIn
+                                      ) -> Written:
+        await _patient_seen(db, data.patient_id)
+        if data.encounter_id is not None:
+            await _live_visit_of(db, data.encounter_id, data.patient_id)
+        at, start, end = _partial_columns(data.performed, "performedDate", await _db_now(db))
+        proc = Procedure(status="completed", category_system=systems.SNOMED,
+                         category_code=SURGICAL_PROCEDURE, category_display="Surgical procedure",
+                         code_system=data.code.system, code_code=data.code.code,
+                         code_display=data.code.display, code_text=data.code.text,
+                         subject_patient_id=data.patient_id, encounter_id=data.encounter_id,
+                         performed_date_time=at, performed_period_start=start,
+                         performed_period_end=end, entry_source=data.entry_source)
+        if data.body_site is not None:
+            b = data.body_site
+            proc.body_site = [ProcedureBodySite(body_site_system=b.system, body_site_code=b.code,
+                                                body_site_display=b.display, body_site_text=b.text)]
+        db.add(await _new(db, proc))
+        await db.flush()
+        if data.note:
+            db.add(Annotation(procedure_id=proc.id, text=data.note, time=await _db_now(db)))
+        return await _written(db, proc)
+
+    async def surgical_history_entered_in_error(self, db: AsyncSession, procedure_id: uuid.UUID,
+                                                reason: Reason, *, if_version: int | None = None
+                                                ) -> Written:
+        reason = _require_reason(reason)
+        proc = await _locked(db, Procedure, procedure_id, if_version)
+        if proc.category_code != SURGICAL_PROCEDURE:
+            raise ResourceNotFound
+        if proc.status == "entered-in-error":
+            raise InvalidTransition(proc.status)
+        proc.status = "entered-in-error"
+        written = await _written(db, proc)
+        await _nullify_provenance(db, "Procedure", written, reason)
         return written
 
     # ------------------------------------------------------------------------- Medication list
@@ -2361,6 +2568,44 @@ async def _problem(db: AsyncSession, problem_id: uuid.UUID, if_version: int | No
     if cond.verification_status == "entered-in-error":
         raise InvalidTransition(cond.verification_status)
     return cond
+
+
+#: Observation category of social history; SNOMED CT "Surgical procedure", the category of a
+#: past surgery (D73).
+SOCIAL_HISTORY = "social-history"
+SURGICAL_PROCEDURE = "387713003"
+_FAMILY_STATUSES = {"completed", "partial", "health-unknown"}
+_SEXES = {"male", "female", "other", "unknown"}
+
+
+async def _patient_seen(db: AsyncSession, patient_id: uuid.UUID) -> None:
+    if (await db.execute(select(Patient.id).where(Patient.id == patient_id))
+            ).scalar_one_or_none() is None:
+        raise ResourceNotFound
+
+
+def _partial_columns(value: str, field: str, now: datetime
+                     ) -> tuple[datetime | None, datetime | None, datetime | None]:
+    """A past ``PartialDate`` as (date-time, period start, period end), as
+    ``_set_problem_dates`` stores one: a full date as the date-time, a year or month as a
+    period spanning it."""
+    try:
+        first, last = partial_date_span(value)
+    except ValueError as bad:
+        raise InvalidInput(str(bad), field=field) from None
+    if first > now.astimezone(UTC).date():
+        raise InvalidInput(f"{field} is in the future", field=field)
+    if len(value) == 10:
+        return _midnight(first), None, None
+    return None, _midnight(first), _midnight(last)
+
+
+def _age_years(years: int | None) -> dict[str, Any]:
+    """An onset age in whole years, as a UCUM ``a`` Age."""
+    if years is None:
+        return {}
+    return {"onset_age_value": Decimal(years), "onset_age_unit": "a",
+            "onset_age_system": systems.UCUM, "onset_age_code": "a"}
 
 
 def _con4(refused: DBAPIError) -> Exception:
