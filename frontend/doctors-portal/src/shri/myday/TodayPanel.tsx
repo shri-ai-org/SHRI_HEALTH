@@ -15,19 +15,21 @@
  */
 
 import { format } from 'date-fns'
-import { CalendarSearch, ChevronLeft, ChevronRight, ClockPlus, Plus } from 'lucide-react'
+import { CalendarClock, CalendarSearch, ChevronLeft, ChevronRight, ClockPlus, Plus, Sunrise } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { patient } from '@/data/kit'
+import { clinicNow } from '../../../shri-health/format'
+import { patient } from '../../../shri-health/kit'
 import type { DayBlock } from '@/data/myday'
 
 import { canonical } from '../app/paths'
 import { NOW, range12, time12 } from '../lib/clock'
 import { cn } from '../lib/cn'
-import { nextToCall } from '../logic/opd'
+import { nextToCall } from '../../../shri-health/opd'
 import type { Tone } from '../mocks/types'
 import { useShri } from '../state/store'
+import { EmptyState } from '../ui/EmptyState'
 import { iconFor } from '../ui/icons'
 import { Card, Chip, Diamond, Icon, Pill, RoundButton } from '../ui/primitives'
 
@@ -54,6 +56,11 @@ const dateOf = (iso: string) => {
 const isoOf = (d: Date) => format(d, 'yyyy-MM-dd')
 const plusDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/** The clinic's day in U.S. form, "Thursday, Nov 5, 2026" (D40). */
+const usDay = (d: Date) => new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }).format(d)
+
 export function TodayPanel({ className }: { className?: string }) {
   const d = useMyDay()
   const navigate = useNavigate()
@@ -78,6 +85,34 @@ export function TodayPanel({ className }: { className?: string }) {
   // The OPD's next patient, as the queue calls them.
   const next = day.isToday ? nextToCall(d.opd) : undefined
   const nextPatient = next ? { name: patient(next.patientId).name, token: next.clinic?.token ?? 'Teleconsult' } : undefined
+
+  // With the API: the panel's frame on the clinic's day, and no sample day (gap 63). The doctor's own
+  // timeline needs their provider ID on GET /me (#221); until then the body says so.
+  if (REAL_API) {
+    return (
+      <Card className={cn('gap-0', className)} aria-labelledby="sh-today-title">
+        <header className="flex flex-wrap items-start gap-x-[16px] gap-y-[12px]">
+          <div className="min-w-0">
+            <h2 id="sh-today-title" className="text-[26px]/[1.15] font-semibold tracking-[-0.02em] text-sh-text">
+              Today
+            </h2>
+            <p className="mt-[4px] text-[14px] text-sh-text-2">{usDay(clinicNow())}</p>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-[10px]">
+            <Pill variant="control" size="sm" icon={Sunrise} onClick={() => navigate('/brief')}>
+              Morning brief
+            </Pill>
+          </div>
+        </header>
+        <EmptyState
+          compact
+          icon={CalendarClock}
+          why="Not available yet: your schedule shows here once your sign-in is linked to your provider record."
+          className="mt-[12px]"
+        />
+      </Card>
+    )
+  }
 
   return (
     <Card className={cn('gap-0', className)} aria-labelledby="sh-today-title">

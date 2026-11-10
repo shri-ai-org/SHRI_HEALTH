@@ -24,7 +24,7 @@ import { BellRing } from 'lucide-react'
 import { useEffect } from 'react'
 
 import { NOW } from '@/data/format'
-import { patient } from '@/data/kit'
+import { patient } from '../../../shri-health/kit'
 import { useClinical } from '@/store/clinical'
 import { useUI } from '@/store/ui'
 
@@ -45,6 +45,8 @@ import { useMyDay } from './useMyDay'
 
 /** The viewport less the app bar, its margin and the surface padding (`--myday-h` in tokens.css). */
 const LOWER_H = 'xl:h-(--myday-h)'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export function MyDayPage() {
   const forcedState = useForcedState()
@@ -68,7 +70,7 @@ export function MyDayPage() {
       <div className="flex items-start justify-between gap-[12px]">
         <Greeting />
         {/* A demo control, DEV-only and desktop-only, as in the old build. */}
-        {import.meta.env.DEV && <SimulateCritical />}
+        {import.meta.env.DEV && !REAL_API && <SimulateCritical />}
       </div>
 
       {forcedState === 'OFFLINE' && <OfflineStrip className="mt-[14px]" />}
@@ -88,6 +90,8 @@ export function MyDayPage() {
           </p>
         </Card>
       ) : (
+        // Every section, with the API too: each one shows its own data, or says what it is still
+        // waiting for (gap 63; Minalini's option A of 2026-11-05).
         <>
           <TodayPanel className="mt-[14px]" />
           <div className={cn('mt-[20px] grid min-h-0 grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_362px] xl:grid-cols-[minmax(0,2fr)_372px]', LOWER_H)}>

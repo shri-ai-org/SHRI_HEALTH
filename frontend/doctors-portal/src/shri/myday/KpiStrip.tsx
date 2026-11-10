@@ -15,7 +15,7 @@ import { motion } from 'framer-motion'
 import { BedDouble, Check, Clock, HeartPulse, OctagonAlert, Stethoscope, Users, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { patient } from '@/data/kit'
+import { patient } from '../../../shri-health/kit'
 
 import { cn } from '../lib/cn'
 import { EASE } from '../lib/motion'
@@ -50,6 +50,8 @@ interface KpiValue {
   sub: string
 }
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 const surname = (id: string) => patient(id).name.split(' ').slice(-1)[0]
 
 function kpis(d: MyDay): KpiValue[] {
@@ -83,7 +85,8 @@ export function KpiStrip() {
   const patientFilter = useShri((st) => st.patientFilter)
   const applyKpiFilter = useShri((st) => st.applyKpiFilter)
   const openQuickPanel = useShri((st) => st.openQuickPanel)
-  const cards = kpis(d)
+  // With the API only the clinic's own counts: admissions, ICU and critical results are hospital-only (gap 63).
+  const cards = REAL_API ? kpis(d).filter((k) => k.id === 'today' || k.id === 'waiting' || k.id === 'inroom') : kpis(d)
   const row = useRef<HTMLDivElement>(null)
   const [edges, setEdges] = useState({ left: false, right: false })
 

@@ -6,11 +6,11 @@
  * deterministic order is always one click away.
  */
 
-import { ChevronDown, ChevronRight, Mic, OctagonAlert, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, ListChecks, Mic, OctagonAlert, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { patient } from '@/data/kit'
+import { patient } from '../../../shri-health/kit'
 import type { AttentionItem, FinishItem, Urgency } from '@/data/myday'
 
 import { Menu, MenuRow } from '../app/menus/Menu'
@@ -19,11 +19,14 @@ import { cn } from '../lib/cn'
 import type { Tone } from '../mocks/types'
 import { useShri } from '../state/store'
 import { iconFor } from '../ui/icons'
+import { EmptyState } from '../ui/EmptyState'
 import { Card, Diamond, Icon, Pill, PillTag, RoundButton, SectionLabel } from '../ui/primitives'
 
 import { useMyDay, type MyDay } from './useMyDay'
 
 const URGENCY_TONE: Record<Urgency, Tone> = { critical: 'crit', warning: 'warn', pending: 'pend' }
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export function NeedsAction({ className }: { className?: string }) {
   const d = useMyDay()
@@ -40,6 +43,25 @@ export function NeedsAction({ className }: { className?: string }) {
         : warning > 0
           ? { text: `${warning} ${warning === 1 ? 'warning' : 'warnings'}`, tone: 'warn' as const }
           : { text: `${ordered.length} pending`, tone: 'pend' as const }
+  // With the API: the card and its two columns, no sample items (gap 63).
+  if (REAL_API) {
+    return (
+      <Card className={className} title="Needs Action">
+        <div className="grid grid-cols-[minmax(0,1.25fr)_1px_minmax(0,1fr)] gap-[18px] max-md:grid-cols-1">
+          <section aria-label="Attention" className="min-w-0">
+            <SectionLabel className="mb-[8px]">Attention</SectionLabel>
+            <EmptyState compact icon={OctagonAlert} why="Not available yet: results and referrals aren't connected yet." />
+          </section>
+          <div className="w-px self-stretch bg-sh-line max-md:hidden" aria-hidden="true" />
+          <section aria-label="Tasks" className="min-w-0">
+            <SectionLabel className="mb-[8px]">Tasks</SectionLabel>
+            <EmptyState compact icon={ListChecks} why="Not available yet: notes to sign and co-sign requests come from the inbox, which isn't built yet." />
+          </section>
+        </div>
+      </Card>
+    )
+  }
+
   return (
     <Card
       className={className}
