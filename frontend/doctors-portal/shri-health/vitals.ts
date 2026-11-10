@@ -14,6 +14,8 @@ import { read } from './resource'
 export interface PatientVitals {
   rows: VitalRow[]
   history: VitalSeries[]
+  /** Every reading, oldest first, for the record's timeline. */
+  readings: { at: Date; label: string; value: string }[]
 }
 
 /** The unit as rooming shows it, by type: heart and breathing rates share "/min". */
@@ -64,7 +66,11 @@ async function load(patientId: string): Promise<PatientVitals> {
     })
     history.push({ label, unit: type === 'blood-pressure' ? 'mmHg' : unitOf(type, latest.value?.unit ?? ''), points })
   }
-  return { rows, history }
+  const readings = kept.flatMap((v) => {
+    const value = valueOf(v)
+    return value ? [{ at: clinicDate(v.effectiveAt), label: VITAL_LABEL[v.type], value }] : []
+  })
+  return { rows, history, readings }
 }
 
 /** The patient's vitals, for the record's Vitals card. */

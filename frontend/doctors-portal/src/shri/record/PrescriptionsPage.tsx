@@ -23,6 +23,10 @@ import { EmptyState } from '../ui/EmptyState'
 import { Card, Chip, CountBubble, Icon, Pill } from '../ui/primitives'
 
 import { RecordFrame } from './RecordFrame'
+import { medicationsFor } from '../../../shri-health/medications'
+import { encounterOfToday } from '../../../shri-health/opd'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 const STATUS_TONE: Record<RxItem['status'], Tone> = { Active: 'norm', Stopped: 'neu', Completed: 'neu' }
 
@@ -35,8 +39,9 @@ export function PrescriptionsPage() {
       id={id}
       section="prescriptions"
       actions={(p) => {
-        const enc = encounterForPatient(p.id)
-        const to = enc && `/encounter/${enc.id}/rx`
+        // SHRI_HEALTH: with the API, today's visit from the status board (opened from the queue or My Day).
+        const encounterId = REAL_API ? encounterOfToday(p.id) : encounterForPatient(p.id)?.id
+        const to = encounterId && `/encounter/${encounterId}/rx`
         // Absent where the persona may not write one (GP-02) — a resident has no rx.write.
         return (
           to &&
@@ -57,8 +62,10 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
   const rxStore = useClinical((s) => s.prescriptions)
   const enc = encounterForPatient(p.id)
   const today = enc ? rxStore[enc.id] : undefined
-  const active = activeMedicines(p.id)
-  const history = prescriptionsFor(p.id)
+  // SHRI_HEALTH: with the API, the patient's medication list (listMedications); no sample prescriptions.
+  const list = REAL_API ? medicationsFor(p.id) : undefined
+  const active = list ? list.current : activeMedicines(p.id)
+  const history = list ? list.history : prescriptionsFor(p.id)
 
   return (
     <>
@@ -93,7 +100,7 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
                     {m.drug} <span className="font-normal">{m.dose}</span>
                   </span>
                   <span className="block text-[13px] text-sh-text-2">
-                    {m.route} · {m.frequency} · {m.duration}
+                    {[m.route, m.frequency, m.duration].filter(Boolean).join(' · ')}
                   </span>
                   {m.note && <span className="block text-[12px] text-sh-text-3">{m.note}</span>}
                 </span>
@@ -132,7 +139,7 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
                     <li key={it.drug} className="flex flex-wrap items-start justify-between gap-[8px] text-[13px]">
                       <span className={cn('min-w-0', it.status === 'Stopped' ? 'text-sh-text-3' : 'text-sh-text-2')}>
                         <span className={cn('font-medium text-sh-text', it.status === 'Stopped' && 'text-sh-text-3 line-through')}>{it.drug}</span>{' '}
-                        {it.dose !== '—' && `${it.dose} · ${it.route} · ${it.frequency}`}
+                        {it.dose !== '—' && [it.dose, it.route, it.frequency].filter(Boolean).join(' · ')}
                         {it.note && <span className="block text-[12px] text-sh-text-3">{it.note}</span>}
                       </span>
                       <Chip word={it.status} tone={STATUS_TONE[it.status]} />
