@@ -26,19 +26,20 @@ import { can, canPrescribe } from '@/atlas/personas'
 import { FORMULARY, PENICILLIN_HARD_STOP, type Encounter } from '@/data/clinical'
 import { NOW, formatDateTime, formatRupees, formatTime } from '@/data/format'
 import type { IcdCode } from '@/data/icd10'
-import { STAFF, patient } from '@/data/kit'
+import { STAFF, patient } from '../../../shri-health/kit'
 import { useOutstanding } from '@/store/ai'
 import { useAudit } from '@/store/audit'
-import { useClinical, type RxLineEdit } from '@/store/clinical'
+import { useClinical, type RxLineEdit } from '../../../shri-health/clinical'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
 import { useMayOpenPath } from '../app/landing'
 import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
-import { encounterLabel, maybeEncounter } from '../logic/encounter'
-import { useProblemsFor } from '../logic/record'
-import { DURATIONS, ROUTE_FREQUENCIES, basketFor, hardStopFor, newLine, proposedBasket, type BasketLine } from '../logic/rx'
+import { encounterLabel, maybeEncounter } from '../../../shri-health/encounter'
+import { useProblemsFor } from '../../../shri-health/record'
+import { useFormulary } from '../../../shri-health/formulary'
+import { DURATIONS, ROUTE_FREQUENCIES, basketFor, hardStopFor, newLine, proposedBasket, type BasketLine } from '../../../shri-health/rx'
 import { useAiActive, useForcedState } from '../state/ai'
 import { devOpens } from '../state/store'
 import { FieldChip, SuggestionCard } from '../ui/ai'
@@ -91,7 +92,7 @@ function Prescription({ enc }: { enc: Encounter }) {
   const overrideHardStop = useClinical((s) => s.overrideHardStop)
 
   const p = patient(enc.patientId)
-  const problemList = useProblemsFor(p.id)
+  const problemList = useProblemsFor(enc.id)
   const record = rx(enc.id)
 
   /** The line the hard-stop gate is open for, and the line whose override is being signed. */
@@ -139,7 +140,7 @@ function Prescription({ enc }: { enc: Encounter }) {
   if (!mayPrescribe) problems.push({ field: 'Signing', message: 'This persona may draft, not sign — controlled classes need a consultant', target: `${enc.id}:formulary` })
   const canSign = !locked && problems.length === 0
 
-  const matches = search.trim() ? FORMULARY.filter((f) => f.drug.toLowerCase().includes(search.trim().toLowerCase())) : FORMULARY.slice(0, 6)
+  const matches = useFormulary(search)
   const gateLine = unresolved.find((l) => l.id === gateFor)
   const dualLine = unresolved.find((l) => l.id === dualFor)
   const note = `/encounter/${enc.id}/note`
@@ -205,14 +206,14 @@ function Prescription({ enc }: { enc: Encounter }) {
     toast({ tone: 'critical', title: 'Hard stop overridden', detail: `${auditEvent} emitted. Both identities recorded. Reviewed within 24 hours.` })
   }
 
-  function doSign() {
+  async function doSign() {
     setConfirmSign(false)
     // Held to the same rules at the moment of commit.
     if (!canSign) {
       setShowValidation(true)
       return
     }
-    signRx({ encounterId: enc.id, by: me.name, registrationNo: me.identifier })
+    if (!(await signRx({ encounterId: enc.id, by: me.name, registrationNo: me.identifier }))) return
     audit({
       event: 'RX.SIGNED',
       actor: me.name,
@@ -478,7 +479,7 @@ function Prescription({ enc }: { enc: Encounter }) {
       {/* G4 — reason AND a second consultant, both identities recorded. */}
       <DualSignatureGate
         open={dualLine !== undefined && mayOverride}
-        what={`You are prescribing ${dualLine?.drug ?? 'a contraindicated drug'} to a patient with a documented penicillin allergy.`}
+        what={`You are prescribing ${dualLine?.drug ?? 'a contraindicated drug'}. ${dualLine?.stop?.finding ?? ''}`.trim()}
         auditEvent={dualLine?.stop?.auditEvent ?? PENICILLIN_HARD_STOP.auditEvent}
         prescriber={me.name}
         coSignerOptions={STAFF.filter((s) => s.identifierKind === 'HPR').map((s) => ({ name: s.name, identifier: s.identifier }))}
@@ -653,6 +654,25 @@ function RxLineCard({
               {DURATIONS.map((d) => (
                 <option key={d} value={d}>
                   {d} days
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
+        {/* SHRI_HEALTH: the quantity to dispense and refills, which the U.S. contract needs to sign (SCREEN_PORT.md). */}
+        <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-3">
+          <Field label="Quantity" htmlFor={`${base}:quantity`} required>
+            <TextInput id={`${base}:quantity`} inputMode="decimal" value={line.quantity} disabled={locked} onChange={(e) => onEdit({ quantity: e.target.value })} />
+          </Field>
+          <Field label="Unit" htmlFor={`${base}:unit`} required>
+            <TextInput id={`${base}:unit`} maxLength={32} value={line.quantityUnit} disabled={locked} onChange={(e) => onEdit({ quantityUnit: e.target.value })} />
+          </Field>
+          <Field label="Refills" htmlFor={`${base}:refills`}>
+            <Select id={`${base}:refills`} value={String(line.refills)} disabled={locked} onChange={(e) => onEdit({ refills: Number(e.target.value) })}>
+              {Array.from({ length: 12 }, (_, n) => (
+                <option key={n} value={n}>
+                  {n}
                 </option>
               ))}
             </Select>

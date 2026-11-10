@@ -40,7 +40,7 @@ export function PrintPreview({
   /** One line under the title — encounter number, who signed, when. */
   meta?: string
   sections: PrintSection[]
-  paper?: 'A4' | 'A5'
+  paper?: 'A4' | 'A5' | 'Letter'
   footer?: ReactNode
 }) {
   const toast = useUI((s) => s.toast)
