@@ -134,15 +134,18 @@ export function AppBar() {
         <UserMenu />
       </div>
 
-      {/* The hospital's own mark, far right, linking to its site. Two copies: the dark theme's lifts the grey lettering. Under 420px the row has no room for it. */}
-      <a
-        href="https://indostates.com"
-        title="Indostates Health — indostates.com"
-        className="flex h-[48px] shrink-0 items-center rounded-full px-[8px] transition-colors duration-150 hover:bg-sh-hover max-sm:h-[44px] max-sm:px-[4px] max-[420px]:hidden"
-      >
-        <img src={indostatesLogo} width={175} height={36} alt="Indostates Health — go to indostates.com" decoding="async" className="h-[36px] w-auto shdark:hidden max-sm:h-[26px]" />
-        <img src={indostatesLogoDark} width={175} height={36} alt="Indostates Health — go to indostates.com" decoding="async" className="hidden h-[36px] w-auto shdark:block max-sm:h-[26px]" />
-      </a>
+      {/* The hospital's own mark, far right, linking to its site. Two copies: the dark theme's lifts the grey lettering. Under 420px the row has no room for it.
+          SHRI_HEALTH: the India partner's mark, so not with SHRI_API=real (US market). */}
+      {REAL_API ? null : (
+        <a
+          href="https://indostates.com"
+          title="Indostates Health — indostates.com"
+          className="flex h-[48px] shrink-0 items-center rounded-full px-[8px] transition-colors duration-150 hover:bg-sh-hover max-sm:h-[44px] max-sm:px-[4px] max-[420px]:hidden"
+        >
+          <img src={indostatesLogo} width={175} height={36} alt="Indostates Health — go to indostates.com" decoding="async" className="h-[36px] w-auto shdark:hidden max-sm:h-[26px]" />
+          <img src={indostatesLogoDark} width={175} height={36} alt="Indostates Health — go to indostates.com" decoding="async" className="hidden h-[36px] w-auto shdark:block max-sm:h-[26px]" />
+        </a>
+      )}
     </header>
   )
 }
