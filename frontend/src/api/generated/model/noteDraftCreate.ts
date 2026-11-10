@@ -17,11 +17,19 @@
 import type { Id } from './id';
 
 /**
- * Body to draft a note from a transcript (inventory #110).
+ * Body to draft a note (inventory #110), from a transcription or from dictated text. Send exactly one: `transcriptionId`, or `encounterId` with `dictation`.
  */
 export interface NoteDraftCreate {
-  /** The transcription; the draft goes on its encounter. */
-  transcriptionId: Id;
+  /** The transcription; the draft goes on its encounter. Not with `encounterId` or `dictation`. */
+  transcriptionId?: Id;
+  /** The visit the dictation belongs to; the draft goes on it. Required with `dictation`. */
+  encounterId?: Id;
+  /**
+     * The visit as the clinician dictated or typed it on the consultation screen. Used for this draft only; never stored or logged.
+     * @minLength 1
+     * @maxLength 20000
+     */
+  dictation?: string;
   /** A practice or personal note template (`/note-templates`); the model fills its sections. */
   templateId: Id;
 }
