@@ -28,6 +28,7 @@ import { useRoomWatch } from '../telehealth/roomWatch'
 import { RxCourier } from '../telehealth/RxCourier'
 import { useWaitingAlerts } from '../telehealth/waitingAlerts'
 import { WaitingBar } from '../telehealth/WaitingBar'
+import { AI_ASSISTANT_ON } from '../logic/assistant'
 
 import { AppBar } from './AppBar'
 import { AssistantBubble } from './AssistantBubble'
@@ -91,8 +92,9 @@ export function AppShell() {
       {/* This load's demonstration code, said where patient demo pages on any device can hear it. */}
       {leader && !REAL_API && <CodeBeacon />}
       <OverlayHost />
-      <AssistantDrawer />
-      <AssistantBubble />
+      {/* The assistant bubble and drawer, behind the AI_ASSISTANT_ON flag (logic/assistant.ts). */}
+      {AI_ASSISTANT_ON && <AssistantDrawer />}
+      {AI_ASSISTANT_ON && <AssistantBubble />}
     </div>
   )
 }
