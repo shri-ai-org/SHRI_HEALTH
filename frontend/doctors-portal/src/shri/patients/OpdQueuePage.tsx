@@ -27,7 +27,7 @@ import { useUI } from '@/store/ui'
 import { cn } from '../lib/cn'
 import { nextToCall, opdCounts, useOpdLive, type OpdRow } from '../../../shri-health/opd'
 import { consultPath, recordPath } from '../../../shri-health/record'
-import { useOpd } from '../../../shri-health/opd'
+import { mayCall, roomingOf, roomingPath, useOpd } from '../../../shri-health/opd'
 import { Board, type BoardColumn } from '../ui/Board'
 import { Card, Icon, Pill, PillTag } from '../ui/primitives'
 import { Segmented } from '../ui/Segmented'
@@ -113,12 +113,24 @@ export function OpdQueuePage() {
 
   function action(r: OpdRow) {
     const p = patient(r.patientId)
-    if (r.live === 'Waiting')
+    if (r.live === 'Waiting') {
+      // TEMPORARY (demo step 6): a checked-in patient is roomed first (shri-health/TemporaryRooming.tsx).
+      const toRoom = roomingOf(r.patientId)
       return (
-        <Pill variant="primary" size="lg" icon={ArrowRight} onClick={() => call(r)} aria-label={`Call ${key(r)}, ${p.name}`}>
-          Call
-        </Pill>
+        <span className="flex gap-[8px]">
+          {toRoom && (
+            <Pill variant="control" size="lg" icon={DoorOpen} onClick={() => navigate(roomingPath(toRoom))} aria-label={`Room ${p.name}`}>
+              Room
+            </Pill>
+          )}
+          {mayCall() && (
+            <Pill variant="primary" size="lg" icon={ArrowRight} onClick={() => call(r)} aria-label={`Call ${key(r)}, ${p.name}`}>
+              Call
+            </Pill>
+          )}
+        </span>
       )
+    }
     if (r.live === 'Teleconsult')
       return (
         <Pill variant="control" size="lg" icon={Video} onClick={() => connect(r)} aria-label={`Connect to ${p.name}`}>
@@ -178,7 +190,8 @@ export function OpdQueuePage() {
       // "running 6 min behind" is the sample's fixed text: left out with the API, which has no such figure.
       sub={`${counts.booked} booked · ${counts.seen} seen · ${counts.waiting} waiting${typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__ ? '' : ' · running 6 min behind'}`}
       actions={
-        next && (
+        next &&
+        mayCall() && (
           <Pill variant="primary" size="xl" icon={ArrowRight} onClick={() => call(next)}>
             Call {key(next)}
           </Pill>
@@ -253,7 +266,12 @@ export function OpdQueuePage() {
                     {r.live === 'Seen' && <Icon icon={Check} size={15} className="shrink-0 text-sh-norm-fg" />}
                   </div>
                   {r.live === 'Waiting' && r.clinic?.arrivedAt && <p className="mt-[8px] text-[13px] tabular-nums text-sh-text-2">waiting {waited(r)}</p>}
-                  {r.live === 'Waiting' && (
+                  {r.live === 'Waiting' && roomingOf(r.patientId) && (
+                    <Pill variant="control" size="lg" icon={DoorOpen} className="mt-[10px] w-full" onClick={() => navigate(roomingPath(roomingOf(r.patientId)!))}>
+                      Room this patient
+                    </Pill>
+                  )}
+                  {r.live === 'Waiting' && mayCall() && (
                     <Pill variant="primary" size="lg" icon={ArrowRight} className="mt-[10px] w-full" onClick={() => call(r)}>
                       Call this patient
                     </Pill>

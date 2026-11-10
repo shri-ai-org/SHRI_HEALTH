@@ -12,7 +12,7 @@ import type { LiveStatus, OpdRow } from '../src/shri/logic/opd'
 import { API_BASE, ApiError, newIdempotencyKey } from '../../src/api/client'
 import { getMe, getSession } from '../../src/api/generated/endpoints/platform/platform'
 import { getStatusBoard, listBookableFacilities, recordVisitStatus } from '../../src/api/generated/endpoints/scheduling/scheduling'
-import type { BookableFacility, Me, Session, StatusBoardItem } from '../../src/api/generated/model'
+import type { BookableFacility, Me, Session, SessionUser, StatusBoardItem } from '../../src/api/generated/model'
 import { problemCopy } from '../../src/design-system/problem/problem'
 
 import { clinicDate, formatTime, setFacilityTimeZone, tick } from './format'
@@ -103,6 +103,8 @@ function toRow(i: StatusBoardItem): OpdRow | null {
 
 interface BoardState {
   items: StatusBoardItem[]
+  /** When the list was last read (ms), so a screen opened again can tell it may be stale. */
+  loadedAt: number
   facilityId?: string
   date?: string
   load: () => Promise<void>
@@ -114,11 +116,17 @@ function todayIn(timeZone: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 }
 
+let signedIn: SessionUser | undefined
+
+/** The signed-in user (roles, practitioner), known once loadClinic() has run. */
+export const signedInUser = (): SessionUser | undefined => signedIn
+
 /** The user's facility (GET /me, or the session where /me isn't built yet) and its time zone. */
 export async function userFacility(): Promise<BookableFacility | undefined> {
   const user = await getMe()
     .then((res) => (res.data as Me).user)
     .catch(async () => ((await getSession()).data as Session).user)
+  signedIn = user
   const facilities = ((await listBookableFacilities({ limit: 100 })).data as { items: BookableFacility[] }).items
   const facility = facilities.find((f) => user.facilityIds.includes(f.id)) ?? facilities[0]
   if (facility) setFacilityTimeZone(facility.timeZone)
@@ -132,15 +140,16 @@ export function loadClinic(): Promise<void> {
 
 export const useBoard = create<BoardState>()((set, get) => ({
   items: [],
+  loadedAt: 0,
   load: async () => {
     const facility = await userFacility()
     if (!facility) return
     const date = todayIn(facility.timeZone)
-    // TODO(gap): neither /me nor the session links the user to a practitioner, so this is the
-    // facility's whole board, not the doctor's own patients.
+    // The clinical team's list (demo step 7): the facility's whole board, so the MA rooms for every
+    // provider. My Day's own day is the provider's (useProviderDay in myday.ts).
     const res = await getStatusBoard({ facilityId: facility.id, date, view: 'staff', limit: 100 })
     tick()
-    set({ items: (res.data as { items: StatusBoardItem[] }).items, facilityId: facility.id, date })
+    set({ items: (res.data as { items: StatusBoardItem[] }).items, loadedAt: Date.now(), facilityId: facility.id, date })
   },
   start: (patientId) => {
     const item = get().items.find((i) => i.patient?.id === patientId && liveOf(i) === 'Waiting')
@@ -161,6 +170,9 @@ export function useOpdLive(): OpdRow[] {
   const items = useBoard((s) => s.items)
   useEffect(() => {
     const reload = () => void useBoard.getState().load().catch(() => undefined)
+    // The stream is closed while no screen listens, so a list opened again (after rooming, say)
+    // reads once more rather than show what it had.
+    if (Date.now() - useBoard.getState().loadedAt > 2000) reload()
     const t = window.setInterval(reload, REFRESH_MS)
     const stop = onLiveChange(reload)
     return () => {
@@ -178,6 +190,22 @@ export function useOpdLive(): OpdRow[] {
 export function encounterOfToday(patientId: string): string | undefined {
   return useBoard.getState().items.find((i) => i.patient?.id === patientId && i.encounterId)?.encounterId
 }
+
+/** Whether the user may call a patient in (with-provider: MD, APP and RN, the server's visit-status rule). */
+export function mayCall(): boolean {
+  if (typeof __SHRI_REAL_API__ === 'undefined' || !__SHRI_REAL_API__) return true
+  return signedIn?.roles.some((r) => r === 'MD' || r === 'APP' || r === 'RN') ?? false
+}
+
+/** TEMPORARY (demo step 6, shri-health/TemporaryRooming.tsx): the encounter to room while the
+ *  patient is checked in and not yet roomed. */
+export function roomingOf(patientId: string): string | undefined {
+  // Only MA and RN may mark a patient roomed (the server's visit-status rule).
+  if (!signedIn?.roles.some((r) => r === 'MA' || r === 'RN')) return undefined
+  return useBoard.getState().items.find((i) => i.patient?.id === patientId && i.encounterId && (i.visitStatus === 'arrived' || i.visitStatus === 'checked-in'))?.encounterId
+}
+
+export const roomingPath = (encounterId: string) => `/temporary/rooming/${encounterId}`
 
 /** The doctor's "Call": src/shri/state/opd.ts `useOpd`, with start() recording with-provider. */
 export const useOpd = <T>(select: (s: { start: (patientId: string) => void; finish: (patientId: string) => void }) => T): T =>
