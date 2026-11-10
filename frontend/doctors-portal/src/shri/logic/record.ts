@@ -8,12 +8,14 @@
 import { RESULT_TRENDS, encounterForPatient, problemsFor, resultsFor, type Problem, type ResultRow } from '@/data/clinical'
 import { formatDate, formatTime } from '@/data/format'
 import type { Patient } from '@/data/kit'
-import { activeMedicines, conditionFor, pastNotesFor, reportsFor, type ConditionStatus } from '@/data/record'
+import { activeMedicines, conditionFor, reportsFor, type ConditionStatus } from '@/data/record'
+import { pastNotesFor } from '../../../shri-health/record'
 import { useClinical, type AddedProblem, type VoiceNote } from '@/store/clinical'
 
 import type { Tone } from '../mocks/types'
 
-import { appointmentsOf, nextOf, useAppointments } from './schedule'
+import { useAppointments } from './schedule'
+import { appointmentsOf, nextOf } from '../../../shri-health/record'
 
 export type RecordSection = 'record' | 'condition' | 'results' | 'reports' | 'notes' | 'prescriptions' | 'appointments'
 

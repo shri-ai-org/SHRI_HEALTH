@@ -395,7 +395,7 @@ function Panel({ item: it }: { item: AttentionItem }) {
 /* ---------------------------------------------------------------- sealed */
 
 /** GP-11 — offered, not refused. No patient data renders behind it, and nothing else can be done until it is recorded. */
-function SealedBody({ onConfirm }: { onConfirm: (reason: string) => void }) {
+export function SealedBody({ onConfirm }: { onConfirm: (reason: string) => void }) {
   const [asking, setAsking] = useState(false)
   const [reason, setReason] = useState('')
   const ok = reason.trim().length >= 8
