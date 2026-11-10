@@ -11,9 +11,9 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from pydantic import SecretStr
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from app.core.config import Settings
 from app.core.crypto import DataKey
