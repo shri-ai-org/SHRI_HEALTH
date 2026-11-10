@@ -16,15 +16,15 @@ import { screen } from '@/atlas/registry'
 import { canAdmit } from '@/data/admissions'
 import { noteSeedsFor } from '@/data/clinical'
 import { NOW, formatTime } from '@/data/format'
-import { patient } from '@/data/kit'
+import { patient } from '../../../shri-health/kit'
 import { useAdmissions } from '@/store/admissions'
-import { useClinical } from '@/store/clinical'
+import { useClinical } from '../../../shri-health/clinical'
 import { useUI } from '@/store/ui'
 
 import { useMayOpenPath } from '../app/landing'
 import { ScreenHeader } from '../app/ScreenHeader'
 import { differentialsFor, type Differential } from '../logic/differentials'
-import { maybeEncounter } from '../logic/encounter'
+import { maybeEncounter } from '../../../shri-health/encounter'
 import { RecordDoors } from '../record/RecordDoors'
 import { useOpd } from '../state/opd'
 import { useShri } from '../state/store'
@@ -35,6 +35,14 @@ import { Card, Pill } from '../ui/primitives'
 
 import { AmbientScribe } from './AmbientScribe'
 import { NoteAuthoring } from './NoteAuthoring'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/**
+ * "Draft with AI" and the ambient scribe: on only with VITE_FEATURE_AI_NOTE_DRAFT=on.
+ * Off until the AI endpoint is ready; the four SOAP boxes keep the browser's own dictation.
+ */
+const AI_NOTE_DRAFT_ON = import.meta.env.VITE_FEATURE_AI_NOTE_DRAFT === 'on'
 
 export function ConsultationPage() {
   const { id } = useParams()
@@ -86,7 +94,7 @@ function Consultation({ encounterId }: { encounterId: string }) {
         seeds={seeds}
         scribeModel="scribe v5.1.2"
         onSigned={() => navigate('/')}
-        onDraftAll={() => setScribeOpen(true)}
+        onDraftAll={AI_NOTE_DRAFT_ON ? () => setScribeOpen(true) : undefined}
         headerActions={
           <>
             {may(rx) && (
@@ -94,12 +102,13 @@ function Consultation({ encounterId }: { encounterId: string }) {
                 Prescribe
               </Pill>
             )}
-            {may(order) && (
+            {/* SHRI_HEALTH: orders and admissions have no service yet (orders/results B5, inpatients), so not with SHRI_API=real. */}
+            {!REAL_API && may(order) && (
               <Pill variant="card" size="xl" icon={ClipboardList} iconSize={17} onClick={() => navigate(order)}>
                 Order
               </Pill>
             )}
-            {canAdmit(p, admissions) && (
+            {!REAL_API && canAdmit(p, admissions) && (
               <Pill variant="card" size="xl" icon={BedDouble} iconSize={17} onClick={() => openAdmit(p.id)}>
                 Admit
               </Pill>
@@ -108,35 +117,38 @@ function Consultation({ encounterId }: { encounterId: string }) {
         }
         // Last time's results, reports and scans sit one tap from the consultation.
         banner={<RecordDoors patient={p} />}
-        rail={<DifferentialRail encounterId={enc.id} patientId={p.id} />}
+        // SHRI_HEALTH: the Differential panel is the sample's suggestions, with no service behind it: hidden with SHRI_API=real.
+        rail={REAL_API ? undefined : <DifferentialRail encounterId={enc.id} patientId={p.id} />}
         railTitle="Differential"
-        railBadge={differentials.length || undefined}
+        railBadge={REAL_API ? undefined : differentials.length || undefined}
       />
 
-      {/* S-06-04, as the overlay it is specified to be. */}
-      <AmbientScribe
-        open={scribeOpen}
-        patientId={p.id}
-        patientName={p.name}
-        sections={seeds}
-        onClose={() => setScribeOpen(false)}
-        onFinish={(keys, drafts) => {
-          setScribeOpen(false)
-          const drafted = applyScribeDraft(enc.id, keys, drafts)
-          const kept = keys.length - drafted.length
-          toast({
-            tone: 'info',
-            title:
-              drafted.length === 0
-                ? 'Nothing to draft — every section already has your words'
-                : `${drafted.length === 4 ? 'Four' : drafted.length} ${drafted.length === 1 ? 'section' : 'sections'} drafted`,
-            detail:
-              drafted.length === 0
-                ? 'The scribe never overwrites what you dictated or typed.'
-                : `Each one needs Accept, Edit or Reject before Sign will enable.${kept > 0 ? ` ${kept} you had already written ${kept === 1 ? 'was' : 'were'} left as yours.` : ''}`,
-          })
-        }}
-      />
+      {/* S-06-04, as the overlay it is specified to be; behind AI_NOTE_DRAFT_ON. */}
+      {AI_NOTE_DRAFT_ON && (
+        <AmbientScribe
+          open={scribeOpen}
+          patientId={p.id}
+          patientName={p.name}
+          sections={seeds}
+          onClose={() => setScribeOpen(false)}
+          onFinish={(keys, drafts) => {
+            setScribeOpen(false)
+            const drafted = applyScribeDraft(enc.id, keys, drafts)
+            const kept = keys.length - drafted.length
+            toast({
+              tone: 'info',
+              title:
+                drafted.length === 0
+                  ? 'Nothing to draft — every section already has your words'
+                  : `${drafted.length === 4 ? 'Four' : drafted.length} ${drafted.length === 1 ? 'section' : 'sections'} drafted`,
+              detail:
+                drafted.length === 0
+                  ? 'The scribe never overwrites what you dictated or typed.'
+                  : `Each one needs Accept, Edit or Reject before Sign will enable.${kept > 0 ? ` ${kept} you had already written ${kept === 1 ? 'was' : 'were'} left as yours.` : ''}`,
+            })
+          }}
+        />
+      )}
     </>
   )
 }

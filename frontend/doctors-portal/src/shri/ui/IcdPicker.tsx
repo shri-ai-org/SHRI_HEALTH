@@ -17,7 +17,7 @@
 import { Plus, X } from 'lucide-react'
 import { useId, useMemo, useState, type KeyboardEvent } from 'react'
 
-import { icdCategoriesOf, normaliseIcd, searchIcd, type IcdCode, type IcdEntry } from '@/data/icd10'
+import { icdCategoriesOf, normaliseIcd, useSearchIcd, type IcdCode, type IcdEntry } from '../../../shri-health/icd10'
 
 import { cn } from '../lib/cn'
 
@@ -51,12 +51,13 @@ export function IcdPicker({
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const listId = useId()
+  const searched = useSearchIcd(query, { extra })
   const matches = useMemo(() => {
-    const found = searchIcd(query, { extra })
+    const found = searched
     if (!categories || found.length === 0) return found
     const cats = icdCategoriesOf(found.map((e) => e.code)).filter((c) => !found.some((f) => normaliseIcd(f.code) === c.code))
     return [...cats, ...found].slice(0, 10)
-  }, [query, extra, categories])
+  }, [searched, categories])
   const open = query.trim().length >= 2
   const pickable = (e: IcdEntry) => e.leaf || allowParents || categories
 

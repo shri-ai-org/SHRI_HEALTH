@@ -33,7 +33,7 @@ import { DIAGNOSES, type Patient } from '@/data/kit'
 import { useScribeDrafts, type ScribeDraft } from '@/data/scribe'
 import { useAI, useOutstanding } from '@/store/ai'
 import { useAudit } from '@/store/audit'
-import { useClinical, type SectionProvenance } from '@/store/clinical'
+import { useClinical, type SectionProvenance } from '../../../shri-health/clinical'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
@@ -192,9 +192,10 @@ export function NoteAuthoring({
   const written = seeds.filter((s) => textFor(s.key).trim().length >= 10).length
   const noteKind = enc.type === 'IP' ? 'Progress note' : 'Consultation note'
 
-  function doSign() {
-    const status = signNote({ encounterId: enc.id, by: me.name, registrationNo: me.identifier, canSign: maySign })
+  async function doSign() {
+    const status = await signNote({ encounterId: enc.id, by: me.name, registrationNo: me.identifier, canSign: maySign })
     setConfirmSign(false)
+    if (status === null) return
     if (status === 'signed') {
       audit({ event: 'NOTE.SIGNED', actor: me.name, actorId: me.id, subject: p.id, detail: `${noteKind} signed · ${encounterLabel(enc)}${record.code ? ` · ICD-10 ${record.code}` : ''}` })
       toast({
@@ -269,9 +270,7 @@ export function NoteAuthoring({
             <PillTag tone={locked ? 'neu' : 'warn'} size="sm" icon={locked ? Lock : PenLine}>
               {record.status === 'signed' ? 'Signed' : record.status === 'cosign-pending' ? 'Co-sign pending' : 'Draft'}
             </PillTag>
-            <span title={encounterLabel(enc)}>
-              <Chip word={enc.encounterNo} tone="neu" />
-            </span>
+            {enc.encounterNo && <span title={encounterLabel(enc)}><Chip word={enc.encounterNo} tone="neu" /></span>}
             {/* Only once it has left the building — "not published" is the silent default. */}
             {record.publishStatus !== undefined && (
               <PillTag tone={record.publishStatus === 'failed' ? 'warn' : 'norm'} size="sm" icon={Upload}>

@@ -1,0 +1,575 @@
+// SHRI_HEALTH data layer: the consultation note's part of `useClinical` (src/store/clinical.ts),
+// with the same state and actions, over the notes API (D8): a draft created from the SOAP
+// template, saved with If-Match, signed, and appended to with addenda. Everything else the mock
+// store holds stays on the mock store; these screens import only this part.
+import { create } from 'zustand'
+
+import type { RxLine } from '@/data/clinical'
+import type { AddedProblem, NoteRecord, NoteStatus, RxOverride, RxRecord, SectionProvenance } from '@/store/clinical'
+import { useUI } from '@/store/ui'
+
+import { ApiError, etagOf, newIdempotencyKey } from '../../src/api/client'
+import {
+  addEncounterDiagnosis,
+  addNoteAddendum,
+  getEncounter,
+  createNote,
+  getNote,
+  listEncounterNotes,
+  signNote as signNoteApi,
+  updateNoteDraft,
+} from '../../src/api/generated/endpoints/encounters/encounters'
+import {
+  checkPrescriptionSafety,
+  createPrescription,
+  getPrescription,
+  overrideAlert,
+  signAndSendPrescription,
+  updatePrescription,
+} from '../../src/api/generated/endpoints/medications/medications'
+import { listNoteTemplates } from '../../src/api/generated/endpoints/practice-setup/practice-setup'
+import type { Encounter, EncounterDiagnosis, Note, NoteList, NoteTemplateList, Prescription, SafetyAlert, SafetyCheckResult } from '../../src/api/generated/model'
+import { problemCopy } from '../../src/design-system/problem/problem'
+
+import { rxNormProduct } from './formulary'
+import { maybeEncounter } from './encounter'
+import { read } from './resource'
+
+import type { RxLineEdit as ScreenRxLineEdit } from '@/store/clinical'
+
+/**
+ * A line's edit, with the contract's fields the prescription screen gained under the porting rule
+ * (SCREEN_PORT.md): the quantity, its unit and refills, which signing needs (quantity) or allows.
+ */
+export type RxLineEdit = ScreenRxLineEdit & { quantity?: string; quantityUnit?: string; refills?: number }
+export type { SectionProvenance }
+
+/** The screen's four sections, by their LOINC section codes (the SOAP template). */
+const KEY_BY_CODE: Record<string, string> = { '61150-9': 'subjective', '61149-1': 'objective', '51848-0': 'assessment', '18776-5': 'plan' }
+const SOAP_TEMPLATE_CODE = 'SOAP'
+
+/** What the store keeps per encounter besides the screen's NoteRecord. */
+interface Server {
+  noteId?: string
+  etag?: string
+  /** Section id by the screen's key. */
+  sectionIds: Record<string, string>
+  /** The text last saved, by key: autosave writes only when something changed. */
+  saved: Record<string, string>
+  /** Saves run one after another, so Sign never sends an old ETag. */
+  queue: Promise<void>
+}
+
+interface NoteState {
+  notes: Record<string, NoteRecord>
+  server: Record<string, Server>
+  note: (encounterId: string) => NoteRecord
+  setSectionText: (encounterId: string, key: string, text: string, provenance?: SectionProvenance) => void
+  applyScribeDraft: (encounterId: string, keys: string[], drafts?: Partial<Record<string, string>>) => string[]
+  setNoteCode: (encounterId: string, code: string | undefined) => void
+  saveDraft: (encounterId: string, how?: 'manual' | 'auto') => void
+  /** Resolves to the status the server gives the note, or null when it refused to sign it. */
+  signNote: (args: { encounterId: string; by: string; registrationNo: string; canSign: boolean }) => Promise<NoteStatus | null>
+  addendum: (args: { encounterId: string; body: string; by: string; registrationNo: string }) => void
+
+  /** The encounter's diagnoses, in the problem rows the Problems and coding screen draws. */
+  diagnoses: Record<string, AddedProblem[]>
+  loadDiagnoses: (encounterId: string) => Promise<void>
+  addProblem: (encounterId: string, dx: { label: string; icd10: string }, by: string, at: string) => AddedProblem | null
+  // TODO(gap 6): no operation changes a diagnosis's verification status, or confirms the list;
+  // both stay on this screen only, as in the mock.
+  problemConfirmations: Record<string, { by: string; at: string }>
+  confirmProblem: (problemId: string, by: string, at: string) => void
+  problemListConfirmed: Record<string, { by: string; at: string; codes: string[] }>
+  confirmProblemList: (encounterId: string, codes: string[], by: string, at: string) => void
+
+  /** The prescription screen's record per encounter; each line's id is its prescription's id. */
+  prescriptions: Record<string, RxRecord>
+  /** Per prescription: its ETag, and the alerts of its latest safety check. */
+  rxServer: Record<string, { etag?: string; alerts: SafetyAlert[]; checkedAt?: string; queue: Promise<void> }>
+  rx: (encounterId: string) => RxRecord
+  addRxLine: (encounterId: string, line: Omit<RxLine, 'id'>) => string | null
+  editRxLine: (encounterId: string, lineId: string, patch: RxLineEdit) => void
+  // TODO(gap): discarding a draft (markPrescriptionEnteredInError) needs a reason the screen doesn't ask for; removal stays on the screen.
+  removeRxLine: (encounterId: string, lineId: string) => void
+  // TODO(gap): the server offers no alternatives; a substitution stays on the screen.
+  substitute: (encounterId: string, lineId: string, drug: string) => void
+  overrideHardStop: (args: { encounterId: string; lineId: string; reason: string; reasonText?: string; prescriber: string; coSigner: string; auditEvent: string }) => void
+  /** Resolves true once every prescription is signed and sent; false when the API refused one. */
+  signRx: (args: { encounterId: string; by: string; registrationNo: string }) => Promise<boolean>
+}
+
+const RXNORM = 'http://www.nlm.nih.gov/research/umls/rxnorm'
+const blankRx = (encounterId: string): RxRecord => ({ encounterId, status: 'draft', removedLines: [], substitutions: {}, added: [], edits: {} })
+
+// TODO(gap): no read of an encounter's prescriptions (asked on #93), so this tab remembers the
+// drafts it created, per visit, in sessionStorage.
+const rxKey = (encounterId: string) => `shri.rx:${encounterId}`
+function rememberedRx(encounterId: string): string[] {
+  try {
+    return JSON.parse(sessionStorage.getItem(rxKey(encounterId)) ?? '[]') as string[]
+  } catch {
+    return []
+  }
+}
+function rememberRx(encounterId: string, ids: string[]): void {
+  try {
+    sessionStorage.setItem(rxKey(encounterId), JSON.stringify(ids))
+  } catch {
+    /* private window: the drafts stay on the server, unlisted */
+  }
+}
+
+/** The dispensing unit an RxNorm dose form suggests: `Oral Tablet` → `tablet`, a liquid → `mL`. */
+function unitOf(doseForm?: string): string {
+  const form = (doseForm ?? '').toLowerCase()
+  if (/solution|suspension|syrup|elixir|liquid/.test(form)) return 'mL'
+  const word = form.split(' ').pop() ?? ''
+  return word.endsWith('s') ? word.slice(0, -1) : word
+}
+
+/** A new line's first edit: its dispensing unit, from the dose form. */
+function unitEdit(doseForm?: string): RxLineEdit {
+  return { quantityUnit: unitOf(doseForm) }
+}
+
+/**
+ * The line a prescription is on the screen. TODO(gap): the contract keeps the sig as one
+ * dosageText; a sig this screen wrote ("dose, route, frequency", `dosageText()` below) reads back
+ * into its fields, and any other sig shows as the line's instructions.
+ */
+function toLine(p: Prescription): RxLine {
+  const parts = (p.dosageText ?? '').split(', ')
+  const own = parts.length >= 3 && parts[0] !== '' && parts[1] !== ''
+  return {
+    id: p.id,
+    drug: p.medication.text ?? p.medication.codings?.[0]?.display ?? '',
+    dose: own ? parts[0] : '—',
+    route: own ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : 'Oral',
+    frequency: own ? parts.slice(2).join(', ') : 'as prescribed',
+    durationDays: p.daysSupply ?? 0,
+    substitutionAllowed: p.substitutionAllowed ?? true,
+    instructions: own ? undefined : p.dosageText,
+  }
+}
+
+/** The sig sent as dosageText: only what the screen states, never its placeholders. */
+function dosageText(line: RxLine, edit: RxLineEdit = {}): string | undefined {
+  const dose = (edit.dose ?? line.dose).trim()
+  const [route, ...rest] = (edit.routeFrequency ?? `${line.route} · ${line.frequency}`).split(' · ')
+  const frequency = rest.join(' · ').trim()
+  if (dose === '' || dose === '—' || frequency === '' || frequency === 'as prescribed') return undefined
+  return [dose, route.trim().toLowerCase(), frequency].join(', ')
+}
+
+const SNOMED = 'http://snomed.info/sct'
+
+/** A diagnosis as the screen's problem row: leaf, since only billable ICD-10-CM codes are taken. */
+function toProblem(d: EncounterDiagnosis, patientId: string): AddedProblem {
+  return {
+    id: d.id,
+    patientId,
+    label: d.code.display ?? d.code.code,
+    icd10: d.code.code,
+    snomed: d.additionalCodings?.find((c) => c.system === SNOMED)?.code ?? '—',
+    onset: d.onsetDate ?? '—',
+    status: 'Open',
+    aiSuggested: d.entrySource === 'ai-generated' ? true : undefined,
+    leaf: true,
+    addedBy: d.recordedBy?.displayName ?? '',
+    addedAt: d.recordedAt,
+  }
+}
+
+const blank = (encounterId: string): NoteRecord => ({ encounterId, text: {}, provenance: {}, status: 'draft', addenda: [] })
+
+function fromNote(encounterId: string, n: Note, local?: NoteRecord): NoteRecord {
+  const text: Record<string, string> = {}
+  for (const s of n.sections) if (KEY_BY_CODE[s.code]) text[KEY_BY_CODE[s.code]] = s.text
+  const signed = n.status === 'final' || n.status === 'amended'
+  return {
+    encounterId,
+    text,
+    provenance: local?.provenance ?? Object.fromEntries(Object.entries(text).filter(([, t]) => t).map(([k]) => [k, 'typed' as const])),
+    status: n.cosignStatus === 'pending' ? 'cosign-pending' : signed ? 'signed' : 'draft',
+    signedBy: n.signedBy?.displayName,
+    // TODO(gap): no registration number in the US; the NPI is not on ClinicianRef.
+    registrationNo: '',
+    signedAt: n.signedAt,
+    addenda: n.addenda.map((a) => ({ id: a.id, body: a.text, by: a.author.displayName, registrationNo: '', at: a.signedAt })),
+    savedAt: n.updatedAt,
+    savedHow: local?.savedHow,
+    // TODO(gap): the contract codes diagnoses on the encounter, not the note; this stays on screen only.
+    code: local?.code,
+    coSignedBy: n.cosignedBy?.displayName,
+    coSignedAt: n.cosignedAt,
+    returned: n.cosignReturn ? { by: n.cosignReturn.returnedBy.displayName, at: n.cosignReturn.returnedAt, comment: n.cosignReturn.comment } : undefined,
+  }
+}
+
+function serverFrom(n: Note, etag: string | null): Server {
+  const sectionIds: Record<string, string> = {}
+  const saved: Record<string, string> = {}
+  for (const s of n.sections) {
+    const key = KEY_BY_CODE[s.code]
+    if (key) {
+      sectionIds[key] = s.id
+      saved[key] = s.text
+    }
+  }
+  return { noteId: n.id, etag: etag ?? undefined, sectionIds, saved, queue: Promise.resolve() }
+}
+
+function toastProblem(error: unknown, title: string) {
+  const copy = error instanceof ApiError ? problemCopy(error.problem) : null
+  useUI.getState().toast({ tone: 'critical', title: copy?.title ?? title, detail: copy?.message })
+}
+
+export const useClinical = create<NoteState>()((set, get) => {
+  const patch = (encounterId: string, record: Partial<NoteRecord>) =>
+    set({ notes: { ...get().notes, [encounterId]: { ...get().note(encounterId), ...record } } })
+  const setServer = (encounterId: string, server: Partial<Server>) =>
+    set({ server: { ...get().server, [encounterId]: { ...get().server[encounterId], ...server } } })
+
+  const saveTimers = new Map<string, number>()
+
+  /** Saves a line's stated sig, duration and substitution, then checks it again. */
+  function saveLine(encounterId: string, lineId: string): void {
+    saveTimers.delete(lineId)
+    const rec = get().rx(encounterId)
+    const line = (rec.added ?? []).find((l) => l.id === lineId)
+    if (!line || rec.status === 'signed') return
+    const edit: RxLineEdit = rec.edits?.[lineId] ?? {}
+    const value = Number(edit.quantity)
+    const unit = edit.quantityUnit?.trim()
+    // TODO(gap): the indication, the PRN maximum and the instructions stay on the screen: the contract has no field for them.
+    onLine(lineId, async () => {
+      const res = await updatePrescription(
+        lineId,
+        {
+          dosageText: dosageText(line, edit),
+          daysSupply: edit.durationDays ?? (line.durationDays || undefined),
+          substitutionAllowed: edit.substitutionAllowed ?? line.substitutionAllowed,
+          quantity: value > 0 && unit ? { value, unit } : undefined,
+          refills: edit.refills,
+        },
+        { 'If-Match': get().rxServer[lineId]?.etag ?? '' },
+      )
+      set({ rxServer: { ...get().rxServer, [lineId]: { ...get().rxServer[lineId], etag: etagOf(res) ?? undefined } } })
+      await check(lineId)
+    }).catch((error: unknown) => toastProblem(error, `${line.drug} was not saved`))
+  }
+
+  /** Runs one write on a prescription after the ones before it. */
+  function onLine(id: string, job: () => Promise<void>): Promise<void> {
+    const before = get().rxServer[id]?.queue ?? Promise.resolve()
+    const next = before.then(job)
+    set({ rxServer: { ...get().rxServer, [id]: { ...(get().rxServer[id] ?? { alerts: [] }), queue: next.catch(() => undefined) } } })
+    return next
+  }
+
+  /** The fixed-rule safety check (D99), run on every saved version of the draft. */
+  async function check(id: string): Promise<void> {
+    const res = await checkPrescriptionSafety(id)
+    const result = res.data as SafetyCheckResult
+    set({ rxServer: { ...get().rxServer, [id]: { ...get().rxServer[id], alerts: result.alerts, checkedAt: result.checkedAt } } })
+    touchRecordOf(id)
+  }
+
+  /** The screen redraws on its prescription record: a new check or override refreshes it. */
+  function touchRecordOf(lineId: string): void {
+    const entry = Object.entries(get().prescriptions).find(([, rec]) => (rec.added ?? []).some((l) => l.id === lineId))
+    if (entry) set({ prescriptions: { ...get().prescriptions, [entry[0]]: { ...entry[1] } } })
+  }
+
+  /** The encounter's patient, from the encounter already read for the screen. */
+  function maybeEncounterRow(encounterId: string): { patientId: string } | undefined {
+    try {
+      return maybeEncounter(encounterId)
+    } catch {
+      return undefined
+    }
+  }
+
+  /** The encounter's current note, read once (the latest that isn't entered in error). */
+  async function load(encounterId: string): Promise<void> {
+    const list = (await listEncounterNotes(encounterId)).data as NoteList
+    const current = list.items.find((n) => n.status !== 'entered-in-error')
+    if (!current) {
+      set({ notes: { ...get().notes, [encounterId]: blank(encounterId) }, server: { ...get().server, [encounterId]: { sectionIds: {}, saved: {}, queue: Promise.resolve() } } })
+      return
+    }
+    const res = await getNote(current.id)
+    const n = res.data as Note
+    set({ notes: { ...get().notes, [encounterId]: fromNote(encounterId, n) }, server: { ...get().server, [encounterId]: serverFrom(n, etagOf(res)) } })
+  }
+
+  /** Reread after a 412: someone else saved, so the screen shows their version. */
+  async function reload(encounterId: string): Promise<void> {
+    const noteId = get().server[encounterId]?.noteId
+    if (!noteId) return
+    const res = await getNote(noteId)
+    const n = res.data as Note
+    set({ notes: { ...get().notes, [encounterId]: fromNote(encounterId, n, get().notes[encounterId]) } })
+    setServer(encounterId, serverFrom(n, etagOf(res)))
+  }
+
+  async function ensureNote(encounterId: string): Promise<void> {
+    if (get().server[encounterId]?.noteId) return
+    const templates = (await listNoteTemplates({ limit: 100 })).data as NoteTemplateList
+    const soap = templates.items.find((t) => t.code === SOAP_TEMPLATE_CODE)
+    if (!soap) throw new Error('The practice has no SOAP note template (see SCREEN_PORT.md, gap 2).')
+    const res = await createNote(encounterId, { templateId: soap.id }, { 'Idempotency-Key': newIdempotencyKey() })
+    setServer(encounterId, serverFrom(res.data as Note, etagOf(res)))
+  }
+
+  /** Writes the sections that changed since the last save. */
+  async function flush(encounterId: string): Promise<void> {
+    const text = get().note(encounterId).text
+    const changed = () => Object.entries(text).filter(([k, t]) => (get().server[encounterId]?.saved[k] ?? '') !== t)
+    if (changed().length === 0) return
+    await ensureNote(encounterId)
+    const server = get().server[encounterId]
+    const sections = changed()
+      .filter(([k]) => server.sectionIds[k])
+      .map(([k, t]) => ({ id: server.sectionIds[k], text: t }))
+    if (sections.length === 0) return
+    const res = await updateNoteDraft(server.noteId!, { sections }, { 'If-Match': server.etag ?? '' })
+    setServer(encounterId, { etag: etagOf(res) ?? undefined, saved: { ...server.saved, ...Object.fromEntries(sections.map((s) => [Object.keys(server.sectionIds).find((k) => server.sectionIds[k] === s.id)!, s.text])) } })
+    patch(encounterId, { savedAt: (res.data as Note).updatedAt })
+  }
+
+  /** Runs one write after the ones before it. */
+  function enqueue(encounterId: string, job: () => Promise<void>): Promise<void> {
+    const before = get().server[encounterId]?.queue ?? Promise.resolve()
+    const next = before.then(job)
+    setServer(encounterId, { queue: next.catch(() => undefined) })
+    return next
+  }
+
+  return {
+    notes: {},
+    server: {},
+    diagnoses: {},
+    problemConfirmations: {},
+    problemListConfirmed: {},
+
+    loadDiagnoses: async (encounterId) => {
+      const e = (await getEncounter(encounterId)).data as Encounter
+      const live = e.diagnoses.filter((d) => d.verificationStatus !== 'entered-in-error')
+      const confirmed = Object.fromEntries(live.filter((d) => d.verificationStatus === 'confirmed').map((d) => [d.id, { by: d.recordedBy?.displayName ?? '', at: d.recordedAt }]))
+      set({
+        diagnoses: { ...get().diagnoses, [encounterId]: live.map((d) => toProblem(d, e.patientId)) },
+        problemConfirmations: { ...get().problemConfirmations, ...confirmed },
+      })
+    },
+
+    addProblem: (encounterId, dx, by, at) => {
+      const existing = get().diagnoses[encounterId] ?? []
+      if (existing.some((pr) => pr.icd10 === dx.icd10)) return null
+      const pending: AddedProblem = { id: `pending:${dx.icd10}`, patientId: '', label: dx.label, icd10: dx.icd10, snomed: '—', onset: '—', status: 'Open', leaf: true, addedBy: by, addedAt: at }
+      set({ diagnoses: { ...get().diagnoses, [encounterId]: [...existing, pending] } })
+      const replace = (row?: AddedProblem) =>
+        set({ diagnoses: { ...get().diagnoses, [encounterId]: (get().diagnoses[encounterId] ?? []).flatMap((pr) => (pr.id === pending.id ? (row ? [row] : []) : [pr])) } })
+      addEncounterDiagnosis(encounterId, { code: { system: 'http://hl7.org/fhir/sid/icd-10-cm', code: dx.icd10, display: dx.label } }, { 'Idempotency-Key': newIdempotencyKey() })
+        .then((res) => replace(toProblem(res.data as EncounterDiagnosis, '')))
+        .catch((error: unknown) => {
+          replace()
+          toastProblem(error, `${dx.label} was not added`)
+        })
+      return pending
+    },
+
+    prescriptions: {},
+    rxServer: {},
+
+    rx: (encounterId) => {
+      read(`rx:${encounterId}`, async () => {
+        const ids = rememberedRx(encounterId)
+        const found = await Promise.all(ids.map((id) => getPrescription(id).then((res) => ({ p: res.data as Prescription, etag: etagOf(res) }))))
+        const live = found.filter(({ p }) => p.status !== 'entered-in-error')
+        set({
+          prescriptions: {
+            ...get().prescriptions,
+            [encounterId]: {
+              ...blankRx(encounterId),
+              added: live.map(({ p }) => toLine(p)),
+              edits: Object.fromEntries(live.map(({ p }): [string, RxLineEdit] => [p.id, { quantity: p.quantity ? String(p.quantity.value) : undefined, quantityUnit: p.quantity?.unit, refills: p.refills }])),
+              status: live.length > 0 && live.every(({ p }) => p.status === 'active') ? 'signed' : 'draft' },
+          },
+          rxServer: { ...get().rxServer, ...Object.fromEntries(live.map(({ p, etag }) => [p.id, { etag: etag ?? undefined, alerts: p.alerts, queue: Promise.resolve() }])) },
+        })
+      })
+      return get().prescriptions[encounterId] ?? blankRx(encounterId)
+    },
+
+    addRxLine: (encounterId, line) => {
+      const current = get().rx(encounterId)
+      if (current.status === 'signed') return null
+      const product = rxNormProduct(line.drug)
+      if (!product) return null
+      const pendingId = `pending:${Date.now()}`
+      const setRx = (rec: RxRecord) => set({ prescriptions: { ...get().prescriptions, [encounterId]: rec } })
+      // The dispensing unit starts from the drug's dose form; the prescriber can change it.
+      setRx({ ...current, added: [...(current.added ?? []), { ...line, id: pendingId }], edits: { ...(current.edits ?? {}), [pendingId]: unitEdit(product.drug?.doseForm) } })
+      const encounter = maybeEncounterRow(encounterId)
+      createPrescription(
+        { patientId: encounter?.patientId ?? '', encounterId, medication: { codings: [{ system: RXNORM, code: product.code, display: product.display }], text: product.display }, substitutionAllowed: line.substitutionAllowed },
+        { 'Idempotency-Key': newIdempotencyKey() },
+      )
+        .then(async (res) => {
+          const p = res.data as Prescription
+          const rec = get().rx(encounterId)
+          const edits = { ...(rec.edits ?? {}) }
+          if (edits[pendingId]) {
+            edits[p.id] = edits[pendingId]
+            delete edits[pendingId]
+          }
+          setRx({ ...rec, edits, added: (rec.added ?? []).map((l) => (l.id === pendingId ? { ...l, id: p.id } : l)) })
+          set({ rxServer: { ...get().rxServer, [p.id]: { etag: etagOf(res) ?? undefined, alerts: [], queue: Promise.resolve() } } })
+          rememberRx(encounterId, [...rememberedRx(encounterId), p.id])
+          await check(p.id)
+        })
+        .catch((error: unknown) => {
+          const rec = get().rx(encounterId)
+          setRx({ ...rec, added: (rec.added ?? []).filter((l) => l.id !== pendingId) })
+          toastProblem(error, `${line.drug} was not added`)
+        })
+      return pendingId
+    },
+
+    editRxLine: (encounterId, lineId, patch) => {
+      const current = get().rx(encounterId)
+      if (current.status === 'signed') return
+      const edits = current.edits ?? {}
+      const edit = { ...edits[lineId], ...patch }
+      set({ prescriptions: { ...get().prescriptions, [encounterId]: { ...current, edits: { ...edits, [lineId]: edit } } } })
+      const line = (current.added ?? []).find((l) => l.id === lineId)
+      if (!line || lineId.startsWith('pending:')) return
+      // Typing in the dose field edits on every key: the save waits until typing pauses.
+      window.clearTimeout(saveTimers.get(lineId))
+      saveTimers.set(lineId, window.setTimeout(() => saveLine(encounterId, lineId), 600))
+    },
+
+    removeRxLine: (encounterId, lineId) => {
+      const current = get().rx(encounterId)
+      if (current.status === 'signed') return
+      set({ prescriptions: { ...get().prescriptions, [encounterId]: { ...current, removedLines: [...current.removedLines, lineId] } } })
+    },
+
+    substitute: (encounterId, lineId, drug) => {
+      const current = get().rx(encounterId)
+      if (current.status === 'signed') return
+      set({ prescriptions: { ...get().prescriptions, [encounterId]: { ...current, substitutions: { ...current.substitutions, [lineId]: drug } } } })
+    },
+
+    overrideHardStop: ({ encounterId, lineId, reason, reasonText, prescriber, coSigner, auditEvent }) => {
+      const current = get().rx(encounterId)
+      const override: RxOverride = { lineId, reason, reasonText, prescriber, coSigner, at: new Date().toISOString(), auditEvent }
+      set({ prescriptions: { ...get().prescriptions, [encounterId]: { ...current, override, overrides: [...(current.overrides ?? []), override] } } })
+      // TODO(gap): the contract takes one reason per alert; the second clinician's signature stays on the screen.
+      const open = (get().rxServer[lineId]?.alerts ?? []).filter((a) => a.overrideRequired && !a.override)
+      onLine(lineId, async () => {
+        for (const a of open) await overrideAlert(a.id, { reason: reasonText ? `${reason}: ${reasonText}` : reason })
+        const res = await getPrescription(lineId)
+        set({ rxServer: { ...get().rxServer, [lineId]: { ...get().rxServer[lineId], etag: etagOf(res) ?? undefined, alerts: (res.data as Prescription).alerts } } })
+        touchRecordOf(lineId)
+      }).catch((error: unknown) => toastProblem(error, 'The override was not recorded'))
+    },
+
+    signRx: ({ encounterId, by, registrationNo }) => {
+      const current = get().rx(encounterId)
+      if (current.status === 'signed') return Promise.resolve(false)
+      const ids = (current.added ?? []).map((l) => l.id).filter((id) => !current.removedLines.includes(id) && !id.startsWith('pending:'))
+      set({ prescriptions: { ...get().prescriptions, [encounterId]: { ...current, status: 'signed', signedBy: by, registrationNo, signedAt: new Date().toISOString() } } })
+      // A save still waiting for typing to pause goes first, so the signed version is the one on screen.
+      for (const id of ids) {
+        if (saveTimers.has(id)) {
+          window.clearTimeout(saveTimers.get(id))
+          saveTimers.delete(id)
+          saveLine(encounterId, id)
+        }
+      }
+      // One prescription per drug: each is signed and sent on its own.
+      return (async () => {
+        for (const id of ids) {
+          await onLine(id, async () => {
+            const res = await signAndSendPrescription(id, { 'If-Match': get().rxServer[id]?.etag ?? '', 'Idempotency-Key': newIdempotencyKey() })
+            set({ rxServer: { ...get().rxServer, [id]: { ...get().rxServer[id], etag: etagOf(res) ?? undefined } } })
+          })
+        }
+        return true
+      })().catch((error: unknown) => {
+        set({ prescriptions: { ...get().prescriptions, [encounterId]: { ...get().rx(encounterId), status: 'draft', signedBy: undefined, registrationNo: undefined, signedAt: undefined } } })
+        const fields = error instanceof ApiError ? (error.problem as { errors?: { pointer?: string; code?: string }[] }).errors : undefined
+        const copy = error instanceof ApiError ? problemCopy(error.problem) : null
+        useUI.getState().toast({
+          tone: 'critical',
+          title: 'The prescription was not signed',
+          detail: [copy?.message, fields?.map((f) => `${f.pointer ?? ''} ${f.code ?? ''}`.trim()).join('; ')].filter(Boolean).join(' '),
+        })
+        return false
+      })
+    },
+
+    confirmProblem: (problemId, by, at) => set({ problemConfirmations: { ...get().problemConfirmations, [problemId]: { by, at } } }),
+    confirmProblemList: (encounterId, codes, by, at) => set({ problemListConfirmed: { ...get().problemListConfirmed, [encounterId]: { by, at, codes } } }),
+
+    note: (encounterId) => {
+      read(`note:${encounterId}`, () => load(encounterId))
+      return get().notes[encounterId] ?? blank(encounterId)
+    },
+
+    setSectionText: (encounterId, key, text, provenance = 'typed') => {
+      const current = get().note(encounterId)
+      if (current.status !== 'draft') return
+      patch(encounterId, { text: { ...current.text, [key]: text }, provenance: { ...current.provenance, [key]: provenance } })
+    },
+
+    // TODO(gap): AI drafting is not in the demo; nothing is drafted.
+    applyScribeDraft: () => [],
+
+    setNoteCode: (encounterId, code) => patch(encounterId, { code }),
+
+    saveDraft: (encounterId, how = 'manual') => {
+      if (get().note(encounterId).status !== 'draft') return
+      enqueue(encounterId, () => flush(encounterId))
+        .then(() => patch(encounterId, { savedHow: how }))
+        .catch(async (error: unknown) => {
+          if (error instanceof ApiError && error.status === 412) {
+            await reload(encounterId)
+            useUI.getState().toast({ tone: 'caution', title: 'The note changed elsewhere', detail: 'The saved version is shown. Your unsaved words were not kept.' })
+          } else if (how === 'manual') toastProblem(error, 'The draft could not be saved')
+        })
+    },
+
+    signNote: ({ encounterId }) => {
+      let signed: NoteStatus = 'draft'
+      return enqueue(encounterId, async () => {
+        await flush(encounterId)
+        const server = get().server[encounterId]
+        const res = await signNoteApi(server.noteId!, { 'If-Match': server.etag ?? '' })
+        const n = res.data as Note
+        set({ notes: { ...get().notes, [encounterId]: fromNote(encounterId, n, get().notes[encounterId]) } })
+        setServer(encounterId, { etag: etagOf(res) ?? undefined })
+        signed = get().notes[encounterId].status
+      }).then(
+        // What the server made of it: signed, or waiting for the co-signer its rule names.
+        () => signed,
+        (error: unknown) => {
+          toastProblem(error, 'The note was not signed')
+          return null
+        },
+      )
+    },
+
+    addendum: ({ encounterId, body }) => {
+      enqueue(encounterId, async () => {
+        const server = get().server[encounterId]
+        const res = await addNoteAddendum(server.noteId!, { text: body }, { 'If-Match': server.etag ?? '', 'Idempotency-Key': newIdempotencyKey() })
+        setServer(encounterId, { etag: etagOf(res) ?? undefined })
+        await reload(encounterId)
+      }).catch((error: unknown) => toastProblem(error, 'The addendum was not added'))
+    },
+  }
+})

@@ -17,16 +17,16 @@ import { useParams } from 'react-router-dom'
 
 import { CODE_SUGGESTIONS } from '@/data/clinical'
 import { NOW, formatTime } from '@/data/format'
-import { DIAGNOSES, patient } from '@/data/kit'
+import { DIAGNOSES, patient } from '../../../shri-health/kit'
 import { useAudit } from '@/store/audit'
-import { useClinical } from '@/store/clinical'
+import { useClinical } from '../../../shri-health/clinical'
 import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
 
 import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
-import { encounterLabel, maybeEncounter } from '../logic/encounter'
-import { useProblemsFor } from '../logic/record'
+import { encounterLabel, maybeEncounter } from '../../../shri-health/encounter'
+import { useProblemsFor } from '../../../shri-health/record'
 import { FieldChip, SuggestionCard } from '../ui/ai'
 import { Alert } from '../ui/Alert'
 import { Why } from '../ui/Disclosure'
@@ -54,14 +54,14 @@ function Problems({ encounterId }: { encounterId: string }) {
   const listConfirmed = useClinical((s) => s.problemListConfirmed[enc.id])
   const confirmProblemList = useClinical((s) => s.confirmProblemList)
 
-  const problems = useProblemsFor(p.id)
+  const problems = useProblemsFor(enc.id)
   const flagged = problems.filter((pr) => pr.consistencyFlag)
   const confirmed = problems.filter((pr) => confirmations[pr.id] !== undefined)
   const confirm = (problemId: string) => confirmProblem(problemId, me.name, NOW.toISOString())
 
   function add(d: { label: string; icd10: string }) {
     // One entry per code: a code the list already holds, seeded or added, adds nothing.
-    if (problems.some((pr) => pr.icd10 === d.icd10) || !addProblem(p.id, d, me.name, NOW.toISOString())) {
+    if (problems.some((pr) => pr.icd10 === d.icd10) || !addProblem(enc.id, d, me.name, NOW.toISOString())) {
       toast({ tone: 'info', title: `${d.label} is already on the list`, detail: `Coded ${d.icd10}` })
       return
     }

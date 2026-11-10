@@ -1,17 +1,28 @@
 // SHRI_HEALTH data layer for the patient record: past consultation notes and the patient's
-// appointments, read once through Suspense.
+// appointments, read once through Suspense; and `useProblemsFor`, the encounter's diagnoses
+// (GET /encounters/{id}), read once through Suspense, then from the store.
 import type { Patient } from '@/data/kit'
 import { pastNotesFor as mockPastNotesFor, type PastNote } from '@/data/record'
+import type { AddedProblem } from '@/store/clinical'
 
 import { type RecordSection } from '../src/shri/logic/record'
 import { appointmentsOf as mockAppointmentsOf, isActive, nextOf as mockNextOf, type ShriAppointment, type ShriStatus } from '../src/shri/logic/schedule'
 
+import { useClinical } from './clinical'
 import { encounterOfToday } from './opd'
 import { clinicDate, clinicNow } from './format'
 import { read } from './resource'
 import { getNote, listEncounterNotes, listPatientEncounters } from '../../src/api/generated/endpoints/encounters/encounters'
 import { listAppointments } from '../../src/api/generated/endpoints/scheduling/scheduling'
 import type { AppointmentSummary } from '../../src/api/generated/model'
+
+const NONE: AddedProblem[] = []
+
+/** The encounter's diagnoses (the screen passed the patient; diagnoses belong to the visit). */
+export function useProblemsFor(encounterId: string): AddedProblem[] {
+  read(`diagnoses:${encounterId}`, () => useClinical.getState().loadDiagnoses(encounterId))
+  return useClinical((s) => s.diagnoses[encounterId]) ?? NONE
+}
 
 /**
  * The record's address with the patient's opaque ID. The mock's recordPath put the UHID in the
