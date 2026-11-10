@@ -156,6 +156,13 @@ export interface PatientTimeline {
 function visitOutcome(status: string): { status: string; statusLabel: string } {
   if (status === 'Completed') return { status: 'Completed', statusLabel: 'Completed' }
   if (status === 'Cancelled') return { status: 'Cancelled', statusLabel: 'Cancelled' }
+  // SHRI_HEALTH: U.S. wording for a past visit that didn't finish (the tone stays Incomplete's):
+  // booked and never checked in is Missed; a recorded no-show is No-show; checked in but never
+  // checked out is Not checked out.
+  if (REAL_API) {
+    const label = status === 'Confirmed' ? 'Missed' : status === 'No-show' ? 'No-show' : status === 'Checked-in' ? 'Not checked out' : 'Incomplete'
+    return { status: 'Incomplete', statusLabel: label }
+  }
   return { status: 'Incomplete', statusLabel: 'Incomplete' }
 }
 

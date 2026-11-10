@@ -4,7 +4,7 @@ import { Button } from '../ui/Button'
 import { useStoreValue } from '../../hooks/useStore'
 import { useToast } from '../../hooks/useToast'
 import { checkInAppointment, undoCheckIn } from '../../domain/actions'
-import { checkInOnServer, isServerAppointment, loadAppointments, undoCheckInOnServer } from '../../../shri-health/scheduling'
+import { checkInOnServer, isServerAppointment, loadAppointments, serverQueueStatus, undoCheckInOnServer } from '../../../shri-health/scheduling'
 import { ApiError, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
 import { todayKey } from '../../domain/time'
 import type { Appointment } from '../../types/appointment'
@@ -79,7 +79,9 @@ export function CheckInToggle({
     )
   }
 
-  if (appointment.status === 'Checked-in' && tokenStatus === 'Waiting') {
+  // A server booking is "Waiting" by its server visit status, whichever desk or tab checked it in (gap 73).
+  const queueStatus = server ? serverQueueStatus(appointment) : appointment.status === 'Checked-in' ? tokenStatus : null
+  if (queueStatus === 'Waiting') {
     return (
       <Button
         size="sm"
@@ -90,7 +92,9 @@ export function CheckInToggle({
         onClick={() =>
           void run(
             () => {
-              undoCheckIn(appointment.appointmentId)
+              // Checked in on another page there is no local visit to take back: read the day again instead.
+              if (appointment.visitId) undoCheckIn(appointment.appointmentId)
+              else void loadAppointments(todayKey(), 1).catch(() => undefined)
               return patientName ? `${patientName} · back to "to check in"` : 'Back to "to check in"'
             },
             'Check-in undone',

@@ -18,6 +18,7 @@ function usDate(key: string): string {
   return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(Date.UTC(y, m - 1, d))
 }
 import { printBill } from '../../utils/printBill'
+import { isServerAppointment, serverQueueStatus } from '../../../shri-health/scheduling'
 import type { PatientTimeline as Timeline, TimelineKind, UpcomingItem } from '../../domain/patientSelectors'
 import type { BillDisplayStatus } from '../../types/payment'
 
@@ -160,6 +161,8 @@ function UpcomingRow({
   }
 
   const { appointment, bill, token } = item
+  // Checked in: where the patient is now. A server booking's comes from the server (gap 73).
+  const queueStatus = isServerAppointment(appointment.appointmentId) ? serverQueueStatus(appointment) : appointment.status === 'Checked-in' && token ? token.status : null
   const isToday = appointment.date === today
   const unpaid = (appointment.status === 'Payment Pending' || appointment.status === 'Scheduled') && bill && bill.balance > 0
   const tele = appointment.mode === 'Teleconsult'
@@ -186,8 +189,9 @@ function UpcomingRow({
         </p>
       </div>
       {/* Checked in: where the patient is in the queue — Waiting, Called, In consultation. */}
-      {appointment.status === 'Checked-in' && token ? (
-        <Badge status={token.status}>{token.status}</Badge>
+      {/* SHRI_HEALTH: a server booking's place comes from the server, so every desk and tab shows the same. */}
+      {queueStatus ? (
+        <Badge status={queueStatus}>{queueStatus}</Badge>
       ) : (
         <Badge status={appointment.status}>
           {appointmentStatusLabel(appointment.status)}

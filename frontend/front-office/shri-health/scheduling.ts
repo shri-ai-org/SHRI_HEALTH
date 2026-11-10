@@ -48,6 +48,7 @@ import { setClinicTimeZone, slotLabel, todayKey } from '../src/domain/time'
 import { formatDateKey } from '../src/utils/dates'
 import type { Appointment, AppointmentStatus, ConsultMode, UnavailableParty } from '../src/types/appointment'
 import type { Provider } from '../src/types/doctor'
+import type { QueueTokenStatus } from '../src/types/queue'
 
 const STATUS_FROM_API: Record<string, AppointmentStatus> = {
   booked: 'Confirmed',
@@ -385,6 +386,24 @@ export async function loadRecentPatients(): Promise<string[]> {
   const ids = [...new Set([...items].sort((a, b) => (a.startAt < b.startAt ? 1 : -1)).map((a) => a.patient.id))].slice(0, 50)
   await loadCandidates(ids)
   return ids
+}
+
+/**
+ * Where a checked-in server booking is in the visit, from the server's visit status (not from a
+ * queue token, which exists only for a check-in made on this page): checked in or arrived is
+ * Waiting, roomed or with the provider is In consultation, checked out is Completed.
+ */
+export function serverQueueStatus(appointment: Appointment): QueueTokenStatus | null {
+  if (appointment.status !== 'Checked-in') return null
+  switch (appointment.serverVisitStatus) {
+    case 'roomed':
+    case 'with-provider':
+      return 'In consultation'
+    case 'checked-out':
+      return 'Completed'
+    default:
+      return 'Waiting'
+  }
 }
 
 /** Is this booking on the server (an opaque UUID, not one of Care Entry's own `apt-…` ids)? */
