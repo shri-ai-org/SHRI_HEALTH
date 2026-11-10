@@ -33,6 +33,7 @@ from app.db.models.admin.ai import (
 from app.db.models.admin.core import Tenant
 from app.db.models.enums import AIDecision, AIFeature, AIRequestStatus
 
+from .budget import Usage
 from .schemas import (
     NOTE_SECTION,
     AiGeneratedBy,
@@ -86,7 +87,7 @@ class RequestRecord:
     status: AIRequestStatus
     pipeline_version: str
     model_name: str
-    prompt_template_id: UUID
+    prompt_template_id: UUID | None
     input_sha256: str
     patient_id: UUID | None
     encounter_id: UUID | None
@@ -146,6 +147,8 @@ class AIRepository(Protocol):
     async def set_clinic(self, db: AsyncSession, enabled: bool) -> None: ...
 
     async def patient_context(self, db: AsyncSession, patient_id: UUID) -> str | None: ...
+
+    async def month_usage(self, db: AsyncSession) -> list[Usage]: ...
 
 
 def _prompt(row: PromptTemplate) -> PromptRef:
@@ -302,6 +305,13 @@ class SqlAIRepository:
         return " ".join(p for p in parts if p) if (age is not None or sex) else None
 
 
+    async def month_usage(self, db: AsyncSession) -> list[Usage]:
+        """This calendar month's (UTC) recorded tokens, per model, for the budget guard. RLS
+        shows the clinic its own requests only."""
+        rows = (await db.execute(_MONTH_USAGE)).mappings().all()
+        return [Usage(r["model_name"], int(r["tokens_in"]), int(r["tokens_out"])) for r in rows]
+
+
 def _age(born: date) -> int:
     today = datetime.now(UTC).date()
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
@@ -337,6 +347,14 @@ _TENANT_LOCKED = text("SELECT ai_enabled, updated_at FROM admin.tenant FOR UPDAT
 # switch's value, which is what a second admin's PUT must not overwrite unseen.
 _SET_CLINIC = text("UPDATE admin.tenant SET ai_enabled = :enabled")
 _PATIENT = text("SELECT birth_date, gender FROM clinical.patient WHERE id = :id")
+_MONTH_USAGE = text("""
+SELECT model_name, coalesce(sum(input_tokens), 0) AS tokens_in,
+       coalesce(sum(output_tokens), 0) AS tokens_out
+FROM admin.ai_request
+WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+  AND model_name IS NOT NULL
+GROUP BY model_name
+""")
 
 
 def _view(r: Any) -> AiSuggestion:

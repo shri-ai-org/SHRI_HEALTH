@@ -28,13 +28,19 @@ from app.core import access as core_access
 from app.core import audit as core_audit
 from app.core.deps import CurrentUser, require, tenant_db
 from app.core.long_running import accepted
+from app.modules.encounters import service as encounters_service
 from app.modules.encounters.ai_drafts import EncounterNoteDrafts
 from app.modules.encounters.repository import EncounterHead, SqlEncounterRepository
 from app.modules.encounters.service import readable
 from app.modules.files.crypto import FileCrypto, file_crypto
 from app.modules.files.storage import FileStore, file_store
+from app.modules.history import service as history_service
+from app.modules.history.repository import SqlAllergyRepository
+from app.modules.medications import service as medications_service
+from app.modules.medications.repository import SqlMedicationRepository
 from app.modules.practice_setup.repository import SqlSetupRepository
 
+from . import chart_context as chart_lines
 from . import drafts as rules
 from . import settings as ai_settings
 from .config import configured_model
@@ -59,8 +65,13 @@ def repository() -> AIRepository:
     return SqlAIRepository()
 
 
-def model() -> ModelClient:
-    return configured_model()
+def model(request: Request) -> ModelClient:
+    """The configured model, with core's settings: the Claude API key from OpenBao
+    (``claude_api_key``, once core has it) and the environment the API runs in."""
+    settings = request.app.state.settings
+    secret = getattr(settings, "claude_api_key", None)
+    return configured_model(api_key=secret.get_secret_value() if secret else None,
+                            environment=getattr(settings, "environment", None))
 
 
 def note_drafts() -> rules.Drafts:
@@ -109,6 +120,37 @@ def encounters() -> rules.Encounters:
     return _readable
 
 
+def chart_reader(check: Annotated[rules.ChartCheck, Depends(chart_check)]
+                 ) -> chart_lines.ChartReader:
+    """What a draft may know of the chart, read through each module's own service as the
+    clinician (chart_context.py): a part is read only with its read permission."""
+    async def read(db: AsyncSession, user: CurrentUser, patient_id: UUID, encounter_id: UUID
+                   ) -> chart_lines.ChartContext:
+        allergies: tuple[list[str], list[Any]] = ([], [])
+        medications: tuple[list[str], list[Any]] = ([], [])
+        diagnoses: tuple[list[str], list[Any]] = ([], [])
+        if user.can("allergies:read"):
+            found, _ = await history_service.list_allergies(
+                db, SqlAllergyRepository(), check, user, patient_id,
+                include_entered_in_error=False, limit=chart_lines.LIMIT, cursor=None)
+            allergies = chart_lines.allergy_lines(found)
+        if user.can("medications:read"):
+            listed = await medications_service.list_medications(
+                db, SqlMedicationRepository(), check, user, patient_id, status="active",
+                limit=chart_lines.LIMIT, cursor=None)
+            medications = chart_lines.medication_lines(listed.items)
+        if user.can("encounters:read"):
+            visit = await encounters_service.get(db, SqlEncounterRepository(), check, user,
+                                                 encounter_id)
+            diagnoses = chart_lines.diagnosis_lines(visit.value.diagnoses)
+        return chart_lines.ChartContext(
+            allergies=tuple(allergies[0]), medications=tuple(medications[0]),
+            diagnoses=tuple(diagnoses[0]),
+            sources=tuple(allergies[1] + medications[1] + diagnoses[1]))
+
+    return read
+
+
 DB = Annotated[AsyncSession, Depends(tenant_db)]
 Repo = Annotated[AIRepository, Depends(repository)]
 Model = Annotated[ModelClient, Depends(model)]
@@ -118,6 +160,7 @@ Check = Annotated[rules.ChartCheck, Depends(chart_check)]
 Audit = Annotated[Any, Depends(audit_patients)]
 Templates = Annotated[rules.Template, Depends(template_reader)]
 Readable = Annotated[rules.Encounters, Depends(encounters)]
+Chart = Annotated[chart_lines.ChartReader, Depends(chart_reader)]
 IfMatch = Annotated[str | None, Header(alias="If-Match", max_length=128)]
 
 
@@ -137,11 +180,12 @@ async def create_note_draft(
     user: Annotated[CurrentUser, Depends(require("note-drafts:create"))],
     body: NoteDraftCreate, request: Request, db: DB, repo: Repo, ai_model: Model,
     drafts: Drafts, texts: Texts, check: Check, audit: Audit, templates: Templates,
+    chart: Chart,
 ) -> JSONResponse:
     """Idempotency-Key is optional (x-idempotency: supported): core claims and replays it."""
     gateway = Gateway(repo=repo, model=ai_model, drafts=drafts)
     operation = await rules.create_note_draft(db, gateway, drafts, texts, check, templates,
-                                              user, body, _named(request, audit))
+                                              chart, user, body, _named(request, audit))
     return accepted(operation)
 
 

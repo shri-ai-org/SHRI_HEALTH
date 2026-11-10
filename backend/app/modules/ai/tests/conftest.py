@@ -27,6 +27,7 @@ from app.main import create_app
 from app.modules.files import crypto, storage
 from app.modules.scheduling.tests.conftest import practice, users  # noqa: F401
 
+from .stub_claude_server import StubClaudeServer
 from .stub_model_server import StubModelServer
 
 #: A fixed data key for the tests' file encryption (never a real key).
@@ -87,8 +88,26 @@ def model_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[StubModelServer]:
     environment variables, as it would find the GPU server."""
     server = StubModelServer()
     server.start()
+    monkeypatch.setenv("SHRI_AI_PROVIDER", "openai-compatible")
     monkeypatch.setenv("SHRI_AI_MODEL_URL", server.url)
     monkeypatch.setenv("SHRI_AI_MODEL_NAME", server.model)
+    try:
+        yield server
+    finally:
+        server.stop()
+
+
+@pytest.fixture
+def claude_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[StubClaudeServer]:
+    """A local stand-in for the Claude API; the gateway reaches it through the official SDK,
+    with ``ai_provider=claude`` and a placeholder key (never a real one)."""
+    server = StubClaudeServer()
+    server.start()
+    monkeypatch.setenv("SHRI_AI_PROVIDER", "claude")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-a-real-key")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", server.url)
+    monkeypatch.delenv("SHRI_AI_MODEL", raising=False)
+    monkeypatch.delenv("SHRI_AI_MONTHLY_BUDGET_USD", raising=False)
     try:
         yield server
     finally:
