@@ -13,6 +13,7 @@ The development stack (`infra/compose/docker-compose.yml`) with the overlay `doc
 | Keycloak | Production mode (`start`), its own `keycloak` database and role; the admin console only on `127.0.0.1:SHRI_KC_ADMIN_PORT` |
 | OpenBao | A real server (integrated storage), sealed at every start; `deploy.sh` unseals it and sets up Transit |
 | PostgreSQL, SeaweedFS, ClamAV | As in development; no port published |
+| Egress proxy | **The API and the worker have no route to the internet** (the internal `backend` network). Their one way out is this Nginx stream proxy (`egress/nginx.conf`), and only to `api.anthropic.com` over HTTPS: it passes the connection on by its TLS name without decrypting it, so the API checks Anthropic's real certificate; any other name is refused. Its log shows each connection (time, name, bytes), never content. A real partner is added to its list when chosen. The code load (`deploy.sh reset`) runs as the `code-loader` service, which has internet |
 | Simulated payer and pharmacy | Only with `SHRI_DEMO=true`; refused when `SHRI_ENVIRONMENT=production` (by `deploy.sh` and by the API's settings) |
 
 ## Host setup (once)
