@@ -25,6 +25,7 @@ import { monthSlide } from '../lib/motion'
 import { useShri } from '../state/store'
 import { useMediaQuery } from '../ui/hooks'
 import { clinicNow } from '../../../shri-health/format'
+import { isoDay, useProviderWeek } from '../../../shri-health/myday'
 import { EmptyState } from '../ui/EmptyState'
 import { Card, Icon, Pill, RoundButton } from '../ui/primitives'
 
@@ -57,15 +58,17 @@ function weekTitle(week: CalendarDay[]): string {
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 /**
- * With the API: this week on the clinic's clock, Monday first, today marked, and no load, critical
- * or blocked markers. The doctor's own bookings need their provider ID on GET /me (#221); working
- * hours and leave need the provider schedules, which MD can't read yet (gap 63).
+ * With the API: this week on the clinic's clock, Monday first, today marked, and under each day the
+ * number of patients booked with the signed-in provider (GET /me's practitionerId, #221). Working
+ * hours, leave and blocks need the provider schedules, which MD can't read yet (gap 63).
  */
 function ApiWeek({ className }: { className?: string }) {
   const today = clinicNow()
   const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7))
   const days = Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i))
   const isToday = (d: Date) => d.toDateString() === today.toDateString()
+  const week = useProviderWeek(monday)
+  const booked = (d: Date) => (week.status === 'done' ? (week.value.get(isoDay(d)) ?? 0) : null)
   return (
     <Card className={cn('relative max-[360px]:-mx-[16px] max-[360px]:rounded-none', className)} title={format(today, 'MMMM yyyy')} titleSize="sm">
       <div className="grid grid-cols-7 gap-[3px] pb-[4px] max-sm:-mx-[18px] max-[360px]:gap-x-0" aria-hidden="true">
@@ -77,7 +80,12 @@ function ApiWeek({ className }: { className?: string }) {
       </div>
       <ol aria-label={`Week of ${format(monday, 'MMMM d, yyyy')}`} className="grid grid-cols-7 gap-[3px] px-[4px] py-[4px] max-[360px]:gap-x-0">
         {days.map((d) => (
-          <li key={d.toISOString()} aria-current={isToday(d) ? 'date' : undefined} aria-label={format(d, 'EEEE, MMMM d')} className="flex h-[56px] flex-col items-center justify-center rounded-[14px]">
+          <li
+            key={d.toISOString()}
+            aria-current={isToday(d) ? 'date' : undefined}
+            aria-label={`${format(d, 'EEEE, MMMM d')}${booked(d) === null ? '' : `, ${booked(d)} booked`}`}
+            className="flex h-[56px] flex-col items-center justify-center gap-[2px] rounded-[14px]"
+          >
             <span
               className={cn(
                 'inline-flex size-[30px] items-center justify-center rounded-full text-[13px]/none tabular-nums',
@@ -86,10 +94,15 @@ function ApiWeek({ className }: { className?: string }) {
             >
               {d.getDate()}
             </span>
+            <span aria-hidden="true" className="h-[14px] text-[11px]/[14px] tabular-nums text-sh-text-3">
+              {booked(d) ? booked(d) : ''}
+            </span>
           </li>
         ))}
       </ol>
-      <EmptyState compact icon={CalendarDays} why="Not available yet: your bookings show here once your sign-in is linked to your provider record." />
+      {week.status === 'not-a-provider' && <EmptyState compact icon={CalendarDays} why="Your sign-in isn't linked to a provider, so there are no bookings of your own to show." />}
+      {week.status === 'failed' && <EmptyState compact icon={CalendarDays} why="Your week could not be loaded. Reload the page to try again." />}
+      {week.status === 'done' && <p className="px-[4px] pt-[4px] text-[12px] text-sh-text-3">Numbers are the patients booked with you each day.</p>}
     </Card>
   )
 }
