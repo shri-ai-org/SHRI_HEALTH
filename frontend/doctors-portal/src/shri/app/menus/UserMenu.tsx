@@ -13,6 +13,8 @@ import { landingFor } from '../landing'
 
 import { Menu, MenuHeader, MenuRow } from './Menu'
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 /**
  * §6.7 — who is working, "Sign in as" over the old build's seven personas and
  * the ◆ AI fabric switch. There is no sign-out: the portal has no sign-in. Switching persona is the old
@@ -52,11 +54,15 @@ export function UserMenu() {
       <div className="px-[10px] pb-[8px] pt-[6px]">
         <div className="text-[15px] font-semibold text-sh-text">{me.name}</div>
         <div className="text-[12px] text-sh-text-3">{me.personaLabel}</div>
-        <div className="mt-[2px] text-[12px] tabular-nums text-sh-text-3">
-          {me.identifierKind} {me.identifier}
-        </div>
-        {note && <p className="mt-[8px] rounded-[10px] bg-sh-warn-bg px-[8px] py-[4px] text-[12px] font-medium text-sh-warn-fg">{note}</p>}
+        {/* SHRI_HEALTH: the HPR number and the sample personas are India's sample data; hidden with the API. */}
+        {REAL_API ? null : (
+          <div className="mt-[2px] text-[12px] tabular-nums text-sh-text-3">
+            {me.identifierKind} {me.identifier}
+          </div>
+        )}
+        {note && !REAL_API && <p className="mt-[8px] rounded-[10px] bg-sh-warn-bg px-[8px] py-[4px] text-[12px] font-medium text-sh-warn-fg">{note}</p>}
       </div>
+      {REAL_API ? null : (
       <div className="border-t border-sh-line pt-[6px]">
         <MenuHeader>Sign in as — the rail and the actions change</MenuHeader>
         {PERSONA_LIST.map((p) => (
@@ -71,6 +77,7 @@ export function UserMenu() {
           </MenuRow>
         ))}
       </div>
+      )}
       <div className="mt-[4px] border-t border-sh-line pt-[8px]">
         <div className="flex items-center gap-[12px] px-[10px] py-[6px]">
           <span className="min-w-0 flex-1">

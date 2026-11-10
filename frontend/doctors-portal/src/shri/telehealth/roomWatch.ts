@@ -38,7 +38,8 @@ async function roomSize(room: string): Promise<number | null> {
 /** Asked by one tab per browser (leader.ts); the others share the waiting list it keeps. */
 export function useRoomWatch(leader: boolean) {
   useEffect(() => {
-    if (!leader || isPublicJitsi()) return
+    // SHRI_HEALTH: the sample visits' rooms; with the API there is no telehealth yet, so nothing is asked of Jitsi.
+    if (!leader || isPublicJitsi() || (typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__)) return
     let alive = true
     let busy = false
     const tick = async () => {

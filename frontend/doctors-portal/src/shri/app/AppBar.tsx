@@ -25,6 +25,8 @@ import { NotificationsMenu } from './menus/NotificationsMenu'
 import { useNotices } from './menus/useNotices'
 import { UserMenu } from './menus/UserMenu'
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 export function AppBar() {
   const toggleRail = useShri((s) => s.toggleRail)
   const railOpen = useShri((s) => s.railOpen)
@@ -67,6 +69,9 @@ export function AppBar() {
         className="max-sm:size-[44px] max-[360px]:hidden"
       />
 
+      {/* SHRI_HEALTH: the notifications are sample data and the languages are India's: hidden with the API. */}
+      {REAL_API ? null : (
+        <>
       <div className="relative">
         <RoundButton
           icon={Bell}
@@ -108,6 +113,8 @@ export function AppBar() {
         </select>
         <Icon icon={ChevronDown} size={16} className="pointer-events-none absolute right-[12px] top-1/2 -translate-y-1/2 text-sh-chev" />
       </label>
+        </>
+      )}
 
       <div className="relative">
         <button

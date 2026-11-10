@@ -19,15 +19,15 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { maybeEncounter } from '@/data/clinical'
-import { NOW, formatElapsed, formatTime } from '@/data/format'
-import { patient } from '@/data/kit'
+import { NOW, formatElapsed, formatTime } from '../../../shri-health/format'
+import { patient } from '../../../shri-health/kit'
 import { isFollowUp } from '@/data/myday'
 import { useUI } from '@/store/ui'
 
 import { cn } from '../lib/cn'
-import { nextToCall, opdCounts, useOpdLive, type OpdRow } from '../logic/opd'
-import { consultPath, recordPath } from '../logic/record'
-import { useOpd } from '../state/opd'
+import { nextToCall, opdCounts, useOpdLive, type OpdRow } from '../../../shri-health/opd'
+import { consultPath, recordPath } from '../../../shri-health/record'
+import { useOpd } from '../../../shri-health/opd'
 import { Board, type BoardColumn } from '../ui/Board'
 import { Card, Icon, Pill, PillTag } from '../ui/primitives'
 import { Segmented } from '../ui/Segmented'
@@ -175,7 +175,8 @@ export function OpdQueuePage() {
     <MyPatientsFrame
       tab="opd"
       screenId="S-05-03"
-      sub={`${counts.booked} booked · ${counts.seen} seen · ${counts.waiting} waiting · running 6 min behind`}
+      // "running 6 min behind" is the sample's fixed text: left out with the API, which has no such figure.
+      sub={`${counts.booked} booked · ${counts.seen} seen · ${counts.waiting} waiting${typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__ ? '' : ' · running 6 min behind'}`}
       actions={
         next && (
           <Pill variant="primary" size="xl" icon={ArrowRight} onClick={() => call(next)}>
