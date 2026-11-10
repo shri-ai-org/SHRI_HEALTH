@@ -287,3 +287,41 @@ class AiFeatureSettingUpdate(Closed):
 class AiSettingsUpdate(Closed):
     clinic_enabled: bool
     features: Annotated[list[AiFeatureSettingUpdate], Field(max_length=20)] | None = None
+
+
+# ---------------------------------------------------------------------- chart summary (AI-02)
+Topic = Literal["encounters", "diagnoses", "medications", "allergies", "results",
+                "outstanding-issues"]
+
+
+class ChartSummaryCreate(Closed):
+    patient_id: UUID
+    encounter_id: UUID | None = None
+
+
+class ChartSummaryStatement(Out):
+    sequence: int
+    text: str
+    confidence: Confidence
+    source_status: SourceStatus
+    sources: list[AiSourceLink]
+
+
+class ChartSummarySection(Out):
+    topic: Topic
+    statements: list[ChartSummaryStatement]
+
+
+class ChartSummaryGap(Out):
+    topic: Topic
+    description: str
+
+
+class ChartSummary(Out):
+    id: UUID
+    patient_id: UUID
+    encounter_id: UUID | None = None
+    sections: list[ChartSummarySection]
+    missing: list[ChartSummaryGap]
+    suggestion: AiSuggestion
+    created_at: datetime

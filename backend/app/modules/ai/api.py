@@ -7,7 +7,9 @@ transcript, ``admin`` for the settings.
 
 Not mounted yet (see the module's report): createEncounterAudio and createTranscription (no
 speech service, no upload rule for ``encounter-audio`` and no server-generated file purpose for
-transcripts), createChartSummary and getChartSummary (AI-02: the delegated token is core's).
+transcripts). createChartSummary and getChartSummary (AI-02) read the chart within the
+caller's own request, through each module's service (no delegated token while AI runs inside
+the API; #255, Thulasi on #85).
 
 The pieces from other owners are FastAPI dependencies, so the tests can replace them: the model
 (config.py), the file service's store and crypto (Anand's), core's chart check and audit hook,
@@ -41,8 +43,10 @@ from app.modules.medications.repository import SqlMedicationRepository
 from app.modules.practice_setup.repository import SqlSetupRepository
 
 from . import chart_context as chart_lines
+from . import chart_summaries as summaries
 from . import drafts as rules
 from . import settings as ai_settings
+from . import summary as summary_lines
 from .config import configured_model
 from .model_client import ModelClient
 from .repository import AIRepository, SqlAIRepository
@@ -51,7 +55,10 @@ from .schemas import (
     AiSettingsUpdate,
     AiSuggestion,
     AiSuggestionDecision,
+    ChartSummary,
+    ChartSummaryCreate,
     NoteDraftCreate,
+    SourceRef,
     TemplateSection,
     Transcription,
 )
@@ -161,6 +168,78 @@ Audit = Annotated[Any, Depends(audit_patients)]
 Templates = Annotated[rules.Template, Depends(template_reader)]
 Readable = Annotated[rules.Encounters, Depends(encounters)]
 Chart = Annotated[chart_lines.ChartReader, Depends(chart_reader)]
+
+
+def _day(moment: Any) -> str:
+    return moment.date().isoformat() if moment is not None else "date unknown"
+
+
+def summary_reader(check: Annotated[rules.ChartCheck, Depends(chart_check)]
+                   ) -> summaries.SummaryReader:
+    """The chart a summary may use, read as the clinician through each module's own service
+    (summary.py): the recent visits and their diagnoses, active allergies and medications,
+    each only with its read permission. Results and the problem list have no service yet."""
+    async def read(db: AsyncSession, user: CurrentUser, patient_id: UUID
+                   ) -> summary_lines.SummaryChart:
+        lines: list[summary_lines.ChartLine] = []
+        unavailable = ["results (not in this build)", "the problem list (not in this build)"]
+        if user.can("encounters:read"):
+            visits, _ = await encounters_service.list_for_patient(
+                db, SqlEncounterRepository(), check, user, patient_id, status=None,
+                date_from=None, date_to=None, limit=10, cursor=None)
+            for v in visits:
+                kind = next((chart_lines.label(c) for c in v.types or []
+                             if chart_lines.label(c)), "visit")
+                with_whom = (f", with {v.rendering_provider.display_name}"
+                             if v.rendering_provider else "")
+                lines.append(summary_lines.ChartLine(
+                    f"Visit: {_day(v.started_at)}, {kind}, {v.status}{with_whom}",
+                    SourceRef("Encounter", v.id), f"Visit of {_day(v.started_at)}"))
+                found = await encounters_service.get(db, SqlEncounterRepository(), check, user,
+                                                     v.id)
+                names, sources = chart_lines.diagnosis_lines(found.value.diagnoses)
+                lines += [summary_lines.ChartLine(
+                    f"Diagnosis: {name}, at the visit of {_day(v.started_at)}", source,
+                    "Visit diagnosis") for name, source in zip(names, sources, strict=True)]
+        else:
+            unavailable.append("visits and diagnoses (no permission)")
+        if user.can("allergies:read"):
+            found_allergies, _ = await history_service.list_allergies(
+                db, SqlAllergyRepository(), check, user, patient_id,
+                include_entered_in_error=False, limit=chart_lines.LIMIT, cursor=None)
+            names, sources = chart_lines.allergy_lines(found_allergies)
+            lines += [summary_lines.ChartLine(f"Allergy: {name}", source, "Allergy")
+                      for name, source in zip(names, sources, strict=True)]
+        else:
+            unavailable.append("allergies (no permission)")
+        if user.can("medications:read"):
+            listed = await medications_service.list_medications(
+                db, SqlMedicationRepository(), check, user, patient_id, status="active",
+                limit=chart_lines.LIMIT, cursor=None)
+            names, sources = chart_lines.medication_lines(listed.items)
+            lines += [summary_lines.ChartLine(f"Medication: {name}", source, "Medication list")
+                      for name, source in zip(names, sources, strict=True)]
+        else:
+            unavailable.append("medications (no permission)")
+        return summary_lines.SummaryChart(lines=tuple(lines), unavailable=tuple(unavailable))
+
+    return read
+
+
+def visit_of(check: Annotated[rules.ChartCheck, Depends(chart_check)]) -> summaries.VisitOf:
+    """The encounter's patient and reason for visit, as the user may read it (facility, D37)."""
+    async def read(db: AsyncSession, user: CurrentUser, encounter_id: UUID
+                   ) -> tuple[UUID, str | None]:
+        found = await encounters_service.get(db, SqlEncounterRepository(), check, user,
+                                             encounter_id)
+        reasons = [chart_lines.label(r) for r in found.value.reasons or []]
+        return found.value.patient_id, "; ".join(r for r in reasons if r) or None
+
+    return read
+
+
+SummaryChartReader = Annotated[summaries.SummaryReader, Depends(summary_reader)]
+VisitReader = Annotated[summaries.VisitOf, Depends(visit_of)]
 IfMatch = Annotated[str | None, Header(alias="If-Match", max_length=128)]
 
 
@@ -187,6 +266,31 @@ async def create_note_draft(
     operation = await rules.create_note_draft(db, gateway, drafts, texts, check, templates,
                                               chart, user, body, _named(request, audit))
     return accepted(operation)
+
+
+@router.post("/ai/chart-summaries", operation_id="createChartSummary", status_code=202,
+             responses={202: {"description": "The operation (core's Operation)."}})
+async def create_chart_summary(
+    user: Annotated[CurrentUser, Depends(require("chart-summaries:create"))],
+    body: ChartSummaryCreate, request: Request, db: DB, repo: Repo, ai_model: Model,
+    check: Check, audit: Audit, visits: VisitReader, chart: SummaryChartReader,
+) -> JSONResponse:
+    """Idempotency-Key is optional (x-idempotency: supported): core claims and replays it."""
+    _audit(request, audit, [body.patient_id])
+    operation = await summaries.create(db, repo, ai_model, check, visits, chart, user, body)
+    return accepted(operation)
+
+
+@router.get("/ai/chart-summaries/{chartSummaryId}", operation_id="getChartSummary",
+            response_model=ChartSummary, response_model_exclude_none=True)
+async def get_chart_summary(
+    user: Annotated[CurrentUser, Depends(require("chart-summaries:read"))],
+    summary_id: Annotated[UUID, Path(alias="chartSummaryId")], request: Request, db: DB,
+    repo: Repo, check: Check, audit: Audit,
+) -> ChartSummary:
+    found = await summaries.get(db, repo, check, user, summary_id)
+    _audit(request, audit, [found.patient_id])
+    return found
 
 
 @router.post("/ai/suggestions/{suggestionId}/decision", operation_id="decideAiSuggestion",
