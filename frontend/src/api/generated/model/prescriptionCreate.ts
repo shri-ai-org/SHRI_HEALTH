@@ -26,7 +26,7 @@ export interface PrescriptionCreate {
   patientId: Id;
   /** The visit. */
   encounterId?: Id;
-  /** The drug, from `GET /codes?system=rxnorm`. */
+  /** The drug, from `GET /codes?system=rxnorm`. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one. */
   medication: CodeableConcept;
   /**
      * Directions.

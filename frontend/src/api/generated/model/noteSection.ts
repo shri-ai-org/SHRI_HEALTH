@@ -14,6 +14,7 @@
  *
  * OpenAPI spec version: 1.0.0-draft.1
  */
+import type { AiSuggestion } from './aiSuggestion';
 import type { Id } from './id';
 import type { NoteSectionAiDecision } from './noteSectionAiDecision';
 import type { NoteSectionEntrySource } from './noteSectionEntrySource';
@@ -51,6 +52,8 @@ export interface NoteSection {
   entrySource: NoteSectionEntrySource;
   /** The AI suggestion behind the text, for AI-drafted sections. Read-only. */
   aiSuggestionId?: Id;
-  /** The clinician's decision on the AI text (D70). The note cannot be signed while any section is `pending` (FRS §3.4, §8). Read-only; decided through the AI decision endpoint (batch 7). */
+  /** The clinician's decision on the AI text (D70). The note cannot be signed while any section is `pending` (FRS §3.4, §8). Read-only; decided through `POST /ai/suggestions/{suggestionId}/decision` (batch 7). */
   aiDecision?: NoteSectionAiDecision;
+  /** For an AI-drafted section: the AI text as drafted, its confidence band, rationale, links to the transcript segments it came from, what the model could not determine, and the decision (D70; batch 7). Read-only. */
+  aiSuggestion?: AiSuggestion;
 }

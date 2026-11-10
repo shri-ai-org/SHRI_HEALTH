@@ -1,5 +1,6 @@
 """The model behind the gateway: an interface, and a client for an OpenAI-compatible chat
-endpoint (vLLM's ``/v1/chat/completions``, on the GPU server Thulasi secures).
+endpoint (vLLM's ``/v1/chat/completions``, on the GPU server Thulasi secures). The Claude API's
+client is claude_client.py; the stand-in that calls no model is stub_model.py.
 
 Errors carry a kind and never a request or response body, so no transcript or draft text
 reaches a log, an exception message or a traceback. The tests use a stub (tests/fakes.py).
@@ -25,19 +26,30 @@ class ModelReply:
 
 
 class ModelError(Exception):
-    """The model call failed. ``kind`` only; the message never holds a body."""
+    """The model call failed. ``kind`` only; the message never holds a body. ``declined``: the
+    model answered but refused the request (a safety classifier), so there is no output."""
 
-    def __init__(self, kind: Literal["timeout", "failed"], detail: str) -> None:
+    def __init__(self, kind: Literal["timeout", "failed", "declined"], detail: str, *,
+                 prompt_tokens: int | None = None, completion_tokens: int | None = None,
+                 model: str | None = None) -> None:
         super().__init__(detail)
         self.kind = kind
+        # What a reply that was refused or cut short still used (it is billed), for the record.
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.model = model
 
 
 class ModelClient(Protocol):
     @property
     def model(self) -> str: ...
 
-    async def complete(self, messages: Sequence[Mapping[str, str]], *,
-                       max_tokens: int) -> ModelReply: ...
+    async def complete(self, messages: Sequence[Mapping[str, str]], *, max_tokens: int,
+                       schema: Mapping[str, Any] | None = None) -> ModelReply:
+        """One reply to ``messages``. ``schema`` is the JSON Schema the reply must fit; a
+        client whose server can enforce it does (the Claude API's structured outputs), and the
+        gateway checks the reply against it either way (output.prune)."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -56,8 +68,8 @@ class OpenAICompatibleClient:
     extra: Mapping[str, Any] | None = None
     transport: httpx.AsyncBaseTransport | None = None
 
-    async def complete(self, messages: Sequence[Mapping[str, str]], *,
-                       max_tokens: int) -> ModelReply:
+    async def complete(self, messages: Sequence[Mapping[str, str]], *, max_tokens: int,
+                       schema: Mapping[str, Any] | None = None) -> ModelReply:
         body: dict[str, Any] = {"model": self.model, "messages": [dict(m) for m in messages],
                                 "temperature": self.temperature, "max_tokens": max_tokens,
                                 "response_format": {"type": "json_object"},

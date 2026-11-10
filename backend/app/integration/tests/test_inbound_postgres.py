@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
+import httpx2
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -142,10 +143,10 @@ def _271(correlation: str) -> dict[str, Any]:
 
 
 def _post(client: TestClient, app: FastAPI, clinic: UUID, message: dict[str, Any],
-          partner: str = "clearinghouse", message_id: str | None = None) -> httpx.Response:
+          partner: str = "clearinghouse", message_id: str | None = None) -> httpx2.Response:
     body = json.dumps(message).encode()
     headers = sign(app.state.settings, partner, message_id or message["responseId"], clinic, body)
-    response: httpx.Response = client.post(f"/hooks/{partner}", content=body, headers=headers)
+    response = client.post(f"/hooks/{partner}", content=body, headers=headers)
     return response
 
 

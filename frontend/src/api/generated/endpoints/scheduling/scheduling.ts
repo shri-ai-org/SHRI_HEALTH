@@ -40,10 +40,12 @@ import type {
   ListBookableFacilitiesParams,
   ListBookableLocationsParams,
   ListBookableProvidersParams,
+  ListPatientAppointmentsParams,
   ListSlotsParams,
   NotFoundResponse,
   PreconditionFailedResponse,
   PreconditionRequiredResponse,
+  RecordVisitStatusHeaders,
   RescheduleAppointmentHeaders,
   RescheduleRequest,
   SlotList,
@@ -51,6 +53,7 @@ import type {
   StatusChangeRequest,
   TooManyRequestsResponse,
   UnauthorizedResponse,
+  UndoCheckInHeaders,
   UndoCheckInRequest,
   UnprocessableContentResponse,
   UpdateAppointmentHeaders
@@ -491,6 +494,88 @@ return apiFetch<updateAppointmentResponse>(getUpdateAppointmentUrl(appointmentId
 );}
 
 
+export type listPatientAppointmentsResponse200 = {
+  data: AppointmentList
+  status: 200
+}
+
+export type listPatientAppointmentsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listPatientAppointmentsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listPatientAppointmentsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listPatientAppointmentsResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listPatientAppointmentsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listPatientAppointmentsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listPatientAppointmentsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listPatientAppointmentsResponseSuccess = (listPatientAppointmentsResponse200) & {
+  headers: Headers;
+};
+export type listPatientAppointmentsResponseError = (listPatientAppointmentsResponse400 | listPatientAppointmentsResponse401 | listPatientAppointmentsResponse403 | listPatientAppointmentsResponse404 | listPatientAppointmentsResponse422 | listPatientAppointmentsResponse429 | listPatientAppointmentsResponse500) & {
+  headers: Headers;
+};
+
+export type listPatientAppointmentsResponse = (listPatientAppointmentsResponseSuccess | listPatientAppointmentsResponseError)
+
+export const getListPatientAppointmentsUrl = (patientId: Id,
+    params?: ListPatientAppointmentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/patients/${patientId}/appointments?${stringifiedParams}` : `/patients/${patientId}/appointments`
+}
+
+/**
+ * A patient's appointments, newest first, at the user's facilities only (SECURITY_MODEL §5.1; new inventory row #292, Minalini's gap on #85). `dateFrom` and `dateTo` (facility time zone, inclusive) are optional and the range has no cap: page with `cursor`. Cancelled and no-show appointments are included, with their status. A restricted chart needs a break-glass grant or care-team membership (D37), like every patient-scoped read: the front-desk schedule exceptions (SECURITY_MODEL §5.2) cover the day views, not a patient's history.
+ * @summary List a patient's appointments
+ */
+export const listPatientAppointments = async (patientId: Id,
+    params?: ListPatientAppointmentsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listPatientAppointmentsResponse> => {
+
+  return apiFetch<listPatientAppointmentsResponse>(getListPatientAppointmentsUrl(patientId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
 export type cancelAppointmentResponse200 = {
   data: Appointment
   status: 200
@@ -741,11 +826,12 @@ export const getRecordVisitStatusUrl = (appointmentId: Id,) => {
 }
 
 /**
- * Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment's `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out` (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names `/status`).
+ * Records `arrived`, `roomed`, `with-provider` or `noshow` (inventory #57; DATA_OWNERSHIP §5.1, §5.2). Each status has its own roles, checked by the service on top of `appointments:status`: `arrived` and `noshow` FD; `roomed` MA and RN; `with-provider` MD, APP and RN. Any other role gets `403 permission-denied`, and nothing changes. `roomed` and `with-provider` change the encounter; the others the appointment. `arrived`, `roomed`, `with-provider` and `checked-out` are kept with their time in `visit_flow_event` (insert-only; a second `roomed` is allowed, A42); `noshow` is an appointment status, kept in the appointment's `_history`. Check-out is its own action, `POST /appointments/{appointmentId}/check-out` (front desk and ADM, D98); `checked-out` sent here is refused with `409 invalid-state-transition` (`errors` names `/status`).
  * @summary Record a visit step
  */
 export const recordVisitStatus = async (appointmentId: Id,
-    statusChangeRequest: StatusChangeRequest, options?: Parameters<typeof apiFetch>[1]): Promise<recordVisitStatusResponse> => {
+    statusChangeRequest: StatusChangeRequest,
+    headers?: RecordVisitStatusHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<recordVisitStatusResponse> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -765,7 +851,7 @@ return apiFetch<recordVisitStatusResponse>(getRecordVisitStatusUrl(appointmentId
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(statusChangeRequest)
   }
 );}
@@ -834,7 +920,7 @@ export const getCheckOutAppointmentUrl = (appointmentId: Id,) => {
 }
 
 /**
- * Ends the visit flow at the desk (D98): the visit step becomes `checked-out` (kept with its time in `visit_flow_event`) and the appointment `fulfilled`. Front desk and ADM only (`appointments:check-out`). Refused with `409 invalid-state-transition` while something must be settled first; `errors` names each one, so the screen can point to the step: `/followUp` (the visit's follow-up request is still `open`: book it or decline it) and `/status` (the patient is not checked in, or is already checked out; the problem carries `currentState`). An unpaid copay and an unsigned note never block check-out: the note is often signed later, and balances are P1. The encounter is closed separately (`POST /encounters/{encounterId}/close`).
+ * Ends the visit flow at the desk (D98): the visit step becomes `checked-out` (kept with its time in `visit_flow_event`) and the appointment `fulfilled`. Front desk and ADM only (`appointments:check-out`). Refused with `409 invalid-state-transition` while something must be settled first; `errors` names each one, so the screen can point to the step: `/followUp` (the visit's follow-up request is still `open`: book it or decline it) and `/status` (check-out needs the visit checked in or later, so it is refused before check-in and after check-out; the problem carries `currentState`). An unpaid copay and an unsigned note never block check-out: the note is often signed later, and balances are P1. The encounter is closed separately (`POST /encounters/{encounterId}/close`). A restricted chart needs no break-glass here (D107): the check-out is audited naming the patient, and the response carries no clinical text (a restricted patient's follow-up shows only its interval and status).
  * @summary Check the patient out
  */
 export const checkOutAppointment = async (appointmentId: Id,
@@ -1415,7 +1501,8 @@ export const getUndoCheckInUrl = (appointmentId: Id,) => {
  * @summary Undo a check-in
  */
 export const undoCheckIn = async (appointmentId: Id,
-    undoCheckInRequest: UndoCheckInRequest, options?: Parameters<typeof apiFetch>[1]): Promise<undoCheckInResponse> => {
+    undoCheckInRequest: UndoCheckInRequest,
+    headers?: UndoCheckInHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<undoCheckInResponse> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1435,7 +1522,7 @@ return apiFetch<undoCheckInResponse>(getUndoCheckInUrl(appointmentId),
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(undoCheckInRequest)
   }
 );}

@@ -62,7 +62,7 @@ export interface EligibilityCheck {
      */
   benefits?: EligibilityBenefit[];
   /**
-     * X12 AAA reject reason code, or `timeout`, when `error`.
+     * When `error`: the X12 AAA reject reason code; `timeout` (no answer from the clearinghouse); or `not-sent` (an automatic check at booking, check-in or the pre-visit batch found no clearinghouse connection for the practice, so nothing was sent; the front desk can run the check by hand later).
      * @maxLength 10
      */
   errorCode?: string;

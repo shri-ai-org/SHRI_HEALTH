@@ -21,7 +21,7 @@ import type { MedicationCreateStatus } from './medicationCreateStatus';
  * Body to record a medication the patient already takes (rooming, reconciliation). Prescriptions are added by signing them, not here.
  */
 export interface MedicationCreate {
-  /** The drug: RxNorm from `GET /codes?system=rxnorm`, or text. */
+  /** The drug: RxNorm from `GET /codes?system=rxnorm`, or text. Until the coding child tables land (after the demo), the server stores one coding per concept and answers `422` for more than one. */
   medication: CodeableConcept;
   /**
      * How the patient takes it.

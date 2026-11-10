@@ -362,7 +362,7 @@ export const getCreatePrescriptionUrl = () => {
 }
 
 /**
- * Starts a draft (inventory #120). Drug search is `GET /codes?system=rxnorm`, over RxNorm Current Prescribable Content (D97).
+ * Starts a draft (inventory #120). Drug search is `GET /codes?system=rxnorm`, over RxNorm Current Prescribable Content (D97). Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:create` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).
  * @summary Start a prescription
  */
 export const createPrescription = async (prescriptionCreate: PrescriptionCreate,
@@ -533,7 +533,7 @@ export const getUpdatePrescriptionUrl = (prescriptionId: Id,) => {
 }
 
 /**
- * Changes a draft (inventory #122). A changed draft needs a new safety check before signing. A signed prescription is locked.
+ * Changes a draft (inventory #122). A changed draft needs a new safety check before signing. A signed prescription is locked. Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:update` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).
  * @summary Edit a draft prescription
  */
 export const updatePrescription = async (prescriptionId: Id,
@@ -627,7 +627,7 @@ export const getMarkPrescriptionEnteredInErrorUrl = (prescriptionId: Id,) => {
 }
 
 /**
- * A draft written by mistake (inventory #227): entered-in-error with a reason and its Provenance; nothing is deleted (D14). A signed prescription is cancelled instead (later).
+ * A draft written by mistake (inventory #227): entered-in-error with a reason and its Provenance; nothing is deleted (D14). A signed prescription is cancelled instead (later). Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:entered-in-error` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).
  * @summary Mark a draft prescription wrong
  */
 export const markPrescriptionEnteredInError = async (prescriptionId: Id,
@@ -715,7 +715,7 @@ export const getCheckPrescriptionSafetyUrl = (prescriptionId: Id,) => {
 }
 
 /**
- * Runs the safety check on a draft (inventory #123; D97): an `allergy` alert for an active allergy to an RxNorm ingredient of the drug, a `duplicate-medication` alert for an active medication with the same ingredient. The alerts are stored on the draft. Both alerts are fixed rules in the medications service, each with its tests; no AI model produces, ranks or suppresses an alert (D99). It doesn't change the draft's version or `ETag`, so an open editor keeps its `If-Match`.
+ * Runs the safety check on a draft (inventory #123; D97): an `allergy` alert for an active allergy to an RxNorm ingredient of the drug, a `duplicate-medication` alert for an active medication with the same ingredient. The alerts are stored on the draft. Both alerts are fixed rules in the medications service, each with its tests; no AI model produces, ranks or suppresses an alert (D99). It doesn't change the draft's version or `ETag`, so an open editor keeps its `If-Match`. Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:safety-check` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).
  * @summary Check a draft for allergy and duplicate alerts
  */
 export const checkPrescriptionSafety = async (prescriptionId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<checkPrescriptionSafetyResponse> => {
@@ -793,7 +793,7 @@ export const getOverrideAlertUrl = (alertId: Id,) => {
 }
 
 /**
- * Records why the prescriber goes ahead despite an alert (inventory #124; D97). Required before signing for a `high` alert; audited. It doesn't change the draft's version or `ETag`, so an open editor keeps its `If-Match`.
+ * Records why the prescriber goes ahead despite an alert (inventory #124; D97). Required before signing for a `high` alert; audited. It doesn't change the draft's version or `ETag`, so an open editor keeps its `If-Match`. Only MD and APP may do this in the MVP; RN may not. A user who holds `alerts:override` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).
  * @summary Override a safety alert
  */
 export const overrideAlert = async (alertId: Id,
@@ -896,7 +896,7 @@ export const getSignAndSendPrescriptionUrl = (prescriptionId: Id,) => {
 }
 
 /**
- * Signs exactly the version read (`If-Match`), locks it, writes its Provenance, adds it to the medication list and queues NewRx for the pharmacy through the outbox, all in one transaction (inventory #125; D8, D25, D97). Refused while the latest safety check is missing or older than the draft, or a `high` alert has no override. Transmission then moves through `sent` to `accepted` or `rejected` (here a simulated pharmacy). Sending always goes through the outbox (`enqueue(db, "erx", "NewRx", …)`), never straight from the request: for the demo the outbox delivers to the simulated pharmacy, and its answer comes back through `/hooks/erx` (D99).
+ * Signs exactly the version read (`If-Match`), locks it, writes its Provenance, adds it to the medication list and queues NewRx for the pharmacy through the outbox, all in one transaction (inventory #125; D8, D25, D97). Refused while the latest safety check is missing or older than the draft, or a `high` alert has no override. Transmission then moves through `sent` to `accepted` or `rejected` (here a simulated pharmacy). Sending always goes through the outbox (`enqueue(db, "erx", "NewRx", …)`), never straight from the request: for the demo the outbox delivers to the simulated pharmacy, and its answer comes back through `/hooks/erx` (D99). Only MD and APP may do this in the MVP; RN may not. A user who holds `prescriptions:sign-and-send` but has neither the MD nor the APP role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).
  * @summary Sign a prescription and send it to the pharmacy
  */
 export const signAndSendPrescription = async (prescriptionId: Id,
