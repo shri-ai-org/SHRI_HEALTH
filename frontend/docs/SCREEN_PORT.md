@@ -52,3 +52,75 @@ No backend bug, so nothing goes to Vimal from this check.
 | 73 | Fixed (2026-11-10): Visit History and the check-in toggle read a checked-in visit's place from care-entry's queue token, which exists only for a check-in made on that page; a visit checked in elsewhere (another tab or desk, or before a reload) showed a plain "Checked in" tag and no undo. With the API a server booking now takes it from the server's visit status (`serverQueueStatus`): checked in → Waiting (with the undo toggle), roomed or with the provider → In consultation, checked out → Completed | — | Profile Visit History, check-in toggle | Fixed |
 | 74 | Fixed (2026-11-10): past visits that didn't finish said "Incomplete" (care-entry's word). With the API: booked and never checked in → **Missed**; a recorded no-show → **No-show**; checked in but never checked out → **Not checked out**. Label only; the badge's tone is unchanged | — | Profile Visit History | Fixed |
 | 75 | Demo data: today's and earlier cancelled test bookings stay in Visit History. No operation removes or voids a booking (D14: no DELETE; a cancellation is a permanent record), so it can't be cleaned through the API. Options: leave them (a U.S. chart shows cancellations), or reset the demo database to Anand's seed (`python -m app.db.seed reset`, with #259's 500 synthetic patients) after a backup, which also drops the patients registered in testing | Minalini (decision) | Demo data | Proposal |
+## Connection audit (2026-11-10)
+
+Checked against the code and the running screens, not this file's older rows. **Method:** every route in `front-office/src/App.tsx` and `doctors-portal/src/atlas/registry.ts` (routed screens) was opened in Playwright on `minalini/fe4-connect-built` (`2b64977a`, local only), which contains `minalini/fe3-clinical-list` (`f082f2b0`, local only) and `minalini/fe2-front-office` (`4ee86bfa`, **pushed**, draft #261 on #243). The API was the local stack (`local/demo-stack-3`) as `fd` (front office) and `md` (doctors' portal). Every `/api/v1` response was recorded. The app shell's own calls don't count toward a screen: front office `GET /booking/facilities`, `/booking/appointment-types`, `/booking/providers`; doctors' portal `GET /me`, `/booking/facilities`.
+
+**Contract on origin/main (`5c5b8236`):** 231 operations, **138 built** in `backend/app`. Added since 5 Nov: `listPatientAppointments` (#241, #242). Already in the contract but not used by either app: `createNoteDraft`, `runEligibilityCheck`, `recordPayment`, `listPharmacies`, `cosignNote`, `removeEncounterDiagnosis`. In the contract but **not built**: `getChartSummary`/`createChartSummary` (#264, #267 open), `setPreferredPharmacy`, `listProblems`/`addProblem`, the history lists (#265 helpers open), the inbox, `createMessage`, provider/location/schedule setup, the portal, `createTranscription`. **Not in the contract at all:** orders, results, imaging reports, referrals, a co-sign worklist, care team. `generalPractitionerId` is in the contract (7 mentions).
+
+**Status:** connected = the screen's own data comes from `/api/v1`; partly = some parts real, some sample; sample = no screen calls; hidden = not in the U.S. demo (hidden or unlinked with the API). **Why not:** (a) the API is built on main, not connected yet; (b) no API yet; (c) not in the U.S. demo.
+
+### Front office
+
+| Screen | Route | Status | API calls (beyond the shell) | Branch | Why not connected |
+|---|---|---|---|---|---|
+| Home | `/` | connected | `GET /appointments` | fe2 | — (to-do card: (c)) |
+| Recent patients | `/patients` | connected | `GET /appointments`, `POST /patients/summaries` | fe2 | — |
+| Outpatients (check-in, no-show, undo) | `/patients/outpatients` | connected | `GET /appointments`, `POST /patients/summaries` (+ check-in, status, undo on action) | fe2 | — |
+| Patient profile and visit history | `/patients/:id` | connected | `GET /patients/{id}`, `GET /patients/{id}/appointments` (+ `PATCH /patients/{id}` on edit) | fe2 | age/address edit: decision (gap 57) |
+| Registration (from the Angular wizard) | `/register/new` | connected | `GET /payers` (+ `POST /patients`, coverage on submit) | fe2 | — |
+| Schedule Appointment | `?flow=schedule` | connected | `GET /slots`, `GET /appointments`, `POST /patients/summaries` (+ `POST /appointments`) | fe2 | — |
+| Reschedule | `?flow=reschedule` | connected | `GET /slots`, `GET /patients/{id}/appointments` (+ `POST …/reschedule`) | fe2 | — |
+| Check-out (follow-up, revisit, summary) | `?flow=checkout` | partly | `GET /appointments/{id}`, `GET /patients/{id}` (+ decline, summary link, check-out) | fe2 | copay: (a) `recordPayment` (needs your OK) |
+| Insurance (temporary) | `/temporary/insurance/:id` | connected | `GET /patients/{id}/coverages` | main's | eligibility: (a) `runEligibilityCheck`; not in care-entry (gap 18) |
+| Rooming (temporary) | `/temporary/rooming/:id` | connected, wrong role | `GET /encounters/{id}` → 403 as `fd` | main's | rooming is MA/RN work; FD can't read encounters |
+| Doctor directory | `/doctors` | connected | providers from the shell call | fe4 | — |
+| Doctor profile | `/doctors/:id` | connected | `GET /slots`, `GET /appointments` | fe4 | leave: (b) `createProviderSchedule` not built (Anand) |
+| Register doctor | `/doctors/register` | sample | none | — | (b) `createProvider` not built (Anand) |
+| Inpatients | `/patients/inpatients` | hidden | (redirects to the list) | — | (c) |
+| Guest pass, print, enquiry, MLC | `/services/*` | hidden | none | — | (c) India-only |
+| Billing counter, payments, receipt | `/billing`, `/payments/:id`, `…/receipt` | hidden | none | — | (c) India-only (U.S. copay: check-out row) |
+| Activity & Analytics | `/activity-analytics` | hidden | none | — | (c) not in the demo |
+| Redirects and not found | `/outpatients`, `/admissions*`, `*`, … | n/a | none | — | — |
+
+### Doctors' portal
+
+| Screen | Route | Status | API calls (beyond the shell) | Branch | Why not connected |
+|---|---|---|---|---|---|
+| My Day | `/`, `/clinician` | partly | `GET /status-board`, `GET /slots`, `GET /appointments` | fe3 | own schedule: (a) `practitionerId` on `/me` (#221); admissions/ICU/critical: (c); brief cards: (b) chart summary not built (#264, #267) |
+| AI morning brief | `/brief` | sample | `GET /status-board` only | — | (b) `getChartSummary` not built (Vimal, #267 open) |
+| OPD queue (My patients) | `/op-queue` | connected | `GET /status-board` (+ `POST …/status` on Call) | fe3 | — |
+| Consultation note (draft, sign, addendum) | `/encounter/:id/note` | connected | `GET /encounters/{id}`, `GET /encounters/{id}/notes` | fe4 | AI draft from dictation: (a) `createNoteDraft` |
+| Problems and coding (diagnoses) | `/encounter/:id/problems` | partly | `GET /encounters/{id}` (+ ICD-10 search, `addEncounterDiagnosis`) | fe4 | remove: (a) `removeEncounterDiagnosis`; problem list: (b) `listProblems` not built (Vimal) |
+| Prescription | `/encounter/:id/rx` | partly | `GET /encounters/{id}` (+ RxNorm search, `createPrescription`, safety check, sign and send) | fe4 | pharmacy choice: (a) `listPharmacies`; preferred pharmacy: (b) `setPreferredPharmacy` not built |
+| Patient instructions + follow-up | `/encounter/:id/instructions` | partly | `GET /encounters/{id}`, bookable types and providers (+ `PUT …/follow-up`) | fe4 | sending to the patient: (b) `createMessage` not built (Minalini) |
+| Templates | `/clinician/templates` | partly | `GET /note-templates` | fe4 | order sets: (b) no orders API |
+| Co-sign | `/clinician/cosign` | sample | none | — | (b) no "awaiting my co-sign" list (`cosignNote` exists; Vimal) |
+| Patient record (overview) | `/patient/:id`, `/patient/:id/record` | partly | patient, allergies, coverages, encounters, notes, `GET /patients/{id}/medications`, `/vitals` | fe3/fe4 | admissions: (c) |
+| Timeline | `/patient/:id/timeline` | connected | encounters, notes, medications, vitals | fe4 | — |
+| Consultation notes | `/patient/:id/notes` | connected | `GET /patients/{id}/encounters`, `…/notes`, `GET /notes/{id}` | fe3 | — |
+| Appointments | `/patient/:id/appointments` | connected | `GET /appointments` (31-day windows) | fe3 | — |
+| Prescriptions (list) | `/patient/:id/prescriptions` | connected | `GET /patients/{id}/medications` | fe4 | — |
+| Current condition | `/patient/:id/condition` | sample (frame only) | the chart frame's calls only | — | (b) `listProblems` not built |
+| Test results | `/patient/:id/results` | sample (frame only) | the chart frame's calls only | — | (b) no results API (Thulasi) |
+| Imaging reports | `/patient/:id/reports` | sample (frame only) | the chart frame's calls only | — | (b) no imaging/results API (Thulasi) |
+| New orders, orders, order sets, stewardship | `/encounter/:id/orders*`, `/orders/*` | sample | none | — | (b) no orders API (Thulasi) |
+| Results inbox, result detail | `/results/*` | sample | none | — | (b) no results API (Thulasi) |
+| Session templates, blocks and leave | `/schedule/*` | sample | none (`/schedule/blocks`: status board) | — | (b) `createProviderSchedule` not built (Anand) |
+| Referrals | `/referrals` | sample | none | — | (b) no referrals API |
+| Clinician assistant | `/assistant/clinician` | sample | none | — | (b) chart Q&A in #268, #269 (Vimal, open) |
+| Inpatients, cohorts | `/ip/patients`, `/patients/cohorts` | hidden | status board (shared frame) | — | (c) |
+| Inpatient note, assessment, discharge, med rec, death | `/ip/*`, `/discharge/board`, `/encounter/:id/{discharge-summary,med-rec,death}` | sample | none | — | (c) |
+| Telehealth (queue, session, tele-Rx) | `/tele/*` | sample | none | — | (c) no telehealth in the U.S. demo |
+| Stroke (19 screens), stroke assistant, AI console | `/stroke/*`, `/assistant/stroke` | sample | none | — | (c) |
+| Radiology worklist, study viewer | `/radiology/*` | sample | none | — | (c) |
+| ADR reporting | `/pharmacy/adr` | sample | none | — | (c) India pharmacovigilance |
+
+### Can connect now (a), in the order of Vimal's demo checklist on #243
+
+1. Step 3, eligibility: `runEligibilityCheck` on the insurance panel (medium; the panel is main's, not care-entry's: placement needs your OK).
+2. Step 7, diagnoses: `removeEncounterDiagnosis` with a reason (small).
+3. Step 8, note: AI draft from dictation with `createNoteDraft` (medium; #255's fields are on main).
+4. Step 9, prescribe: pharmacy choice with `listPharmacies` (small).
+5. Step 11, check-out: copay with `recordPayment` (medium; new section, needs your OK).
+6. My Day: the doctor's own schedule from `practitionerId` on `/me` (#221) (medium).
