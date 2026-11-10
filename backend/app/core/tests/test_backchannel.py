@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
+import httpx2
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -204,8 +205,8 @@ def client() -> Any:
         yield c
 
 
-def _post(client: TestClient, token: str) -> httpx.Response:
-    response: httpx.Response = client.post(
+def _post(client: TestClient, token: str) -> httpx2.Response:
+    response = client.post(
         backchannel.PATH, content=f"logout_token={token}",
         headers={"Content-Type": "application/x-www-form-urlencoded"})
     return response

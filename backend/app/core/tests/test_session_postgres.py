@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
 
 import httpx
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
@@ -131,11 +132,11 @@ def client(staff: dict[str, Any], keycloak: FakeKeycloak,
         yield c
 
 
-def _sign_in(client: TestClient, keycloak: FakeKeycloak) -> httpx.Response:
+def _sign_in(client: TestClient, keycloak: FakeKeycloak) -> httpx2.Response:
     login = client.get("/api/v1/auth/login", follow_redirects=False)
     query = {k: v[0] for k, v in parse_qs(urlparse(login.headers["location"]).query).items()}
     keycloak.nonce = query["nonce"]
-    callback: httpx.Response = client.get(
+    callback = client.get(
         f"/api/v1/auth/callback?code=c-1&state={query['state']}", follow_redirects=False)
     return callback
 

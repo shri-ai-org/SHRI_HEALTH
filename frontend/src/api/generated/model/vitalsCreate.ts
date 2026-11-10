@@ -24,7 +24,7 @@ export interface VitalsCreate {
   /** When they were measured. Defaults to now; never in the future. */
   effectiveAt?: Timestamp;
   /**
-     * The vitals, at most one per type.
+     * The vitals, at most one per type. An empty list is valid and records nothing (`201` with an empty `vitals`).
      * @maxItems 12
      */
   entries: VitalEntry[];

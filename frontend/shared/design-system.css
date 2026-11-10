@@ -1,0 +1,807 @@
+/* ─────────────────────────────────────────────────────────────────────
+   SHRI HEALTH design system — the ONE token stylesheet for Care Entry.
+
+   Imported by both apps (front-office/src/index.css and
+   patient-self-registration/src/index.css). Source of truth:
+   /DESIGN_SYSTEM.md, Appendix A. Differences from the appendix, all
+   deliberate:
+
+   • Theme is keyed to `data-theme` on <html>, not a `.dark` class. Light is
+     the default; only a saved 'dark' choice switches it (see each app's
+     pre-paint script in index.html).
+   • No docked AI chat, so the `main-*` container variants are left out —
+     plain md:/lg:/xl: are correct here (DESIGN_SYSTEM §7.3).
+   • `source(none)`: each app declares its own `@source`, so one app's CSS
+     never carries the other app's utilities.
+
+   One typeface — Plus Jakarta Sans Variable, self-hosted. The four Noto
+   families are unicode-range fallbacks for Indian-language text and only
+   download when a page contains that script.
+──────────────────────────────────────────────────────────────────── */
+@import '@fontsource-variable/plus-jakarta-sans';
+
+@import 'tailwindcss' source(none);
+
+/* `static` so every token is emitted even when no utility references it
+   (color-mix() and inline styles read them). Never `@theme inline` — it
+   would defeat the dark redefinition below. */
+@theme static {
+  --font-sans: 'Plus Jakarta Sans Variable', 'Noto Sans Kannada Variable',
+    'Noto Sans Devanagari Variable', 'Noto Sans Tamil Variable',
+    'Noto Sans Malayalam Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: var(--font-sans);
+
+  /* ── Grounds & surfaces ─────────────────────────────────────────────
+     surface-1 card / panel / input · surface-2 a fill inside a card ·
+     surface-3 sunken track / skeleton highlight */
+  --color-bg: #e8edf4;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #f4f7fa;
+  --color-surface-3: #e4eaf2;
+  --color-scrim: rgba(15, 23, 42, 0.45);
+
+  /* ── Ink (measured on card / ground) ────────────────────────────────
+     ink 17.85/15.18 AAA · ink-muted 8.46/7.19 AAA · ink-subtle 5.77/4.91 AA */
+  --color-ink: #0f172a;
+  --color-ink-muted: #3f4e63;
+  --color-ink-subtle: #57677c;
+  --color-ink-inverse: #ffffff;
+
+  /* ── Borders (non-text only) ────────────────────────────────────────
+     border-soft a rule inside a card · border the card's edge ·
+     border-strong an interactive edge (3.47:1, WCAG 1.4.11) */
+  --color-border-soft: #d9e1ea;
+  --color-border: #c2cedb;
+  --color-border-strong: #7c8ba0;
+
+  /* ── Primary (actions, links, navigation) ───────────────────────────── */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb; /* the action colour */
+  --color-primary-700: #1d4ed8; /* hover, links */
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+
+  /* Text ON a filled action — does not flip with the theme. */
+  --color-on-primary: #ffffff;
+  --color-on-danger: #ffffff;
+  /* The focus indicator (dark redefines it to the light step). */
+  --color-focus: #2563eb;
+  /* Primary AS TEXT (links, active nav, selected labels). Light it is
+     primary-700, as the spec says. Dark primary-700 (#3A6ACC) is a FILL
+     hover and measures ~3:1 on a dark card — below AA for text — so text
+     takes the light primary-500 step instead (spec §4.2 "primary used as
+     text"). Known gap in DESIGN_SYSTEM.md §4.2, fixed here. */
+  --color-primary-text: #1d4ed8;
+
+  /* ── Semantic status pairs — always use -bg with its -fg ──────────────
+     `danger` is EMERGENCY ONLY; ordinary errors use `critical`. */
+  --color-success-bg: #e6f0ee;
+  --color-success-fg: #2f6b5e;
+  --color-warning-bg: #fbf0e2;
+  --color-warning-fg: #8a5a1b;
+  --color-critical-bg: #fbeae7;
+  --color-critical-fg: #a33a28;
+  --color-info-bg: #e8eff6;
+  --color-info-fg: #33608a;
+  --color-therapy-bg: #edeaf4;
+  --color-therapy-fg: #574b7d;
+  --color-danger: #dc2626;
+  --color-danger-fg: #b91c1c;
+
+  /* Scoped accent (one region only) and the AI palette (AI only). */
+  --color-clinic-accent: #16a34a;
+  --color-clinic-accent-strong: #15803d;
+  --color-clinic-accent-soft: #dcfce7;
+  --color-ai: #4f46e5;
+  --color-ai-soft: #eef0fd;
+
+  /* ── Pastel accents — category, never state ─────────────────────────
+     Every -fg clears 4.9:1 on its -bg in light, 7.4:1 in dark. The last
+     three pairs (indigo, cyan, rose) extend the same muted family for the
+     front office's extra categories. */
+  --color-accent-sky: #e8eff6;
+  --color-accent-sky-fg: #3a6288;
+  --color-accent-teal: #e6f0ee;
+  --color-accent-teal-fg: #3c6b63;
+  --color-accent-sand: #f4ede0;
+  --color-accent-sand-fg: #7e6128;
+  --color-accent-clay: #f6e9e4;
+  --color-accent-clay-fg: #8b5544;
+  --color-accent-sage: #e9f0e6;
+  --color-accent-sage-fg: #4c6b46;
+  --color-accent-indigo: #eceef7;
+  --color-accent-indigo-fg: #43509e;
+  --color-accent-cyan: #e5f0f3;
+  --color-accent-cyan-fg: #2a6f82;
+  --color-accent-rose: #f8e8ec;
+  --color-accent-rose-fg: #a23b58;
+
+  /* ── Solid tiles — theme-invariant, white foreground (≥5.5:1) ───────── */
+  --color-tile-blue: #2f5aa8;
+  --color-tile-blue-fg: #ffffff;
+  --color-tile-teal: #22685f;
+  --color-tile-teal-fg: #ffffff;
+  --color-tile-violet: #6a4e9e;
+  --color-tile-violet-fg: #ffffff;
+  --color-tile-amber: #8f5f32;
+  --color-tile-amber-fg: #ffffff;
+
+  /* ── Chart lines — two series at most ───────────────────────────────── */
+  --color-chart-1: #2563eb;
+  --color-chart-2: #eb6834;
+
+  /* ── Hues ──────────────────────────────────────────────────────────
+     The platform's colour: every destination, figure, chip, avatar and
+     tinted surface takes one of these. Softened mid-saturation hues, never
+     neon — pastel surfaces, gradient chips and readable ink on a tint are
+     all derived from them with color-mix() (see .chip-solid, .tint-surface
+     and .ink-tone below), so there is one source per hue and per theme. */
+  --color-hue-blue: #4c7cf0;
+  --color-hue-indigo: #6670e8;
+  --color-hue-violet: #8b6cf0;
+  --color-hue-pink: #e8689a;
+  --color-hue-red: #e5616a;
+  --color-hue-orange: #f08a4b;
+  --color-hue-amber: #e7a93b;
+  --color-hue-green: #2fb37a;
+  --color-hue-teal: #20a9a0;
+  --color-hue-cyan: #2ba8d8;
+
+  /* ── Type scale — one step larger than a consumer app; 14px floor ──── */
+  --text-2xs: 0.75rem;
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+
+  /* ── Radius ─────────────────────────────────────────────────────────── */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+
+  /* ── Elevation — three shallow tiers ────────────────────────────────── */
+  /* Shadows are tinted toward the ground's navy and layered — a crisp
+     contact shadow plus a soft ambient one — so cards sit ON the page
+     rather than floating in grey haze. One light source, from above. */
+  --shadow-card-sm: 0 1px 2px 0 rgba(16, 34, 76, 0.05);
+  --shadow-card: 0 1px 2px 0 rgba(16, 34, 76, 0.05), 0 2px 8px -2px rgba(16, 34, 76, 0.07);
+  --shadow-card-md: 0 1px 2px 0 rgba(16, 34, 76, 0.06), 0 8px 20px -6px rgba(16, 34, 76, 0.14);
+  --shadow-card-lg: 0 2px 4px 0 rgba(16, 34, 76, 0.06), 0 18px 40px -12px rgba(16, 34, 76, 0.22);
+  --shadow-modal: 0 24px 64px -12px rgba(16, 34, 76, 0.32);
+  --shadow-glow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+
+  /* ── Touch target floor (WCAG 2.2 AA 2.5.8) and row density ─────────── */
+  --tap-min: 2.75rem;
+  --row-h-compact: 2rem;
+  --row-h-comfortable: 2.5rem;
+
+  /* ── Motion ─────────────────────────────────────────────────────────── */
+  --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes dockIn {
+  from { opacity: 0; transform: translateX(1rem); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Dark mode is attribute-based on <html>, so `dark:` follows the theme
+   switch rather than the OS. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ═════════════════════════════════════════════════════════════════════════
+   THEME OVERRIDES — deliberately UNLAYERED so nothing can out-specify them.
+   High contrast comes AFTER dark, or dark wins the tie.
+═════════════════════════════════════════════════════════════════════════ */
+:root {
+  color-scheme: light;
+  /* The one gradient: primary actions and the active navigation item. */
+  --gradient-primary: linear-gradient(180deg, #3b7bf5 0%, #2563eb 55%, #1f55d6 100%);
+  /* The hairline of light along a raised surface's top edge. */
+  --surface-highlight: rgba(255, 255, 255, 0.85);
+  /* A soft ambient mesh on the ground: blue top-right, violet top-left,
+     teal lower-left — colour without a busy page. */
+  --ground-glow-a: rgba(76, 124, 240, 0.11);
+  --ground-glow-b: rgba(139, 108, 240, 0.075);
+  --ground-glow-c: rgba(32, 169, 160, 0.07);
+  /* Readable text on a hue tint: the hue mixed toward black (light) or
+     white (dark). */
+  --tone-ink-mix: black;
+  --tone-ink-amount: 62%;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Ground is #14181F, never #000 — pure black raises halation. */
+  --color-bg: #14181f;
+  --color-surface-1: #1d232d;
+  --color-surface-2: #262e39;
+  --color-surface-3: #303945;
+  --color-scrim: rgba(0, 0, 0, 0.66);
+
+  /* ink is #E7ECF3, not #FFF, for the same reason. */
+  --color-ink: #e7ecf3;
+  --color-ink-muted: #b3becd;
+  --color-ink-subtle: #8d9bad;
+  --color-ink-inverse: #14181f;
+
+  --color-border-soft: #2b333e;
+  --color-border: #3a4450;
+  --color-border-strong: #6e7a8c;
+
+  /* The ramp inverts: a "50" tint is a deep wash and hover goes LIGHTER.
+     primary-700 is the link/text colour, so dark lifts it to the readable
+     light step; primary-600 stays a fill. */
+  --color-primary-50: #1e2a3d;
+  --color-primary-100: #24344b;
+  --color-primary-500: #7fa9f0;
+  --color-primary-600: #2f5fbf;
+  --color-primary-700: #3a6acc;
+  --color-on-primary: #f2f6ff;
+  --color-focus: #7fa9f0;
+  --color-primary-text: #7fa9f0;
+
+  --color-danger: #c0322d;
+  --color-danger-fg: #ff9a8f;
+  --color-on-danger: #ffffff;
+
+  --color-success-bg: #1a2b29;
+  --color-success-fg: #93c6bc;
+  --color-warning-bg: #2a2519;
+  --color-warning-fg: #d7be86;
+  --color-critical-bg: #33201c;
+  --color-critical-fg: #f0a99a;
+  --color-info-bg: #1e2a38;
+  --color-info-fg: #9cc0e8;
+  --color-therapy-bg: #262238;
+  --color-therapy-fg: #bcb0e0;
+
+  --color-clinic-accent: #3fb973;
+  --color-clinic-accent-strong: #7fd9a4;
+  --color-clinic-accent-soft: #17301f;
+  --color-ai: #a5a0f5;
+  --color-ai-soft: #22203a;
+
+  --color-accent-sky: #1e2a38;
+  --color-accent-sky-fg: #9cc0e8;
+  --color-accent-teal: #1a2b29;
+  --color-accent-teal-fg: #93c6bc;
+  --color-accent-sand: #2a2519;
+  --color-accent-sand-fg: #d7be86;
+  --color-accent-clay: #2e211c;
+  --color-accent-clay-fg: #dba895;
+  --color-accent-sage: #1f2a1d;
+  --color-accent-sage-fg: #a9c79f;
+  --color-accent-indigo: #222640;
+  --color-accent-indigo-fg: #b4bdf0;
+  --color-accent-cyan: #1c2c32;
+  --color-accent-cyan-fg: #8fc9da;
+  --color-accent-rose: #33202a;
+  --color-accent-rose-fg: #efa6b8;
+
+  --color-chart-1: #5b8fe8;
+  --color-chart-2: #d95926;
+
+  --color-hue-blue: #6d95f2;
+  --color-hue-indigo: #8189ec;
+  --color-hue-violet: #a189f2;
+  --color-hue-pink: #ec82ab;
+  --color-hue-red: #ec7b82;
+  --color-hue-orange: #f2a06b;
+  --color-hue-amber: #ebb85c;
+  --color-hue-green: #4cc290;
+  --color-hue-teal: #3dbdb3;
+  --color-hue-cyan: #4dbbe3;
+
+  /* Non-optional: light shadows are invisible over #1D232D. */
+  --shadow-card-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 1px 2px 0 rgba(0, 0, 0, 0.4), 0 4px 12px -4px rgba(0, 0, 0, 0.35);
+  --shadow-card-md: 0 1px 2px 0 rgba(0, 0, 0, 0.45), 0 10px 24px -8px rgba(0, 0, 0, 0.55);
+  --shadow-card-lg: 0 2px 4px 0 rgba(0, 0, 0, 0.45), 0 20px 44px -12px rgba(0, 0, 0, 0.65);
+  --shadow-modal: 0 24px 64px -12px rgba(0, 0, 0, 0.7);
+  --gradient-primary: linear-gradient(180deg, #4572d6 0%, #2f5fbf 100%);
+  --surface-highlight: rgba(255, 255, 255, 0.045);
+  --ground-glow-a: rgba(80, 120, 220, 0.13);
+  --ground-glow-b: rgba(140, 110, 230, 0.08);
+  --ground-glow-c: rgba(40, 170, 160, 0.06);
+  --tone-ink-mix: white;
+  --tone-ink-amount: 72%;
+  --shadow-glow: 0 0 0 3px rgba(127, 169, 240, 0.22);
+}
+
+html[data-high-contrast='true'] {
+  --color-ink: #000000;
+  --color-ink-muted: #1e293b;
+  --color-ink-subtle: #1e293b;
+  --color-border-soft: #475569;
+  --color-border: #475569;
+  --color-border-strong: #334155;
+}
+
+html[data-high-contrast='true'][data-theme='dark'] {
+  --color-ink: #ffffff;
+  --color-ink-muted: #e2e8f0;
+  --color-ink-subtle: #cbd5e1;
+  --color-border-soft: #8d9bad;
+  --color-border: #8d9bad;
+  --color-border-strong: #b3becd;
+}
+
+@layer base {
+  /* Desktop density: from 1024px the whole rem scale steps down a touch
+     (16px → 15px), so a desk screen holds more without anything looking
+     cramped. Breakpoints are unaffected (media queries use the initial
+     16px), and phones and tablets keep the full touch scale. */
+  @media (min-width: 64rem) {
+    html {
+      font-size: 93.75%;
+      /* Spacing tightens, text does not: the ramp is scaled back up by
+         16/15 so desk text keeps its full 12/13/14/16px sizes. */
+      --text-2xs: calc(0.75rem * 16 / 15);
+      --text-xs: calc(0.8125rem * 16 / 15);
+      --text-sm: calc(0.875rem * 16 / 15);
+      --text-base: calc(1rem * 16 / 15);
+      --text-lg: calc(1.125rem * 16 / 15);
+      --text-xl: calc(1.25rem * 16 / 15);
+      --text-2xl: calc(1.5rem * 16 / 15);
+      --text-3xl: calc(1.875rem * 16 / 15);
+      --text-4xl: calc(2.25rem * 16 / 15);
+    }
+  }
+
+  html {
+    min-width: 320px;
+    scroll-behavior: smooth;
+    /* A modal's scroll lock must never shift the page sideways. */
+    scrollbar-gutter: stable;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    /* `dvh` tracks the visible viewport on phones; `vh` is the fallback. */
+    min-height: 100vh;
+    min-height: 100dvh;
+    /* `clip`, not `hidden`: `hidden` makes body a scroll container and
+       breaks `position: sticky` descendants. */
+    overflow-x: clip;
+    background-color: var(--color-bg);
+    background-image:
+      radial-gradient(70rem 36rem at 100% -12rem, var(--ground-glow-a), transparent 70%),
+      radial-gradient(56rem 30rem at -10% -8rem, var(--ground-glow-b), transparent 70%),
+      radial-gradient(60rem 40rem at 10% 115%, var(--ground-glow-c), transparent 70%);
+    background-attachment: fixed;
+    color: var(--color-ink);
+    transition: background-color 0.2s var(--ease-smooth), color 0.2s var(--ease-smooth);
+    font-family: var(--font-sans);
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-synthesis: none;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  * {
+    border-color: var(--color-border-soft);
+  }
+
+  :where(table, .tabular, input[type='number']) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Media never widens the page. */
+  img, svg, video, canvas {
+    max-width: 100%;
+  }
+
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Tailwind's preflight leaves buttons `cursor: default`. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-primary-500) 28%, transparent);
+  }
+
+  select option,
+  select optgroup {
+    background-color: var(--color-surface-1);
+    color: var(--color-ink);
+  }
+
+  /* Global baseline: anything interactive gets a visible focus state. */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 767px) {
+    /* 16px stops iOS Safari zooming the viewport on focus. */
+    input,
+    select,
+    textarea {
+      font-size: max(16px, 1em);
+    }
+
+    /* A finger needs 44px. Checkboxes and radios are sized deliberately —
+       their visible label is the real touch target. */
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    select,
+    textarea {
+      min-height: 44px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Large text re-defines the ramp itself (never hard-code text-[13px]),
+     and rows grow with it so 15px text never clips in a 32px row. */
+  html[data-large-text='true'] {
+    --text-2xs: 0.875rem;
+    --text-xs: 0.9375rem;
+    --text-sm: 1rem;
+    --text-base: 1.125rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.375rem;
+    --text-2xl: 1.625rem;
+    --text-3xl: 2rem;
+    --text-4xl: 2.375rem;
+    --row-h-compact: 2.375rem;
+    --row-h-comfortable: 2.875rem;
+  }
+  /* …and on a desk screen, the same 16/15 lift as the normal ramp. */
+  @media (min-width: 64rem) {
+    html[data-large-text='true'] {
+      --text-2xs: calc(0.875rem * 16 / 15);
+      --text-xs: calc(0.9375rem * 16 / 15);
+      --text-sm: calc(1rem * 16 / 15);
+      --text-base: calc(1.125rem * 16 / 15);
+      --text-lg: calc(1.25rem * 16 / 15);
+      --text-xl: calc(1.375rem * 16 / 15);
+      --text-2xl: calc(1.625rem * 16 / 15);
+      --text-3xl: calc(2rem * 16 / 15);
+      --text-4xl: calc(2.375rem * 16 / 15);
+    }
+  }
+
+  html[data-high-contrast='true'] :is(input, select, textarea) {
+    border-color: var(--color-border-strong);
+  }
+
+  html[data-reduce-motion='true'] *,
+  html[data-reduce-motion='true'] *::before,
+  html[data-reduce-motion='true'] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  html[data-reduce-motion='true'] {
+    scroll-behavior: auto;
+  }
+}
+
+@layer components {
+  /* ── Hue helpers — set `--tone` (e.g. var(--color-hue-teal)) ───────── */
+  /* A solid gradient chip: an icon tile, an avatar, a count. */
+  .chip-solid {
+    color: #fff;
+    background-image: linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--tone) 86%, white) 0%,
+      var(--tone) 45%,
+      color-mix(in oklab, var(--tone) 80%, black) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      0 6px 14px -7px color-mix(in oklab, var(--tone) 75%, transparent);
+  }
+  /* A pastel surface in the hue — a card, a row, a box. */
+  .tint-surface {
+    background-image: linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--tone) 15%, var(--color-surface-1)) 0%,
+      color-mix(in oklab, var(--tone) 5%, var(--color-surface-1)) 70%
+    );
+    border-color: color-mix(in oklab, var(--tone) 28%, var(--color-border-soft));
+  }
+  /* A flat soft tint, for small fills (pills, wells, rows). */
+  .tint-soft {
+    background-color: color-mix(in oklab, var(--tone) 11%, var(--color-surface-1));
+  }
+  /* Text in the hue that stays readable on its tint (AA). */
+  .ink-tone {
+    color: color-mix(in oklab, var(--tone) var(--tone-ink-amount), var(--tone-ink-mix));
+  }
+  /* A hairline accent along a card's top edge. */
+  .accent-line {
+    background-image: linear-gradient(90deg, var(--tone), color-mix(in oklab, var(--tone) 35%, transparent) 70%, transparent);
+  }
+
+  .auth-input {
+    @apply w-full rounded-xl border border-border bg-surface-1/80 py-3 pl-10 pr-3 text-sm text-ink outline-none transition placeholder:text-ink-subtle focus:border-primary-500 focus:bg-surface-1 focus:ring-4;
+    --tw-ring-color: color-mix(in oklab, var(--color-focus) 22%, transparent);
+  }
+
+  /* Selective glass / elevated surfaces (sign-in style pages only). */
+  .glass {
+    background: color-mix(in oklab, var(--color-surface-1) 72%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid color-mix(in oklab, var(--color-border-soft) 80%, transparent);
+  }
+
+  .page-card {
+    background: color-mix(in oklab, var(--color-surface-1) 88%, transparent);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid color-mix(in oklab, var(--color-border) 75%, transparent);
+    box-shadow: var(--shadow-card-lg);
+  }
+
+  /* A raised surface: the card's own shadow plus a hairline of light along
+     its top edge — the detail that makes a white card read as a material. */
+  .surface-raised {
+    box-shadow: inset 0 1px 0 0 var(--surface-highlight), var(--shadow-card);
+  }
+  .surface-raised-hover {
+    transition: transform 0.2s var(--ease-premium), box-shadow 0.2s var(--ease-premium), border-color 0.2s var(--ease-premium);
+  }
+  .surface-raised-hover:hover {
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 0 0 var(--surface-highlight), var(--shadow-card-md);
+  }
+
+  /* Fades a horizontal scroll row out at its trailing edge, so it reads as
+     "there is more this way" without an extra control. */
+  .scroll-fade-x {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.75rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 1.75rem), transparent);
+  }
+
+  .card-hover {
+    transition: transform 0.25s var(--ease-premium), box-shadow 0.25s var(--ease-premium);
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card-lg);
+  }
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--color-surface-2) 25%,
+      var(--color-surface-3) 50%,
+      var(--color-surface-2) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+    border-radius: 0.75rem;
+  }
+
+  /* A visible ring PLUS a real outline — the outline survives Windows High
+     Contrast Mode, where box-shadow is discarded. */
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-focus) 22%, transparent);
+  }
+
+  [data-density='compact'] {
+    --row-h: var(--row-h-compact);
+  }
+  [data-density='comfortable'],
+  :root {
+    --row-h: var(--row-h-comfortable);
+  }
+
+  /* A dense row. Height is a MINIMUM, so wrapping content grows the row. */
+  .clinical-row {
+    min-height: var(--row-h);
+  }
+
+  .tap-target {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* A 44px touch target without a 44px box: an invisible hit area centred
+     over a visually small control. */
+  .tap-reach {
+    position: relative;
+  }
+  .tap-reach::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    transform: translate(-50%, -50%);
+  }
+
+  .skip-link {
+    position: absolute;
+    left: 0.5rem;
+    top: -3rem;
+    z-index: 100;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    background: var(--color-primary-600);
+    color: var(--color-on-primary);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    transition: top 0.15s var(--ease-smooth);
+  }
+  .skip-link:focus {
+    top: 0.5rem;
+  }
+
+  /* SAFE AREA (needs viewport-fit=cover). `env()` is 0 everywhere else.
+     .safe-bottom  adds the inset to a full-width bar's bottom padding
+     .safe-inset-b lifts a floating element clear of the home indicator */
+  .safe-bottom {
+    padding-bottom: calc(var(--safe-bottom-base, 0.75rem) + env(safe-area-inset-bottom, 0px));
+  }
+  .safe-inset-b {
+    bottom: calc(var(--safe-inset-base, 1rem) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRINT — deliberately UNLAYERED so it beats every utility.
+   A page that wants to print declares its sheet with `data-print-root`;
+   everything outside it is hidden. A page that declares nothing still
+   prints sensibly: chrome removed, ink on paper.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  html,
+  body,
+  #root,
+  #root > * {
+    background: #fff !important;
+    color: #000 !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  body,
+  main,
+  #root > * {
+    overflow: visible !important;
+  }
+
+  header,
+  nav,
+  aside,
+  [data-print='hide'] {
+    display: none !important;
+  }
+
+  [data-print-root] header,
+  [data-print-root] nav,
+  [data-print-root] aside {
+    display: revert !important;
+  }
+
+  .sticky,
+  .fixed {
+    position: static !important;
+  }
+
+  body:has([data-print-root]) * {
+    visibility: hidden;
+  }
+  body:has([data-print-root]) [data-print-root],
+  body:has([data-print-root]) [data-print-root] * {
+    visibility: visible;
+  }
+  body:has([data-print-root]) [data-print-root] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  [data-print-block] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  [data-print-root] [class*='shadow'] {
+    box-shadow: none !important;
+  }
+
+  a[href]::after {
+    content: none !important;
+  }
+
+  [data-print-root] {
+    --color-ink: #000;
+    --color-ink-muted: #333;
+    --color-ink-subtle: #555;
+    --color-bg: #fff;
+    --color-surface-1: #fff;
+    --color-surface-2: #fff;
+    --color-border-soft: #999;
+  }
+}

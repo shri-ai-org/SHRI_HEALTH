@@ -9,9 +9,13 @@ template the session cannot see (unknown, or another clinic's) is 404 `not-found
 from __future__ import annotations
 
 from uuid import UUID
+from zoneinfo import available_timezones
 
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.access import require_facility
+from app.core.deps import CurrentUser
 from app.core.errors import (
     InternalError,
     NotFound,
@@ -23,7 +27,13 @@ from app.core.errors import (
 
 from . import cursor, schemas
 from .cursor import Kind, Position
-from .repository import Page, SettingsRepository, SettingsRow, SetupRepository
+from .repository import (
+    FacilityRepository,
+    Page,
+    SettingsRepository,
+    SettingsRow,
+    SetupRepository,
+)
 
 
 def _after(value: str | None, kind: Kind) -> Position | None:
@@ -160,3 +170,50 @@ async def update_settings(db: AsyncSession, repo: SettingsRepository,
             raise PreconditionFailed(headers={"ETag": etag((await _current(db, repo)).version)})
     row = await _current(db, repo)
     return _settings(row), row.version
+
+
+# ------------------------------------------------------------------------- one facility
+#: A database refusal of a patched value, by constraint, and the field it names.
+_REFUSED = {"npi_valid": "/npi", "clia_format": "/cliaNumber", "pos_format": "/placeOfServiceCode"}
+
+
+async def get_facility(db: AsyncSession, repo: FacilityRepository, user: CurrentUser,
+                       facility_id: UUID) -> tuple[schemas.Facility, int]:
+    """One of the user's facilities, or 404 (another clinic's is invisible under RLS)."""
+    require_facility(user, facility_id)
+    found = await repo.get_facility(db, facility_id)
+    if found is None:
+        raise NotFound("Facility not found")
+    return found
+
+
+async def update_facility(db: AsyncSession, repo: FacilityRepository, user: CurrentUser,
+                          facility_id: UUID, body: schemas.FacilityPatch, if_match: str | None
+                          ) -> tuple[schemas.Facility, int]:
+    """JSON Merge Patch: at least one field, none of them null (no field is nullable)."""
+    if not body.model_fields_set:
+        raise ValidationFailed(errors=[field_error("body", "", "required")])
+    nulls = sorted(f for f in body.model_fields_set if getattr(body, f) is None)
+    if nulls:
+        fields = schemas.FacilityPatch.model_fields
+        raise ValidationFailed(errors=[field_error("body", f"/{fields[f].alias}", "invalid-type")
+                                       for f in nulls])
+    if body.time_zone is not None and body.time_zone not in available_timezones():
+        raise ValidationFailed(errors=[field_error("body", "/timeZone", "invalid-format")])
+    expected = if_match_version(if_match)
+    _, version = await get_facility(db, repo, user, facility_id)
+    if version != expected:
+        raise PreconditionFailed(headers={"ETag": etag(version)})
+    try:
+        updated = await repo.update_facility(db, facility_id, body, if_version=expected)
+    except DBAPIError as refused:
+        constraint = getattr(getattr(refused.orig, "__cause__", None), "constraint_name", "") or ""
+        pointer = next((p for name, p in _REFUSED.items() if constraint.endswith(name)), None)
+        if pointer is None:
+            raise
+        raise ValidationFailed(errors=[field_error("body", pointer, "invalid-format")]
+                               ) from None
+    if updated is None:  # changed by another request since the read
+        _, now = await get_facility(db, repo, user, facility_id)
+        raise PreconditionFailed(headers={"ETag": etag(now)})
+    return await get_facility(db, repo, user, facility_id)

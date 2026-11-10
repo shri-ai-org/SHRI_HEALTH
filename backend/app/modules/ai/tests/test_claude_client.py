@@ -103,7 +103,7 @@ def test_the_key_never_shows_in_the_clients_repr() -> None:
 # ============================================================================== the settings
 @pytest.fixture
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
-    for name in (config.PROVIDER_ENV, config.API_KEY_ENV, config.MODEL_URL_ENV,
+    for name in (config.PROVIDER_ENV, "ANTHROPIC_API_KEY", config.MODEL_URL_ENV,
                  config.MODEL_NAME_ENV, config.CLAUDE_MODEL_ENV, config.EFFORT_ENV,
                  config.ENVIRONMENT_ENV):
         monkeypatch.delenv(name, raising=False)
@@ -111,21 +111,19 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
 
 
 def test_with_a_key_the_provider_is_claude_on_sonnet(clean_env: pytest.MonkeyPatch) -> None:
-    clean_env.setenv(config.API_KEY_ENV, FAKE_KEY)
-    model = config.configured_model()
+    model = config.configured_model(api_key=FAKE_KEY)
     assert isinstance(model, ClaudeClient)
     assert (model.model, model.effort) == ("claude-sonnet-5-5", "low")
 
 
 def test_the_model_and_effort_are_settings(clean_env: pytest.MonkeyPatch) -> None:
-    clean_env.setenv(config.API_KEY_ENV, FAKE_KEY)
     clean_env.setenv(config.CLAUDE_MODEL_ENV, "claude-haiku-5-5")
     clean_env.setenv(config.EFFORT_ENV, "medium")
-    model = config.configured_model()
+    model = config.configured_model(api_key=FAKE_KEY)
     assert isinstance(model, ClaudeClient)
     assert (model.model, model.effort) == ("claude-haiku-5-5", "medium")
     clean_env.setenv(config.EFFORT_ENV, "enormous")
-    model = config.configured_model()
+    model = config.configured_model(api_key=FAKE_KEY)
     assert isinstance(model, ClaudeClient) and model.effort == "low"
 
 
@@ -224,14 +222,15 @@ async def test_the_sdk_never_logs_a_request_body(claude: StubClaudeServer,
     assert FAKE_KEY not in logged
 
 
-def test_cores_key_setting_wins_over_the_environment(clean_env: pytest.MonkeyPatch) -> None:
-    """Core's ``claude_api_key`` (OpenBao) is passed in by the route; the environment variable is
-    the laptop's fallback."""
-    clean_env.setenv(config.API_KEY_ENV, "laptop-placeholder")
+def test_the_key_comes_only_from_cores_settings(clean_env: pytest.MonkeyPatch) -> None:
+    """Core's ``claude_api_key`` (OpenBao) is the only source: a key in the environment is
+    ignored, so it can't pick the provider or reach the client."""
+    clean_env.setenv("ANTHROPIC_API_KEY", "environment-placeholder")
+    assert config.provider() == "stub"
+    clean_env.setenv(config.PROVIDER_ENV, "claude")
+    assert isinstance(config.configured_model(), config.UnconfiguredModel)
     model = config.configured_model(api_key=FAKE_KEY)
     assert isinstance(model, ClaudeClient) and model.api_key == FAKE_KEY
-    clean_env.delenv(config.API_KEY_ENV)
-    assert isinstance(config.configured_model(api_key=FAKE_KEY), ClaudeClient)
 
 
 def test_cores_environment_decides_where_the_stub_answers(clean_env: pytest.MonkeyPatch) -> None:

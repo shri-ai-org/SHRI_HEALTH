@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
 
 import httpx
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
@@ -191,14 +192,14 @@ async def _invite(app: Any, chart: dict[str, Any], patient: UUID | None = None) 
 
 
 def _enrol(client: TestClient, code: str, birth: date, email: str | None = None,
-           **headers: str) -> httpx.Response:
-    response: httpx.Response = client.post(ENROL, headers={"Origin": ORIGIN, **headers}, json={
+           **headers: str) -> httpx2.Response:
+    response = client.post(ENROL, headers={"Origin": ORIGIN, **headers}, json={
         "invitationCode": code, "birthDate": birth.isoformat(),
         "email": email or f"synthetic-{uuid4().hex[:8]}@example.com"})
     return response
 
 
-def _refused(response: httpx.Response) -> bool:
+def _refused(response: httpx2.Response) -> bool:
     body = response.json()
     return (response.status_code == 422 and body["code"] == "business-rule-violation"
             and body["errors"] == [{"in": "body", "pointer": "/invitationCode",
@@ -435,13 +436,13 @@ async def test_issuing_a_new_code_revokes_the_open_one(
 
 # --------------------------------------------------------------------------- sign-in
 async def _signed_in(app: Any, client: TestClient, realm: FakeRealm, chart: dict[str, Any],
-                     admin: Engine) -> httpx.Response:
+                     admin: Engine) -> httpx2.Response:
     assert _enrol(client, await _invite(app, chart), chart["birth"]).status_code == 204
     realm.subject = _account(admin, chart["patient"])[0].keycloak_user_id
     login = client.get("/api/v1/portal/auth/login", follow_redirects=False)
     query = {k: v[0] for k, v in parse_qs(urlparse(login.headers["location"]).query).items()}
     realm.nonce = query["nonce"]
-    callback: httpx.Response = client.get(
+    callback = client.get(
         f"/api/v1/portal/auth/callback?code=c-1&state={query['state']}", follow_redirects=False)
     return callback
 

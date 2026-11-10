@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import Settings, get_settings
+from app.core.crypto import check_production
 from app.core.lifecycle import shut_down
 from app.core.operations import OperationsMapError, load_operations, route_problems
 from app.core.registry import register_all
@@ -25,6 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        check_production(application.state.settings)  # no OpenBao Transit: never serves
         yield
         await shut_down(application)
 
