@@ -72,6 +72,10 @@ export function AppBar({ ref }: { ref?: Ref<HTMLElement> }) {
           )}
           <UserMenu />
 
+          {/* With the API the partner logo is left out: the U.S. product shows only its own brand
+              (Vimal, 2026-11-10: replace India items everywhere). */}
+          {REAL_API ? null : (
+            <>
           {/* IndoStates — an external link, opened in a new tab so the portal stays
               open. The artwork is dark-on-white, so it always sits on a white tile
               (a fixed colour on purpose: it must not follow the dark theme). */}
@@ -93,6 +97,8 @@ export function AppBar({ ref }: { ref?: Ref<HTMLElement> }) {
               className="h-5 w-auto object-contain min-[360px]:h-6 sm:h-[30px]"
             />
           </a>
+            </>
+          )}
         </div>
       </div>
       <MobileNavRow />
