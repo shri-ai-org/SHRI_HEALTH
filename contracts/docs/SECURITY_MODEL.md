@@ -190,7 +190,7 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `note-templates:read` (pick a template to start a note; D73, A46; in core since T42) | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | – | – |
 | `note-templates:create-personal` (a clinician's own templates; D73, A46; in core since T42) ‡ | – | – | ✓ | ✓ | ✓ | – | – | – | – | – |
 | AI clinical: `encounter-audio:create`, `transcriptions:*`, `note-drafts:create`, `chart-summaries:*`, `ai-suggestions:decision` ‡ | – | – | – | ✓ | ✓ | – | – | – | – | – |
-| `chart-questions:create` (the AI bubble: ask about a chart, read one's own answers, suggested questions; the front desk gets scheduling answers only, 2026-11-10) ‡ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
+| `chart-questions:create` (the AI bubble: ask about a chart, read one's own answers, suggested questions; the front desk gets scheduling answers only, and each role's answers use only the records it may already read, 2026-11-10) | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `ai-settings:read\|update`, `cosign-rules:*`, `practice-setup:*`, `onboarding:import`, `message-templates:*` | – | – | – | – | – | – | ✓ | R | – | – |
 | `users:*`, `roles:read`, `user-roles:update` | – | – | – | – | – | – | ✓ | R | R | – |
 | Medications and prescriptions: read ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
