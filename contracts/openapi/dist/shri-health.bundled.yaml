@@ -12876,8 +12876,8 @@ paths:
   /ai/note-drafts:
     post:
       operationId: createNoteDraft
-      summary: Draft a note from a transcript
-      description: 'AI-01 (inventory #110; FRS §3.4; VD-G11): turns a transcription into a **draft** note on the transcription''s encounter, from a note template. Returns `202` and an operation of kind `ai.note-draft`; its result is the draft note (`GET /notes/{noteId}`), made through the same notes service as `POST /encounters/{encounterId}/notes`, with the caller as author. The gateway sends only the transcript and the template''s sections, checks the output against the prompt''s schema, and drops anything the transcript does not support; a section it cannot fill stays empty (unknown stays unknown). Each filled section has `entrySource: ai-generated`, `aiDecision: pending` and its `aiSuggestion` (confidence band, rationale, links to the transcript segments it came from). The note cannot be signed until every AI section is accepted, edited or rejected (`POST /ai/suggestions/{suggestionId}/decision`); AI never signs. Allowed while the encounter is `arrived`, `triaged` or `in-progress`, which then moves to `in-progress`. The operation fails with `ai-unavailable` (the model is down) or `ai-output-rejected` (the output failed validation), and can be cancelled while it runs. Refused with `409 feature-disabled` while AI or `ambient-documentation` is off for the clinic.'
+      summary: Draft a note from a transcript or from dictated text
+      description: 'AI-01 (inventory #110; FRS §3.4; VD-G11): turns a visit into a **draft** note on its encounter, from a note template. The visit comes either from a transcription (`transcriptionId`) or as text the clinician dictated or typed on the consultation screen (`encounterId` with `dictation`); send exactly one of the two. The dictated text is used for this draft only and is not stored: the request record keeps its hash. Returns `202` and an operation of kind `ai.note-draft`; its result is the draft note (`GET /notes/{noteId}`), made through the same notes service as `POST /encounters/{encounterId}/notes`, with the caller as author. The gateway sends only the visit text, the template''s sections and what the caller may read of the patient''s allergies, medications and diagnoses, checks the output against the prompt''s schema, and drops anything outside it; a section the visit says nothing about stays empty (unknown stays unknown). Each filled section has `entrySource: ai-generated`, `aiDecision: pending` and its `aiSuggestion` (confidence band, rationale, and links to the transcript segments it came from; a draft from dictation has no segments, so its sections are `no-source`). The note cannot be signed until every AI section is accepted, edited or rejected (`POST /ai/suggestions/{suggestionId}/decision`); AI never signs. Allowed while the encounter is `arrived`, `triaged` or `in-progress`, which then moves to `in-progress`. The operation fails with `ai-unavailable` (the model is down, declined, or the monthly AI budget is used up) or `ai-output-rejected` (the output failed validation), and can be cancelled while it runs. Refused with `409 feature-disabled` while AI or `ambient-documentation` is off for the clinic.'
       tags:
         - ai
       x-owner: vimal
@@ -12908,6 +12908,12 @@ paths:
                 summary: Progress note from the visit transcript
                 value:
                   transcriptionId: 1e2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b
+                  templateId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+              dictation:
+                summary: Progress note from the clinician's dictation
+                value:
+                  encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                  dictation: 'Follow-up for high blood pressure. Home readings around 150 over 95 for two weeks. No chest pain, no headache. Taking lisinopril 10 milligrams daily without missing doses. Plan: increase lisinopril to 20 milligrams daily and recheck in two weeks.'
                   templateId: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
       responses:
         '202':
@@ -12949,13 +12955,13 @@ paths:
           description: 403. `permission-denied` (the role lacks `note-drafts:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: '#/components/responses/NotFound'
-          description: 404. `not-found` (no such transcription in this clinic or the user's facilities).
+          description: 404. `not-found` (no such transcription or encounter in this clinic or the user's facilities).
         '409':
           $ref: '#/components/responses/Conflict'
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `feature-disabled` (AI or `ambient-documentation` is off for the clinic; the problem carries `feature`); `invalid-state-transition` (not allowed in the current state (DATA_OWNERSHIP §5.2); the problem carries `currentState`).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a template that is inactive or another user's personal template (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (a template that is inactive or another user's personal template (field code `invalid-reference`); neither `transcriptionId` nor `dictation` (field code `required`); both of them, or `dictation` without `encounterId`, or `encounterId` with `transcriptionId` (field code `conflicting-fields`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -12966,7 +12972,7 @@ paths:
     post:
       operationId: createChartSummary
       summary: Summarize a patient's chart
-      description: 'AI-02 (inventory #111; FRS §3.4): summarizes prior encounters, diagnoses, medications, allergies, results and outstanding issues. Returns `202` and an operation of kind `ai.chart-summary`; its result is the summary (`GET /ai/chart-summaries/{chartSummaryId}`). The API mints a **delegated token** for this task only (SECURITY_MODEL §2.4): at most 5 minutes, bound to the user, clinic, patient and task, read permissions only, every use audited as `ai`; the gateway reads the chart through the clinical read endpoints with it, so it sees only what the user may see, and never reads the database. Entered-in-error records are left out (D24). Every statement carries its source links or a `no-source` or `conflicting` marker, and what could not be found is listed in `missing` (D70). The summary is for reading: it never changes the chart. The operation fails with `ai-unavailable` or `ai-output-rejected`, and can be cancelled while it runs. Refused with `409 feature-disabled` while AI or `chart-summary` is off for the clinic.'
+      description: 'AI-02 (inventory #111; FRS §3.4): summarizes prior encounters, diagnoses, medications, allergies, results and outstanding issues. Returns `202` and an operation of kind `ai.chart-summary`; its result is the summary (`GET /ai/chart-summaries/{chartSummaryId}`). The gateway runs inside the API and reads the chart through each module''s own service, within the caller''s request: the same permissions, facility scope and restricted-chart check as the caller''s own reads, audited as `ai`; a part the caller may not read is left out and listed in `missing`. The model never reads the database. (A delegated token, SECURITY_MODEL §2.4, applies once AI runs as a separate service.) Entered-in-error records are left out (D24). Every statement carries its source links or a `no-source` or `conflicting` marker, and what could not be found is listed in `missing` (D70). The summary is for reading: it never changes the chart. The operation fails with `ai-unavailable` or `ai-output-rejected`, and can be cancelled while it runs. Refused with `409 feature-disabled` while AI or `chart-summary` is off for the clinic.'
       tags:
         - ai
       x-owner: vimal
@@ -29612,17 +29618,26 @@ components:
           description: When it was made.
           x-phi: none
     NoteDraftCreate:
-      description: 'Body to draft a note from a transcript (inventory #110).'
+      description: 'Body to draft a note (inventory #110), from a transcription or from dictated text. Send exactly one: `transcriptionId`, or `encounterId` with `dictation`.'
       type: object
       additionalProperties: false
       required:
-        - transcriptionId
         - templateId
       properties:
         transcriptionId:
           $ref: '#/components/schemas/Id'
-          description: The transcription; the draft goes on its encounter.
+          description: The transcription; the draft goes on its encounter. Not with `encounterId` or `dictation`.
           x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit the dictation belongs to; the draft goes on it. Required with `dictation`.
+          x-phi: internal-id
+        dictation:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          description: The visit as the clinician dictated or typed it on the consultation screen. Used for this draft only; never stored or logged.
+          x-phi: clinical
         templateId:
           $ref: '#/components/schemas/Id'
           description: A practice or personal note template (`/note-templates`); the model fills its sections.
