@@ -41,7 +41,8 @@ def test_the_model_sees_numbered_lines_names_only_and_what_is_missing() -> None:
 
 def test_every_statement_keeps_its_sources_and_unsourced_ones_are_dropped() -> None:
     reply = {"sections": [
-        {"topic": "allergies", "statements": [{"text": "Peanut allergy, high.", "sources": ["S3"]}]},
+        {"topic": "allergies",
+         "statements": [{"text": "Peanut allergy, high.", "sources": ["S3"]}]},
         {"topic": "diagnoses", "statements": [
             {"text": "Hypertension since October.", "sources": ["S2", "S1", "S2"]},
             {"text": "Type 2 diabetes.", "sources": []},           # nothing behind it
@@ -53,7 +54,7 @@ def test_every_statement_keeps_its_sources_and_unsourced_ones_are_dropped() -> N
     assert draft is not None
     assert [s["topic"] for s in draft.sections] == ["diagnoses", "allergies"]   # topic order
     [hypertension] = draft.sections[0]["statements"]
-    assert [l["resourceType"] for l in hypertension["sources"]] == ["Condition", "Encounter"]
+    assert [link["resourceType"] for link in hypertension["sources"]] == ["Condition", "Encounter"]
     assert hypertension["sources"][0]["resourceId"] == str(DX)
     assert set(draft.dropped) >= {"/sections/1/statements/1", "/sections/1/statements/2",
                                   "/sections/2", "/extra"}
