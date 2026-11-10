@@ -19,8 +19,6 @@ import { useShri } from '../state/store'
 import { Icon, RoundButton } from '../ui/primitives'
 
 import { Logo } from './Logo'
-import indostatesLogoDark from './indostates-logo-dark.webp'
-import indostatesLogo from './indostates-logo.webp'
 import { NotificationsMenu } from './menus/NotificationsMenu'
 import { useNotices } from './menus/useNotices'
 import { UserMenu } from './menus/UserMenu'
@@ -126,16 +124,6 @@ export function AppBar() {
         </button>
         <UserMenu />
       </div>
-
-      {/* The hospital's own mark, far right, linking to its site. Two copies: the dark theme's lifts the grey lettering. Under 420px the row has no room for it. */}
-      <a
-        href="https://indostates.com"
-        title="Indostates Health — indostates.com"
-        className="flex h-[48px] shrink-0 items-center rounded-full px-[8px] transition-colors duration-150 hover:bg-sh-hover max-sm:h-[44px] max-sm:px-[4px] max-[420px]:hidden"
-      >
-        <img src={indostatesLogo} width={175} height={36} alt="Indostates Health — go to indostates.com" decoding="async" className="h-[36px] w-auto shdark:hidden max-sm:h-[26px]" />
-        <img src={indostatesLogoDark} width={175} height={36} alt="Indostates Health — go to indostates.com" decoding="async" className="hidden h-[36px] w-auto shdark:block max-sm:h-[26px]" />
-      </a>
     </header>
   )
 }
