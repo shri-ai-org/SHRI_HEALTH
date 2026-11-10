@@ -28,7 +28,7 @@ import { can, canSignNotes } from '@/atlas/personas'
 import { bannedIn } from '@/data/abbreviations'
 import { CODE_SUGGESTIONS, type Encounter, type NoteSectionSeed, type SectionKey } from '@/data/clinical'
 import { NOW, formatDateTime, formatTime as sampleTime } from '@/data/format'
-import { formatTime as clinicTime } from '../../../shri-health/format'
+import { clinicDate, formatTime as clinicTime } from '../../../shri-health/format'
 import { icdLabel } from '@/data/icd10'
 import { DIAGNOSES, type Patient } from '@/data/kit'
 import { useScribeDrafts, type ScribeDraft } from '@/data/scribe'
@@ -54,8 +54,11 @@ import { LockedBanner, ValidationSummary } from '../ui/states'
 import { VoiceField, type DictatedMeta } from '../ui/VoiceField'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
-/** The clinic's US time with the API, the sample's otherwise. */
-const formatTime = (d: Date) => (REAL_API ? clinicTime(d) : sampleTime(d))
+/** The clinic's US time with the API (an instant, shown in the facility's time zone), the sample's otherwise. */
+const formatTime = (d: Date) => (REAL_API ? clinicTime(d.toISOString()) : sampleTime(d))
+/** When a note was signed: "Nov 10, 2026, 3:28 AM" on the clinic's clock with the API. */
+const stampOf = (iso: string) =>
+  REAL_API ? `${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(clinicDate(iso))}, ${clinicTime(iso)}` : formatDateTime(new Date(iso))
 
 export interface NoteAuthoringProps {
   screenId: string
@@ -315,7 +318,7 @@ export function NoteAuthoring({
               <span className="flex items-center gap-[8px] text-[13px] text-sh-text-2">
                 <Icon icon={Lock} size={14} />
                 Signed by {record.signedBy ?? me.name}
-                {record.signedAt && ` at ${formatDateTime(new Date(record.signedAt))}`}
+                {record.signedAt && ` at ${stampOf(record.signedAt)}`}
                 {record.coSignedBy && ` · co-signed by ${record.coSignedBy}`}
               </span>
               <div className="ml-auto flex flex-wrap gap-[8px]">
@@ -388,7 +391,7 @@ export function NoteAuthoring({
         {locked && (
           <LockedBanner
             by={`${record.signedBy ?? me.name}${record.coSignedBy ? `, co-signed by ${record.coSignedBy}` : ''}`}
-            at={record.signedAt ? formatDateTime(new Date(record.signedAt)) : formatTime(NOW)}
+            at={record.signedAt ? stampOf(record.signedAt) : formatTime(NOW)}
             reason="signed"
           />
         )}
@@ -595,7 +598,7 @@ export function NoteAuthoring({
         onClose={() => setPrintOpen(false)}
         title={noteKind}
         patient={p}
-        meta={`${encounterLabel(enc)} · signed by ${record.signedBy ?? me.name}${record.signedAt ? ` · ${formatDateTime(new Date(record.signedAt))}` : ''}`}
+        meta={`${encounterLabel(enc)} · signed by ${record.signedBy ?? me.name}${record.signedAt ? ` · ${stampOf(record.signedAt)}` : ''}`}
         sections={[
           ...seeds.map((s) => ({ heading: s.label, body: textFor(s.key) })),
           ...(record.code ? [{ heading: 'Diagnosis and ICD-10', body: `${record.code}${chosen ? ` · ${chosen.label}` : ''}` }] : []),
