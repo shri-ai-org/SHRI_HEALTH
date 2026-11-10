@@ -61,6 +61,15 @@ export class FollowUpRefusal extends Error {
   }
 }
 
+/** Encounter IDs are UUIDs. Anything else from the URL is refused before a request is made, so a
+ *  crafted `:id` (`..%2F..`) can never steer the client's path to another endpoint. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+export function encounterIdOrRefuse(id: string): string {
+  if (!UUID.test(id)) throw new FollowUpRefusal('This link does not name a visit.', 404, 'not-found')
+  return id
+}
+
 /** Every API failure as a FollowUpRefusal, worded by problemCopy (the code, never the title). */
 export function refusal(e: unknown): FollowUpRefusal {
   if (e instanceof FollowUpRefusal) return e
@@ -75,6 +84,7 @@ export function refusal(e: unknown): FollowUpRefusal {
 }
 
 export async function loadFollowUp(encounterId: string): Promise<FollowUpState> {
+  encounterIdOrRefuse(encounterId)
   try {
     const res = await getEncounter(encounterId)
     if (res.status !== 200) throw new Error('The visit could not be read')
@@ -129,6 +139,7 @@ export function toBody(form: FollowUpForm): FollowUpRequestPut {
 /** Asks for (or changes) the revisit; returns the request and the encounter's new ETag. */
 export async function saveFollowUp(state: FollowUpState, form: FollowUpForm
 ): Promise<FollowUpState> {
+  encounterIdOrRefuse(state.encounterId)
   try {
     const res = await setFollowUpRequest(state.encounterId, toBody(form), { 'If-Match': state.etag })
     if (res.status !== 200) throw new Error('The follow-up was not saved')
@@ -140,6 +151,7 @@ export async function saveFollowUp(state: FollowUpState, form: FollowUpForm
 
 export async function withdrawFollowUp(state: FollowUpState, reason: string
 ): Promise<FollowUpState> {
+  encounterIdOrRefuse(state.encounterId)
   try {
     const res = await withdrawFollowUpRequest(state.encounterId, { reason: reason.trim() },
                                               { 'If-Match': state.etag })

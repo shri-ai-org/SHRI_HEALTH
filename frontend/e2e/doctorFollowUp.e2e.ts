@@ -105,3 +105,11 @@ test('the front desk cannot ask for a follow-up (403)', async ({ request }) => {
     headers: { 'If-Match': res.headers()['etag'] ?? '"0"' }, data: { interval: { value: 2, unit: 'week' } } })
   expect([403]).toContain(put.status())
 })
+
+test('a link that is not a visit ID makes no request', async ({ page }) => {
+  const calls: string[] = []
+  page.on('request', (r) => { if (r.url().includes('/api/v1/encounters')) calls.push(r.url()) })
+  await page.goto(`${DOCTORS_URL}/encounter/..%2F..%2Fpatients%2Fsearch/follow-up`)
+  await expect(page.getByRole('alert')).toContainText('This link does not name a visit.')
+  expect(calls).toEqual([])
+})
