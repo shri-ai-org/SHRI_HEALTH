@@ -263,8 +263,11 @@ async def create(db: AsyncSession, repo: AIRepository, model: ModelClient, check
     patient (404, 422), then the answer as a finished operation."""
     await ensure_enabled(db, repo, AIFeature.CHART_SUMMARY)
     await check(db, user, body.patient_id)
-    if body.encounter_id is not None:
-        patient = await visit_patient(db, user, body.encounter_id)
+    # A visit is read only by a user who may read encounters; for anyone else (the front desk)
+    # ``encounterId`` is ignored, never read, so it can't be probed through this route.
+    encounter_id = body.encounter_id if user.can("encounters:read") else None
+    if encounter_id is not None:
+        patient = await visit_patient(db, user, encounter_id)
         if patient != body.patient_id:
             raise ValidationFailed(code="business-rule-violation", errors=[
                 field_error("body", "/encounterId", "invalid-reference")])
@@ -272,7 +275,7 @@ async def create(db: AsyncSession, repo: AIRepository, model: ModelClient, check
     chart = await (read_schedule(db, user, body.patient_id) if scheduling_only
                    else read_clinical(db, user, body.patient_id))
     request = QuestionRequest(
-        patient_id=body.patient_id, encounter_id=body.encounter_id, page_type=body.page_type,
+        patient_id=body.patient_id, encounter_id=encounter_id, page_type=body.page_type,
         question=body.question.strip(), chart=chart, scheduling_only=scheduling_only,
         patient_context=None if scheduling_only
         else await repo.patient_context(db, body.patient_id))

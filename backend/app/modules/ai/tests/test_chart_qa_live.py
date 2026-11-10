@@ -100,6 +100,14 @@ def test_the_front_desk_gets_scheduling_answers_only(
     for clinical in ("Peanuts", "Lisinopril", "Allergy:", "Medication:", "Diagnosis:"):
         assert clinical not in text
     assert "Patient: " not in text                      # no age or sex either
+    # An encounterId from the front desk is ignored, never read: one that doesn't exist is not
+    # a 404 (a read would say whether a visit exists), and the answer is stored without it.
+    probe = client("fd").post(ASK, json={"question": "Next appointment?",
+                                         "pageType": "front-desk", "patientId": str(patient),
+                                         "encounterId": str(uuid.uuid4())})
+    assert probe.status_code == 202, probe.text
+    stored = client("fd").get(f"{API}/ai/chart-answers/{probe.json()['result']['id']}").json()
+    assert "encounterId" not in stored
     suggested = client("fd").get(f"{API}/ai/suggested-questions",
                                  params={"pageType": "consultation"})
     assert suggested.status_code == 200
