@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,13 +35,13 @@ Client = Callable[[str], TestClient]
 
 
 def _ask(client: Client, user: str, patient: uuid.UUID, question: str = "Any allergies?",
-         page: str = "consultation") -> object:
+         page: str = "consultation") -> Any:
     return client(user).post(ASK, json={"question": question, "pageType": page,
                                         "patientId": str(patient)})
 
 
-def _handle(sent: dict[str, object], kind: str) -> str:
-    text = sent["messages"][0]["content"][0]["text"]  # type: ignore[index]
+def _handle(sent: dict[str, Any], kind: str) -> str:
+    text: str = sent["messages"][0]["content"][0]["text"]
     return next(line.split(":", 1)[0] for line in text.splitlines() if f": {kind}:" in line)
 
 
