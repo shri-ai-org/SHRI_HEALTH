@@ -9,15 +9,21 @@ notes and signing work the same with AI off (tests/test_gateway_live.py, test_ai
 
 **Drafts are suggestions, never signed records.** A note draft (AI-01) is:
 
-1. the active prompt version (``prompt_template``) rendered with the template's sections;
-2. one model call; the reply parsed and pruned to the output schema, keeping only the
-   template's section codes, once each (anything else is dropped, never repaired);
-3. an ``ai_request`` (metadata, the input's SHA-256, the source references) and, for each
+1. the active prompt version (``prompt_template``, else the built-in ``prompts.DEFAULT``)
+   rendered with the template's sections, then the visit (a transcript or the clinician's
+   dictation) and the chart lines the clinician may read (chart_context.py);
+2. the monthly spend guard (budget.py): a metered model past its limit is not called, and the
+   draft fails as ``ai-unavailable``;
+3. one model call, given the output schema (the Claude API enforces its shape); the reply
+   parsed and pruned to the schema, keeping only the template's section codes, once each
+   (anything else is dropped, never repaired);
+4. an ``ai_request`` (metadata, token counts, the input's SHA-256, the source references)
+   and, for each
    section the model filled, a pending ``ai_suggestion`` (contract ``targetType:
    note-section``): the section's AI text, its source links to the transcript segments it came
    from (a fixed lexical rule, transcripts.link_segments; ``no-source`` when none), the draft's
    unknowns, a confidence band and a rationale;
-4. an unsigned note written by the **encounters module** (``NoteDrafts``), each AI section
+5. an unsigned note written by the **encounters module** (``NoteDrafts``), each AI section
    linked to its own suggestion, whose ``target_id`` is then that section. The gateway has no
    way to sign: ``NoteDrafts`` has no sign method, and the database refuses to sign a note
    while an AI section's suggestion is undecided (``shri_composition_signed_check``). Signing
@@ -46,8 +52,10 @@ from app.core.errors import Conflict, InternalError, ServiceUnavailable
 from app.core.request_id import current_request_id
 from app.db.models.enums import AIConfidence, AIFeature, AIRequestStatus
 
+from . import budget
 from .model_client import ModelClient, ModelError, ModelReply
 from .output import DROP, SchemaError, check_schema, prune
+from .prompts import NOT_DISCUSSED, NOTE_DRAFT_V2
 from .repository import AIRepository, RequestRecord, SuggestionRecord
 from .schemas import (
     NOTE_DRAFT_PROMPT,
@@ -71,6 +79,12 @@ log = logging.getLogger("app.modules.ai.gateway")
 MAX_OUTPUT_TOKENS = 2048
 RATIONALE = ("Drafted by AI from the visit transcript. Review, edit or reject every section "
              "before signing.")
+DICTATION_RATIONALE = ("Drafted by AI from the clinician's dictation. Review, edit or reject "
+                       "every section before signing.")
+#: The prompt the gateway uses until a clinic publishes its own: no prompt_template row.
+DEFAULT_PROMPT = PromptRef(id=None, code=NOTE_DRAFT_PROMPT, version=2,
+                           feature=AIFeature.AMBIENT_DOCUMENTATION, template=NOTE_DRAFT_V2,
+                           output_schema=None)
 NO_SOURCE_RATIONALE = ("Drafted by AI, but no transcript segment shares its words: check it "
                        "against the visit before accepting it.")
 
@@ -82,6 +96,10 @@ class ModelUnavailable(ServiceUnavailable):
     def __init__(self, request_id: Any) -> None:
         super().__init__("The AI model is unavailable")
         self.request_id = request_id
+
+
+class BudgetReached(ModelUnavailable):
+    """The month's estimated spend on a metered model reached its limit (budget.py)."""
 
 
 class OutputRejected(ServiceUnavailable):
@@ -118,9 +136,11 @@ def render(prompt: PromptRef, request: NoteDraftRequest) -> list[dict[str, str]]
     sections = "\n".join(f"- {s.code}: {s.title}{' (required)' if s.required else ''}"
                          for s in request.sections)
     patient = f"Patient: {request.patient_context}.\n" if request.patient_context else ""
+    chart = f"Chart (background only):\n{request.chart}\n" if request.chart else ""
+    visit = "Dictation" if request.dictated else "Transcript"
     return [{"role": "system",
              "content": Template(prompt.template).safe_substitute(sections=sections)},
-            {"role": "user", "content": f"{patient}Transcript:\n{request.transcript}"}]
+            {"role": "user", "content": f"{patient}{chart}{visit}:\n{request.transcript}"}]
 
 
 def parse(content: str) -> Any:
@@ -159,11 +179,17 @@ def keep_draft(raw: Any, schema: dict[str, Any], request: NoteDraftRequest
     return {"sections": sections, "unknowns": list(kept.get("unknowns", []))}, dropped
 
 
+def _said(text: str) -> bool:
+    """The section has content: not empty and not the prompt's "Not discussed"."""
+    return bool(text) and text.rstrip(".").strip().lower() != NOT_DISCUSSED.lower()
+
+
 def confidence(draft: dict[str, Any], dropped: list[str], request: NoteDraftRequest) -> str:
     """The D70 band, by rule: never ``high`` until a grounding check exists; ``low`` when
     output was dropped, the model listed unknowns, or a required section is empty."""
     texts = {s["code"]: s["text"] for s in draft["sections"]}
-    empty_required = any(r.required and not texts.get(r.code) for r in request.sections)
+    empty_required = any(r.required and not _said(texts.get(r.code, ""))
+                         for r in request.sections)
     if dropped or draft["unknowns"] or empty_required:
         return AIConfidence.LOW.value
     return AIConfidence.MEDIUM.value
@@ -180,21 +206,37 @@ class Gateway:
 
     async def _prompt(self, db: AsyncSession, code: str) -> PromptRef:
         prompt = await self.repo.active_prompt(db, code)
+        if prompt is None and code == NOTE_DRAFT_PROMPT:
+            return DEFAULT_PROMPT
         if prompt is None:
             raise ServiceUnavailable("No active prompt version for this AI feature")
         return prompt
 
+    async def _within_budget(self, db: AsyncSession) -> bool:
+        """False once this month's estimate reaches the limit; an unmetered model always
+        passes (budget.py)."""
+        if budget.price(self.model.model) is None:
+            return True
+        return budget.estimate(await self.repo.month_usage(db)) < budget.limit()
+
     async def _record(self, db: AsyncSession, request: NoteDraftRequest, prompt: PromptRef,
                       digest: str, status: AIRequestStatus, reply: ModelReply | None,
-                      error: str | None) -> Any:
+                      error: str | ModelError | None) -> Any:
+        # A refused or cut-off reply still used tokens: they count toward the budget.
+        failed = error if isinstance(error, ModelError) else None
         return await self.repo.record_request(db, RequestRecord(
             feature=AIFeature.AMBIENT_DOCUMENTATION, status=status,
-            pipeline_version=PIPELINE_VERSION, model_name=reply.model if reply else
-            self.model.model, prompt_template_id=prompt.id, input_sha256=digest,
+            pipeline_version=PIPELINE_VERSION,
+            model_name=(reply.model if reply else (failed.model if failed and failed.model
+                                                   else self.model.model)),
+            prompt_template_id=prompt.id, input_sha256=digest,
             patient_id=request.patient_id, encounter_id=request.encounter_id,
             latency_ms=reply.latency_ms if reply else None,
-            input_tokens=reply.prompt_tokens if reply else None,
-            output_tokens=reply.completion_tokens if reply else None, error_message=error,
+            input_tokens=reply.prompt_tokens if reply else (failed.prompt_tokens if failed
+                                                            else None),
+            output_tokens=reply.completion_tokens if reply else (
+                failed.completion_tokens if failed else None),
+            error_message=str(error) if error is not None else None,
             correlation_id=current_request_id(), sources=_sources(request)))
 
     async def draft_note(self, db: AsyncSession, request: NoteDraftRequest) -> DraftResult:
@@ -204,17 +246,23 @@ class Gateway:
         prompt = await self._prompt(db, NOTE_DRAFT_PROMPT)
         messages = render(prompt, request)
         digest = _sha256(messages)
+        schema = prompt.output_schema or NOTE_DRAFT_SCHEMA
+        if not await self._within_budget(db):
+            request_id, _ = await self._record(db, request, prompt, digest,
+                                               AIRequestStatus.BLOCKED, None,
+                                               "budget-reached: the month's AI budget is used up")
+            _log(feature, request_id, prompt, None, "budget-reached", kept=0, dropped=0)
+            raise BudgetReached(request_id)
         try:
-            reply = await self.model.complete(messages, max_tokens=MAX_OUTPUT_TOKENS)
+            reply = await self.model.complete(messages, max_tokens=MAX_OUTPUT_TOKENS,
+                                              schema=schema)
         except ModelError as err:
             status = (AIRequestStatus.TIMEOUT if err.kind == "timeout"
                       else AIRequestStatus.FAILED)
-            request_id, _ = await self._record(db, request, prompt, digest, status, None,
-                                               str(err))
+            request_id, _ = await self._record(db, request, prompt, digest, status, None, err)
             _log(feature, request_id, prompt, None, status.value, kept=0, dropped=0)
             raise ModelUnavailable(request_id) from None
-        draft, dropped = keep_draft(parse(reply.content), prompt.output_schema or
-                                    NOTE_DRAFT_SCHEMA, request)
+        draft, dropped = keep_draft(parse(reply.content), schema, request)
         if draft is None:
             request_id, _ = await self._record(db, request, prompt, digest,
                                                AIRequestStatus.FAILED, reply,
@@ -276,6 +324,8 @@ def _section_suggestion(request: NoteDraftRequest, code: str, title: str, text: 
     content = {"code": code, "title": title, "text": text,
                "sourceStatus": "sourced" if sources else "no-source", "sources": sources,
                "unknowns": list(unknowns)}
+    if request.dictated:
+        return content, DICTATION_RATIONALE, band
     if request.segments and not sources:
         return content, NO_SOURCE_RATIONALE, AIConfidence.LOW.value
     if sources:
