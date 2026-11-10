@@ -17,7 +17,7 @@ TAG = "practice-setup"
 BUILT = frozenset({
     "listFacilitys", "listProviders", "listAppointmentTypes", "listProviderSchedules",
     "listPayers", "listPracticePayers", "listNoteTemplates", "getNoteTemplate",
-    "getPracticeSettings", "updatePracticeSettings",
+    "getPracticeSettings", "updatePracticeSettings", "getFacility", "updateFacility",
 })
 
 
