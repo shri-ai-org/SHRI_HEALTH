@@ -49,7 +49,7 @@ export function NotesCard({ patient: p, className }: { patient: Patient; classNa
           ))}
         </ul>
       )}
-      <Link to={`/patient/${p.uhid}/notes`} className="mt-auto inline-flex min-h-[44px] items-center self-start pt-[6px] text-[13px] font-medium text-sh-text-2 underline-offset-2 hover:underline">
+      <Link to={`/patient/${p.id}/notes`} className="mt-auto inline-flex min-h-[44px] items-center self-start pt-[6px] text-[13px] font-medium text-sh-text-2 underline-offset-2 hover:underline">
         All consultation notes
       </Link>
     </Card>

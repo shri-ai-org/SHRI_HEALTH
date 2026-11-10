@@ -83,7 +83,7 @@ export function AiConsolePage() {
   const band = forced === 'AI-LOW' ? ('LOW' as const) : ('HIGH' as const)
   const overlays = aiActive ? overlaysFor(study.key, current) : []
   const first = overlays[0]
-  const record = `/patient/${p.uhid}`
+  const record = `/patient/${p.id}`
   const wall = '/stroke/wall'
   const touchpointId = `strokeai:${current.id}:ncct`
 

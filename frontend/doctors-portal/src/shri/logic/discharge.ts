@@ -114,7 +114,7 @@ export function useDischarge() {
         kind: 'discharge',
         title: `Transfer — ${p.name}`,
         detail: `To ${extra.transfer.facility} · accepting ${extra.transfer.clinician} · ${extra.transfer.transport}, ${extra.transfer.escort} escort`,
-        to: `/patient/${p.uhid}`,
+        to: `/patient/${p.id}`,
         recipient: 'colleague',
       })
     }

@@ -274,7 +274,7 @@ export function entriesFor(
         detail: `${a.purpose} · ${a.clinic}`,
         kind: 'appointment' as const,
         icon: APPOINTMENT_ICON[a.kind],
-        to: `/patient/${p.uhid}/appointments`,
+        to: `/patient/${p.id}/appointments`,
         patientId: a.patientId,
         done: a.status === 'Completed',
         appointment: a,
@@ -339,21 +339,21 @@ export function useScheduleActions() {
       store.book({ ...rest, id, at: d.slot.at.toISOString(), status: 'Booked', movedFrom: a.id })
       store.setChange(a.id, { kind: 'moved', to: id, by: me.name, at: now })
       audit({ event: 'APPOINTMENT.RESCHEDULED', ...actor, subject: a.patientId, detail: `${a.id} · ${was} → ${whenLabel(d.slot.at)} · ${p.name}` })
-      send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: `Appointment moved — ${slotLabel(d.slot.at)}`, detail: `${p.name}: your appointment with ${me.name} on ${was} is now on ${whenLabel(d.slot.at)}, ${where(a)}.`, to: `/patient/${p.uhid}/appointments` })
-      if (!quiet) send({ severity: 'routine', kind: 'appointment', recipient: 'front office', title: `Appointment moved — ${p.name}`, detail: `${was} → ${whenLabel(d.slot.at)} · ${a.clinic} · ${me.name}. The patient has been told.`, to: `/patient/${p.uhid}/appointments` })
+      send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: `Appointment moved — ${slotLabel(d.slot.at)}`, detail: `${p.name}: your appointment with ${me.name} on ${was} is now on ${whenLabel(d.slot.at)}, ${where(a)}.`, to: `/patient/${p.id}/appointments` })
+      if (!quiet) send({ severity: 'routine', kind: 'appointment', recipient: 'front office', title: `Appointment moved — ${p.name}`, detail: `${was} → ${whenLabel(d.slot.at)} · ${a.clinic} · ${me.name}. The patient has been told.`, to: `/patient/${p.id}/appointments` })
       return `${p.name} ${was} → moved to ${whenLabel(d.slot.at)}`
     }
     if (d.action === 'rebook') {
       store.setChange(a.id, { kind: 'rebooking', by: me.name, at: now })
       audit({ event: 'APPOINTMENT.REBOOK_REQUESTED', ...actor, subject: a.patientId, detail: `${a.id} · ${was} · ${p.name}` })
-      send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: 'Your appointment is being rearranged', detail: `${p.name}: the front office will call you to agree a new time for your appointment with ${me.name} on ${was}.`, to: `/patient/${p.uhid}/appointments` })
-      if (!quiet) send({ severity: 'urgent', kind: 'appointment', recipient: 'front office', title: `Rebook ${p.name}`, detail: `${was} with ${me.name} · ${a.clinic}. Call the patient to agree a new time.`, to: `/patient/${p.uhid}/appointments` })
+      send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: 'Your appointment is being rearranged', detail: `${p.name}: the front office will call you to agree a new time for your appointment with ${me.name} on ${was}.`, to: `/patient/${p.id}/appointments` })
+      if (!quiet) send({ severity: 'urgent', kind: 'appointment', recipient: 'front office', title: `Rebook ${p.name}`, detail: `${was} with ${me.name} · ${a.clinic}. Call the patient to agree a new time.`, to: `/patient/${p.id}/appointments` })
       return `${p.name} ${was} → the front office to rebook with the patient`
     }
     store.setChange(a.id, { kind: 'cancelled', reason: d.reason, by: me.name, at: now })
     audit({ event: 'APPOINTMENT.CANCELLED', ...actor, subject: a.patientId, detail: `${a.id} · ${was} · ${p.name} · ${d.reason}` })
-    send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: 'Appointment cancelled', detail: `${p.name}: your appointment with ${me.name} on ${was} is cancelled. The front office will contact you if a new one is needed.`, to: `/patient/${p.uhid}/appointments` })
-    if (!quiet) send({ severity: 'routine', kind: 'appointment', recipient: 'front office', title: `Appointment cancelled — ${p.name}`, detail: `${was} with ${me.name} · ${a.clinic}. Reason: ${d.reason}.`, to: `/patient/${p.uhid}/appointments` })
+    send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: 'Appointment cancelled', detail: `${p.name}: your appointment with ${me.name} on ${was} is cancelled. The front office will contact you if a new one is needed.`, to: `/patient/${p.id}/appointments` })
+    if (!quiet) send({ severity: 'routine', kind: 'appointment', recipient: 'front office', title: `Appointment cancelled — ${p.name}`, detail: `${was} with ${me.name} · ${a.clinic}. Reason: ${d.reason}.`, to: `/patient/${p.id}/appointments` })
     return `${p.name} ${was} → cancelled (${d.reason})`
   }
 
@@ -378,8 +378,8 @@ export function useScheduleActions() {
       const outside = input.offHours ? ' · outside working hours' : ''
       store.book({ id, patientId: input.patientId, at: input.at.toISOString(), kind: input.kind, status: 'Booked', clinic: input.clinic, with: me.name, purpose: input.purpose, minutes: input.minutes, location: input.location })
       audit({ event: 'APPOINTMENT.SCHEDULED', ...actor, subject: input.patientId, detail: `${id} · ${when} · ${input.minutes} min · ${input.kind} · ${input.clinic} · ${p.name}${outside}` })
-      send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: `Appointment scheduled — ${slotLabel(input.at)}`, detail: `${p.name}: you have an appointment with ${me.name} on ${when}, ${input.clinic}.`, to: `/patient/${p.uhid}/appointments` })
-      send({ severity: input.offHours ? 'urgent' : 'routine', kind: 'appointment', recipient: 'front office', title: `Scheduled — ${p.name}`, detail: `${when} · ${input.minutes} min · ${input.clinic} · ${me.name}${outside}. ${input.purpose}. The patient has been notified.`, to: `/patient/${p.uhid}/appointments` })
+      send({ severity: 'routine', kind: 'appointment', recipient: 'patient', title: `Appointment scheduled — ${slotLabel(input.at)}`, detail: `${p.name}: you have an appointment with ${me.name} on ${when}, ${input.clinic}.`, to: `/patient/${p.id}/appointments` })
+      send({ severity: input.offHours ? 'urgent' : 'routine', kind: 'appointment', recipient: 'front office', title: `Scheduled — ${p.name}`, detail: `${when} · ${input.minutes} min · ${input.clinic} · ${me.name}${outside}. ${input.purpose}. The patient has been notified.`, to: `/patient/${p.id}/appointments` })
       toast({ tone: 'success', title: 'Appointment scheduled', detail: `${p.name} · ${format(input.at, 'EEE d MMM')}, ${fmtTime12(input.at)}. The patient and the front office have been notified.` })
       return id
     },

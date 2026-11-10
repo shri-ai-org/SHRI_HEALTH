@@ -43,7 +43,7 @@ export const STATUS_TONE: Record<ConditionStatus, Tone> = {
 
 /** The Overview is `/patient/:id`; every other part keeps the old address. */
 export function recordPath(p: Patient, section: RecordSection): string {
-  return section === 'record' ? `/patient/${p.uhid}` : `/patient/${p.uhid}/${SECTION_META[section].path}`
+  return section === 'record' ? `/patient/${p.id}` : `/patient/${p.id}/${SECTION_META[section].path}`
 }
 
 /** The patient's dictated notes, newest first. */
