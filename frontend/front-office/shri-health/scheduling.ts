@@ -23,6 +23,7 @@ import {
   cancelAppointment as apiCancelAppointment,
   checkInAppointment as apiCheckInAppointment,
   listAppointments as apiListAppointments,
+  listPatientAppointments as apiListPatientAppointments,
   listBookableAppointmentTypes as apiListBookableAppointmentTypes,
   listBookableFacilities as apiListBookableFacilities,
   listBookableProviders as apiListBookableProviders,
@@ -343,15 +344,25 @@ export async function rescheduleOnServer(appointmentId: string, input: Reschedul
   return reconcileAppointments([res.data])[0]!
 }
 
-/** A patient's bookings about three months back and ahead (31-day windows, D62), into the store. */
+/**
+ * The patient's Visit History: every booking, newest first, from listPatientAppointments (#241,
+ * #242: cursor-paged, no date cap, the same facility and restricted-chart rules), into the store.
+ * Every page is read; a cursor that never ends stops after MAX_HISTORY_PAGES.
+ */
+const MAX_HISTORY_PAGES = 50
+
 export async function loadPatientAppointments(patientId: string): Promise<Appointment[]> {
-  // TODO(listPatientAppointments): the visit history waits for its own operation (Vimal, 2026-11-05:
-  // cursor-paged, newest first, optional dateFrom/dateTo, no cap, the same facility and
-  // restricted-chart rules; contract PR not written yet). listAppointments is not a substitute (it
-  // reads 31 days a call), so until then the profile reads nothing more: its Visit History shows
-  // only the bookings this desk already has (today's schedule, a booking made here).
-  void patientId
-  return []
+  await loadBookable()
+  const items: AppointmentSummary[] = []
+  let cursor: string | undefined
+  for (let page = 0; page < MAX_HISTORY_PAGES; page += 1) {
+    const res = await apiListPatientAppointments(patientId, { limit: 100, ...(cursor ? { cursor } : {}) })
+    if (res.status !== 200) break
+    items.push(...res.data.items)
+    cursor = res.data.nextCursor ?? undefined
+    if (!cursor) break
+  }
+  return reconcileAppointments(items)
 }
 
 /**
@@ -394,15 +405,26 @@ export async function checkInOnServer(appointmentId: string, key: string = newId
   reconcileAppointments([{ ...res.data.appointment, status: 'booked' }])
 }
 
+/** One Idempotency-Key per action on a booking, kept while it is retried and dropped once it
+ *  succeeds (#149: undoCheckIn and recordVisitStatus take one). */
+const actionKeys = new Map<string, string>()
+async function withActionKey<T>(action: string, call: (key: string) => Promise<T>): Promise<T> {
+  const key = actionKeys.get(action) ?? newIdempotencyKey()
+  actionKeys.set(action, key)
+  const result = await call(key)
+  actionKeys.delete(action)
+  return result
+}
+
 /** Takes back a check-in on the server. The contract asks for a reason. */
 export async function undoCheckInOnServer(appointmentId: string, reason: string): Promise<void> {
-  const res = await apiUndoCheckIn(appointmentId, { reason })
+  const res = await withActionKey(`undo:${appointmentId}`, (key) => apiUndoCheckIn(appointmentId, { reason }, { 'Idempotency-Key': key }))
   if (res.status !== 200) throw new Error('The check-in could not be undone')
 }
 
 /** Marks a no-show on the server (`noshow` through the visit-status action); the store follows. */
 export async function markNoShowOnServer(appointmentId: string): Promise<void> {
-  const res = await apiRecordVisitStatus(appointmentId, { status: 'noshow' })
+  const res = await withActionKey(`noshow:${appointmentId}`, (key) => apiRecordVisitStatus(appointmentId, { status: 'noshow' }, { 'Idempotency-Key': key }))
   if (res.status !== 200) throw new Error('The no-show could not be recorded')
 }
 

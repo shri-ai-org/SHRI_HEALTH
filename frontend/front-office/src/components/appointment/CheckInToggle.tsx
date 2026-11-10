@@ -4,8 +4,9 @@ import { Button } from '../ui/Button'
 import { useStoreValue } from '../../hooks/useStore'
 import { useToast } from '../../hooks/useToast'
 import { checkInAppointment, undoCheckIn } from '../../domain/actions'
-import { checkInOnServer, isServerAppointment, undoCheckInOnServer } from '../../../shri-health/scheduling'
-import { newIdempotencyKey, problemMessage } from '../../../shri-health/client'
+import { checkInOnServer, isServerAppointment, loadAppointments, undoCheckInOnServer } from '../../../shri-health/scheduling'
+import { ApiError, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
+import { todayKey } from '../../domain/time'
 import type { Appointment } from '../../types/appointment'
 import type { AppState } from '../../types/store'
 
@@ -48,6 +49,8 @@ export function CheckInToggle({
       notify(done, { detail })
     } catch (err) {
       notify('Could not do that', { tone: 'error', detail: problemMessage(err) })
+      // 409: another desk changed this visit first; read today's bookings again so the row shows it.
+      if (err instanceof ApiError && err.status === 409) void loadAppointments(todayKey(), 1).catch(() => undefined)
     } finally {
       setBusy(false)
     }
