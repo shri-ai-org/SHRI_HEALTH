@@ -151,10 +151,12 @@ def test_a_restricted_chart_needs_break_glass(client: Client, practice: Practice
     assert made.status_code == 202 and made.json()["status"] == "succeeded"
     summary_id = made.json()["result"]["id"]
     assert client("md").get(f"{SUMMARIES}/{summary_id}").status_code == 200
-    # A colleague without a grant or care-team membership can't read it (D37).
-    refused_read = client("rn").get(f"{SUMMARIES}/{summary_id}")
-    assert refused_read.status_code == 403 and _code(refused_read) in (
-        "break-glass-required", "permission-denied")
+    # Only its requester reads a summary: it was built from the requester's view of the chart.
+    for colleague in ("rn", "ma", "md-b"):
+        assert client(colleague).get(f"{SUMMARIES}/{summary_id}").status_code in (403, 404), \
+            colleague
+    _grant(practice, users["rn"], patient)       # even with a grant of their own
+    assert client("rn").get(f"{SUMMARIES}/{summary_id}").status_code in (403, 404)
 
 
 def test_the_budget_stops_a_summary(client: Client, practice: Practice,

@@ -16,8 +16,11 @@ chart-summary, id}``, or ``failed`` with a Problem (``ai-unavailable`` or ``ai-o
 in the detail, until core's catalogue has those codes). One commit, with the audit row (x-audit
 ``ai``, patient from the body).
 
-**getChartSummary**: the summary, for a user who may read the patient's chart (D37); ``404``
-for one the clinic can't see. Still readable with AI off.
+**getChartSummary**: the summary, for **its requester only**, who must still be able to read
+the patient's chart (D37); ``404`` for anyone else, as for one the clinic can't see. The
+summary was built from the requester's own view of the chart (their facilities and read
+permissions), so a colleague with narrower access must not read it through the summary; they
+ask for their own. Still readable with AI off.
 """
 
 from __future__ import annotations
@@ -102,8 +105,8 @@ async def get(db: AsyncSession, repo: AIRepository, check: ChartCheck, user: Cur
               summary_id: UUID) -> ChartSummary:
     found = await repo.suggestion(db, summary_id)
     if found is None or found.target_resource_type != CHART_SUMMARY \
-            or found.patient_id is None:
-        raise NotFound()
+            or found.patient_id is None or found.requested_by != user.id:
+        raise NotFound()                          # another user's summary does not exist here
     await check(db, user, found.patient_id)       # D37, as for any read of the chart
     view = (await repo.suggestion_views(db, [summary_id]))[summary_id]
     return as_contract(summary_id, found.patient_id, found.encounter_id, found.content,
