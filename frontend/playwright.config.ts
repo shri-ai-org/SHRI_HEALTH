@@ -7,6 +7,8 @@ import { defineConfig } from '@playwright/test'
 const port = 5190
 /** The doctors' portal's dev server, signed in as the development physician. */
 export const doctorsPort = 5191
+/** The front office's dev server, signed in as the development front desk. */
+export const frontOfficePort = 5192
 
 export default defineConfig({
   testDir: 'e2e',
@@ -37,6 +39,14 @@ export default defineConfig({
       url: `http://localhost:${doctorsPort}`,
       reuseExistingServer: !process.env.CI,
       env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'md' },
+    },
+    {
+      // The front office as the development front desk (fd), for the desk's screens
+      // (e2e/desk*.e2e.ts reach it at http://localhost:5192).
+      command: `npm run dev -w front-office -- --port ${frontOfficePort} --strictPort`,
+      url: `http://localhost:${frontOfficePort}`,
+      reuseExistingServer: !process.env.CI,
+      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'fd' },
     },
   ],
 })
