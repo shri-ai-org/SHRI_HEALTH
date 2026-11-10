@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.access import require_facility
 from app.core.deps import CurrentUser
 from app.core.errors import (
+    InternalError,
     NotFound,
     PreconditionFailed,
     PreconditionRequired,
@@ -26,7 +27,13 @@ from app.core.errors import (
 
 from . import cursor, schemas
 from .cursor import Kind, Position
-from .repository import FacilityRepository, Page, SetupRepository
+from .repository import (
+    FacilityRepository,
+    Page,
+    SettingsRepository,
+    SettingsRow,
+    SetupRepository,
+)
 
 
 def _after(value: str | None, kind: Kind) -> Position | None:
@@ -110,11 +117,7 @@ def etag(version: int) -> str:
     return f'"{version}"'
 
 
-# ------------------------------------------------------------------------- one facility
-#: A database refusal of a patched value, by constraint, and the field it names.
-_REFUSED = {"npi_valid": "/npi", "clia_format": "/cliaNumber", "pos_format": "/placeOfServiceCode"}
-
-
+# ------------------------------------------------------------------------- practice settings
 def if_match_version(header: str | None) -> int:
     """The version a strong ETag names; 428 without one, 412 for a weak or malformed one."""
     if header is None:
@@ -123,6 +126,55 @@ def if_match_version(header: str | None) -> int:
     if value.startswith('"') and value.endswith('"') and value[1:-1].isdigit():
         return int(value[1:-1])
     raise PreconditionFailed()
+
+
+def _settings(row: SettingsRow) -> schemas.PracticeSettings:
+    return schemas.PracticeSettings(
+        registration=schemas.PracticeRegistrationSettings(
+            show_sexual_orientation_and_gender_identity=row.show_sogi),
+        mrn_prefix=row.mrn_prefix, mrn_system=row.mrn_system, updated_at=row.updated_at)
+
+
+async def _current(db: AsyncSession, repo: SettingsRepository) -> SettingsRow:
+    row = await repo.get_settings(db)
+    if row is None:  # onboarding creates the MRN counter with the practice (D41)
+        raise InternalError("The practice has no MRN counter")
+    return row
+
+
+async def get_settings(db: AsyncSession, repo: SettingsRepository
+                       ) -> tuple[schemas.PracticeSettings, int]:
+    row = await _current(db, repo)
+    return _settings(row), row.version
+
+
+async def update_settings(db: AsyncSession, repo: SettingsRepository,
+                          body: schemas.PracticeSettingsPatch, if_match: str | None
+                          ) -> tuple[schemas.PracticeSettings, int]:
+    """JSON Merge Patch: every level needs at least one member, and no member may be null."""
+    registration = body.registration
+    if registration is None or not registration.model_fields_set:
+        pointer = "/registration" if "registration" in body.model_fields_set else ""
+        raise ValidationFailed(errors=[field_error("body", pointer, "required")])
+    show = registration.show_sexual_orientation_and_gender_identity
+    if show is None:
+        raise ValidationFailed(errors=[field_error(
+            "body", "/registration/showSexualOrientationAndGenderIdentity", "invalid-type")])
+    expected = if_match_version(if_match)
+    row = await _current(db, repo)
+    if row.version != expected:
+        raise PreconditionFailed(headers={"ETag": etag(row.version)})
+    if row.show_sogi != show:
+        version = await repo.set_show_sogi(db, show, if_version=expected)
+        if version is None:  # another request changed it since the read
+            raise PreconditionFailed(headers={"ETag": etag((await _current(db, repo)).version)})
+    row = await _current(db, repo)
+    return _settings(row), row.version
+
+
+# ------------------------------------------------------------------------- one facility
+#: A database refusal of a patched value, by constraint, and the field it names.
+_REFUSED = {"npi_valid": "/npi", "clia_format": "/cliaNumber", "pos_format": "/placeOfServiceCode"}
 
 
 async def get_facility(db: AsyncSession, repo: FacilityRepository, user: CurrentUser,

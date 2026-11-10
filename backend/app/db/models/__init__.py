@@ -31,12 +31,14 @@ from .admin import (  # noqa: F401
 from .fhir import clinical, datatypes, directory, documents, records, workflow  # noqa: F401
 from .fhir import medication as fhir_medication  # noqa: F401  (imported to register its tables)
 from .fhir import orders as fhir_orders  # noqa: F401  (imported to register its tables)
+from .release import apply_release_tags
 
 # type[Any]: model classes are looked up by name at runtime, so their columns are not known to
 # the type checker through these registries.
 MAPPERS: dict[str, type[Any]] = {
     m.class_.__tablename__: m.class_ for m in Base.registry.mappers}
 _apply_constraints(Base.metadata, MAPPERS)
+apply_release_tags(MAPPERS)  # Table.info["release"] (P0_SCHEMA_SCOPE.md); no DDL
 
 # FHIR resource tables (have fhir_type) and their child tables.
 FHIR_RESOURCES: dict[str, type[Any]] = {

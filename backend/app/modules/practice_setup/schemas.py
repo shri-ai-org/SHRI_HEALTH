@@ -263,7 +263,7 @@ class NoteTemplateList(Out):
     next_cursor: str | None = None
 
 
-# ------------------------------------------------------------------------- facility update
+# ------------------------------------------------------------------------- practice settings
 class In(BaseModel):
     """A request body: unknown fields are refused (the contract's additionalProperties: false)."""
 
@@ -271,6 +271,29 @@ class In(BaseModel):
                               strict=True)
 
 
+class PracticeRegistrationSettings(Out):
+    show_sexual_orientation_and_gender_identity: bool
+
+
+class PracticeSettings(Out):
+    registration: PracticeRegistrationSettings
+    mrn_prefix: str
+    mrn_system: str
+    updated_at: Timestamp
+
+
+class PracticeRegistrationSettingsPatch(In):
+    show_sexual_orientation_and_gender_identity: bool | None = None
+
+
+class PracticeSettingsPatch(In):
+    """JSON Merge Patch (minProperties 1 at each level). A field left out is unchanged; ``null``
+    is refused, since every setting is a boolean with a default."""
+
+    registration: PracticeRegistrationSettingsPatch | None = None
+
+
+# ------------------------------------------------------------------------- facility update
 class AddressIn(In):
     lines: Annotated[list[Annotated[str, Field(max_length=100)]],
                      Field(min_length=1, max_length=3)]
