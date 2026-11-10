@@ -39,7 +39,7 @@ export interface Medication {
   status: MedicationListStatus;
   /** `prescription` (written here; `prescriptionId` set) or `reported` (the patient takes it already). */
   source: MedicationSource;
-  /** The prescription that put it on the list, when `source` is `prescription`. */
+  /** The prescription that put it on the list, when `source` is `prescription`. It equals `id`: the list entry is that prescription's `MedicationRequest` (D28). */
   prescriptionId?: Id;
   /**
      * A note.

@@ -25,6 +25,6 @@ export interface CheckInResult {
   appointment: Appointment;
   /** The new encounter (status `arrived`). */
   encounterId: Id;
-  /** The real-time eligibility check started for the primary coverage; `pending` until the 271 arrives. Absent for self-pay. */
+  /** The eligibility check that check-in started for the primary coverage (D15): `pending` until the 271 arrives, or `error` with `errorCode: not-sent` when the practice has no clearinghouse connection. Absent for a self-pay visit (`selfPay`) and for an appointment type that runs no checks (`requiresEligibilityCheck: false`). */
   eligibilityCheckId?: Id;
 }

@@ -23,7 +23,7 @@ import type { NoteVersion } from './noteVersion';
 export interface NoteVersionList {
   /**
      * The items on this page.
-     * @maxItems 50
+     * @maxItems 100
      */
   items: NoteVersion[];
   /** Cursor for the next page. Absent on the last page. */
