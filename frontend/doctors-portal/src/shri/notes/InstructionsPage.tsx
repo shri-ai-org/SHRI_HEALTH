@@ -23,7 +23,7 @@ import { useParams } from 'react-router-dom'
 
 import type { Encounter } from '@/data/clinical'
 import { NOW, formatDateTime, formatTime } from '@/data/format'
-import { LANGUAGES, patient } from '@/data/kit'
+import { PATIENT_LANGUAGES as LANGUAGES, defaultLanguageFor, patient } from '../../../shri-health/kit'
 import { useAI } from '@/store/ai'
 import { useAudit } from '@/store/audit'
 import { useClinical, type InstructionChannel } from '@/store/clinical'
@@ -32,8 +32,8 @@ import { useUI } from '@/store/ui'
 
 import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
-import { encounterLabel, maybeEncounter } from '../logic/encounter'
-import { CHANNEL_WORD, DEFAULT_LANGUAGE, ENGLISH_ONLY, issuedDetail, rewriteFor, translationFor } from '../logic/instructions'
+import { encounterLabel, maybeEncounter } from '../../../shri-health/encounter'
+import { CHANNEL_WORD, ENGLISH_ONLY, issuedDetail, rewriteFor, translationFor } from '../logic/instructions'
 import { useAiActive, useForcedState } from '../state/ai'
 import { useNotifications } from '../state/notifications'
 import { AIActionBar } from '../ui/ai'
@@ -46,10 +46,11 @@ import { ValidationSummary } from '../ui/states'
 import { VoiceField } from '../ui/VoiceField'
 
 import { NoSuchEncounter } from './ConsultationPage'
+import { FollowUpSection } from './FollowUpSection'
 
 const CHANNELS: { key: InstructionChannel; label: string }[] = [
-  { key: 'print', label: 'Printed A5, bilingual' },
-  { key: 'app', label: 'Patient app, in their language' },
+  { key: 'print', label: 'Printed, Letter size' },
+  { key: 'app', label: 'Patient portal, in their language' },
   { key: 'sms', label: 'SMS notification' },
 ]
 
@@ -75,7 +76,7 @@ function Instructions({ enc }: { enc: Encounter }) {
   const setInstructions = useClinical((s) => s.setInstructions)
   const issueInstructions = useClinical((s) => s.issueInstructions)
   const setPatientLanguage = useClinical((s) => s.setPatientLanguage)
-  const language = useClinical((s) => s.patientLanguages[p.id]) ?? DEFAULT_LANGUAGE
+  const language = useClinical((s) => s.patientLanguages[p.id]) ?? defaultLanguageFor(p.id)
   const rec = instructionsFor(enc.id)
 
   const touchpointId = `${enc.id}:instructions`
@@ -193,17 +194,17 @@ function Instructions({ enc }: { enc: Encounter }) {
             value={rec.patient}
             disabled={locked}
             onChange={(v) => setInstructions(enc.id, { patient: v })}
-            hint="Edited from the AI-111 rewrite — the translation follows only the rewrite as drafted."
+            hint="Edited from the AI rewrite — the translation follows only the rewrite as drafted."
           />
         ) : (
           <div
             role="region"
-            aria-label={`AI-111 rewrite — ${decided ? disposition?.disposition : 'awaiting a decision'}`}
+            aria-label={`AI rewrite — ${decided ? disposition?.disposition : 'awaiting a decision'}`}
             className={cn('rounded-[16px] border-l-[3px] border-sh-ai bg-sh-inner px-[14px] py-[12px] text-[14px]/[1.6] text-sh-text', !decided && 'opacity-85')}
           >
             <p className="mb-[8px] flex items-center gap-[8px] text-[12px] font-semibold text-sh-text-2">
               <Diamond />
-              AI-111 rewrite
+              AI rewrite
             </p>
             {/* One paragraph each: this is the document the patient receives, so it is marked up as prose. */}
             <div className="flex flex-col gap-[8px]">
@@ -318,7 +319,7 @@ function Instructions({ enc }: { enc: Encounter }) {
               className="disabled:opacity-40"
               onClick={() => setPrintOpen(true)}
             >
-              Preview the A5 print
+              Print preview
             </Pill>
             {!hasPatient ? (
               <span className="text-[13px] text-sh-text-2">{rec.clinician.trim() === '' ? 'Dictate or type your instructions first' : 'Draft the patient version to issue'}</span>
@@ -339,7 +340,7 @@ function Instructions({ enc }: { enc: Encounter }) {
                 className={cn(!canIssue && 'opacity-40')}
                 onClick={issue}
               >
-                {last ? 'Issue again' : 'Issue to the patient'}
+                {last ? 'Issue again' : 'Send to patient'}
               </Pill>
             </div>
           </>
@@ -351,7 +352,7 @@ function Instructions({ enc }: { enc: Encounter }) {
 
         <Why label="Why two versions">
           <p>
-            The rewrite does not replace what you wrote. Your wording stays in the record; the plain-language version is what the patient receives — AI-111&rsquo;s guardrail.
+            The rewrite does not replace what you wrote. Your wording stays in the record; the plain-language version is what the patient receives — the AI guardrail.
           </p>
         </Why>
 
@@ -373,14 +374,14 @@ function Instructions({ enc }: { enc: Encounter }) {
           </Card>
 
           <Card titleSize="sm" title="What the patient reads" headerClassName="mb-[4px]" id="patient-version">
-            <p className="mb-[12px] text-[12px] text-sh-text-3">AI-111 · plain language, then translated</p>
+            <p className="mb-[12px] text-[12px] text-sh-text-3">Plain-language version</p>
             {patientColumn}
           </Card>
         </div>
 
         {hasPatient && (
           <Card titleSize="sm" title={`Translation — ${languageLabel}`} headerClassName="mb-[4px]">
-            <p className="mb-[12px] text-[12px] text-sh-text-3">AI-110 · English-only is the fallback, with the limitation stated</p>
+            <p className="mb-[12px] text-[12px] text-sh-text-3">If no translation is available, the print is in English, and says so.</p>
             {language === 'EN' ? (
               <p className="rounded-[14px] bg-sh-inner px-[16px] py-[12px] text-[13px] text-sh-text-2">
                 The patient reads English, so no translation is needed. The print is single-language.
@@ -408,6 +409,8 @@ function Instructions({ enc }: { enc: Encounter }) {
             )}
           </Card>
         )}
+
+        <FollowUpSection encounterId={enc.id} />
       </ScreenFrame>
 
       <PrintPreview
@@ -415,7 +418,7 @@ function Instructions({ enc }: { enc: Encounter }) {
         onClose={() => setPrintOpen(false)}
         title="Patient instructions"
         patient={p}
-        paper="A5"
+        paper="Letter"
         meta={`${encounterLabel(enc)} · English${language === 'EN' ? '' : translation ? ` and ${languageLabel}` : ' only'}`}
         sections={[
           { heading: 'Your instructions', body: patientText },
