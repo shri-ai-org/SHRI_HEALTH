@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Path, Request, Response
+from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,7 +41,10 @@ from app.modules.history.repository import SqlAllergyRepository
 from app.modules.medications import service as medications_service
 from app.modules.medications.repository import SqlMedicationRepository
 from app.modules.practice_setup.repository import SqlSetupRepository
+from app.modules.scheduling import service as scheduling_service
+from app.modules.scheduling.reference import reference as scheduling_reference
 
+from . import chart_answers as answers
 from . import chart_context as chart_lines
 from . import chart_summaries as summaries
 from . import drafts as rules
@@ -55,10 +58,14 @@ from .schemas import (
     AiSettingsUpdate,
     AiSuggestion,
     AiSuggestionDecision,
+    ChartAnswer,
+    ChartQuestionCreate,
     ChartSummary,
     ChartSummaryCreate,
     NoteDraftCreate,
+    PageType,
     SourceRef,
+    SuggestedQuestionList,
     TemplateSection,
     Transcription,
 )
@@ -238,7 +245,33 @@ def visit_of(check: Annotated[rules.ChartCheck, Depends(chart_check)]) -> summar
     return read
 
 
+def schedule_reader() -> summaries.SummaryReader:
+    """The front desk's chart for a question: the patient's appointments only, through the
+    scheduling service (facility scope, D37), never a reason for visit or a clinical record."""
+    async def read(db: AsyncSession, user: CurrentUser, patient_id: UUID
+                   ) -> summary_lines.SummaryChart:
+        if not user.can("appointments:read"):
+            return summary_lines.SummaryChart(unavailable=("appointments (no permission)",))
+        found, _, _ = await scheduling_service.patient_history(
+            db, scheduling_reference(), user, patient_id, date_from=None, date_to=None,
+            limit=20, offset=0)
+        return summary_lines.SummaryChart(lines=tuple(answers.schedule_lines(found)),
+                                          unavailable=("clinical records (scheduling only)",))
+
+    return read
+
+
+def visit_patient(visits: Annotated[summaries.VisitOf, Depends(visit_of)]) -> Any:
+    async def patient(db: AsyncSession, user: CurrentUser, encounter_id: UUID) -> UUID:
+        found, _ = await visits(db, user, encounter_id)
+        return found
+
+    return patient
+
+
 SummaryChartReader = Annotated[summaries.SummaryReader, Depends(summary_reader)]
+ScheduleReader = Annotated[summaries.SummaryReader, Depends(schedule_reader)]
+VisitPatient = Annotated[Any, Depends(visit_patient)]
 VisitReader = Annotated[summaries.VisitOf, Depends(visit_of)]
 IfMatch = Annotated[str | None, Header(alias="If-Match", max_length=128)]
 
@@ -291,6 +324,43 @@ async def get_chart_summary(
     found = await summaries.get(db, repo, check, user, summary_id)
     _audit(request, audit, [found.patient_id])
     return found
+
+
+@router.post("/ai/chart-questions", operation_id="createChartQuestion", status_code=202,
+             responses={202: {"description": "The operation (core's Operation)."}})
+async def create_chart_question(
+    user: Annotated[CurrentUser, Depends(require("chart-questions:create"))],
+    body: ChartQuestionCreate, request: Request, db: DB, repo: Repo, ai_model: Model,
+    check: Check, audit: Audit, visit: VisitPatient, chart: SummaryChartReader,
+    schedule: ScheduleReader,
+) -> JSONResponse:
+    """The question is never logged (chart_answers.py)."""
+    _audit(request, audit, [body.patient_id])
+    operation = await answers.create(db, repo, ai_model, check, visit, chart, schedule, user,
+                                     body)
+    return accepted(operation)
+
+
+@router.get("/ai/chart-answers/{chartAnswerId}", operation_id="getChartAnswer",
+            response_model=ChartAnswer, response_model_exclude_none=True)
+async def get_chart_answer(
+    user: Annotated[CurrentUser, Depends(require("chart-questions:create"))],
+    answer_id: Annotated[UUID, Path(alias="chartAnswerId")], request: Request, db: DB,
+    repo: Repo, check: Check, audit: Audit,
+) -> ChartAnswer:
+    found = await answers.get(db, repo, check, user, answer_id)
+    _audit(request, audit, [found.patient_id])
+    return found
+
+
+@router.get("/ai/suggested-questions", operation_id="listSuggestedQuestions",
+            response_model=SuggestedQuestionList)
+async def list_suggested_questions(
+    user: Annotated[CurrentUser, Depends(require("chart-questions:create"))],
+    page_type: Annotated[PageType, Query(alias="pageType")],
+) -> SuggestedQuestionList:
+    """A fixed rule table (chart_answers.SUGGESTED): no model call, no patient data."""
+    return answers.suggested(user, page_type)
 
 
 @router.post("/ai/suggestions/{suggestionId}/decision", operation_id="decideAiSuggestion",
