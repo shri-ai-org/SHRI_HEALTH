@@ -15,7 +15,7 @@
 //   basicInfo.address, city, state, zip        ⇒ address (lines, city, state, postalCode); country is US
 //   basicInfo.maritalStatus, gender, email     ⇒ maritalStatus (v3 code), gender, emails[0]
 //   choicesForm.Language                       ⇒ preferredLanguage (BCP 47)
-//   choicesForm.provider                       ⇒ generalPractitionerId once #225 merges (left out until then; it would be refused)
+//   choicesForm.provider                       ⇒ generalPractitionerId (#225)
 //   basicInfo.relation*                        ⇒ addRelatedPerson: v2-0131 C emergency contact + the relation
 //   choicesForm.ResponsibleParty               ⇒ "Same as Emergency Contact" adds v3 RoleCode GUAR to that person
 //   choicesForm.insuranceCompany, policyNumber,
@@ -330,8 +330,7 @@ export async function loadPayers(): Promise<Option[]> {
 
 /**
  * Providers for the Provider select: `GET /booking/providers` (D49), which the front desk can read
- * (Vimal on #85, 2026-11-03). TODO(#225): send the choice as `generalPractitionerId` once #225 merges; left out until then.
- * The contract has it (#212), but the patients backend doesn't yet and refuses unknown fields (422).
+ * (Vimal on #85, 2026-11-03). The choice is sent as `generalPractitionerId` (#212, built in #225).
  */
 export async function loadProviders(): Promise<Option[]> {
   const res = await apiListBookableProviders({ limit: 100 })
@@ -470,6 +469,8 @@ export function toPatientCreate(form: RegistrationForm, overrideReason?: string)
     gender: b.gender === 'Male' ? 'male' : b.gender === 'Female' ? 'female' : undefined,
     maritalStatus: MARITAL_CODE[b.maritalStatus],
     ...(c.Language ? { preferredLanguage: c.Language } : {}),
+    // The Provider select: the patient's primary provider (#225; FHIR Patient.generalPractitioner).
+    ...(c.provider ? { generalPractitionerId: c.provider } : {}),
     phones: [{ number: toE164(b.phoneNo), use: 'mobile', textMessages: c.AllowSMS === 'Yes' }],
     ...(b.email.trim() ? { emails: [{ address: b.email.trim(), use: 'home' }] } : {}),
     address: { lines: [b.address.trim()], city: b.city.trim(), state: b.state, postalCode: b.zip.trim(), country: 'US' },
