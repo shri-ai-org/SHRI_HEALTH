@@ -175,7 +175,8 @@ function UpcomingRow({
           <Stethoscope className="h-4 w-4 text-info-fg" strokeWidth={1.75} aria-hidden="true" />
         )}
       </span>
-      <div className="min-w-0 flex-1">
+      {/* On a phone the visit takes the first line, and its status and actions wrap below it. */}
+      <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-2.75rem)]">
         <p className="truncate text-sm font-semibold text-ink">
           {relativeDayLabel(appointment.date, today)} · {formatTime(appointment.slot)} · {appointment.provider?.name ?? 'Doctor'}
         </p>
