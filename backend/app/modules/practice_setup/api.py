@@ -1,5 +1,5 @@
-"""Practice setup API (contracts/openapi/modules/practice-setup.yaml): the six list reads and the
-note-template reads.
+"""Practice setup API (contracts/openapi/modules/practice-setup.yaml): the six list reads, the
+note-template reads, and the practice settings (read and JSON Merge Patch, A49).
 
 Each route's operation_id is the contract's operationId, with require() on its x-permission
 (`payers:read` for the payer directory, `note-templates:read` for the note templates (D73, A54),
@@ -14,13 +14,18 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi import APIRouter, Depends, Header, Path, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser, require, tenant_db
 
 from . import schemas, service
-from .repository import SetupRepository, SqlSetupRepository
+from .repository import (
+    SettingsRepository,
+    SetupRepository,
+    SqlSettingsRepository,
+    SqlSetupRepository,
+)
 
 router = APIRouter(tags=["practice-setup"])
 
@@ -29,9 +34,16 @@ def repository() -> SetupRepository:
     return SqlSetupRepository()
 
 
+def settings_repository() -> SettingsRepository:
+    return SqlSettingsRepository()
+
+
 Repo = Annotated[SetupRepository, Depends(repository)]
+SettingsRepo = Annotated[SettingsRepository, Depends(settings_repository)]
 DB = Annotated[AsyncSession, Depends(tenant_db)]
 SetupRead = Annotated[CurrentUser, Depends(require("practice-setup:read"))]
+SetupUpdate = Annotated[CurrentUser, Depends(require("practice-setup:update"))]
+IfMatch = Annotated[str | None, Header(alias="If-Match")]
 PayersRead = Annotated[CurrentUser, Depends(require("payers:read"))]
 TemplatesRead = Annotated[CurrentUser, Depends(require("note-templates:read"))]
 Limit = Annotated[int, Query(ge=1, le=100)]
@@ -123,3 +135,23 @@ async def get_note_template(user: TemplatesRead, note_template_id: NoteTemplateI
     found = await service.get_note_template(db, repo, note_template_id)
     response.headers["ETag"] = service.etag(found.version)
     return found
+
+
+@router.get("/practice-settings", operation_id="getPracticeSettings",
+            response_model=schemas.PracticeSettings)
+async def get_practice_settings(user: SetupRead, response: Response, db: DB,
+                                repo: SettingsRepo) -> schemas.PracticeSettings:
+    found, version = await service.get_settings(db, repo)
+    response.headers["ETag"] = service.etag(version)
+    return found
+
+
+@router.patch("/practice-settings", operation_id="updatePracticeSettings",
+              response_model=schemas.PracticeSettings)
+async def update_practice_settings(user: SetupUpdate, body: schemas.PracticeSettingsPatch,
+                                   response: Response, db: DB, repo: SettingsRepo,
+                                   if_match: IfMatch = None) -> schemas.PracticeSettings:
+    updated, version = await service.update_settings(db, repo, body, if_match)
+    await db.commit()
+    response.headers["ETag"] = service.etag(version)
+    return updated

@@ -12,11 +12,18 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import NotFound
+from app.core.errors import (
+    InternalError,
+    NotFound,
+    PreconditionFailed,
+    PreconditionRequired,
+    ValidationFailed,
+    field_error,
+)
 
 from . import cursor, schemas
 from .cursor import Kind, Position
-from .repository import Page, SetupRepository
+from .repository import Page, SettingsRepository, SettingsRow, SetupRepository
 
 
 def _after(value: str | None, kind: Kind) -> Position | None:
@@ -98,3 +105,58 @@ async def get_note_template(db: AsyncSession, repo: SetupRepository, note_templa
 def etag(version: int) -> str:
     """A strong ETag from the row's A41 version (API_STANDARDS §11)."""
     return f'"{version}"'
+
+
+# ------------------------------------------------------------------------- practice settings
+def if_match_version(header: str | None) -> int:
+    """The version a strong ETag names; 428 without one, 412 for a weak or malformed one."""
+    if header is None:
+        raise PreconditionRequired()
+    value = header.strip()
+    if value.startswith('"') and value.endswith('"') and value[1:-1].isdigit():
+        return int(value[1:-1])
+    raise PreconditionFailed()
+
+
+def _settings(row: SettingsRow) -> schemas.PracticeSettings:
+    return schemas.PracticeSettings(
+        registration=schemas.PracticeRegistrationSettings(
+            show_sexual_orientation_and_gender_identity=row.show_sogi),
+        mrn_prefix=row.mrn_prefix, mrn_system=row.mrn_system, updated_at=row.updated_at)
+
+
+async def _current(db: AsyncSession, repo: SettingsRepository) -> SettingsRow:
+    row = await repo.get_settings(db)
+    if row is None:  # onboarding creates the MRN counter with the practice (D41)
+        raise InternalError("The practice has no MRN counter")
+    return row
+
+
+async def get_settings(db: AsyncSession, repo: SettingsRepository
+                       ) -> tuple[schemas.PracticeSettings, int]:
+    row = await _current(db, repo)
+    return _settings(row), row.version
+
+
+async def update_settings(db: AsyncSession, repo: SettingsRepository,
+                          body: schemas.PracticeSettingsPatch, if_match: str | None
+                          ) -> tuple[schemas.PracticeSettings, int]:
+    """JSON Merge Patch: every level needs at least one member, and no member may be null."""
+    registration = body.registration
+    if registration is None or not registration.model_fields_set:
+        pointer = "/registration" if "registration" in body.model_fields_set else ""
+        raise ValidationFailed(errors=[field_error("body", pointer, "required")])
+    show = registration.show_sexual_orientation_and_gender_identity
+    if show is None:
+        raise ValidationFailed(errors=[field_error(
+            "body", "/registration/showSexualOrientationAndGenderIdentity", "invalid-type")])
+    expected = if_match_version(if_match)
+    row = await _current(db, repo)
+    if row.version != expected:
+        raise PreconditionFailed(headers={"ETag": etag(row.version)})
+    if row.show_sogi != show:
+        version = await repo.set_show_sogi(db, show, if_version=expected)
+        if version is None:  # another request changed it since the read
+            raise PreconditionFailed(headers={"ETag": etag((await _current(db, repo)).version)})
+    row = await _current(db, repo)
+    return _settings(row), row.version
