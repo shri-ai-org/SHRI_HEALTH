@@ -24,6 +24,8 @@ $PG_RESTORE --exit-on-error --no-password -d "$TARGET" < "$DUMP"
 echo "restore_db: $DUMP into $TARGET in $(( $(date +%s) - start )) s"
 $PSQL -X -At -d "$TARGET" -c "SELECT 'head ' || (SELECT version_num FROM admin.alembic_version)
   || ', patients ' || (SELECT count(*) FROM clinical.patient)
-  || ', tables without forced RLS ' || (SELECT count(*) FROM pg_class c JOIN pg_namespace n
-     ON n.oid = c.relnamespace WHERE n.nspname IN ('clinical', 'admin', 'audit')
-     AND c.relkind = 'r' AND c.relrowsecurity AND NOT c.relforcerowsecurity)"
+  || ', clinic tables without RLS on and forced ' || (SELECT count(*) FROM pg_class c
+     JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('clinical', 'admin', 'audit')
+     AND c.relkind IN ('r', 'p') AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid
+     AND a.attname = 'tenant_id' AND NOT a.attisdropped)
+     AND NOT (c.relrowsecurity AND c.relforcerowsecurity))"

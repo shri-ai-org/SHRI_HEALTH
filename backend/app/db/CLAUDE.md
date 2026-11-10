@@ -454,9 +454,9 @@ pin in `terminology/fetch.py`, in a reviewed PR.
 ## Server tools (`app/db/tools`, the self-managed demo and test servers)
 
 - `python -m app.db.tools.server_check --patients 505` runs, as the master user, read-only, the
-  six database checks of server day: Alembic head, pgvector `0.8.2` (D31), forced row security
-  on every table, collation C.UTF-8, no service role bypassing row security, and the patient
-  count. Each prints PASS or FAIL, and the exit status is 1 if any fails. The URL is
+  six database checks of server day: Alembic head, pgvector `0.8.2` (D31), row security on
+  and forced on every clinic table (those with a `tenant_id`), collation C.UTF-8, no service role
+  bypassing row security or a superuser, and the patient count. Each prints PASS or FAIL, and the exit status is 1 if any fails. The URL is
   `SERVER_CHECK_DATABASE_URL`, never printed. A laptop built with another pgvector fails that
   line by design.
 - `backup_db.sh <database> <dir>`: `pg_dump -Fc` as the master user, checked with

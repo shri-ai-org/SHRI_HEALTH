@@ -23,6 +23,17 @@ def test_a_migrated_database_passes_and_a_wrong_count_fails(admin_engine: Engine
                                                              "demo patients loaded"}
 
 
+def test_a_clinic_table_without_row_security_and_a_superuser_fail(admin_engine: Engine) -> None:
+    """Thulasi on #270: row security switched off entirely, and a superuser role, both count."""
+    with admin_engine.connect() as conn, conn.begin() as tx:
+        conn.execute(text("CREATE TABLE clinical.server_check_probe (tenant_id uuid)"))
+        conn.execute(text("CREATE ROLE shri_server_check_probe SUPERUSER NOLOGIN"))
+        failed = {c.name for c, v in sc.run(conn, sc.checks(0)) if v != c.expected}
+        tx.rollback()
+    assert {"row security on and forced on every clinic table",
+            "no service role bypasses row security"} <= failed
+
+
 def test_a_query_that_fails_is_a_failed_check_not_a_crash(admin_engine: Engine) -> None:
     with admin_engine.connect() as conn:
         [(_, got)] = sc.run(conn, [sc.Check("missing", "SELECT x FROM no_such_table", "1")])

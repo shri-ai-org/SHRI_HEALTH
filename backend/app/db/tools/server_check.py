@@ -29,20 +29,27 @@ class Check:
     expected: str
 
 
+# Clinic tables (those with a tenant_id) without row security both enabled and forced: one with it
+# switched off entirely counts too (Thulasi on #270).
+UNFORCED = ("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname IN ('clinical', 'admin', 'audit') AND c.relkind IN ('r', 'p') "
+            "AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid "
+            "AND a.attname = 'tenant_id' AND NOT a.attisdropped) "
+            "AND NOT (c.relrowsecurity AND c.relforcerowsecurity)")
+
+
 def checks(patients: int, head: str = HEAD, pgvector: str = PGVECTOR) -> list[Check]:
     return [
         Check("migrations at head", "SELECT version_num FROM admin.alembic_version", head),
         Check("pgvector is RDS's (D31)",
               "SELECT extversion FROM pg_extension WHERE extname = 'vector'", pgvector),
-        Check("row security forced on every table",
-              "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
-              "WHERE n.nspname IN ('clinical', 'admin', 'audit') AND c.relkind = 'r' "
-              "AND c.relrowsecurity AND NOT c.relforcerowsecurity", "0"),
+        Check("row security on and forced on every clinic table", UNFORCED, "0"),
         Check("collation C.UTF-8 (D33)",
               "SELECT datcollate FROM pg_database WHERE datname = current_database()",
               "C.UTF-8"),
         Check("no service role bypasses row security",
-              "SELECT count(*) FROM pg_roles WHERE rolname LIKE 'shri\\_%' AND rolbypassrls",
+              "SELECT count(*) FROM pg_roles WHERE rolname LIKE 'shri\\_%' "
+              "AND (rolbypassrls OR rolsuper)",
               "0"),
         Check("demo patients loaded", "SELECT count(*) FROM clinical.patient", str(patients)),
     ]

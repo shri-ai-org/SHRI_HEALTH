@@ -6,12 +6,14 @@
 # every clinic's rows. Connection settings come from libpq's environment (PGHOST, PGUSER,
 # PGPASSFILE ...), never the command line. On a Docker host, run the tools inside the database
 # container instead:
-#   PG_DUMP="docker compose -p shri exec -T postgres pg_dump -U postgres" \
-#   PG_RESTORE="docker compose -p shri exec -T postgres pg_restore" backup_db.sh shri /var/backups/shri
+#   PG_DUMP="docker compose -p shri-deploy exec -T postgres pg_dump -U postgres" \
+#   PG_RESTORE="docker compose -p shri-deploy exec -T postgres pg_restore" backup_db.sh shri /var/backups/shri
 #
 # The file is written under a temporary name, checked with pg_restore --list, then renamed, mode
 # 600. KEEP (default 14) newest dumps of this database are kept; older ones are removed. The file
 # holds every clinic's data: copy it off the server, encrypted (the scheduler's job, not this one).
+# It sits unencrypted on disk until then, which is fine for synthetic data only: before real data,
+# encrypt it as it is written (for example piped to age with a public key) so no plain copy lands.
 set -euo pipefail
 [ $# -eq 2 ] || { echo "usage: backup_db.sh <database> <backup dir>" >&2; exit 2; }
 DB=$1 DIR=$2 KEEP=${KEEP:-14}
