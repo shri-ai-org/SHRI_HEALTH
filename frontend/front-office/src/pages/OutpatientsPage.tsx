@@ -37,6 +37,7 @@ import { CheckInToggle } from '../components/appointment/CheckInToggle'
 import { todayKey } from '../domain/time'
 import { isServerAppointment, loadAppointments, markNoShowOnServer } from '../../shri-health/scheduling'
 import { problemMessage } from '../../shri-health/client'
+import { useMayRoom } from '../../shri-health/rooming'
 import { REAL_API } from '../../shri-health/client'
 import { CurrencyIcon } from '../utils/billing'
 
@@ -62,6 +63,7 @@ const EMPTY_TITLE: Record<OutpatientFilter, string> = {
  * because the desk has to see them; the desk's own step is Check in.
  */
 export function OutpatientsPage() {
+  const mayRoom = useMayRoom()
   const location = useLocation()
   const navigate = useNavigate()
   const now = useNow(15000)
@@ -170,6 +172,22 @@ export function OutpatientsPage() {
         )
       }
       case 'waiting':
+        // SHRI_HEALTH: a server booking checked in anywhere is waiting here too (its place comes from
+        // the server, gap 73); the medical assistant rooms it from this row (demo step 6).
+        if (REAL_API && row.appointment && isServerAppointment(row.appointment.appointmentId)) {
+          const appointmentId = row.appointment.appointmentId
+          return (
+            <>
+              <CheckInToggle appointment={row.appointment} patientName={name} />
+              {mayRoom ? (
+                <Button size="sm" onClick={() => openFlow('rooming', { appointment: appointmentId })}>
+                  <DoorOpen className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Room patient
+                </Button>
+              ) : null}
+            </>
+          )
+        }
         return token ? (
           <>
             {admit}

@@ -1,10 +1,10 @@
 // TEMPORARY — no source screen (frontend/docs/SCREEN_PORT.md). Neither care-entry nor the
-// doctors' portal has an insurance or a rooming screen, so demo steps 3 and 6 use the screens
-// Claude built earlier until Minalini decides after the demo. Delete this file, its two routes in
-// src/App.tsx and the @source lines in src/index.css together.
+// doctors' portal has an insurance screen, so demo step 3 uses the screen Claude built earlier
+// until Minalini decides after the demo. Rooming (step 6) is now care-entry's rooming sheet
+// (src/flows/rooming/RoomingFlow.tsx). Delete this file, its route in src/App.tsx and the
+// @source lines in src/index.css together.
 import { useParams } from 'react-router'
 
-import { RoomingPage } from '../../src/features/clinical/RoomingPage'
 import { InsurancePanel } from '../../src/features/patients/insurance/InsurancePanel'
 import { ToastProvider } from '../../src/design-system'
 
@@ -23,16 +23,6 @@ export function TemporaryInsurance() {
     <ToastProvider>
       <TemporaryLabel step="3, insurance" />
       <InsurancePanel patientId={patientId} />
-    </ToastProvider>
-  )
-}
-
-/** Demo step 6: rooming (`/temporary/rooming/:encounterId`). */
-export function TemporaryRooming() {
-  return (
-    <ToastProvider>
-      <TemporaryLabel step="6, room" />
-      <RoomingPage />
     </ToastProvider>
   )
 }
