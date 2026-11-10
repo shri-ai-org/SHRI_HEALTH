@@ -8,6 +8,7 @@
     outbox       the partner worker and partner callbacks
     events       live events
     files        the file service
+    ai           the Claude API key (from OpenBao)
 
 They combine into one Settings object with the same environment variable names, defaults and
 validation as before the split; `app.core.config` re-exports it, so imports don't change.
@@ -24,6 +25,7 @@ from pydantic import SecretStr, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
+from app.core.settings.ai import AiFields
 from app.core.settings.auth import AuthFields, AuthMode
 from app.core.settings.base import BaseFields, Environment
 from app.core.settings.events import EventsFields
@@ -37,7 +39,7 @@ __all__ = ["AuthMode", "Environment", "OpenBaoSource", "Settings", "get_settings
 
 
 class Settings(BaseFields, AuthFields, PortalFields, OpenBaoFields, PublicFormFields,
-               OutboxFields, EventsFields, FilesFields):
+               OutboxFields, EventsFields, FilesFields, AiFields):
     model_config = SettingsConfigDict(env_file=None, extra="ignore", case_sensitive=False)
 
     @model_validator(mode="after")
