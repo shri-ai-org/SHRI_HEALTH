@@ -39,7 +39,7 @@ import json
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Protocol, TypeIs
 
@@ -483,6 +483,32 @@ class DiagnosisIn:
 
 
 @dataclass(frozen=True)
+class ProblemIn:
+    """A problem on the patient's list (US Core Condition, category ``problem-list-item``).
+    ``onset`` and ``abatement`` are dates as the contract's ``PartialDate`` gives them:
+    ``YYYY``, ``YYYY-MM`` or ``YYYY-MM-DD``."""
+    patient_id: uuid.UUID
+    code: Coded  # ICD-10-CM or SNOMED CT (the database refuses other systems)
+    clinical_status: str = "active"
+    verification_status: str = "confirmed"
+    onset: str | None = None
+    abatement: str | None = None
+    note: str | None = None
+    encounter_id: uuid.UUID | None = None
+    entry_source: str = "clinician"
+
+
+@dataclass(frozen=True)
+class ProblemChanges:
+    """The code never changes: a wrong code is marked entered-in-error and the right one added."""
+    clinical_status: str | _Unset = UNSET
+    verification_status: str | _Unset = UNSET
+    onset: str | None | _Unset = UNSET
+    abatement: str | None | _Unset = UNSET
+    note: str | None | _Unset = UNSET
+
+
+@dataclass(frozen=True)
 class DiagnosisWritten:
     condition: Written
     encounter: Written  # the encounter's new version: the link is its child row
@@ -720,6 +746,27 @@ class FhirStore(Protocol):
         its rank link stays, so the signed visit keeps its record of what was diagnosed. Returns
         the Condition. It takes only the Condition: the caller checks first that it is an
         ``encounter-diagnosis`` of the visit named in the request, and that the visit is signed."""
+        ...
+
+    # The problem list: a Condition (problem-list-item), FRS FR-PAT-03
+    async def create_problem(self, db: AsyncSession, data: ProblemIn) -> Written:
+        """``InvalidInput`` for a malformed date (``field`` ``onsetDate`` or ``abatementDate``),
+        an end before the start, an end on a problem that is still active (FHIR con-4), or an
+        encounter that isn't this patient's live visit; ``ResourceNotFound`` for a patient the
+        session can't see."""
+        ...
+
+    async def update_problem(self, db: AsyncSession, problem_id: uuid.UUID,
+                             changes: ProblemChanges, *, if_version: int) -> Written:
+        """``InvalidTransition`` once entered-in-error; ``ResourceNotFound`` for a Condition
+        that isn't on a problem list (an encounter diagnosis has its own helpers)."""
+        ...
+
+    async def problem_entered_in_error(self, db: AsyncSession, problem_id: uuid.UUID,
+                                       reason: Reason, *, if_version: int | None = None
+                                       ) -> Written:
+        """Entered-in-error with its Provenance; nothing is deleted (D14). The same errors as
+        ``update_problem``."""
         ...
 
     # The medication list: a reported MedicationRequest, intent plan (D28; demo step 7)
@@ -1537,6 +1584,62 @@ class SqlFhirStore:
         await _nullify_provenance(db, "Condition", written, reason)
         return written
 
+    # ------------------------------------------------------------------------- Problem list
+    async def create_problem(self, db: AsyncSession, data: ProblemIn) -> Written:
+        _check_problem_status(data.clinical_status, data.verification_status)
+        if (await db.execute(select(Patient.id).where(Patient.id == data.patient_id))
+                ).scalar_one_or_none() is None:
+            raise ResourceNotFound
+        if data.encounter_id is not None:
+            await _live_visit_of(db, data.encounter_id, data.patient_id)
+        cond = Condition(clinical_status=data.clinical_status,
+                         verification_status=data.verification_status,
+                         code_system=data.code.system, code_code=data.code.code,
+                         code_display=data.code.display, code_text=data.code.text,
+                         subject_patient_id=data.patient_id, encounter_id=data.encounter_id,
+                         recorded_date=await _db_now(db), entry_source=data.entry_source)
+        _set_problem_dates(cond, data.onset, data.abatement)
+        cond.category = [ConditionCategory(category_system=systems.CONDITION_CATEGORY,
+                                           category_code=PROBLEM_LIST_ITEM)]
+        db.add(await _new(db, cond))
+        await db.flush()
+        if data.note:
+            db.add(Annotation(condition_id=cond.id, text=data.note, time=await _db_now(db)))
+        return await _written(db, cond)
+
+    async def update_problem(self, db: AsyncSession, problem_id: uuid.UUID,
+                             changes: ProblemChanges, *, if_version: int) -> Written:
+        cond = await _problem(db, problem_id, if_version)
+        if _given(changes.clinical_status):
+            cond.clinical_status = changes.clinical_status
+        if _given(changes.verification_status):
+            cond.verification_status = changes.verification_status
+        _check_problem_status(cond.clinical_status, cond.verification_status)
+        onset = changes.onset if _given(changes.onset) else _partial_date(
+            cond.onset_date_time, cond.onset_period_start, cond.onset_period_end)
+        abatement = changes.abatement if _given(changes.abatement) else _partial_date(
+            cond.abatement_date_time, cond.abatement_period_start, cond.abatement_period_end)
+        _set_problem_dates(cond, onset, abatement)
+        if _given(changes.note):
+            await db.execute(delete(Annotation).where(Annotation.condition_id == problem_id))
+            if changes.note:
+                db.add(Annotation(condition_id=problem_id, text=changes.note,
+                                  time=await _db_now(db)))
+        try:
+            return await _written(db, cond)
+        except DBAPIError as refused:
+            raise _con4(refused) from None
+
+    async def problem_entered_in_error(self, db: AsyncSession, problem_id: uuid.UUID,
+                                       reason: Reason, *, if_version: int | None = None
+                                       ) -> Written:
+        reason = _require_reason(reason)
+        cond = await _problem(db, problem_id, if_version)
+        cond.verification_status, cond.clinical_status = "entered-in-error", None
+        written = await _written(db, cond)
+        await _nullify_provenance(db, "Condition", written, reason)
+        return written
+
     # ------------------------------------------------------------------------- Medication list
     async def record_medication(self, db: AsyncSession, data: MedicationIn) -> Written:
         _check_medication(data.medication)
@@ -2149,6 +2252,123 @@ def _section_text(text: str) -> dict[str, str | None]:
         return {"text_status": None, "text_div": None}
     return {"text_status": "additional",
             "text_div": f"{_XHTML_OPEN}{html.escape(text, quote=False)}</div>"}
+
+
+#: US Core's category of a Condition on the problem list (an encounter diagnosis is
+#: ``encounter-diagnosis``).
+PROBLEM_LIST_ITEM = "problem-list-item"
+_PROBLEM_CLINICAL = {"active", "recurrence", "relapse", "inactive", "remission", "resolved"}
+_PROBLEM_VERIFICATION = {"unconfirmed", "provisional", "differential", "confirmed", "refuted"}
+#: FHIR con-4: a problem with an end date is inactive, resolved or in remission.
+_ABATED = {"inactive", "resolved", "remission"}
+
+
+def _check_problem_status(clinical: str | None, verification: str | None) -> None:
+    if clinical not in _PROBLEM_CLINICAL:
+        raise InvalidInput(f"clinicalStatus is one of {sorted(_PROBLEM_CLINICAL)}",
+                           field="clinicalStatus")
+    if verification not in _PROBLEM_VERIFICATION:
+        raise InvalidInput(f"verificationStatus is one of {sorted(_PROBLEM_VERIFICATION)}",
+                           field="verificationStatus")
+
+
+def partial_date_span(value: str) -> tuple[date, date]:
+    """The days a ``PartialDate`` covers: ``2019`` is 1 Jan to 31 Dec 2019, ``2019-03`` the
+    month, ``2019-03-14`` that day. ``ValueError`` for anything else."""
+    parts = value.split("-")
+    if not 1 <= len(parts) <= 3 or not all(p.isdigit() for p in parts) or len(parts[0]) != 4 \
+            or any(len(p) != 2 for p in parts[1:]):
+        raise ValueError(f"{value!r} is not YYYY, YYYY-MM or YYYY-MM-DD")
+    year = int(parts[0])
+    if len(parts) == 1:
+        return date(year, 1, 1), date(year, 12, 31)
+    month = int(parts[1])
+    if len(parts) == 2:
+        first = date(year, month, 1)
+        following = date(year + month // 12, month % 12 + 1, 1)
+        return first, date.fromordinal(following.toordinal() - 1)
+    day = date(year, month, int(parts[2]))
+    return day, day
+
+
+def _midnight(day: date) -> datetime:
+    return datetime(day.year, day.month, day.day, tzinfo=UTC)
+
+
+def _partial_date(at: datetime | None, start: datetime | None, end: datetime | None
+                  ) -> str | None:
+    """The ``PartialDate`` a stored onset or abatement stands for (the inverse of
+    ``_set_problem_dates``): a whole year as ``YYYY``, a whole month as ``YYYY-MM``."""
+    if at is not None:
+        return at.astimezone(UTC).date().isoformat()
+    if start is None or end is None:
+        return None
+    first, last = start.astimezone(UTC).date(), end.astimezone(UTC).date()
+    if (first.month, first.day, last.month, last.day) == (1, 1, 12, 31) \
+            and first.year == last.year:
+        return f"{first.year:04d}"
+    if first.day == 1 and partial_date_span(f"{first:%Y-%m}") == (first, last):
+        return f"{first:%Y-%m}"
+    return first.isoformat()
+
+
+def problem_dates(cond: Condition) -> tuple[str | None, str | None]:
+    """A problem's ``onsetDate`` and ``abatementDate`` as the contract shows them."""
+    return (_partial_date(cond.onset_date_time, cond.onset_period_start, cond.onset_period_end),
+            _partial_date(cond.abatement_date_time, cond.abatement_period_start,
+                          cond.abatement_period_end))
+
+
+def _set_problem_dates(cond: Condition, onset: str | None, abatement: str | None) -> None:
+    """A full date in ``*_date_time``; a year or a month as a period spanning it (the
+    conventions in CLAUDE.md), so it stays queryable and reads back as it was given."""
+    spans: dict[str, tuple[date, date]] = {}
+    for name, value in (("onset", onset), ("abatement", abatement)):
+        if value is None:
+            continue
+        try:
+            spans[name] = partial_date_span(value)
+        except ValueError as bad:
+            raise InvalidInput(str(bad), field=f"{name}Date") from None
+    if "onset" in spans and "abatement" in spans and spans["abatement"][1] < spans["onset"][0]:
+        raise InvalidInput("abatementDate is before onsetDate", field="abatementDate")
+    if "abatement" in spans and cond.clinical_status not in _ABATED:
+        raise InvalidInput("a problem with an abatementDate is inactive, resolved or in "
+                           "remission", field="clinicalStatus")
+    for name in ("onset", "abatement"):
+        value = onset if name == "onset" else abatement
+        at = start = end = None
+        if value is not None:
+            first, last = spans[name]
+            if len(value) == 10:
+                at = _midnight(first)
+            else:
+                start, end = _midnight(first), _midnight(last)
+        setattr(cond, f"{name}_date_time", at)
+        setattr(cond, f"{name}_period_start", start)
+        setattr(cond, f"{name}_period_end", end)
+
+
+async def _problem(db: AsyncSession, problem_id: uuid.UUID, if_version: int | None
+                   ) -> Condition:
+    """A problem-list Condition, locked; not one on a problem list is not found here."""
+    on_list = (await db.execute(select(ConditionCategory.condition_id).where(
+        ConditionCategory.condition_id == problem_id,
+        ConditionCategory.category_code == PROBLEM_LIST_ITEM))).first()
+    if on_list is None:
+        raise ResourceNotFound
+    cond = await _locked(db, Condition, problem_id, if_version)
+    if cond.verification_status == "entered-in-error":
+        raise InvalidTransition(cond.verification_status)
+    return cond
+
+
+def _con4(refused: DBAPIError) -> Exception:
+    """The database's FHIR con-4 refusal as the input error it is; anything else unchanged."""
+    if "fhir_con_4" in str(refused.orig):
+        return InvalidInput("a problem with an abatementDate is inactive, resolved or in "
+                            "remission", field="clinicalStatus")
+    return refused
 
 
 def section_text(text_div: str | None) -> str:
