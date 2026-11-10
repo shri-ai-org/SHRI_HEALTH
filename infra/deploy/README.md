@@ -97,6 +97,20 @@ In order:
 
 Everyone is signed out, because sessions live in the database. Keycloak's database, OpenBao's keys and the stored files stay. Files from earlier runs remain in the object store, unreferenced; they're synthetic. Steps 2 to 4 take about 10 seconds, and the codes about 35 more (plus the first download on a new host).
 
+## Secrets the API reads at startup (the Claude API key)
+
+The API reads one OpenBao KV secret at startup, `secret/shri-health/api`, with its own narrow token (read that path only). The Claude API key goes there, never into the settings file, the repository, a chat or a message:
+
+```bash
+sh infra/deploy/openbao/set-secret.sh <settings file> CLAUDE_API_KEY
+```
+
+1. Run it yourself, on the server, in your own terminal (not through an assistant).
+2. Paste the key when asked; nothing shows. The script stores it and prints only its length.
+3. Run `deploy.sh up` again so the API reads it.
+
+**Fictional data only** while the AI calls go to the Claude API: there is no BAA with Anthropic yet. Use a key made for this server, with a spending limit, and delete it in the Anthropic console if it may have leaked; then store the new one the same way. Anyone with OpenBao's root token (`openbao.env`) or root on the server can read it, so keep server access to the developers.
+
 ## Admin access
 
 - **SSH:** only from `admin_cidr` (OpenTofu, below), with the administrator's key.
