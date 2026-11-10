@@ -43,9 +43,9 @@ def _summary_on(client: Client) -> None:
 def _reply(user_text: str) -> str:
     """The stand-in's answer: one statement per allergy and medication line it was sent, plus
     one that cites nothing (which the gateway must drop)."""
-    lines = [l for l in user_text.splitlines() if l.startswith("S")]
-    allergy = next(l.split(":", 1)[0] for l in lines if ": Allergy:" in l)
-    medication = next(l.split(":", 1)[0] for l in lines if ": Medication:" in l)
+    lines = [line for line in user_text.splitlines() if line.startswith("S")]
+    allergy = next(line.split(":", 1)[0] for line in lines if ": Allergy:" in line)
+    medication = next(line.split(":", 1)[0] for line in lines if ": Medication:" in line)
     return json.dumps({"sections": [
         {"topic": "allergies", "statements": [{"text": "Peanut allergy, high criticality.",
                                                "sources": [allergy]}]},
