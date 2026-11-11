@@ -42,6 +42,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // The copied apps (front-office/, doctors-portal/, patient-self-registration/) have no tests here.
+    include: ['src/**/*.test.{ts,tsx}', 'dev/**/*.test.ts'],
     css: false,
   },
 })

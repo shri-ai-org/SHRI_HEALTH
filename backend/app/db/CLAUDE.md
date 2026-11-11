@@ -470,6 +470,24 @@ download is made once and a file that doesn't match is refused, never cached or 
 loads both as `shri_migrator`. About 35 s, and a rerun changes nothing. A new release is a new
 pin in `terminology/fetch.py`, in a reviewed PR.
 
+## Server tools (`app/db/tools`, the self-managed demo and test servers)
+
+- `python -m app.db.tools.server_check --patients 505` runs, as the master user, read-only, the
+  six database checks of server day: Alembic head, pgvector `0.8.2` (D31), row security on
+  and forced on every clinic table (those with a `tenant_id`), collation C.UTF-8, no service role
+  bypassing row security or a superuser, and the patient count. Each prints PASS or FAIL, and the exit status is 1 if any fails. The URL is
+  `SERVER_CHECK_DATABASE_URL`, never printed. A laptop built with another pgvector fails that
+  line by design.
+- `backup_db.sh <database> <dir>`: `pg_dump -Fc` as the master user, checked with
+  `pg_restore --list`, mode 600, keeping the newest `KEEP` (14). `restore_db.sh <dump>
+  <target>` recreates the target with the deploy kit's `recreate-database.sql` and restores it.
+  It needs `RESTORE_CONFIRM=<target>` and refuses `postgres`, `template0`, `template1` and
+  `keycloak`. On a Docker host, `PG_DUMP`, `PG_RESTORE` and `PSQL` run the tools in the database
+  container. Scheduling them, and copying the dumps off the server encrypted, is infra's job
+  (Thulasi). RDS has its own backups (D30).
+- `demo_dry_run` books from 09:00 facility time, since the all-day demo schedules make 00:00
+  the first free time.
+
 ## Rules that never bend
 
 - Every computed column is `STORED` (`persisted=True` on `Computed(...)`); a schema test

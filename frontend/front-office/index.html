@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="description" content="SHRI HEALTH Care Entry — the front office for registration, appointments, admissions and billing." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#E8EDF4" />
+    <title>SHRI Health Care Entry</title>
+    <script>
+      // Applies the saved theme before first paint so there is no flash of
+      // the other theme on load or refresh. Keep the storage key and default
+      // in sync with src/contexts/ThemeProvider.tsx's THEME_STORAGE_KEY.
+      // Light is the default — only an explicit, previously-saved 'dark'
+      // choice overrides it. The OS/browser color-scheme preference
+      // is deliberately never consulted.
+      (function () {
+        try {
+          var stored = window.localStorage.getItem('strokeai-front-office-theme');
+          var isDark = stored === 'dark';
+          document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', isDark ? '#14181F' : '#E8EDF4');
+        } catch (e) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

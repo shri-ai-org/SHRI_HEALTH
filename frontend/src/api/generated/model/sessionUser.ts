@@ -38,4 +38,6 @@ export interface SessionUser {
      * @maxItems 50
      */
   facilityIds: Id[];
+  /** The user's own practitioner, the ID that `providerId` takes on the schedule, so a clinician's screens can show their own appointments. Present only for a user linked to a practitioner; absent for a user who isn't one (for example front desk or billing). */
+  practitionerId?: Id;
 }

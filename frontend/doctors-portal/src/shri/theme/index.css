@@ -1,0 +1,74 @@
+/* ===========================================================================
+   Shri Health — the one stylesheet entry.
+
+   Tailwind (scanning this build's own sources only), the project breakpoints,
+   the handful of base rules every page needs, then the tokens. Nothing from
+   src/styles is loaded: those are the Indostates skin.
+   =========================================================================== */
+
+@import 'tailwindcss' source('..');
+@import './tokens.css';
+
+/* The project breakpoints — sm 768 (phone ⇢ tablet), md 1024 (the ward
+   tablet), lg 1280, xl 1440, wall 1920. The same values the old build used, so
+   every `max-sm:` / `lg:` in this build means what it always has. */
+@theme {
+  --breakpoint-sm: 768px;
+  --breakpoint-md: 1024px;
+  --breakpoint-lg: 1280px;
+  --breakpoint-xl: 1440px;
+  --breakpoint-wall: 1920px;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* The pointing hand over everything that does something when clicked — buttons, links, tabs,
+     toggles, options, checkbox rows, selects — as every site and platform shows it; the text
+     cursor in a box you type into; "not allowed" over a control that is switched off. In the base
+     layer, so a utility on one element (cursor-grab, cursor-default) still wins. */
+  :is(button, a[href], summary, select, label:has(> input), [role='button'], [role='tab'], [role='switch'], [role='checkbox'],
+    [role='radio'], [role='option'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='link'], [role='gridcell'],
+    input:is([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'], [type='reset'])) {
+    cursor: pointer;
+  }
+  :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'], [type='reset']), textarea, [contenteditable='true']) {
+    cursor: text;
+  }
+  :is(button, select, input, textarea):disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  /* All transitions become instant for anyone who asks for less motion;
+     framer-motion honours the same setting through <MotionConfig>. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

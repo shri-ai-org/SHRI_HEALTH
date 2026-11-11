@@ -102,6 +102,8 @@ export interface Patient {
   identifiers?: PatientIdentifier[];
   /** Preferred pharmacy, set with `PUT /patients/{patientId}/preferred-pharmacy` (D50). Absent when none is chosen. */
   preferredPharmacy?: PharmacyRef;
+  /** The patient's primary provider (FHIR `Patient.generalPractitioner`), chosen from `GET /booking/providers` (D49). Absent when none is chosen. */
+  generalPractitionerId?: Id;
   /** True when the chart is restricted (sensitive or VIP); opening it needs break-glass unless the user is on the care team (D37). */
   restricted: boolean;
   /** False once the record was merged into another. */
