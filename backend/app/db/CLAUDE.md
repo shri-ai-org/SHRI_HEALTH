@@ -428,6 +428,34 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     `later-merge` (a later merge involving either patient still stands), or NULL when it can
     be undone. The database refuses an undo the rule doesn't allow, and any other change to a
     merge.
+  - **The helpers:**
+    - `merge_patients(db, duplicate_id, surviving_patient_id, reason)` writes all of the
+      above and sets the pair to `merged`. It locks both patients in ID order. It refuses a
+      pair that isn't open (`InvalidTransition`), a surviving patient outside the pair
+      (`InvalidInput` at `survivingPatientId`) and a patient already merged away
+      (`PatientMerged`).
+    - **Security labels (Thulasi's #277 review):** in the same transaction, both charts take
+      `merged_labels()` of the two: the strictest confidentiality of either (`V` over `R` over
+      `N` over `M` over `L`) and every sensitivity label of either (`PSY`, `SUD`, ...). Each
+      chart whose labels change gets a Provenance (`UPDATE`, naming the merge). So reading the
+      surviving chart, which follows the links into the merged one, needs break-glass whenever
+      either chart did (D37), and `/fhir` serves neither chart, nor a link to one, when either
+      was restricted (D22). Charts with the same labels don't change.
+    - `undo_patient_merge(db, merge_id, reason)` raises `InvalidTransition(already-undone |
+      later-merge)` and makes the merged patient active again. No column holds the undo's
+      reason, so it goes in core's audit row. **Both charts keep the labels the merge gave
+      them** until an ADM or CO lifts one (`set_patient_security`): an undo never makes a
+      chart less protected on its own.
+    - `dismiss_duplicate(db, duplicate_id, reason)` is D46's `not-duplicate`, with the reason in
+      `review_note`.
+    - The reads: `merged_into()` (`mergedIntoId`), `chart_patient_ids()` (the surviving patient
+      and everyone merged into it, through earlier merges too, for reads that present one
+      chart) and `patient_merges()` (D51).
+  - **`409 patient-merged` lives in the helpers, not the database (a deliberate MVP choice,
+    10 Nov 2026).** Every helper that names a patient refuses a merged one with
+    `PatientMerged(surviving_patient_id)`, an `InvalidTransition`. A write that bypasses the
+    helpers, or that names only a record of the merged patient (an encounter, say), isn't
+    refused. Enforcing it in the database would need a trigger on every clinical table.
 
 ## Terminology (`app.db.terminology`)
 
