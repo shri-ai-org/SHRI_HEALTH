@@ -306,16 +306,13 @@ async def portal_db(
     operation = operation_for(request.scope.get("route"))
     if operation is not None and idempotency.applies(operation, request.method):
         # As tenant_db: only a patient who may run the operation claims a key (403 first). The
-        # key is the session patient's, claimed through the API's own database (the staff
-        # claim's table and role; shri_portal has no access to it).
+        # key is the session patient's, claimed as shri_portal (D93; its policy shows that role
+        # its own patient's keys only, migration 0020).
         if operation.permission != permissions.AUTHENTICATED and not (
                 PATIENT_ROLE in patient.roles
                 and operation.permission in permissions.PATIENT_PERMISSIONS):
             raise Forbidden(f"Requires {operation.permission}")
-        staff_db: Database | None = request.app.state.db
-        if staff_db is None:
-            raise ServiceUnavailable("Database is not configured")
-        await idempotency.claim_for_patient(request, staff_db, patient.organization_id,
+        await idempotency.claim_for_patient(request, db, patient.organization_id,
                                             patient.patient_id, operation)
     async with db.patient_session(patient.organization_id, patient.patient_id,
                                   current_request_id()) as session:

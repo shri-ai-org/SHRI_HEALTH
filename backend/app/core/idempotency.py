@@ -16,8 +16,9 @@ key before the endpoint runs, and IdempotencyMiddleware stores the response:
 
 Scope: clinic + user + method + path (with its IDs) + key, the table's unique key; row-level
 security keeps clinics apart. A patient portal write (portal_db) is scoped to the session's
-patient instead of a user (migration 0020); its claim runs as the API's own role, in a session
-with the clinic set and no user (system_session), as the staff claim runs in its own.
+patient instead of a user (migration 0020); its claim runs on the portal's own database role,
+shri_portal (D93), in the patient's session (patient_session), whose policy shows that role its
+own patient's keys only.
 Fingerprint: SHA-256 of the body, JSON in canonical form (sorted keys, no spaces), so the same
 request re-serialised still matches.
 
@@ -177,12 +178,22 @@ _EXPIRE = text("""
 """)
 
 
-def _session(db: "Database", tenant_id: UUID, user_id: UUID | None) -> Any:
-    """The claim's own session: the staff user's, or, for a patient's key, the clinic's with no
-    user (system_session); both as the API's role, under the clinic's row-level security."""
+def _session(db: "Database", tenant_id: UUID, user_id: UUID | None,
+             patient_id: UUID | None = None) -> Any:
+    """The claim's own session: the staff user's (shri_app), or the patient's (shri_portal's
+    patient_session, D93), under the clinic's row-level security."""
+    if patient_id is not None:
+        return db.patient_session(tenant_id, patient_id, current_request_id())
     if user_id is None:
-        return db.system_session(tenant_id, current_request_id())
+        raise RuntimeError("an Idempotency-Key claim needs a user or a patient")
     return db.tenant_session(tenant_id, user_id, current_request_id())
+
+
+def _db_for(app: Any, claim: Claim) -> "Database":
+    """Where a claim lives: a patient's on the portal's database (shri_portal), a user's on the
+    API's (shri_app)."""
+    found: Database = app.state.portal_db if claim.patient_id is not None else app.state.db
+    return found
 
 
 async def claim(request: Request, db: "Database", tenant_id: UUID, user_id: UUID,
@@ -194,9 +205,9 @@ async def claim(request: Request, db: "Database", tenant_id: UUID, user_id: UUID
 
 async def claim_for_patient(request: Request, db: "Database", tenant_id: UUID,
                             patient_id: UUID, operation: Operation) -> None:
-    """Called by portal_db for a portal write, after the patient's permission check: the key
-    belongs to the session's patient (never to an ID from the request). Same answers as
-    claim()."""
+    """Called by portal_db for a portal write, after the patient's permission check, with the
+    portal's database (shri_portal): the key belongs to the session's patient (never to an ID
+    from the request). Same answers as claim()."""
     await _claim(request, db, tenant_id, operation, patient_id=patient_id)
 
 
@@ -214,7 +225,7 @@ async def _claim(request: Request, db: "Database", tenant_id: UUID, operation: O
                                                                        _FIND_PATIENT)
     request_hash = fingerprint(await request.body())
     # Its own transaction, committed before the endpoint runs: a concurrent retry must see it.
-    async with _session(db, tenant_id, user_id) as session:
+    async with _session(db, tenant_id, user_id, patient_id) as session:
         claimed = (await session.execute(claim_sql, {
             **scope, "id": uuid4(), "request_hash": request_hash,
             "lease": IN_PROGRESS_LEASE.total_seconds()})).one_or_none()
@@ -244,7 +255,7 @@ async def replay_response(request: Request, exc: Exception) -> Response:
 
 
 async def _expire(db: "Database", claim: Claim, seconds: float) -> None:
-    async with _session(db, claim.tenant_id, claim.user_id) as session:
+    async with _session(db, claim.tenant_id, claim.user_id, claim.patient_id) as session:
         await session.execute(_EXPIRE, {"id": claim.record_id, "lease_until": claim.lease_until,
                                         "seconds": seconds})
         await session.commit()
@@ -261,7 +272,7 @@ async def _release(db: "Database", claim: Claim) -> None:
 
 async def _finish(app: Any, claim: Claim, status: int, headers: list[tuple[bytes, bytes]],
                   body: bytes) -> None:
-    db: Database = app.state.db
+    db = _db_for(app, claim)
     if status >= 500 or status == 429:
         await _release(db, claim)
         return
@@ -269,7 +280,7 @@ async def _finish(app: Any, claim: Claim, status: int, headers: list[tuple[bytes
               if name.decode("latin-1").lower() in STORED_HEADERS}
     try:
         ciphertext = await encrypt_field(app, body) if body else None
-        async with _session(db, claim.tenant_id, claim.user_id) as session:
+        async with _session(db, claim.tenant_id, claim.user_id, claim.patient_id) as session:
             await session.execute(_FINISH, {
                 "id": claim.record_id, "lease_until": claim.lease_until, "status": status,
                 "headers": stored, "body": ciphertext,
@@ -335,7 +346,7 @@ class IdempotencyMiddleware:
         except BaseException:
             claim = held()
             if claim is not None and not done:
-                await _release(scope["app"].state.db, claim)  # the error becomes a 500
+                await _release(_db_for(scope["app"], claim), claim)  # the error becomes a 500
             raise
 
 

@@ -738,7 +738,23 @@ def portal_sql() -> str:
                 f"CREATE POLICY portal_own_update ON {qt} AS RESTRICTIVE FOR UPDATE "
                 f"TO shri_portal USING ({mine}) WITH CHECK ({check});"]
     out += ["", f"GRANT INSERT ON {_q(AUDIT_SCHEMA, 'audit_event')} TO shri_portal;", ""]
+    out += portal_idempotency_sql() + [""]
     return "\n".join(out)
+
+
+#: What core's Idempotency-Key claim writes for a portal request (migration 0020).
+PORTAL_IDEMPOTENCY_UPDATE = ("request_hash", "state", "response_status", "response_headers",
+                             "response_body_enc", "expires_at", "updated_at")
+
+
+def portal_idempotency_sql() -> list[str]:
+    """A patient's own Idempotency-Key records (migration 0020): core claims a portal write's
+    key as shri_portal (D93), so the role reads and writes the session patient's keys only."""
+    qt = _q(ADMIN_SCHEMA, "idempotency_record")
+    return [f"GRANT SELECT, INSERT, UPDATE ({', '.join(PORTAL_IDEMPOTENCY_UPDATE)}) ON {qt} "
+            "TO shri_portal;",
+            f"CREATE POLICY portal_own_key ON {qt} AS RESTRICTIVE FOR ALL TO shri_portal "
+            f"USING (patient_id = {PORTAL_PATIENT}) WITH CHECK (patient_id = {PORTAL_PATIENT});"]
 
 
 def fhir_lookup_denied_sql() -> str:
