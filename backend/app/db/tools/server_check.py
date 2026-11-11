@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, create_engine, text
 
-HEAD = "0019"
+HEAD = "0020"
 PGVECTOR = "0.8.2"   # RDS's version (D31); the server image pins it
 
 

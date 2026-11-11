@@ -25,7 +25,17 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.crypto import FieldCrypto
-from app.core.deps import CurrentUser, current_user, require, tenant_db
+from app.core.deps import (
+    DEV_PATIENT_CLINIC_HEADER,
+    DEV_PATIENT_HEADER,
+    CurrentUser,
+    PortalPatient,
+    current_user,
+    portal_db,
+    require,
+    require_patient,
+    tenant_db,
+)
 from app.core.errors import AppError, Conflict, ServiceUnavailable
 from app.core.idempotency import IN_PROGRESS_LEASE, RETENTION, fingerprint
 from app.core.routing import API_PREFIX
@@ -396,3 +406,108 @@ def test_a_replay_that_cant_be_decrypted_fails_closed(
     assert replay.json()["code"] == "internal-error"
     assert stand.calls == 1
 
+
+
+
+# ------------------------------------------------- the patient portal's writes (migration 0020)
+PORTAL_BOOK = f"{API_PREFIX}/portal/me/appointments"
+
+
+def _portal_router(stand: Stand) -> APIRouter:
+    router = APIRouter()
+
+    @router.post("/portal/me/appointments", operation_id="bookPortalAppointment",
+                 status_code=201)
+    async def book(body: dict[str, Any],
+                   patient: PortalPatient = Depends(require_patient("portal-appointments:create")),
+                   session: AsyncSession = Depends(portal_db)) -> dict[str, Any]:
+        stand.calls += 1
+        return {"id": str(uuid4()), "patient": str(patient.patient_id)}
+
+    return router
+
+
+@pytest.fixture
+def portal(stand: Stand) -> Iterator[TestClient]:
+    app = create_app(Settings(environment="test", auth_mode="dev_header",
+                              patient_auth_mode="dev_header", database_url=TEST_DATABASE_URL,
+                              portal_database_url=TEST_DATABASE_URL))
+    switch_to_role(app.state.db.engine.sync_engine, "shri_app")
+    switch_to_role(app.state.portal_db.engine.sync_engine, "shri_portal")
+    app.state.crypto = _crypto()
+    include_first(app, _portal_router(stand), prefix=API_PREFIX)
+    with TestClient(app, raise_server_exceptions=False) as c:
+        yield c
+
+
+def _book(client: TestClient, clinic: UUID, patient: UUID, body: Any = BODY,
+          key: str | None = ATTEMPT) -> httpx2.Response:
+    headers = {DEV_PATIENT_HEADER: str(patient), DEV_PATIENT_CLINIC_HEADER: str(clinic),
+               "Content-Type": "application/json", **({"Idempotency-Key": key} if key else {})}
+    return client.post(PORTAL_BOOK, content=json.dumps(body), headers=headers)
+
+
+def _owners(admin: Engine, tenant_id: UUID) -> list[Any]:
+    with admin.connect() as c:
+        return list(c.execute(text(
+            "SELECT user_id, patient_id, state, response_status FROM admin.idempotency_record "
+            "WHERE tenant_id = :t ORDER BY created_at"), {"t": tenant_id}))
+
+
+def test_a_patients_retry_is_replayed_and_the_key_is_the_patients(
+        portal: TestClient, stand: Stand, people: dict[str, Any],
+        admin_engine: Engine) -> None:  # noqa: F811
+    clinic, patient = people["tenant"], people["patient"]
+    first = _book(portal, clinic, patient)
+    assert first.status_code == 201, first.text
+    again = _book(portal, clinic, patient)
+    assert again.status_code == 201 and again.json() == first.json()
+    assert again.headers["Idempotent-Replayed"] == "true"
+    assert stand.calls == 1
+    assert [(r.user_id, r.patient_id, r.state, r.response_status)
+            for r in _owners(admin_engine, clinic)] == [(None, patient, "done", 201)]
+
+
+def test_a_patients_key_with_another_body_or_still_running_is_refused(
+        portal: TestClient, stand: Stand, people: dict[str, Any],
+        admin_engine: Engine) -> None:  # noqa: F811
+    clinic, patient = people["tenant"], people["patient"]
+    assert _book(portal, clinic, patient).status_code == 201
+    reused = _book(portal, clinic, patient, body={"name": "Another body"})
+    assert reused.status_code == 422 and reused.json()["code"] == "idempotency-key-reused"
+    running = str(uuid4())
+    with admin_engine.begin() as c:
+        c.execute(text(
+            "INSERT INTO admin.idempotency_record (id, tenant_id, patient_id, method, path, key, "
+            "request_hash, state, expires_at) VALUES (gen_random_uuid(), :t, :p, 'POST', :u, :k, "
+            ":h, 'in-progress', now() + interval '1 minute')"),
+            {"t": clinic, "p": patient, "u": PORTAL_BOOK, "k": running,
+             "h": fingerprint(json.dumps(BODY).encode())})
+    busy = _book(portal, clinic, patient, key=running)
+    assert busy.status_code == 409 and busy.json()["code"] == "idempotency-request-in-progress"
+    assert stand.calls == 1
+
+
+def test_a_patients_key_is_scoped_to_that_patient_and_a_missing_key_runs(
+        portal: TestClient, stand: Stand, people: dict[str, Any], db: Session,  # noqa: F811
+        admin_engine: Engine) -> None:  # noqa: F811
+    clinic = people["tenant"]
+    other = b.patient(db)
+    db.commit()
+    assert _book(portal, clinic, people["patient"]).status_code == 201
+    theirs = _book(portal, clinic, other.id)  # the same key, another patient: its own claim
+    assert theirs.status_code == 201 and "Idempotent-Replayed" not in theirs.headers
+    assert _book(portal, clinic, people["patient"], key=None).status_code == 201  # supported
+    assert stand.calls == 3
+    assert sorted(str(r.patient_id) for r in _owners(admin_engine, clinic)) == sorted(
+        [str(people["patient"]), str(other.id)])
+
+
+def test_a_record_has_exactly_one_owner(admin_engine: Engine, people: dict[str, Any]  # noqa: F811
+                                        ) -> None:
+    with pytest.raises(Exception, match="one_owner"), admin_engine.begin() as c:
+        c.execute(text(
+            "INSERT INTO admin.idempotency_record (id, tenant_id, method, path, key, request_hash, "
+            "state, expires_at) VALUES (gen_random_uuid(), :t, 'POST', '/x', :k, :h, "
+            "'in-progress', now())"),
+            {"t": people["tenant"], "k": str(uuid4()), "h": "0" * 64})

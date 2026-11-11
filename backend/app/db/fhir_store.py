@@ -52,6 +52,7 @@ from app.db.models import systems
 from app.db.models.admin.ai import AISuggestion
 from app.db.models.admin.core import AppUser, MrnCounter
 from app.db.models.admin.medication import ErxTransaction, PatientPharmacy, Pharmacy
+from app.db.models.admin.platform import DuplicateCandidate, PatientMerge
 from app.db.models.admin.practice import CdsRule
 from app.db.models.admin.rcm import Employer
 from app.db.models.enums import ErxTransactionStatus
@@ -80,6 +81,7 @@ from app.db.models.fhir.datatypes import (
 from app.db.models.fhir.directory import (
     Patient,
     PatientCommunication,
+    PatientLink,
     PatientRaceEthnicity,
     Practitioner,
     RelatedPerson,
@@ -142,6 +144,15 @@ class InvalidTransition(Exception):
     def __init__(self, current_state: str) -> None:
         super().__init__("invalid state transition")
         self.current_state = current_state
+
+
+class PatientMerged(InvalidTransition):
+    """A write naming a patient merged into another (D103): the API's ``409 patient-merged``.
+    ``surviving_patient_id`` is the chart to write to instead."""
+
+    def __init__(self, surviving_patient_id: uuid.UUID) -> None:
+        super().__init__("merged")
+        self.surviving_patient_id = surviving_patient_id
 
 
 class InvalidInput(ValueError):
@@ -559,6 +570,27 @@ class SurgicalHistoryIn:
 
 
 @dataclass(frozen=True)
+class MergeWritten:
+    merge_id: uuid.UUID
+    surviving: Written  # both patients' versions move: the link rows are their children
+    merged: Written
+
+
+@dataclass(frozen=True)
+class MergeStatus:
+    """A merge as ``listPatientMerges`` shows it (D51)."""
+    id: uuid.UUID
+    surviving_patient_id: uuid.UUID
+    merged_patient_id: uuid.UUID
+    duplicate_id: uuid.UUID | None
+    performed_at: datetime
+    performed_by_user_id: uuid.UUID
+    undone_at: datetime | None
+    undone_by_user_id: uuid.UUID | None
+    undo_blocked_reason: str | None  # already-undone, later-merge, or None: undo allowed
+
+
+@dataclass(frozen=True)
 class DiagnosisWritten:
     condition: Written
     encounter: Written  # the encounter's new version: the link is its child row
@@ -819,6 +851,25 @@ class FhirStore(Protocol):
         ``update_problem``."""
         ...
 
+    # Duplicates and merges by link (D103): no record moves
+    async def merge_patients(self, db: AsyncSession, duplicate_id: uuid.UUID,
+                             surviving_patient_id: uuid.UUID, reason: str) -> MergeWritten:
+        """``InvalidTransition`` for a pair that isn't open; ``PatientMerged`` when either
+        patient is already merged away; ``InvalidInput`` at ``survivingPatientId`` for a
+        patient outside the pair, at ``reason`` for a blank one."""
+        ...
+
+    async def undo_patient_merge(self, db: AsyncSession, merge_id: uuid.UUID, reason: str
+                                 ) -> MergeWritten:
+        """``InvalidTransition(already-undone | later-merge)``. The reason is checked, not
+        stored: no column holds it, so it goes in the request's audit row (core)."""
+        ...
+
+    async def dismiss_duplicate(self, db: AsyncSession, duplicate_id: uuid.UUID, reason: str
+                                ) -> None:
+        """D46: the pair becomes ``not-duplicate``; ``InvalidTransition`` unless it is open."""
+        ...
+
     # Family, social and surgical history (FRS FR-PAT-03): insert-only, corrected by
     # entered-in-error and a new entry
     async def create_family_history(self, db: AsyncSession, data: FamilyHistoryIn) -> Written:
@@ -943,6 +994,18 @@ _D39 = ("gender_identity", "sexual_orientation", "occupation", "industry", "trib
 #: sensitivity labels (PSY, SUD, …).
 _CONFIDENTIALITY = frozenset({"L", "M", "N", "R", "V"})
 _RESTRICTED = frozenset({"R", "V"})
+#: Confidentiality, strictest first (HL7 v3 Confidentiality): a merge keeps the stricter.
+_CONFIDENTIALITY_ORDER = ("V", "R", "N", "M", "L")
+
+
+def merged_labels(*charts: list[str]) -> list[str]:
+    """The security labels both charts of a merge carry (D103 with Thulasi's #277 review): the
+    strictest confidentiality of either (V over R over N over M over L), and every sensitivity
+    label (PSY, SUD, ...) of either, so no part of the person's chart is readable under a
+    weaker rule than any part was."""
+    labels = {label for chart in charts for label in chart}
+    strictest = next((c for c in _CONFIDENTIALITY_ORDER if c in labels), None)
+    return sorted(labels - _CONFIDENTIALITY) + ([strictest] if strictest else [])
 #: Consent.scope (consentscope, required by FHIR) and Consent.category (the R4 Consent Category
 #: value set) by the practice's consent kind: one fixed set per kind, agreed on #88 (Vimal).
 #: financial is LOINC 59284-0 only (a release to the payer would be its own kind);
@@ -1304,6 +1367,7 @@ class SqlFhirStore:
 
     async def update_patient(self, db: AsyncSession, patient_id: uuid.UUID,
                              changes: PatientChanges, *, if_version: int) -> Written:
+        await _not_merged(db, patient_id)
         pt = await _locked(db, Patient, patient_id, if_version)
         _apply_patient_fields(pt, changes)
         await _patient_children(db, patient_id, changes)
@@ -1312,6 +1376,7 @@ class SqlFhirStore:
     async def add_patient_identifier(self, db: AsyncSession, patient_id: uuid.UUID,
                                      identifier: IdentifierIn, *, if_version: int | None = None
                                      ) -> ChildWritten:
+        await _not_merged(db, patient_id)
         if identifier.type_code == "MR":
             raise InvalidInput("an MR identifier comes only from admin.next_mrn() (D41)")
         await _refuse_mrn_system(db, [identifier])
@@ -1324,6 +1389,7 @@ class SqlFhirStore:
     async def set_patient_security(self, db: AsyncSession, patient_id: uuid.UUID,
                                    labels: frozenset[str], *, if_version: int | None = None
                                    ) -> Written:
+        await _not_merged(db, patient_id)
         if not labels <= _RESTRICTED:
             raise InvalidInput("a chart is restricted with R or V, or unrestricted with none")
         pt = await _locked(db, Patient, patient_id, if_version)
@@ -1333,6 +1399,7 @@ class SqlFhirStore:
 
     async def set_preferred_pharmacy(self, db: AsyncSession, patient_id: uuid.UUID,
                                      pharmacy_id: uuid.UUID, *, if_version: int) -> Written:
+        await _not_merged(db, patient_id)
         pt = await _locked(db, Patient, patient_id, if_version)
         await _check_pharmacy(db, pharmacy_id)
         rows = {r.pharmacy_id: r for r in (await db.execute(
@@ -1359,6 +1426,7 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- RelatedPerson
     async def create_related_person(self, db: AsyncSession, data: RelatedPersonIn) -> Written:
+        await _not_merged(db, data.patient_id)
         person = RelatedPerson(patient_id=data.patient_id, active=data.active, gender=data.gender,
                                birth_date=data.birth_date)
         db.add(await _new(db, person))
@@ -1378,6 +1446,7 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- Coverage
     async def create_coverage(self, db: AsyncSession, data: CoverageIn) -> Written:
+        await _not_merged(db, data.beneficiary_patient_id)
         cov = Coverage(status=data.status, beneficiary_patient_id=data.beneficiary_patient_id,
                        ext_accept_assignment=data.accept_assignment,
                        **{f: getattr(data, f) for f in _COVERAGE_FIELDS})
@@ -1415,6 +1484,7 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- Consent
     async def create_consent(self, db: AsyncSession, data: ConsentIn) -> Written:
+        await _not_merged(db, data.patient_id)
         if data.kind not in _CONSENT_OF_KIND:
             raise InvalidInput(f"unknown consent kind {data.kind!r}")
         scope, categories = _CONSENT_OF_KIND[data.kind]
@@ -1457,6 +1527,7 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- Encounter
     async def create_encounter(self, db: AsyncSession, data: EncounterIn) -> Written:
+        await _not_merged(db, data.patient_id)
         start = data.started_at or await _db_now(db)
         enc = Encounter(status=data.status, class_=data.class_code,
                         subject_patient_id=data.patient_id, appointment_id=data.appointment_id,
@@ -1509,6 +1580,7 @@ class SqlFhirStore:
     async def record_vitals(self, db: AsyncSession, patient_id: uuid.UUID,
                             encounter_id: uuid.UUID | None, vitals: tuple[VitalIn, ...], *,
                             effective_at: datetime | None = None) -> list[Written]:
+        await _not_merged(db, patient_id)
         now = await _db_now(db)
         effective = effective_at or now
         if effective > now:
@@ -1557,6 +1629,7 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- Allergy
     async def create_allergy(self, db: AsyncSession, data: AllergyIn) -> Written:
+        await _not_merged(db, data.patient_id)
         allergy = AllergyIntolerance(
             patient_id=data.patient_id, encounter_id=data.encounter_id,
             clinical_status=data.clinical_status, verification_status=data.verification_status,
@@ -1672,9 +1745,7 @@ class SqlFhirStore:
     # ------------------------------------------------------------------------- Problem list
     async def create_problem(self, db: AsyncSession, data: ProblemIn) -> Written:
         _check_problem_status(data.clinical_status, data.verification_status)
-        if (await db.execute(select(Patient.id).where(Patient.id == data.patient_id))
-                ).scalar_one_or_none() is None:
-            raise ResourceNotFound
+        await _patient_seen(db, data.patient_id)
         if data.encounter_id is not None:
             await _live_visit_of(db, data.encounter_id, data.patient_id)
         cond = Condition(clinical_status=data.clinical_status,
@@ -1724,6 +1795,74 @@ class SqlFhirStore:
         written = await _written(db, cond)
         await _nullify_provenance(db, "Condition", written, reason)
         return written
+
+    # ------------------------------------------------------------------------- Merges
+    async def merge_patients(self, db: AsyncSession, duplicate_id: uuid.UUID,
+                             surviving_patient_id: uuid.UUID, reason: str) -> MergeWritten:
+        why = _require_reason(Reason(reason)).text
+        pair = await _open_pair(db, duplicate_id)
+        if surviving_patient_id not in (pair.patient_a_id, pair.patient_b_id):
+            raise InvalidInput("survivingPatientId is one of the pair",
+                               field="survivingPatientId")
+        merged_id = pair.patient_b_id if surviving_patient_id == pair.patient_a_id \
+            else pair.patient_a_id
+        patients = await _lock_pair(db, surviving_patient_id, merged_id)
+        for patient_id in patients:
+            await _not_merged(db, patient_id)           # no chains: merge into a chart's end
+        labels = merged_labels(*(pt.meta_security for pt in patients.values()))
+        relabelled = [pid for pid, pt in patients.items()
+                      if set(pt.meta_security) != set(labels)]
+        for pid in relabelled:
+            patients[pid].meta_security = labels
+        now, user = await _db_now(db), await _user_id(db)
+        merge = PatientMerge(surviving_patient_id=surviving_patient_id,
+                             merged_patient_id=merged_id, duplicate_candidate_id=duplicate_id,
+                             reason=why, performed_at=now, performed_by_user_id=user)
+        db.add_all([merge, PatientLink(patient_id=merged_id, other_patient_id=surviving_patient_id,
+                                       type="replaced-by"),
+                    PatientLink(patient_id=surviving_patient_id, other_patient_id=merged_id,
+                                type="replaces")])
+        patients[merged_id].active = False
+        pair.status, pair.reviewed_by_user_id, pair.reviewed_at = "merged", user, now
+        await db.flush()
+        written = {pid: await _written(db, pt) for pid, pt in patients.items()}
+        for pid in relabelled:      # who changed the chart's labels, and why
+            await _provenance(db, "Patient", written[pid],
+                              (systems.V3_DATA_OPERATION, "UPDATE", None),
+                              reason=Reason(f"Security labels of the merged charts ({merge.id})"))
+        return MergeWritten(merge.id, written[surviving_patient_id], written[merged_id])
+
+    async def undo_patient_merge(self, db: AsyncSession, merge_id: uuid.UUID, reason: str
+                                 ) -> MergeWritten:
+        _require_reason(Reason(reason))
+        merge = (await db.execute(select(PatientMerge).where(PatientMerge.id == merge_id)
+                                  .with_for_update())).scalar_one_or_none()
+        if merge is None:
+            raise ResourceNotFound
+        blocked = (await db.execute(text("SELECT admin.patient_merge_undo_blocked_reason(:m)"),
+                                    {"m": merge_id})).scalar_one()
+        if blocked is not None:
+            raise InvalidTransition(blocked)
+        surviving, merged = merge.surviving_patient_id, merge.merged_patient_id
+        patients = await _lock_pair(db, surviving, merged)
+        merge.unmerged_at, merge.unmerged_by_user_id = await _db_now(db), await _user_id(db)
+        await db.execute(delete(PatientLink).where(
+            ((PatientLink.patient_id == merged) & (PatientLink.other_patient_id == surviving)
+             & (PatientLink.type == "replaced-by"))
+            | ((PatientLink.patient_id == surviving) & (PatientLink.other_patient_id == merged)
+               & (PatientLink.type == "replaces"))))
+        patients[merged].active = True
+        return MergeWritten(merge_id, await _written(db, patients[surviving]),
+                            await _written(db, patients[merged]))
+
+    async def dismiss_duplicate(self, db: AsyncSession, duplicate_id: uuid.UUID, reason: str
+                                ) -> None:
+        why = _require_reason(Reason(reason)).text
+        pair = await _open_pair(db, duplicate_id)
+        user, now = await _user_id(db), await _db_now(db)   # before any change: autoflush
+        pair.status, pair.review_note = "not-duplicate", why
+        pair.reviewed_by_user_id, pair.reviewed_at = user, now
+        await db.flush()
 
     # ------------------------------------------------------------------------- History
     async def create_family_history(self, db: AsyncSession, data: FamilyHistoryIn) -> Written:
@@ -1852,9 +1991,7 @@ class SqlFhirStore:
         _check_medication(data.medication)
         if data.status not in _LIST_STATUSES:
             raise InvalidInput(f"a medication on the list is one of {sorted(_LIST_STATUSES)}")
-        if (await db.execute(select(Patient.id).where(Patient.id == data.patient_id))
-                ).scalar_one_or_none() is None:
-            raise ResourceNotFound
+        await _patient_seen(db, data.patient_id)
         if data.encounter_id is not None:
             await _live_visit_of(db, data.encounter_id, data.patient_id)
         user = await _current_user(db)
@@ -1877,9 +2014,7 @@ class SqlFhirStore:
     # ------------------------------------------------------------------------- Prescriptions
     async def create_prescription(self, db: AsyncSession, data: PrescriptionIn) -> Written:
         _check_medication(data.medication)
-        if (await db.execute(select(Patient.id).where(Patient.id == data.patient_id))
-                ).scalar_one_or_none() is None:
-            raise ResourceNotFound
+        await _patient_seen(db, data.patient_id)
         if data.encounter_id is not None:
             await _live_visit_of(db, data.encounter_id, data.patient_id)
         await _check_pharmacy(db, data.pharmacy_id)
@@ -2579,9 +2714,64 @@ _SEXES = {"male", "female", "other", "unknown"}
 
 
 async def _patient_seen(db: AsyncSession, patient_id: uuid.UUID) -> None:
+    """The patient is visible to the session and not merged away (D103)."""
     if (await db.execute(select(Patient.id).where(Patient.id == patient_id))
             ).scalar_one_or_none() is None:
         raise ResourceNotFound
+    await _not_merged(db, patient_id)
+
+
+async def _not_merged(db: AsyncSession, patient_id: uuid.UUID) -> None:
+    """A deliberate MVP choice (10 Nov 2026): the ``409 patient-merged`` rule lives in these
+    helpers, not in a trigger on every clinical table. A write that bypasses them isn't
+    refused."""
+    surviving = await merged_into(db, patient_id)
+    if surviving is not None:
+        raise PatientMerged(surviving)
+
+
+async def merged_into(db: AsyncSession, patient_id: uuid.UUID) -> uuid.UUID | None:
+    """The patient this one was merged into (the contract's ``mergedIntoId``), or None."""
+    return (await db.execute(select(PatientLink.other_patient_id).where(
+        PatientLink.patient_id == patient_id, PatientLink.type == "replaced-by"))
+            ).scalar_one_or_none()
+
+
+async def chart_patient_ids(db: AsyncSession, patient_id: uuid.UUID) -> list[uuid.UUID]:
+    """The patient and every patient merged into it, through earlier merges too: the records a
+    read of the surviving chart presents as one (D103)."""
+    rows = await db.execute(text(
+        "WITH RECURSIVE chart(id) AS (SELECT CAST(:p AS uuid) UNION SELECT l.other_patient_id "
+        "FROM clinical.patient_link l JOIN chart c ON l.patient_id = c.id "
+        "WHERE l.type = 'replaces') SELECT id FROM chart"), {"p": patient_id})
+    return [r[0] for r in rows]
+
+
+async def patient_merges(db: AsyncSession, patient_id: uuid.UUID) -> list[MergeStatus]:
+    """A patient's merges, newest first, each with whether it can still be undone (D51)."""
+    blocked = func.admin.patient_merge_undo_blocked_reason(PatientMerge.id)
+    rows = await db.execute(select(PatientMerge, blocked).where(
+        (PatientMerge.surviving_patient_id == patient_id)
+        | (PatientMerge.merged_patient_id == patient_id))
+        .order_by(PatientMerge.performed_at.desc(), PatientMerge.created_at.desc()))
+    return [MergeStatus(m.id, m.surviving_patient_id, m.merged_patient_id,
+                        m.duplicate_candidate_id, m.performed_at, m.performed_by_user_id,
+                        m.unmerged_at, m.unmerged_by_user_id, why) for m, why in rows]
+
+
+async def _open_pair(db: AsyncSession, duplicate_id: uuid.UUID) -> DuplicateCandidate:
+    pair = (await db.execute(select(DuplicateCandidate).where(
+        DuplicateCandidate.id == duplicate_id).with_for_update())).scalar_one_or_none()
+    if pair is None:
+        raise ResourceNotFound
+    if pair.status != "open":
+        raise InvalidTransition(pair.status)
+    return pair
+
+
+async def _lock_pair(db: AsyncSession, a: uuid.UUID, b: uuid.UUID) -> dict[uuid.UUID, Patient]:
+    """Both patients locked in id order, so two merges of overlapping pairs can't deadlock."""
+    return {pid: await _locked(db, Patient, pid, None) for pid in sorted((a, b))}
 
 
 def _partial_columns(value: str, field: str, now: datetime

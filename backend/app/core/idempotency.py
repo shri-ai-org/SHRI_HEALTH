@@ -15,8 +15,11 @@ key before the endpoint runs, and IdempotencyMiddleware stores the response:
 - **5xx and 429 are not stored:** the claim is released, so a retry runs again.
 
 Scope: clinic + user + method + path (with its IDs) + key, the table's unique key; row-level
-security keeps clinics apart. Fingerprint: SHA-256 of the body, JSON in canonical form (sorted
-keys, no spaces), so the same request re-serialised still matches.
+security keeps clinics apart. A patient portal write (portal_db) is scoped to the session's
+patient instead of a user (migration 0020); its claim runs as the API's own role, in a session
+with the clinic set and no user (system_session), as the staff claim runs in its own.
+Fingerprint: SHA-256 of the body, JSON in canonical form (sorted keys, no spaces), so the same
+request re-serialised still matches.
 
 A claim lasts IN_PROGRESS_LEASE, so a request that dies mid-way frees its key; a stored response
 lasts RETENTION. The API never deletes rows (admin.purge_expired_runtime_rows does): a released or
@@ -89,8 +92,9 @@ class Claim:
 
     record_id: UUID
     tenant_id: UUID
-    user_id: UUID
+    user_id: UUID | None
     lease_until: datetime
+    patient_id: UUID | None = None  # a portal write's key: the session's patient, no user
 
 
 def applies(operation: Operation | None, method: str) -> bool:
@@ -133,6 +137,25 @@ _CLAIM = text("""
         WHERE r.expires_at <= now()
     RETURNING r.id, r.expires_at
 """)
+_CLAIM_PATIENT = text("""
+    INSERT INTO admin.idempotency_record AS r
+        (id, tenant_id, patient_id, method, path, key, request_hash, state, expires_at)
+    VALUES (:id, :tenant_id, :patient_id, :method, :path, :key, :request_hash, 'in-progress',
+            now() + make_interval(secs => :lease))
+    ON CONFLICT (tenant_id, patient_id, method, path, key) WHERE patient_id IS NOT NULL
+    DO UPDATE
+        SET request_hash = EXCLUDED.request_hash, state = 'in-progress', response_status = NULL,
+            response_headers = NULL, response_body_enc = NULL, expires_at = EXCLUDED.expires_at,
+            updated_at = now()
+        WHERE r.expires_at <= now()
+    RETURNING r.id, r.expires_at
+""")
+_FIND_PATIENT = text("""
+    SELECT request_hash, state, response_status, response_headers, response_body_enc
+    FROM admin.idempotency_record
+    WHERE tenant_id = :tenant_id AND patient_id = :patient_id AND method = :method
+      AND path = :path AND key = :key
+""")
 _FIND = text("""
     SELECT request_hash, state, response_status, response_headers, response_body_enc
     FROM admin.idempotency_record
@@ -154,29 +177,54 @@ _EXPIRE = text("""
 """)
 
 
+def _session(db: "Database", tenant_id: UUID, user_id: UUID | None) -> Any:
+    """The claim's own session: the staff user's, or, for a patient's key, the clinic's with no
+    user (system_session); both as the API's role, under the clinic's row-level security."""
+    if user_id is None:
+        return db.system_session(tenant_id, current_request_id())
+    return db.tenant_session(tenant_id, user_id, current_request_id())
+
+
 async def claim(request: Request, db: "Database", tenant_id: UUID, user_id: UUID,
                 operation: Operation) -> None:
     """Called by tenant_db, after the permission check and before the endpoint runs. Returns
     with the key claimed (or with nothing to do), or raises: 400, 422, 409 or Replay."""
+    await _claim(request, db, tenant_id, operation, user_id=user_id)
+
+
+async def claim_for_patient(request: Request, db: "Database", tenant_id: UUID,
+                            patient_id: UUID, operation: Operation) -> None:
+    """Called by portal_db for a portal write, after the patient's permission check: the key
+    belongs to the session's patient (never to an ID from the request). Same answers as
+    claim()."""
+    await _claim(request, db, tenant_id, operation, patient_id=patient_id)
+
+
+async def _claim(request: Request, db: "Database", tenant_id: UUID, operation: Operation, *,
+                 user_id: UUID | None = None, patient_id: UUID | None = None) -> None:
     raw = request.headers.get(HEADER)
     if raw is None:
         if operation.idempotency == "required":
             raise IdempotencyKeyMissing("Send an Idempotency-Key header")
         return
-    scope = {"tenant_id": tenant_id, "user_id": user_id, "method": request.method,
+    owner = {"user_id": user_id} if patient_id is None else {"patient_id": patient_id}
+    scope = {"tenant_id": tenant_id, **owner, "method": request.method,
              "path": request.url.path, "key": parse_key(raw)}
+    claim_sql, find_sql = (_CLAIM, _FIND) if patient_id is None else (_CLAIM_PATIENT,
+                                                                       _FIND_PATIENT)
     request_hash = fingerprint(await request.body())
     # Its own transaction, committed before the endpoint runs: a concurrent retry must see it.
-    async with db.tenant_session(tenant_id, user_id, current_request_id()) as session:
-        claimed = (await session.execute(_CLAIM, {
+    async with _session(db, tenant_id, user_id) as session:
+        claimed = (await session.execute(claim_sql, {
             **scope, "id": uuid4(), "request_hash": request_hash,
             "lease": IN_PROGRESS_LEASE.total_seconds()})).one_or_none()
         if claimed is not None:
             await session.commit()
         else:  # someone holds a live record for this key
-            found = (await session.execute(_FIND, scope)).one()
+            found = (await session.execute(find_sql, scope)).one()
     if claimed is not None:
-        setattr(request.state, STATE, Claim(claimed.id, tenant_id, user_id, claimed.expires_at))
+        setattr(request.state, STATE, Claim(claimed.id, tenant_id, user_id, claimed.expires_at,
+                                            patient_id))
         return
     if found.request_hash != request_hash:
         raise ValidationFailed("This Idempotency-Key was used for a different request",
@@ -196,7 +244,7 @@ async def replay_response(request: Request, exc: Exception) -> Response:
 
 
 async def _expire(db: "Database", claim: Claim, seconds: float) -> None:
-    async with db.tenant_session(claim.tenant_id, claim.user_id, current_request_id()) as session:
+    async with _session(db, claim.tenant_id, claim.user_id) as session:
         await session.execute(_EXPIRE, {"id": claim.record_id, "lease_until": claim.lease_until,
                                         "seconds": seconds})
         await session.commit()
@@ -221,8 +269,7 @@ async def _finish(app: Any, claim: Claim, status: int, headers: list[tuple[bytes
               if name.decode("latin-1").lower() in STORED_HEADERS}
     try:
         ciphertext = await encrypt_field(app, body) if body else None
-        async with db.tenant_session(claim.tenant_id, claim.user_id,
-                                     current_request_id()) as session:
+        async with _session(db, claim.tenant_id, claim.user_id) as session:
             await session.execute(_FINISH, {
                 "id": claim.record_id, "lease_until": claim.lease_until, "status": status,
                 "headers": stored, "body": ciphertext,
