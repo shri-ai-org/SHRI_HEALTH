@@ -8,13 +8,16 @@
 //   allergies       ⇐ listAllergies;  ⇒ addAllergy (Idempotency-Key), "No known allergies" as SNOMED 716186003
 //   medications     ⇐ listMedications; ⇒ recordMedication (Idempotency-Key), the patient's own list
 //   vitals          ⇒ recordVitals (Idempotency-Key), built by src/features/clinical/vitals.ts (U.S. units)
+//   reason          ⇒ updateEncounter { reasons: [{ text }] } (If-Match from getEncounter; MA and RN may
+//                      change reasons only, Q21/T52); a 412 reads the visit again
 //   roomed          ⇒ recordVisitStatus { status: 'roomed', roomLocationId } (Idempotency-Key)
 // Each write keeps its key while it is retried, so the server does it once.
-import { getEncounter, recordVitals } from '../../src/api/generated/endpoints/encounters/encounters'
+import { ApiError, etagOf } from '../../src/api/client'
+import { getEncounter, recordVitals, updateEncounter } from '../../src/api/generated/endpoints/encounters/encounters'
 import { addAllergy, listAllergies } from '../../src/api/generated/endpoints/history/history'
 import { listMedications, recordMedication } from '../../src/api/generated/endpoints/medications/medications'
 import { getAppointment, listBookableLocations, recordVisitStatus } from '../../src/api/generated/endpoints/scheduling/scheduling'
-import type { Allergy, BookableLocation, Medication, VitalEntry } from '../../src/api/generated/model'
+import type { Allergy, BookableLocation, Encounter, Medication, VitalEntry } from '../../src/api/generated/model'
 import { useSession } from '../../src/api/session'
 import { newIdempotencyKey } from './client'
 
@@ -28,6 +31,10 @@ export interface RoomingVisit {
   rooms: BookableLocation[]
   allergies: Allergy[]
   medications: Medication[]
+  /** The visit's version, sent as If-Match with the reason for visit. */
+  encounterEtag: string
+  /** The reason for visit as the server holds it ('' for none). */
+  reason: string
 }
 
 /** Who may room a patient: the server's visit-status rule (MA and RN). */
@@ -44,6 +51,8 @@ export async function loadRooming(appointmentId: string): Promise<RoomingVisit> 
   const enc = await getEncounter(encounterId)
   if (enc.status !== 200) throw new Error('The visit could not be read')
   const { patientId, facilityId } = enc.data
+  const etag = etagOf(enc)
+  if (!etag) throw new Error('The visit has no version to change it against')
   const [locations, allergies, medications] = await Promise.all([
     listBookableLocations({ facilityId, limit: 100 }),
     listAllergies(patientId, { limit: 100 }),
@@ -58,6 +67,39 @@ export async function loadRooming(appointmentId: string): Promise<RoomingVisit> 
     rooms: exam.length > 0 ? exam : all,
     allergies: allergies.status === 200 ? allergies.data.items : [],
     medications: medications.status === 200 ? medications.data.items : [],
+    encounterEtag: etag,
+    reason: reasonOf(enc.data),
+  }
+}
+
+function reasonOf(e: Encounter): string {
+  const first = e.reasons?.[0]
+  return first?.text ?? first?.codings?.[0]?.display ?? ''
+}
+
+/** The visit changed since the sheet read it (412): the latest version, to show before trying again. */
+export class ReasonChanged extends Error {
+  readonly latest: { encounterEtag: string; reason: string }
+  constructor(latest: { encounterEtag: string; reason: string }) {
+    super('The visit changed while you were rooming. The latest reason for visit is shown; check it and try again.')
+    this.latest = latest
+  }
+}
+
+/** Saves the reason for visit (or clears it) when it differs from the server's; returns the new version. */
+export async function saveReason(visit: RoomingVisit, text: string): Promise<RoomingVisit> {
+  const reason = text.trim()
+  if (reason === visit.reason) return visit
+  try {
+    const res = await updateEncounter(visit.encounterId, { reasons: reason ? [{ text: reason }] : null }, { 'If-Match': visit.encounterEtag })
+    return { ...visit, encounterEtag: etagOf(res) ?? visit.encounterEtag, reason }
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 412) {
+      const enc = await getEncounter(visit.encounterId)
+      if (enc.status !== 200) throw e
+      throw new ReasonChanged({ encounterEtag: etagOf(enc) ?? visit.encounterEtag, reason: reasonOf(enc.data) })
+    }
+    throw e
   }
 }
 

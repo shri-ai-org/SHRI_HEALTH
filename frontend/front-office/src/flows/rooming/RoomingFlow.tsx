@@ -20,6 +20,8 @@ import {
   allergyLabel,
   loadRooming,
   markRoomed,
+  ReasonChanged,
+  saveReason,
   medicationLabel,
   saveVitals,
   useMayRoom,
@@ -53,6 +55,7 @@ export function RoomingFlow({ params, onClose }: FlowProps) {
   const [visit, setVisit] = useState<RoomingVisit | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [room, setRoom] = useState('')
+  const [reasonText, setReasonText] = useState('')
   const [vitals, setVitals] = useState<VitalsForm>(EMPTY_VITALS)
   const [vitalErrors, setVitalErrors] = useState<VitalsErrors>({})
   const [vitalsSaved, setVitalsSaved] = useState(false)
@@ -77,6 +80,7 @@ export function RoomingFlow({ params, onClose }: FlowProps) {
         if (!live) return
         setVisit(v)
         setRoom((r) => r || v.rooms[0]?.id || '')
+        setReasonText(v.reason)
       })
       .catch((e: unknown) => live && setLoadError(problemMessage(e)))
     return () => {
@@ -161,6 +165,16 @@ export function RoomingFlow({ params, onClose }: FlowProps) {
 
   function onRoom() {
     void run('room', 'room', async () => {
+      // The reason for visit first (If-Match): a refused save leaves the patient not yet roomed.
+      try {
+        setVisit(await saveReason(current, reasonText))
+      } catch (e) {
+        if (e instanceof ReasonChanged) {
+          setVisit({ ...current, ...e.latest })
+          setReasonText(e.latest.reason)
+        }
+        throw e
+      }
       await markRoomed(appointmentId, room || undefined, keyFor('room'))
       void loadAppointments(todayKey(), 1).catch(() => undefined)
       setDone(true)
@@ -217,6 +231,12 @@ export function RoomingFlow({ params, onClose }: FlowProps) {
                 </option>
               ))}
             </select>
+          </div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <label htmlFor="rooming-reason" className={labelClass}>
+              Reason for visit
+            </label>
+            <input id="rooming-reason" value={reasonText} maxLength={200} placeholder="Follow-up for blood pressure, say" onChange={(e) => setReasonText(e.target.value)} className={inputClass} />
           </div>
         </div>
       </Quadrant>
