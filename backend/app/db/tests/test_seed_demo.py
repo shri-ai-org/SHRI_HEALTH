@@ -158,12 +158,13 @@ def test_online_booking_takes_a_follow_up_with_a_days_notice(migrator_engine: En
                                                              front_desk: Session) -> None:
     _seed(migrator_engine)
     setting = front_desk.execute(text(
-        "SELECT is_enabled, min_notice_minutes FROM admin.online_booking_setting")).one()
-    assert tuple(setting) == (True, 24 * 60)
+        "SELECT is_enabled, min_notice_minutes, booking_window_days, cancel_cutoff_hours, "
+        "reschedule_cutoff_hours FROM admin.online_booking_setting")).one()
+    assert tuple(setting) == (True, 24 * 60, 60, 24, 24)
     bookable = front_desk.execute(text(
         "SELECT b.facility_id, t.code FROM admin.online_bookable_type b "
-        "JOIN admin.appointment_type t ON t.id = b.appointment_type_id")).all()
-    assert [tuple(r) for r in bookable] == [(FACILITY_A, "FU")]
+        "JOIN admin.appointment_type t ON t.id = b.appointment_type_id ORDER BY t.code")).all()
+    assert [tuple(r) for r in bookable] == [(FACILITY_A, "FU"), (FACILITY_A, "TELE-FU")]
 
 
 def test_a_shown_patient_has_every_registration_field(migrator_engine: Engine,

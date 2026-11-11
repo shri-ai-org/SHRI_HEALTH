@@ -384,17 +384,24 @@ def _demo_users(db: Session) -> None:
                 enrolled_at=dt.datetime(2026, 11, 11, tzinfo=dt.UTC))
 
 
-#: Online booking (A50 (3)) for the portal's booking rehearsal: on, with at least 24 hours'
-#: notice (Vimal, 11 Nov), and the follow-up visit bookable at the main office.
+#: Online booking (A50 (3)) for the portal's booking rehearsal (Vimal on #85, 11 Nov): on, at
+#: least 24 hours' notice, up to 60 days ahead, cancel and reschedule up to 24 hours before, and
+#: the follow-up visit types bookable at the main office.
 MIN_NOTICE_MINUTES = 24 * 60
+BOOKING_WINDOW_DAYS = 60
+CUTOFF_HOURS = 24
+ONLINE_TYPES = ("FU", "TELE-FU")
 
 
 def _online_booking(db: Session, visits: dict[str, uuid.UUID]) -> None:
     starter._set_clinic(db, CLINIC_A)
     _ensure(db, "online_booking_setting", sid(BOOKING_SETTING, 1), tenant_id=CLINIC_A,
-            is_enabled=True, min_notice_minutes=MIN_NOTICE_MINUTES)
-    _ensure(db, "online_bookable_type", sid(BOOKABLE_TYPE, 1), tenant_id=CLINIC_A,
-            facility_id=FACILITY_A, appointment_type_id=visits["FU"])
+            is_enabled=True, min_notice_minutes=MIN_NOTICE_MINUTES,
+            booking_window_days=BOOKING_WINDOW_DAYS, cancel_cutoff_hours=CUTOFF_HOURS,
+            reschedule_cutoff_hours=CUTOFF_HOURS)
+    for i, code in enumerate(ONLINE_TYPES, start=1):
+        _ensure(db, "online_bookable_type", sid(BOOKABLE_TYPE, i), tenant_id=CLINIC_A,
+                facility_id=FACILITY_A, appointment_type_id=visits[code])
 
 
 def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> None:

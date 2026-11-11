@@ -341,13 +341,14 @@ def seeded_charts(c: Client, v: Visit) -> str:
     """What the doctor reads before the demo visit: a history patient's lists aren't empty, and
     the restricted chart refuses until a break-glass grant (D37, D53), then opens. A grant from
     an earlier run (4 hours) opens it at once."""
-    from app.db.seed import demo
+    from app.db.seed.demo import PATIENT
+    from app.db.seed.starter import sid
 
-    history = demo.sid(demo.PATIENT, 2)
+    history = sid(PATIENT, 2)
     for name in HISTORY_LISTS:
         if not c.call("md", "GET", f"/patients/{history}/{name}").json().get("items"):
             raise StepFailed(f"the history patient's {name} list is empty (reset the seed)")
-    restricted = demo.sid(demo.PATIENT, 6)
+    restricted = sid(PATIENT, 6)
     first = c.call("md", "GET", f"/patients/{restricted}/problems", expect=(200, 403))
     if first.status_code == 403:
         c.call("md", "POST", f"/patients/{restricted}/break-glass",
