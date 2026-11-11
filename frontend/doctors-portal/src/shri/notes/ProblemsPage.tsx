@@ -12,7 +12,8 @@
  * page; and confirming the list is on the audit trail.
  */
 
-import { Ban, Check, Pencil, TriangleAlert } from 'lucide-react'
+import { Ban, Check, Pencil, Trash2, TriangleAlert } from 'lucide-react'
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { CODE_SUGGESTIONS } from '@/data/clinical'
@@ -32,8 +33,11 @@ import { Alert } from '../ui/Alert'
 import { Why } from '../ui/Disclosure'
 import { IcdPicker } from '../ui/IcdPicker'
 import { Card, Chip, CountBubble, Pill, PillTag } from '../ui/primitives'
+import { TextInput } from '../ui/forms'
 
 import { NoSuchEncounter } from './ConsultationPage'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export function ProblemsPage() {
   const { id } = useParams()
@@ -55,6 +59,20 @@ function Problems({ encounterId }: { encounterId: string }) {
   const confirmProblemList = useClinical((s) => s.confirmProblemList)
 
   const problems = useProblemsFor(enc.id)
+  const removeProblem = useClinical((s) => s.removeProblem)
+  const [removing, setRemoving] = useState<{ id: string; reason: string; tried: boolean } | null>(null)
+  const [removeBusy, setRemoveBusy] = useState(false)
+  async function onRemove(id: string, label: string) {
+    if (!removing) return
+    if (removing.reason.trim().length < 3) {
+      setRemoving({ ...removing, tried: true })
+      return
+    }
+    setRemoveBusy(true)
+    const done = await removeProblem(enc.id, id, label, removing.reason)
+    setRemoveBusy(false)
+    if (done) setRemoving(null)
+  }
   const flagged = problems.filter((pr) => pr.consistencyFlag)
   const confirmed = problems.filter((pr) => confirmations[pr.id] !== undefined)
   const confirm = (problemId: string) => confirmProblem(problemId, me.name, NOW.toISOString())
@@ -226,7 +244,36 @@ function Problems({ encounterId }: { encounterId: string }) {
                   <Pill variant={isConfirmed ? 'control' : 'primary'} size="md" icon={isConfirmed ? Check : undefined} aria-pressed={isConfirmed} onClick={() => confirm(pr.id)}>
                     {isConfirmed ? 'Confirmed' : 'Confirm'}
                   </Pill>
+                  {/* SHRI_HEALTH: a saved diagnosis can be removed before the note is signed, with a reason (D24). */}
+                  {REAL_API && !pr.id.startsWith('pending:') && removing?.id !== pr.id && (
+                    <Pill variant="ghost" size="md" icon={Trash2} aria-label={`Remove ${pr.label}`} onClick={() => setRemoving({ id: pr.id, reason: '', tried: false })} />
+                  )}
                 </span>
+                {removing?.id === pr.id && (
+                  <span className="flex w-full flex-wrap items-end gap-[8px]">
+                    <span className="min-w-0 flex-1 basis-[240px]">
+                      <label htmlFor={`dx-remove-${pr.id}`} className="mb-[6px] block text-[13px] font-medium text-sh-text-2">
+                        Why remove {pr.label}? <span className="text-sh-crit-fg">*</span>
+                      </label>
+                      <TextInput
+                        id={`dx-remove-${pr.id}`}
+                        value={removing.reason}
+                        maxLength={500}
+                        autoFocus
+                        placeholder="Coded in error, say"
+                        aria-invalid={removing.tried && removing.reason.trim().length < 3}
+                        onChange={(e) => setRemoving({ ...removing, reason: e.target.value })}
+                      />
+                      {removing.tried && removing.reason.trim().length < 3 && <span className="mt-[4px] block text-[12px] text-sh-crit-fg">Say why, in a few words</span>}
+                    </span>
+                    <Pill variant="ghost" size="md" onClick={() => setRemoving(null)} disabled={removeBusy}>
+                      Cancel
+                    </Pill>
+                    <Pill variant="primary" size="md" icon={Trash2} disabled={removeBusy} onClick={() => void onRemove(pr.id, pr.label)}>
+                      {removeBusy ? 'Removing…' : 'Remove diagnosis'}
+                    </Pill>
+                  </span>
+                )}
               </li>
             )
           })}

@@ -11,6 +11,7 @@ import { useUI } from '@/store/ui'
 import { ApiError, etagOf, newIdempotencyKey } from '../../src/api/client'
 import {
   addEncounterDiagnosis,
+  removeEncounterDiagnosis,
   addNoteAddendum,
   getEncounter,
   createNote,
@@ -76,6 +77,8 @@ interface NoteState {
   diagnoses: Record<string, AddedProblem[]>
   loadDiagnoses: (encounterId: string) => Promise<void>
   addProblem: (encounterId: string, dx: { label: string; icd10: string }, by: string, at: string) => AddedProblem | null
+  /** Removes a diagnosis before the note is signed (D24: entered-in-error with the reason). True once the server has it. */
+  removeProblem: (encounterId: string, diagnosisId: string, label: string, reason: string) => Promise<boolean>
   // TODO(gap 6): no operation changes a diagnosis's verification status, or confirms the list;
   // both stay on this screen only, as in the mock.
   problemConfirmations: Record<string, { by: string; at: string }>
@@ -382,6 +385,18 @@ export const useClinical = create<NoteState>()((set, get) => {
           toastProblem(error, `${dx.label} was not added`)
         })
       return pending
+    },
+
+    removeProblem: async (encounterId, diagnosisId, label, reason) => {
+      try {
+        await removeEncounterDiagnosis(encounterId, diagnosisId, { reason: reason.trim() })
+        set({ diagnoses: { ...get().diagnoses, [encounterId]: (get().diagnoses[encounterId] ?? []).filter((pr) => pr.id !== diagnosisId) } })
+        useUI.getState().toast({ tone: 'success', title: `${label} removed`, detail: 'Kept in the record as entered in error, with your reason' })
+        return true
+      } catch (error) {
+        toastProblem(error, `${label} was not removed`)
+        return false
+      }
     },
 
     prescriptions: {},
