@@ -197,17 +197,22 @@ async def validated_at(db: AsyncSession, ref: PracticeSetupReads, fac: FacilityR
                        patient_id: UUID, provider_id: UUID, location_id: UUID | None,
                        type_id: UUID, start: datetime, minutes: int | None, overbook: bool,
                        same_day_add_on: bool, now: datetime, prefix: str = "",
-                       rescheduling: UUID | None = None
+                       rescheduling: UUID | None = None, hold_patient: bool = True
                        ) -> tuple[FacilityRow, AppointmentTypeRow, repo.NewAppointment]:
-    """The booking rules at a facility already resolved (staff and the portal)."""
-    await repo.lock_patient(db, patient_id)  # no merge between this check and the insert
-    person = (await repo.people(db, [patient_id])).get(patient_id)
-    if person is None:
-        raise NotFound()
-    if person.merged:
-        raise Conflict(code="patient-merged")
-    if not person.active:
-        raise business_rule(f"{prefix}/patientId", "invalid-reference")
+    """The booking rules at a facility already resolved (staff and the portal). The portal
+    passes ``hold_patient=False``: the patient is the portal session's, and a merge suspends that
+    session's account (ADR-0013, D92), so the patient row is neither locked nor checked here (its
+    role can't lock it or read ``patient_link``); a merge racing the booking leaves it on the
+    chart it named, which D103's link presents with the surviving chart."""
+    if hold_patient:
+        await repo.lock_patient(db, patient_id)  # no merge between this check and the insert
+        person = (await repo.people(db, [patient_id])).get(patient_id)
+        if person is None:
+            raise NotFound()
+        if person.merged:
+            raise Conflict(code="patient-merged")
+        if not person.active:
+            raise business_rule(f"{prefix}/patientId", "invalid-reference")
     types = await ref.appointment_types(db, [type_id])
     if not types:
         raise business_rule(f"{prefix}/appointmentTypeId", "invalid-reference")

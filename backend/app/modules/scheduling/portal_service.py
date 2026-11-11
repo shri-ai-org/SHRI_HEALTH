@@ -21,9 +21,11 @@ Booking (the demo slice; the rules in portal.yaml's ``bookPortalAppointment``):
 - booked at once, under the staff booking rules (``service.validated_at``: the provider's hours,
   the day lock, the exclusion constraint against double booking);
 - cancel and reschedule only while the start is at least the practice's cut-off away.
-Side effects that must never refuse a booking (the eligibility check, D15, and the live board
-event) run in a savepoint: if one fails, the booking stands and the failure is logged, without
-patient data.
+The live board event runs in a savepoint and never refuses a booking: if it fails, the booking
+stands and the failure is logged, without patient data. Eligibility (D15) is not queued from the
+portal: its pre-visit batch and check-in run it, so a failed check warns the desk and never
+blocks the patient. An appointment booked from a follow-up request (D98) is moved or cancelled by
+the clinic, never online, so the portal never changes a follow-up request.
 """
 
 from __future__ import annotations
@@ -40,8 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import PortalPatient, require_own_record
 from app.core.errors import Conflict, NotFound, ValidationFailed, field_error
 
-from ..eligibility import service as eligibility
-from . import events, repository, slots
+from . import events, repository
 from . import portal_schemas as ps
 from . import service as staff
 from .portal_repository import OnlinePolicy, PortalAddressRow, PortalAppointmentRow
@@ -246,7 +247,7 @@ async def book(db: AsyncSession, reads: Reads, ref: PracticeSetupReads, patient:
     _, _, new = await staff.validated_at(
         db, ref, found[0], patient_id=patient.patient_id, provider_id=body.provider_id,
         location_id=None, type_id=body.appointment_type_id, start=start, minutes=None,
-        overbook=False, same_day_add_on=False, now=now)
+        overbook=False, same_day_add_on=False, now=now, hold_patient=False)
     note = (body.reason_for_visit or "").strip()
     new = replace(new, reason=note or REASON_LABELS[body.reason_code],
                   reason_code=body.reason_code)
@@ -258,14 +259,10 @@ async def book(db: AsyncSession, reads: Reads, ref: PracticeSetupReads, patient:
 
 async def _side_effects(db: AsyncSession, appointment_id: UUID, new: repository.NewAppointment,
                         *, rescheduled: bool) -> None:
-    async def check() -> None:
-        await eligibility.queue_for_appointment(db, appointment_id, trigger="booking")
-
     async def board() -> None:
         await events.booked(db, appointment_id, patient_id=new.patient_id,
                             provider_id=new.provider_id, facility_id=new.facility_id,
                             start=new.start, rescheduled=rescheduled)
-    await _quietly(db, "the eligibility check", check)
     await _quietly(db, "the schedule event", board)
 
 
@@ -280,6 +277,12 @@ async def _own_booked(db: AsyncSession, reads: Reads, patient: PortalPatient,
     return row
 
 
+async def _not_from_follow_up(db: AsyncSession, reads: Reads, appointment_id: UUID) -> None:
+    if await reads.from_follow_up(db, appointment_id):
+        raise ValidationFailed(code="business-rule-violation", errors=[
+            field_error("path", "appointmentId", "not-editable")])  # the clinic moves it (D98)
+
+
 def _in_time(row: PortalAppointmentRow, hours: int, now: datetime) -> None:
     if row.start - now < timedelta(hours=hours):
         raise _rule("/startAt", "out-of-range")  # too late online: call the clinic
@@ -292,11 +295,11 @@ async def cancel(db: AsyncSession, reads: Reads, patient: PortalPatient, appoint
     if policy is None:
         raise _rule("/startAt", "out-of-range")
     _in_time(row, policy.cancel_cutoff_hours, now)
+    await _not_from_follow_up(db, reads, appointment_id)
     locked = await repository.locked(db, appointment_id)
     if locked.status != "booked":
         raise Conflict(code="invalid-state-transition", currentState=locked.status)
     await repository.cancel(db, locked, PATIENT_CANCEL, body.reason_text)
-    await repository.reopen_follow_up(db, appointment_id)  # D98: the revisit is open again
 
     async def board() -> None:
         await events.cancelled(db, appointment_id, patient_id=row.patient_id,
@@ -316,6 +319,7 @@ async def reschedule(db: AsyncSession, reads: Reads, ref: PracticeSetupReads,
     if policy is None:
         raise _rule("/startAt", "out-of-range")
     _in_time(row, policy.reschedule_cutoff_hours, now)
+    await _not_from_follow_up(db, reads, appointment_id)
     found = await _bookable(db, reads, ref, row.facility_id)
     if found is None or row.type_id not in found[1]:
         raise _rule("/startAt", "out-of-range")  # no longer bookable online: call the clinic
@@ -328,19 +332,11 @@ async def reschedule(db: AsyncSession, reads: Reads, ref: PracticeSetupReads,
         db, ref, found[0], patient_id=patient.patient_id,
         provider_id=body.provider_id or row.provider_id, location_id=None, type_id=row.type_id,
         start=start, minutes=None, overbook=False, same_day_add_on=False, now=now,
-        rescheduling=appointment_id)
+        rescheduling=appointment_id, hold_patient=False)
     await repository.cancel(db, locked, PATIENT_CANCEL, body.reason_text or "Rescheduled online")
     new = replace(new, reason=row.reason, reason_code=row.reason_code,
                   patient_instruction=row.patient_instruction, rescheduled_from_id=appointment_id)
     new_id = await staff.insert_new(db, new)
-    await repository.move_follow_up(db, appointment_id, new_id)
-    if slots.local_day(new.start, row.time_zone) != slots.local_day(row.start, row.time_zone):
-        await _side_effects(db, new_id, new, rescheduled=True)
-    else:
-        async def board() -> None:
-            await events.booked(db, new_id, patient_id=new.patient_id,
-                                provider_id=new.provider_id, facility_id=new.facility_id,
-                                start=new.start, rescheduled=True)
-        await _quietly(db, "the schedule event", board)
+    await _side_effects(db, new_id, new, rescheduled=True)
     await db.commit()
     return await one(db, reads, patient, new_id, now)

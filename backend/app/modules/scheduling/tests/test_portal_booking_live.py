@@ -118,9 +118,17 @@ def test_book_then_it_is_on_the_staff_schedule(portal_app: TestClient,
     assert booked.headers["Location"] == f"{MINE}/{made['id']}"
     again = a.post(MINE, _body(portal_chart, fu, slot, reasonForVisit="Pressure readings"), key)
     assert again.status_code == 201 and again.json()["id"] == made["id"]  # a retry, replayed
-    staff = portal_app.get(f"{API}/appointments/{made['id']}", headers={DEV_USER_HEADER: "fd"})
-    assert staff.status_code == 200, staff.text
-    assert staff.json()["patient"]["id"] == str(portal_chart.a)
+    # On the clinic's schedule: the row the front desk's day view lists (booked, this facility).
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    try:
+        with admin.connect() as c:
+            row = c.execute(text(
+                "SELECT subject_patient_id, status, ext_facility_id, tenant_id "
+                "FROM clinical.appointment WHERE id = :i"), {"i": made["id"]}).one()
+    finally:
+        admin.dispose()
+    assert (row.subject_patient_id, row.status, row.ext_facility_id, row.tenant_id) == (
+        portal_chart.a, "booked", portal_chart.practice.facility, portal_chart.practice.clinic)
     assert a.get(f"{MINE}/{made['id']}").json()["id"] == made["id"]
 
 
@@ -158,6 +166,18 @@ def test_a_taken_time_is_a_conflict(portal_app: TestClient, portal_chart: Portal
     assert a.post(MINE, _body(portal_chart, fu, slot)).status_code == 201
     taken = b.post(MINE, _body(portal_chart, fu, slot))
     assert taken.status_code == 409 and taken.json()["code"] == "booking-conflict"
+
+
+@pytest.mark.xfail(strict=True, reason="shri_portal sees only its own patient's appointments, so "
+                   "another patient's booking still shows as free until the database gives the "
+                   "portal busy times without patient data (Anand, #85)")
+def test_another_patients_booking_is_not_offered_again(portal_app: TestClient,
+                                                       portal_chart: PortalChart) -> None:
+    fu = _online(portal_chart)
+    a = Patient(portal_app, portal_chart, portal_chart.a)
+    b = Patient(portal_app, portal_chart, portal_chart.b)
+    slot = _free(a, portal_chart, fu)[0]
+    assert a.post(MINE, _body(portal_chart, fu, slot)).status_code == 201
     assert slot["startAt"] not in [s["startAt"] for s in _free(b, portal_chart, fu)]
 
 

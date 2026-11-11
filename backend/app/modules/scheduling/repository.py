@@ -215,8 +215,9 @@ WHERE s.active AND s.ext_facility_id = :facility
   AND coalesce(sa.practitioner_id, r.practitioner_id) = :provider
 ORDER BY s.created_at LIMIT 1
 """)
-#: Reasons for a visit booked online (PortalAppointmentCreate's ``reasonCode``).
-PORTAL_REASON_SYSTEM = "urn:shri:portal-visit-reason"
+#: Reasons for a visit booked online (PortalAppointmentCreate's ``reasonCode``): the practice's
+#: local picklist system, which code_system holds (the reason's code system is a foreign key).
+PORTAL_REASON_SYSTEM = systems.SHRI_LOCAL
 _LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
 _LOCK_PATIENT = text("SELECT 1 FROM clinical.patient WHERE id = :id FOR SHARE")
 

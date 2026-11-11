@@ -103,6 +103,8 @@ class PortalAppointmentReads(Protocol):
     async def addresses(self, db: Any, location_ids: Sequence[UUID | None]
                         ) -> dict[UUID, PortalAddressRow]: ...
 
+    async def from_follow_up(self, db: Any, appointment_id: UUID) -> bool: ...
+
 
 _SELECT = f"""
 SELECT a.id, a.subject_patient_id, a.status, a.start, a."end", a.patient_instruction,
@@ -154,6 +156,9 @@ JOIN admin.appointment_type t ON t.id = o.appointment_type_id
 WHERE t.is_active AND (CAST(:facility AS uuid) IS NULL OR o.facility_id = :facility)
 ORDER BY t.name, t.id
 """)
+#: Whether a follow-up request (D98) is booked on the appointment: then the clinic moves it.
+_FROM_FOLLOW_UP = text("SELECT EXISTS (SELECT 1 FROM clinical.encounter_follow_up "
+                       "WHERE booked_appointment_id = :id)")
 #: The patient's booked appointments still ahead (the limit of upcoming online bookings).
 _UPCOMING_COUNT = text("""
 SELECT count(*) FROM clinical.appointment a
@@ -218,6 +223,10 @@ class SqlPortalAppointmentReads:
                                 bool(r["is_telehealth"]), r["facility_id"])
                 for r in (await db.execute(_BOOKABLE_TYPES, {"facility": facility_id})
                           ).mappings()]
+
+    async def from_follow_up(self, db: AsyncSession, appointment_id: UUID) -> bool:
+        found: bool = (await db.execute(_FROM_FOLLOW_UP, {"id": appointment_id})).scalar_one()
+        return found
 
     async def upcoming_count(self, db: AsyncSession, patient_id: UUID, now: datetime,
                              exclude: UUID | None = None) -> int:
