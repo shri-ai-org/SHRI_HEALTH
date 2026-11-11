@@ -142,11 +142,16 @@ class AIRepository(Protocol):
     async def suggestion_views(self, db: AsyncSession, ids: Iterable[UUID]
                                ) -> dict[UUID, AiSuggestion]: ...
 
+    async def generation(self, db: AsyncSession, suggestion_id: UUID
+                         ) -> tuple[AiGeneratedBy, datetime] | None: ...
+
     async def settings(self, db: AsyncSession, *, lock: bool = False) -> SettingsState: ...
 
     async def set_clinic(self, db: AsyncSession, enabled: bool) -> None: ...
 
     async def patient_context(self, db: AsyncSession, patient_id: UUID) -> str | None: ...
+
+    async def practitioner_of_user(self, db: AsyncSession, user_id: UUID) -> UUID | None: ...
 
     async def month_usage(self, db: AsyncSession) -> list[Usage]: ...
 
@@ -278,6 +283,13 @@ class SqlAIRepository:
         rows = (await db.execute(_SUGGESTION_VIEWS, {"ids": wanted})).mappings().all()
         return {r["id"]: _view(r) for r in rows if r["patient_id"] is not None}
 
+    async def generation(self, db: AsyncSession, suggestion_id: UUID
+                         ) -> tuple[AiGeneratedBy, datetime] | None:
+        """Who made a suggestion and when, also for one that spans patients (a morning brief,
+        which ``suggestion_views`` leaves out)."""
+        r = (await db.execute(_SUGGESTION_VIEWS, {"ids": [suggestion_id]})).mappings().first()
+        return None if r is None else (_generated_by(r), r["created_at"])
+
     async def settings(self, db: AsyncSession, *, lock: bool = False) -> SettingsState:
         # RLS (tenant_self) shows the session's own clinic only.
         clinic = (await db.execute(_TENANT_LOCKED if lock else _TENANT)).mappings().first()
@@ -304,6 +316,11 @@ class SqlAIRepository:
         parts = [f"{age}-year-old" if age is not None else None, sex or "patient"]
         return " ".join(p for p in parts if p) if (age is not None or sex) else None
 
+    async def practitioner_of_user(self, db: AsyncSession, user_id: UUID) -> UUID | None:
+        """The provider a staff account is linked to (the morning brief's appointments)."""
+        found: UUID | None = (await db.execute(_PRACTITIONER, {"id": user_id})
+                              ).scalar_one_or_none()
+        return found
 
     async def month_usage(self, db: AsyncSession) -> list[Usage]:
         """This calendar month's (UTC) recorded tokens, per model, for the budget guard. RLS
@@ -347,6 +364,7 @@ _TENANT_LOCKED = text("SELECT ai_enabled, updated_at FROM admin.tenant FOR UPDAT
 # switch's value, which is what a second admin's PUT must not overwrite unseen.
 _SET_CLINIC = text("UPDATE admin.tenant SET ai_enabled = :enabled")
 _PATIENT = text("SELECT birth_date, gender FROM clinical.patient WHERE id = :id")
+_PRACTITIONER = text("SELECT practitioner_id FROM admin.app_user WHERE id = :id")
 _MONTH_USAGE = text("""
 SELECT model_name, coalesce(sum(input_tokens), 0) AS tokens_in,
        coalesce(sum(output_tokens), 0) AS tokens_out
@@ -376,12 +394,14 @@ def _view(r: Any) -> AiSuggestion:
         decided_by=ClinicianRef(id=r["decider_practitioner_id"] or r["decider_id"],
                                 display_name=r["decider_name"] or "") if decided else None,
         rejection_reason=r["rejection_reason"],
-        generated_by=AiGeneratedBy(model_name=r["model_name"] or "unrecorded",
-                                   model_version=r["model_version"],
-                                   prompt_code=r["prompt_code"],
-                                   prompt_version=r["prompt_version"],
-                                   pipeline_version=r["pipeline_version"]),
-        created_at=r["created_at"])
+        generated_by=_generated_by(r), created_at=r["created_at"])
+
+
+def _generated_by(r: Any) -> AiGeneratedBy:
+    return AiGeneratedBy(model_name=r["model_name"] or "unrecorded",
+                         model_version=r["model_version"], prompt_code=r["prompt_code"],
+                         prompt_version=r["prompt_version"],
+                         pipeline_version=r["pipeline_version"])
 
 
 def _unique(sources: Sequence[SourceRef]) -> list[SourceRef]:

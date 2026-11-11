@@ -1335,7 +1335,7 @@ paths:
         (`GET /ai/differentials/{differentialId}`). The model sees the visit (reason for visit, its diagnoses so far and its
         note''s sections) and the chart (recent visits, allergies, medications), read within the caller''s own request through
         each module''s service with the caller''s permissions and the restricted-chart check (D37), audited as `ai`. **Only
-        clinicians who can diagnose ask for one**: a user without `encounters:update` gets `403 permission-denied`. Every
+        clinicians who can diagnose ask for one**: a user without `diagnoses:create` gets `403 permission-denied`. Every
         candidate cites at least one record; one that cites none is dropped; confidence is `low` or `medium`, never `high`.
         It **suggests and never concludes**: nothing is added to the chart or the visit, and the clinician adds a diagnosis
         through the visit''s own endpoint. Shown apart from rule-based alerts. Readable by its requester only; nothing of
@@ -1403,7 +1403,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `chart-summaries:create` or `encounters:update`); `csrf-check-failed`
+          description: 403. `permission-denied` (the role lacks `chart-summaries:create` or `diagnoses:create`); `csrf-check-failed`
             (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user
             holds no break-glass grant and is not on the care team (D37)).
         '404':
