@@ -10,17 +10,13 @@ import { MobileNavRow } from './MobileNavRow'
 import { PatientSearch } from '../patient/PatientSearch'
 import { readFlow } from '../../flows/flowParams'
 
-// The IndoStates artwork pre-rendered at the exact sizes it is shown (1×–3×,
-// trimmed and sharpened), so its fine lettering stays crisp instead of being
-// shrunk ~5× by the browser from one large file.
 /** Pages with their own patient field — the app-bar search steps aside there,
  *  so a screen never shows two search boxes. */
 const OWN_PATIENT_FIELD = new Set(['/services/guest-pass', '/services/mlc', '/services/enquiry'])
 
 // GP-01 — the app bar (DESIGN_SYSTEM §8.2), on every Front Office screen:
 // the brand (phones only — from 768px it heads the sidebar), the patient
-// search, then theme, language, notifications, the signed-in user and the
-// IndoStates logo (an external link).
+// search, then theme, language, notifications and the signed-in user.
 export function AppBar({ ref }: { ref?: Ref<HTMLElement> }) {
   const { pathname, search } = useLocation()
   // One search box per screen: a task panel brings its own patient search,
