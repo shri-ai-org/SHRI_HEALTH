@@ -9,9 +9,12 @@ Layers, each building on the one before, through the same insert-if-missing buil
   templates, the MRN counter (as onboarding creates it) and an ``app_user`` row per dev user;
 - ``demo``: the starter layer plus a pharmacy, more payers, the consent requirements, and
   synthetic patients with coverage, a preferred pharmacy and appointments on the demo day
-  (Fri 20 Nov). The demo users linked to Keycloak come with Thulasi's demo realm;
+  (Fri 20 Nov). The demo users linked to Keycloak come with Thulasi's demo realm. Then, in a
+  second transaction, demo patients 2 to 5's clinical history (history.py: past visits with
+  vitals and a signed note, problems, allergies, medications, family, social and surgical
+  history), written through ``app.db.fhir_store`` and skipped for a patient who has it;
 - ``reset`` (reset.py): on an empty database (recreated by Thulasi's reset split), migrate,
-  then seed ``demo``, then check it. It never drops anything itself, and the audit
+  then seed ``demo`` with the history, then check it. It never drops anything itself, and the audit
   protections are never disabled or bypassed.
 
 It runs as ``shri_migrator`` (``MIGRATION_DATABASE_URL``), because creating a practice is a
