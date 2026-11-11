@@ -446,6 +446,9 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
       reason, so it goes in core's audit row. **Both charts keep the labels the merge gave
       them** until an ADM or CO lifts one (`set_patient_security`): an undo never makes a
       chart less protected on its own.
+    - `set_patient_security(..., reason=Reason(...))` also writes the change's Provenance
+      (`UPDATE`, with the reason), as a merge does; without a reason (the API's restriction,
+      which core audits) it writes none. The demo seed restricts its chart this way.
     - `dismiss_duplicate(db, duplicate_id, reason)` is D46's `not-duplicate`, with the reason in
       `review_note`.
     - The reads: `merged_into()` (`mergedIntoId`), `chart_patient_ids()` (the surviving patient
@@ -481,7 +484,7 @@ pin in `terminology/fetch.py`, in a reviewed PR.
 
 ## Server tools (`app/db/tools`, the self-managed demo and test servers)
 
-- `python -m app.db.tools.server_check --patients 505` runs, as the master user, read-only, the
+- `python -m app.db.tools.server_check --patients 512` runs, as the master user, read-only, the
   six database checks of server day: Alembic head, pgvector `0.8.2` (D31), row security on
   and forced on every clinic table (those with a `tenant_id`), collation C.UTF-8, no service role
   bypassing row security or a superuser, and the patient count. Each prints PASS or FAIL, and the exit status is 1 if any fails. The URL is
