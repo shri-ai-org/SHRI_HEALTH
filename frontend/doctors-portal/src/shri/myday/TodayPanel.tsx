@@ -15,19 +15,24 @@
  */
 
 import { format } from 'date-fns'
-import { CalendarSearch, ChevronLeft, ChevronRight, ClockPlus, Plus } from 'lucide-react'
+import { CalendarClock, CalendarSearch, ChevronLeft, ChevronRight, ClockPlus, Plus, UserRound } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { patient } from '@/data/kit'
+import { clinicDate, clinicNow } from '../../../shri-health/format'
+import { useProviderDay, type ProviderDay } from '../../../shri-health/myday'
+import { patient } from '../../../shri-health/kit'
 import type { DayBlock } from '@/data/myday'
 
 import { canonical } from '../app/paths'
-import { NOW, range12, time12 } from '../lib/clock'
+import { NOW, fmtTime12, range12, time12 } from '../lib/clock'
 import { cn } from '../lib/cn'
-import { nextToCall } from '../logic/opd'
+import { nextToCall } from '../../../shri-health/opd'
+import { recordPath } from '../../../shri-health/record'
+import type { StatusBoardItem } from '../../../../src/api/generated/model'
 import type { Tone } from '../mocks/types'
 import { useShri } from '../state/store'
+import { EmptyState } from '../ui/EmptyState'
 import { iconFor } from '../ui/icons'
 import { Card, Chip, Diamond, Icon, Pill, RoundButton } from '../ui/primitives'
 
@@ -54,7 +59,17 @@ const dateOf = (iso: string) => {
 const isoOf = (d: Date) => format(d, 'yyyy-MM-dd')
 const plusDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/** The clinic's day in U.S. form, "Thursday, Nov 5, 2026" (D40). */
+const usDay = (d: Date) => new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }).format(d)
+
 export function TodayPanel({ className }: { className?: string }) {
+  if (REAL_API) return <ApiToday className={className} />
+  return <SampleToday className={className} />
+}
+
+function SampleToday({ className }: { className?: string }) {
   const d = useMyDay()
   const navigate = useNavigate()
   const selected = useShri((s) => s.selectedDay)
@@ -209,6 +224,122 @@ export function TodayPanel({ className }: { className?: string }) {
       </section>
 
     </Card>
+  )
+}
+
+const VISIT_WORDS: Record<string, string> = {
+  arrived: 'Arrived',
+  'checked-in': 'Checked in',
+  roomed: 'Roomed',
+  'with-provider': 'With you',
+  'checked-out': 'Seen',
+}
+
+/** A booking's state in a word: the visit step, else the booking's own status. */
+function visitWords(i: StatusBoardItem): string {
+  if (i.status === 'noshow') return 'No-show'
+  const step = i.visitStatus ? VISIT_WORDS[i.visitStatus] : undefined
+  if (step) return i.visitStatus === 'roomed' && i.roomName ? `${step} · ${i.roomName}` : step
+  return i.status === 'fulfilled' ? 'Seen' : 'Booked'
+}
+
+/**
+ * With the API: the signed-in provider's own day (GET /me's practitionerId, #221): their bookings
+ * today from the status board, as the sample's event cards, and their open times from the slots.
+ * The hour-by-hour timeline needs working hours and blocks, which MD can't read yet (gap 63).
+ */
+function ApiToday({ className }: { className?: string }) {
+  const navigate = useNavigate()
+  const day = useProviderDay()
+  return (
+    <Card className={cn('gap-0', className)} aria-labelledby="sh-today-title">
+      <header className="flex flex-wrap items-start gap-x-[16px] gap-y-[12px]">
+        <div className="min-w-0">
+          <h2 id="sh-today-title" className="text-[26px]/[1.15] font-semibold tracking-[-0.02em] text-sh-text">
+            Today
+          </h2>
+          <p className="mt-[4px] text-[14px] text-sh-text-2">{usDay(clinicNow())}</p>
+        </div>
+        {/* No Morning brief with the API: the brief is the AI chart summary, which has no service yet
+            (getChartSummary, Vimal's #267), so it would show sample patients. */}
+      </header>
+      {day.status === 'loading' ? (
+        <p role="status" className="mt-[12px] text-[13px] text-sh-text-3">
+          Loading your day…
+        </p>
+      ) : day.status === 'not-a-provider' ? (
+        <EmptyState compact icon={CalendarClock} why="Your sign-in isn't linked to a provider, so there is no schedule of your own to show." className="mt-[12px]" />
+      ) : day.status === 'failed' ? (
+        <EmptyState compact icon={CalendarClock} why="Your schedule could not be loaded. Reload the page to try again." className="mt-[12px]" />
+      ) : (
+        <ProviderSchedule day={day.value} onOpen={(to) => navigate(to)} />
+      )}
+    </Card>
+  )
+}
+
+function ProviderSchedule({ day, onOpen }: { day: ProviderDay; onOpen: (to: string) => void }) {
+  const nextFree = day.slots[0]
+  const seen = day.items.filter((i) => visitWords(i) === 'Seen').length
+  return (
+    <section aria-labelledby="sh-upcoming-title" className="mt-[16px]">
+      <div className="flex flex-wrap items-center gap-[12px]">
+        <h3 id="sh-upcoming-title" className="text-[20px]/[1.2] font-semibold tracking-[-0.01em] text-sh-text">
+          Today’s schedule
+        </h3>
+        <span className="inline-flex h-[30px] items-center rounded-full border border-sh-line-strong px-[12px] text-[13px] text-sh-text-2">
+          {day.items.length} {day.items.length === 1 ? 'patient' : 'patients'}
+        </span>
+        <p className="ml-auto text-[13px] tabular-nums text-sh-text-2">
+          Seen <b className="font-semibold text-sh-text">{seen}</b> · Open times <b className="font-semibold text-sh-text">{day.slots.length}</b>
+          {nextFree && (
+            <>
+              {' '}
+              · Next free <b className="font-semibold text-sh-text">{fmtTime12(clinicDate(nextFree.startAt))}</b>
+            </>
+          )}
+        </p>
+      </div>
+      {day.items.length === 0 ? (
+        <p className="mt-[12px] rounded-[14px] bg-sh-inner px-[14px] py-[12px] text-[14px] text-sh-text-2">No patients are booked with you today.</p>
+      ) : (
+        <ol className="mt-[12px] grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-[12px]" aria-label="Your patients today">
+          {day.items.map((i) => (
+            <li key={i.appointmentId} className="flex">
+              <BookingCard item={i} onOpen={onOpen} />
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  )
+}
+
+/** One booking, drawn as the sample's EventCard draws a patient. */
+function BookingCard({ item, onOpen }: { item: StatusBoardItem; onOpen: (to: string) => void }) {
+  const words = visitWords(item)
+  const past = words === 'Seen' || words === 'No-show'
+  const name = item.patient?.displayName ?? item.initials
+  return (
+    <button
+      type="button"
+      disabled={!item.patient}
+      onClick={() => item.patient && onOpen(recordPath(item.patient, 'record'))}
+      className="relative flex min-h-[96px] w-full items-center gap-[12px] overflow-hidden rounded-[16px] border border-sh-line bg-sh-card py-[12px] pl-[18px] pr-[10px] text-left transition-colors duration-150 hover:bg-sh-hover"
+    >
+      <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[4px]" style={{ background: 'var(--act-patient)' }} />
+      <span aria-hidden="true" className="flex size-[44px] shrink-0 items-center justify-center rounded-[12px]" style={actStyle('patient')}>
+        <Icon icon={UserRound} size={20} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={cn('block text-[12px]/[16px] tabular-nums', past ? 'text-sh-text-3' : 'text-sh-text-2')}>
+          {fmtTime12(clinicDate(item.startAt))} · {words}
+        </span>
+        <span className={cn('block truncate text-[15px]/[20px] font-semibold', past ? 'text-sh-text-3' : 'text-sh-text')}>{name}</span>
+        <span className="mt-[2px] block truncate text-[13px] text-sh-text-2">{item.reasonForVisit ?? item.appointmentType?.name ?? ''}</span>
+      </span>
+      <Icon icon={ChevronRight} size={16} className="shrink-0 text-sh-chev" />
+    </button>
   )
 }
 

@@ -16,7 +16,7 @@
 
 import { format } from 'date-fns'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Ban, ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react'
+import { Ban, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react'
 import { useEffect, useMemo, useRef, type KeyboardEvent, type PointerEvent } from 'react'
 
 import { cn } from '../lib/cn'
@@ -24,6 +24,9 @@ import { NOW, fmtMonth } from '../lib/clock'
 import { monthSlide } from '../lib/motion'
 import { useShri } from '../state/store'
 import { useMediaQuery } from '../ui/hooks'
+import { clinicNow } from '../../../shri-health/format'
+import { isoDay, useProviderWeek } from '../../../shri-health/myday'
+import { EmptyState } from '../ui/EmptyState'
 import { Card, Icon, Pill, RoundButton } from '../ui/primitives'
 
 import { DayDetail } from './DayDetail'
@@ -52,7 +55,64 @@ function weekTitle(week: CalendarDay[]): string {
   return a.getMonth() === b.getMonth() ? `${a.getDate()} – ${format(b, 'd MMM yyyy')}` : `${format(a, 'd MMM')} – ${format(b, 'd MMM yyyy')}`
 }
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/**
+ * With the API: this week on the clinic's clock, Monday first, today marked, and under each day the
+ * number of patients booked with the signed-in provider (GET /me's practitionerId, #221). Working
+ * hours, leave and blocks need the provider schedules, which MD can't read yet (gap 63).
+ */
+function ApiWeek({ className }: { className?: string }) {
+  const today = clinicNow()
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7))
+  const days = Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i))
+  const isToday = (d: Date) => d.toDateString() === today.toDateString()
+  const week = useProviderWeek(monday)
+  const booked = (d: Date) => (week.status === 'done' ? (week.value.get(isoDay(d)) ?? 0) : null)
+  return (
+    <Card className={cn('relative max-[360px]:-mx-[16px] max-[360px]:rounded-none', className)} title={format(today, 'MMMM yyyy')} titleSize="sm">
+      <div className="grid grid-cols-7 gap-[3px] pb-[4px] max-sm:-mx-[18px] max-[360px]:gap-x-0" aria-hidden="true">
+        {WEEKDAYS.map((w) => (
+          <span key={w} className="text-center text-[12px]/[18px] text-sh-muted">
+            {w}
+          </span>
+        ))}
+      </div>
+      <ol aria-label={`Week of ${format(monday, 'MMMM d, yyyy')}`} className="grid grid-cols-7 gap-[3px] px-[4px] py-[4px] max-[360px]:gap-x-0">
+        {days.map((d) => (
+          <li
+            key={d.toISOString()}
+            aria-current={isToday(d) ? 'date' : undefined}
+            aria-label={`${format(d, 'EEEE, MMMM d')}${booked(d) === null ? '' : `, ${booked(d)} booked`}`}
+            className="flex h-[56px] flex-col items-center justify-center gap-[2px] rounded-[14px]"
+          >
+            <span
+              className={cn(
+                'inline-flex size-[30px] items-center justify-center rounded-full text-[13px]/none tabular-nums',
+                isToday(d) ? 'bg-sh-accent font-semibold text-sh-accent-ink' : 'text-sh-text',
+              )}
+            >
+              {d.getDate()}
+            </span>
+            <span aria-hidden="true" className="h-[14px] text-[11px]/[14px] tabular-nums text-sh-text-3">
+              {booked(d) ? booked(d) : ''}
+            </span>
+          </li>
+        ))}
+      </ol>
+      {week.status === 'not-a-provider' && <EmptyState compact icon={CalendarDays} why="Your sign-in isn't linked to a provider, so there are no bookings of your own to show." />}
+      {week.status === 'failed' && <EmptyState compact icon={CalendarDays} why="Your week could not be loaded. Reload the page to try again." />}
+      {week.status === 'done' && <p className="px-[4px] pt-[4px] text-[12px] text-sh-text-3">Numbers are the patients booked with you each day.</p>}
+    </Card>
+  )
+}
+
 export function Calendar({ className }: { className?: string }) {
+  if (REAL_API) return <ApiWeek className={className} />
+  return <SampleCalendar className={className} />
+}
+
+function SampleCalendar({ className }: { className?: string }) {
   const d = useMyDay()
   const view = useShri((s) => s.calendarView)
   const anchor = useShri((s) => s.calendarAnchor)

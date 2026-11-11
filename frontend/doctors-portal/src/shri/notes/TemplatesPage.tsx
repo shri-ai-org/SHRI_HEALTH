@@ -38,6 +38,9 @@ import { Why } from '../ui/Disclosure'
 import { Field, Select, TextArea, TextInput } from '../ui/forms'
 import { Card, CountBubble, Icon, Pill, PillTag } from '../ui/primitives'
 import { Segmented } from '../ui/Segmented'
+import { noteTemplateSets } from '../../../shri-health/templates'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 type Scope = 'due' | 'all'
 
@@ -63,7 +66,8 @@ export function TemplatesPage() {
 
   const [effectiveOn, setEffectiveOn] = useState(TODAY)
   const [search, setSearch] = useState('')
-  const [scope, setScope] = useScope<Scope>(['due', 'all'], 'due')
+  // SHRI_HEALTH: with the API nothing has a review date, so the list opens on All.
+  const [scope, setScope] = useScope<Scope>(['due', 'all'], REAL_API ? 'all' : 'due')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [promoting, setPromoting] = useState<string | null>(null)
   // The choice is held by staff id: several clinicians can share a name.
@@ -76,7 +80,8 @@ export function TemplatesPage() {
 
   /** A past day is history: it is read, never changed — changes are made to today's library. */
   const past = effectiveOn < TODAY
-  const library = libraryOn(effectiveOn || TODAY, createdSets, promotedSets)
+  // SHRI_HEALTH: with the API, the practice's note templates (listNoteTemplates); order sets have no service yet.
+  const library = REAL_API ? noteTemplateSets() : libraryOn(effectiveOn || TODAY, createdSets, promotedSets)
   const q = search.trim().toLowerCase()
   const allSets = library.filter((s) => !q || s.name.toLowerCase().includes(q))
   const due = allSets.filter((s) => isDue(s.reviewDue))
@@ -126,67 +131,73 @@ export function TemplatesPage() {
       <ScreenFrame
         screenId="S-06-10"
         heading="Templates and order sets"
-        sub={`${allSets.length} sets · ${due.length} due for review`}
+        sub={REAL_API ? `${allSets.length} note templates · order sets not available yet` : `${allSets.length} sets · ${due.length} due for review`}
         actions={
-          <>
-            <label className="flex items-center gap-[8px] text-[13px] text-sh-text-2">
-              <Icon icon={CalendarDays} size={15} className="text-sh-text-3" />
-              Effective on
-              {/* The field itself is the 46px target; the words beside it name it. */}
-              <input
-                type="date"
-                value={effectiveOn}
-                onChange={(e) => setEffectiveOn(e.target.value || TODAY)}
-                aria-label="Effective on"
-                className="h-[46px] rounded-full bg-sh-card px-[16px] text-[13px] tabular-nums text-sh-text"
-              />
-            </label>
-            <Pill
-              variant="primary"
-              size="xl"
-              icon={Plus}
-              iconSize={17}
-              aria-disabled={past}
-              title={pastTitle}
-              className={cn(past && 'opacity-40')}
-              onClick={() => !past && setCreating(true)}
-            >
-              New set
-            </Pill>
-          </>
+          // SHRI_HEALTH: making, dating and promoting sets have no service yet, so not with SHRI_API=real.
+          REAL_API ? undefined : (
+            <>
+              <label className="flex items-center gap-[8px] text-[13px] text-sh-text-2">
+                <Icon icon={CalendarDays} size={15} className="text-sh-text-3" />
+                Effective on
+                {/* The field itself is the 46px target; the words beside it name it. */}
+                <input
+                  type="date"
+                  value={effectiveOn}
+                  onChange={(e) => setEffectiveOn(e.target.value || TODAY)}
+                  aria-label="Effective on"
+                  className="h-[46px] rounded-full bg-sh-card px-[16px] text-[13px] tabular-nums text-sh-text"
+                />
+              </label>
+              <Pill
+                variant="primary"
+                size="xl"
+                icon={Plus}
+                iconSize={17}
+                aria-disabled={past}
+                title={pastTitle}
+                className={cn(past && 'opacity-40')}
+                onClick={() => !past && setCreating(true)}
+              >
+                New set
+              </Pill>
+            </>
+          )
         }
+        // SHRI_HEALTH: the suggestion is the sample's (AI-302), with no service behind it.
         rail={
-          <SuggestionCard
-            touchpointId="templates:suggest"
-            capabilityId="AI-302"
-            title="Add a sputum culture to your CAP set"
-            evidence="You have added a sputum culture manually to 11 of your last 14 pneumonia admissions. The facility set does not include it."
-            band="MED"
-            score={0.78}
-            gate="G2"
-            explain={{
-              touchpointId: 'templates:suggest',
-              capabilityId: 'AI-302',
-              claim: 'Your local practice diverges from the facility order set on one item.',
-              confidence: 0.78,
-              band: 'MED',
-              computedAt: formatTime(NOW),
-              inputs: [
-                { label: 'Your last 14 pneumonia admissions', source: 'Order history, 90 days' },
-                { label: 'OS.CAP-ADULT contents', source: 'Order set library' },
-              ],
-              evidence: ['Sputum culture added manually in 11 of 14 cases.', 'Adding it to the set would remove 11 manual steps a quarter.'],
-              model: 'orderset-rec v2.0.3',
-              limits: [
-                'Learns from your ordering, so it will reproduce your habits including the unhelpful ones.',
-                'A browsable library is the fallback and is never hidden.',
-                'It cannot tell whether a divergence is an improvement or a deviation.',
-              ],
-            }}
-          />
+          REAL_API ? undefined : (
+            <SuggestionCard
+              touchpointId="templates:suggest"
+              capabilityId="AI-302"
+              title="Add a sputum culture to your CAP set"
+              evidence="You have added a sputum culture manually to 11 of your last 14 pneumonia admissions. The facility set does not include it."
+              band="MED"
+              score={0.78}
+              gate="G2"
+              explain={{
+                touchpointId: 'templates:suggest',
+                capabilityId: 'AI-302',
+                claim: 'Your local practice diverges from the facility order set on one item.',
+                confidence: 0.78,
+                band: 'MED',
+                computedAt: formatTime(NOW),
+                inputs: [
+                  { label: 'Your last 14 pneumonia admissions', source: 'Order history, 90 days' },
+                  { label: 'OS.CAP-ADULT contents', source: 'Order set library' },
+                ],
+                evidence: ['Sputum culture added manually in 11 of 14 cases.', 'Adding it to the set would remove 11 manual steps a quarter.'],
+                model: 'orderset-rec v2.0.3',
+                limits: [
+                  'Learns from your ordering, so it will reproduce your habits including the unhelpful ones.',
+                  'A browsable library is the fallback and is never hidden.',
+                  'It cannot tell whether a divergence is an improvement or a deviation.',
+                ],
+              }}
+            />
+          )
         }
         railTitle="Governance"
-        railBadge={aiActive ? 1 : undefined}
+        railBadge={aiActive && !REAL_API ? 1 : undefined}
       >
         <div className="flex max-w-[896px] flex-col gap-[16px]">
           {past && (
@@ -241,7 +252,7 @@ export function TemplatesPage() {
                     open={expanded === s.id}
                     onToggle={() => setExpanded(expanded === s.id ? null : s.id)}
                     onPromote={() => setPromoting(s.id)}
-                    promoteBlocked={pastTitle}
+                    promoteBlocked={REAL_API ? 'Promotion is not available yet' : pastTitle}
                   />
                 ))}
               </ul>
@@ -365,7 +376,7 @@ function SetRow({
           <span className="min-w-0 flex-1 basis-[200px]">
             <span className="block truncate text-[15px] font-medium text-sh-text">{s.name}</span>
             <span className="block truncate text-[12px] tabular-nums text-sh-text-3">
-              {s.items.length} items · {s.scope} · {s.owner}
+              {s.items.length} {REAL_API ? 'sections' : 'items'} · {s.scope} · {s.owner}
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-[8px]">
@@ -374,7 +385,7 @@ function SetRow({
                 review due {reviewLabel(s.reviewDue)}
               </PillTag>
             )}
-            <span className="text-[12px] tabular-nums text-sh-text-3">{s.usedThisMonth}/mo</span>
+            {!REAL_API && <span className="text-[12px] tabular-nums text-sh-text-3">{s.usedThisMonth}/mo</span>}
             <Icon icon={open ? ChevronDown : ChevronRight} size={14} className="text-sh-text-3" />
           </span>
         </button>

@@ -1,10 +1,14 @@
 import { ChevronLeft, RotateCcw } from 'lucide-react'
-import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Component, Suspense, type ErrorInfo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Card, Icon } from '../ui/primitives'
 
 import { P } from './paths'
+import { SealedBody } from '../overlays/QuickPanel'
+import { breakGlassOnServer, breakGlassPatientOf } from '../../../shri-health/breakglass'
+import { ApiError } from '../../../../src/api/client'
+import { problemCopy } from '../../../../src/design-system/problem/problem'
 
 interface Props {
   children: ReactNode
@@ -40,14 +44,45 @@ export class RouteBoundary extends Component<Props, State> {
 
   render() {
     const { error } = this.state
-    if (!error) return this.props.children
+    // SHRI_HEALTH: screens whose data comes from the API wait here while it loads (shri-health/resource.ts).
+    if (!error) {
+      const loading = (
+        <p role="status" className="py-[24px] text-[13px] text-sh-text-3">
+          Loading…
+        </p>
+      )
+      return <Suspense fallback={loading}>{this.props.children}</Suspense>
+    }
+    // SHRI_HEALTH: a restricted chart (403 break-glass-required, D37) opens through the portal's own
+    // sealed card; "Record and open" records the break-glass on the server, then reads again.
+    const sealedPatient = breakGlassPatientOf(error, this.props.resetKey)
+    if (sealedPatient) {
+      return (
+        <div className="mx-auto w-full max-w-[640px] py-[40px]">
+          <Card title="Restricted chart" className="flex flex-col">
+            <SealedBody
+              onConfirm={(reason) =>
+                void breakGlassOnServer(sealedPatient, reason)
+                  .then(() => this.setState({ error: null }))
+                  .catch((e: unknown) => this.setState({ error: e instanceof Error ? e : new Error(String(e)) }))
+              }
+            />
+          </Card>
+        </div>
+      )
+    }
+    const api =
+      error instanceof ApiError
+        ? { ...problemCopy(error.problem), reference: error.problem.requestId ? `Reference ${error.problem.requestId}` : `Status ${error.status}` }
+        : null
     return (
       <div className="mx-auto w-full max-w-[640px] py-[40px]">
-        <Card title="This screen could not open">
+        <Card title={api ? api.title : 'This screen could not open'}>
           <p className="text-[14px]/[1.5] text-sh-text-2">
-            Something it needed was not there — often an address with an id that is not on this system.
+            {/* SHRI_HEALTH: a refusal from the API says what it was (403, 404, …) in the words of its Problem code, never the server's title. */}
+            {api ? api.message : 'Something it needed was not there — often an address with an id that is not on this system.'}
           </p>
-          <p className="mt-[10px] break-words rounded-sh-inner bg-sh-inner px-[12px] py-[8px] text-[13px] text-sh-text">{error.message}</p>
+          <p className="mt-[10px] break-words rounded-sh-inner bg-sh-inner px-[12px] py-[8px] text-[13px] text-sh-text">{api ? api.reference : error.message}</p>
           <div className="mt-[18px] flex flex-wrap gap-[12px]">
             <button
               type="button"

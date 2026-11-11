@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 
 import { selectAiActive, useAI } from '@/store/ai'
 
-import { assistantOfferedAt } from '../logic/assistant'
+import { AI_ASSISTANT_ON, assistantOfferedAt } from '../logic/assistant'
 import { useShri } from '../state/store'
 
 /** §12 keyboard: `/` search, `?` assistant, `Esc` closes the top overlay. */
@@ -28,7 +28,7 @@ export function useShriKeys() {
         if (!s.noteModal && !s.admitPatient) s.openSearch()
       } else if (e.key === '?') {
         e.preventDefault()
-        if (selectAiActive(useAI.getState()) && assistantOfferedAt(here.current)) s.toggleAssistant()
+        if (AI_ASSISTANT_ON && selectAiActive(useAI.getState()) && assistantOfferedAt(here.current)) s.toggleAssistant()
       }
     }
     window.addEventListener('keydown', onKey)

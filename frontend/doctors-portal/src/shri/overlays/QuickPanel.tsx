@@ -256,7 +256,7 @@ function Panel({ item: it }: { item: AttentionItem }) {
               {deltas.length > 3 && (
                 <button
                   type="button"
-                  onClick={() => go(`/patient/${p.uhid}/timeline`)}
+                  onClick={() => go(`/patient/${p.id}/timeline`)}
                   className="flex h-[44px] w-full items-center border-t border-sh-line-strong text-[12px] font-medium text-sh-text-2 transition-colors duration-150 hover:text-sh-text"
                 >
                   +{deltas.length - 3} more on the timeline
@@ -306,7 +306,7 @@ function Panel({ item: it }: { item: AttentionItem }) {
                   dictated.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => go(`/patient/${p.uhid}/notes`)}
+                      onClick={() => go(`/patient/${p.id}/notes`)}
                       className="inline-flex min-h-[32px] items-center gap-[4px] text-[12px] font-medium text-sh-text-2 transition-colors duration-150 hover:text-sh-text"
                     >
                       {dictated.length} dictated <span aria-hidden="true">›</span>
@@ -395,7 +395,7 @@ function Panel({ item: it }: { item: AttentionItem }) {
 /* ---------------------------------------------------------------- sealed */
 
 /** GP-11 — offered, not refused. No patient data renders behind it, and nothing else can be done until it is recorded. */
-function SealedBody({ onConfirm }: { onConfirm: (reason: string) => void }) {
+export function SealedBody({ onConfirm }: { onConfirm: (reason: string) => void }) {
   const [asking, setAsking] = useState(false)
   const [reason, setReason] = useState('')
   const ok = reason.trim().length >= 8

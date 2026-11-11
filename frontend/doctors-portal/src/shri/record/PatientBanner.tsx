@@ -22,6 +22,7 @@ import { useSession } from '@/store/session'
 import { cn } from '../lib/cn'
 import { initials } from '../lib/initials'
 import { Avatar, Card, Icon, PillTag } from '../ui/primitives'
+import { allergiesNotRecorded, allergyLabel, hasAbha } from '../../../shri-health/kit'
 
 /** The record's own screens carry their own navigation between its parts, so the door is absent there. */
 const ON_RECORD = /^\/patient\/[^/]+(\/(record|condition|results|reports|notes|prescriptions|appointments))?$/
@@ -98,8 +99,8 @@ export function PatientBanner({ patient: p, extra }: { patient: Patient; extra?:
                 Allergy: {p.allergies.join(', ')}
               </PillTag>
             ) : (
-              <PillTag tone="neu" size="sm" icon={Check} className={TAG}>
-                No known allergy
+              <PillTag tone="neu" size="sm" icon={allergiesNotRecorded(p) ? CircleHelp : Check} className={TAG}>
+                {allergyLabel(p)}
               </PillTag>
             )}
           </li>
@@ -115,7 +116,8 @@ export function PatientBanner({ patient: p, extra }: { patient: Patient; extra?:
               Payer:&nbsp;<b className="font-semibold">{p.payer}</b>
             </PillTag>
           </li>
-          {/* GP-09 consent & ABHA chip. */}
+          {/* GP-09 consent & ABHA chip: India only, so not for a US patient from the API (US wording change). */}
+          {hasAbha(p) && (
           <li>
             <PillTag
               tone={p.abhaStatus === 'Linked' ? 'norm' : 'warn'}
@@ -127,10 +129,11 @@ export function PatientBanner({ patient: p, extra }: { patient: Patient; extra?:
               ABHA {p.abhaStatus}
             </PillTag>
           </li>
+          )}
           {!onRecord && (
             <li>
               <Link
-                to={`/patient/${p.uhid}`}
+                to={`/patient/${p.id}`}
                 className="inline-flex h-[30px] items-center gap-[6px] rounded-full bg-sh-control px-[11px] text-[13px] font-medium text-sh-text transition-colors duration-150 hover:bg-sh-hover-strong"
               >
                 <Icon icon={BookOpen} size={14} />

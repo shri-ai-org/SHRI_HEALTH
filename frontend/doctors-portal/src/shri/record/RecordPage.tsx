@@ -20,6 +20,7 @@ import { canAdmit } from '@/data/admissions'
 import type { Patient } from '@/data/kit'
 import { formatTime } from '@/data/format'
 import { vitalsHistoryFor } from '@/data/vitals-history'
+import { vitalsFor } from '../../../shri-health/vitals'
 import { useAdmissions } from '@/store/admissions'
 import { useClinical } from '@/store/clinical'
 import { useSession } from '@/store/session'
@@ -40,6 +41,8 @@ import { NotesCard } from './NotesCard'
 import { TrendCard } from './TrendCard'
 import { VitalsCard } from './VitalsCard'
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 export function RecordPage() {
   const { id } = useParams()
   return (
@@ -58,9 +61,9 @@ function HubActions({ patient: p }: { patient: Patient }) {
   const openDischarge = useDischargeFlow((s) => s.open)
   const persona = useSession((s) => s.persona)
   const discharged = useClinical((s) => s.discharges[p.id])
-  const timeline = `/patient/${p.uhid}/timeline`
+  const timeline = `/patient/${p.id}/timeline`
   // One click into Telehealth, with this patient already loaded.
-  const connect = `/tele/session/${p.uhid}`
+  const connect = `/tele/session/${p.id}`
   const consult = consultPath(p)
   return (
     <>
@@ -69,12 +72,13 @@ function HubActions({ patient: p }: { patient: Patient }) {
           Timeline
         </Pill>
       )}
-      {may(connect) && (
+      {/* SHRI_HEALTH: telehealth, admissions and discharge have no service yet, so not with SHRI_API=real. */}
+      {!REAL_API && may(connect) && (
         <Pill variant="card" size="xl" icon={Video} iconSize={17} title="Telehealth" onClick={() => navigate(connect)}>
           Connect
         </Pill>
       )}
-      {canAdmit(p, admissions) && (
+      {!REAL_API && canAdmit(p, admissions) && (
         <Pill variant="card" size="xl" icon={BedDouble} iconSize={17} onClick={() => openAdmit(p.id)}>
           Admit
         </Pill>
@@ -85,6 +89,7 @@ function HubActions({ patient: p }: { patient: Patient }) {
           {discharged.kind === 'transfer' ? 'Transferred' : discharged.kind === 'lama' ? 'Left against advice' : discharged.kind === 'death' ? 'Died' : 'Discharged'} {formatTime(new Date(discharged.at))}
         </PillTag>
       ) : (
+        !REAL_API &&
         inpatientBed(p.id, admissions) &&
         can(persona, 'discharge.write') && (
           <Pill variant="card" size="xl" icon={DoorOpen} iconSize={17} onClick={() => openDischarge(p.id)}>
@@ -126,7 +131,8 @@ function Hub({ patient: p }: { patient: Patient }) {
 
       {/* Below: the one trend that matters, and the patient's report. */}
       <div className="grid grid-cols-1 gap-[16px] lg:grid-cols-2">
-        <TrendCard series={series} vitals={vitalsHistoryFor(p.id)} />
+        {/* SHRI_HEALTH: with the API the trend is the patient's vitals (listPatientVitals); test results have no service yet. */}
+        <TrendCard series={REAL_API ? [] : series} vitals={REAL_API ? vitalsFor(p.id).history : vitalsHistoryFor(p.id)} />
         <PatientReportCard patient={p} />
       </div>
     </>

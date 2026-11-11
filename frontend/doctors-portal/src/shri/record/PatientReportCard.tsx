@@ -16,7 +16,9 @@ import type { Patient } from '@/data/kit'
 import { activeMedicines, conditionFor, pastNotesFor, type ConditionStatus } from '@/data/record'
 
 import { STATUS_TONE, useProblemsFor } from '../logic/record'
-import { nextOf, useAppointments } from '../logic/schedule'
+import { useAppointments } from '../logic/schedule'
+import { medicationsFor } from '../../../shri-health/medications'
+import { nextOf, pastNotesFor as notesOnServer } from '../../../shri-health/record'
 import { Card, PillTag, StatusPill } from '../ui/primitives'
 
 const VISIT_WORD = { IP: 'Inpatient', OP: 'OPD', ED: 'ED', TELE: 'Teleconsult' } as const
@@ -30,19 +32,25 @@ const STATUS_ICON: Record<ConditionStatus, LucideIcon> = {
   Recovered: Check,
 }
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 export function PatientReportCard({ patient: p, className }: { patient: Patient; className?: string }) {
-  const c = conditionFor(p.id)
-  const enc = encounterForPatient(p.id)
+  // SHRI_HEALTH: with the API, the medicines (listMedications), the last note and the next booking are
+  // the patient's; the condition summary, the open visit and a patient problem list have no service yet.
+  const c = REAL_API ? undefined : conditionFor(p.id)
+  const enc = REAL_API ? undefined : encounterForPatient(p.id)
   const problems = useProblemsFor(p.id)
-  const open = problems.filter((x) => x.status === 'Open')
-  const meds = activeMedicines(p.id)
-  const note = pastNotesFor(p.id)[0]
+  const open = REAL_API ? [] : problems.filter((x) => x.status === 'Open')
+  const meds = REAL_API ? medicationsFor(p.id).current : activeMedicines(p.id)
+  const note = (REAL_API ? notesOnServer(p.id) : pastNotesFor(p.id))[0]
   // The live book: a moved or cancelled appointment is no longer the next one.
   const next = nextOf(useAppointments(), p.id)
 
   const visit = enc
     ? [VISIT_WORD[enc.type], enc.department, p.bed ?? enc.encounterNo, p.losDays !== undefined && `day ${p.losDays}`].filter(Boolean).join(' · ')
-    : 'No open visit'
+    : REAL_API
+      ? 'Not available yet'
+      : 'No open visit'
 
   return (
     <Card
@@ -66,7 +74,7 @@ export function PatientReportCard({ patient: p, className }: { patient: Patient;
           {visit}
         </Fact>
         <Fact label="Problems" sub={problems.length > open.length ? `${problems.length - open.length} resolved` : undefined}>
-          {open.length === 0 ? 'None coded yet' : open.slice(0, 3).map((x) => x.label).join(' · ')}
+          {REAL_API ? 'Not available yet' : open.length === 0 ? 'None coded yet' : open.slice(0, 3).map((x) => x.label).join(' · ')}
           {open.length > 3 && <span className="text-sh-text-3"> · +{open.length - 3} more</span>}
         </Fact>
         <Fact label="Allergies">
@@ -83,7 +91,7 @@ export function PatientReportCard({ patient: p, className }: { patient: Patient;
           )}
         </Fact>
         <Fact label="Prescriptions" sub={meds[0] && `since ${formatDate(meds[0].since)} · ${meds[0].by}`}>
-          {meds.length === 0 ? 'Nothing current' : meds.slice(0, 3).map((m) => `${m.drug} ${m.dose} ${m.frequency}`).join(' · ')}
+          {meds.length === 0 ? 'Nothing current' : meds.slice(0, 3).map((m) => [m.drug, m.dose, m.frequency].filter(Boolean).join(' ')).join(' · ')}
           {meds.length > 3 && <span className="text-sh-text-3"> · +{meds.length - 3} more</span>}
         </Fact>
         <Fact label="Last note" sub={note && `${formatDate(note.at)} ${formatTime(note.at)} · ${note.by} · ${note.setting}`}>

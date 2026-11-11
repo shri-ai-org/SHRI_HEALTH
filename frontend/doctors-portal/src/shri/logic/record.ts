@@ -8,12 +8,17 @@
 import { RESULT_TRENDS, encounterForPatient, problemsFor, resultsFor, type Problem, type ResultRow } from '@/data/clinical'
 import { formatDate, formatTime } from '@/data/format'
 import type { Patient } from '@/data/kit'
-import { activeMedicines, conditionFor, pastNotesFor, reportsFor, type ConditionStatus } from '@/data/record'
+import { activeMedicines, conditionFor, reportsFor, type ConditionStatus } from '@/data/record'
+import { pastNotesFor } from '../../../shri-health/record'
 import { useClinical, type AddedProblem, type VoiceNote } from '@/store/clinical'
 
 import type { Tone } from '../mocks/types'
 
-import { appointmentsOf, nextOf, useAppointments } from './schedule'
+import { useAppointments } from './schedule'
+import { appointmentsOf, nextOf } from '../../../shri-health/record'
+import { usePatientProblems } from '../../../shri-health/history'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export type RecordSection = 'record' | 'condition' | 'results' | 'reports' | 'notes' | 'prescriptions' | 'appointments'
 
@@ -41,7 +46,7 @@ export const STATUS_TONE: Record<ConditionStatus, Tone> = {
 
 /** The Overview is `/patient/:id`; every other part keeps the old address. */
 export function recordPath(p: Patient, section: RecordSection): string {
-  return section === 'record' ? `/patient/${p.uhid}` : `/patient/${p.uhid}/${SECTION_META[section].path}`
+  return section === 'record' ? `/patient/${p.id}` : `/patient/${p.id}/${SECTION_META[section].path}`
 }
 
 /** The patient's dictated notes, newest first. */
@@ -62,7 +67,9 @@ export function useSessionNotesFor(patientId: string) {
 /** The patient's problem list: the seeded one, then anything added this session. */
 export function useProblemsFor(patientId: string): (Problem | AddedProblem)[] {
   const added = useClinical((s) => s.addedProblems[patientId])
-  return [...problemsFor(patientId), ...(added ?? [])]
+  // SHRI_HEALTH: with the API the problem list is the server's (listProblems, #280).
+  const server = REAL_API ? usePatientProblems(patientId).problems : null
+  return server ?? [...problemsFor(patientId), ...(added ?? [])]
 }
 
 /** One count per part, for the tabs. */

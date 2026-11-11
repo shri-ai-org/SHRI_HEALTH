@@ -33,8 +33,8 @@ export function proposedBasket(patientId: string): RxLine[] {
   return []
 }
 
-/** The durations a line offers, in days. */
-export const DURATIONS = [3, 5, 7, 14, 180]
+/** The durations a line offers, in days (30 and 90 are the usual U.S. days supply for a maintenance drug). */
+export const DURATIONS = [3, 5, 7, 14, 30, 90, 180]
 
 /** The routes and frequencies a line offers after its own. */
 export const ROUTE_FREQUENCIES = ['IV · 12-hourly', 'Oral · once daily']
