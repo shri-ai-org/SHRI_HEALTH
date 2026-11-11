@@ -11,9 +11,10 @@ import { ChevronDown, ChevronRight, FileText, Mic, PenLine, Signature, Stethosco
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { formatDate, formatTime } from '@/data/format'
+import { formatDate, formatTime } from '../../../shri-health/format'
 import type { Patient } from '@/data/kit'
-import { pastNotesFor, type PastNote } from '@/data/record'
+import type { PastNote } from '@/data/record'
+import { pastNotesFor } from '../../../shri-health/record'
 
 import { useMayOpenPath } from '../app/landing'
 import { consultPath, noteActionLabel, useSessionNotesFor, useVoiceNotesFor } from '../logic/record'

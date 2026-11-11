@@ -14,6 +14,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { useSession as useApiSession } from '../../../src/api/session'
 
 import type { PersonaId } from '@/atlas/personas'
 import { PERSONA_SPECS } from '@/atlas/personas'
@@ -171,7 +172,14 @@ export const useSession = create<SessionState>()(
 )
 
 /** The signed-in staff member for the current persona. */
+const ROLE_LABEL: Record<string, string> = { MD: 'Physician', APP: 'Advanced practice provider', RN: 'Nurse', MA: 'Medical assistant', CO: 'Compliance officer' }
+
+/** Who is working. With the SHRI_HEALTH API: the signed-in user's name and role, not a sample persona. */
 export function useCurrentStaff() {
   const persona = useSession((s) => s.persona)
-  return staff(STAFF_FOR_PERSONA[persona])
+  const { state } = useApiSession()
+  const sample = staff(STAFF_FOR_PERSONA[persona])
+  if (typeof __SHRI_REAL_API__ === 'undefined' || !__SHRI_REAL_API__ || state.status !== 'signed-in') return sample
+  const user = state.session.user
+  return { ...sample, name: user.displayName, personaLabel: ROLE_LABEL[user.roles[0] ?? ''] ?? user.roles[0] ?? sample.personaLabel }
 }

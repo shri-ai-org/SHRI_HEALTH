@@ -51,6 +51,8 @@ const RESULTS_SHOWN = 4
 const weight = (r: ResultRow) => (r.critical ? 100 : r.flag !== 'Normal' ? 10 : 1)
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 export function BriefPage() {
   const d = useMyDay()
   const navigate = useNavigate()
@@ -88,6 +90,15 @@ export function BriefPage() {
     deteriorating ? `${plural(deteriorating, 'inpatient')} ${deteriorating === 1 ? 'is' : 'are'} deteriorating` : 'None of your inpatients is deteriorating',
     `Today you have ${plural(clinic, 'patient')} in OPD, ${plural(tele, 'teleconsult')} and ${plural(d.inpatients.length, 'inpatient')} on the ward round`,
   ].join('. ')
+
+  // With the API: the page's frame and no sample brief (gap 63).
+  if (REAL_API) {
+    return (
+      <ScreenFrame screenId="S-06-18" sub="What changed since yesterday evening, for you, in the order to act on it.">
+        <EmptyState icon={Sunrise} why="Not available yet: the morning brief needs results and an AI brief, which aren't built yet." />
+      </ScreenFrame>
+    )
+  }
 
   return (
     <ScreenFrame

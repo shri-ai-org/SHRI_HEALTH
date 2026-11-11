@@ -22,6 +22,12 @@ import { useClinical } from '@/store/clinical'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
+/**
+ * The assistant bubble, its drawer and the `?` shortcut: on only with VITE_FEATURE_AI_ASSISTANT=on.
+ * Off until the AI endpoint is ready; the static questions get replaced by API suggestions and answers.
+ */
+export const AI_ASSISTANT_ON = import.meta.env.VITE_FEATURE_AI_ASSISTANT === 'on'
+
 import { canonical } from '../app/paths'
 
 /** The screen at an address — with this build's two moved addresses, My Day at `/` and the record at `/patient/:id`. */

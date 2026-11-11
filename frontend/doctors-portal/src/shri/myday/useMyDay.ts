@@ -9,7 +9,7 @@ import { useCallback, useMemo } from 'react'
 
 import { LOAD_WORD, monthDays, sameDay, type DayLoad } from '@/data/calendar'
 import { DISCHARGE_BOARD, RESULTS } from '@/data/clinical'
-import { patient } from '@/data/kit'
+import { patient } from '../../../shri-health/kit'
 import {
   attentionChronological, attentionFor, currentBlock, dayPlanFor, isStrokePersona, telestrokeList, toFinishFor,
   type AttentionItem, type DayBlock, type PatientListRow,
@@ -22,7 +22,7 @@ import { useCurrentStaff, useSession } from '@/store/session'
 import { NOW } from '../lib/clock'
 import { useInpatientsLive, type InpatientRow } from '../logic/inpatients'
 import { entriesFor, loadOf, openingsOn, useAppointments, type ShriEntry } from '../logic/schedule'
-import { useOpdLive, type OpdRow } from '../logic/opd'
+import { useOpdLive, type OpdRow } from '../../../shri-health/opd'
 import { useAiActive, useForcedState } from '../state/ai'
 import { useSchedule, type Opening } from '../state/schedule'
 import { useShri } from '../state/store'

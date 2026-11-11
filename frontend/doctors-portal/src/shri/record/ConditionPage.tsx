@@ -26,6 +26,9 @@ import { Card, Chip, ConfidenceMark, CountBubble, Diamond, Icon, PillTag } from 
 
 import { ClinicalFlag, TextLink } from './bits'
 import { RecordFrame } from './RecordFrame'
+import { usePatientProblems } from '../../../shri-health/history'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 const RISK_TONE: Record<'HIGH' | 'MODERATE' | 'LOW', Tone> = { HIGH: 'warn', MODERATE: 'warn', LOW: 'norm' }
 
@@ -43,6 +46,8 @@ function Condition({ patient: p }: { patient: Patient }) {
   const openExplain = useUI((s) => s.openExplain)
   const c = conditionFor(p.id)
   const problems = useProblemsFor(p.id)
+  // SHRI_HEALTH: a role that may not read the problem list (403 permission-denied) is told so.
+  const denied = REAL_API ? usePatientProblems(p.id).denied : false
   const vitals = VITALS[p.id] ?? []
   const risk = RISK_STRIPS[p.id]
 
@@ -101,7 +106,9 @@ function Condition({ patient: p }: { patient: Patient }) {
             </span>
           }
         >
-          {problems.length === 0 ? (
+          {denied ? (
+            <EmptyState icon={ClipboardList} why="Your role can't read the problem list." />
+          ) : problems.length === 0 ? (
             <EmptyState icon={ClipboardList} why="No problems are coded on this record yet." />
           ) : (
             <ul className="flex flex-col">

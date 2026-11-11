@@ -23,22 +23,25 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { can, canPrescribe } from '@/atlas/personas'
+import { formatClinicDateTime } from '../../../shri-health/format'
+import { signedInUser } from '../../../shri-health/opd'
 import { FORMULARY, PENICILLIN_HARD_STOP, type Encounter } from '@/data/clinical'
 import { NOW, formatDateTime, formatRupees, formatTime } from '@/data/format'
 import type { IcdCode } from '@/data/icd10'
-import { STAFF, patient } from '@/data/kit'
+import { STAFF, patient } from '../../../shri-health/kit'
 import { useOutstanding } from '@/store/ai'
 import { useAudit } from '@/store/audit'
-import { useClinical, type RxLineEdit } from '@/store/clinical'
+import { searchPharmacies, useClinical, type RxLineEdit, type RxPharmacy } from '../../../shri-health/clinical'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
 import { useMayOpenPath } from '../app/landing'
 import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
-import { encounterLabel, maybeEncounter } from '../logic/encounter'
-import { useProblemsFor } from '../logic/record'
-import { DURATIONS, ROUTE_FREQUENCIES, basketFor, hardStopFor, newLine, proposedBasket, type BasketLine } from '../logic/rx'
+import { encounterLabel, maybeEncounter } from '../../../shri-health/encounter'
+import { useProblemsFor } from '../../../shri-health/record'
+import { useFormulary } from '../../../shri-health/formulary'
+import { DURATIONS, ROUTE_FREQUENCIES, basketFor, hardStopFor, newLine, proposedBasket, type BasketLine } from '../../../shri-health/rx'
 import { useAiActive, useForcedState } from '../state/ai'
 import { devOpens } from '../state/store'
 import { FieldChip, SuggestionCard } from '../ui/ai'
@@ -55,6 +58,9 @@ import { LockedBanner, ValidationSummary } from '../ui/states'
 import { VoiceField } from '../ui/VoiceField'
 
 import { NoSuchEncounter } from './ConsultationPage'
+
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export function PrescriptionPage() {
   const { id } = useParams()
@@ -81,6 +87,7 @@ function Prescription({ enc }: { enc: Encounter }) {
   const forced = useForcedState()
 
   const rx = useClinical((s) => s.rx)
+  const rxPharmacy = useClinical((s) => s.rxPharmacy[enc.id])
   // Subscribing to the prescriptions map re-renders on every change to this encounter's record.
   useClinical((s) => s.prescriptions[enc.id])
   const signRx = useClinical((s) => s.signRx)
@@ -91,7 +98,7 @@ function Prescription({ enc }: { enc: Encounter }) {
   const overrideHardStop = useClinical((s) => s.overrideHardStop)
 
   const p = patient(enc.patientId)
-  const problemList = useProblemsFor(p.id)
+  const problemList = useProblemsFor(enc.id)
   const record = rx(enc.id)
 
   /** The line the hard-stop gate is open for, and the line whose override is being signed. */
@@ -103,9 +110,16 @@ function Prescription({ enc }: { enc: Encounter }) {
   const [printOpen, setPrintOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const mayPrescribe = canPrescribe(persona)
+  // D110: with the API, only a physician (MD) or advanced practice provider (APP) signs, by the
+  // signed-in user's role; the sample personas keep their own rule.
+  const mayPrescribe = REAL_API ? (signedInUser()?.roles.some((r) => r === 'MD' || r === 'APP') ?? false) : canPrescribe(persona)
+  const signRule = REAL_API ? 'Only a physician (MD) or an advanced practice provider (APP) can sign prescriptions' : 'This persona may draft, not sign — controlled classes need a consultant'
   const mayOverride = can(persona, 'rx.override')
   const locked = record.status === 'signed' || forced === 'LOCKED'
+  // D110 (Vimal on #271): with the API only MD and APP draft or edit a prescription; anyone else
+  // sees it read-only, with no drug search, add or Remove (the server refuses their writes).
+  const viewOnly = REAL_API && !mayPrescribe
+  const readOnly = locked || viewOnly
 
   /** Recomputed from the rule on every render — never cached from the seed. */
   const basket = basketFor(proposedBasket(p.id), record, p.allergies)
@@ -136,17 +150,19 @@ function Prescription({ enc }: { enc: Encounter }) {
   if (basket.length === 0) {
     problems.push({ field: 'Prescription', message: 'Nothing prescribed yet. Search the formulary on the left and press Enter to add the first item.', target: `${enc.id}:formulary` })
   }
-  if (!mayPrescribe) problems.push({ field: 'Signing', message: 'This persona may draft, not sign — controlled classes need a consultant', target: `${enc.id}:formulary` })
+  if (!mayPrescribe) problems.push({ field: 'Signing', message: signRule, target: `${enc.id}:formulary` })
+  // The server refuses to sign without a pharmacy (/pharmacyId); say so before Sign.
+  if (REAL_API && !rxPharmacy) problems.push({ field: 'Pharmacy', message: 'Choose the pharmacy the prescription goes to', target: `${enc.id}:pharmacy` })
   const canSign = !locked && problems.length === 0
 
-  const matches = search.trim() ? FORMULARY.filter((f) => f.drug.toLowerCase().includes(search.trim().toLowerCase())) : FORMULARY.slice(0, 6)
+  const matches = useFormulary(search)
   const gateLine = unresolved.find((l) => l.id === gateFor)
   const dualLine = unresolved.find((l) => l.id === dualFor)
   const note = `/encounter/${enc.id}/note`
 
   // "`/` focuses search" — the formulary's, on this screen; an open dialog keeps the keyboard.
   useEffect(() => {
-    if (locked) return
+    if (readOnly) return
     function onKey(e: KeyboardEvent) {
       if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
       const t = e.target as HTMLElement | null
@@ -158,17 +174,17 @@ function Prescription({ enc }: { enc: Encounter }) {
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [locked])
+  }, [readOnly])
 
   function addDrug(drug: string) {
-    if (locked) return
+    if (readOnly) return
     const entry = FORMULARY.find((f) => f.drug === drug)
     const lineId = addRxLine(enc.id, newLine(drug))
     setSearch('')
     if (!lineId) return
     if (hardStopFor(drug, p.allergies)) {
       setGateFor(lineId)
-    } else if (entry?.nlem) {
+    } else if (!REAL_API && entry?.nlem) {
       toast({ tone: 'info', title: `${drug} is on the NLEM`, detail: `DPCO ceiling ${formatRupees(entry.ceilingPrice)}. Substitution is permitted by default.` })
     }
   }
@@ -205,14 +221,14 @@ function Prescription({ enc }: { enc: Encounter }) {
     toast({ tone: 'critical', title: 'Hard stop overridden', detail: `${auditEvent} emitted. Both identities recorded. Reviewed within 24 hours.` })
   }
 
-  function doSign() {
+  async function doSign() {
     setConfirmSign(false)
     // Held to the same rules at the moment of commit.
     if (!canSign) {
       setShowValidation(true)
       return
     }
-    signRx({ encounterId: enc.id, by: me.name, registrationNo: me.identifier })
+    if (!(await signRx({ encounterId: enc.id, by: me.name, registrationNo: me.identifier }))) return
     audit({
       event: 'RX.SIGNED',
       actor: me.name,
@@ -220,7 +236,7 @@ function Prescription({ enc }: { enc: Encounter }) {
       subject: p.id,
       detail: `${basket.length} ${basket.length === 1 ? 'item' : 'items'} · ${encounterLabel(enc)}${overridden.length > 0 ? ` · ${overridden.length} past a hard stop, dual-signed` : ''}${coded.length > 0 ? ` · indications ICD-10 ${coded.map((l) => `${l.drug}: ${l.indicationCode!.code}`).join('; ')}` : ''}`,
     })
-    toast({ tone: 'success', title: 'Prescription signed', detail: `HPR ${me.identifier} printed on it. Now in the pharmacy queue.` })
+    toast({ tone: 'success', title: 'Prescription signed', detail: REAL_API ? 'Sent to the pharmacy.' : `HPR ${me.identifier} printed on it. Now in the pharmacy queue.` })
   }
 
   const items = `${basket.length} ${basket.length === 1 ? 'item' : 'items'} · ${p.payer}`
@@ -265,13 +281,17 @@ function Prescription({ enc }: { enc: Encounter }) {
             <>
               <span className="flex items-center gap-[8px] text-[13px] tabular-nums text-sh-text-2">
                 <Icon icon={Lock} size={14} />
-                Signed by {record.signedBy ?? me.name} · {record.registrationNo ?? me.identifier}
-                {record.signedAt && ` · ${formatDateTime(new Date(record.signedAt))}`}
+                {/* SHRI_HEALTH: the session carries no NPI, and A5 bilingual printing is India's, so neither shows with the API. */}
+                Signed by {record.signedBy ?? me.name}
+                {!REAL_API && ` · ${record.registrationNo ?? me.identifier}`}
+                {record.signedAt && ` · ${formatClinicDateTime(record.signedAt)}`}
               </span>
               <div className="ml-auto flex flex-wrap gap-[8px]">
-                <Pill variant="control" size="lg" icon={Printer} onClick={() => setPrintOpen(true)}>
-                  Print A5, bilingual
-                </Pill>
+                {!REAL_API && (
+                  <Pill variant="control" size="lg" icon={Printer} onClick={() => setPrintOpen(true)}>
+                    Print A5, bilingual
+                  </Pill>
+                )}
                 <Pill variant="primary" size="lg" icon={ArrowRight} onClick={() => navigate('/')}>
                   Done
                 </Pill>
@@ -293,8 +313,9 @@ function Prescription({ enc }: { enc: Encounter }) {
                 ) : incomplete.length > 0 ? (
                   <span className="text-[13px] font-medium text-sh-warn-fg">{incomplete.length} incomplete</span>
                 ) : null}
-                {!mayPrescribe && <span className="text-[13px] font-medium text-sh-warn-fg">This persona may draft, not sign — controlled classes need a consultant</span>}
-                <Pill
+                {!mayPrescribe && <span className="text-[13px] font-medium text-sh-warn-fg">{signRule}</span>}
+                {/* D110: only MD and APP sign, so no one else is shown the Sign button. */}
+                {mayPrescribe && <Pill
                   variant="primary"
                   size="lg"
                   icon={Signature}
@@ -311,13 +332,13 @@ function Prescription({ enc }: { enc: Encounter }) {
                   }}
                 >
                   Sign prescription
-                </Pill>
+                </Pill>}
               </div>
             </>
           )
         }
       >
-        {locked && <LockedBanner by={record.signedBy ?? me.name} at={record.signedAt ? formatDateTime(new Date(record.signedAt)) : formatTime(NOW)} reason="signed" />}
+        {locked && <LockedBanner by={record.signedBy ?? me.name} at={record.signedAt ? formatClinicDateTime(record.signedAt) : formatTime(NOW)} reason="signed" />}
 
         {!locked && (showValidation || forced === 'VALIDATION') && problems.length > 0 && (
           <ValidationSummary problems={problems} onFocusFirst={() => document.getElementById(problems[0].target)?.scrollIntoView({ block: 'center' })} />
@@ -333,7 +354,7 @@ function Prescription({ enc }: { enc: Encounter }) {
             icon={OctagonAlert}
             title={`${l.drug} is blocked for this patient`}
             action={
-              !locked && (
+              !readOnly && (
                 <Pill variant="crit" size="md" icon={OctagonAlert} onClick={() => setGateFor(l.id)}>
                   Resolve
                 </Pill>
@@ -363,6 +384,10 @@ function Prescription({ enc }: { enc: Encounter }) {
         {/* ARC-07 — the catalogue and the basket side by side once there is room for both. */}
         <div className="grid grid-cols-1 gap-[16px] xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] xl:items-start">
           <Card titleSize="sm" title="Formulary" headerClassName="mb-[4px]" id={`${enc.id}:formulary`}>
+            {viewOnly ? (
+              <p className="text-[13px] text-sh-text-2">Only a physician (MD) or an advanced practice provider (APP) can add or change drugs.</p>
+            ) : (
+              <>
             <p className="mb-[12px] text-[12px] text-sh-text-3">
               <kbd className="rounded-[6px] bg-sh-control px-[6px] py-[1px] font-sans text-[11px] font-semibold text-sh-text-2">/</kbd> focuses search · Enter adds to the
               basket
@@ -380,28 +405,29 @@ function Prescription({ enc }: { enc: Encounter }) {
               aria-label="Search the formulary"
               placeholder="Search the formulary…"
               autoComplete="off"
-              disabled={locked}
+              disabled={readOnly}
             />
             <ul className="mt-[10px] flex flex-col gap-[2px]" aria-label="Formulary matches">
-              {matches.length === 0 && <li className="px-[12px] py-[10px] text-[13px] text-sh-text-3">No drug in the formulary matches “{search.trim()}”.</li>}
+              {matches.length === 0 && search.trim() !== '' && <li className="px-[12px] py-[10px] text-[13px] text-sh-text-3">No drug in the formulary matches “{search.trim()}”.</li>}
               {matches.map((f) => {
                 const wouldBlock = hardStopFor(f.drug, p.allergies) !== undefined
-                const listing = `${f.nlem ? 'NLEM-listed' : 'Not on the NLEM'} · DPCO ceiling ${formatRupees(f.ceilingPrice)}`
+                // SHRI_HEALTH: the NLEM listing and DPCO ceiling are India's, so not with SHRI_API=real (US market).
+                const listing = REAL_API ? '' : `${f.nlem ? 'NLEM-listed' : 'Not on the NLEM'} · DPCO ceiling ${formatRupees(f.ceilingPrice)}`
                 return (
                   <li key={f.drug}>
                     <button
                       type="button"
-                      disabled={locked}
+                      disabled={readOnly}
                       onClick={() => addDrug(f.drug)}
                       // The listing and ceiling live on hover (and for a screen reader); the toast repeats them on add.
-                      title={listing}
+                      title={listing || undefined}
                       className="flex min-h-[44px] w-full items-center gap-[10px] rounded-[12px] px-[12px] py-[8px] text-left transition-colors duration-150 hover:bg-sh-hover disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Icon icon={PillIcon} size={15} className="shrink-0 text-sh-text-3" />
                       <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-sh-text">{f.drug}</span>
                       <span className="sr-only">
                         {' '}
-                        · {listing}
+                        {listing && `· ${listing}`}
                         {wouldBlock ? ' · blocked, contraindicated by a documented allergy' : ''}
                       </span>
                       {wouldBlock && (
@@ -414,44 +440,53 @@ function Prescription({ enc }: { enc: Encounter }) {
                 )
               })}
             </ul>
-            <Why label="Pricing and substitution" className="mt-[8px]">
-              <p>
-                An NLEM-listed equivalent is prompted as a substitution, and the DPCO ceiling is shown rather than the sticker price (CMP-DRUG-03). Hover a drug for its listing
-                and ceiling.
-              </p>
-            </Why>
-          </Card>
-
-          <Card titleSize="sm" title="Prescription" headerClassName="mb-[4px]">
-            <p className="mb-[12px] text-[12px] tabular-nums text-sh-text-3">{[p.name, p.weightKg !== undefined && `${p.weightKg} kg`, p.payer].filter(Boolean).join(' · ')}</p>
-            {basket.length === 0 ? (
-              <EmptyState icon={PillIcon} why="Nothing prescribed yet. Search the formulary on the left and press Enter to add the first item." />
-            ) : (
-              <>
-                <ul className="flex flex-col gap-[12px]">
-                  {basket.map((line) => (
-                    <RxLineCard
-                      key={line.id}
-                      line={line}
-                      encounterId={enc.id}
-                      weightKg={p.weightKg}
-                      locked={locked}
-                      diagnoses={diagnosisChips}
-                      onEdit={(patch) => editRxLine(enc.id, line.id, patch)}
-                      onRemove={() => removeLine(line)}
-                    />
-                  ))}
-                </ul>
-                {/* AI-305's caveat, once for the basket rather than once per line. */}
-                {incomplete.length > 0 && (
-                  <p className="mt-[12px] flex items-start gap-[8px] px-[4px] text-[12px]/[1.5] text-sh-text-3">
-                    {aiActive && <Diamond className="mt-[3px] shrink-0" />}
-                    Completeness checks come from static dose tables and run with the model off. Sign enables once every line is complete.
-                  </p>
-                )}
+            {!REAL_API && (
+              <Why label="Pricing and substitution" className="mt-[8px]">
+                <p>
+                  An NLEM-listed equivalent is prompted as a substitution, and the DPCO ceiling is shown rather than the sticker price (CMP-DRUG-03). Hover a drug for its listing
+                  and ceiling.
+                </p>
+              </Why>
+            )}
               </>
             )}
           </Card>
+
+          {/* The basket and, under it, where it goes: one column, so the pharmacy stays with the prescription. */}
+          <div className="flex min-w-0 flex-col gap-[16px]">
+            <Card titleSize="sm" title="Prescription" headerClassName="mb-[4px]">
+              <p className="mb-[12px] text-[12px] tabular-nums text-sh-text-3">{[p.name, p.weightKg !== undefined && `${p.weightKg} kg`, p.payer].filter(Boolean).join(' · ')}</p>
+              {basket.length === 0 ? (
+                <EmptyState icon={PillIcon} why="Nothing prescribed yet. Search the formulary on the left and press Enter to add the first item." />
+              ) : (
+                <>
+                  <ul className="flex flex-col gap-[12px]">
+                    {basket.map((line) => (
+                      <RxLineCard
+                        key={line.id}
+                        line={line}
+                        encounterId={enc.id}
+                        weightKg={p.weightKg}
+                        locked={readOnly}
+                        viewOnly={viewOnly}
+                        diagnoses={diagnosisChips}
+                        onEdit={(patch) => editRxLine(enc.id, line.id, patch)}
+                        onRemove={() => removeLine(line)}
+                      />
+                    ))}
+                  </ul>
+                  {/* AI-305's caveat, once for the basket rather than once per line. */}
+                  {incomplete.length > 0 && (
+                    <p className="mt-[12px] flex items-start gap-[8px] px-[4px] text-[12px]/[1.5] text-sh-text-3">
+                      {aiActive && <Diamond className="mt-[3px] shrink-0" />}
+                      Completeness checks come from static dose tables and run with the model off. Sign enables once every line is complete.
+                    </p>
+                  )}
+                </>
+              )}
+            </Card>
+            {REAL_API && <PharmacyCard encounterId={enc.id} readOnly={viewOnly} />}
+          </div>
         </div>
       </ScreenFrame>
 
@@ -478,7 +513,7 @@ function Prescription({ enc }: { enc: Encounter }) {
       {/* G4 — reason AND a second consultant, both identities recorded. */}
       <DualSignatureGate
         open={dualLine !== undefined && mayOverride}
-        what={`You are prescribing ${dualLine?.drug ?? 'a contraindicated drug'} to a patient with a documented penicillin allergy.`}
+        what={`You are prescribing ${dualLine?.drug ?? 'a contraindicated drug'}. ${dualLine?.stop?.finding ?? ''}`.trim()}
         auditEvent={dualLine?.stop?.auditEvent ?? PENICILLIN_HARD_STOP.auditEvent}
         prescriber={me.name}
         coSignerOptions={STAFF.filter((s) => s.identifierKind === 'HPR').map((s) => ({ name: s.name, identifier: s.identifier }))}
@@ -492,7 +527,12 @@ function Prescription({ enc }: { enc: Encounter }) {
       <ConfirmDialog
         open={confirmSign}
         title="Sign this prescription?"
-        consequence={`Signing is irreversible. The prescription is committed with your name and ${me.identifierKind} ${me.identifier}, printed bilingually on A5, sent to the pharmacy dispensing queue, and queued to publish to ABDM.`}
+        consequence={
+          // SHRI_HEALTH: HPR, A5, bilingual printing and ABDM are India's, so not with SHRI_API=real.
+          REAL_API
+            ? 'Signing is irreversible. The prescription is committed with your name and sent to the pharmacy.'
+            : `Signing is irreversible. The prescription is committed with your name and ${me.identifierKind} ${me.identifier}, printed bilingually on A5, sent to the pharmacy dispensing queue, and queued to publish to ABDM.`
+        }
         confirmLabel="Sign prescription"
         onConfirm={doSign}
         onCancel={() => setConfirmSign(false)}
@@ -504,7 +544,7 @@ function Prescription({ enc }: { enc: Encounter }) {
         title="Prescription"
         patient={p}
         paper="A5"
-        meta={`${encounterLabel(enc)} · ${record.signedBy ?? me.name} · ${me.identifierKind} ${record.registrationNo ?? me.identifier}${record.signedAt ? ` · ${formatDateTime(new Date(record.signedAt))}` : ''}`}
+        meta={`${encounterLabel(enc)} · ${record.signedBy ?? me.name} · ${me.identifierKind} ${record.registrationNo ?? me.identifier}${record.signedAt ? ` · ${formatClinicDateTime(record.signedAt)}` : ''}`}
         sections={[
           ...basket.map((l, i) => ({
             heading: `${i + 1}. ${l.drug}`,
@@ -541,6 +581,7 @@ function RxLineCard({
   diagnoses,
   onEdit,
   onRemove,
+  viewOnly = false,
 }: {
   line: BasketLine
   encounterId: string
@@ -550,6 +591,8 @@ function RxLineCard({
   diagnoses: IcdCode[]
   onEdit: (patch: RxLineEdit) => void
   onRemove: () => void
+  /** D110: a role that may not prescribe sees the line without Remove. */
+  viewOnly?: boolean
 }) {
   const base = `${encounterId}:${line.id}`
   const touchpointId = `${encounterId}:dose:${line.id}`
@@ -585,9 +628,11 @@ function RxLineCard({
           {line.indication && !line.indicationCode && <p className="mt-[2px] text-[13px] text-sh-text-3">for {line.indication}</p>}
         </div>
         {/* Resolve lives on the page alert above — one way in, not two. */}
-        <Pill variant="ghost" size="md" icon={Trash2} disabled={locked} aria-label={`Remove ${line.drug}`} className="disabled:opacity-40" onClick={onRemove}>
-          Remove
-        </Pill>
+        {!viewOnly && (
+          <Pill variant="ghost" size="md" icon={Trash2} disabled={locked} aria-label={`Remove ${line.drug}`} className="disabled:opacity-40" onClick={onRemove}>
+            Remove
+          </Pill>
+        )}
       </div>
 
       <Hairline className="my-[12px]" />
@@ -659,6 +704,25 @@ function RxLineCard({
           </Field>
         </div>
 
+        {/* SHRI_HEALTH: the quantity to dispense and refills, which the U.S. contract needs to sign (SCREEN_PORT.md). */}
+        <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-3">
+          <Field label="Quantity" htmlFor={`${base}:quantity`} required>
+            <TextInput id={`${base}:quantity`} inputMode="decimal" value={line.quantity} disabled={locked} onChange={(e) => onEdit({ quantity: e.target.value })} />
+          </Field>
+          <Field label="Unit" htmlFor={`${base}:unit`} required>
+            <TextInput id={`${base}:unit`} maxLength={32} value={line.quantityUnit} disabled={locked} onChange={(e) => onEdit({ quantityUnit: e.target.value })} />
+          </Field>
+          <Field label="Refills" htmlFor={`${base}:refills`}>
+            <Select id={`${base}:refills`} value={String(line.refills)} disabled={locked} onChange={(e) => onEdit({ refills: Number(e.target.value) })}>
+              {Array.from({ length: 12 }, (_, n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
         {/* A PRN line states its ceiling — the field AI-305's finding asks for (the old screen had none to give). */}
         {line.prn && (
           <Field label="24-hour ceiling" htmlFor={`${base}:ceiling`} required>
@@ -700,13 +764,116 @@ function RxLineCard({
         value={line.instructions ?? ''}
         onChange={(v) => onEdit({ instructions: v })}
         placeholder="How to take it, and what to avoid…"
-        hint="Printed bilingually — English plus the patient's language"
+        hint={REAL_API ? undefined : "Printed bilingually — English plus the patient's language"}
       />
     </li>
   )
 }
 
 /** Z6 — the checks, with what survives the AI being off stated plainly. */
+/**
+ * SHRI_HEALTH: where the prescriptions go (the server refuses to sign without a pharmacy). Starts from
+ * the patient's preferred pharmacy on their record; any other is found in the pharmacy directory
+ * (listPharmacies) by name or ZIP. The choice is saved on this visit's prescriptions only: the patient's
+ * preferred pharmacy is the front desk's (setPreferredPharmacy, #279, FD and ADM only). A role that may
+ * not prescribe (D110) sees the pharmacy and can't change it.
+ */
+function PharmacyCard({ encounterId, readOnly = false }: { encounterId: string; readOnly?: boolean }) {
+  const pharmacy = useClinical((s) => s.rxPharmacy[encounterId])
+  const load = useClinical((s) => s.loadRxPharmacy)
+  const choose = useClinical((s) => s.chooseRxPharmacy)
+  const signed = useClinical((s) => s.prescriptions[encounterId]?.status === 'signed')
+  const [changing, setChanging] = useState(false)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<RxPharmacy[]>([])
+  const [searching, setSearching] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    void load(encounterId)
+  }, [encounterId, load])
+
+  useEffect(() => {
+    let live = true
+    const t = window.setTimeout(() => {
+      if (query.trim().length < 2) {
+        setResults([])
+        return
+      }
+      setSearching(true)
+      setFailed(false)
+      searchPharmacies(query)
+        .then((r) => live && setResults(r))
+        .catch(() => live && setFailed(true))
+        .finally(() => live && setSearching(false))
+    }, 300)
+    return () => {
+      live = false
+      window.clearTimeout(t)
+    }
+  }, [query])
+
+  const picking = !readOnly && (changing || pharmacy === null)
+  return (
+    <Card titleSize="sm" title="Pharmacy" id={`${encounterId}:pharmacy`}>
+      {pharmacy === undefined ? (
+        <p role="status" className="text-[13px] text-sh-text-3">Reading the patient's pharmacy…</p>
+      ) : readOnly && !pharmacy ? (
+        <p className="text-[13px] text-sh-text-2">No pharmacy chosen yet.</p>
+      ) : !picking && pharmacy ? (
+        <div className="flex flex-wrap items-start justify-between gap-[8px]">
+          <span className="min-w-0">
+            <span className="block text-[14px] font-medium text-sh-text">{pharmacy.name}</span>
+            {pharmacy.detail && <span className="block text-[12px] text-sh-text-3">{pharmacy.detail}</span>}
+          </span>
+          {!signed && !readOnly && (
+            <Pill variant="control" size="sm" onClick={() => setChanging(true)}>
+              Change
+            </Pill>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-[8px]">
+          {pharmacy === null && <p className="text-[13px] text-sh-text-2">No pharmacy on the patient's record. Find one by name or ZIP.</p>}
+          <label htmlFor={`${encounterId}:pharmacy-search`} className="text-[13px] font-medium text-sh-text-2">
+            Pharmacy name or ZIP
+          </label>
+          <TextInput id={`${encounterId}:pharmacy-search`} value={query} autoFocus={changing} placeholder="Pharmacy name, or ZIP such as 62704" onChange={(e) => setQuery(e.target.value)} />
+          {searching && <p role="status" className="text-[12px] text-sh-text-3">Searching…</p>}
+          {failed && <p className="text-[12px] text-sh-crit-fg">The pharmacy directory didn't answer. Try again.</p>}
+          {!searching && !failed && query.trim().length >= 2 && results.length === 0 && <p className="text-[12px] text-sh-text-3">No pharmacy matches.</p>}
+          {results.length > 0 && (
+            <ul className="flex flex-col gap-[4px]">
+              {results.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    className="w-full rounded-[12px] px-[10px] py-[8px] text-left transition-colors hover:bg-sh-hover"
+                    onClick={() => {
+                      choose(encounterId, r)
+                      setChanging(false)
+                      setQuery('')
+                    }}
+                  >
+                    <span className="block text-[14px] font-medium text-sh-text">{r.name}</span>
+                    {r.detail && <span className="block text-[12px] text-sh-text-3">{r.detail}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {changing && (
+            <Pill variant="ghost" size="sm" className="self-start" onClick={() => setChanging(false)}>
+              Keep {pharmacy?.name ?? 'the pharmacy'}
+            </Pill>
+          )}
+        </div>
+      )}
+      <p className="mt-[10px] text-[12px] text-sh-text-3">Sent with this visit's prescriptions only; it doesn't change the patient's preferred pharmacy.</p>
+    </Card>
+  )
+}
+
 function RxRail({ encounterId, ceilingLines }: { encounterId: string; ceilingLines: number }) {
   const aiActive = useAiActive()
   const rows: [string, ReactNode][] = [
@@ -758,12 +925,15 @@ function RxRail({ encounterId, ceilingLines }: { encounterId: string; ceilingLin
           <div>
             <p className="font-medium text-sh-text">On signing</p>
             <ul className="mt-[4px] flex flex-col gap-[4px]">
-              {[
-                'Printed A5, bilingual, with your HPR number on it',
-                'Sent to the pharmacy dispensing queue',
-                'Queued to publish to ABDM as a Prescription record',
-                'No patient health information is sent by SMS. The message only links back to the app.',
-              ].map((t) => (
+              {(REAL_API
+                ? ['Sent to the patient’s pharmacy', 'No patient health information is sent by SMS. The message only links back to the app.']
+                : [
+                    'Printed A5, bilingual, with your HPR number on it',
+                    'Sent to the pharmacy dispensing queue',
+                    'Queued to publish to ABDM as a Prescription record',
+                    'No patient health information is sent by SMS. The message only links back to the app.',
+                  ]
+              ).map((t) => (
                 <li key={t} className="flex gap-[8px]">
                   <Icon icon={Check} size={13} className="mt-[4px] shrink-0 text-sh-norm-fg" />
                   {t}

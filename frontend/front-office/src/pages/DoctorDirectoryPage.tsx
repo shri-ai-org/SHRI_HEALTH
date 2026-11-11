@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button'
 import { SoftIconTile } from '../components/ui/IconTile'
 import { DoctorSlotCard } from '../components/clinician/DoctorSlotCard'
 import { useStoreValue } from '../hooks/useStore'
+import { REAL_API } from '../../shri-health/client'
 import { useNow } from '../hooks/useNow'
 import { useFlow } from '../flows/useFlow'
 import { addDaysToKey, compareDepartments, getDirectorySuggestions, getDoctorRows, getToday } from '../domain/selectors'
@@ -106,10 +107,13 @@ export function DoctorDirectoryPage() {
         illustration={<DoctorIllustration className="h-8 w-8" />}
         illustrationTone="indigo"
         actions={
-          <Button size="sm" onClick={() => navigate('/doctors/register')}>
-            <UserRoundPlus className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Register doctor
-          </Button>
+          // SHRI_HEALTH: registering a doctor has no service yet (practice setup), so not with SHRI_API=real.
+          REAL_API ? undefined : (
+            <Button size="sm" onClick={() => navigate('/doctors/register')}>
+              <UserRoundPlus className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Register doctor
+            </Button>
+          )
         }
       />
 

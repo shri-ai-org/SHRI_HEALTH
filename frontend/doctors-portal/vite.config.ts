@@ -50,6 +50,8 @@ export default defineConfig({
   define: {
     __BUILD_STAMP__: JSON.stringify(buildStamp(new Date())),
     __BUILD_COMMIT__: JSON.stringify(buildCommit()),
+    // SHRI_API=real: read the clinic's time zone before the first screen (shri-health/format.ts).
+    __SHRI_REAL_API__: JSON.stringify(Boolean(realApi)),
   },
   resolve: {
     alias: {

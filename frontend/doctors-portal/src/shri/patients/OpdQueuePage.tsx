@@ -19,15 +19,15 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { maybeEncounter } from '@/data/clinical'
-import { NOW, formatElapsed, formatTime } from '@/data/format'
-import { patient } from '@/data/kit'
+import { NOW, formatElapsed, formatTime } from '../../../shri-health/format'
+import { patient } from '../../../shri-health/kit'
 import { isFollowUp } from '@/data/myday'
 import { useUI } from '@/store/ui'
 
 import { cn } from '../lib/cn'
-import { nextToCall, opdCounts, useOpdLive, type OpdRow } from '../logic/opd'
-import { consultPath, recordPath } from '../logic/record'
-import { useOpd } from '../state/opd'
+import { nextToCall, opdCounts, useOpdLive, type OpdRow } from '../../../shri-health/opd'
+import { consultPath, recordPath } from '../../../shri-health/record'
+import { mayCall, useOpd, visitStep } from '../../../shri-health/opd'
 import { Board, type BoardColumn } from '../ui/Board'
 import { Card, Icon, Pill, PillTag } from '../ui/primitives'
 import { Segmented } from '../ui/Segmented'
@@ -35,6 +35,17 @@ import { Worklist, type WorklistColumn } from '../ui/Worklist'
 
 import { MyPatientsFrame } from './MyPatientsFrame'
 
+// SHRI_HEALTH (gap 77, Vimal on #274): with the API the queue reads the visit's step. Checked in is
+// "Waiting", roomed is "Roomed · {room}" timed in the room, with the provider is "With doctor",
+// checked out leaves the queue, and a visit not yet checked in is "Booked".
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+const since = (r: OpdRow) => formatElapsed((NOW.getTime() - (visitStep(r)?.since?.getTime() ?? NOW.getTime())) / 60000)
+const roomedLabel = (r: OpdRow) => {
+  const step = visitStep(r)
+  return step?.roomName ? `Roomed · ${step.roomName}` : 'Roomed'
+}
+const IN_ROOM = REAL_API ? 'With doctor' : 'In room'
+const NOT_ARRIVED = REAL_API ? 'Booked' : 'Not arrived'
 const waited = (r: OpdRow) => formatElapsed((NOW.getTime() - (r.clinic?.arrivedAt?.getTime() ?? NOW.getTime())) / 60000)
 const key = (r: OpdRow) => r.clinic?.token ?? r.tele?.id ?? r.patientId
 
@@ -43,12 +54,13 @@ export function OpdQueuePage() {
   const [params, setParams] = useSearchParams()
   const toast = useUI((s) => s.toast)
   const start = useOpd((s) => s.start)
-  const all = useOpdLive()
+  const all = useOpdLive().filter((r) => !(REAL_API && r.live === 'Seen'))
   const [view, setView] = useState<'list' | 'board'>('list')
 
   const followUpOnly = params.get('type') === 'follow-up'
   const rows = followUpOnly ? all.filter((r) => isFollowUp(r.patientId)) : all
   const counts = opdCounts(rows)
+  const roomedCount = rows.filter((r) => r.live === 'Waiting' && visitStep(r)?.roomed).length
   const next = nextToCall(rows)
 
   /** Calling in starts the consultation: In room on every card until the note is signed. */
@@ -83,10 +95,17 @@ export function OpdQueuePage() {
       case 'In room':
         return (
           <PillTag tone="pend" size="sm" icon={DoorOpen}>
-            In room
+            {IN_ROOM}
+            {REAL_API && visitStep(r)?.since && ` ${since(r)}`}
           </PillTag>
         )
       case 'Waiting':
+        if (REAL_API && visitStep(r)?.roomed)
+          return (
+            <PillTag tone="warn" size="sm" icon={DoorOpen}>
+              {roomedLabel(r)}, {since(r)} in room
+            </PillTag>
+          )
         return (
           <PillTag tone="warn" size="sm" icon={Clock}>
             Waiting {waited(r)}
@@ -105,7 +124,7 @@ export function OpdQueuePage() {
       default:
         return (
           <PillTag tone="neu" size="sm" icon={Clock}>
-            Not arrived
+            {NOT_ARRIVED}
           </PillTag>
         )
     }
@@ -113,12 +132,17 @@ export function OpdQueuePage() {
 
   function action(r: OpdRow) {
     const p = patient(r.patientId)
-    if (r.live === 'Waiting')
+    if (r.live === 'Waiting') {
       return (
-        <Pill variant="primary" size="lg" icon={ArrowRight} onClick={() => call(r)} aria-label={`Call ${key(r)}, ${p.name}`}>
-          Call
-        </Pill>
+        <span className="flex gap-[8px]">
+          {mayCall() && (
+            <Pill variant="primary" size="lg" icon={ArrowRight} onClick={() => call(r)} aria-label={`Call ${key(r)}, ${p.name}`}>
+              Call
+            </Pill>
+          )}
+        </span>
       )
+    }
     if (r.live === 'Teleconsult')
       return (
         <Pill variant="control" size="lg" icon={Video} onClick={() => connect(r)} aria-label={`Connect to ${p.name}`}>
@@ -164,20 +188,26 @@ export function OpdQueuePage() {
   // The longest wait of whoever is waiting now, from their own arrival — never a fixed figure.
   const longest = Math.max(0, ...waiting.map((r) => (NOW.getTime() - (r.clinic?.arrivedAt?.getTime() ?? NOW.getTime())) / 60000))
   const cols: BoardColumn<OpdRow>[] = [
-    { key: 'notarrived', label: 'Not arrived', tone: 'neu', rows: rows.filter((r) => r.live === 'Not arrived') },
-    { key: 'waiting', label: 'Waiting', tone: 'warn', capacity: waiting.length > 0 ? `longest ${formatElapsed(longest)}` : undefined, rows: waiting },
+    { key: 'notarrived', label: NOT_ARRIVED, tone: 'neu', rows: rows.filter((r) => r.live === 'Not arrived') },
+    { key: 'waiting', label: REAL_API ? 'Waiting or roomed' : 'Waiting', tone: 'warn', capacity: waiting.length > 0 ? `longest ${formatElapsed(longest)}` : undefined, rows: waiting },
     { key: 'video', label: 'Teleconsult', tone: 'pend', rows: rows.filter((r) => r.live === 'Teleconsult') },
-    { key: 'inroom', label: 'In room', tone: 'norm', rows: rows.filter((r) => r.live === 'In room') },
-    { key: 'seen', label: 'Seen', tone: 'neu', rows: rows.filter((r) => r.live === 'Seen') },
+    { key: 'inroom', label: IN_ROOM, tone: 'norm', rows: rows.filter((r) => r.live === 'In room') },
+    ...(REAL_API ? [] : [{ key: 'seen', label: 'Seen', tone: 'neu' as const, rows: rows.filter((r) => r.live === 'Seen') }]),
   ]
 
   return (
     <MyPatientsFrame
       tab="opd"
       screenId="S-05-03"
-      sub={`${counts.booked} booked · ${counts.seen} seen · ${counts.waiting} waiting · running 6 min behind`}
+      // "running 6 min behind" is the sample's fixed text: left out with the API, which has no such figure.
+      sub={
+        REAL_API
+          ? `${counts.booked} today · ${counts.waiting - roomedCount} waiting · ${roomedCount} roomed · ${counts.inRoom} with doctor`
+          : `${counts.booked} booked · ${counts.seen} seen · ${counts.waiting} waiting · running 6 min behind`
+      }
       actions={
-        next && (
+        next &&
+        mayCall() && (
           <Pill variant="primary" size="xl" icon={ArrowRight} onClick={() => call(next)}>
             Call {key(next)}
           </Pill>
@@ -251,8 +281,15 @@ export function OpdQueuePage() {
                     </div>
                     {r.live === 'Seen' && <Icon icon={Check} size={15} className="shrink-0 text-sh-norm-fg" />}
                   </div>
-                  {r.live === 'Waiting' && r.clinic?.arrivedAt && <p className="mt-[8px] text-[13px] tabular-nums text-sh-text-2">waiting {waited(r)}</p>}
-                  {r.live === 'Waiting' && (
+                  {r.live === 'Waiting' && REAL_API && visitStep(r)?.roomed ? (
+                    <p className="mt-[8px] text-[13px] tabular-nums text-sh-text-2">
+                      {roomedLabel(r)}, {since(r)} in room
+                    </p>
+                  ) : (
+                    r.live === 'Waiting' && r.clinic?.arrivedAt && <p className="mt-[8px] text-[13px] tabular-nums text-sh-text-2">waiting {waited(r)}</p>
+                  )}
+                  {r.live === 'In room' && REAL_API && visitStep(r)?.since && <p className="mt-[8px] text-[13px] tabular-nums text-sh-text-2">with doctor {since(r)}</p>}
+                  {r.live === 'Waiting' && mayCall() && (
                     <Pill variant="primary" size="lg" icon={ArrowRight} className="mt-[10px] w-full" onClick={() => call(r)}>
                       Call this patient
                     </Pill>

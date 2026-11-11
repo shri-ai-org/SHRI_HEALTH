@@ -5,7 +5,7 @@ import { ReceiptText, Search, ShieldCheck, UserPlus } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
 import { useStoreValue } from '../../hooks/useStore'
 import { hasOpenLayer } from '../../hooks/useLayer'
-import { findBillByNumber, getPatientFlags, getPatientSearchSuggestions, searchPatients } from '../../../shri-health/selectors'
+import { findBillByNumber, getPatientFlags, getPatientSearchSuggestions, searchFailure, searchPatients } from '../../../shri-health/selectors'
 import { getAdmittedPatients } from '../../domain/admissionSelectors'
 import type { PatientFlags } from '../../../shri-health/selectors'
 import type { PatientCareStatus } from '../../domain/patientSelectors'
@@ -61,6 +61,8 @@ export function PatientSearch(props: PatientSearchProps) {
   const [active, setActive] = useState(0)
 
   const matches = useStoreValue(searchPatients, query)
+  // SHRI_HEALTH: a search the server refused is said as such, never as "No patient found".
+  const failure = useStoreValue(searchFailure, query)
   const suggestions = useStoreValue(getPatientSearchSuggestions)
   const flags = useStoreValue(getPatientFlags)
   const care = usePatientCareStatus()
@@ -255,8 +257,10 @@ export function PatientSearch(props: PatientSearchProps) {
           </ul>
           {options.length === 0 ? (
             <div className="px-4 py-3">
-              <p className="text-sm text-ink-muted">No patient found.</p>
-              {navigateMode && query.trim() ? (
+              <p className="text-sm text-ink-muted" role={failure ? 'alert' : undefined}>
+                {failure ? `The search didn't work: ${failure}` : 'No patient found.'}
+              </p>
+              {navigateMode && query.trim() && !failure ? (
                 // Not found from the search: register them, with what was typed filled in.
                 <button
                   type="button"

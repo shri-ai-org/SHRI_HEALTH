@@ -20,10 +20,12 @@ import { useClinical } from '@/store/clinical'
 import { useMayOpenPath } from '../app/landing'
 import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
-import { useOpdLive } from '../logic/opd'
+import { useOpdLive } from '../../../shri-health/opd'
 import { CountBubble, Icon } from '../ui/primitives'
 
 export type PatientsTab = 'opd' | 'ip' | 'cohorts'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 const TABS: { key: PatientsTab; label: string; to: string; icon: LucideIcon }[] = [
   { key: 'opd', label: 'OPD', to: '/op-queue', icon: UserRound },
@@ -45,7 +47,9 @@ function PatientsTabs({ current }: { current: PatientsTab }) {
   const navigate = useNavigate()
   const mayOpen = useMayOpenPath()
   const counts = useTabCounts()
-  const tabs = TABS.filter((t) => mayOpen(t.to))
+  // SHRI_HEALTH: Inpatients and Cohorts (with their ISH and AI-613 tags) are sample data with no API and not in
+  // the U.S. demo, so with the API only the OPD list stays (and with one tab the strip itself goes).
+  const tabs = TABS.filter((t) => mayOpen(t.to) && (!REAL_API || t.key === 'opd'))
   if (tabs.length < 2) return null
   return (
     <div role="tablist" aria-label="My patients" className="-m-[4px] flex gap-[6px] overflow-x-auto p-[4px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
