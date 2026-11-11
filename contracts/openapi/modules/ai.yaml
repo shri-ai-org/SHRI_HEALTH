@@ -530,8 +530,10 @@ paths:
       summary: Get a chart summary
       description: 'The result of `POST /ai/chart-summaries` (inventory #112; AI-02; D70): statements by topic, each with
         a confidence band and links to the records behind it, or a `no-source` or `conflicting` marker; what could not be
-        found; and the summary''s suggestion, with its decision. Labeled as AI output on every screen (FRS §3.4). Still readable
-        when AI is switched off. A restricted patient needs break-glass or care-team membership.'
+        found; and the summary''s suggestion, with its decision. Labeled as AI output on every screen (FRS §3.4). Readable
+        by **its requester only**, who must still be able to read the chart (a restricted patient needs break-glass or care-team
+        membership): the summary was built from the requester''s own view of the chart (facilities and read permissions),
+        so a colleague asks for their own. Still readable when AI is switched off.'
       tags:
       - ai
       x-owner: vimal
@@ -624,7 +626,8 @@ paths:
             chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: ../components/responses/NotFound.yaml
-          description: 404. `not-found` (no such chart summary in this clinic or the user's facilities).
+          description: 404. `not-found` (no such chart summary in this clinic or the user's facilities, or another user's
+            summary).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).

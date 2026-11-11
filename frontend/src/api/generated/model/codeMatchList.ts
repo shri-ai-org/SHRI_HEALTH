@@ -23,7 +23,7 @@ import type { Cursor } from './cursor';
 export interface CodeMatchList {
   /**
      * The items on this page.
-     * @maxItems 50
+     * @maxItems 100
      */
   items: CodeMatch[];
   /** Cursor for the next page. Absent on the last page. */

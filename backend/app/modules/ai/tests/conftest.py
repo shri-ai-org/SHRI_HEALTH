@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from app.core.config import Settings
 from app.core.crypto import DataKey
@@ -98,13 +99,17 @@ def model_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[StubModelServer]:
 
 
 @pytest.fixture
-def claude_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[StubClaudeServer]:
+def claude_server(ai_app: FastAPI, monkeypatch: pytest.MonkeyPatch
+                  ) -> Iterator[StubClaudeServer]:
     """A local stand-in for the Claude API; the gateway reaches it through the official SDK,
-    with ``ai_provider=claude`` and a placeholder key (never a real one)."""
+    with ``ai_provider=claude`` and a placeholder key (never a real one) in core's settings,
+    the key's only source (OpenBao in a real environment)."""
     server = StubClaudeServer()
     server.start()
     monkeypatch.setenv("SHRI_AI_PROVIDER", "claude")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-a-real-key")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(ai_app.state, "settings", ai_app.state.settings.model_copy(
+        update={"claude_api_key": SecretStr("test-key-not-a-real-key")}))
     monkeypatch.setenv("ANTHROPIC_BASE_URL", server.url)
     monkeypatch.delenv("SHRI_AI_MODEL", raising=False)
     monkeypatch.delenv("SHRI_AI_MONTHLY_BUDGET_USD", raising=False)

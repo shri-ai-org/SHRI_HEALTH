@@ -27,7 +27,7 @@ dependencies = [
     # File service (backend/app/modules/files/, Anand): AES-256-GCM with core's data keys
     "cryptography>=50.0.2,<51",
     # AI gateway (backend/app/modules/ai/, Vimal): the Claude API's official SDK, Messages API
-    # only. Apache-2.0 (D75). The API key reaches the API container's environment only.
+    # only. Apache-2.0 (D75). The key comes from OpenBao (core settings), never from code or files.
     "anthropic>=2.4,<3",
 ]
 

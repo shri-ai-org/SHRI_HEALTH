@@ -16,7 +16,7 @@
  */
 
 /**
- * The clinician's decision on the AI text (D70). The note cannot be signed while any section is `pending` (FRS §3.4, §8). Read-only; decided through the AI decision endpoint (batch 7).
+ * The clinician's decision on the AI text (D70). The note cannot be signed while any section is `pending` (FRS §3.4, §8). Read-only; decided through `POST /ai/suggestions/{suggestionId}/decision` (batch 7).
  */
 export type NoteSectionAiDecision = typeof NoteSectionAiDecision[keyof typeof NoteSectionAiDecision];
 

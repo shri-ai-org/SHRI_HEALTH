@@ -3,19 +3,25 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "workspaces": [
+    "front-office",
+    "doctors-portal"
+  ],
   "engines": {
     "node": ">=24.22.0"
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build -w doctors-portal -w front-office",
     "preview": "vite preview",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && npm run typecheck -w front-office && tsc -b doctors-portal",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest",
     "generate": "orval --config orval.config.ts",
-    "e2e": "playwright test"
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "dev:doctors": "npm run dev -w doctors-portal",
+    "dev:front-office": "npm run dev -w front-office"
   },
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "5.3.0",
@@ -47,5 +53,11 @@
     "typescript-eslint": "8.71.2",
     "vite": "8.3.4",
     "vitest": "5.0.5"
+  },
+  "overrides": {
+    "framer-motion@13.4.4": {
+      "motion-dom": "13.4.4",
+      "motion-utils": "13.3.0"
+    }
   }
 }

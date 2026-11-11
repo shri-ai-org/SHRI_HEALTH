@@ -159,6 +159,22 @@ The problem list (FRS FR-PAT-03), on the same rules: a Condition with category
   problem that is still active (FHIR con-4, at `clinicalStatus`).
 - An encounter diagnosis is not a problem here (`ResourceNotFound`): it has its own helpers.
 
+Family, social and surgical history (FRS FR-PAT-03), on the same rules. Each is insert-only: a
+wrong entry is marked entered-in-error, with its Provenance, and a new one added.
+- `create_family_history(db, FamilyHistoryIn)`: one relative's FamilyMemberHistory, its
+  conditions (an onset age in years is a UCUM `a` Age) and a note. No conditions needs status
+  `health-unknown`. `sex` is stored as `sex_text`: AdministrativeGender isn't a registered code
+  system. A condition's own note has no column yet, so the helper takes none.
+- `record_social_history(db, SocialHistoryIn)`: an Observation, category `social-history`,
+  status `final`, a LOINC code and exactly one value (a code, a UCUM quantity or text); the
+  effective date is a `PartialDate` (as the problem list's), today when absent.
+- `create_surgical_history(db, SurgicalHistoryIn)`: a `completed` Procedure with category
+  SNOMED CT `387713003` (D73), a `PartialDate` performed date, a body site and a note.
+- `family_history_entered_in_error`, `social_history_entered_in_error` and
+  `surgical_history_entered_in_error`: each only for its own kind (`ResourceNotFound`
+  otherwise), `InvalidTransition` when already entered-in-error.
+- Dates in the future are refused, at the field that has them.
+
 `set_preferred_pharmacy(db, patient_id, pharmacy_id, *, if_version)` (D50): the patient's one
 default in `admin.patient_pharmacy` (an earlier choice stays, not default), from the platform
 directory (`ResourceNotFound` if unknown, `InvalidInput` if inactive). It updates the patient
@@ -434,6 +450,24 @@ SHA-256, into a cache folder (`SHRI_TERMINOLOGY_CACHE`, or `~/.cache/shri-termin
 download is made once and a file that doesn't match is refused, never cached or loaded), then
 loads both as `shri_migrator`. About 35 s, and a rerun changes nothing. A new release is a new
 pin in `terminology/fetch.py`, in a reviewed PR.
+
+## Server tools (`app/db/tools`, the self-managed demo and test servers)
+
+- `python -m app.db.tools.server_check --patients 505` runs, as the master user, read-only, the
+  six database checks of server day: Alembic head, pgvector `0.8.2` (D31), row security on
+  and forced on every clinic table (those with a `tenant_id`), collation C.UTF-8, no service role
+  bypassing row security or a superuser, and the patient count. Each prints PASS or FAIL, and the exit status is 1 if any fails. The URL is
+  `SERVER_CHECK_DATABASE_URL`, never printed. A laptop built with another pgvector fails that
+  line by design.
+- `backup_db.sh <database> <dir>`: `pg_dump -Fc` as the master user, checked with
+  `pg_restore --list`, mode 600, keeping the newest `KEEP` (14). `restore_db.sh <dump>
+  <target>` recreates the target with the deploy kit's `recreate-database.sql` and restores it.
+  It needs `RESTORE_CONFIRM=<target>` and refuses `postgres`, `template0`, `template1` and
+  `keycloak`. On a Docker host, `PG_DUMP`, `PG_RESTORE` and `PSQL` run the tools in the database
+  container. Scheduling them, and copying the dumps off the server encrypted, is infra's job
+  (Thulasi). RDS has its own backups (D30).
+- `demo_dry_run` books from 09:00 facility time, since the all-day demo schedules make 00:00
+  the first free time.
 
 ## Rules that never bend
 

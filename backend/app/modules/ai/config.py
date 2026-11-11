@@ -5,14 +5,14 @@ variables, as the file service's store does (``files.storage.configured_store``)
 
 - ``SHRI_AI_PROVIDER``: ``claude`` (the Claude API), ``openai-compatible`` (a model server such
   as vLLM) or ``stub`` (no model: a fixed fictional draft, stub_model.py). Not set: ``claude``
-  when ``ANTHROPIC_API_KEY`` is set, ``openai-compatible`` when ``SHRI_AI_MODEL_URL`` is, else
+  when core has a Claude API key, ``openai-compatible`` when ``SHRI_AI_MODEL_URL`` is set, else
   ``stub``, so a laptop without a key still runs the whole flow.
 - ``SHRI_AI_MODEL``: the Claude model, ``claude-sonnet-5-5`` unless set (``claude-haiku-5-5``
   is this one line); ``SHRI_AI_EFFORT``: ``low`` unless set.
-- The workspace's key: core's ``claude_api_key`` setting (OpenBao KV ``CLAUDE_API_KEY``, read
-  at startup, a SecretStr), else ``ANTHROPIC_API_KEY`` in the environment (a laptop). It is
-  handed to the client only: never logged, never returned by an endpoint, never sent to a
-  screen.
+- The workspace's key: **only** core's ``claude_api_key`` setting (OpenBao KV
+  ``CLAUDE_API_KEY``, read at startup, a SecretStr; #257), never the environment, code or a
+  file. On a laptop the key is loaded into the local OpenBao the same way. It is handed to the
+  client only: never logged, never returned by an endpoint, never sent to a screen.
 - ``SHRI_AI_MODEL_URL``, ``SHRI_AI_MODEL_NAME``, ``SHRI_AI_MODEL_TOKEN``: the OpenAI-compatible
   server's base URL, served model and machine credential (never a user's token).
 
@@ -38,7 +38,6 @@ from .stub_model import StubModel
 PROVIDER_ENV = "SHRI_AI_PROVIDER"
 CLAUDE_MODEL_ENV = "SHRI_AI_MODEL"
 EFFORT_ENV = "SHRI_AI_EFFORT"
-API_KEY_ENV = "ANTHROPIC_API_KEY"  # noqa: S105 (the variable's name, not a secret)
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-5-5"
 DEFAULT_EFFORT: Effort = "low"
 MODEL_URL_ENV = "SHRI_AI_MODEL_URL"
@@ -55,9 +54,6 @@ ENVIRONMENT_ENV = "ENVIRONMENT"
 STUB_ENVIRONMENTS = frozenset({"development", "test", "staging"})
 
 
-def _env_key() -> str | None:
-    return os.environ.get(API_KEY_ENV) or None
-
 
 class UnconfiguredModel:
     """No usable model is configured: every call fails, and says so in the request record."""
@@ -73,7 +69,7 @@ def provider(api_key: str | None = None) -> str:
     chosen = os.environ.get(PROVIDER_ENV, "").strip().lower()
     if chosen:
         return chosen
-    if api_key or _env_key():
+    if api_key:
         return "claude"
     if os.environ.get(MODEL_URL_ENV):
         return "openai-compatible"
@@ -81,7 +77,7 @@ def provider(api_key: str | None = None) -> str:
 
 
 def _claude(api_key: str | None) -> ModelClient:
-    key = api_key or _env_key()
+    key = api_key
     if not key:
         return UnconfiguredModel()
     wanted = os.environ.get(EFFORT_ENV, "").strip().lower()
@@ -100,8 +96,8 @@ def _openai_compatible() -> ModelClient:
 
 def configured_model(api_key: str | None = None, environment: str | None = None
                      ) -> ModelClient:
-    """The configured provider's client, or ``UnconfiguredModel``. ``api_key`` and
-    ``environment`` are core's settings (api.py); without them, the environment variables."""
+    """The configured provider's client, or ``UnconfiguredModel``. ``api_key`` is core's
+    ``claude_api_key`` (api.py), the only source of the key; ``environment`` is core's too."""
     chosen = provider(api_key)
     if chosen == "claude":
         return _claude(api_key)

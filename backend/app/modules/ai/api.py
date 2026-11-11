@@ -81,7 +81,7 @@ def repository() -> AIRepository:
 
 def model(request: Request) -> ModelClient:
     """The configured model, with core's settings: the Claude API key from OpenBao
-    (``claude_api_key``, once core has it) and the environment the API runs in."""
+    (``claude_api_key``, #257), its only source, and the environment the API runs in."""
     settings = request.app.state.settings
     secret = getattr(settings, "claude_api_key", None)
     return configured_model(api_key=secret.get_secret_value() if secret else None,

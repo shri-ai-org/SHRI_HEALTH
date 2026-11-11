@@ -1,0 +1,7 @@
+export { PatientIllustration } from './PatientIllustration'
+export { DoctorIllustration } from './DoctorIllustration'
+export { AppointmentIllustration } from './AppointmentIllustration'
+export { AdmissionIllustration } from './AdmissionIllustration'
+export { BillingIllustration } from './BillingIllustration'
+export { PaymentIllustration } from './PaymentIllustration'
+export type { IllustrationProps } from './shared'

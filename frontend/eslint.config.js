@@ -5,7 +5,10 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'src/api/generated'] },
+  {
+    // The copied apps keep their own code style; they are built and type-checked, not linted here.
+    ignores: ['dist', 'node_modules', 'src/api/generated', 'front-office', 'doctors-portal', 'patient-self-registration', 'shared'],
+  },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended, jsxA11y.flatConfigs.strict],
