@@ -97,7 +97,7 @@ interface NoteState {
   /** Sets the pharmacy for the visit and saves it on every draft line (If-Match). */
   chooseRxPharmacy: (encounterId: string, pharmacy: RxPharmacy) => void
   /** Per prescription: its ETag, and the alerts of its latest safety check. */
-  rxServer: Record<string, { etag?: string; alerts: SafetyAlert[]; checkedAt?: string; queue: Promise<void> }>
+  rxServer: Record<string, { etag?: string; alerts: SafetyAlert[]; checkedAt?: string; queue: Promise<void>; signed?: boolean }>
   rx: (encounterId: string) => RxRecord
   addRxLine: (encounterId: string, line: Omit<RxLine, 'id'>) => string | null
   editRxLine: (encounterId: string, lineId: string, patch: RxLineEdit) => void
@@ -236,6 +236,25 @@ function toastProblem(error: unknown, title: string) {
   useUI.getState().toast({ tone: 'critical', title: copy?.title ?? title, detail: copy?.message })
 }
 
+const RX_FIELDS: Record<string, string> = { '/dosageText': 'the directions', '/quantity': 'the quantity', '/pharmacyId': 'the pharmacy', '/daysSupply': 'the days supply', '/refills': 'the refills' }
+
+const staleCheck = (error: ApiError) => ((error.problem as { errors?: { code?: string }[] }).errors ?? []).some((f) => f.code === 'safety-check-stale')
+
+/** Why a prescription was not signed, in plain words: 409, 412, 428, 403 and a stale safety check each say what to do next. */
+export function signRefusal(error: unknown): string {
+  if (!(error instanceof ApiError)) return 'Check the connection and sign again.'
+  if (error.status === 412) return 'It changed since you opened it (another tab or user). The latest version is loaded; check it and sign again.'
+  if (error.status === 428) return 'The latest version is loaded; sign again.'
+  if (error.status === 409 && error.code === 'idempotency-request-in-progress') return 'Your earlier Sign is still being processed. Wait a moment.'
+  if (error.status === 409) return "It isn't a draft any more (already signed or discarded). The latest status is loaded."
+  if (error.status === 403 && error.code === 'break-glass-required') return 'Restricted chart: open the chart with a reason first, then sign.'
+  if (error.status === 403) return 'Only a physician (MD) or an advanced practice provider (APP) may sign prescriptions.'
+  if (staleCheck(error)) return 'The safety checks ran again on the latest version. Review any alert, then sign again.'
+  const missing = ((error.problem as { errors?: { pointer?: string }[] }).errors ?? []).map((f) => RX_FIELDS[f.pointer ?? '']).filter(Boolean)
+  if (missing.length > 0) return `Add ${missing.join(', ')} and sign again.`
+  return problemCopy(error.problem).message
+}
+
 export interface RxPharmacy {
   id: string
   name: string
@@ -289,6 +308,40 @@ export const useClinical = create<NoteState>()((set, get) => {
   }
 
   /** Runs one write on a prescription after the ones before it. */
+  /** Reads the visit's prescriptions from the server: on first open, and again after a refusal. */
+  async function loadRx(encounterId: string): Promise<void> {
+    const ids = rememberedRx(encounterId)
+    const found = await Promise.all(ids.map((id) => getPrescription(id).then((res) => ({ p: res.data as Prescription, etag: etagOf(res) }))))
+    const live = found.filter(({ p }) => p.status !== 'entered-in-error')
+    set({
+      prescriptions: {
+        ...get().prescriptions,
+        [encounterId]: {
+          ...blankRx(encounterId),
+          added: live.map(({ p }) => toLine(p)),
+          edits: Object.fromEntries(live.map(({ p }): [string, RxLineEdit] => [p.id, { quantity: p.quantity ? String(p.quantity.value) : undefined, quantityUnit: p.quantity?.unit, refills: p.refills }])),
+          status: live.length > 0 && live.every(({ p }) => p.status === 'active') ? 'signed' : 'draft' },
+      },
+      rxServer: { ...get().rxServer, ...Object.fromEntries(live.map(({ p, etag }) => [p.id, { etag: etag ?? undefined, alerts: p.alerts, queue: Promise.resolve(), signed: p.status === 'active' }])) },
+    })
+    // The pharmacy already saved on the lines (another tab, or before a reload) is the visit's pharmacy.
+    const saved = live.find(({ p }) => p.pharmacyId)?.p
+    if (saved?.pharmacyId && get().rxPharmacy[encounterId]?.id !== saved.pharmacyId) {
+      const res = await getPatient(saved.patientId).catch(() => null)
+      const pref = res?.status === 200 ? res.data.preferredPharmacy : undefined
+      // TODO(gap): no pharmacy read by ID (#93): the preferred pharmacy, else the first page of the
+      // directory, gives its name; past that it shows without one.
+      const listed = pref?.id === saved.pharmacyId ? undefined
+        : await listPharmacies({ limit: 100 }).then((r) => (r.status === 200 ? r.data.items.find((x) => x.id === saved.pharmacyId) : undefined)).catch(() => undefined)
+      const pharmacy = pref?.id === saved.pharmacyId
+        ? { id: pref.id, name: pref.name, detail: pharmacyDetail(pref.address) }
+        : listed
+        ? { id: listed.id, name: listed.name, detail: pharmacyDetail(listed.address, listed.mailOrder) }
+        : { id: saved.pharmacyId, name: 'The pharmacy saved on this prescription', detail: 'Change it to see the list again' }
+      set({ rxPharmacy: { ...get().rxPharmacy, [encounterId]: pharmacy } })
+    }
+  }
+
   function onLine(id: string, job: () => Promise<void>): Promise<void> {
     const before = get().rxServer[id]?.queue ?? Promise.resolve()
     const next = before.then(job)
@@ -452,22 +505,7 @@ export const useClinical = create<NoteState>()((set, get) => {
     rxServer: {},
 
     rx: (encounterId) => {
-      read(`rx:${encounterId}`, async () => {
-        const ids = rememberedRx(encounterId)
-        const found = await Promise.all(ids.map((id) => getPrescription(id).then((res) => ({ p: res.data as Prescription, etag: etagOf(res) }))))
-        const live = found.filter(({ p }) => p.status !== 'entered-in-error')
-        set({
-          prescriptions: {
-            ...get().prescriptions,
-            [encounterId]: {
-              ...blankRx(encounterId),
-              added: live.map(({ p }) => toLine(p)),
-              edits: Object.fromEntries(live.map(({ p }): [string, RxLineEdit] => [p.id, { quantity: p.quantity ? String(p.quantity.value) : undefined, quantityUnit: p.quantity?.unit, refills: p.refills }])),
-              status: live.length > 0 && live.every(({ p }) => p.status === 'active') ? 'signed' : 'draft' },
-          },
-          rxServer: { ...get().rxServer, ...Object.fromEntries(live.map(({ p, etag }) => [p.id, { etag: etag ?? undefined, alerts: p.alerts, queue: Promise.resolve() }])) },
-        })
-      })
+      read(`rx:${encounterId}`, () => loadRx(encounterId))
       return get().prescriptions[encounterId] ?? blankRx(encounterId)
     },
 
@@ -561,21 +599,25 @@ export const useClinical = create<NoteState>()((set, get) => {
       // One prescription per drug: each is signed and sent on its own.
       return (async () => {
         for (const id of ids) {
+          // A line signed before an earlier refusal is not signed twice.
+          if (get().rxServer[id]?.signed) continue
           await onLine(id, async () => {
             const res = await signAndSendPrescription(id, { 'If-Match': get().rxServer[id]?.etag ?? '', 'Idempotency-Key': newIdempotencyKey() })
-            set({ rxServer: { ...get().rxServer, [id]: { ...get().rxServer[id], etag: etagOf(res) ?? undefined } } })
+            set({ rxServer: { ...get().rxServer, [id]: { ...get().rxServer[id], etag: etagOf(res) ?? undefined, signed: true } } })
           })
         }
         return true
-      })().catch((error: unknown) => {
+      })().catch(async (error: unknown) => {
         set({ prescriptions: { ...get().prescriptions, [encounterId]: { ...get().rx(encounterId), status: 'draft', signedBy: undefined, registrationNo: undefined, signedAt: undefined } } })
-        const fields = error instanceof ApiError ? (error.problem as { errors?: { pointer?: string; code?: string }[] }).errors : undefined
-        const copy = error instanceof ApiError ? problemCopy(error.problem) : null
-        useUI.getState().toast({
-          tone: 'critical',
-          title: 'The prescription was not signed',
-          detail: [copy?.message, fields?.map((f) => `${f.pointer ?? ''} ${f.code ?? ''}`.trim()).join('; ')].filter(Boolean).join(' '),
-        })
+        // 409, 412 and 428 mean the version on screen is not the server's: read the lines again, so
+        // the screen shows what the next Sign sends (and a line signed elsewhere shows as signed).
+        // A changed draft needs a safety check on its new version before it can be signed (D99).
+        if (error instanceof ApiError && ([409, 412, 428].includes(error.status) || staleCheck(error))) {
+          // A 409 means the line is no longer a draft, so there is nothing to check again.
+          if (error.status !== 409) await Promise.all(ids.filter((id) => !get().rxServer[id]?.signed).map((id) => check(id).catch(() => undefined)))
+          await loadRx(encounterId).catch(() => undefined)
+        }
+        useUI.getState().toast({ tone: 'critical', title: 'The prescription was not signed', detail: signRefusal(error) })
         return false
       })
     },

@@ -23,6 +23,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { can, canPrescribe } from '@/atlas/personas'
+import { formatClinicDateTime } from '../../../shri-health/format'
 import { signedInUser } from '../../../shri-health/opd'
 import { FORMULARY, PENICILLIN_HARD_STOP, type Encounter } from '@/data/clinical'
 import { NOW, formatDateTime, formatRupees, formatTime } from '@/data/format'
@@ -276,13 +277,17 @@ function Prescription({ enc }: { enc: Encounter }) {
             <>
               <span className="flex items-center gap-[8px] text-[13px] tabular-nums text-sh-text-2">
                 <Icon icon={Lock} size={14} />
-                Signed by {record.signedBy ?? me.name} · {record.registrationNo ?? me.identifier}
-                {record.signedAt && ` · ${formatDateTime(new Date(record.signedAt))}`}
+                {/* SHRI_HEALTH: the session carries no NPI, and A5 bilingual printing is India's, so neither shows with the API. */}
+                Signed by {record.signedBy ?? me.name}
+                {!REAL_API && ` · ${record.registrationNo ?? me.identifier}`}
+                {record.signedAt && ` · ${formatClinicDateTime(record.signedAt)}`}
               </span>
               <div className="ml-auto flex flex-wrap gap-[8px]">
-                <Pill variant="control" size="lg" icon={Printer} onClick={() => setPrintOpen(true)}>
-                  Print A5, bilingual
-                </Pill>
+                {!REAL_API && (
+                  <Pill variant="control" size="lg" icon={Printer} onClick={() => setPrintOpen(true)}>
+                    Print A5, bilingual
+                  </Pill>
+                )}
                 <Pill variant="primary" size="lg" icon={ArrowRight} onClick={() => navigate('/')}>
                   Done
                 </Pill>
@@ -305,7 +310,8 @@ function Prescription({ enc }: { enc: Encounter }) {
                   <span className="text-[13px] font-medium text-sh-warn-fg">{incomplete.length} incomplete</span>
                 ) : null}
                 {!mayPrescribe && <span className="text-[13px] font-medium text-sh-warn-fg">{signRule}</span>}
-                <Pill
+                {/* D110: only MD and APP sign, so no one else is shown the Sign button. */}
+                {mayPrescribe && <Pill
                   variant="primary"
                   size="lg"
                   icon={Signature}
@@ -322,13 +328,13 @@ function Prescription({ enc }: { enc: Encounter }) {
                   }}
                 >
                   Sign prescription
-                </Pill>
+                </Pill>}
               </div>
             </>
           )
         }
       >
-        {locked && <LockedBanner by={record.signedBy ?? me.name} at={record.signedAt ? formatDateTime(new Date(record.signedAt)) : formatTime(NOW)} reason="signed" />}
+        {locked && <LockedBanner by={record.signedBy ?? me.name} at={record.signedAt ? formatClinicDateTime(record.signedAt) : formatTime(NOW)} reason="signed" />}
 
         {!locked && (showValidation || forced === 'VALIDATION') && problems.length > 0 && (
           <ValidationSummary problems={problems} onFocusFirst={() => document.getElementById(problems[0].target)?.scrollIntoView({ block: 'center' })} />
@@ -527,7 +533,7 @@ function Prescription({ enc }: { enc: Encounter }) {
         title="Prescription"
         patient={p}
         paper="A5"
-        meta={`${encounterLabel(enc)} · ${record.signedBy ?? me.name} · ${me.identifierKind} ${record.registrationNo ?? me.identifier}${record.signedAt ? ` · ${formatDateTime(new Date(record.signedAt))}` : ''}`}
+        meta={`${encounterLabel(enc)} · ${record.signedBy ?? me.name} · ${me.identifierKind} ${record.registrationNo ?? me.identifier}${record.signedAt ? ` · ${formatClinicDateTime(record.signedAt)}` : ''}`}
         sections={[
           ...basket.map((l, i) => ({
             heading: `${i + 1}. ${l.drug}`,

@@ -9,6 +9,7 @@
 //   binding, so importers see each refresh).
 // - Times: 12-hour U.S. time ("1:20 PM") with the API; the sample screens keep their 24-hour format.
 export { formatDate, formatDateTime, formatElapsed } from '@/data/format'
+import { formatDateTime as formatDateTimeSample } from '@/data/format'
 
 let facilityZone: string | undefined
 
@@ -50,4 +51,11 @@ export function formatTime(d: Date | string): string {
   return REAL_API
     ? new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).format(date)
     : new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date)
+}
+
+/** `Nov 11, 2026, 12:16 PM` in the clinic's time with the API (D40); the sample screens' `21-Sep-2026 14:30` without. */
+export function formatClinicDateTime(at: string): string {
+  return REAL_API
+    ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(clinicDate(at))
+    : formatDateTimeSample(new Date(at))
 }
