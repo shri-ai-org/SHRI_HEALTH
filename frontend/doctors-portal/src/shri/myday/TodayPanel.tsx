@@ -15,7 +15,7 @@
  */
 
 import { format } from 'date-fns'
-import { CalendarClock, CalendarSearch, ChevronLeft, ChevronRight, ClockPlus, Plus, Sunrise, UserRound } from 'lucide-react'
+import { CalendarClock, CalendarSearch, ChevronLeft, ChevronRight, ClockPlus, Plus, UserRound } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -260,11 +260,8 @@ function ApiToday({ className }: { className?: string }) {
           </h2>
           <p className="mt-[4px] text-[14px] text-sh-text-2">{usDay(clinicNow())}</p>
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-[10px]">
-          <Pill variant="control" size="sm" icon={Sunrise} onClick={() => navigate('/brief')}>
-            Morning brief
-          </Pill>
-        </div>
+        {/* No Morning brief with the API: the brief is the AI chart summary, which has no service yet
+            (getChartSummary, Vimal's #267), so it would show sample patients. */}
       </header>
       {day.status === 'loading' ? (
         <p role="status" className="mt-[12px] text-[13px] text-sh-text-3">

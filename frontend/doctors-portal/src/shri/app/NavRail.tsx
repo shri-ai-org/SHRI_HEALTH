@@ -92,12 +92,17 @@ const MORE_ITEM: RailItem = { key: 'more', label: 'More', short: 'More', icon: E
  * the patient's record and are the stroke team's own landing.
  */
 const OFF_RAIL = new Set<Section>(['stroke', 'assistant'])
+/** SHRI_HEALTH: with the API, sections with no service yet are off the rail too (orders and results:
+ *  Thulasi; imaging, inpatients, discharge and telehealth: not in the U.S. demo), so no rail item opens
+ *  sample data. Home, the queue (Patients) and search stay. */
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+const OFF_RAIL_WITH_API = new Set<Section>(['orders', 'results', 'imaging', 'inpatients', 'discharge', 'telehealth'])
 
 function useRail() {
   const persona = useSession((s) => s.persona)
   return useMemo(() => {
     const groups = navGroupsFor(persona)
-    const onRail = (n: NavItem) => !OFF_RAIL.has(n.section)
+    const onRail = (n: NavItem) => !OFF_RAIL.has(n.section) && !(REAL_API && OFF_RAIL_WITH_API.has(n.section))
     const primary = mergePatientLists(groups.primary.filter(onRail).map((n) => railItem(n, persona)))
     const more = mergePatientLists(groups.secondary.filter(onRail).map((n) => railItem(n, persona)))
     const items = [...primary.slice(0, 1), SEARCH, ...primary.slice(1), ...(more.length > 0 ? [MORE_ITEM] : [])]

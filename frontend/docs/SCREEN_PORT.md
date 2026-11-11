@@ -124,3 +124,4 @@ Checked against the code and the running screens, not this file's older rows. **
 4. Step 9, prescribe: pharmacy choice with `listPharmacies` (small).
 5. Step 11, check-out: copay with `recordPayment` (medium; new section, needs your OK).
 6. My Day: the doctor's own schedule from `practitionerId` on `/me` (#221) (medium).
+| 79 | Doctors' portal My Day with the API (2026-11-11): today's bookings, the status board, the provider's own day (`GET /me`, #221) and the month calendar; the sample day (its own date, the Indian hospital, ICU and Critical cards) no longer shows. Hidden because no service exists: **Morning brief** (the AI chart summary, `getChartSummary`, Vimal #264/#267), and the rail and phone tabs for orders and results (Thulasi), imaging, inpatients, discharge and telehealth (not in the U.S. demo). **To-do** says reminders can't be saved yet (no inbox or reminders API: `getInboxSummary` isn't built, Anand) | — | My Day, rail | Connected |
