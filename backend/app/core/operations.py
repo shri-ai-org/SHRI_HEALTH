@@ -219,10 +219,14 @@ def route_problems(app: FastAPI) -> list[str]:
                 staff = operation.audit.actor == "user" and operation.permission not in NO_REQUIRE
                 if operation.operation_id in IDEMPOTENT_IN_DATABASE | IDEMPOTENT_IN_ROUTE:
                     pass
-                elif operation.portal or not staff:
+                elif operation.portal:
+                    if portal_db not in calls:
+                        problems.append(f"{where}: {operation.operation_id} has x-idempotency, "
+                                        "so it needs Depends(portal_db), which claims the key")
+                elif not staff:
                     problems.append(f"{where}: {operation.operation_id} has x-idempotency, which "
-                                    "core handles only for staff sessions so far (not yet for "
-                                    "the portal, public forms or partners)")
+                                    "core handles only for staff and portal sessions so far (not "
+                                    "yet for public forms or partners)")
                 elif tenant_db not in calls:
                     problems.append(f"{where}: {operation.operation_id} has x-idempotency, so it "
                                     "needs Depends(tenant_db), which claims the key")

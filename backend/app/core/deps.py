@@ -297,10 +297,17 @@ async def portal_db(
     (PORTAL_DATABASE_URL, D93), never shri_app; sets app.current_tenant_id and
     app.current_patient_id from the portal session, so the own-chart policies show this patient's
     chart only; and starts the audit trail (audit.start_portal_trail). Nothing is saved unless
-    the endpoint commits. Unconfigured: 503."""
+    the endpoint commits. Unconfigured: 503. For an operation with x-idempotency, the
+    Idempotency-Key is claimed here first, as tenant_db does for staff
+    (idempotency.claim_portal)."""
     db: Database | None = getattr(request.app.state, "portal_db", None)
     if db is None:
         raise ServiceUnavailable("The patient portal's database is not available")
+    operation = operation_for(request.scope.get("route"))
+    if operation is not None and idempotency.applies(operation, request.method):
+        # Keyed by the session's clinic and patient, never the request's (idempotency.py).
+        await idempotency.claim_portal(request, patient.organization_id, patient.patient_id,
+                                       operation)
     async with db.patient_session(patient.organization_id, patient.patient_id,
                                   current_request_id()) as session:
         audit.start_portal_trail(request, patient, session)

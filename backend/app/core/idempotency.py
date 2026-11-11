@@ -22,6 +22,13 @@ A claim lasts IN_PROGRESS_LEASE, so a request that dies mid-way frees its key; a
 lasts RETENTION. The API never deletes rows (admin.purge_expired_runtime_rows does): a released or
 expired row is claimed again in place.
 
+**The patient portal (portal_db) keeps its keys in the API's memory for now** (PortalKeys):
+scope clinic + the session's patient + method + path + key, the same rules and answers as above.
+admin.idempotency_record can't hold them yet (its user_id must be a staff user), so the keys last
+only while this process runs, and only while the API runs as one process, as the public form's
+rate limiter. Moving them to the database (a patient column and shri_portal's own-rows grants) is
+a pilot gate (DECISIONS "Scheduled work").
+
 If the response can't be stored after the endpoint ran (OpenBao or the database down), the
 response still goes out, since the work is done. A 2xx/3xx keeps its key claimed for RETENTION,
 so a retry gets 409 rather than doing the work twice; a 4xx is released. Nothing is ever stored
@@ -33,7 +40,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
@@ -47,7 +54,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.config import Settings
 from app.core.crypto import decrypt_field, encrypt_field
-from app.core.errors import AppError, Conflict, ValidationFailed, field_error
+from app.core.errors import AppError, Conflict, ServiceUnavailable, ValidationFailed, field_error
 from app.core.operations import Operation
 from app.core.request_id import current_request_id
 from app.core.safe_logging import log_failure
@@ -89,8 +96,9 @@ class Claim:
 
     record_id: UUID
     tenant_id: UUID
-    user_id: UUID
+    user_id: UUID  # the staff user; for a portal claim, the session's patient
     lease_until: datetime
+    memory_key: tuple[Any, ...] | None = None  # a portal claim: its key in PortalKeys
 
 
 def applies(operation: Operation | None, method: str) -> bool:
@@ -189,6 +197,110 @@ async def claim(request: Request, db: "Database", tenant_id: UUID, user_id: UUID
     raise Replay(found.response_status, dict(found.response_headers or {}), body)
 
 
+@dataclass
+class _Held:
+    """One portal key in memory: claimed (status None) until it is finished or released."""
+
+    record_id: UUID
+    request_hash: str
+    expires_at: datetime
+    status: int | None = None
+    headers: dict[str, str] | None = None
+    body: bytes = b""
+
+
+class PortalKeys:
+    """The portal's Idempotency-Keys, in this process's memory (see the module docstring).
+    Expired keys are dropped as new ones are claimed; at most MAX are held at once, beyond which a
+    new key is refused with 503 (never stored, so the retry runs) rather than growing without
+    bound. The stored bodies are the patient's own responses and never leave memory."""
+
+    MAX = 10_000
+
+    def __init__(self) -> None:
+        self._held: dict[tuple[Any, ...], _Held] = {}
+
+    def __len__(self) -> int:
+        return len(self._held)
+
+    def _live(self, key: tuple[Any, ...], now: datetime) -> _Held | None:
+        held = self._held.get(key)
+        if held is not None and held.expires_at <= now:
+            del self._held[key]
+            return None
+        return held
+
+    def find_or_claim(self, key: tuple[Any, ...], request_hash: str,
+                      now: datetime) -> tuple[_Held, bool]:
+        """The live entry for this key and False, or a new claim and True. No await inside, so
+        two requests on the event loop can't both claim one key."""
+        held = self._live(key, now)
+        if held is not None:
+            return held, False
+        if len(self._held) >= self.MAX:
+            for old in [k for k, h in self._held.items() if h.expires_at <= now]:
+                del self._held[old]
+            if len(self._held) >= self.MAX:
+                raise ServiceUnavailable("Too many requests are in progress; retry later")
+        held = _Held(uuid4(), request_hash, now + IN_PROGRESS_LEASE)
+        self._held[key] = held
+        return held, True
+
+    def _claimed(self, claim: Claim) -> _Held | None:
+        held = self._held.get(claim.memory_key) if claim.memory_key is not None else None
+        if (held is None or held.record_id != claim.record_id or held.status is not None
+                or held.expires_at != claim.lease_until):
+            return None  # not this request's claim any more (expired and claimed again)
+        return held
+
+    def finish(self, claim: Claim, status: int, headers: dict[str, str], body: bytes,
+               now: datetime) -> None:
+        held = self._claimed(claim)
+        if held is not None:
+            held.status, held.headers, held.body = status, headers, body
+            held.expires_at = now + RETENTION
+
+    def release(self, claim: Claim) -> None:
+        if self._claimed(claim) is not None and claim.memory_key is not None:
+            del self._held[claim.memory_key]
+
+
+PORTAL_KEYS_STATE = "portal_idempotency_keys"  # app.state
+
+
+def portal_keys(app: Any) -> PortalKeys:
+    keys: PortalKeys | None = getattr(app.state, PORTAL_KEYS_STATE, None)
+    if keys is None:
+        keys = PortalKeys()
+        setattr(app.state, PORTAL_KEYS_STATE, keys)
+    return keys
+
+
+async def claim_portal(request: Request, tenant_id: UUID, patient_id: UUID,
+                       operation: Operation) -> None:
+    """Called by portal_db before the endpoint runs: the same answers as claim(), keyed by the
+    clinic and the patient of the portal session (never the request's)."""
+    raw = request.headers.get(HEADER)
+    if raw is None:
+        if operation.idempotency == "required":
+            raise IdempotencyKeyMissing("Send an Idempotency-Key header")
+        return
+    key = (tenant_id, patient_id, request.method, request.url.path, parse_key(raw))
+    request_hash = fingerprint(await request.body())
+    held, claimed = portal_keys(request.app).find_or_claim(key, request_hash, datetime.now(UTC))
+    if claimed:
+        setattr(request.state, STATE, Claim(held.record_id, tenant_id, patient_id,
+                                            held.expires_at, memory_key=key))
+        return
+    if held.request_hash != request_hash:
+        raise ValidationFailed("This Idempotency-Key was used for a different request",
+                               code="idempotency-key-reused")
+    if held.status is None:
+        raise Conflict("A request with this Idempotency-Key is still running; retry later",
+                       code="idempotency-request-in-progress")
+    raise Replay(held.status, dict(held.headers or {}), held.body)
+
+
 async def replay_response(request: Request, exc: Exception) -> Response:
     replay: Replay = exc  # type: ignore[assignment]
     return Response(content=replay.body, status_code=replay.status,
@@ -211,14 +323,24 @@ async def _release(db: "Database", claim: Claim) -> None:
                       current_request_id())
 
 
+async def _release_claim(app: Any, claim: Claim) -> None:
+    if claim.memory_key is not None:
+        portal_keys(app).release(claim)
+    else:
+        await _release(app.state.db, claim)
+
+
 async def _finish(app: Any, claim: Claim, status: int, headers: list[tuple[bytes, bytes]],
                   body: bytes) -> None:
-    db: Database = app.state.db
     if status >= 500 or status == 429:
-        await _release(db, claim)
+        await _release_claim(app, claim)
         return
     stored = {name.decode("latin-1"): value.decode("latin-1") for name, value in headers
               if name.decode("latin-1").lower() in STORED_HEADERS}
+    if claim.memory_key is not None:
+        portal_keys(app).finish(claim, status, stored, body, datetime.now(UTC))
+        return
+    db: Database = app.state.db
     try:
         ciphertext = await encrypt_field(app, body) if body else None
         async with db.tenant_session(claim.tenant_id, claim.user_id,
@@ -288,7 +410,7 @@ class IdempotencyMiddleware:
         except BaseException:
             claim = held()
             if claim is not None and not done:
-                await _release(scope["app"].state.db, claim)  # the error becomes a 500
+                await _release_claim(scope["app"], claim)  # the error becomes a 500
             raise
 
 

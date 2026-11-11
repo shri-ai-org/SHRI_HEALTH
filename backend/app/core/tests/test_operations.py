@@ -294,7 +294,8 @@ def test_another_public_forms_idempotency_is_still_refused(use_map: Callable[...
     other = {"submitTestForm": {**ANONYMOUS_OP["submitTestForm"], "idempotency": "required"}}
     use_map(other)
     problems = route_problems(_app(("POST", "/portal/test-forms", "submitTestForm", [PUBLIC_DB])))
-    assert any("core handles only for staff sessions so far" in p for p in problems), problems
+    assert any("core handles only for staff and portal sessions so far" in p
+               for p in problems), problems
 
 
 def test_an_audited_public_form_must_be_audited_by_its_database_function(
