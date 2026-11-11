@@ -22,9 +22,12 @@ import type {
   AudioRecording,
   AudioRecordingCreate,
   BadRequestResponse,
+  ChartAnswer,
+  ChartQuestionCreate,
   ChartSummary,
   ChartSummaryCreate,
   ConflictResponse,
+  CreateChartQuestionHeaders,
   CreateChartSummaryHeaders,
   CreateEncounterAudioHeaders,
   CreateNoteDraftHeaders,
@@ -33,12 +36,14 @@ import type {
   ForbiddenResponse,
   Id,
   InternalErrorResponse,
+  ListSuggestedQuestionsParams,
   NotFoundResponse,
   NoteDraftCreate,
   Operation,
   PreconditionFailedResponse,
   PreconditionRequiredResponse,
   ReplaceAiSettingsHeaders,
+  SuggestedQuestionList,
   TooManyRequestsResponse,
   Transcription,
   TranscriptionCreate,
@@ -548,6 +553,237 @@ export const getGetChartSummaryUrl = (chartSummaryId: Id,) => {
 export const getChartSummary = async (chartSummaryId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getChartSummaryResponse> => {
 
   return apiFetch<getChartSummaryResponse>(getGetChartSummaryUrl(chartSummaryId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type createChartQuestionResponse202 = {
+  data: Operation
+  status: 202
+}
+
+export type createChartQuestionResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createChartQuestionResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createChartQuestionResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createChartQuestionResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createChartQuestionResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createChartQuestionResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createChartQuestionResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createChartQuestionResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createChartQuestionResponseSuccess = (createChartQuestionResponse202) & {
+  headers: Headers;
+};
+export type createChartQuestionResponseError = (createChartQuestionResponse400 | createChartQuestionResponse401 | createChartQuestionResponse403 | createChartQuestionResponse404 | createChartQuestionResponse409 | createChartQuestionResponse422 | createChartQuestionResponse429 | createChartQuestionResponse500) & {
+  headers: Headers;
+};
+
+export type createChartQuestionResponse = (createChartQuestionResponseSuccess | createChartQuestionResponseError)
+
+export const getCreateChartQuestionUrl = () => {
+
+
+
+
+  return `/ai/chart-questions`
+}
+
+/**
+ * Chart question and answer (FRS §3.4; the screens' AI bubble): a question in plain words, with the page it is asked from. Returns `202` and an operation of kind `ai.chart-answer`; its result is the answer (`GET /ai/chart-answers/{chartAnswerId}`). The gateway reads the chart within the caller's own request, through each module's service, with the same permissions, facility scope and restricted-chart check as the caller's own reads, audited as `ai`. A part the caller may not read is never read. **The front desk gets scheduling answers only**: for a role without clinical read permissions, only the patient's appointments are read, never clinical data. The model answers only from the records it was given: every statement cites at least one of them, a statement that cites none is dropped, and when the chart does not answer the question the answer says so (`insufficientEvidence`). The answer is AI output, never part of the chart, and readable by its requester only. The question and the answer are never logged. Governed by the `chart-summary` switch: refused with `409 feature-disabled` while AI or `chart-summary` is off for the clinic. The operation fails with `ai-unavailable` (the model is down, declined, or the monthly AI budget is used up) or `ai-output-rejected`.
+ * @summary Ask a question about a patient's chart
+ */
+export const createChartQuestion = async (chartQuestionCreate: ChartQuestionCreate,
+    headers?: CreateChartQuestionHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<createChartQuestionResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createChartQuestionResponse>(getCreateChartQuestionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(chartQuestionCreate)
+  }
+);}
+
+
+export type getChartAnswerResponse200 = {
+  data: ChartAnswer
+  status: 200
+}
+
+export type getChartAnswerResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getChartAnswerResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getChartAnswerResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getChartAnswerResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getChartAnswerResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getChartAnswerResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getChartAnswerResponseSuccess = (getChartAnswerResponse200) & {
+  headers: Headers;
+};
+export type getChartAnswerResponseError = (getChartAnswerResponse401 | getChartAnswerResponse403 | getChartAnswerResponse404 | getChartAnswerResponse422 | getChartAnswerResponse429 | getChartAnswerResponse500) & {
+  headers: Headers;
+};
+
+export type getChartAnswerResponse = (getChartAnswerResponseSuccess | getChartAnswerResponseError)
+
+export const getGetChartAnswerUrl = (chartAnswerId: Id,) => {
+
+
+
+
+  return `/ai/chart-answers/${chartAnswerId}`
+}
+
+/**
+ * The result of `POST /ai/chart-questions`: the answer's statements, each citing the records behind it, and `insufficientEvidence` when the chart does not answer the question. Labelled as AI output (`aiGenerated`). Readable by **its requester only**, who must still be able to read the chart (a restricted patient needs break-glass or care-team membership); anyone else gets `404`. Still readable when AI is switched off.
+ * @summary Get an answer to a chart question
+ */
+export const getChartAnswer = async (chartAnswerId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getChartAnswerResponse> => {
+
+  return apiFetch<getChartAnswerResponse>(getGetChartAnswerUrl(chartAnswerId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type listSuggestedQuestionsResponse200 = {
+  data: SuggestedQuestionList
+  status: 200
+}
+
+export type listSuggestedQuestionsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listSuggestedQuestionsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listSuggestedQuestionsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listSuggestedQuestionsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listSuggestedQuestionsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listSuggestedQuestionsResponseSuccess = (listSuggestedQuestionsResponse200) & {
+  headers: Headers;
+};
+export type listSuggestedQuestionsResponseError = (listSuggestedQuestionsResponse401 | listSuggestedQuestionsResponse403 | listSuggestedQuestionsResponse422 | listSuggestedQuestionsResponse429 | listSuggestedQuestionsResponse500) & {
+  headers: Headers;
+};
+
+export type listSuggestedQuestionsResponse = (listSuggestedQuestionsResponseSuccess | listSuggestedQuestionsResponseError)
+
+export const getListSuggestedQuestionsUrl = (params: ListSuggestedQuestionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/ai/suggested-questions?${stringifiedParams}` : `/ai/suggested-questions`
+}
+
+/**
+ * A fixed list of suggested questions for the page the AI bubble is on (consultation, prescribing, check-out, chart or front-desk), from a rule table: no model call, no patient data, the same for every patient. Only questions the caller's role can get an answer to are listed (the front desk gets scheduling questions only).
+ * @summary Suggested questions for a page
+ */
+export const listSuggestedQuestions = async (params: ListSuggestedQuestionsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listSuggestedQuestionsResponse> => {
+
+  return apiFetch<listSuggestedQuestionsResponse>(getListSuggestedQuestionsUrl(params),
   {
     ...options,
     method: 'GET'
