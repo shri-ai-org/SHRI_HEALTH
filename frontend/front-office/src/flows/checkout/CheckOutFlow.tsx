@@ -7,6 +7,7 @@ import { AckCard } from '../../components/flow/AckCard'
 import { Quadrant, StepRail, SummaryItem, Waiting } from '../../components/flow/Quadrant'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
+import { CopayAtCheckOut } from '../../components/payment/CopayAtCheckOut'
 import { FieldError } from '../../components/patient/AgeConfirm'
 import { useStoreValue } from '../../hooks/useStore'
 import { getAppointmentById, getPatientById, getProviderById, getToday } from '../../domain/selectors'
@@ -72,6 +73,7 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
   const [followUpError, setFollowUpError] = useState<string | null>(null)
   const [summaryNote, setSummaryNote] = useState<string | null>(null)
   const [summaryOpened, setSummaryOpened] = useState(false)
+  const [copayPaid, setCopayPaid] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   // The visit's encounter, from the appointment itself (list rows don't carry it).
@@ -145,6 +147,7 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
   const steps = [
     { label: 'Visit', done: true, target: 'checkout-visit' },
     { label: 'Follow-up', done: followUpSettled, target: 'checkout-follow-up' },
+    { label: 'Copay', done: copayPaid, target: 'checkout-copay' },
     { label: 'After-visit summary', done: summaryOpened, target: 'checkout-summary' },
   ]
   const currentIndex = steps.findIndex((step) => !step.done)
@@ -299,7 +302,14 @@ export function CheckOutFlow({ params, onClose }: FlowProps) {
         </div>
       </Quadrant>
 
-      <Quadrant id="checkout-summary" step={3} title="After-visit summary" done={summaryOpened}>
+      <Quadrant id="checkout-copay" step={3} title="Copay" done={copayPaid}>
+        {appointment ? (
+          <CopayAtCheckOut patientId={appointment.patientId} appointmentId={appointmentId}
+                           encounterId={encounterId} onPaid={() => setCopayPaid(true)} />
+        ) : null}
+      </Quadrant>
+
+      <Quadrant id="checkout-summary" step={4} title="After-visit summary" done={summaryOpened}>
         <div className="flex flex-col gap-2">
           <p className="text-sm text-ink-muted">The patient's copy of today's visit, as a PDF.</p>
           <div>

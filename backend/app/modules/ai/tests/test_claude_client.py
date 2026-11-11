@@ -52,7 +52,8 @@ async def test_one_messages_call_with_the_schema_and_its_usage(
     sent = claude.requests[0]
     assert sent["model"] == "claude-sonnet-5-5" and sent["max_tokens"] == 16000
     assert sent["system"].startswith("Draft the note.")
-    assert sent["messages"] == [{"role": "user", "content": MESSAGES[1]["content"]}]
+    assert sent["messages"] == [{"role": "user", "content": [
+        {"type": "text", "text": MESSAGES[1]["content"]}]}]
     assert sent["output_config"]["effort"] == "low"
     fmt = sent["output_config"]["format"]
     assert fmt["type"] == "json_schema" and fmt["schema"]["additionalProperties"] is False
@@ -237,3 +238,19 @@ def test_cores_environment_decides_where_the_stub_answers(clean_env: pytest.Monk
     assert isinstance(config.configured_model(environment="development"), StubModel)
     assert isinstance(config.configured_model(environment="production"),
                       config.UnconfiguredModel)
+
+
+async def test_the_cache_breakpoint_goes_on_the_marked_block(claude: StubClaudeServer) -> None:
+    """Consecutive user messages are one turn of text blocks; the chart block carries the cache
+    breakpoint, so follow-up questions reuse the system prompt and the chart."""
+    claude.reply = '{"statements": [], "insufficientEvidence": true}'
+    await _client().complete([
+        {"role": "system", "content": "Answer from the chart."},
+        {"role": "user", "content": "Chart:\nS1: Allergy: Peanuts", "cache": "ephemeral"},
+        {"role": "user", "content": "Question: Any allergies?"}], max_tokens=1000)
+    [turn] = claude.requests[0]["messages"]
+    assert turn["role"] == "user"
+    assert turn["content"] == [
+        {"type": "text", "text": "Chart:\nS1: Allergy: Peanuts",
+         "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": "Question: Any allergies?"}]

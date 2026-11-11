@@ -325,3 +325,38 @@ class ChartSummary(Out):
     missing: list[ChartSummaryGap]
     suggestion: AiSuggestion
     created_at: datetime
+
+
+# ------------------------------------------------------------------- chart questions (#306)
+PageType = Literal["consultation", "prescribing", "check-out", "chart", "front-desk"]
+
+
+class ChartQuestionCreate(Closed):
+    question: Annotated[str, StringConstraints(min_length=1, max_length=1000)]
+    page_type: PageType
+    patient_id: UUID
+    encounter_id: UUID | None = None
+
+
+class ChartAnswerStatement(Out):
+    sequence: int
+    text: str
+    sources: list[AiSourceLink]
+
+
+class ChartAnswer(Out):
+    id: UUID
+    patient_id: UUID
+    encounter_id: UUID | None = None
+    page_type: PageType
+    question: str
+    statements: list[ChartAnswerStatement]
+    insufficient_evidence: bool
+    ai_generated: Literal[True] = True
+    generated_by: AiGeneratedBy
+    created_at: datetime
+
+
+class SuggestedQuestionList(Out):
+    page_type: PageType
+    questions: list[str]

@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFound
+from app.db import fhir_store
 
 from . import schemas
 from .matching import Person
@@ -44,6 +45,12 @@ class PatientRepository(Protocol):
 
     async def get_patient(self, db: AsyncSession, patient_id: UUID
                           ) -> Versioned[schemas.Patient]: ...
+
+    async def preferred_pharmacy(self, db: AsyncSession, patient_id: UUID
+                                 ) -> schemas.PreferredPharmacy | None:
+        """The patient's default pharmacy (D50), or None; 404 for a patient the clinic can't
+        see."""
+        ...
 
     async def duplicate_pool(self, db: AsyncSession, birth_date: date, phones: Sequence[str]
                              ) -> dict[str, Person]:
@@ -262,6 +269,19 @@ def _race(rows: Sequence[Mapping[str, Any]], kind: str, text_value: str | None
 
 
 class SqlPatientRepository:
+    async def preferred_pharmacy(self, db: AsyncSession, patient_id: UUID
+                                 ) -> schemas.PreferredPharmacy | None:
+        try:
+            found = await fhir_store.preferred_pharmacy(db, patient_id)
+        except fhir_store.ResourceNotFound as gone:
+            raise NotFound() from gone
+        if found is None:
+            return None
+        return schemas.PreferredPharmacy(
+            patient_id=patient_id, pharmacy_id=found.pharmacy_id, name=found.name,
+            ncpdp_id=found.ncpdp_id, phone=found.phone, city=found.city, state=found.state,
+            updated_at=found.updated_at)
+
     async def _children(self, db: AsyncSession, query: Any, ids: Sequence[UUID]
                         ) -> list[Mapping[str, Any]]:
         result = await db.execute(query, {"ids": list(ids)})

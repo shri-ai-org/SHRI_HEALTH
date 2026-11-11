@@ -4,8 +4,9 @@ contract's operationId.
 
 PR-1: search, register, read, update, summaries, restrict and unrestrict, identifiers and related
 persons. PR-2: coverages (add, list, read one, edit or end with `endDate`, entered-in-error;
-D45) and consents (record, list). Every route that touches one chart runs the restricted-chart
-check first (D37), and patient data never reaches a response without it. Operations whose
+D45) and consents (record, list). Later: the preferred pharmacy (D50). Every route that
+touches one chart runs the restricted-chart check first (D37), and patient data never reaches a
+response without it. Operations whose
 x-audit names the patient from the result or the body hand those patients to core's audit hook
 (#79) before they commit or return.
 The permission (`require`) is the first dependency, so a caller without it gets 401 or 403 before
@@ -118,6 +119,19 @@ async def update_patient(
     updated = await service.update_patient(db, repo, store, current.value, body, if_match)
     response.headers["ETag"] = service.etag(updated.version)
     return updated.value
+
+
+@router.put(f"{PATIENT}/preferred-pharmacy", operation_id="setPreferredPharmacy",
+            response_model=schemas.PreferredPharmacy, response_model_exclude_none=True)
+async def set_preferred_pharmacy(
+    user: Annotated[CurrentUser, Depends(require("patients:update"))],
+    patient_id: PatientId, body: schemas.PreferredPharmacySet, response: Response, db: DB,
+    repo: Repo, store: Store, check: Check, if_match: IfMatch = None,
+) -> schemas.PreferredPharmacy:
+    current = await _chart(db, repo, check, user, patient_id)
+    chosen = await service.set_preferred_pharmacy(db, repo, store, current.value, body, if_match)
+    response.headers["ETag"] = service.etag(chosen.version)
+    return chosen.value
 
 
 @router.post("/patients/summaries", operation_id="getPatientSummaries",

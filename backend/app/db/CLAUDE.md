@@ -459,9 +459,10 @@ pin in `terminology/fetch.py`, in a reviewed PR.
   bypassing row security or a superuser, and the patient count. Each prints PASS or FAIL, and the exit status is 1 if any fails. The URL is
   `SERVER_CHECK_DATABASE_URL`, never printed. A laptop built with another pgvector fails that
   line by design.
-- `backup_db.sh <database> <dir>`: `pg_dump -Fc` as the master user, checked with
-  `pg_restore --list`, mode 600, keeping the newest `KEEP` (14). `restore_db.sh <dump>
-  <target>` recreates the target with the deploy kit's `recreate-database.sql` and restores it.
+- `backup_db.sh [-U <user>] <database> <dir>`: `pg_dump -Fc` as the master user, checked with
+  `pg_restore --list`, mode 600, keeping the newest `KEEP` (14). The user is `-U`'s, else
+  libpq's `PGUSER`; none is hard-coded (on the demo server it's the deploy kit's
+  `POSTGRES_USER`, `shri`). `restore_db.sh [-U <user>] <dump> <target>` recreates the target with the deploy kit's `recreate-database.sql` and restores it.
   It needs `RESTORE_CONFIRM=<target>` and refuses `postgres`, `template0`, `template1` and
   `keycloak`. On a Docker host, `PG_DUMP`, `PG_RESTORE` and `PSQL` run the tools in the database
   container. Scheduling them, and copying the dumps off the server encrypted, is infra's job

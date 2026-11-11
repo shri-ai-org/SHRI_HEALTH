@@ -9,7 +9,8 @@ The reset has two halves. Dropping and recreating the database, with its databas
    already has tables in ``admin`` or ``clinical``: this never drops, truncates or deletes;
 2. migrate to head (Alembic, ``MIGRATION_DATABASE_URL``);
 3. load the ``demo`` layer (which loads ``starter`` first) in one transaction;
-4. check the result and print a short summary: the migration head, and the demo clinic's
+4. load the demo patients' clinical history (``history.py``) in a second one;
+5. check the result and print a short summary: the migration head, and the demo clinic's
    patients and appointments, read inside that clinic as row-level security requires.
 
 The audit protections are never disabled or bypassed. The demo users linked to Keycloak are
@@ -26,6 +27,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A
+from app.db.seed import history
 from app.db.seed.demo import PATIENTS, load_demo, population
 from app.db.seed.starter import require_dev_environment
 
@@ -68,12 +70,13 @@ def summary(db: Session) -> ResetSummary:
 
 
 def reset(engine: Engine) -> ResetSummary:
-    """Steps 1 to 4 (module docstring); the caller makes the engine as shri_migrator."""
+    """Steps 1 to 5 (module docstring); the caller makes the engine as shri_migrator."""
     require_dev_environment()
     require_empty(engine)
     migrate()
     with Session(engine) as db, db.begin():
         load_demo(db)
+    history.run(engine)
     with Session(engine) as db, db.begin():
         found = summary(db)
     expected = len(PATIENTS) + len(population())

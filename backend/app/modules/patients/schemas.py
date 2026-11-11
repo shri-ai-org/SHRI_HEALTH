@@ -294,6 +294,22 @@ class RestrictRequest(Closed):
     reason: Annotated[str, _text(500, min_length=1)]
 
 
+class PreferredPharmacySet(Closed):
+    pharmacy_id: UUID
+
+
+class PreferredPharmacy(Out):
+    """The patient's default pharmacy (D50; ``admin.patient_pharmacy``)."""
+    patient_id: UUID
+    pharmacy_id: UUID
+    name: str
+    ncpdp_id: str
+    phone: str | None = None
+    city: str | None = None
+    state: str | None = None
+    updated_at: datetime
+
+
 class UnrestrictRequest(Closed):
     reason: Annotated[str, _text(500, min_length=1)]
 

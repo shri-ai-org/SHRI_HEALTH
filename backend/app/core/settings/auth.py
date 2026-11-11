@@ -1,11 +1,14 @@
 """Staff sign-in (ADR-0006, SECURITY_MODEL §2.1-2.2; the realm in infra/keycloak/realms/)."""
 
+import re
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
 AuthMode = Literal["dev_header", "keycloak"]
+# "/" or a path of lower-case segments, no trailing slash: "/dep", "/demo/shri".
+_COOKIE_PATH = re.compile(r"/|(/[a-z0-9-]+)+")
 
 
 class AuthFields(BaseSettings):
@@ -29,3 +32,13 @@ class AuthFields(BaseSettings):
     session_absolute_hours: int = 12
     token_refresh_minutes: int = 5  # D94's backstop: a disabled user's refresh fails within this
     after_login_path: str = "/"
+    # Where core's cookies apply: "/" at a site root (they keep __Host-), or the deploy kit's
+    # base path on a shared host, e.g. "/dep" (they become __Secure-; core/cookies.py).
+    cookie_path: str = "/"
+
+    @field_validator("cookie_path")
+    @classmethod
+    def _cookie_path_is_a_plain_path(cls, value: str) -> str:
+        if not _COOKIE_PATH.fullmatch(value):
+            raise ValueError("COOKIE_PATH is / or a path such as /dep (lower case, no trailing /)")
+        return value

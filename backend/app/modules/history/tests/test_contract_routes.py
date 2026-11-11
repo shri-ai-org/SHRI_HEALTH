@@ -1,5 +1,6 @@
-"""The history module's allergy operations (inventory #94-97, #250; demo step 7) are built or
-still pending. Problems, family, social and surgical history join this list as their PRs land.
+"""The history module's operations are built or still pending: the allergies (inventory #94-97,
+#250; demo step 7) and the reads of problems, family, social and surgical history (#90, #249, #98,
+#101, #104; the doctor's record screen). Their writes come after the demo.
 """
 
 from app.modules.patients.tests.contract_routes import progress_problems
@@ -13,8 +14,15 @@ ALLERGIES = frozenset({
     "updateAllergy",
     "markAllergyEnteredInError",
 })
+HISTORY_READS = frozenset({
+    "listProblems",
+    "getProblem",
+    "listFamilyHistory",
+    "listSocialHistory",
+    "listSurgicalHistory",
+})
 PENDING: frozenset[str] = frozenset()
 
 
-def test_allergy_operations_are_built_or_pending() -> None:
-    assert progress_problems(MODULE, ALLERGIES, PENDING) == []
+def test_history_operations_are_built_or_pending() -> None:
+    assert progress_problems(MODULE, ALLERGIES | HISTORY_READS, PENDING) == []
