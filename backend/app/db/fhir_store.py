@@ -994,6 +994,18 @@ _D39 = ("gender_identity", "sexual_orientation", "occupation", "industry", "trib
 #: sensitivity labels (PSY, SUD, …).
 _CONFIDENTIALITY = frozenset({"L", "M", "N", "R", "V"})
 _RESTRICTED = frozenset({"R", "V"})
+#: Confidentiality, strictest first (HL7 v3 Confidentiality): a merge keeps the stricter.
+_CONFIDENTIALITY_ORDER = ("V", "R", "N", "M", "L")
+
+
+def merged_labels(*charts: list[str]) -> list[str]:
+    """The security labels both charts of a merge carry (D103 with Thulasi's #277 review): the
+    strictest confidentiality of either (V over R over N over M over L), and every sensitivity
+    label (PSY, SUD, ...) of either, so no part of the person's chart is readable under a
+    weaker rule than any part was."""
+    labels = {label for chart in charts for label in chart}
+    strictest = next((c for c in _CONFIDENTIALITY_ORDER if c in labels), None)
+    return sorted(labels - _CONFIDENTIALITY) + ([strictest] if strictest else [])
 #: Consent.scope (consentscope, required by FHIR) and Consent.category (the R4 Consent Category
 #: value set) by the practice's consent kind: one fixed set per kind, agreed on #88 (Vimal).
 #: financial is LOINC 59284-0 only (a release to the payer would be its own kind);
@@ -1797,6 +1809,11 @@ class SqlFhirStore:
         patients = await _lock_pair(db, surviving_patient_id, merged_id)
         for patient_id in patients:
             await _not_merged(db, patient_id)           # no chains: merge into a chart's end
+        labels = merged_labels(*(pt.meta_security for pt in patients.values()))
+        relabelled = [pid for pid, pt in patients.items()
+                      if set(pt.meta_security) != set(labels)]
+        for pid in relabelled:
+            patients[pid].meta_security = labels
         now, user = await _db_now(db), await _user_id(db)
         merge = PatientMerge(surviving_patient_id=surviving_patient_id,
                              merged_patient_id=merged_id, duplicate_candidate_id=duplicate_id,
@@ -1808,8 +1825,12 @@ class SqlFhirStore:
         patients[merged_id].active = False
         pair.status, pair.reviewed_by_user_id, pair.reviewed_at = "merged", user, now
         await db.flush()
-        return MergeWritten(merge.id, await _written(db, patients[surviving_patient_id]),
-                            await _written(db, patients[merged_id]))
+        written = {pid: await _written(db, pt) for pid, pt in patients.items()}
+        for pid in relabelled:      # who changed the chart's labels, and why
+            await _provenance(db, "Patient", written[pid],
+                              (systems.V3_DATA_OPERATION, "UPDATE", None),
+                              reason=Reason(f"Security labels of the merged charts ({merge.id})"))
+        return MergeWritten(merge.id, written[surviving_patient_id], written[merged_id])
 
     async def undo_patient_merge(self, db: AsyncSession, merge_id: uuid.UUID, reason: str
                                  ) -> MergeWritten:

@@ -434,9 +434,18 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
       pair that isn't open (`InvalidTransition`), a surviving patient outside the pair
       (`InvalidInput` at `survivingPatientId`) and a patient already merged away
       (`PatientMerged`).
+    - **Security labels (Thulasi's #277 review):** in the same transaction, both charts take
+      `merged_labels()` of the two: the strictest confidentiality of either (`V` over `R` over
+      `N` over `M` over `L`) and every sensitivity label of either (`PSY`, `SUD`, ...). Each
+      chart whose labels change gets a Provenance (`UPDATE`, naming the merge). So reading the
+      surviving chart, which follows the links into the merged one, needs break-glass whenever
+      either chart did (D37), and `/fhir` serves neither chart, nor a link to one, when either
+      was restricted (D22). Charts with the same labels don't change.
     - `undo_patient_merge(db, merge_id, reason)` raises `InvalidTransition(already-undone |
       later-merge)` and makes the merged patient active again. No column holds the undo's
-      reason, so it goes in core's audit row.
+      reason, so it goes in core's audit row. **Both charts keep the labels the merge gave
+      them** until an ADM or CO lifts one (`set_patient_security`): an undo never makes a
+      chart less protected on its own.
     - `dismiss_duplicate(db, duplicate_id, reason)` is D46's `not-duplicate`, with the reason in
       `review_note`.
     - The reads: `merged_into()` (`mergedIntoId`), `chart_patient_ids()` (the surviving patient
