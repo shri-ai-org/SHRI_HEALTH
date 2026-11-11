@@ -13,6 +13,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
+from app.core import cookies
 from app.core import session as sessions
 from app.core.config import Settings
 from app.core.deps import CurrentUser, require
@@ -40,8 +41,8 @@ async def start_login(request: Request) -> RedirectResponse:
     keycloak = _keycloak(request)
     key, state = _login_states(request).new()
     response = RedirectResponse(keycloak.login_redirect(state), status_code=302)
-    response.set_cookie(sessions.LOGIN_COOKIE, key, max_age=sessions.LOGIN_STATE_SECONDS,
-                        httponly=True, secure=True, samesite="lax", path="/")
+    cookies.put(response, request.app.state.settings, sessions.LOGIN_COOKIE, key,
+                samesite="lax", max_age=sessions.LOGIN_STATE_SECONDS)
     return response
 
 
@@ -57,7 +58,7 @@ async def finish_login(
     state: Annotated[str, Query(min_length=1, max_length=256)],
 ) -> RedirectResponse:
     keycloak = _keycloak(request)
-    login = _login_states(request).take(request.cookies.get(sessions.LOGIN_COOKIE))
+    login = _login_states(request).take(cookies.read(request, sessions.LOGIN_COOKIE))
     if login is None:  # no login cookie, an unknown or used key, or older than 10 minutes
         raise _bad_login("state")
     if not hmac.compare_digest(state.encode(), login.state.encode()):
@@ -72,9 +73,8 @@ async def finish_login(
     session = await sessions.create_session(request, keycloak, tokens, user_id, tenant_id)
     settings: Settings = request.app.state.settings
     response = RedirectResponse(settings.after_login_path, status_code=302)
-    sessions.set_session_cookie(response, session.token)  # a new session ID at every login
-    response.delete_cookie(sessions.LOGIN_COOKIE, httponly=True, secure=True, samesite="lax",
-                           path="/")
+    sessions.set_session_cookie(response, settings, session.token)  # a new ID at every login
+    cookies.remove(response, settings, sessions.LOGIN_COOKIE, samesite="lax")
     return response
 
 
@@ -123,7 +123,7 @@ async def logout(request: Request, user: Signed) -> Response:
     if refresh_token:
         await _keycloak(request).end_session(refresh_token)
     response = Response(status_code=204)
-    sessions.clear_session_cookie(response)
+    sessions.clear_session_cookie(response, request.app.state.settings)
     return response
 
 

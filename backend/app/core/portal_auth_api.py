@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core import audit
+from app.core import audit, cookies
 from app.core import portal_sign_in as portal
 from app.core.config import Settings
 from app.core.deps import PortalPatient, require_patient
@@ -41,8 +41,8 @@ async def start_portal_login(request: Request) -> RedirectResponse:
     keycloak = _keycloak(request)
     key, state = request.app.state.portal_login_states.new()
     response = RedirectResponse(keycloak.login_redirect(state), status_code=302)
-    response.set_cookie(portal.PORTAL_LOGIN_COOKIE, key, max_age=600, httponly=True, secure=True,
-                        samesite="lax", path="/")
+    cookies.put(response, request.app.state.settings, portal.PORTAL_LOGIN_COOKIE, key,
+                samesite="lax", max_age=600)
     return response
 
 
@@ -59,7 +59,7 @@ async def complete_portal_login(
 ) -> RedirectResponse:
     keycloak = _keycloak(request)
     login = request.app.state.portal_login_states.take(
-        request.cookies.get(portal.PORTAL_LOGIN_COOKIE))
+        cookies.read(request, portal.PORTAL_LOGIN_COOKIE))
     if login is None or not hmac.compare_digest(state.encode(), login.state.encode()):
         raise _bad_login("state")
     try:
@@ -70,9 +70,8 @@ async def complete_portal_login(
     found = await portal.sign_in(request, keycloak, tokens)
     settings: Settings = request.app.state.settings
     response = RedirectResponse(settings.portal_after_login_path, status_code=302)
-    portal.set_session_cookie(response, found.token)  # a new session ID at every sign-in
-    response.delete_cookie(portal.PORTAL_LOGIN_COOKIE, httponly=True, secure=True, samesite="lax",
-                           path="/")
+    portal.set_session_cookie(response, settings, found.token)  # a new ID at every sign-in
+    cookies.remove(response, settings, portal.PORTAL_LOGIN_COOKIE, samesite="lax")
     return response
 
 
@@ -116,7 +115,7 @@ async def sign_out_of_portal(request: Request, patient: Patient) -> Response:
     if refresh_token:
         await _keycloak(request).end_session(refresh_token)
     response = Response(status_code=204)
-    portal.clear_session_cookie(response)
+    portal.clear_session_cookie(response, request.app.state.settings)
     return response
 
 

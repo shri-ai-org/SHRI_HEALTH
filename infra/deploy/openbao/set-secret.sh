@@ -18,7 +18,9 @@ NAME=$2
 SETTINGS_DIR=$(cd "$(dirname "$1")" && pwd)
 STATE_DIR=$(sed -n 's/^SHRI_STATE_DIR=//p' "$1" | tail -1)
 STATE="${STATE_DIR:-$SETTINGS_DIR/shri-state}/openbao.env"
-BAO=shri-deploy-openbao-1  # deploy.sh's compose project is shri-deploy
+PROJECT=$(sed -n 's/^SHRI_PROJECT=//p' "$1" | tail -1)
+case "${PROJECT:=shri-deploy}" in shri-*) ;; *) echo "SHRI_PROJECT must start with shri-" >&2; exit 2 ;; esac
+BAO="$PROJECT-openbao-1"  # deploy.sh's compose project (SHRI_PROJECT)
 
 docker ps --format '{{.Names}}' | grep -qx "$BAO" || { echo "OpenBao isn't running ($BAO): run deploy.sh up" >&2; exit 1; }
 if docker exec "$BAO" sh -c 'BAO_ADDR=http://127.0.0.1:8200 bao status' | grep -q 'Sealed *true'; then
