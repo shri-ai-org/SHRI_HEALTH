@@ -1,5 +1,5 @@
 import { useNow } from '../../hooks/useNow'
-import { formatTimestampTime } from '../../domain/time'
+import { calendarDate, formatTimestampTime, todayKey } from '../../domain/time'
 import { cn } from '../../utils/cn'
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -14,7 +14,9 @@ export function LiveClock({ className }: { className?: string }) {
   const now = useNow(1000)
   const d = new Date(now)
   const time = formatTimestampTime(now)
-  const day = `${WEEKDAY[d.getDay()]} ${d.getDate()} ${MONTH[d.getMonth()]}`
+  // The clinic's day and time (domain/time.ts), not the browser's.
+  const c = calendarDate(todayKey(d))
+  const day = `${WEEKDAY[c.getDay()]} ${c.getDate()} ${MONTH[c.getMonth()]}`
   return (
     <time
       dateTime={d.toISOString()}

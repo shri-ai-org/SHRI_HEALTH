@@ -31,3 +31,24 @@ They use the design-system barrel (`src/design-system/index.ts`), so the whole d
 ## Contract gaps for Vimal
 
 (Filled in per screen as each is connected.)
+
+## Check-in and reschedule check (2026-11-10)
+
+**The three "Waiting for consultation" rows** at 5:11 AM (Mariela 10:20 AM `d17199bb`, Kaia 11:00 AM `8bc3867c`, Mariela 12:40 PM `6725be4d`) were not reschedules. Each was booked and then checked in by `dev.fd` between 4:38 and 5:07 AM clinic time (one `checked-in` visit step each, a new check-in encounter each, no `rescheduledFrom` link). They were test leftovers, and the screen showed them correctly. Reset through the API with `undoCheckIn` (reason "Synthetic test cleanup"): each is `booked` again and its check-in encounter is entered-in-error (D55). Backup first: `~/shri-demo-backups/shri-demo-before-resched-tests-20261110-1643.dump`; a test restore matched the backup-time counts (24 appointments, 11 encounters, 16 visit steps, 7 patients).
+
+**Backend behavior, tested on new bookings for Theo Brandt (synthetic) through the API:**
+- Reschedule of a booking not checked in: the old one is `cancelled` (reason `pat`), the new one is `booked`, with no visit status and no encounter carried over. Correct.
+- Reschedule of a checked-in booking: refused with **409 `invalid-state-transition`** (current state `checked-in`); the check-in, its encounter and its status-board entry stay as they were. Correct.
+- Cancel: `cancelled`, with no visit status, and absent from the status board and the doctors' queue. Correct.
+
+No backend bug, so nothing goes to Vimal from this check.
+
+| # | Finding | Who | Where | State |
+|---|---|---|---|---|
+| 69 | Front office, with the API: the visit icon's tooltip said "Outpatient (OPD)" (India's term); now "Visit today" | — | Patient status icons (lists, profile) | Fixed |
+| 70 | Front office, at 390 px: Visit History squeezed each upcoming visit's title to one letter beside the status and Check in; on a phone the title now takes the first line and the status and actions wrap below | — | Profile, Visit History | Fixed |
+| 71 | "Done today" counts today's cancelled bookings (care-entry files a cancelled booking of today under Done). The cards and the list agree; whether cancelled belongs under Done is a wording question | Minalini (question) | Outpatients cards | As care-entry |
+| 72 | The live stream allows 5 open streams per user (`MAX_STREAMS_PER_USER`); several tabs signed in as the same dev user get 429 and fall back to the timed refresh | Thulasi (question: enough for a shared desk login?) | Live updates | Note |
+| 73 | Fixed (2026-11-10): Visit History and the check-in toggle read a checked-in visit's place from care-entry's queue token, which exists only for a check-in made on that page; a visit checked in elsewhere (another tab or desk, or before a reload) showed a plain "Checked in" tag and no undo. With the API a server booking now takes it from the server's visit status (`serverQueueStatus`): checked in → Waiting (with the undo toggle), roomed or with the provider → In consultation, checked out → Completed | — | Profile Visit History, check-in toggle | Fixed |
+| 74 | Fixed (2026-11-10): past visits that didn't finish said "Incomplete" (care-entry's word). With the API: booked and never checked in → **Missed**; a recorded no-show → **No-show**; checked in but never checked out → **Not checked out**. Label only; the badge's tone is unchanged | — | Profile Visit History | Fixed |
+| 75 | Demo data: today's and earlier cancelled test bookings stay in Visit History. No operation removes or voids a booking (D14: no DELETE; a cancellation is a permanent record), so it can't be cleaned through the API. Options: leave them (a U.S. chart shows cancellations), or reset the demo database to Anand's seed (`python -m app.db.seed reset`, with #259's 500 synthetic patients) after a backup, which also drops the patients registered in testing | Minalini (decision) | Demo data | Proposal |

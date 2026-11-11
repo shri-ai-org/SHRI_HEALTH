@@ -5,6 +5,7 @@ import { TONE_STYLES } from '../../utils/tone'
 import type { Tone } from '../../utils/tone'
 import type { PatientCareStatus } from '../../domain/patientSelectors'
 import { formatTime } from '../../domain/time'
+import { REAL_API } from '../../../shri-health/client'
 
 interface Mark {
   icon: LucideIcon
@@ -29,8 +30,9 @@ function marksFor(status: PatientCareStatus): Mark[] {
     marks.push({
       icon: teleconsult ? Video : Stethoscope,
       tone: teleconsult ? 'purple' : 'teal',
-      label: [teleconsult ? 'Teleconsult' : 'Outpatient (OPD)', outpatient.doctor, when].filter(Boolean).join(' · '),
-      detail: outpatient.token ?? (outpatient.time ? formatTime(outpatient.time) : 'OPD'),
+      // SHRI_HEALTH: U.S. wording with the API ("OPD" is India's term for the outpatient clinic).
+      label: [teleconsult ? 'Teleconsult' : REAL_API ? 'Visit today' : 'Outpatient (OPD)', outpatient.doctor, when].filter(Boolean).join(' · '),
+      detail: outpatient.token ?? (outpatient.time ? formatTime(outpatient.time) : REAL_API ? 'Visit' : 'OPD'),
     })
   }
   return marks

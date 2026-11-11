@@ -5,6 +5,11 @@
 @import '../../shared/design-system.css';
 
 @source './';
+/* TEMPORARY — no source screen (frontend/docs/SCREEN_PORT.md): the insurance and rooming screens. */
+@source '../shri-health';
+@source '../../src/features/patients/insurance';
+@source '../../src/features/clinical';
+@source '../../src/design-system';
 
 /* `tbl:` — a cell style that applies only while ResponsiveTable shows a real
    table (truncation, one-line cells), never in its stacked-record layout. */

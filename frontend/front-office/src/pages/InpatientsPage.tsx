@@ -17,7 +17,7 @@ import { useNow } from '../hooks/useNow'
 import { useFlow } from '../flows/useFlow'
 import { getDischargedOn, getInpatientRows, getWardSummaries } from '../domain/admissionSelectors'
 import { todayKey } from '../domain/time'
-import { BILL_STATUS_LABEL, BILL_STATUS_TONE, formatRupees } from '../utils/billing'
+import { BILL_STATUS_LABEL, BILL_STATUS_TONE, formatMoney } from '../utils/billing'
 import { formatClock } from '../utils/format'
 import { formatDateKey } from '../utils/dates'
 import { Avatar } from '../components/ui/Avatar'
@@ -136,7 +136,7 @@ export function InpatientsPage() {
                     cell: ({ admission: a, billing, billStatus }) => (
                       <>
                         <Badge tone={BILL_STATUS_TONE[billStatus]}>
-                          {billing.pending > 0 ? `${BILL_STATUS_LABEL[billStatus]} · ${formatRupees(billing.pending)}` : BILL_STATUS_LABEL[billStatus]}
+                          {billing.pending > 0 ? `${BILL_STATUS_LABEL[billStatus]} · ${formatMoney(billing.pending)}` : BILL_STATUS_LABEL[billStatus]}
                         </Badge>
                         <span className="mt-1 block text-xs text-ink-subtle">{payerOf(a)}</span>
                       </>
@@ -222,7 +222,7 @@ export function InpatientsPage() {
                     cell: ({ bill }) =>
                       bill ? (
                         <span className="flex flex-wrap items-center justify-end gap-2 tbl:justify-start">
-                          <span className="tabular-nums text-ink">{formatRupees(bill.totalAmount)}</span>
+                          <span className="tabular-nums text-ink">{formatMoney(bill.totalAmount)}</span>
                           <BillStatusBadge payment={bill} />
                         </span>
                       ) : (

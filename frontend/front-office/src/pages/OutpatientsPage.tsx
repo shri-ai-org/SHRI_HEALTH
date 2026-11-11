@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   BedDouble,
@@ -7,12 +7,12 @@ import {
   CalendarPlus,
   CheckCircle2,
   DoorOpen,
-  IndianRupee,
   LogIn,
   MoreHorizontal,
   UserCheck,
   UserX,
   X,
+  LogOut,
 } from 'lucide-react'
 import { PageHeader } from '../components/layout/PageHeader'
 import { AppointmentIllustration } from '../components/ui/illustrations/AppointmentIllustration'
@@ -35,6 +35,10 @@ import type { OutpatientFilter, OutpatientRow } from '../domain/outpatientSelect
 import { markNoShow } from '../domain/actions'
 import { CheckInToggle } from '../components/appointment/CheckInToggle'
 import { todayKey } from '../domain/time'
+import { isServerAppointment, loadAppointments, markNoShowOnServer } from '../../shri-health/scheduling'
+import { problemMessage } from '../../shri-health/client'
+import { REAL_API } from '../../shri-health/client'
+import { CurrencyIcon } from '../utils/billing'
 
 function readFilter(value: string | null): OutpatientFilter {
   return OUTPATIENT_FILTERS.includes(value as OutpatientFilter) ? (value as OutpatientFilter) : 'today'
@@ -74,6 +78,19 @@ export function OutpatientsPage() {
   const today = todayKey(new Date(now))
   const { rows, counts } = useStoreValue(getOutpatients, now, filter, false, providerId)
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // Today's SHRI_HEALTH bookings, read again on each tick of the clock (15 s), so a booking or
+  // check-in made at another desk shows here too.
+  useEffect(() => {
+    let live = true
+    loadAppointments(today, 1)
+      .then(() => live && setLoadError(null))
+      .catch((err: unknown) => live && setLoadError(problemMessage(err)))
+    return () => {
+      live = false
+    }
+  }, [today, now])
+
   // Filters are views of this page, not places — they don't fill history.
   function setParam(key: string, value: string | null) {
     const next = new URLSearchParams(location.search)
@@ -82,13 +99,14 @@ export function OutpatientsPage() {
     navigate({ search: `?${next.toString()}` }, { replace: true })
   }
 
-  function run(action: () => void, done: string, detail?: string) {
+  async function run(action: () => void, done: string, detail?: string, before?: () => Promise<void>) {
     setError(null)
     try {
+      if (before) await before()
       action()
       notify(done, { detail })
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = problemMessage(err)
       setError(message)
       notify('Could not do that', { tone: 'error', detail: message })
     }
@@ -96,8 +114,15 @@ export function OutpatientsPage() {
 
   function actionsFor(row: OutpatientRow) {
     const name = row.patient?.name
-    const admit = row.patient ? (
-      <Button size="sm" variant="secondary" onClick={() => openFlow('admit', { uhid: row.patient!.uhid })}>
+    // Admit (India's inpatient flow): hidden with the SHRI_HEALTH API (US display change, 2026-11-04).
+    const checkOutButton = (appointmentId: string) => (
+      <Button size="sm" variant="secondary" onClick={() => openFlow('checkout', { appointment: appointmentId })}>
+        <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} />
+        Check out
+      </Button>
+    )
+    const admit = row.patient && !REAL_API ? (
+      <Button size="sm" variant="secondary" onClick={() => openFlow('admit', { uhid: row.patient!.patientId })}>
         <BedDouble className="h-3.5 w-3.5" strokeWidth={1.75} />
         Admit
       </Button>
@@ -111,7 +136,7 @@ export function OutpatientsPage() {
           // Paid at the billing counter; check-in opens once it is received.
           return bill ? (
             <Button size="sm" variant="secondary" onClick={() => navigate(`/payments/${bill.paymentId}`)}>
-              <IndianRupee className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <CurrencyIcon className="h-3.5 w-3.5" strokeWidth={1.75} />
               View bill
             </Button>
           ) : null
@@ -119,7 +144,14 @@ export function OutpatientsPage() {
         return (
           <>
             {row.canMarkNoShow ? (
-              <Button size="sm" variant="secondary" onClick={() => run(() => markNoShow(appointment.appointmentId), 'Marked as no-show', `${name} · fee kept`)}>
+              <Button size="sm" variant="secondary" onClick={() =>
+                  void run(
+                    () => markNoShow(appointment.appointmentId),
+                    'Marked as no-show',
+                    `${name} · fee kept`,
+                    isServerAppointment(appointment.appointmentId) ? () => markNoShowOnServer(appointment.appointmentId) : undefined,
+                  )
+                }>
                 <UserX className="h-3.5 w-3.5" strokeWidth={1.75} />
                 No-show
               </Button>
@@ -148,10 +180,19 @@ export function OutpatientsPage() {
       case 'called':
         return admit
       case 'in-room':
+        // On the server a visit is "done" only once checked out (VisitStatus has no "ready" state),
+        // so check-out opens from the room (SCREEN_PORT gap 53).
+        if (REAL_API) return row.appointment ? checkOutButton(row.appointment.appointmentId) : null
         return token ? <>{admit}</> : null
       case 'done':
         // Admission is usually advised in the doctor's room.
-        return token?.status === 'Completed' || row.appointment?.status === 'Completed' ? admit : null
+        return token?.status === 'Completed' || row.appointment?.status === 'Completed' ? (
+          <>
+            {admit}
+            {/* Check-out (D98): the follow-up, the after-visit summary, then Check out. */}
+            {row.appointment && !REAL_API ? checkOutButton(row.appointment.appointmentId) : null}
+          </>
+        ) : null
       case 'upcoming':
         return row.appointment ? (
           <>
@@ -217,6 +258,7 @@ export function OutpatientsPage() {
         </div>
 
         {error ? <Alert tone="warning">{error}</Alert> : null}
+        {loadError ? <Alert tone="warning">{`Today's bookings could not be read from the server: ${loadError}`}</Alert> : null}
 
         <Card accentTone="info">
           <OutpatientList

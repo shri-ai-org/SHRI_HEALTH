@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { REAL_API } from '../../shri-health/client'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { UserRound } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
@@ -22,6 +23,9 @@ import { getState } from '../domain/store'
 import { cancelAppointment } from '../domain/actions'
 import { useToast } from '../hooks/useToast'
 import { getPatientHeader, getPatientTimeline } from '../domain/patientSelectors'
+import { isApiPatientId, loadPatient } from '../../shri-health/patients'
+import { ApiError, problemMessage } from '../../shri-health/client'
+import { loadPatientAppointments } from '../../shri-health/scheduling'
 
 /**
  * The patient's hub. Everything the front desk does for a patient starts
@@ -39,6 +43,27 @@ export function PatientProfilePage() {
   const today = useStoreValue(getToday)
 
   const patient = useStoreValue(getPatientById, uhid ?? '')
+  // A SHRI_HEALTH patient: the full record (registration time, phone, email, address), not only the
+  // search summary the page may have been opened from (SCREEN_PORT gap 45).
+  // Its read on a cold open: loading, refused for a restricted chart (D107 leaves the desk only
+  // check-in, check-out and declining a follow-up), or failed.
+  const [readState, setReadState] = useState<{ uhid: string; state: 'loading' | 'restricted' | 'failed' | 'done'; message?: string } | null>(null)
+  useEffect(() => {
+    if (uhid && isApiPatientId(uhid)) {
+      setReadState({ uhid, state: 'loading' })
+      loadPatient(uhid)
+        .then(() => setReadState({ uhid, state: 'done' }))
+        .catch((err: unknown) =>
+          setReadState(
+            err instanceof ApiError && err.problem.code === 'break-glass-required'
+              ? { uhid, state: 'restricted' }
+              : { uhid, state: err instanceof ApiError && err.status === 404 ? 'done' : 'failed', message: problemMessage(err) },
+          ),
+        )
+      // Its bookings too: the Visit History, from listPatientAppointments.
+      void loadPatientAppointments(uhid).catch(() => undefined)
+    }
+  }, [uhid])
   useCountPatientOpen(patient?.patientId)
   const header = useStoreValue(getPatientHeader, uhid ?? '', now)
   const timeline = useStoreValue(getPatientTimeline, uhid ?? '')
@@ -55,6 +80,34 @@ export function PatientProfilePage() {
     } catch (err) {
       notify(err instanceof Error ? err.message : String(err), { tone: 'error' })
     }
+  }
+
+  const read = readState?.uhid === uhid ? readState : null
+  if (read?.state === 'restricted' || (!patient && read && read.state !== 'done')) {
+    const restricted = read.state === 'restricted'
+    return (
+      <div>
+        <PageHeader title={restricted ? 'Restricted chart' : read.state === 'loading' ? 'Patient' : 'Patient not opened'} />
+        <div className="mt-5 sm:mt-6">
+          <Card accentTone="teal" className="max-w-xl">
+            <CardBody>
+              <EmptyState
+                icon={UserRound}
+                title={restricted ? 'Restricted chart: the care team can open it' : read.state === 'loading' ? 'Opening the patient…' : 'The patient could not be opened'}
+                description={
+                  restricted
+                    ? 'Check-in and check-out still work from Outpatients.'
+                    : read.state === 'failed'
+                      ? read.message
+                      : undefined
+                }
+                action={read.state === 'loading' ? undefined : <Button size="sm" onClick={() => navigate('/patients')}>Patients</Button>}
+              />
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
   if (!patient) {
@@ -77,7 +130,8 @@ export function PatientProfilePage() {
   }
 
 
-  const hasAbha = Boolean(patient.abhaId)
+  // ABHA is India's health ID: its records card is never shown with the SHRI_HEALTH API (D11).
+  const hasAbha = !REAL_API && Boolean(patient.abhaId)
   const twoColumns = paymentsOpen || hasAbha
 
   return (
@@ -86,9 +140,9 @@ export function PatientProfilePage() {
         patient={patient}
         summary={header}
         actions={{
-          schedule: () => openFlow('schedule', { uhid: patient.uhid }),
-          admit: () => openFlow('admit', { uhid: patient.uhid }),
-          discharge: () => openFlow('discharge', { uhid: patient.uhid }),
+          schedule: () => openFlow('schedule', { uhid: patient.patientId }),
+          admit: () => openFlow('admit', { uhid: patient.patientId }),
+          discharge: () => openFlow('discharge', { uhid: patient.patientId }),
           togglePayments: () => setPaymentsOpen((open) => !open),
         }}
         paymentsOpen={paymentsOpen}
@@ -109,7 +163,7 @@ export function PatientProfilePage() {
               onReschedule={(appointmentId, unpaid) =>
                 // Unpaid: simply pick another time — the new booking replaces this one. Paid: the reschedule flow.
                 unpaid
-                  ? openFlow('schedule', { uhid: patient.uhid, dept: getAppointmentById(getState(), appointmentId)?.department, appointment: appointmentId })
+                  ? openFlow('schedule', { uhid: patient.patientId, dept: getAppointmentById(getState(), appointmentId)?.department, appointment: appointmentId })
                   : openFlow('reschedule', { appointment: appointmentId })
               }
               onCancel={(appointmentId, unpaid) => (unpaid ? cancelUnpaid(appointmentId) : setCancelling(appointmentId))}

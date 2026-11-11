@@ -1,5 +1,5 @@
 import type { CSSProperties, ElementType } from 'react'
-import { BedDouble, CalendarPlus, Copy, IndianRupee, LogOut } from 'lucide-react'
+import { BedDouble, CalendarPlus, Copy, LogOut } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
 import { Badge } from '../ui/Badge'
 import { useToast } from '../../hooks/useToast'
@@ -11,6 +11,11 @@ import { cn } from '../../utils/cn'
 import type { PatientHeaderSummary } from '../../domain/patientSelectors'
 import type { Patient } from '../../types/patient'
 import type { Tone } from '../../utils/tone'
+import { CurrencyIcon } from '../../utils/billing'
+import { REAL_API } from '../../../shri-health/client'
+
+/** The record number's name: the practice's MRN with the SHRI_HEALTH API (D41), else India's UHID. */
+const RECORD_NO = REAL_API ? 'MRN' : 'UHID'
 
 const RISK_TONE: Record<'High' | 'Watch' | 'Normal', Tone> = { High: 'critical', Watch: 'warning', Normal: 'info' }
 export interface PatientActions {
@@ -43,8 +48,8 @@ export function PatientHeader({
 
   function copyUhid() {
     void navigator.clipboard?.writeText(patient.uhid).then(
-      () => notify('UHID copied', { detail: patient.uhid }),
-      () => notify('Could not copy the UHID', { tone: 'error' }),
+      () => notify(`${RECORD_NO} copied`, { detail: patient.uhid }),
+      () => notify(`Could not copy the ${RECORD_NO}`, { tone: 'error' }),
     )
   }
 
@@ -73,8 +78,8 @@ export function PatientHeader({
                 type="button"
                 onClick={copyUhid}
                 className="focus-ring -my-2 inline-flex min-h-11 items-center gap-1 rounded-lg font-semibold tabular-nums text-ink hover:text-primary-text"
-                title="Copy UHID"
-                aria-label={`Copy UHID ${patient.uhid}`}
+                title={`Copy ${RECORD_NO}`}
+                aria-label={`Copy ${RECORD_NO} ${patient.uhid}`}
               >
                 {patient.uhid}
                 <Copy className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
@@ -91,17 +96,21 @@ export function PatientHeader({
           <Action icon={CalendarPlus} label="Schedule Appointment" hue={HUES.blue} onClick={actions.schedule} />
           {inpatient ? (
             <Action icon={LogOut} label="Discharge" hue={HUES.red} onClick={actions.discharge} />
-          ) : (
+          ) : REAL_API ? null : (
+            // Admit is India's inpatient flow: hidden with the SHRI_HEALTH API (US wording change, 2026-11-04).
             <Action icon={BedDouble} label="Admit" hue={HUES.orange} onClick={actions.admit} />
           )}
-          <Action
-            icon={IndianRupee}
-            label="Payment History"
-            hue={HUES.green}
-            onClick={actions.togglePayments}
-            pressed={paymentsOpen}
-            title={paymentsOpen ? 'Hide payment history' : 'Show payment history'}
-          />
+          {/* Bills at the counter are India-only: hidden with the SHRI_HEALTH API. */}
+          {REAL_API ? null : (
+            <Action
+              icon={CurrencyIcon}
+              label="Payment History"
+              hue={HUES.green}
+              onClick={actions.togglePayments}
+              pressed={paymentsOpen}
+              title={paymentsOpen ? 'Hide payment history' : 'Show payment history'}
+            />
+          )}
         </div>
       </div>
       {/* Contact and ABHA across the full width, lined up under the name. */}

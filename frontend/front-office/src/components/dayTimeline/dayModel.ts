@@ -20,6 +20,7 @@
  */
 
 import type { LucideIcon } from 'lucide-react'
+import { calendarDate, dayStartTimestamp, minutesOfDay, pad2, slotToTimestamp, todayKey, weekdayOfKey } from '../../domain/time'
 
 export const GRID_START = 7
 export const GRID_HOURS = 12
@@ -145,7 +146,7 @@ export interface DayModel {
   summary: string
 }
 
-const minutesOf = (d: Date) => d.getHours() * 60 + d.getMinutes()
+const minutesOf = (d: Date) => minutesOfDay(d.getTime())
 
 function merge(spans: Span[]): Span[] {
   const out: Span[] = []
@@ -168,8 +169,10 @@ export const minus = (spans: Span[], cut: Span[]): Span[] =>
 
 export function dayModel(day: DayInput): DayModel {
   const NOW = day.now ?? new Date()
-  const date = new Date(day.date.getFullYear(), day.date.getMonth(), day.date.getDate())
-  const isToday = date.getTime() === new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate()).getTime()
+  // The clinic's day (domain/time.ts), whatever the browser's zone: its start, and whether it is today.
+  const dateKey = todayKey(day.date)
+  const date = new Date(dayStartTimestamp(dateKey))
+  const isToday = dateKey === todayKey(NOW)
   const now = isToday ? minutesOf(NOW) : null
 
   const sessions = day.activities.map((a) => ({ a, span: [a.start, a.end] as Span }))
@@ -181,7 +184,7 @@ export function dayModel(day: DayInput): DayModel {
   const partBlocks = dayBlocks.filter((b) => !b.allDay).map((b): Span => [b.start, b.end])
 
   // Working time: the working day and the day's extra hours.
-  const base: Span[] = day.work ?? (date.getDay() === 0 ? [] : WORK)
+  const base: Span[] = day.work ?? (weekdayOfKey(dateKey) === 0 ? [] : WORK)
   const hull: Span | null = base.length ? [Math.min(...base.map(([a]) => a)), Math.max(...base.map(([, b]) => b))] : null
 
   // The hours drawn: the working day — 7 to 7 where there is none — out to the half hour of anything earlier or later still to come — an
@@ -274,7 +277,7 @@ export function dayModel(day: DayInput): DayModel {
   const nextFree = open[0]?.start ?? null
   const booked = bookings.length
   const summary = [
-    `${date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}: busy ${durationSpoken(busyMin)}, available ${durationSpoken(freeMin)}`,
+    `${calendarDate(dateKey).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}: busy ${durationSpoken(busyMin)}, available ${durationSpoken(freeMin)}`,
     breakMin ? `break ${durationSpoken(breakMin)}` : '',
     blockedMin ? `blocked ${durationSpoken(blockedMin)}` : '',
     booked ? `${booked} patient${booked === 1 ? '' : 's'} booked` : '',
@@ -321,8 +324,8 @@ export const minutesFrom = (hhmm: string) => {
   return h * 60 + (m || 0)
 }
 
-/** The minute on a date, as a Date. */
-export const atMinute = (date: Date, min: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(min / 60), min % 60)
+/** The minute on a date (on the clinic's clock), as a Date. */
+export const atMinute = (date: Date, min: number) => new Date(slotToTimestamp(todayKey(date), `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`))
 
 /* ── 12-hour clock, as the day's views read ─────────────────────────── */
 

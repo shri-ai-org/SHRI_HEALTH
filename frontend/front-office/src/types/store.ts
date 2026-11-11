@@ -72,4 +72,7 @@ export interface AppState {
   connectivity: Connectivity
   tokenCounters: TokenCounters
   nextIds: NextIds
+  /** SHRI_HEALTH doctors' free times, "HH:MM" in facility time, by provider then date (shri-health/scheduling.ts).
+   *  A provider listed here is the server's: its slot grid comes from here, not its schedule config. */
+  serverSlots?: Record<string, Record<string, string[]>>
 }

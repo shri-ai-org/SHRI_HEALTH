@@ -9,10 +9,12 @@ import { findAbhaHolder, getConnectivity } from '../../domain/selectors'
 import { linkAbha, updatePatientDemographics } from '../../domain/actions'
 import { toEditableMobile } from '../../utils/phone'
 import { revealFirstInvalid } from '../../utils/revealInvalid'
-import { abhaError, addressError, ageError, ageNeedsConfirmation, emailError, mobileError, nameError, nextAgeInput, nextNameInput } from '../../utils/validation'
+import { abhaError, addressError, ageError, ageNeedsConfirmation, emailError, mobileError, nameError, nextAgeInput, nextNameInput, normalizeName } from '../../utils/validation'
 import { cn } from '../../utils/cn'
 import { AgeConfirm, FieldError } from './AgeConfirm'
 import { CreateAbhaLink } from './CreateAbhaLink'
+import { REAL_API, problemMessage } from '../../../shri-health/client'
+import { isApiPatientId, updatePatientOnServer, type DemographicsChange } from '../../../shri-health/patients'
 import type { Patient, Sex } from '../../types/patient'
 import { errorClass, inputClass } from '../../utils/formClasses'
 
@@ -39,6 +41,7 @@ export function PatientDetailsStrip({ patient }: { patient: Patient }) {
   // Link ABHA opens a single field for the number; Create ABHA goes to the ABDM site.
   const [linking, setLinking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const abhaHolder = useStoreValue(findAbhaHolder, abha)
 
   function startEditing() {
@@ -79,12 +82,39 @@ export function PatientDetailsStrip({ patient }: { patient: Patient }) {
       revealFirstInvalid()
       return
     }
+    if (REAL_API && isApiPatientId(patient.patientId)) {
+      void saveOnServer(draft)
+      return
+    }
     try {
       updatePatientDemographics(patient.patientId, draft)
       notify('Details updated', { detail: patient.uhid })
       setDraft(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  // SHRI_HEALTH: only what changed goes to PATCH /patients/{id} (age and address stay read-only).
+  async function saveOnServer(d: Draft) {
+    const change: DemographicsChange = {}
+    if (normalizeName(d.name) !== patient.name) change.name = normalizeName(d.name)
+    if (d.sex !== patient.sex) change.sex = d.sex
+    if (d.mobile !== toEditableMobile(patient.mobile)) change.mobile = d.mobile
+    if ((d.email.trim() || null) !== (patient.email ?? null)) change.email = d.email.trim() || null
+    if (Object.keys(change).length === 0) {
+      setDraft(null)
+      return
+    }
+    setSaving(true)
+    try {
+      await updatePatientOnServer(patient.patientId, change)
+      notify('Details updated', { detail: patient.uhid })
+      setDraft(null)
+    } catch (err) {
+      setError(problemMessage(err))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -131,6 +161,8 @@ export function PatientDetailsStrip({ patient }: { patient: Patient }) {
               <input
                 value={draft.age}
                 onChange={(e) => edit('age', nextAgeInput(e.target.value, draft.age))}
+                readOnly={REAL_API}
+                title={REAL_API ? 'From the date of birth' : undefined}
                 className={cn(inputClass, (draftErrors.age || needsAgeConfirm) && errorClass)}
                 placeholder="Age"
                 aria-label="Age in years, 0 to 130"
@@ -152,7 +184,7 @@ export function PatientDetailsStrip({ patient }: { patient: Patient }) {
             </div>
           ) : null}
           <div>
-            <MobileInput value={draft.mobile} onValueChange={(value) => edit('mobile', value)} className={cn(inputClass, draftErrors.mobile && errorClass)} placeholder="Mobile (10 digits)" aria-invalid={Boolean(draftErrors.mobile)} />
+            <MobileInput value={draft.mobile} onValueChange={(value) => edit('mobile', value)} className={cn(inputClass, draftErrors.mobile && errorClass)} placeholder={REAL_API ? 'Phone (10 digits)' : 'Mobile (10 digits)'} aria-invalid={Boolean(draftErrors.mobile)} />
             <FieldError message={draftErrors.mobile} />
           </div>
           <div>
@@ -160,12 +192,12 @@ export function PatientDetailsStrip({ patient }: { patient: Patient }) {
             <FieldError message={draftErrors.email} />
           </div>
           <div className="sm:col-span-2">
-            <input value={draft.address} onChange={(e) => edit('address', e.target.value)} maxLength={200} className={cn(inputClass, draftErrors.address && errorClass)} placeholder="Address (optional)" aria-label="Address" aria-invalid={Boolean(draftErrors.address)} />
+            <input value={draft.address} onChange={(e) => edit('address', e.target.value)} readOnly={REAL_API} title={REAL_API ? 'Edited in registration' : undefined} maxLength={200} className={cn(inputClass, draftErrors.address && errorClass)} placeholder="Address (optional)" aria-label="Address" aria-invalid={Boolean(draftErrors.address)} />
             <FieldError message={draftErrors.address} />
           </div>
           <div className="flex gap-2 sm:col-span-2">
-            <Button type="submit" size="sm">
-              Save
+            <Button type="submit" size="sm" disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setDraft(null)}>
               Discard
@@ -175,10 +207,11 @@ export function PatientDetailsStrip({ patient }: { patient: Patient }) {
       ) : (
         <div className="flex flex-col gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <CopyChip label="Mobile" value={patient.mobile} onCopy={copy} />
+            <CopyChip label="Phone" value={patient.mobile} onCopy={copy} />
             <CopyChip label="Address" value={patient.address} onCopy={copy} wide />
-            {/* ABHA: linked — its ID, copyable; not linked — link an existing one, or create one. */}
-            {patient.abhaId ? (
+            {/* ABHA: linked — its ID, copyable; not linked — link an existing one, or create one.
+                India only (ABDM): hidden with the SHRI_HEALTH API (US wording change, 2026-11-04). */}
+            {REAL_API ? null : patient.abhaId ? (
               <CopyChip label="ABHA linked" value={patient.abhaId} onCopy={copy} />
             ) : linking ? null : (
               // Two clear choices: the patient already has an ABHA ID → Link it;

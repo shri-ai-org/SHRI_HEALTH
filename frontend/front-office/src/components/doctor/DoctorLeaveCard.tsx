@@ -13,7 +13,7 @@ import { useFlow } from '../../flows/useFlow'
 import { getDoctorDayBookings, getDoctorLeaves, getDoctorQueueCount } from '../../domain/selectors'
 import { addDoctorLeave, cancelDoctorDayBookings, removeDoctorLeave } from '../../domain/actions'
 import { formatTime, todayKey } from '../../domain/time'
-import { formatRupees } from '../../utils/billing'
+import { formatMoney } from '../../utils/billing'
 import { formatDateKey } from '../../utils/dates'
 
 /**
@@ -62,7 +62,7 @@ export function DoctorLeaveCard({ providerId, providerName }: { providerId: stri
     setError(null)
     try {
       const result = cancelDoctorDayBookings({ providerId, date, note: `${providerName} unavailable` })
-      notify(`${result.cancelled} booking${result.cancelled === 1 ? '' : 's'} cancelled`, { detail: `${formatRupees(result.refunded)} refunded in full` })
+      notify(`${result.cancelled} booking${result.cancelled === 1 ? '' : 's'} cancelled`, { detail: `${formatMoney(result.refunded)} refunded in full` })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -112,7 +112,7 @@ export function DoctorLeaveCard({ providerId, providerName }: { providerId: stri
                       <span className="block truncate text-sm font-medium text-ink">
                         {formatTime(appointment.slot)} · {patient?.name ?? 'Patient'}
                       </span>
-                      <span className="block text-xs text-ink-muted">{formatRupees(paid)} paid</span>
+                      <span className="block text-xs text-ink-muted">{formatMoney(paid)} paid</span>
                     </span>
                     <Button type="button" size="sm" variant="secondary" onClick={() => openFlow('reschedule', { appointment: appointment.appointmentId })}>
                       <CalendarClock className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -178,7 +178,7 @@ export function DoctorLeaveCard({ providerId, providerName }: { providerId: stri
         open={confirmAll}
         onClose={() => setConfirmAll(false)}
         title="Cancel every booking that day?"
-        description={`${bookings.length} booking${bookings.length === 1 ? '' : 's'} with ${providerName} on ${date ? formatDateKey(date) : ''} will be cancelled as doctor unavailable, and ${formatRupees(totalRefund)} refunded in full to the patients.`}
+        description={`${bookings.length} booking${bookings.length === 1 ? '' : 's'} with ${providerName} on ${date ? formatDateKey(date) : ''} will be cancelled as doctor unavailable, and ${formatMoney(totalRefund)} refunded in full to the patients.`}
       >
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="secondary" onClick={() => setConfirmAll(false)}>

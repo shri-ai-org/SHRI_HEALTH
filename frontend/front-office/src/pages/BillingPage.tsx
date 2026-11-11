@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { AlertCircle, HandCoins, IndianRupee, ReceiptText } from 'lucide-react'
+import { AlertCircle, HandCoins, ReceiptText } from 'lucide-react'
 import { PageHeader } from '../components/layout/PageHeader'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -10,7 +10,7 @@ import { PaymentsTable } from '../components/payment/PaymentsTable'
 import { useStoreValue } from '../hooks/useStore'
 import { getBillingOverview, getBillsByFilter } from '../domain/selectors'
 import type { BillFilter } from '../domain/selectors'
-import { formatRupees, isBillDue } from '../utils/billing'
+import { CurrencyIcon, formatMoney, isBillDue } from '../utils/billing'
 import { printBill } from '../utils/printBill'
 
 const FILTERS: BillFilter[] = ['due', 'failed', 'collected-today', 'all']
@@ -46,14 +46,14 @@ export function BillingPage() {
   }
 
   const items: StatFilterItem<BillFilter>[] = [
-    { key: 'due', label: 'Payment pending', value: formatRupees(overview.dueAmount), tone: 'warning', icon: HandCoins },
+    { key: 'due', label: 'Payment pending', value: formatMoney(overview.dueAmount), tone: 'warning', icon: HandCoins },
     { key: 'failed', label: 'Payment failed', value: overview.failedCount, tone: 'critical', icon: AlertCircle },
     {
       key: 'collected-today',
       label: 'Payment received today',
-      value: formatRupees(overview.collectedToday),
+      value: formatMoney(overview.collectedToday),
       tone: 'stable',
-      icon: IndianRupee,
+      icon: CurrencyIcon,
     },
     { key: 'all', label: 'Total payments', value: overview.allCount, tone: 'info', icon: ReceiptText },
   ]

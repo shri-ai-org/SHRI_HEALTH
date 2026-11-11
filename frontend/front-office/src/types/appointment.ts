@@ -64,6 +64,11 @@ export interface Appointment {
   cancelReason: string | null
   /** Every move, oldest first; the last `to` is where the booking is now. */
   reschedules: RescheduleEntry[]
+  /** A SHRI_HEALTH booking: where the visit stands on the server (`visitStatus`: arrived,
+   *  checked-in, roomed, with-provider, checked-out). Read where this desk has no token of its own. */
+  serverVisitStatus?: string
+  /** SHRI_HEALTH: the encounter created at check-in (from a full appointment read), for the revisit's followUpOfEncounterId. */
+  serverEncounterId?: string
 }
 
 export interface AppointmentWithSlot extends Appointment {

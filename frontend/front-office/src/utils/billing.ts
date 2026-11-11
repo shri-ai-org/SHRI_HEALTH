@@ -1,4 +1,6 @@
+import { DollarSign, IndianRupee } from 'lucide-react'
 import type { BillDisplayStatus, Payment, PaymentItem } from '../types/payment'
+import { REAL_API } from '../../shri-health/client'
 import type { Tone } from './tone'
 
 /** A bill with money still owed on it. */
@@ -63,7 +65,7 @@ import type { RoomType } from '../types/admission'
 
 export const ADMISSION_CHARGE = 500
 
-/** Daily bed/room charge by room type (mock rate card, ₹ per day). */
+/** Daily bed/room charge by room type (mock rate card, per day in the clinic's currency). */
 export const DAILY_BED_CHARGE: Record<RoomType, number> = {
   General: 2000,
   'Semi-Private': 3500,
@@ -94,7 +96,29 @@ export function sumItems(items: PaymentItem[]): number {
   return items.reduce((total, item) => total + item.amount, 0)
 }
 
-/** ₹ with Indian digit grouping, e.g. ₹18,500. */
-export function formatRupees(value: number): string {
-  return `₹${value.toLocaleString('en-IN')}`
+/**
+ * The clinic's currency. With the SHRI_HEALTH API it is the server's: every amount the contract
+ * carries is a `Money` whose `currency` is USD, the only value in the MVP (API_STANDARDS §6.3, D40).
+ * No front-desk call returns an amount yet, so it is read from the contract; once copay is
+ * connected, it comes from that `Money`. The sample data is in rupees.
+ */
+export const CURRENCY: 'USD' | 'INR' = REAL_API ? 'USD' : 'INR'
+
+const MONEY = new Intl.NumberFormat(CURRENCY === 'INR' ? 'en-IN' : 'en-US', {
+  style: 'currency',
+  currency: CURRENCY,
+  // Rupees as the desk has always read them (₹18,500); dollars to the cent, as the contract keeps them.
+  minimumFractionDigits: CURRENCY === 'INR' ? 0 : 2,
+  maximumFractionDigits: 2,
+})
+
+/** An amount in the clinic's currency: "₹18,500" for the sample data, "$25.00" with the server. */
+export function formatMoney(value: number): string {
+  return MONEY.format(value)
 }
+
+/** The currency's sign alone, for a field's label: "₹" or "$". */
+export const CURRENCY_SYMBOL = MONEY.formatToParts(0).find((part) => part.type === 'currency')?.value ?? CURRENCY
+
+/** The icon for money: rupee or dollar. */
+export const CurrencyIcon = CURRENCY === 'USD' ? DollarSign : IndianRupee

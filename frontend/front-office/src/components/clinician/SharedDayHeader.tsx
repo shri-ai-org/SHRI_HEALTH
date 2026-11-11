@@ -1,15 +1,10 @@
 import { DayTimelineAxis, DayTimelineLegend } from '../dayTimeline/DayTimeline'
 import { addDaysToKey } from '../../domain/selectors'
-import { dayStartTimestamp } from '../../domain/time'
+import { calendarDate, minutesOfDay } from '../../domain/time'
 import { cn } from '../../utils/cn'
 
 const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-/** Minutes after midnight, for the axis's Now label. */
-function minutesOfDay(timestamp: number): number {
-  const d = new Date(timestamp)
-  return d.getHours() * 60 + d.getMinutes()
-}
 
 /**
  * The booking pages' one date row and one time axis for every doctor below,
@@ -23,6 +18,7 @@ export function SharedDayHeader({
   range,
   today,
   now,
+  lastDay,
 }: {
   days: { date: string; open: number }[]
   day: string
@@ -30,7 +26,11 @@ export function SharedDayHeader({
   range: [number, number]
   today: string
   now: number
+  /** With the API: the last day free times were read for. A date field then picks any day from
+   *  today to it (gap 54: care-entry's same-day model offered today and tomorrow only). */
+  lastDay?: string
 }) {
+  const extra = lastDay && !days.slice(0, 2).some((d) => d.date === day) && !days.some((d) => d.date === day) ? day : null
   return (
     <div className="sticky -top-3.5 z-20 -mx-3.5 -mt-3.5 flex flex-col gap-1 border-b border-border-soft bg-surface-1 px-3.5 pb-1 pt-3.5 sm:-mx-4 sm:px-4">
       {/* Today and tomorrow (and the chosen day, should it be later), then the key on the same row. */}
@@ -38,7 +38,7 @@ export function SharedDayHeader({
       <div className="flex gap-1.5" role="group" aria-label="Day">
         {days.filter((d, i) => i < 2 || d.date === day).map((d) => {
           const active = d.date === day
-          const dt = new Date(dayStartTimestamp(d.date))
+          const dt = calendarDate(d.date)
           const label = d.date === today ? 'Today' : d.date === addDaysToKey(today, 1) ? 'Tmrw' : `${WEEKDAY_SHORT[dt.getDay()]} ${dt.getDate()}`
           return (
             <button
@@ -72,6 +72,28 @@ export function SharedDayHeader({
             </button>
           )
         })}
+        {extra ? (
+          // A chosen day past the strip (the field below): shown like the others, without a count.
+          <span aria-current="date" className="inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-full border border-ink bg-ink px-2.5 text-xs font-semibold text-surface-1">
+            {`${WEEKDAY_SHORT[calendarDate(extra).getDay()]} ${calendarDate(extra).getDate()}`}
+          </span>
+        ) : null}
+        {lastDay ? (
+          <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
+            Another day
+            <input
+              type="date"
+              min={today}
+              max={lastDay}
+              value={day}
+              onChange={(e) => {
+                const next = e.target.value
+                if (next && next >= today && next <= lastDay) onDay(next)
+              }}
+              className="focus-ring h-8 rounded-full border border-border-soft bg-surface-1 px-2.5 text-xs text-ink"
+            />
+          </label>
+        ) : null}
       </div>
       <DayTimelineLegend />
       </div>
