@@ -30,7 +30,7 @@ import type { IcdCode } from '@/data/icd10'
 import { STAFF, patient } from '../../../shri-health/kit'
 import { useOutstanding } from '@/store/ai'
 import { useAudit } from '@/store/audit'
-import { useClinical, type RxLineEdit } from '../../../shri-health/clinical'
+import { searchPharmacies, useClinical, type RxLineEdit, type RxPharmacy } from '../../../shri-health/clinical'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
@@ -86,6 +86,7 @@ function Prescription({ enc }: { enc: Encounter }) {
   const forced = useForcedState()
 
   const rx = useClinical((s) => s.rx)
+  const rxPharmacy = useClinical((s) => s.rxPharmacy[enc.id])
   // Subscribing to the prescriptions map re-renders on every change to this encounter's record.
   useClinical((s) => s.prescriptions[enc.id])
   const signRx = useClinical((s) => s.signRx)
@@ -145,6 +146,8 @@ function Prescription({ enc }: { enc: Encounter }) {
     problems.push({ field: 'Prescription', message: 'Nothing prescribed yet. Search the formulary on the left and press Enter to add the first item.', target: `${enc.id}:formulary` })
   }
   if (!mayPrescribe) problems.push({ field: 'Signing', message: signRule, target: `${enc.id}:formulary` })
+  // The server refuses to sign without a pharmacy (/pharmacyId); say so before Sign.
+  if (REAL_API && !rxPharmacy) problems.push({ field: 'Pharmacy', message: 'Choose the pharmacy the prescription goes to', target: `${enc.id}:pharmacy` })
   const canSign = !locked && problems.length === 0
 
   const matches = useFormulary(search)
@@ -391,7 +394,7 @@ function Prescription({ enc }: { enc: Encounter }) {
               disabled={locked}
             />
             <ul className="mt-[10px] flex flex-col gap-[2px]" aria-label="Formulary matches">
-              {matches.length === 0 && <li className="px-[12px] py-[10px] text-[13px] text-sh-text-3">No drug in the formulary matches “{search.trim()}”.</li>}
+              {matches.length === 0 && search.trim() !== '' && <li className="px-[12px] py-[10px] text-[13px] text-sh-text-3">No drug in the formulary matches “{search.trim()}”.</li>}
               {matches.map((f) => {
                 const wouldBlock = hardStopFor(f.drug, p.allergies) !== undefined
                 // SHRI_HEALTH: the NLEM listing and DPCO ceiling are India's, so not with SHRI_API=real (US market).
@@ -433,36 +436,40 @@ function Prescription({ enc }: { enc: Encounter }) {
             )}
           </Card>
 
-          <Card titleSize="sm" title="Prescription" headerClassName="mb-[4px]">
-            <p className="mb-[12px] text-[12px] tabular-nums text-sh-text-3">{[p.name, p.weightKg !== undefined && `${p.weightKg} kg`, p.payer].filter(Boolean).join(' · ')}</p>
-            {basket.length === 0 ? (
-              <EmptyState icon={PillIcon} why="Nothing prescribed yet. Search the formulary on the left and press Enter to add the first item." />
-            ) : (
-              <>
-                <ul className="flex flex-col gap-[12px]">
-                  {basket.map((line) => (
-                    <RxLineCard
-                      key={line.id}
-                      line={line}
-                      encounterId={enc.id}
-                      weightKg={p.weightKg}
-                      locked={locked}
-                      diagnoses={diagnosisChips}
-                      onEdit={(patch) => editRxLine(enc.id, line.id, patch)}
-                      onRemove={() => removeLine(line)}
-                    />
-                  ))}
-                </ul>
-                {/* AI-305's caveat, once for the basket rather than once per line. */}
-                {incomplete.length > 0 && (
-                  <p className="mt-[12px] flex items-start gap-[8px] px-[4px] text-[12px]/[1.5] text-sh-text-3">
-                    {aiActive && <Diamond className="mt-[3px] shrink-0" />}
-                    Completeness checks come from static dose tables and run with the model off. Sign enables once every line is complete.
-                  </p>
-                )}
-              </>
-            )}
-          </Card>
+          {/* The basket and, under it, where it goes: one column, so the pharmacy stays with the prescription. */}
+          <div className="flex min-w-0 flex-col gap-[16px]">
+            <Card titleSize="sm" title="Prescription" headerClassName="mb-[4px]">
+              <p className="mb-[12px] text-[12px] tabular-nums text-sh-text-3">{[p.name, p.weightKg !== undefined && `${p.weightKg} kg`, p.payer].filter(Boolean).join(' · ')}</p>
+              {basket.length === 0 ? (
+                <EmptyState icon={PillIcon} why="Nothing prescribed yet. Search the formulary on the left and press Enter to add the first item." />
+              ) : (
+                <>
+                  <ul className="flex flex-col gap-[12px]">
+                    {basket.map((line) => (
+                      <RxLineCard
+                        key={line.id}
+                        line={line}
+                        encounterId={enc.id}
+                        weightKg={p.weightKg}
+                        locked={locked}
+                        diagnoses={diagnosisChips}
+                        onEdit={(patch) => editRxLine(enc.id, line.id, patch)}
+                        onRemove={() => removeLine(line)}
+                      />
+                    ))}
+                  </ul>
+                  {/* AI-305's caveat, once for the basket rather than once per line. */}
+                  {incomplete.length > 0 && (
+                    <p className="mt-[12px] flex items-start gap-[8px] px-[4px] text-[12px]/[1.5] text-sh-text-3">
+                      {aiActive && <Diamond className="mt-[3px] shrink-0" />}
+                      Completeness checks come from static dose tables and run with the model off. Sign enables once every line is complete.
+                    </p>
+                  )}
+                </>
+              )}
+            </Card>
+            {REAL_API && <PharmacyCard encounterId={enc.id} />}
+          </div>
         </div>
       </ScreenFrame>
 
@@ -742,6 +749,106 @@ function RxLineCard({
 }
 
 /** Z6 — the checks, with what survives the AI being off stated plainly. */
+/**
+ * SHRI_HEALTH: where the prescriptions go (the server refuses to sign without a pharmacy). Starts from
+ * the patient's preferred pharmacy on their record; any other is found in the pharmacy directory
+ * (listPharmacies) by name or ZIP. The choice is saved on this visit's prescriptions only: making it the
+ * patient's preferred pharmacy needs setPreferredPharmacy, which isn't built yet (Vimal).
+ */
+function PharmacyCard({ encounterId }: { encounterId: string }) {
+  const pharmacy = useClinical((s) => s.rxPharmacy[encounterId])
+  const load = useClinical((s) => s.loadRxPharmacy)
+  const choose = useClinical((s) => s.chooseRxPharmacy)
+  const signed = useClinical((s) => s.prescriptions[encounterId]?.status === 'signed')
+  const [changing, setChanging] = useState(false)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<RxPharmacy[]>([])
+  const [searching, setSearching] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    void load(encounterId)
+  }, [encounterId, load])
+
+  useEffect(() => {
+    let live = true
+    const t = window.setTimeout(() => {
+      if (query.trim().length < 2) {
+        setResults([])
+        return
+      }
+      setSearching(true)
+      setFailed(false)
+      searchPharmacies(query)
+        .then((r) => live && setResults(r))
+        .catch(() => live && setFailed(true))
+        .finally(() => live && setSearching(false))
+    }, 300)
+    return () => {
+      live = false
+      window.clearTimeout(t)
+    }
+  }, [query])
+
+  const picking = changing || pharmacy === null
+  return (
+    <Card titleSize="sm" title="Pharmacy" id={`${encounterId}:pharmacy`}>
+      {pharmacy === undefined ? (
+        <p role="status" className="text-[13px] text-sh-text-3">Reading the patient's pharmacy…</p>
+      ) : !picking && pharmacy ? (
+        <div className="flex flex-wrap items-start justify-between gap-[8px]">
+          <span className="min-w-0">
+            <span className="block text-[14px] font-medium text-sh-text">{pharmacy.name}</span>
+            {pharmacy.detail && <span className="block text-[12px] text-sh-text-3">{pharmacy.detail}</span>}
+          </span>
+          {!signed && (
+            <Pill variant="control" size="sm" onClick={() => setChanging(true)}>
+              Change
+            </Pill>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-[8px]">
+          {pharmacy === null && <p className="text-[13px] text-sh-text-2">No pharmacy on the patient's record. Find one by name or ZIP.</p>}
+          <label htmlFor={`${encounterId}:pharmacy-search`} className="text-[13px] font-medium text-sh-text-2">
+            Pharmacy name or ZIP
+          </label>
+          <TextInput id={`${encounterId}:pharmacy-search`} value={query} autoFocus={changing} placeholder="Pharmacy name, or ZIP such as 62704" onChange={(e) => setQuery(e.target.value)} />
+          {searching && <p role="status" className="text-[12px] text-sh-text-3">Searching…</p>}
+          {failed && <p className="text-[12px] text-sh-crit-fg">The pharmacy directory didn't answer. Try again.</p>}
+          {!searching && !failed && query.trim().length >= 2 && results.length === 0 && <p className="text-[12px] text-sh-text-3">No pharmacy matches.</p>}
+          {results.length > 0 && (
+            <ul className="flex flex-col gap-[4px]">
+              {results.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    className="w-full rounded-[12px] px-[10px] py-[8px] text-left transition-colors hover:bg-sh-hover"
+                    onClick={() => {
+                      choose(encounterId, r)
+                      setChanging(false)
+                      setQuery('')
+                    }}
+                  >
+                    <span className="block text-[14px] font-medium text-sh-text">{r.name}</span>
+                    {r.detail && <span className="block text-[12px] text-sh-text-3">{r.detail}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {changing && (
+            <Pill variant="ghost" size="sm" className="self-start" onClick={() => setChanging(false)}>
+              Keep {pharmacy?.name ?? 'the pharmacy'}
+            </Pill>
+          )}
+        </div>
+      )}
+      <p className="mt-[10px] text-[12px] text-sh-text-3">Sent with this visit's prescriptions only; it doesn't change the patient's preferred pharmacy.</p>
+    </Card>
+  )
+}
+
 function RxRail({ encounterId, ceilingLines }: { encounterId: string; ceilingLines: number }) {
   const aiActive = useAiActive()
   const rows: [string, ReactNode][] = [

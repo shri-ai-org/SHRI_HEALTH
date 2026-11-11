@@ -24,11 +24,13 @@ import {
   checkPrescriptionSafety,
   createPrescription,
   getPrescription,
+  listPharmacies,
   overrideAlert,
   signAndSendPrescription,
   updatePrescription,
 } from '../../src/api/generated/endpoints/medications/medications'
 import { listNoteTemplates } from '../../src/api/generated/endpoints/practice-setup/practice-setup'
+import { getPatient } from '../../src/api/generated/endpoints/patients/patients'
 import type { Encounter, EncounterDiagnosis, Note, NoteList, NoteTemplateList, Prescription, SafetyAlert, SafetyCheckResult } from '../../src/api/generated/model'
 import { problemCopy } from '../../src/design-system/problem/problem'
 
@@ -88,6 +90,12 @@ interface NoteState {
 
   /** The prescription screen's record per encounter; each line's id is its prescription's id. */
   prescriptions: Record<string, RxRecord>
+  /** The pharmacy each visit's prescriptions go to (the server refuses to sign without one). */
+  rxPharmacy: Record<string, RxPharmacy | null | undefined>
+  /** Starts from the patient's preferred pharmacy on their record, when there is one. */
+  loadRxPharmacy: (encounterId: string) => Promise<void>
+  /** Sets the pharmacy for the visit and saves it on every draft line (If-Match). */
+  chooseRxPharmacy: (encounterId: string, pharmacy: RxPharmacy) => void
   /** Per prescription: its ETag, and the alerts of its latest safety check. */
   rxServer: Record<string, { etag?: string; alerts: SafetyAlert[]; checkedAt?: string; queue: Promise<void> }>
   rx: (encounterId: string) => RxRecord
@@ -226,6 +234,23 @@ function serverFrom(n: Note, etag: string | null): Server {
 function toastProblem(error: unknown, title: string) {
   const copy = error instanceof ApiError ? problemCopy(error.problem) : null
   useUI.getState().toast({ tone: 'critical', title: copy?.title ?? title, detail: copy?.message })
+}
+
+export interface RxPharmacy {
+  id: string
+  name: string
+  detail: string
+}
+
+const pharmacyDetail = (a?: { line?: string; city?: string; state?: string; postalCode?: string }, mailOrder?: boolean) =>
+  [mailOrder ? 'Mail order' : null, a?.line, [a?.city, a?.state].filter(Boolean).join(', '), a?.postalCode].filter(Boolean).join(' · ')
+
+/** The pharmacy directory (listPharmacies, D50): a five-digit search is a ZIP code, anything else a name. */
+export async function searchPharmacies(query: string): Promise<RxPharmacy[]> {
+  const q = query.trim()
+  if (q.length < 2) return []
+  const res = await listPharmacies(/^\d{5}$/.test(q) ? { postalCode: q, limit: 8 } : { q, limit: 8 })
+  return res.status === 200 ? res.data.items.filter((p) => p.active).map((p) => ({ id: p.id, name: p.name, detail: pharmacyDetail(p.address, p.mailOrder) })) : []
 }
 
 export const useClinical = create<NoteState>()((set, get) => {
@@ -399,6 +424,30 @@ export const useClinical = create<NoteState>()((set, get) => {
       }
     },
 
+    rxPharmacy: {},
+
+    loadRxPharmacy: async (encounterId) => {
+      if (get().rxPharmacy[encounterId] !== undefined) return
+      const patientId = maybeEncounterRow(encounterId)?.patientId
+      if (!patientId) return
+      const res = await getPatient(patientId).catch(() => null)
+      const pref = res && res.status === 200 ? res.data.preferredPharmacy : undefined
+      if (get().rxPharmacy[encounterId] !== undefined) return
+      set({ rxPharmacy: { ...get().rxPharmacy, [encounterId]: pref ? { id: pref.id, name: pref.name, detail: pharmacyDetail(pref.address) } : null } })
+    },
+
+    chooseRxPharmacy: (encounterId, pharmacy) => {
+      set({ rxPharmacy: { ...get().rxPharmacy, [encounterId]: pharmacy } })
+      const rec = get().rx(encounterId)
+      for (const line of rec.added ?? []) {
+        if (line.id.startsWith('pending:') || rec.status === 'signed') continue
+        onLine(line.id, async () => {
+          const res = await updatePrescription(line.id, { pharmacyId: pharmacy.id }, { 'If-Match': get().rxServer[line.id]?.etag ?? '' })
+          set({ rxServer: { ...get().rxServer, [line.id]: { ...get().rxServer[line.id], etag: etagOf(res) ?? undefined } } })
+        }).catch((error: unknown) => toastProblem(error, `${line.drug}: the pharmacy was not saved`))
+      }
+    },
+
     prescriptions: {},
     rxServer: {},
 
@@ -433,7 +482,7 @@ export const useClinical = create<NoteState>()((set, get) => {
       setRx({ ...current, added: [...(current.added ?? []), { ...line, id: pendingId }], edits: { ...(current.edits ?? {}), [pendingId]: unitEdit(product.drug?.doseForm) } })
       const encounter = maybeEncounterRow(encounterId)
       createPrescription(
-        { patientId: encounter?.patientId ?? '', encounterId, medication: { codings: [{ system: RXNORM, code: product.code, display: product.display }], text: product.display }, substitutionAllowed: line.substitutionAllowed },
+        { patientId: encounter?.patientId ?? '', encounterId, medication: { codings: [{ system: RXNORM, code: product.code, display: product.display }], text: product.display }, substitutionAllowed: line.substitutionAllowed, ...(get().rxPharmacy[encounterId] ? { pharmacyId: get().rxPharmacy[encounterId]!.id } : {}) },
         { 'Idempotency-Key': newIdempotencyKey() },
       )
         .then(async (res) => {
