@@ -789,7 +789,7 @@ export const getBookPortalAppointmentUrl = () => {
 }
 
 /**
- * Books a free time (`GET /portal/me/slots`) under the same rules as staff booking (no double booking, the provider's day locked while booking); the length comes from the appointment type. Queues eligibility (D15).
+ * Books a free time (`GET /portal/me/slots`) under the same rules as staff booking (no double booking, the provider's day locked while booking); the length comes from the appointment type. Online booking rules (the practice's `online_booking_setting`): only the visit types it lets patients book online; at least its minimum notice ahead and within its booking window; at most 2 upcoming appointments per patient; booked at once. `reasonCode` is required here (from its fixed list); `reasonForVisit` is an optional short note. Neither ever appears in a reminder or any message outside the app (D81). Queues eligibility (D15): a failed check never blocks the booking; the front desk sees it.
  * @summary Book a visit
  */
 export const bookPortalAppointment = async (portalAppointmentCreate: PortalAppointmentCreate,
