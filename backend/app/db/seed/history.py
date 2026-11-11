@@ -8,7 +8,8 @@ front desk and the doctor's screens read before the visit.
   and surgical history. Patient 1, the demo visit's new patient, gets none: rooming and the
   doctor record it live. Patients 8 to 12 have no clinical history, by design.
 - Vitals trends (``VITALS``): six to eight readings over the year for each history patient,
-  the visits' own and nurse checks between them (blood pressure, heart rate and weight; oxygen
+  the visits' own and short walk-in nurse visits between them (by demo.ma, with no booking or
+  note) (blood pressure, heart rate and weight; oxygen
   saturation for asthma and COPD), with values that fit each condition. No A1c: there is no
   lab-result helper yet.
 - Patient 6's chart is restricted at the end (D37), with the change's Provenance, as the
@@ -900,6 +901,26 @@ async def _visit(store: fs.SqlFhirStore, db: AsyncSession, patient_id: uuid.UUID
     return encounter
 
 
+async def _nurse_visit(store: fs.SqlFhirStore, db: AsyncSession, patient_id: uuid.UUID,
+                       reading: Reading) -> None:
+    """A walk-in nurse check at the main office, as the MA records it: a short unscheduled
+    visit (D16) with its vitals, no booking and no note. Vitals are listed through a visit at
+    the user's facilities, so a reading always has one."""
+    await _as_user(db, MA_USER)
+    start = _at(reading.day)
+    checks = "blood pressure, pulse, weight" + (" and oxygen saturation" if reading.spo2 else "")
+    written = await store.create_encounter(db, fs.EncounterIn(
+        patient_id=patient_id, facility_id=FACILITY_A, status="arrived", started_at=start,
+        reasons=(fs.Coded(text=f"Nurse visit: {checks} check"),)))
+    await store.set_encounter_status(db, written.id, "in-progress",
+                                     at=start + dt.timedelta(minutes=5))
+    await store.record_vitals(db, patient_id, written.id, _vitals(reading, None),
+                              effective_at=start + dt.timedelta(minutes=5))
+    await store.set_encounter_status(db, written.id, "finished",
+                                     at=start + dt.timedelta(minutes=15))
+    await _as_user(db, DOCTOR_USER)
+
+
 def _at(day: dt.date) -> dt.datetime:
     """A nurse check's time: 15:00 UTC, the morning in Chicago, as the visits."""
     return dt.datetime.combine(day, dt.time(15, 0), tzinfo=dt.UTC)
@@ -931,10 +952,9 @@ async def _patient_history(store: fs.SqlFhirStore, db: AsyncSession, p: DemoPati
         visits.append(await _visit(store, db, patient_id, p.n * 10 + i, v, reading, h.height_in,
                                    booked[i - 1], follow_up))
     visit_days = {v.day for v in h.visits}
-    for reading in VITALS[p.n]:     # nurse checks between visits: no visit, so no encounter
+    for reading in VITALS[p.n]:     # the nurse checks between the doctor's visits
         if reading.day not in visit_days:
-            await store.record_vitals(db, patient_id, None, _vitals(reading, None),
-                                      effective_at=_at(reading.day))
+            await _nurse_visit(store, db, patient_id, reading)
     first = visits[0]           # where the history was taken and the lists reconciled
     for problem in h.problems:
         await store.create_problem(db, fs.ProblemIn(

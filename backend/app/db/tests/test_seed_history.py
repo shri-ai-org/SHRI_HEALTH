@@ -90,12 +90,11 @@ def _observations(n: int, h: history.History) -> int:
 
 
 def _expected(n: int, h: history.History) -> tuple[int, ...]:
-    """problems and visit diagnoses, allergies, meds, past visits, observations, family,
-    surgery, signed notes."""
-    visits = len(h.visits)
+    """problems and visit diagnoses, allergies, meds, finished visits (the doctor's, and a
+    nurse visit for every other reading), observations, family, surgery, signed notes."""
     return (len(h.problems) + sum(len(v.diagnoses) for v in h.visits), len(h.allergies),
-            len(h.medications), visits, _observations(n, h), len(h.family), len(h.surgeries),
-            visits)
+            len(h.medications), len(history.VITALS[n]), _observations(n, h), len(h.family),
+            len(h.surgeries), len(h.visits))
 
 
 def test_each_history_patient_has_a_vitals_series() -> None:
@@ -214,7 +213,7 @@ def test_the_doctor_reads_it_through_the_api(seeded: None, admin_engine: Engine)
         assert response.status_code == 200, response.text
     assert contacts.json()["items"]
     finished = [v for v in visits.json()["items"] if v["status"] == "finished"]
-    assert len(finished) == len(history.HISTORY[2].visits)
+    assert len(finished) == len(history.VITALS[2])     # the doctor's visits and nurse visits
     def codes(concept: dict[str, Any]) -> set[str]:
         return {c["code"] for c in concept.get("codings") or []}
 
