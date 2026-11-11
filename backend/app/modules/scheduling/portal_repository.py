@@ -105,6 +105,8 @@ class PortalAppointmentReads(Protocol):
 
     async def from_follow_up(self, db: Any, appointment_id: UUID) -> bool: ...
 
+    async def chart_active(self, db: Any, patient_id: UUID) -> bool: ...
+
 
 _SELECT = f"""
 SELECT a.id, a.subject_patient_id, a.status, a.start, a."end", a.patient_instruction,
@@ -159,6 +161,7 @@ ORDER BY t.name, t.id
 #: Whether a follow-up request (D98) is booked on the appointment: then the clinic moves it.
 _FROM_FOLLOW_UP = text("SELECT EXISTS (SELECT 1 FROM clinical.encounter_follow_up "
                        "WHERE booked_appointment_id = :id)")
+_CHART_ACTIVE = text("SELECT active FROM clinical.patient WHERE id = :id")
 #: The patient's booked appointments still ahead (the limit of upcoming online bookings).
 _UPCOMING_COUNT = text("""
 SELECT count(*) FROM clinical.appointment a
@@ -227,6 +230,12 @@ class SqlPortalAppointmentReads:
     async def from_follow_up(self, db: AsyncSession, appointment_id: UUID) -> bool:
         found: bool = (await db.execute(_FROM_FOLLOW_UP, {"id": appointment_id})).scalar_one()
         return found
+
+    async def chart_active(self, db: AsyncSession, patient_id: UUID) -> bool:
+        """Whether the session patient's chart is active (an inactive or missing one never
+        books online). The portal role reads only its own patient row (D93)."""
+        found = (await db.execute(_CHART_ACTIVE, {"id": patient_id})).scalar_one_or_none()
+        return found is True
 
     async def upcoming_count(self, db: AsyncSession, patient_id: UUID, now: datetime,
                              exclude: UUID | None = None) -> int:

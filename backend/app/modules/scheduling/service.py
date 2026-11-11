@@ -157,9 +157,12 @@ async def free_times(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
 
 async def free_times_at(db: AsyncSession, ref: PracticeSetupReads, fac: FacilityRow, day: date,
                         provider_id: UUID | None, appointment_type_id: UUID | None,
-                        now: datetime) -> tuple[FacilityRow, list[schemas.Slot]]:
+                        now: datetime, busy: repo.BusyReader = repo.busy
+                        ) -> tuple[FacilityRow, list[schemas.Slot]]:
     """Free times at a facility already resolved (staff: the user's facilities; the portal: the
-    practice's online booking facilities). ``now`` is the earliest start offered."""
+    practice's online booking facilities). ``now`` is the earliest start offered. ``busy`` reads
+    the providers' booked periods: staff read the participants; the portal, which sees only its
+    own patient's appointments, reads them through the database's busy-times function."""
     duration = None
     if appointment_type_id is not None:
         types = await ref.appointment_types(db, [appointment_type_id])
@@ -169,7 +172,7 @@ async def free_times_at(db: AsyncSession, ref: PracticeSetupReads, fac: Facility
     start, end = slots.day_bounds(day, fac.time_zone)
     providers = None if provider_id is None else [provider_id]
     rules, exceptions = await ref.availability(db, fac.id, providers, start, end)
-    taken = await repo.busy(db, {r.provider_id for r in rules}, start, end)
+    taken = await busy(db, {r.provider_id for r in rules}, start, end)
     free = slots.free_slots(rules, exceptions, taken, day, fac.time_zone, duration,
                             appointment_type_id, not_before=now)
     return fac, [schemas.Slot(start_at=s.start, end_at=s.end, provider_id=s.provider_id,

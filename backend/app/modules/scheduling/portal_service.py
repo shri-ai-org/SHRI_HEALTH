@@ -40,7 +40,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import PortalPatient, require_own_record
-from app.core.errors import Conflict, NotFound, ValidationFailed, field_error
+from app.core.errors import Conflict, Forbidden, NotFound, ValidationFailed, field_error
 
 from . import events, repository
 from . import portal_schemas as ps
@@ -209,7 +209,8 @@ async def free_times(db: Any, reads: Reads, ref: PracticeSetupReads, *, facility
         return ps.PortalSlotList(items=[])
     earliest, latest = _window(policy, now)
     _, free = await staff.free_times_at(db, ref, found[0], day, provider_id,
-                                        appointment_type_id, earliest)
+                                        appointment_type_id, earliest,
+                                        busy=repository.portal_busy)
     return ps.PortalSlotList(items=[
         ps.PortalSlot(start_at=f.start_at, end_at=f.end_at, provider_id=f.provider_id)
         for f in free if f.start_at <= latest][:100])
@@ -230,6 +231,10 @@ async def _checked_start(db: Any, reads: Reads, patient: PortalPatient, policy: 
     if not earliest <= start <= latest:
         raise _rule("/startAt", "out-of-range")
     await repository.lock_patient_bookings(db, patient.patient_id)  # held until commit
+    if not await reads.chart_active(db, patient.patient_id):
+        # An inactive chart (merged away, or set inactive by the clinic) never books online.
+        raise Forbidden("This chart can't book online; please call the clinic",
+                        code="permission-denied")
     if await reads.upcoming_count(db, patient.patient_id, now, exclude) >= MAX_UPCOMING:
         raise _rule("/startAt", "out-of-range")
 
@@ -295,11 +300,12 @@ async def cancel(db: AsyncSession, reads: Reads, patient: PortalPatient, appoint
     if policy is None:
         raise _rule("/startAt", "out-of-range")
     _in_time(row, policy.cancel_cutoff_hours, now)
-    await _not_from_follow_up(db, reads, appointment_id)
     locked = await repository.locked(db, appointment_id)
     if locked.status != "booked":
         raise Conflict(code="invalid-state-transition", currentState=locked.status)
-    await repository.cancel(db, locked, PATIENT_CANCEL, body.reason_text)
+    # Under the row lock: the desk may link the visit to a follow-up request meanwhile (D98).
+    await _not_from_follow_up(db, reads, appointment_id)
+    await repository.cancel(db, locked, PATIENT_CANCEL, body.reason_text, staff=False)
 
     async def board() -> None:
         await events.cancelled(db, appointment_id, patient_id=row.patient_id,
@@ -319,7 +325,6 @@ async def reschedule(db: AsyncSession, reads: Reads, ref: PracticeSetupReads,
     if policy is None:
         raise _rule("/startAt", "out-of-range")
     _in_time(row, policy.reschedule_cutoff_hours, now)
-    await _not_from_follow_up(db, reads, appointment_id)
     found = await _bookable(db, reads, ref, row.facility_id)
     if found is None or row.type_id not in found[1]:
         raise _rule("/startAt", "out-of-range")  # no longer bookable online: call the clinic
@@ -328,12 +333,15 @@ async def reschedule(db: AsyncSession, reads: Reads, ref: PracticeSetupReads,
     locked = await repository.locked(db, appointment_id)
     if locked.status != "booked":
         raise Conflict(code="invalid-state-transition", currentState=locked.status)
+    # Under the row lock: the desk may link the visit to a follow-up request meanwhile (D98).
+    await _not_from_follow_up(db, reads, appointment_id)
     _, _, new = await staff.validated_at(
         db, ref, found[0], patient_id=patient.patient_id,
         provider_id=body.provider_id or row.provider_id, location_id=None, type_id=row.type_id,
         start=start, minutes=None, overbook=False, same_day_add_on=False, now=now,
         rescheduling=appointment_id, hold_patient=False)
-    await repository.cancel(db, locked, PATIENT_CANCEL, body.reason_text or "Rescheduled online")
+    await repository.cancel(db, locked, PATIENT_CANCEL, body.reason_text or "Rescheduled online",
+                            staff=False)
     new = replace(new, reason=row.reason, reason_code=row.reason_code,
                   patient_instruction=row.patient_instruction, rescheduled_from_id=appointment_id)
     new_id = await staff.insert_new(db, new)

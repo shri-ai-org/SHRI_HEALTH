@@ -15,7 +15,7 @@ without ``encounters:read``, with the encounter's version, which a decline sends
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -200,6 +200,7 @@ FROM clinical.appointment_participant x
 WHERE x.ext_blocking AND x.actor_practitioner_id = ANY(:providers)
   AND x.period_start < :end AND x.period_end > :start
 """)
+_PORTAL_BUSY = text("SELECT start_at, end_at FROM admin.portal_busy_times(:provider, :start, :end)")
 _OVERBOOKED = text("""
 SELECT count(*) FROM clinical.appointment a
 JOIN clinical.appointment_participant x ON x.appointment_id = a.id
@@ -305,6 +306,22 @@ async def busy(db: AsyncSession, provider_ids: Iterable[UUID], start: datetime, 
     rows = (await db.execute(_BUSY, {"providers": list(provider_ids), "start": start,
                                      "end": end})).all()
     return [Busy(r[0], r[1], r[2]) for r in rows]
+
+
+BusyReader = Callable[[AsyncSession, Iterable[UUID], datetime, datetime], Awaitable[list[Busy]]]
+
+
+async def portal_busy(db: AsyncSession, provider_ids: Iterable[UUID], start: datetime,
+                      end: datetime) -> list[Busy]:
+    """The providers' booked periods for the portal: shri_portal sees only its own patient's
+    appointments, so it asks admin.portal_busy_times (Anand's, migration 0011), which returns a
+    provider's blocking periods in the session's clinic and nothing about whose they are."""
+    found: list[Busy] = []
+    for provider in dict.fromkeys(provider_ids):
+        rows = (await db.execute(_PORTAL_BUSY, {"provider": provider, "start": start,
+                                                "end": end})).all()
+        found += [Busy(provider, r[0], r[1]) for r in rows]
+    return found
 
 
 async def overbooked(db: AsyncSession, provider_id: UUID, start: datetime, end: datetime,
@@ -451,8 +468,12 @@ _CLEAR_LOCATION = text("DELETE FROM clinical.appointment_participant WHERE appoi
 _CLEAR_REASON = text("DELETE FROM clinical.appointment_reason WHERE appointment_id = :id")
 
 
-async def cancel(db: AsyncSession, row: Any, reason_code: str, reason_text: str | None) -> None:
-    user_id = await _user_id(db)
+async def cancel(db: AsyncSession, row: Any, reason_code: str, reason_text: str | None, *,
+                 staff: bool = True) -> None:
+    """``staff=False`` for the portal: there is no user, and shri_portal may not write the staff
+    columns (``updated_by_user_id``, ``ext_cancelled_by_user_id``), so they are left as they are;
+    the history row records the patient as the author (``recorded_by_patient_id``)."""
+    user_id = await _user_id(db) if staff else None
     now = await db_now(db)  # before any change: a query would autoflush a half-cancelled row
     row.status = "cancelled"
     # The contract's reasonCode is the practice's own code (a picklist), not HL7's
@@ -461,8 +482,9 @@ async def cancel(db: AsyncSession, row: Any, reason_code: str, reason_text: str 
     row.cancelation_reason_code = reason_code
     row.cancelation_reason_text = reason_text
     row.ext_cancelled_at = now
-    row.ext_cancelled_by_user_id = user_id
-    row.updated_by_user_id = user_id
+    if staff:
+        row.ext_cancelled_by_user_id = user_id
+        row.updated_by_user_id = user_id
     await db.flush()
 
 

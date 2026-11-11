@@ -34,6 +34,8 @@ def _sql(sql: str, **params: Any) -> None:
     admin = create_engine(sync_url(), poolclass=NullPool)
     try:
         with admin.begin() as c:
+            # The FHIR touch triggers name their parent tables unqualified.
+            c.execute(text("SET LOCAL search_path = clinical, admin, public"))
             c.execute(text(sql), params)
     finally:
         admin.dispose()
@@ -168,17 +170,49 @@ def test_a_taken_time_is_a_conflict(portal_app: TestClient, portal_chart: Portal
     assert taken.status_code == 409 and taken.json()["code"] == "booking-conflict"
 
 
-@pytest.mark.xfail(strict=True, reason="shri_portal sees only its own patient's appointments, so "
-                   "another patient's booking still shows as free until the database gives the "
-                   "portal busy times without patient data (Anand, #85)")
 def test_another_patients_booking_is_not_offered_again(portal_app: TestClient,
                                                        portal_chart: PortalChart) -> None:
+    """The busy times come from admin.portal_busy_times (Anand's, migration 0011): another
+    patient's booking is busy for B, though B can't see the appointment itself."""
     fu = _online(portal_chart)
     a = Patient(portal_app, portal_chart, portal_chart.a)
     b = Patient(portal_app, portal_chart, portal_chart.b)
     slot = _free(a, portal_chart, fu)[0]
-    assert a.post(MINE, _body(portal_chart, fu, slot)).status_code == 201
+    made = a.post(MINE, _body(portal_chart, fu, slot))
+    assert made.status_code == 201, made.text
     assert slot["startAt"] not in [s["startAt"] for s in _free(b, portal_chart, fu)]
+    assert b.get(f"{MINE}/{made.json()['id']}").status_code == 404
+    taken = b.post(MINE, _body(portal_chart, fu, slot))
+    assert taken.status_code == 409 and taken.json()["code"] == "booking-conflict"
+
+
+def test_a_patient_cancels_a_booking_the_front_desk_made(portal_app: TestClient,
+                                                         portal_chart: PortalChart) -> None:
+    """The portal never writes the staff columns (Anand's finding on #85): a desk-made booking,
+    whose updated_by_user_id names a staff user, cancels from the portal (no 500)."""
+    _online(portal_chart)
+    soon = portal_chart.ids["a-next"]
+    _sql("UPDATE clinical.appointment SET updated_by_user_id = (SELECT u.id FROM admin.app_user u "
+         "WHERE u.tenant_id = :t LIMIT 1) WHERE id = :a", t=portal_chart.practice.clinic, a=soon)
+    a = Patient(portal_app, portal_chart, portal_chart.a)
+    done = a.post(f"{MINE}/{soon}/cancel", {"reasonText": "Feeling better."})
+    assert done.status_code == 200, done.text
+    assert done.json()["status"] == "cancelled"
+
+
+def test_an_inactive_chart_cannot_book_or_move_online(portal_app: TestClient,
+                                                      portal_chart: PortalChart) -> None:
+    fu = _online(portal_chart)
+    a = Patient(portal_app, portal_chart, portal_chart.a)
+    free = _free(a, portal_chart, fu)
+    made = a.post(MINE, _body(portal_chart, fu, free[0]))
+    assert made.status_code == 201, made.text
+    _sql("UPDATE clinical.patient SET active = false WHERE id = :p", p=portal_chart.a)
+    refused = a.post(MINE, _body(portal_chart, fu, free[1]))
+    assert refused.status_code == 403 and refused.json()["code"] == "permission-denied"
+    moved = a.post(f"{MINE}/{made.json()['id']}/reschedule", {"startAt": free[-1]["startAt"]})
+    assert moved.status_code == 403 and moved.json()["code"] == "permission-denied"
+    assert a.get(f"{MINE}/{made.json()['id']}").json()["status"] == "booked"
 
 
 def test_cancel_and_reschedule_with_their_cut_offs(portal_app: TestClient,
@@ -234,3 +268,25 @@ def test_booking_needs_a_patient_session(portal_app: TestClient,
     assert staff.status_code == 401
     nobody = portal_app.get(f"{API}/portal/booking/facilities")
     assert nobody.status_code == 401
+
+
+def test_a_visit_booked_from_a_follow_up_request_is_moved_by_the_clinic_only(
+        portal_app: TestClient, portal_chart: PortalChart) -> None:
+    """D98: checked under the appointment's row lock, so a link the desk makes meanwhile counts."""
+    fu = _online(portal_chart)
+    a = Patient(portal_app, portal_chart, portal_chart.a)
+    free = _free(a, portal_chart, fu)
+    made = a.post(MINE, _body(portal_chart, fu, free[0]))
+    assert made.status_code == 201, made.text
+    _sql("INSERT INTO clinical.encounter_follow_up (id, tenant_id, encounter_id, patient_id, "
+         "interval_value, interval_unit, status, requested_by_user_id, booked_appointment_id) "
+         "SELECT gen_random_uuid(), e.tenant_id, e.id, e.subject_patient_id, 2, 'week', 'booked', "
+         "(SELECT u.id FROM admin.app_user u WHERE u.tenant_id = e.tenant_id LIMIT 1), :a "
+         "FROM clinical.encounter e WHERE e.subject_patient_id = :p LIMIT 1",
+         a=UUID(made.json()["id"]), p=portal_chart.a)
+    for action, body in (("cancel", {"reasonText": "Feeling better."}),
+                         ("reschedule", {"startAt": free[-1]["startAt"]})):
+        refused = a.post(f"{MINE}/{made.json()['id']}/{action}", body)
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["errors"][0]["code"] == "not-editable", action
+    assert a.get(f"{MINE}/{made.json()['id']}").json()["status"] == "booked"
