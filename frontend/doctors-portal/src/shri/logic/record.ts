@@ -16,6 +16,9 @@ import type { Tone } from '../mocks/types'
 
 import { useAppointments } from './schedule'
 import { appointmentsOf, nextOf } from '../../../shri-health/record'
+import { usePatientProblems } from '../../../shri-health/history'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export type RecordSection = 'record' | 'condition' | 'results' | 'reports' | 'notes' | 'prescriptions' | 'appointments'
 
@@ -64,7 +67,9 @@ export function useSessionNotesFor(patientId: string) {
 /** The patient's problem list: the seeded one, then anything added this session. */
 export function useProblemsFor(patientId: string): (Problem | AddedProblem)[] {
   const added = useClinical((s) => s.addedProblems[patientId])
-  return [...problemsFor(patientId), ...(added ?? [])]
+  // SHRI_HEALTH: with the API the problem list is the server's (listProblems, #280).
+  const server = REAL_API ? usePatientProblems(patientId).problems : null
+  return server ?? [...problemsFor(patientId), ...(added ?? [])]
 }
 
 /** One count per part, for the tabs. */

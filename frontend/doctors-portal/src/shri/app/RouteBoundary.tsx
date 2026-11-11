@@ -59,7 +59,7 @@ export class RouteBoundary extends Component<Props, State> {
     if (sealedPatient) {
       return (
         <div className="mx-auto w-full max-w-[640px] py-[40px]">
-          <Card title="Restricted record" className="flex flex-col">
+          <Card title="Restricted chart" className="flex flex-col">
             <SealedBody
               onConfirm={(reason) =>
                 void breakGlassOnServer(sealedPatient, reason)
