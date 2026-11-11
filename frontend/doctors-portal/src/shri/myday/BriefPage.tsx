@@ -23,7 +23,7 @@
 
 import { ChevronRight, Sunrise, TriangleAlert } from 'lucide-react'
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 
 import { RESULTS, type ResultRow } from '@/data/clinical'
 import { patient } from '@/data/kit'
@@ -91,14 +91,8 @@ export function BriefPage() {
     `Today you have ${plural(clinic, 'patient')} in OPD, ${plural(tele, 'teleconsult')} and ${plural(d.inpatients.length, 'inpatient')} on the ward round`,
   ].join('. ')
 
-  // With the API: the page's frame and no sample brief (gap 63).
-  if (REAL_API) {
-    return (
-      <ScreenFrame screenId="S-06-18" sub="What changed since yesterday evening, for you, in the order to act on it.">
-        <EmptyState icon={Sunrise} why="Not available yet: the morning brief needs results and an AI brief, which aren't built yet." />
-      </ScreenFrame>
-    )
-  }
+  // With the API: hidden until the AI brief is built (never a "not built yet" page): My Day instead.
+  if (REAL_API) return <Navigate to="/" replace />
 
   return (
     <ScreenFrame

@@ -41,6 +41,13 @@ import { Dialog } from './Dialog'
 import { CheckboxRow, TextArea } from './forms'
 import { Card, ConfidenceMark, Diamond, Icon, Pill, PillTag } from './primitives'
 
+/**
+ * SHRI_HEALTH: with the API, an AI affordance shows only where an AI service stands behind it (the
+ * consultation note's AI-01 sections). The sample's other bars, chips, suggestion cards and Why?
+ * links have no service, so they hide rather than pretend; the screens work without them.
+ */
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 /** The gate, legible on the screen: its id and name, its treatment on hover. */
 export function GateBadge({ gate, className }: { gate: Gate; className?: string }) {
   const spec = GATE_SPECS[gate]
@@ -55,6 +62,7 @@ export function GateBadge({ gate, className }: { gate: Gate; className?: string 
 /** The Why? link — mandatory wherever explainability is. */
 export function WhyLink({ target, className }: { target: ExplainTarget; className?: string }) {
   const openExplain = useUI((s) => s.openExplain)
+  if (REAL_API) return null
   return (
     <button
       type="button"
@@ -95,6 +103,7 @@ export function AIActionBar({
   subject,
   attestation = 'here',
   className,
+  served = false,
 }: {
   touchpointId: string
   capabilityId: string
@@ -102,6 +111,8 @@ export function AIActionBar({
   band: ConfidenceBand
   score?: number
   explain: ExplainTarget
+  /** True where an AI service stands behind it with the API (the note's AI-01 sections). */
+  served?: boolean
   onAccept?: () => void
   onEdit?: () => void
   onReject?: (reason: RejectionReason, text?: string) => void
@@ -129,6 +140,7 @@ export function AIActionBar({
   const disposition = useAI((s) => s.dispositions[touchpointId])
   const toast = useUI((s) => s.toast)
   const audit = useAudit((s) => s.record)
+  if (REAL_API && !served) return null
 
   const g3 = gate === 'G3' && attestation === 'here'
   const blocked = acceptanceBlocked(band, expanded) || locked
@@ -435,6 +447,7 @@ export function GhostSection({
         band={band}
         score={score}
         explain={explain}
+        served
         expanded={isExpanded}
         locked={locked}
         onAccept={onAccept}
@@ -479,7 +492,7 @@ export function FieldChip({
   const record = useAI((s) => s.record)
   const disposition = useAI((s) => s.dispositions[touchpointId])
 
-  if (!aiActive) return null
+  if (!aiActive || REAL_API) return null
 
   if (disposition) {
     return (
@@ -581,7 +594,7 @@ export function SuggestionCard({
   const aiActive = useAiActive()
   const expandedMap = useAI((s) => s.expanded)
   const expand = useAI((s) => s.expand)
-  if (!aiActive) return null
+  if (!aiActive || REAL_API) return null
   const isExpanded = expandedMap[touchpointId] ?? band !== 'LOW'
 
   return (

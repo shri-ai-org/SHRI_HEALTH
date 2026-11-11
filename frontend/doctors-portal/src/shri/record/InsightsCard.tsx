@@ -22,8 +22,17 @@ import { EmptyState } from '../ui/EmptyState'
 import { Card, ConfidenceMark, Diamond, PillTag } from '../ui/primitives'
 
 import { TextLink } from './bits'
+import { ChartSummaryCard } from './ChartSummaryCard'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export function InsightsCard({ patient: p, className }: { patient: Patient; className?: string }) {
+  // With the API: AI-02's chart summary, never the sample's readings.
+  if (REAL_API) return <ChartSummaryCard patientId={p.id} className={className} />
+  return <SampleInsights patient={p} className={className} />
+}
+
+function SampleInsights({ patient: p, className }: { patient: Patient; className?: string }) {
   const openExplain = useUI((s) => s.openExplain)
   const aiActive = useAiActive()
   const readings = aiActive ? readingsFor(p) : []

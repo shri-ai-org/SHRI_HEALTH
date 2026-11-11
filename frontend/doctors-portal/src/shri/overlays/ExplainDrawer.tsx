@@ -26,7 +26,15 @@ import { useFocusTrap } from '../ui/hooks'
 import { ConfidenceMark, Icon, Pill, RoundButton } from '../ui/primitives'
 import { Scrim } from '../ui/Scrim'
 
+/** With the SHRI_HEALTH API the sample's explanations have no service behind them: hidden. */
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 export function ExplainDrawer() {
+  if (REAL_API) return null
+  return <SampleExplainDrawer />
+}
+
+function SampleExplainDrawer() {
   const target = useUI((s) => s.explain)
   const close = useUI((s) => s.closeExplain)
   return <AnimatePresence>{target && <Drawer key={target.touchpointId} target={target} onClose={close} />}</AnimatePresence>
