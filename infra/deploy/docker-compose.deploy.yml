@@ -92,7 +92,9 @@ services:
     restart: unless-stopped
 
   clamav:
-    mem_limit: 2560m
+    # Its daily signature reload holds two copies at once (ConcurrentDatabaseReload), so about
+    # twice its 1 GiB at rest for a moment (Vimal on #275).
+    mem_limit: 4g
     networks: [default, backend]  # the API reaches it on backend (egress below)
     restart: unless-stopped
 

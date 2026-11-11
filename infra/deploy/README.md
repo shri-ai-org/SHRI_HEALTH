@@ -69,7 +69,7 @@ Also on a shared host:
 - `SHRI_PROJECT` is a unique compose project name (`shri-` prefix); every container, network and volume carries it, and deploy.sh never touches anything else.
 - `SHRI_NET_A` and `SHRI_NET_B` pick two free /24s for our two networks.
 - `up` refuses to start if one of our ports or subnets belongs to something else.
-- Every service has a memory limit (about 7 GiB in all, mostly ClamAV and Keycloak).
+- Every service has a memory limit: about 9.2 GiB of caps in all for the running services (ClamAV 4 GiB, since its daily reload holds two copies of the signatures at once; Keycloak 1.5 GiB), plus 1 GiB for the code loader during a reset. Actual use is about 2 GiB.
 
 ### The one-time steps on the server (someone with sudo)
 
