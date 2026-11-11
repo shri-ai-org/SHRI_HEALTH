@@ -315,6 +315,12 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     admin.delete_unusable_files(:ids)`, which deletes only rows still unusable and old and
     skips a row another table still references; the job deletes those rows' objects before it
     commits. The 24 hours are fixed in the functions. Every update of a file sets `updated_at`.
+- **Idempotency-Key for portal writes (migration 0020):** `admin.idempotency_record` names
+  exactly one owner, a staff `user_id` or, for the patient portal's writes, the session's
+  `patient_id` (`ck_idempotency_record_one_owner`; the patient keeps the clinic-carrying key).
+  Staff keys keep `uq_..._tenant_id_user_id_method_path_key`; patient keys have the partial
+  unique index `uq_idempotency_record_patient_key`. Core writes both as `shri_app`, in its own
+  claim session (a patient's with the clinic set and no user), so `shri_portal` has no access.
 - **Pre-registration (D96, A51, migration 0009):** the public form calls
   `SELECT admin.submit_pre_registration(:practice_code, :idempotency_key, :request_hash,
   :details, :contact_consent, :source_ip, :user_agent, :request_id)` as `shri_public`, with no

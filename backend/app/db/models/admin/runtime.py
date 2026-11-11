@@ -100,10 +100,14 @@ class AppSession(Base, AdminMixin):
 class IdempotencyRecord(Base, AdminMixin):
     """One use of an Idempotency-Key (T21, ADR-0007), kept 24 hours. The request body is never
     stored, only its hash; the response body only encrypted (it may hold patient data). 5xx and
-    429 responses are not stored."""
+    429 responses are not stored. A key belongs to a staff user or, for the patient portal's
+    writes, to the session's patient (migration 0020): exactly one of the two."""
     __tablename__ = "idempotency_record"
     __table_args__ = (
         UniqueConstraint("tenant_id", "user_id", "method", "path", "key"),
+        Index("uq_idempotency_record_patient_key", "tenant_id", "patient_id", "method", "path",
+              "key", unique=True, postgresql_where=text("patient_id IS NOT NULL")),
+        CheckConstraint("(user_id IS NULL) <> (patient_id IS NULL)", name="one_owner"),
         Index("ix_idempotency_record_expires", "expires_at"),
         CheckConstraint(f"request_hash {SHA256_HEX}", name="request_hash_format"),
         CheckConstraint("method IN ('POST', 'PUT', 'PATCH')", name="unsafe_method"),
@@ -114,8 +118,9 @@ class IdempotencyRecord(Base, AdminMixin):
         CheckConstraint(f"response_body_enc IS NULL OR response_body_enc {CIPHERTEXT}",
                         name="response_body_encrypted"),
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(f"{ADMIN_SCHEMA}.app_user.id"),
-                                               nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey(f"{ADMIN_SCHEMA}.app_user.id"))
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(f"{CLINICAL_SCHEMA}.patient.id"))
     method: Mapped[str] = mapped_column(String(10), nullable=False)
     path: Mapped[str] = mapped_column(String(500), nullable=False)
     key: Mapped[str] = mapped_column(String(255), nullable=False)
