@@ -5,6 +5,7 @@ import { AdmitFlow } from './admit/AdmitFlow'
 import { DischargeFlow } from './discharge/DischargeFlow'
 import { RescheduleFlow } from './reschedule/RescheduleFlow'
 import { CheckOutFlow } from './checkout/CheckOutFlow'
+import { RoomingFlow } from './rooming/RoomingFlow'
 
 export interface FlowProps {
   params: FlowParams
@@ -30,4 +31,5 @@ export const FLOWS: Partial<Record<FlowName, ComponentType<FlowProps>>> = {
   discharge: DischargeFlow,
   // Check-out at the desk (D98): new, no source screen (Minalini's exception of 2026-11-04).
   checkout: CheckOutFlow,
+  rooming: RoomingFlow,
 }

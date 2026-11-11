@@ -56,11 +56,13 @@ const TOKEN_STAGE: Record<QueueTokenStatus, OutpatientStage> = {
 }
 
 /** A booking checked in at another desk (on the server) has no token here: its stage is the
- *  server's visit status. */
+ *  server's visit status (`visitStatus`, not the appointment's `status`). */
 const SERVER_VISIT_STAGE: Record<string, OutpatientStage> = {
   arrived: 'waiting',
   'checked-in': 'waiting',
-  roomed: 'in-room',
+  // Roomed still waits for the doctor: care-entry's cards have no roomed stage, so it counts under
+  // Waiting, never under With doctor (gap 78, Vimal on #274).
+  roomed: 'waiting',
   'with-provider': 'in-room',
   'checked-out': 'done',
 }
