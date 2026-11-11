@@ -1,8 +1,9 @@
 """``ai_provider=stub``: a stand-in that calls no model, so the whole AI flow (draft a note,
-decide its sections, sign) runs on a laptop without an API key. It answers every request with
-the same fictional draft, in the real output shape, for whatever sections the template has. It
-reads nothing of the visit: the dictation and the chart context are ignored, and the text says
-so. Never available in production (config.py)."""
+decide its sections, sign; summarize a chart) runs on a laptop without an API key. A note draft
+is the same fictional draft, in the real output shape, for whatever sections the template has:
+the dictation and the chart context are ignored, and the text says so. A chart summary repeats
+each chart line it was given as one statement citing that line. Never available in production
+(config.py)."""
 
 from __future__ import annotations
 
@@ -47,10 +48,33 @@ def note_draft(system_prompt: str) -> dict[str, Any]:
     return {"sections": sections, "unknowns": []}
 
 
+_LINE = re.compile(r"^(?P<handle>S[0-9]+): (?P<kind>[A-Za-z ]+): (?P<text>.+)$", re.MULTILINE)
+_TOPIC = {"Visit": "encounters", "Diagnosis": "diagnoses", "Medication": "medications",
+          "Allergy": "allergies"}
+
+
+def chart_summary(chart_text: str) -> dict[str, Any]:
+    """A summary in the real shape: one statement per chart line, citing that line, and the
+    parts the prompt marks as not available listed as missing."""
+    sections: dict[str, list[dict[str, Any]]] = {}
+    for m in _LINE.finditer(chart_text):
+        topic = _TOPIC.get(m["kind"].strip())
+        if topic is not None:
+            sections.setdefault(topic, []).append(
+                {"text": f"{m['kind'].strip()}: {m['text'].strip()}", "sources": [m["handle"]]})
+    missing = [{"topic": "results", "description": f"{NOTICE} Results are not in this build."}]
+    return {"sections": [{"topic": t, "statements": s} for t, s in sections.items()],
+            "missing": missing}
+
+
 class StubModel:
     model = MODEL
 
     async def complete(self, messages: Sequence[Mapping[str, str]], *, max_tokens: int,
                        schema: Mapping[str, Any] | None = None) -> ModelReply:
         system = "\n".join(m["content"] for m in messages if m["role"] == "system")
+        if schema is not None and "missing" in schema.get("required", ()):    # AI-02
+            user = "\n".join(m["content"] for m in messages if m["role"] == "user")
+            return ModelReply(content=json.dumps(chart_summary(user)), model=MODEL,
+                              latency_ms=0)
         return ModelReply(content=json.dumps(note_draft(system)), model=MODEL, latency_ms=0)
