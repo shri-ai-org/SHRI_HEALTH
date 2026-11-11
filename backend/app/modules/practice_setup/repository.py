@@ -58,17 +58,19 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, time
-from typing import Any, Protocol
+from datetime import date, datetime, time
+from typing import Any, Literal, Protocol
 from uuid import UUID
 
 from sqlalchemy import Row, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import systems
+from app.db.models import MAPPERS, systems
 
 from . import schemas
 from .cursor import Kind, Position
+
+M = MAPPERS
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,7 @@ SELECT p.id, p.gender, p.active, p.created_at,
                   WHERE r.practitioner_id = p.id)) AS updated_at
 FROM clinical.practitioner p
 WHERE (CAST(:active AS boolean) IS NULL OR p.active = :active)
+  AND (CAST(:provider_id AS uuid) IS NULL OR p.id = :provider_id)
   AND (CAST(:facility_id AS uuid) IS NULL OR EXISTS (
         SELECT 1 FROM clinical.practitioner_role r
         JOIN clinical.practitioner_role_location rl ON rl.practitioner_role_id = r.id
@@ -231,6 +234,7 @@ JOIN LATERAL (
   LIMIT 1
 ) actor ON true
 WHERE s.ext_facility_id IS NOT NULL
+  AND (CAST(:schedule_id AS uuid) IS NULL OR s.id = :schedule_id)
   AND (CAST(:provider_id AS uuid) IS NULL OR actor.provider_id = :provider_id)
   AND (CAST(:facility_id AS uuid) IS NULL OR s.ext_facility_id = :facility_id)
   AND (CAST(:active AS boolean) IS NULL OR s.active = :active)
@@ -395,6 +399,72 @@ def _like(fragment: str) -> str:
     return f"%{escaped}%"
 
 
+async def _provider_items(db: AsyncSession, rows: Sequence[Row[Any]]) -> list[schemas.Provider]:
+    """The page's providers with their child rows, one query per child table."""
+    ids = [r.id for r in rows]
+    names = await _children(db, _PROVIDER_NAMES, ids, "practitioner_id")
+    npis = await _children(db, _PROVIDER_NPIS, ids, "practitioner_id",
+                           npi_system=systems.NPI)
+    qualifications = await _children(db, _PROVIDER_QUALIFICATIONS, ids, "practitioner_id")
+    specialties = await _children(db, _PROVIDER_SPECIALTIES, ids, "practitioner_id")
+    facilities = await _children(db, _PROVIDER_FACILITIES, ids, "practitioner_id")
+    telecoms = await _children(db, _PROVIDER_TELECOMS, ids, "practitioner_id")
+    items = []
+    for r in rows:
+        contact = {t.system: t.value for t in telecoms.get(r.id, [])}
+        items.append(schemas.Provider(
+            id=r.id, name=_name(next(iter(names.get(r.id, [])), None)),
+            npi=next((n.value for n in npis.get(r.id, [])), None), gender=r.gender,
+            qualifications=[
+                schemas.ProviderQualification(
+                    code=schemas.SetupCoding(system=q.code_system, code=q.code_code,
+                                             display=q.code_display),
+                    license_number=q.identifier_value, state=q.ext_state,
+                    issuer=q.issuer_display, start_date=q.period_start,
+                    end_date=q.period_end)
+                for q in qualifications.get(r.id, [])
+                if q.code_system and q.code_code  # the contract's code needs both
+            ],
+            specialties=[
+                schemas.SetupCoding(system=s.specialty_system, code=s.specialty_code,
+                                    display=s.specialty_display)
+                for s in specialties.get(r.id, [])
+                if s.specialty_system and s.specialty_code
+            ],
+            facility_ids=[f.facility_id for f in facilities.get(r.id, [])],
+            phone=contact.get("phone"), email=contact.get("email"), active=r.active,
+            created_at=r.created_at, updated_at=r.updated_at))
+    return items
+
+
+async def _schedule_items(db: AsyncSession, rows: Sequence[Row[Any]]
+                         ) -> list[schemas.ProviderSchedule]:
+    ids = [r.id for r in rows]
+    rules = await _children(db, _SCHEDULE_RULES, ids, "schedule_id")
+    exceptions = await _children(db, _SCHEDULE_EXCEPTIONS, ids, "schedule_id")
+    return [
+        schemas.ProviderSchedule(
+            id=r.id, provider_id=r.provider_id, facility_id=r.facility_id,
+            availability_rules=[
+                schemas.AvailabilityRule(
+                    id=x.id, day_of_week=x.day_of_week, start_time=_hh_mm(x.start_time),
+                    end_time=_hh_mm(x.end_time), slot_minutes=x.slot_minutes,
+                    location_id=x.location_id,
+                    appointment_type_ids=list(x.appointment_type_ids),
+                    start_date=x.effective_from, end_date=x.effective_to)
+                for x in rules.get(r.id, [])
+            ],
+            exceptions=[
+                schemas.ScheduleException(id=e.id, start_at=e.start_at, end_at=e.end_at,
+                                          available=e.is_available, reason=e.reason)
+                for e in exceptions.get(r.id, [])
+            ],
+            comment=r.comment, active=r.active, created_at=r.created_at,
+            updated_at=r.updated_at)
+        for r in rows
+    ]
+
+
 # ----------------------------------------------------------------------------------- repository
 class SqlSetupRepository:
     async def list_facilities(self, db: AsyncSession, *, active: bool | None,
@@ -421,42 +491,10 @@ class SqlSetupRepository:
                              active: bool | None, after: Position | None, limit: int
                              ) -> Page[schemas.Provider]:
         found = (await db.execute(_PROVIDERS, {"active": active, "facility_id": facility_id,
+                                               "provider_id": None,
                                                **_keyset(after, limit)})).all()
         rows, next_position = _cut(found, limit, "providers", "created_at")
-        ids = [r.id for r in rows]
-        names = await _children(db, _PROVIDER_NAMES, ids, "practitioner_id")
-        npis = await _children(db, _PROVIDER_NPIS, ids, "practitioner_id",
-                               npi_system=systems.NPI)
-        qualifications = await _children(db, _PROVIDER_QUALIFICATIONS, ids, "practitioner_id")
-        specialties = await _children(db, _PROVIDER_SPECIALTIES, ids, "practitioner_id")
-        facilities = await _children(db, _PROVIDER_FACILITIES, ids, "practitioner_id")
-        telecoms = await _children(db, _PROVIDER_TELECOMS, ids, "practitioner_id")
-        items = []
-        for r in rows:
-            contact = {t.system: t.value for t in telecoms.get(r.id, [])}
-            items.append(schemas.Provider(
-                id=r.id, name=_name(next(iter(names.get(r.id, [])), None)),
-                npi=next((n.value for n in npis.get(r.id, [])), None), gender=r.gender,
-                qualifications=[
-                    schemas.ProviderQualification(
-                        code=schemas.SetupCoding(system=q.code_system, code=q.code_code,
-                                                 display=q.code_display),
-                        license_number=q.identifier_value, state=q.ext_state,
-                        issuer=q.issuer_display, start_date=q.period_start,
-                        end_date=q.period_end)
-                    for q in qualifications.get(r.id, [])
-                    if q.code_system and q.code_code  # the contract's code needs both
-                ],
-                specialties=[
-                    schemas.SetupCoding(system=s.specialty_system, code=s.specialty_code,
-                                        display=s.specialty_display)
-                    for s in specialties.get(r.id, [])
-                    if s.specialty_system and s.specialty_code
-                ],
-                facility_ids=[f.facility_id for f in facilities.get(r.id, [])],
-                phone=contact.get("phone"), email=contact.get("email"), active=r.active,
-                created_at=r.created_at, updated_at=r.updated_at))
-        return Page(items, next_position)
+        return Page(await _provider_items(db, rows), next_position)
 
     async def list_appointment_types(self, db: AsyncSession, *, active: bool | None,
                                      after: Position | None, limit: int
@@ -482,34 +520,10 @@ class SqlSetupRepository:
                                       after: Position | None, limit: int
                                       ) -> Page[schemas.ProviderSchedule]:
         found = (await db.execute(_SCHEDULES, {
-            "provider_id": provider_id, "facility_id": facility_id, "active": active,
-            **_keyset(after, limit)})).all()
+            "schedule_id": None, "provider_id": provider_id, "facility_id": facility_id,
+            "active": active, **_keyset(after, limit)})).all()
         rows, next_position = _cut(found, limit, "provider-schedules", "created_at")
-        ids = [r.id for r in rows]
-        rules = await _children(db, _SCHEDULE_RULES, ids, "schedule_id")
-        exceptions = await _children(db, _SCHEDULE_EXCEPTIONS, ids, "schedule_id")
-        items = [
-            schemas.ProviderSchedule(
-                id=r.id, provider_id=r.provider_id, facility_id=r.facility_id,
-                availability_rules=[
-                    schemas.AvailabilityRule(
-                        id=x.id, day_of_week=x.day_of_week, start_time=_hh_mm(x.start_time),
-                        end_time=_hh_mm(x.end_time), slot_minutes=x.slot_minutes,
-                        location_id=x.location_id,
-                        appointment_type_ids=list(x.appointment_type_ids),
-                        start_date=x.effective_from, end_date=x.effective_to)
-                    for x in rules.get(r.id, [])
-                ],
-                exceptions=[
-                    schemas.ScheduleException(id=e.id, start_at=e.start_at, end_at=e.end_at,
-                                              available=e.is_available, reason=e.reason)
-                    for e in exceptions.get(r.id, [])
-                ],
-                comment=r.comment, active=r.active, created_at=r.created_at,
-                updated_at=r.updated_at)
-            for r in rows
-        ]
-        return Page(items, next_position)
+        return Page(await _schedule_items(db, rows), next_position)
 
     async def list_payers(self, db: AsyncSession, *, payer_name: str | None,
                           external_payer_id: str | None, payer_type: str | None,
@@ -765,3 +779,252 @@ class SqlFacilityRepository:
             await db.execute(_DROP_PHONES, {"location": location})
             await db.execute(_ADD_PHONE, {"location": location, "value": changes.phone})
         return int(version)
+
+
+# ------------------------------------------------------------------------- provider writes
+# createProvider and createProviderSchedule (#129's tables, no schema change). Two rules the
+# database doesn't enforce are the service's, each checked under a transaction-scoped advisory
+# lock so two requests can't both pass: one NPI per practice (keyed on the NPI) and no
+# overlapping availability rules for a provider at a facility (keyed on the pair). The lock
+# key carries the clinic, so clinics never wait on each other. A unique index and an
+# exclusion constraint would do this in the database; that is post-demo work (a migration
+# that must first deal with the demo seed's overlapping rules).
+#
+# Contract to column:
+# - Provider: a ``practitioner`` (``active`` true); ``name`` one official ``human_name``;
+#   ``npi`` an official ``identifier`` in the NPI system; ``qualifications`` its
+#   ``practitioner_qualification`` rows; ``phone`` and ``email`` work ``contact_point`` rows;
+#   one active ``practitioner_role`` per facility (its organization the facility site's), with
+#   a ``practitioner_role_location`` at the site and the ``specialties`` on every role.
+# - ProviderSchedule: a ``schedule`` at the facility (``ext_facility_id``) with one
+#   ``schedule_actor``, the provider's role there; rules and exceptions as the reads map them.
+@dataclass(frozen=True)
+class NewProvider:
+    body: schemas.ProviderCreate
+    facility_locations: dict[UUID, UUID]  # facility -> its site location
+
+
+@dataclass(frozen=True)
+class ExistingRule:
+    day_of_week: str
+    start_time: time
+    end_time: time
+    effective_from: date
+    effective_to: date | None
+
+
+Versioned = Literal["practitioner", "schedule"]
+
+
+class ProviderRepository(Protocol):
+    async def lock(self, db: AsyncSession, key: str) -> None: ...
+
+    async def npi_valid(self, db: AsyncSession, npi: str) -> bool: ...
+
+    async def npi_taken(self, db: AsyncSession, npi: str) -> bool: ...
+
+    async def facility_locations(self, db: AsyncSession, facility_ids: list[UUID]
+                                 ) -> dict[UUID, UUID]: ...
+
+    async def create_provider(self, db: AsyncSession, new: NewProvider) -> UUID: ...
+
+    async def get_provider(self, db: AsyncSession, provider_id: UUID
+                           ) -> schemas.Provider | None: ...
+
+    async def role_at(self, db: AsyncSession, provider_id: UUID, facility_id: UUID
+                      ) -> UUID | None: ...
+
+    async def missing_locations(self, db: AsyncSession, ids: set[UUID]) -> set[UUID]: ...
+
+    async def missing_appointment_types(self, db: AsyncSession, ids: set[UUID]
+                                        ) -> set[UUID]: ...
+
+    async def rules_at(self, db: AsyncSession, provider_id: UUID, facility_id: UUID
+                       ) -> list[ExistingRule]: ...
+
+    async def create_schedule(self, db: AsyncSession, body: schemas.ProviderScheduleCreate,
+                              role_id: UUID) -> UUID: ...
+
+    async def get_schedule(self, db: AsyncSession, schedule_id: UUID
+                           ) -> schemas.ProviderSchedule | None: ...
+
+    async def version(self, db: AsyncSession, table: Versioned, row_id: UUID) -> int: ...
+
+
+_LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended("
+             "current_setting('app.current_tenant_id', true) || '|' || :key, 0))")
+_NPI_VALID = text("SELECT public.shri_npi_valid(:npi)")
+_NPI_TAKEN = text("""
+SELECT EXISTS (SELECT 1 FROM clinical.identifier
+               WHERE practitioner_id IS NOT NULL AND system = :system AND value = :npi
+                 AND use IS DISTINCT FROM 'old')
+""")
+_FACILITY_SITES = text("""
+SELECT f.id, f.location_id FROM admin.facility f WHERE f.id = ANY(CAST(:ids AS uuid[]))
+""")
+_SITE_ORGANIZATIONS = text("""
+SELECT id, managing_organization_id FROM clinical.location WHERE id = ANY(CAST(:ids AS uuid[]))
+""")
+_ROLE_AT = text("""
+SELECT r.id FROM clinical.practitioner_role r
+JOIN clinical.practitioner_role_location rl ON rl.practitioner_role_id = r.id
+JOIN admin.facility f ON f.location_id = rl.location_id
+WHERE r.practitioner_id = :provider_id AND f.id = :facility_id AND r.active
+ORDER BY r.created_at, r.id
+LIMIT 1
+""")
+_LOCATIONS = text("SELECT id FROM clinical.location WHERE id = ANY(CAST(:ids AS uuid[]))")
+_APPOINTMENT_TYPE_IDS = text(
+    "SELECT id FROM admin.appointment_type WHERE id = ANY(CAST(:ids AS uuid[]))")
+_RULES_AT = text("""
+SELECT r.day_of_week, r.start_time, r.end_time, r.effective_from, r.effective_to
+FROM admin.schedule_availability_rule r
+JOIN clinical.schedule s ON s.id = r.schedule_id
+JOIN clinical.schedule_actor a ON a.schedule_id = s.id
+LEFT JOIN clinical.practitioner_role pr ON pr.id = a.practitioner_role_id
+WHERE s.active AND s.ext_facility_id = :facility_id
+  AND COALESCE(a.practitioner_id, pr.practitioner_id) = :provider_id
+""")
+
+
+class SqlProviderRepository:
+    async def lock(self, db: AsyncSession, key: str) -> None:
+        await db.execute(_LOCK, {"key": key})
+
+    async def npi_valid(self, db: AsyncSession, npi: str) -> bool:
+        return bool((await db.execute(_NPI_VALID, {"npi": npi})).scalar_one())
+
+    async def npi_taken(self, db: AsyncSession, npi: str) -> bool:
+        return bool((await db.execute(_NPI_TAKEN, {"npi": npi, "system": systems.NPI}))
+                    .scalar_one())
+
+    async def facility_locations(self, db: AsyncSession, facility_ids: list[UUID]
+                                 ) -> dict[UUID, UUID]:
+        rows = (await db.execute(_FACILITY_SITES, {"ids": facility_ids})).all()
+        return {r.id: r.location_id for r in rows}
+
+    async def create_provider(self, db: AsyncSession, new: NewProvider) -> UUID:
+        body, user_id = new.body, await _current_user(db)
+        provider = M["practitioner"](active=True, gender=body.gender,
+                                     created_by_user_id=user_id, updated_by_user_id=user_id)
+        db.add(provider)
+        await db.flush()
+        pid: UUID = provider.id
+        rows: list[Any] = [
+            M["identifier"](practitioner_id=pid, system=systems.NPI, value=body.npi,
+                            use="official"),
+            M["human_name"](practitioner_id=pid, family=body.name.family,
+                            given=list(body.name.given),
+                            prefix=[body.name.prefix] if body.name.prefix else [],
+                            suffix=[body.name.suffix] if body.name.suffix else [],
+                            use="official"),
+        ]
+        rows += [M["practitioner_qualification"](
+            practitioner_id=pid, code_system=q.code.system, code_code=q.code.code,
+            code_display=q.code.display, identifier_value=q.license_number, ext_state=q.state,
+            issuer_display=q.issuer, period_start=q.start_date, period_end=q.end_date)
+            for q in body.qualifications]
+        rows += [M["contact_point"](practitioner_id=pid, system=kind, value=value, use="work",
+                                    rank=1)
+                 for kind, value in (("phone", body.phone), ("email", body.email)) if value]
+        sites = list(new.facility_locations.values())
+        orgs = {r.id: r.managing_organization_id
+                for r in (await db.execute(_SITE_ORGANIZATIONS, {"ids": sites})).all()}
+        roles = [M["practitioner_role"](practitioner_id=pid, organization_id=orgs.get(site),
+                                        active=True, created_by_user_id=user_id,
+                                        updated_by_user_id=user_id)
+                 for site in sites]
+        db.add_all(rows + roles)
+        await db.flush()
+        for role, site in zip(roles, sites, strict=True):
+            db.add(M["practitioner_role_location"](practitioner_role_id=role.id,
+                                                   location_id=site))
+            db.add_all(M["practitioner_role_specialty"](
+                practitioner_role_id=role.id, specialty_system=c.system,
+                specialty_code=c.code, specialty_display=c.display)
+                for c in body.specialties)
+        await db.flush()
+        return pid
+
+    async def get_provider(self, db: AsyncSession, provider_id: UUID
+                           ) -> schemas.Provider | None:
+        rows = (await db.execute(_PROVIDERS, {
+            "active": None, "facility_id": None, "provider_id": provider_id,
+            **_keyset(None, 1)})).all()
+        items = await _provider_items(db, rows[:1])
+        return items[0] if items else None
+
+    async def role_at(self, db: AsyncSession, provider_id: UUID, facility_id: UUID
+                      ) -> UUID | None:
+        found: UUID | None = (await db.execute(_ROLE_AT, {
+            "provider_id": provider_id, "facility_id": facility_id})).scalar_one_or_none()
+        return found
+
+    async def missing_locations(self, db: AsyncSession, ids: set[UUID]) -> set[UUID]:
+        if not ids:
+            return set()
+        seen = set((await db.execute(_LOCATIONS, {"ids": list(ids)})).scalars())
+        return ids - seen
+
+    async def missing_appointment_types(self, db: AsyncSession, ids: set[UUID]
+                                        ) -> set[UUID]:
+        if not ids:
+            return set()
+        seen = set((await db.execute(_APPOINTMENT_TYPE_IDS, {"ids": list(ids)})).scalars())
+        return ids - seen
+
+    async def rules_at(self, db: AsyncSession, provider_id: UUID, facility_id: UUID
+                       ) -> list[ExistingRule]:
+        rows = (await db.execute(_RULES_AT, {"provider_id": provider_id,
+                                             "facility_id": facility_id})).all()
+        return [ExistingRule(r.day_of_week, r.start_time, r.end_time, r.effective_from,
+                             r.effective_to) for r in rows]
+
+    async def create_schedule(self, db: AsyncSession, body: schemas.ProviderScheduleCreate,
+                              role_id: UUID) -> UUID:
+        user_id = await _current_user(db)
+        by = {"created_by_user_id": user_id, "updated_by_user_id": user_id}
+        schedule = M["schedule"](ext_facility_id=body.facility_id, active=True,
+                                 comment=body.comment, **by)
+        db.add(schedule)
+        await db.flush()
+        sid: UUID = schedule.id
+        rules = [M["schedule_availability_rule"](
+            schedule_id=sid, day_of_week=r.day_of_week, start_time=time.fromisoformat(r.start_time),
+            end_time=time.fromisoformat(r.end_time), slot_minutes=r.slot_minutes,
+            location_id=r.location_id, effective_from=r.start_date, effective_to=r.end_date, **by)
+            for r in body.availability_rules]
+        db.add(M["schedule_actor"](schedule_id=sid, practitioner_role_id=role_id))
+        db.add_all(rules)
+        db.add_all(M["schedule_exception"](schedule_id=sid, start_at=e.start_at, end_at=e.end_at,
+                                           is_available=e.available, reason=e.reason, **by)
+                   for e in body.exceptions)
+        await db.flush()
+        db.add_all(M["availability_rule_appointment_type"](rule_id=rule.id, appointment_type_id=t)
+                   for rule, given in zip(rules, body.availability_rules, strict=True)
+                   for t in dict.fromkeys(given.appointment_type_ids))
+        await db.flush()
+        return sid
+
+    async def get_schedule(self, db: AsyncSession, schedule_id: UUID
+                           ) -> schemas.ProviderSchedule | None:
+        rows = (await db.execute(_SCHEDULES, {
+            "schedule_id": schedule_id, "provider_id": None, "facility_id": None,
+            "active": None, **_keyset(None, 1)})).all()
+        items = await _schedule_items(db, rows[:1])
+        return items[0] if items else None
+
+    async def version(self, db: AsyncSession, table: Versioned, row_id: UUID) -> int:
+        """The FHIR row's ``meta_version_id``, its ETag (ADR-0008)."""
+        return int((await db.execute(_VERSIONS[table], {"id": row_id})).scalar_one())
+
+
+_VERSIONS = {
+    "practitioner": text("SELECT meta_version_id FROM clinical.practitioner WHERE id = :id"),
+    "schedule": text("SELECT meta_version_id FROM clinical.schedule WHERE id = :id"),
+}
+
+
+async def _current_user(db: AsyncSession) -> UUID | None:
+    found: UUID | None = (await db.execute(_USER)).scalar_one_or_none()
+    return found

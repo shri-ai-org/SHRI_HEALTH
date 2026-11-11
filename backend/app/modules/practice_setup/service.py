@@ -8,6 +8,7 @@ template the session cannot see (unknown, or another clinic's) is 404 `not-found
 
 from __future__ import annotations
 
+from datetime import date, time
 from uuid import UUID
 from zoneinfo import available_timezones
 
@@ -28,8 +29,11 @@ from app.core.errors import (
 from . import cursor, schemas
 from .cursor import Kind, Position
 from .repository import (
+    ExistingRule,
     FacilityRepository,
+    NewProvider,
     Page,
+    ProviderRepository,
     SettingsRepository,
     SettingsRow,
     SetupRepository,
@@ -217,3 +221,107 @@ async def update_facility(db: AsyncSession, repo: FacilityRepository, user: Curr
         _, now = await get_facility(db, repo, user, facility_id)
         raise PreconditionFailed(headers={"ETag": etag(now)})
     return await get_facility(db, repo, user, facility_id)
+
+
+# ------------------------------------------------------------------------- provider writes
+def _rule(errors: list[dict[str, str]]) -> ValidationFailed:
+    detail = "1 rule is not met." if len(errors) == 1 else f"{len(errors)} rules are not met."
+    return ValidationFailed(detail, code="business-rule-violation", errors=errors)
+
+
+def location(kind: str, item_id: UUID) -> str:
+    return f"/api/v1/{kind}/{item_id}"
+
+
+async def create_provider(db: AsyncSession, repo: ProviderRepository, user: CurrentUser,
+                          body: schemas.ProviderCreate) -> tuple[schemas.Provider, int]:
+    """A provider with a role at each facility. Every facility must be one of the user's
+    (`invalid-reference`); the NPI must pass its check digit and be unused in the practice,
+    which is checked under a lock on the NPI, so two requests with one NPI can't both pass."""
+    facilities = list(dict.fromkeys(body.facility_ids))
+    errors = [field_error("body", f"/facilityIds/{i}", "invalid-reference")
+              for i, f in enumerate(body.facility_ids) if f not in user.facility_ids]
+    errors += [field_error("body", f"/qualifications/{i}/endDate", "out-of-range")
+               for i, q in enumerate(body.qualifications)
+               if q.start_date and q.end_date and q.end_date < q.start_date]
+    if not await repo.npi_valid(db, body.npi):
+        errors.append(field_error("body", "/npi", "invalid-format"))
+    if errors:
+        raise _rule(errors)
+    sites = await repo.facility_locations(db, facilities)
+    if len(sites) != len(facilities):  # one of the user's facilities isn't this clinic's
+        raise _rule([field_error("body", f"/facilityIds/{i}", "invalid-reference")
+                     for i, f in enumerate(body.facility_ids) if f not in sites])
+    await repo.lock(db, f"provider-npi:{body.npi}")
+    if await repo.npi_taken(db, body.npi):
+        raise _rule([field_error("body", "/npi", "not-allowed-value")])
+    provider_id = await repo.create_provider(db, NewProvider(body, sites))
+    created = await repo.get_provider(db, provider_id)
+    if created is None:  # just written in this transaction
+        raise InternalError("The new provider is not readable")
+    return created, await repo.version(db, "practitioner", provider_id)
+
+
+def _overlaps(a: schemas.AvailabilityRuleIn | ExistingRule,
+              b: schemas.AvailabilityRuleIn | ExistingRule) -> bool:
+    """Same day, overlapping times and overlapping dates (an open end runs on)."""
+    def span(r: schemas.AvailabilityRuleIn | ExistingRule
+             ) -> tuple[str, time, time, date, date]:
+        if isinstance(r, ExistingRule):
+            return (r.day_of_week, r.start_time, r.end_time, r.effective_from,
+                    r.effective_to or date.max)
+        return (r.day_of_week, time.fromisoformat(r.start_time), time.fromisoformat(r.end_time),
+                r.start_date, r.end_date or date.max)
+    day_a, start_a, end_a, from_a, to_a = span(a)
+    day_b, start_b, end_b, from_b, to_b = span(b)
+    return (day_a == day_b and start_a < end_b and start_b < end_a
+            and from_a <= to_b and from_b <= to_a)
+
+
+async def create_provider_schedule(db: AsyncSession, repo: ProviderRepository,
+                                   user: CurrentUser, body: schemas.ProviderScheduleCreate
+                                   ) -> tuple[schemas.ProviderSchedule, int]:
+    """A schedule for a provider at one of the user's facilities, where the provider has an
+    active role. No two of the provider's active rules at the facility may overlap (this
+    schedule's or another's), checked under a lock on the provider and facility, so two
+    requests can't both add overlapping rules."""
+    rules = body.availability_rules
+    errors = []
+    if body.facility_id not in user.facility_ids:
+        errors.append(field_error("body", "/facilityId", "invalid-reference"))
+    for i, r in enumerate(rules):
+        if r.end_time <= r.start_time:  # HH:MM compares as text
+            errors.append(field_error("body", f"/availabilityRules/{i}/endTime", "out-of-range"))
+        if r.end_date is not None and r.end_date < r.start_date:
+            errors.append(field_error("body", f"/availabilityRules/{i}/endDate", "out-of-range"))
+    errors += [field_error("body", f"/exceptions/{i}/endAt", "out-of-range")
+               for i, e in enumerate(body.exceptions) if e.end_at <= e.start_at]
+    if errors:
+        raise _rule(errors)
+    await repo.lock(db, f"provider-schedule:{body.provider_id}:{body.facility_id}")
+    role_id = await repo.role_at(db, body.provider_id, body.facility_id)
+    if role_id is None:  # unknown, or not working at the facility
+        errors.append(field_error("body", "/providerId", "invalid-reference"))
+    no_location = await repo.missing_locations(
+        db, {r.location_id for r in rules if r.location_id is not None})
+    no_type = await repo.missing_appointment_types(
+        db, {t for r in rules for t in r.appointment_type_ids})
+    for i, r in enumerate(rules):
+        if r.location_id in no_location:
+            errors.append(field_error("body", f"/availabilityRules/{i}/locationId",
+                                      "invalid-reference"))
+        errors += [field_error("body", f"/availabilityRules/{i}/appointmentTypeIds/{j}",
+                               "invalid-reference")
+                   for j, t in enumerate(r.appointment_type_ids) if t in no_type]
+    existing: list[schemas.AvailabilityRuleIn | ExistingRule] = [
+        *await repo.rules_at(db, body.provider_id, body.facility_id)]
+    errors += [field_error("body", f"/availabilityRules/{i}", "conflicting-fields")
+               for i, r in enumerate(rules)
+               if any(_overlaps(r, other) for other in [*rules[:i], *rules[i + 1:], *existing])]
+    if errors or role_id is None:  # a missing role is always among the errors
+        raise _rule(errors)
+    schedule_id = await repo.create_schedule(db, body, role_id)
+    created = await repo.get_schedule(db, schedule_id)
+    if created is None:
+        raise InternalError("The new schedule is not readable")
+    return created, await repo.version(db, "schedule", schedule_id)
