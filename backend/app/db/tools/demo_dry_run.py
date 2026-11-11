@@ -14,8 +14,10 @@ test. The test server uses real sign-in, so this script doesn't run against it y
 the demo layer is enough for steps 1 to 4. Steps 5 and 6 also need the code releases loaded
 (``python -m app.db.terminology icd10cm …`` and ``… rxnorm …``); without them they fail with
 "no codes loaded". The seed's all-day schedules give free times from today, so the visit is
-booked today, at the first free time at least 5 minutes ahead. The revisit is booked exactly 14
-days after the visit, in the facility's time zone, with the same provider; it fails, and says
+booked today, at the first free time at least 5 minutes ahead and not before 09:00 there (the
+all-day rules make 00:00 the first free time, which reads as a midnight visit). The revisit is
+booked exactly 14 days after the visit, at the first free time from 09:00, in the facility's
+time zone, with the same provider; it fails, and says
 so, if that day has no free time (the demo seed's weekly all-day rules have no end date).
 
 **The local difference: encryption.** The after-visit summary is stored encrypted and
@@ -48,6 +50,7 @@ ICD10CM = "http://hl7.org/fhir/sid/icd-10-cm"
 RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm"
 #: The revisit is booked exactly this many days after the visit, in the facility's time zone.
 REVISIT_DAYS = 14
+DAY_STARTS = dt.time(9)   # the earliest time booked, in the facility's time zone
 STEPS = {1: "register the patient", 2: "book", 3: "check in", 4: "room",
          5: "doctor: diagnosis and signed note", 6: "prescribe and send",
          7: "check-out: follow-up, summary, revisit"}
@@ -159,10 +162,12 @@ def _first_code(c: Client, system: str, query: str, what: str) -> dict[str, Any]
 
 
 def _free_time(c: Client, v: Visit, day: dt.date, after: dt.datetime) -> str | None:
+    """The first free time that day after ``after`` and not before ``DAY_STARTS`` there."""
+    after = max(after, dt.datetime.combine(day, DAY_STARTS, ZoneInfo(v.zone)))
     r = c.call("fd", "GET", f"/slots?date={day}&facilityId={v.facility}"
                f"&providerId={v.provider}&appointmentTypeId={v.visit_type}")
     for slot in _items(r):
-        if dt.datetime.fromisoformat(slot["startAt"].replace("Z", "+00:00")) > after:
+        if dt.datetime.fromisoformat(slot["startAt"].replace("Z", "+00:00")) >= after:
             start: str = slot["startAt"]
             return start
     return None

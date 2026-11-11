@@ -94,11 +94,13 @@ class Segment:
 class NoteDraftRequest:
     """AI-01: draft a note on an encounter from its visit transcript.
 
-    ``transcript`` is the transcript text sent to the model; it goes nowhere else (never a log,
-    never a table: ``ai_request`` keeps its SHA-256 only). ``segments`` are the same transcript
-    as timed segments, which each drafted section's source links point at (the transcription
-    ``transcription_id``). ``patient_context`` is the minimum the note needs from the chart
-    (age and sex, e.g. "41-year-old female")."""
+    ``transcript`` is the visit text sent to the model: the transcript, or the clinician's
+    dictation (``dictated``); it goes nowhere else (never a log, never a table: ``ai_request``
+    keeps its SHA-256 only). ``segments`` are a transcript's timed segments, which each drafted
+    section's source links point at (the transcription ``transcription_id``); a dictation has
+    none. ``patient_context`` is the minimum the note needs from the chart (age and sex, e.g.
+    "41-year-old female"); ``chart`` the allergy, medication and diagnosis lines the clinician
+    may read (chart_context.py)."""
     encounter_id: UUID
     patient_id: UUID
     transcript: str
@@ -110,6 +112,8 @@ class NoteDraftRequest:
     sources: tuple[SourceRef, ...] = ()
     transcription_id: UUID | None = None
     segments: tuple[Segment, ...] = ()
+    dictated: bool = False
+    chart: str | None = None
 
 
 @dataclass(frozen=True)
@@ -140,7 +144,7 @@ class DraftWritten:
 
 @dataclass(frozen=True)
 class PromptRef:
-    id: UUID
+    id: UUID | None     # None: the built-in default (prompts.DEFAULT), no prompt_template row
     code: str
     version: int
     feature: AIFeature
@@ -154,7 +158,7 @@ class DraftProvenance:
     request_id: UUID
     suggestion_ids: tuple[UUID, ...]
     model: str
-    prompt_template_id: UUID
+    prompt_template_id: UUID | None
     prompt_code: str
     prompt_version: int
     requested_at: datetime
@@ -188,7 +192,9 @@ FeatureName = Literal["ambient-documentation", "chart-summary"]
 
 
 class NoteDraftCreate(Closed):
-    transcription_id: UUID
+    transcription_id: UUID | None = None
+    encounter_id: UUID | None = None
+    dictation: Annotated[str, StringConstraints(min_length=1, max_length=20000)] | None = None
     template_id: UUID
 
 
@@ -281,3 +287,41 @@ class AiFeatureSettingUpdate(Closed):
 class AiSettingsUpdate(Closed):
     clinic_enabled: bool
     features: Annotated[list[AiFeatureSettingUpdate], Field(max_length=20)] | None = None
+
+
+# ---------------------------------------------------------------------- chart summary (AI-02)
+Topic = Literal["encounters", "diagnoses", "medications", "allergies", "results",
+                "outstanding-issues"]
+
+
+class ChartSummaryCreate(Closed):
+    patient_id: UUID
+    encounter_id: UUID | None = None
+
+
+class ChartSummaryStatement(Out):
+    sequence: int
+    text: str
+    confidence: Confidence
+    source_status: SourceStatus
+    sources: list[AiSourceLink]
+
+
+class ChartSummarySection(Out):
+    topic: Topic
+    statements: list[ChartSummaryStatement]
+
+
+class ChartSummaryGap(Out):
+    topic: Topic
+    description: str
+
+
+class ChartSummary(Out):
+    id: UUID
+    patient_id: UUID
+    encounter_id: UUID | None = None
+    sections: list[ChartSummarySection]
+    missing: list[ChartSummaryGap]
+    suggestion: AiSuggestion
+    created_at: datetime
