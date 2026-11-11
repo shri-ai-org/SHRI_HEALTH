@@ -226,3 +226,6 @@ GRANT UPDATE (updated_at) ON clinical.appointment_participant TO shri_portal;
 CREATE POLICY portal_own_update ON clinical.appointment_participant AS RESTRICTIVE FOR UPDATE TO shri_portal USING (EXISTS (SELECT 1 FROM clinical.appointment v WHERE v.id = appointment_participant.appointment_id)) WITH CHECK (EXISTS (SELECT 1 FROM clinical.appointment v WHERE v.id = appointment_participant.appointment_id));
 
 GRANT INSERT ON audit.audit_event TO shri_portal;
+
+GRANT SELECT, INSERT, UPDATE (request_hash, state, response_status, response_headers, response_body_enc, expires_at, updated_at) ON admin.idempotency_record TO shri_portal;
+CREATE POLICY portal_own_key ON admin.idempotency_record AS RESTRICTIVE FOR ALL TO shri_portal USING (patient_id = NULLIF(current_setting('app.current_patient_id', true), '')::uuid) WITH CHECK (patient_id = NULLIF(current_setting('app.current_patient_id', true), '')::uuid);

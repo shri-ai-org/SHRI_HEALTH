@@ -3,16 +3,18 @@
 Core claims an Idempotency-Key per clinic, user, method, path and key. A portal request has no
 staff user: its key belongs to the session's patient, so a record now names exactly one owner,
 a staff user or a patient. Staff keys keep their unique constraint (a NULL user never collides);
-a partial unique index does the same for patient keys. Core writes them as shri_app (its own
-claim session, as for staff), so shri_portal gets no new grant, and the tenant policy is
-unchanged.
+a partial unique index does the same for patient keys. Core claims a portal write's key as
+shri_portal (D93: portal requests never run as shri_app), so that role reads and writes its own
+patient's keys only, through a RESTRICTIVE policy (gen_db_rules.portal_idempotency_sql).
 
 Changes:
   admin.idempotency_record  user_id nullable; patient_id → clinical.patient (new), with the
                             clinic-carrying key (tenant_id, patient_id) → patient (tenant_id, id);
                             CHECK exactly one of user_id and patient_id, ck_..._one_owner;
                             UNIQUE (tenant_id, patient_id, method, path, key) WHERE patient_id
-                            IS NOT NULL, uq_idempotency_record_patient_key
+                            IS NOT NULL, uq_idempotency_record_patient_key;
+                            shri_portal: SELECT, INSERT, UPDATE (the claim's columns) and the
+                            RESTRICTIVE policy portal_own_key (patient_id = the session's)
 
 Revision ID: 0020
 Revises: 0019
@@ -30,6 +32,14 @@ branch_labels = None
 depends_on = None
 
 TABLE = "idempotency_record"
+_PATIENT = "NULLIF(current_setting('app.current_patient_id', true), '')::uuid"
+#: As sql/93_portal.sql (gen_db_rules.portal_idempotency_sql), frozen here.
+PORTAL_GRANTS = (
+    "GRANT SELECT, INSERT, UPDATE (request_hash, state, response_status, response_headers, "
+    "response_body_enc, expires_at, updated_at) ON admin.idempotency_record TO shri_portal",
+    f"CREATE POLICY portal_own_key ON admin.idempotency_record AS RESTRICTIVE FOR ALL "
+    f"TO shri_portal USING (patient_id = {_PATIENT}) WITH CHECK (patient_id = {_PATIENT})",
+)
 
 
 def upgrade() -> None:
@@ -48,9 +58,13 @@ def upgrade() -> None:
     op.create_index("uq_idempotency_record_patient_key", TABLE,
                     ["tenant_id", "patient_id", "method", "path", "key"], unique=True,
                     schema="admin", postgresql_where=sa.text("patient_id IS NOT NULL"))
+    for statement in PORTAL_GRANTS:
+        op.execute(statement)
 
 
 def downgrade() -> None:
+    op.execute("DROP POLICY portal_own_key ON admin.idempotency_record")
+    op.execute("REVOKE ALL ON admin.idempotency_record FROM shri_portal")
     # A patient's keys live 24 hours at most; they go before user_id is required again.
     op.execute("DELETE FROM admin.idempotency_record WHERE patient_id IS NOT NULL")
     op.drop_index("uq_idempotency_record_patient_key", table_name=TABLE, schema="admin")

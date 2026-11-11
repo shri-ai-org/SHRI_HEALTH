@@ -319,8 +319,9 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   exactly one owner, a staff `user_id` or, for the patient portal's writes, the session's
   `patient_id` (`ck_idempotency_record_one_owner`; the patient keeps the clinic-carrying key).
   Staff keys keep `uq_..._tenant_id_user_id_method_path_key`; patient keys have the partial
-  unique index `uq_idempotency_record_patient_key`. Core writes both as `shri_app`, in its own
-  claim session (a patient's with the clinic set and no user), so `shri_portal` has no access.
+  unique index `uq_idempotency_record_patient_key`. Core claims a staff key as `shri_app` and a
+  patient's as `shri_portal` (D93), whose RESTRICTIVE policy `portal_own_key` shows it the
+  session patient's keys only (`gen_db_rules.portal_idempotency_sql`).
 - **Pre-registration (D96, A51, migration 0009):** the public form calls
   `SELECT admin.submit_pre_registration(:practice_code, :idempotency_key, :request_hash,
   :details, :contact_consent, :source_ip, :user_agent, :request_id)` as `shri_public`, with no
