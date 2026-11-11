@@ -37,6 +37,7 @@ export function useChartContext(): ChartContext {
 
 interface Turn {
   id: number
+  patientId: string
   q: string
   answer?: ChartAnswer
   error?: string
@@ -64,6 +65,11 @@ export function RealAssistantBody({ onSourceOpened }: { onSourceOpened?: () => v
     }
   }, [ctx.pageType])
 
+  // The conversation belongs to one patient: opening another chart starts a new one.
+  useEffect(() => {
+    setTurns([])
+  }, [ctx.patientId])
+
   useEffect(() => {
     if (turns.length > 0) latest.current?.scrollIntoView({ block: 'start' })
   }, [turns.length])
@@ -71,11 +77,13 @@ export function RealAssistantBody({ onSourceOpened }: { onSourceOpened?: () => v
   function ask(q: string) {
     const question = q.trim()
     if (question.length < 3 || !ctx.patientId) return
-    const id = turns.length + 1
-    setTurns((t) => [...t, { id, q: question }])
+    const id = Date.now()
+    const patientId = ctx.patientId
+    setTurns((t) => [...t, { id, patientId, q: question }])
     setText('')
-    askChart(question, ctx.pageType, ctx.patientId, ctx.encounterId)
-      .then((answer) => setTurns((t) => t.map((x) => (x.id === id ? { ...x, answer } : x))))
+    askChart(question, ctx.pageType, patientId, ctx.encounterId)
+      // An answer is kept only on its own turn, and only when it is about that turn's patient.
+      .then((answer) => setTurns((t) => t.map((x) => (x.id === id && answer.patientId === x.patientId ? { ...x, answer } : x))))
       .catch((error: unknown) => {
         const down = aiDownReason(error)
         if (down) useAiStatus.getState().markDown('chart-qa', down)
@@ -117,8 +125,8 @@ export function RealAssistantBody({ onSourceOpened }: { onSourceOpened?: () => v
           </section>
         )}
         <ol role="log" aria-live="polite" aria-label="Conversation" className="flex flex-col gap-[12px]">
-          {turns.map((t, i) => (
-            <li key={t.id} ref={i === turns.length - 1 ? latest : undefined} className="flex scroll-mt-[8px] flex-col gap-[8px]">
+          {turns.filter((t) => t.patientId === ctx.patientId).map((t, i, shown) => (
+            <li key={t.id} ref={i === shown.length - 1 ? latest : undefined} className="flex scroll-mt-[8px] flex-col gap-[8px]">
               <div className="ml-auto max-w-[88%] rounded-[18px] rounded-br-[6px] bg-sh-primary px-[14px] py-[9px] text-[14px]/[1.4] text-sh-on-primary">{t.q}</div>
               {!t.answer && !t.error && (
                 <p role="status" className="text-[13px] text-sh-text-3">

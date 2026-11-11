@@ -44,7 +44,8 @@ export function ChartSummaryCard({ patientId, className }: { patientId: string; 
   const run = () => {
     setPhase({ kind: 'loading' })
     summarizeChart(patientId)
-      .then((summary) => setPhase({ kind: 'done', summary }))
+      // A summary of another chart (the record changed while it ran) is never shown here.
+      .then((summary) => setPhase(summary.patientId === patientId ? { kind: 'done', summary } : { kind: 'idle' }))
       .catch((error: unknown) => {
         const down = aiDownReason(error)
         if (down) useAiStatus.getState().markDown('chart-summary', down)

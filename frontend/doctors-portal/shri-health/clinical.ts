@@ -93,9 +93,21 @@ function pendingAi(n: Note): Record<string, AiSection> {
 
 const BAND: Record<string, ConfidenceBand> = { low: 'LOW', medium: 'MED', high: 'HIGH' }
 
-/** Puts the undecided AI sections in the scribe's draft store, where the note shows them as ghosts. */
+/** The AI suggestion each section's local decision belongs to, as last published (`encounterId:key`). */
+const publishedSuggestion = new Map<string, string>()
+
+/** Puts the undecided AI sections in the scribe's draft store, where the note shows them as ghosts.
+ *  A local decision counts only for the suggestion it was made on: when a section's suggestion is
+ *  new (a fresh draft, or the first load in this tab), any earlier decision for it is cleared. */
 function publishAi(encounterId: string, n: Note): string[] {
   const pending = Object.entries(pendingAi(n)).filter(([, a]) => !a.decided)
+  for (const [k, a] of pending) {
+    const slot = `${encounterId}:${k}`
+    if (publishedSuggestion.get(slot) !== a.suggestionId) {
+      useAI.getState().clearDisposition(slot)
+      publishedSuggestion.set(slot, a.suggestionId)
+    }
+  }
   if (pending.length === 0) return []
   const first = n.sections.find((sec) => sec.aiSuggestion)?.aiSuggestion
   useScribeDrafts.setState((st) => ({

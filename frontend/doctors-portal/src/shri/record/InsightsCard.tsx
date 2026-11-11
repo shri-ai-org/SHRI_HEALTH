@@ -28,7 +28,7 @@ const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export function InsightsCard({ patient: p, className }: { patient: Patient; className?: string }) {
   // With the API: AI-02's chart summary, never the sample's readings.
-  if (REAL_API) return <ChartSummaryCard patientId={p.id} className={className} />
+  if (REAL_API) return <ChartSummaryCard key={p.id} patientId={p.id} className={className} />
   return <SampleInsights patient={p} className={className} />
 }
 
