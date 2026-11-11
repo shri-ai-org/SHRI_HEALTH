@@ -8,7 +8,7 @@
  * surface, the low-confidence ones folded, the rationale behind a Why.
  */
 
-import { BedDouble, ClipboardList, Pill as PillIcon, SearchX } from 'lucide-react'
+import { BedDouble, CalendarPlus, ClipboardList, Pill as PillIcon, SearchX } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -87,6 +87,8 @@ function Consultation({ encounterId }: { encounterId: string }) {
   const differentials = differentialsFor(p.id)
   const rx = `/encounter/${enc.id}/rx`
   const order = `/encounter/${enc.id}/orders/new`
+  // Vimal's follow-up request screen (#272, S-06-19); shown once that route exists.
+  const followUp = `/encounter/${enc.id}/follow-up`
 
   return (
     <>
@@ -103,6 +105,11 @@ function Consultation({ encounterId }: { encounterId: string }) {
             {may(rx) && (
               <Pill variant="card" size="xl" icon={PillIcon} iconSize={17} onClick={() => navigate(rx)}>
                 Prescribe
+              </Pill>
+            )}
+            {may(followUp) && (
+              <Pill variant="card" size="xl" icon={CalendarPlus} iconSize={17} onClick={() => navigate(followUp)}>
+                Follow-up
               </Pill>
             )}
             {/* SHRI_HEALTH: orders and admissions have no service yet (orders/results B5, inpatients), so not with SHRI_API=real. */}
