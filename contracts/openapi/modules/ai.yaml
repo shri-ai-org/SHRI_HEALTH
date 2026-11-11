@@ -530,8 +530,10 @@ paths:
       summary: Get a chart summary
       description: 'The result of `POST /ai/chart-summaries` (inventory #112; AI-02; D70): statements by topic, each with
         a confidence band and links to the records behind it, or a `no-source` or `conflicting` marker; what could not be
-        found; and the summary''s suggestion, with its decision. Labeled as AI output on every screen (FRS §3.4). Still readable
-        when AI is switched off. A restricted patient needs break-glass or care-team membership.'
+        found; and the summary''s suggestion, with its decision. Labeled as AI output on every screen (FRS §3.4). Readable
+        by **its requester only**, who must still be able to read the chart (a restricted patient needs break-glass or care-team
+        membership): the summary was built from the requester''s own view of the chart (facilities and read permissions),
+        so a colleague asks for their own. Still readable when AI is switched off.'
       tags:
       - ai
       x-owner: vimal
@@ -624,7 +626,8 @@ paths:
             chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
         '404':
           $ref: ../components/responses/NotFound.yaml
-          description: 404. `not-found` (no such chart summary in this clinic or the user's facilities).
+          description: 404. `not-found` (no such chart summary in this clinic or the user's facilities, or another user's
+            summary).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -897,6 +900,252 @@ paths:
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
         '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /ai/chart-questions:
+    post:
+      operationId: createChartQuestion
+      summary: Ask a question about a patient's chart
+      description: 'Chart question and answer (FRS §3.4; the screens'' AI bubble): a question in plain words, with the page
+        it is asked from. Returns `202` and an operation of kind `ai.chart-answer`; its result is the answer (`GET /ai/chart-answers/{chartAnswerId}`).
+        The gateway reads the chart within the caller''s own request, through each module''s service, with the same permissions,
+        facility scope and restricted-chart check as the caller''s own reads, audited as `ai`. A part the caller may not read
+        is never read. **The front desk gets scheduling answers only**: for a role without clinical read permissions, only
+        the patient''s appointments are read, never clinical data. The model answers only from the records it was given: every
+        statement cites at least one of them, a statement that cites none is dropped, and when the chart does not answer the
+        question the answer says so (`insufficientEvidence`). The answer is AI output, never part of the chart, and readable
+        by its requester only. The question and the answer are never logged. Governed by the `chart-summary` switch: refused
+        with `409 feature-disabled` while AI or `chart-summary` is off for the clinic. The operation fails with `ai-unavailable`
+        (the model is down, declined, or the monthly AI budget is used up) or `ai-output-rejected`.'
+      tags:
+      - ai
+      x-owner: vimal
+      x-permission: chart-questions:create
+      x-audit:
+        action: C
+        category: ai
+        patient: body:/patientId
+      x-idempotency: supported
+      x-async: true
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChartQuestionCreate'
+            examples:
+              consultation:
+                summary: A question from the consultation screen
+                value:
+                  question: When was the lisinopril dose last changed?
+                  pageType: consultation
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+              frontDesk:
+                summary: A scheduling question from the front desk
+                value:
+                  question: When is the next appointment?
+                  pageType: front-desk
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed`
+            on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            Retry-After:
+              $ref: ../components/headers/RetryAfter.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/Operation.yaml
+              examples:
+                queued:
+                  summary: Answer queued
+                  value:
+                    id: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+                    kind: ai.chart-answer
+                    status: queued
+                    createdAt: 2026-11-10T15:12:00Z
+                    updatedAt: 2026-11-10T15:12:00Z
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `chart-questions:create`); `csrf-check-failed` (missing or
+            wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no
+            break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient or encounter in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `feature-disabled`
+            (AI or `chart-summary` is off for the clinic; the problem carries `feature`); `patient-merged` (the patient was
+            merged into another record).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the encounter
+            belongs to another patient (field code `invalid-reference`)); `idempotency-key-reused` (the Idempotency-Key was
+            used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /ai/chart-answers/{chartAnswerId}:
+    parameters:
+    - name: chartAnswerId
+      in: path
+      required: true
+      description: Chart answer ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getChartAnswer
+      summary: Get an answer to a chart question
+      description: 'The result of `POST /ai/chart-questions`: the answer''s statements, each citing the records behind it,
+        and `insufficientEvidence` when the chart does not answer the question. Labelled as AI output (`aiGenerated`). Readable
+        by **its requester only**, who must still be able to read the chart (a restricted patient needs break-glass or care-team
+        membership); anyone else gets `404`. Still readable when AI is switched off.'
+      tags:
+      - ai
+      x-owner: vimal
+      x-permission: chart-questions:create
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The answer.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartAnswer'
+              examples:
+                answer:
+                  summary: An answer with its sources
+                  value:
+                    id: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    pageType: consultation
+                    question: When was the lisinopril dose last changed?
+                    statements:
+                    - sequence: 1
+                      text: Lisinopril is on the medication list at 10 mg once daily.
+                      sources:
+                      - resourceType: MedicationRequest
+                        resourceId: 4f5a6b7c-8d9e-4f0a-9b1c-2d3e4f5a6b7c
+                        label: Medication list
+                    insufficientEvidence: true
+                    aiGenerated: true
+                    generatedBy:
+                      modelName: claude-sonnet-5-5
+                      promptCode: chart-answer
+                      promptVersion: 1
+                      pipelineVersion: gateway/2
+                    createdAt: 2026-11-10T15:12:05Z
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `chart-questions:create`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such answer in this clinic, or another user's answer).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /ai/suggested-questions:
+    get:
+      operationId: listSuggestedQuestions
+      summary: Suggested questions for a page
+      description: "A fixed list of suggested questions for the page the AI bubble is on (consultation, prescribing, check-out, chart or front-desk), from a rule table: no model call, no patient data, the same for every patient. Only questions the caller's role can get an answer to are listed (the front desk gets scheduling questions only)."
+      tags:
+      - ai
+      x-owner: vimal
+      x-permission: chart-questions:create
+      x-audit:
+        action: R
+        category: none
+      x-storage: none
+      x-release: P0
+      security:
+      - sessionCookie: []
+      parameters:
+      - name: pageType
+        in: query
+        required: true
+        description: The page the bubble is on.
+        schema:
+          $ref: "#/components/schemas/ChartQuestionPageType"
+      responses:
+        "200":
+          description: The suggested questions.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestedQuestionList"
+              examples:
+                consultation:
+                  summary: Consultation
+                  value:
+                    pageType: consultation
+                    questions:
+                    - What changed since the last visit?
+                    - Which medications is the patient taking?
+        "401":
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        "403":
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `chart-questions:create`).
+        "422":
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        "429":
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        "500":
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
 components:
@@ -1623,4 +1872,146 @@ components:
           items:
             $ref: '#/components/schemas/AiFeatureSettingUpdate'
           description: The features to set, each at most once.
+          x-phi: none
+    ChartQuestionPageType:
+      description: The page the AI bubble is on; it picks the suggested questions and frames the answer.
+      type: string
+      enum:
+      - consultation
+      - prescribing
+      - check-out
+      - chart
+      - front-desk
+    ChartQuestionCreate:
+      description: A question about one patient's chart, from a page.
+      type: object
+      additionalProperties: false
+      required:
+      - question
+      - pageType
+      - patientId
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: The question, in plain words. Never logged.
+          x-phi: clinical
+        pageType:
+          $ref: "#/components/schemas/ChartQuestionPageType"
+          description: The page it is asked from.
+          x-phi: none
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit, when the page is about one.
+          x-phi: internal-id
+    ChartAnswerStatement:
+      description: One statement of an answer, with the records it rests on (at least one).
+      type: object
+      required:
+      - sequence
+      - text
+      - sources
+      properties:
+        sequence:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+          description: Order in the answer, from 1.
+          x-phi: none
+        text:
+          type: string
+          maxLength: 2000
+          description: The statement.
+          x-phi: clinical
+        sources:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/AiSourceLink"
+          description: The records behind it.
+          x-phi: clinical
+    ChartAnswer:
+      description: An AI answer to a chart question. Read-only, never part of the chart; readable by its requester only.
+      type: object
+      required:
+      - id
+      - patientId
+      - pageType
+      - question
+      - statements
+      - insufficientEvidence
+      - aiGenerated
+      - generatedBy
+      - createdAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Chart answer ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit, when there was one.
+          x-phi: internal-id
+        pageType:
+          $ref: "#/components/schemas/ChartQuestionPageType"
+          description: The page it was asked from.
+          x-phi: none
+        question:
+          type: string
+          maxLength: 1000
+          description: The question as asked.
+          x-phi: clinical
+        statements:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/ChartAnswerStatement"
+          description: The answer, in order. Empty when the chart does not answer the question.
+          x-phi: clinical
+        insufficientEvidence:
+          type: boolean
+          description: True when the records do not fully answer the question; the screen says "not in the chart".
+          x-phi: none
+        aiGenerated:
+          type: boolean
+          const: true
+          description: "Always true: label the answer as AI output."
+          x-phi: none
+        generatedBy:
+          $ref: "#/components/schemas/AiGeneratedBy"
+          description: Model, prompt and pipeline versions.
+          x-phi: none
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was made.
+          x-phi: none
+    SuggestedQuestionList:
+      description: Suggested questions for a page (a fixed rule table).
+      type: object
+      required:
+      - pageType
+      - questions
+      properties:
+        pageType:
+          $ref: "#/components/schemas/ChartQuestionPageType"
+          description: The page.
+          x-phi: none
+        questions:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 200
+          description: The questions, in order.
           x-phi: none

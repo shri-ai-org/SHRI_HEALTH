@@ -58,6 +58,7 @@ CATALOGUE: frozenset[str] = _expand(
     # AI (Vimal)
     "encounter-audio:create", "transcriptions:read|create", "note-drafts:create",
     "chart-summaries:read|create", "ai-suggestions:decision", "ai-settings:read|update",
+    "chart-questions:create",  # the AI bubble (#306-308); the front desk gets scheduling only
     # Medications (Thulasi)
     "medications:read|create|discontinue", "medication-reconciliations:create",
     "prescriptions:read|create|update|safety-check|sign-and-send|cancel|change|entered-in-error",
@@ -139,7 +140,7 @@ _CLINICIAN_WRITE = _expand(
 )
 _AI_CLINICAL = _expand("encounter-audio:create", "transcriptions:read|create",
                        "note-drafts:create", "chart-summaries:read|create",
-                       "ai-suggestions:decision")
+                       "ai-suggestions:decision", "chart-questions:create")
 # encounters:update: MA and RN record the encounter's reasons at rooming (T52, Minalini on #114);
 # the encounters service lets them change `reasons` only, anything else is 403.
 _ROOMING = _expand("vitals:create", "allergies:create|update", "appointments:status",
@@ -170,7 +171,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "appointments:status", "codes:read",
                 "payments:create|card-session", "ccda:import|export",
                 "operations-dashboard:read",
-                "pre-registrations:read|accept|reject"),  # D96, T47
+                "pre-registrations:read|accept|reject",  # D96, T47
+                "chart-questions:create"),  # the AI bubble: scheduling answers only (#306)
     ),
     # Medical assistant (rooming). Orders: point-of-care results only, as in §4.3; no order entry.
     "MA": frozenset().union(
@@ -179,7 +181,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         _expand("coverages:read", "eligibility-checks:read", "consents:read|create",
                 "codes:read", "medication-reconciliations:create", "medications:create",
                 "medication-history:fetch", "in-office-results:create", "patients:break-glass",
-                "note-templates:read"),
+                "note-templates:read", "chart-questions:create"),
     ),
     # Nurse
     "RN": frozenset().union(
@@ -192,7 +194,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "notes:create|update|sign", "note-addenda:create",
                 "note-templates:read|create-personal",
                 "codes:read", "favorites:read|update",
-                "ccda:import|export", "patients:break-glass", "operations-dashboard:read"),
+                "ccda:import|export", "patients:break-glass", "operations-dashboard:read",
+                "chart-questions:create"),
     ),
     # Physician
     "MD": _MD,

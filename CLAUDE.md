@@ -35,5 +35,6 @@ Actions minutes are limited (D74 amendment, D106):
 - batch pushes, one per review round;
 - keep PRs as drafts until ready, since drafts don't run CI;
 - re-run only a failed job, after fixing its cause;
+- never merge with a red required job, even after approval;
 - don't close and reopen PRs to trigger CI;
 - rebase only right before merging.

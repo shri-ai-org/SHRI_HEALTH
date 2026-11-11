@@ -21,7 +21,7 @@ from uuid import UUID
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import audit, idempotency, permissions
+from app.core import audit, cookies, idempotency, permissions
 from app.core.config import Settings
 from app.core.db import Database
 from app.core.errors import Forbidden, NotFound, ServiceUnavailable, Unauthorized
@@ -99,7 +99,7 @@ async def current_user(request: Request) -> CurrentUser:
     # never reaches the session, let alone moves its idle timer.
     from app.core import session as sessions  # session builds on this module
 
-    token = request.cookies.get(sessions.SESSION_COOKIE)
+    token = cookies.read(request, sessions.SESSION_COOKIE)
     if not token:
         raise Unauthorized("Not signed in")
     sessions.check_csrf(request, settings, token)
@@ -245,7 +245,7 @@ async def current_patient(request: Request) -> PortalPatient:
                              organization_id=_header_uuid(request, DEV_PATIENT_CLINIC_HEADER))
     from app.core import portal_sign_in  # it builds on deps' neighbours, not on deps
 
-    token = request.cookies.get(portal_sign_in.PORTAL_COOKIE)
+    token = cookies.read(request, portal_sign_in.PORTAL_COOKIE)
     if not token or len(token) > 100:
         raise Unauthorized("Not signed in to the patient portal")
     portal_sign_in.check_csrf(request, settings, token)

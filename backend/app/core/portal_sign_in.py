@@ -40,7 +40,7 @@ from fastapi import FastAPI, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import audit
+from app.core import audit, cookies
 from app.core.config import Settings
 from app.core.crypto import decrypt_field, encrypt_field
 from app.core.db import (
@@ -367,7 +367,7 @@ async def session_from_cookie(request: Request) -> PortalSessionRow:
     """The live portal session the cookie names; 401 otherwise. Moves the idle timer for
     user-initiated requests, and refreshes the realm's tokens when they are older than the
     backstop allows (a patient disabled in the realm loses the session there)."""
-    token = request.cookies.get(PORTAL_COOKIE)
+    token = cookies.read(request, PORTAL_COOKIE)
     if not token or len(token) > 100:
         raise Unauthorized("Not signed in to the patient portal")
     db: Database | None = request.app.state.db
@@ -457,14 +457,12 @@ async def display_name(request: Request, session: PortalSessionRow) -> str:
     return str(given[0] if given else (row.text or ""))[:200]
 
 
-def set_session_cookie(response: Any, token: str) -> None:
-    response.set_cookie(PORTAL_COOKIE, token, httponly=True, secure=True, samesite="strict",
-                        path="/")
+def set_session_cookie(response: Any, settings: Settings, token: str) -> None:
+    cookies.put(response, settings, PORTAL_COOKIE, token, samesite="strict")
 
 
-def clear_session_cookie(response: Any) -> None:
-    response.delete_cookie(PORTAL_COOKIE, httponly=True, secure=True, samesite="strict",
-                           path="/")
+def clear_session_cookie(response: Any, settings: Settings) -> None:
+    cookies.remove(response, settings, PORTAL_COOKIE, samesite="strict")
 
 
 # --------------------------------------------------------------------------- invitations

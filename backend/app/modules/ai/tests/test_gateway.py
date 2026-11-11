@@ -206,13 +206,17 @@ async def test_a_model_failure_is_recorded_without_a_draft(kind: Any,
     assert repo.suggestions == {} and drafts.drafts == {}
 
 
-async def test_no_active_prompt_means_no_model_call() -> None:
+async def test_without_a_published_prompt_the_built_in_default_is_used() -> None:
+    """No clinic prompt row: the gateway's own version (prompts.NOTE_DRAFT_V2), recorded with
+    no prompt_template row."""
     repo = FakeAIRepository()
     repo.prompts.clear()
     gateway, _, model, _ = _gateway(repo)
-    with pytest.raises(ServiceUnavailable):
-        await gateway.draft_note(DB, request())
-    assert model.sent == [] and repo.requests == []
+    result = await gateway.draft_note(DB, request())
+    assert "Not discussed" in model.sent[0][0]["content"]
+    assert repo.requests[0].prompt_template_id is None
+    assert (result.provenance.prompt_code, result.provenance.prompt_version) == (
+        NOTE_DRAFT_PROMPT, 2)
 
 
 # ==================================================================================== logging
@@ -280,3 +284,75 @@ async def test_each_section_links_the_transcript_segments_it_came_from() -> None
     # Nothing in the transcript supports the exam: no-source, low, and the rationale says so.
     assert exam.content["sourceStatus"] == "no-source" and exam.content["sources"] == []
     assert exam.confidence == "low" and "no transcript segment" in exam.rationale
+
+
+# ========================================================================= dictation (demo)
+DICTATION = ("Follow-up of chronic migraine on topiramate. Headache days down to five or six a "
+             "month; sumatriptan works in an hour. Continue topiramate.")
+
+
+async def test_a_dictation_is_sent_as_such_with_the_chart_lines_and_the_schema() -> None:
+    chart = "Allergies: Penicillin (high criticality).\nCurrent medications: Topiramate 50 MG."
+    gateway, repo, model, drafts = _gateway()
+    result = await gateway.draft_note(DB, request(transcript=DICTATION, dictated=True,
+                                                  chart=chart))
+    user = model.sent[0][1]["content"]
+    assert f"Chart (background only):\n{chart}\n" in user
+    assert user.endswith(f"Dictation:\n{DICTATION}") and "Transcript:" not in user
+    assert model.schemas == [NOTE_DRAFT_SCHEMA]
+    [draft] = drafts.drafts.values()
+    suggestions = [repo.suggestions[sid] for _, sid in draft.suggestions]
+    assert {s.content["sourceStatus"] for s in suggestions} == {"no-source"}
+    assert all("clinician's dictation" in s.rationale for s in suggestions)
+    assert result.note.note_id in drafts.drafts
+
+
+async def test_not_discussed_counts_as_empty_for_the_confidence_band() -> None:
+    reply = {"sections": [{"code": c, "text": t} for c, t in (
+        ("10154-3", CHIEF), ("10164-2", HISTORY), ("29545-1", "Not discussed."),
+        ("51847-2", "Continue topiramate."), ("69730-0", "Not discussed"))]}
+    gateway, repo, _, drafts = _gateway(model=StubModelClient([json.dumps(reply)]))
+    result = await gateway.draft_note(DB, request(transcript=DICTATION, dictated=True))
+    assert result.confidence == "low"           # a required section was not discussed
+    [draft] = drafts.drafts.values()
+    texts = {s.code: s.text for s in draft.sections}
+    assert texts["69730-0"] == "Not discussed"  # kept for the clinician to see and decide
+    assert len(draft.suggestions) == 5
+
+
+# =================================================================================== budget
+async def test_past_the_monthly_budget_the_model_is_not_called() -> None:
+    from app.modules.ai.budget import Usage
+    repo = FakeAIRepository(usage=[Usage("claude-sonnet-5-5", 60_000_000, 2_000_000)])
+    model = StubModelClient(model="claude-sonnet-5-5")
+    gateway, _, _, drafts = _gateway(repo, model)
+    with pytest.raises(service.BudgetReached):
+        await gateway.draft_note(DB, request())
+    assert model.sent == [] and drafts.drafts == {}
+    [rec] = repo.requests
+    assert rec.status == AIRequestStatus.BLOCKED and rec.error_message is not None
+    assert rec.error_message.startswith("budget-reached")
+
+
+async def test_under_the_budget_and_for_unmetered_models_the_call_goes_ahead() -> None:
+    from app.modules.ai.budget import Usage
+    under = FakeAIRepository(usage=[Usage("claude-sonnet-5-5", 1_000_000, 100_000)])
+    gateway, _, model, _ = _gateway(under, StubModelClient(model="claude-sonnet-5-5"))
+    await gateway.draft_note(DB, request())
+    assert len(model.sent) == 1
+    huge = FakeAIRepository(usage=[Usage("claude-sonnet-5-5", 10**9, 10**9)])
+    gateway, _, model, _ = _gateway(huge, StubModelClient(model="stub"))
+    await gateway.draft_note(DB, request())       # the stub costs nothing: never blocked
+    assert len(model.sent) == 1
+
+
+async def test_a_declined_request_records_the_tokens_it_used() -> None:
+    declined = ModelError("declined", "the model declined the request (general_harms)",
+                          prompt_tokens=900, completion_tokens=40, model="claude-sonnet-5-5")
+    gateway, repo, _, drafts = _gateway(model=StubModelClient([declined]))
+    with pytest.raises(ModelUnavailable):
+        await gateway.draft_note(DB, request())
+    [rec] = repo.requests
+    assert (rec.status, rec.input_tokens, rec.output_tokens, rec.model_name) == (
+        AIRequestStatus.FAILED, 900, 40, "claude-sonnet-5-5")
+    assert drafts.drafts == {}

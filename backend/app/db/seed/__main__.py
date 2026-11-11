@@ -9,6 +9,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
+from app.db.seed import history
 from app.db.seed.demo import load_demo
 from app.db.seed.reset import NotEmpty, reset
 from app.db.seed.starter import load_starter, require_dev_environment
@@ -47,6 +48,8 @@ def main(argv: list[str]) -> int:
                       "shri_migrator", file=sys.stderr)
                 return 1
             LAYERS[argv[0]](db)
+        if argv[0] == "demo":           # the history, in its own transaction (history.py)
+            history.run(engine)
     finally:
         engine.dispose()
     print(f"seeded the {argv[0]} layer", file=sys.stderr)

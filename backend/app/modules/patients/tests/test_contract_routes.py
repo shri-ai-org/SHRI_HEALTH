@@ -75,7 +75,9 @@ BUILT_IN_PR_2 = frozenset({
     "listConsents",
     "recordConsent",
 })
-PENDING = BATCH_1 - BUILT_IN_PR_1 - BUILT_IN_PR_2
+# Built for the demo (D50; Minalini's #271 calls it).
+BUILT_LATER = frozenset({"setPreferredPharmacy"})
+PENDING = BATCH_1 - BUILT_IN_PR_1 - BUILT_IN_PR_2 - BUILT_LATER
 
 
 def test_batch_1_operations_are_built_or_pending() -> None:

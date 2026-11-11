@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { UserPlus, UserRoundCheck } from 'lucide-react'
 import { PageHeader } from '../components/layout/PageHeader'
+import { REAL_API } from '../../shri-health/client'
 import { AbhaScanButton } from '../components/patient/AbhaScanButton'
 import { Card, CardBody, CardHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -182,11 +183,16 @@ export function RegisterPatientPage() {
             onDone={() => navigate(`/patients/${registered.patientId}`, { replace: true })}
           >
             <p className="text-base font-semibold text-ink">{registered.name}</p>
-            <p className="text-2xl font-semibold tracking-wide tabular-nums text-primary-text">{registered.uhid}</p>
+            <p className="text-2xl font-semibold tracking-wide tabular-nums text-primary-text">
+              {REAL_API ? <span className="sr-only">MRN </span> : null}
+              {registered.uhid}
+            </p>
+            {REAL_API ? <p className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">MRN</p> : null}
             <p>
               {registered.age} yrs · {registered.sex} · {registered.mobile}
             </p>
-            {registered.abhaId ? <p>ABHA {registered.abhaId}</p> : null}
+            {/* ABHA is India's health ID: never shown with the SHRI_HEALTH API (D11). */}
+            {registered.abhaId && !REAL_API ? <p>ABHA {registered.abhaId}</p> : null}
           </AckCard>
         </Card>
       </div>

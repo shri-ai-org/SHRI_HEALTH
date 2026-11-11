@@ -1,3 +1,4 @@
+import { REAL_API } from '../../shri-health/client'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { UserRound } from 'lucide-react'
@@ -129,7 +130,8 @@ export function PatientProfilePage() {
   }
 
 
-  const hasAbha = Boolean(patient.abhaId)
+  // ABHA is India's health ID: its records card is never shown with the SHRI_HEALTH API (D11).
+  const hasAbha = !REAL_API && Boolean(patient.abhaId)
   const twoColumns = paymentsOpen || hasAbha
 
   return (

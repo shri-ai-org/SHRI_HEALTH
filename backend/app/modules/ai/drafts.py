@@ -1,14 +1,22 @@
 """The rules behind AI-01's routes (contracts/openapi/modules/ai.yaml): createNoteDraft,
 decideAiSuggestion and getTranscription.
 
-**createNoteDraft** (inventory #110). In order, synchronously:
+**createNoteDraft** (inventory #110). From a transcription (``transcriptionId``) or from the
+clinician's dictation (``encounterId`` with ``dictation``; never stored, never logged). In
+order, synchronously:
 
-1. ``409 feature-disabled`` while AI or ``ambient-documentation`` is off for the clinic;
-2. ``404`` for a transcription the clinic can't see;
-3. ``422 business-rule-violation`` (``/templateId`` ``invalid-reference``) for a template that
+1. ``422 business-rule-violation``: neither source (``/dictation`` ``required``); both,
+   ``dictation`` without ``encounterId``, or ``encounterId`` with ``transcriptionId``
+   (``conflicting-fields``);
+2. ``409 feature-disabled`` while AI or ``ambient-documentation`` is off for the clinic;
+3. ``404`` for a transcription the clinic can't see;
+4. ``422 business-rule-violation`` (``/templateId`` ``invalid-reference``) for a template that
    is unknown, inactive or another user's personal one;
-4. the encounter's checks (encounters/ai_drafts.py ``ready``): ``404`` (facility), ``403``
+5. the encounter's checks (encounters/ai_drafts.py ``ready``): ``404`` (facility), ``403``
    (restricted chart, D37; not a note writer), ``409 invalid-state-transition``.
+
+The chart lines the model sees (allergies, medications, the visit's diagnoses) are read after
+those checks, as the clinician (chart_context.py).
 
 Then the operation (``ai.note-draft``, core's ``long_running``) and the gateway's draft run in
 the request, as the file scan does (files/operations.py): core has no job runner for a module
@@ -51,6 +59,7 @@ from app.db.models.enums import AIDecision, AIFeature
 from app.modules.encounters.ai_drafts import SectionForDecision
 from app.modules.encounters.repository import EncounterHead
 
+from .chart_context import ChartReader
 from .repository import AIRepository
 from .schemas import (
     NOTE_SECTION,
@@ -65,7 +74,14 @@ from .schemas import (
     Transcription,
     TranscriptSegment,
 )
-from .service import Gateway, ModelUnavailable, NoteDrafts, OutputRejected, ensure_enabled
+from .service import (
+    BudgetReached,
+    Gateway,
+    ModelUnavailable,
+    NoteDrafts,
+    OutputRejected,
+    ensure_enabled,
+)
 from .transcripts import Transcripts, transcript_text
 
 NOTE_DRAFT_KIND = "ai.note-draft"
@@ -111,31 +127,68 @@ def _business_rule(pointer: str, code: str) -> ValidationFailed:
 
 
 # ------------------------------------------------------------------------------ note drafts
-async def create_note_draft(db: AsyncSession, gateway: Gateway, drafts: Drafts,
-                            transcripts: Transcripts, check: ChartCheck, template_of: Template,
-                            user: CurrentUser, body: NoteDraftCreate, name_patient: NamePatient
-                            ) -> Operation:
-    await ensure_enabled(db, gateway.repo, AIFeature.AMBIENT_DOCUMENTATION)
-    head = await transcripts.head(db, body.transcription_id)
-    if head is None:
-        raise NotFound()
-    template = await template_of(db, body.template_id)
+def _one_source(body: NoteDraftCreate) -> tuple[UUID, str] | None:
+    """Exactly one visit source: a transcription (None), or an encounter with its dictation
+    (the encounter and the text)."""
+    if body.transcription_id is None and body.dictation is None:
+        raise _business_rule("/dictation", "required")
+    if body.transcription_id is not None and body.dictation is not None:
+        raise _business_rule("/dictation", "conflicting-fields")
+    if body.dictation is not None and body.encounter_id is None:
+        raise _business_rule("/encounterId", "conflicting-fields")
+    if body.transcription_id is not None and body.encounter_id is not None:
+        raise _business_rule("/encounterId", "conflicting-fields")
+    if body.dictation is None or body.encounter_id is None:
+        return None
+    return body.encounter_id, body.dictation.strip()
+
+
+def _template_ok(template: TemplateView | None, user: CurrentUser) -> TemplateView:
     if template is None or not template.active or not template.sections or (
             template.owner_user_id is not None and template.owner_user_id != user.id):
         raise _business_rule("/templateId", "invalid-reference")
-    encounter = await drafts.ready(db, check, user, head.encounter_id,
-                                   template.note_type_loinc)
-    segments = await transcripts.segments(db, head)
+    return template
+
+
+async def create_note_draft(db: AsyncSession, gateway: Gateway, drafts: Drafts,
+                            transcripts: Transcripts, check: ChartCheck, template_of: Template,
+                            chart: ChartReader, user: CurrentUser, body: NoteDraftCreate,
+                            name_patient: NamePatient) -> Operation:
+    dictation = _one_source(body)
+    await ensure_enabled(db, gateway.repo, AIFeature.AMBIENT_DOCUMENTATION)
+    head = None
+    if dictation is not None:
+        encounter_id = dictation[0]
+    elif body.transcription_id is not None:
+        head = await transcripts.head(db, body.transcription_id)
+        if head is None:
+            raise NotFound()
+        encounter_id = head.encounter_id
+    else:   # _one_source refuses this already
+        raise _business_rule("/dictation", "required")
+    template = _template_ok(await template_of(db, body.template_id), user)
+    encounter = await drafts.ready(db, check, user, encounter_id, template.note_type_loinc)
+    context = await chart(db, user, encounter.patient_id, encounter.id)
+    if head is not None:
+        segments = await transcripts.segments(db, head)
+        text, sources = transcript_text(segments), (SourceRef(TRANSCRIPTION, head.id),
+                                                    *context.sources)
+    else:
+        segments, text, sources = (), dictation[1] if dictation else "", context.sources
     request = NoteDraftRequest(
-        encounter_id=encounter.id, patient_id=encounter.patient_id,
-        transcript=transcript_text(segments), sections=template.sections,
-        note_type_loinc=template.note_type_loinc, title=template.name, template_id=template.id,
+        encounter_id=encounter.id, patient_id=encounter.patient_id, transcript=text,
+        sections=template.sections, note_type_loinc=template.note_type_loinc,
+        title=template.name, template_id=template.id,
         patient_context=await gateway.repo.patient_context(db, encounter.patient_id),
-        sources=(SourceRef(TRANSCRIPTION, head.id),), transcription_id=head.id,
-        segments=segments)
+        sources=sources, transcription_id=head.id if head else None, segments=segments,
+        dictated=head is None, chart=context.text())
     operation = await create_operation(db, NOTE_DRAFT_KIND)
     try:
         result = await gateway.draft_note(db, request)
+    except BudgetReached:
+        done = await finish_operation(db, operation.id, "failed", error=problem_body(
+            "service-unavailable",
+            "The month's AI budget is used up; AI drafting resumes next month (ai-unavailable)"))
     except ModelUnavailable:
         done = await finish_operation(db, operation.id, "failed", error=problem_body(
             "service-unavailable", "The AI model is unavailable (ai-unavailable)"))

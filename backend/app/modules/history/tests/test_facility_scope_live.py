@@ -27,6 +27,7 @@ from app.modules.scheduling.tests.facility_scope import (
 )
 from app.modules.scheduling.tests.test_check_in_live import _check_in
 
+from .history_seed import seed_history
 from .test_allergies_live import MERGE, PENICILLIN
 
 pytestmark = [
@@ -65,7 +66,26 @@ def _rows(client: Any, practice: Practice, users: dict[str, CurrentUser]) -> lis
     their_visit = _encounter(client, p, at_a2=True, front_desk="fd-a2")
     mine, mine_tag = _allergy(client, base, "ma", mine_visit)
     theirs, their_tag = _allergy(client, base, "ma-a2", their_visit)
+    patient = f"{API}/patients/{p.patients['kaia']}"
+    seeded = seed_history(p.clinic, users["md"].id, p.patients["kaia"])
     return [
+        # --- problems and family, social and surgical history: patient-level, clinic-wide
+        Row("listProblems", "ma-a2", "GET", f"{patient}/problems", 200,
+            shown=(str(seeded.problem),), note=BY_DESIGN),
+        Row("getProblem", "ma-a2", "GET", f"{patient}/problems/{seeded.problem}", 200,
+            note=BY_DESIGN),
+        Row("listFamilyHistory", "ma-a2", "GET", f"{patient}/family-history", 200,
+            shown=(str(seeded.family),), note=BY_DESIGN),
+        Row("listSocialHistory", "ma-a2", "GET", f"{patient}/social-history", 200,
+            shown=(str(seeded.social),), note=BY_DESIGN),
+        Row("listSurgicalHistory", "ma-a2", "GET", f"{patient}/surgical-history", 200,
+            shown=(str(seeded.surgical),), note=BY_DESIGN),
+        # --- clinic B: 404 (RLS)
+        Row("listProblems", "md-b", "GET", f"{patient}/problems", 404),
+        Row("getProblem", "md-b", "GET", f"{patient}/problems/{seeded.problem}", 404),
+        Row("listFamilyHistory", "md-b", "GET", f"{patient}/family-history", 404),
+        Row("listSocialHistory", "md-b", "GET", f"{patient}/social-history", 404),
+        Row("listSurgicalHistory", "md-b", "GET", f"{patient}/surgical-history", 404),
         # --- the allergy list and one allergy: clinic-wide (no facility of their own)
         Row("listAllergies", "ma", "GET", base, 200, shown=(mine, theirs), note=BY_DESIGN),
         Row("getAllergy", "ma", "GET", f"{base}/{theirs}", 200, shown=(their_visit,),

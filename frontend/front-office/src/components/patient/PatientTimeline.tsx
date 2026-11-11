@@ -163,6 +163,8 @@ function UpcomingRow({
   const { appointment, bill, token } = item
   // Checked in: where the patient is now. A server booking's comes from the server (gap 73).
   const queueStatus = isServerAppointment(appointment.appointmentId) ? serverQueueStatus(appointment) : appointment.status === 'Checked-in' && token ? token.status : null
+  // A roomed visit waits in its room for the provider: say so, with In consultation's tone.
+  const queueLabel = isServerAppointment(appointment.appointmentId) && appointment.serverVisitStatus === 'roomed' ? 'Roomed' : queueStatus
   const isToday = appointment.date === today
   const unpaid = (appointment.status === 'Payment Pending' || appointment.status === 'Scheduled') && bill && bill.balance > 0
   const tele = appointment.mode === 'Teleconsult'
@@ -191,7 +193,7 @@ function UpcomingRow({
       {/* Checked in: where the patient is in the queue — Waiting, Called, In consultation. */}
       {/* SHRI_HEALTH: a server booking's place comes from the server, so every desk and tab shows the same. */}
       {queueStatus ? (
-        <Badge status={queueStatus}>{queueStatus}</Badge>
+        <Badge status={queueStatus}>{queueLabel}</Badge>
       ) : (
         <Badge status={appointment.status}>
           {appointmentStatusLabel(appointment.status)}
