@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '../components/layout/PageHeader'
 import { AppointmentIllustration } from '../components/ui/illustrations/AppointmentIllustration'
+import { Badge } from '../components/ui/Badge'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Alert } from '../components/ui/Alert'
@@ -37,6 +38,7 @@ import { CheckInToggle } from '../components/appointment/CheckInToggle'
 import { todayKey } from '../domain/time'
 import { isServerAppointment, loadAppointments, markNoShowOnServer } from '../../shri-health/scheduling'
 import { problemMessage } from '../../shri-health/client'
+import { useMayRoom } from '../../shri-health/rooming'
 import { REAL_API } from '../../shri-health/client'
 import { CurrencyIcon } from '../utils/billing'
 
@@ -62,6 +64,7 @@ const EMPTY_TITLE: Record<OutpatientFilter, string> = {
  * because the desk has to see them; the desk's own step is Check in.
  */
 export function OutpatientsPage() {
+  const mayRoom = useMayRoom()
   const location = useLocation()
   const navigate = useNavigate()
   const now = useNow(15000)
@@ -170,6 +173,30 @@ export function OutpatientsPage() {
         )
       }
       case 'waiting':
+        // SHRI_HEALTH: a server booking checked in anywhere is waiting here too (its place comes from
+        // the server, gap 73); the medical assistant rooms it from this row (demo step 6).
+        if (REAL_API && row.appointment && isServerAppointment(row.appointment.appointmentId)) {
+          const appointmentId = row.appointment.appointmentId
+          // Roomed: waiting for the doctor in a room, so no undo and no second rooming (gap 78).
+          if (row.appointment.serverVisitStatus === 'roomed') {
+            return (
+              <Badge tone="teal" className="px-2">
+                Roomed
+              </Badge>
+            )
+          }
+          return (
+            <>
+              <CheckInToggle appointment={row.appointment} patientName={name} />
+              {mayRoom ? (
+                <Button size="sm" onClick={() => openFlow('rooming', { appointment: appointmentId })}>
+                  <DoorOpen className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Room patient
+                </Button>
+              ) : null}
+            </>
+          )
+        }
         return token ? (
           <>
             {admit}
