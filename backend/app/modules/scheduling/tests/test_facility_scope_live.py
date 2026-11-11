@@ -12,9 +12,11 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
+from fastapi.routing import APIRoute
 
 from app.core.deps import CurrentUser
 from app.db.tests.conftest import TEST_DATABASE_URL
+from app.modules.scheduling.portal_api import router as portal_router
 
 from .conftest import ZONE, Practice, local
 from .facility_scope import (
@@ -204,5 +206,10 @@ def test_every_scheduling_operation_keeps_to_the_users_facilities(
         client: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:
     outcomes = sweep(client, practice, _rows(client, practice, users))
     assert not failures(outcomes), report(failures(outcomes))
-    assert {o.row.operation for o in outcomes} == served_operations("scheduling"), \
-        "the table must cover every operation scheduling serves"
+    # The portal's operations (portal_api.py) belong to the patient session, not to a staff
+    # user's facilities (D84): their own-record and other-clinic 404s are in
+    # test_portal_booking_live.py and test_portal_appointments_live.py.
+    portal = {r.operation_id for r in portal_router.routes
+              if isinstance(r, APIRoute) and r.operation_id}
+    assert {o.row.operation for o in outcomes} == served_operations("scheduling") - portal, \
+        "the table must cover every staff operation scheduling serves"
