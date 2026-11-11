@@ -19,7 +19,7 @@ import type { FollowUpSummaryStatus } from './followUpSummaryStatus';
 import type { Id } from './id';
 
 /**
- * The visit's follow-up request as the front desk needs it at check-out (D98): no clinical note beyond the request itself.
+ * The visit's follow-up request as the front desk needs it at check-out (D98): no clinical note beyond the request itself. For a restricted patient seen by a user without a break-glass grant who is not on the care team, it leaves out only the clinician's `note`; the type, provider and booked revisit stay, since the desk books the revisit from them (D107).
  */
 export interface FollowUpSummary {
   /** The visit that asked for it. */
@@ -39,4 +39,10 @@ export interface FollowUpSummary {
   status: FollowUpSummaryStatus;
   /** Once `booked`: the revisit, so the screen can link it. */
   bookedAppointmentId?: Id;
+  /**
+     * Opaque version of the request (the encounter's `ETag`). Send it unchanged as `If-Match` to decline the request (`POST /encounters/{encounterId}/follow-up/decline`), since the front desk can't read the encounter (D107).
+     * @maxLength 128
+     * @pattern ^"[^"]{1,126}"$
+     */
+  version: string;
 }

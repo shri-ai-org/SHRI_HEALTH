@@ -1,0 +1,480 @@
+/* ─────────────────────────────────────────────────────────────────────
+   The day timeline — the Shri Health doctors' Dashboard Today chart
+   (doctors-portal src/shri/myday/DayTimeline.tsx), as plain CSS: no
+   Tailwind classes, no other stylesheet needed. Every class is `dtl-…`
+   and every colour a `--dtl-…` token on `.dtl`, light and dark, with the
+   Dashboard's own values. Dark follows `data-theme='dark'` on <html>.
+
+   The chart sits on the host's card: `--dtl-card` (the ring round the Now
+   dot) reads Care Entry's `--color-surface-1`. The typeface is the host's;
+   set `--dtl-font: 'Inter', sans-serif` for the Dashboard's own.
+──────────────────────────────────────────────────────────────────── */
+
+.dtl {
+  --dtl-card: var(--color-surface-1, #ffffff);
+  --dtl-line: #efeff3;
+  --dtl-line-strong: #e4e4ea;
+  --dtl-text: #111114;
+  --dtl-text-2: #55555f;
+  --dtl-text-3: #6c6c76;
+  --dtl-crit-bg: #ffe8e8;
+  --dtl-crit-fg: #c42f2f;
+  --dtl-crit: #ff5b5b;
+  --dtl-norm-fg: #16693a;
+  --dtl-shadow-pop: 0 16px 40px rgba(18, 20, 26, 0.14);
+
+  /* A colour for each kind of activity, its ink 4.5:1 or more on it. */
+  --act-brief: #d6e6ff; --act-brief-ink: #1e3a8a; --act-brief-edge: #93b8f5;
+  --act-opd: #15803d; --act-opd-ink: #ffffff;
+  --act-tele: #7c3aed; --act-tele-ink: #ffffff;
+  --act-ward: #f59e0b; --act-ward-ink: #3b1d00;
+  --act-paper: #475569; --act-paper-ink: #ffffff;
+  --act-discharge: #0f766e; --act-discharge-ink: #ffffff;
+  --act-stroke: #be185d; --act-stroke-ink: #ffffff;
+  --act-patient: var(--act-opd); --act-patient-ink: var(--act-opd-ink); /* a booked patient is an OPD visit: the OPD's green */
+  --act-procedure: #0369a1; --act-procedure-ink: #ffffff;
+  --act-other: #57534e; --act-other-ink: #ffffff;
+  /* Free time a dashed green, breaks hatched grey, the Now line red. */
+  --avail-fill: #ecfaf1; --avail-edge: #22a55a; --avail-ink: #146c3a;
+  --off-fill: #f4f4f6; --off-hatch: #dcdce2;
+  /* Now is blue and stays put; the red is the time cursor the desk drags. */
+  --now-line: #2563eb; --now-ink: #1d4ed8;
+  --cursor-red: #e5342f;
+
+  position: relative;
+  font-family: var(--dtl-font, inherit);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--dtl-text);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme='dark'] .dtl {
+  --dtl-card: var(--color-surface-1, #262628);
+  --dtl-line: #3a3a3d;
+  --dtl-line-strong: #48484c;
+  --dtl-text: #ffffff;
+  --dtl-text-2: #c9c9ce;
+  --dtl-text-3: #a3a3a9;
+  --dtl-crit-bg: rgba(255, 77, 77, 0.16);
+  --dtl-crit-fg: #ff8a8a;
+  --dtl-crit: #ff4d4d;
+  --dtl-norm-fg: #6ee7b7;
+  --dtl-shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.55);
+
+  --act-brief: #1d3a66; --act-brief-ink: #d6e6ff; --act-brief-edge: #3b68b0;
+  --act-ward-ink: #2a1500;
+  --act-paper: #52607a;
+  --avail-fill: rgba(34, 197, 94, 0.12); --avail-edge: #22c55e; --avail-ink: #86efac;
+  --off-fill: #2a2a2d; --off-hatch: #404045;
+  --now-line: #60a5fa; --now-ink: #93c5fd;
+  --cursor-red: #ff5a52;
+}
+
+.dtl *,
+.dtl *::before,
+.dtl *::after {
+  box-sizing: border-box;
+}
+
+/* ── The scroller: sideways where the screen is narrower than the row ── */
+
+.dtl-scroll {
+  margin: 0 -6px;
+  padding: 0 6px 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dtl-line-strong) transparent;
+}
+.dtl-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.dtl-scroll::-webkit-scrollbar-thumb { background: var(--dtl-line-strong); border-radius: 999px; }
+.dtl-scroll::-webkit-scrollbar-track { background: transparent; }
+
+.dtl-track { position: relative; padding: 0 26px; }
+.dtl-inner { position: relative; }
+
+/* ── Now, named above the hours ── */
+
+.dtl-now-head { position: relative; height: 36px; }
+.dtl-now-label {
+  position: absolute;
+  bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  padding-left: 10px;
+  font-size: 13px;
+  line-height: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--now-ink);
+}
+.dtl-now-label[data-side='left'] {
+  transform: translateX(-100%);
+  align-items: flex-end;
+  padding-left: 0;
+  padding-right: 10px;
+}
+
+/* ── The hours, every half hour ── */
+
+.dtl-hours { position: relative; height: 32px; font-size: 12px; line-height: 15px; }
+.dtl-hour {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: var(--dtl-text-3);
+}
+.dtl-hour[data-whole] { font-weight: 600; color: var(--dtl-text); }
+.dtl-hour-period { font-size: 11px; line-height: 13px; }
+
+.dtl-ticks { position: relative; height: 8px; }
+.dtl-tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--dtl-line-strong); }
+
+/* ── The row ── */
+
+.dtl-row { position: relative; height: 64px; }
+/* Rows under a shared axis (the booking page): a slimmer bar. */
+.dtl[data-compact] .dtl-row { height: 40px; }
+
+/* The hover guide on a chart of its own: the red cursor's dashed line under the pointer, a dot at each end. */
+.dtl-guide {
+  pointer-events: none;
+  position: absolute;
+  top: -10px;
+  bottom: -10px;
+  z-index: 3;
+  display: flex;
+  width: 2px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  transform: translateX(-50%);
+}
+.dtl-guide-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--cursor-red); }
+.dtl-guide-line { width: 0; flex: 1; border-left: 2px dashed var(--cursor-red); }
+
+/* The Now line, from its label through the row. */
+.dtl-now-line {
+  pointer-events: none;
+  position: absolute;
+  top: 30px;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+}
+.dtl-now-dot { width: 12px; height: 12px; flex-shrink: 0; border-radius: 999px; background: var(--now-line); box-shadow: 0 0 0 3px var(--dtl-card); }
+.dtl-now-dash { width: 0; flex: 1; border-left: 2px solid var(--now-line); }
+.dtl-now-end { width: 7px; height: 7px; flex-shrink: 0; border-radius: 999px; background: var(--now-line); }
+
+/* ── The doctor lists: the red time cursor (dragged on the shared hours, its line through every row)
+      and the blue Now (static), each with a chip on the hours and a pin through every row ── */
+
+.dtl-cursor-chip, .dtl-cursor-stem, .dtl-cursor-line { --cursor: var(--cursor-red); }
+.dtl-now-chip, .dtl-now-stem { --cursor: var(--now-line); }
+/* The cursor's pin is the red one, dashed; Now's stays solid blue. */
+.dtl-cursor-line { --now-line: var(--cursor-red); }
+.dtl-cursor-line .dtl-now-dash { border-left-style: dashed; }
+.dtl-cursor-axis { cursor: ew-resize; touch-action: none; user-select: none; }
+.dtl-cursor-chip, .dtl-now-chip {
+  position: absolute;
+  bottom: 4px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  background: var(--cursor);
+  padding: 3px 9px 3px 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  color: #fff;
+  box-shadow: 0 2px 6px -1px color-mix(in srgb, var(--cursor) 55%, transparent);
+  transform: translateX(-50%);
+}
+.dtl-cursor-chip[data-side='start'], .dtl-now-chip[data-side='start'] { transform: translateX(-12px); }
+.dtl-cursor-chip[data-side='end'], .dtl-now-chip[data-side='end'] { transform: translateX(calc(-100% + 12px)); }
+/* A small pointer under the chip, over the cursor's minute. */
+.dtl-cursor-chip::after, .dtl-now-chip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  border: 5px solid transparent;
+  border-top-color: var(--cursor);
+  transform: translateX(-50%);
+}
+.dtl-cursor-chip[data-side='start']::after, .dtl-now-chip[data-side='start']::after { left: 12px; }
+.dtl-cursor-chip[data-side='end']::after, .dtl-now-chip[data-side='end']::after { left: calc(100% - 12px); }
+.dtl-cursor-stem, .dtl-now-stem {
+  pointer-events: none;
+  position: absolute;
+  top: 64px;
+  bottom: 0;
+  z-index: 2;
+  width: 0;
+  border-left: 2px dashed var(--cursor);
+  transform: translateX(-50%);
+}
+.dtl-cursor-line {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+}
+
+/* ── A bar. Each is its own container: it says as much as fits. ── */
+
+.dtl-bar {
+  container-type: inline-size;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  overflow: hidden;
+  margin: 0;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 6px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  appearance: none;
+}
+button.dtl-bar { cursor: pointer; }
+.dtl-bar[data-tight] { padding: 0; }
+
+/* Each kind's colour and ink, for its bar and its swatch in the key. */
+[data-kind='brief'] { --k: var(--act-brief); --k-ink: var(--act-brief-ink); }
+[data-kind='opd'] { --k: var(--act-opd); --k-ink: var(--act-opd-ink); }
+[data-kind='tele'] { --k: var(--act-tele); --k-ink: var(--act-tele-ink); }
+[data-kind='ward'] { --k: var(--act-ward); --k-ink: var(--act-ward-ink); }
+[data-kind='paper'] { --k: var(--act-paper); --k-ink: var(--act-paper-ink); }
+[data-kind='discharge'] { --k: var(--act-discharge); --k-ink: var(--act-discharge-ink); }
+[data-kind='stroke'] { --k: var(--act-stroke); --k-ink: var(--act-stroke-ink); }
+[data-kind='patient'] { --k: var(--act-patient); --k-ink: var(--act-patient-ink); }
+[data-kind='procedure'] { --k: var(--act-procedure); --k-ink: var(--act-procedure-ink); }
+[data-kind='other'] { --k: var(--act-other); --k-ink: var(--act-other-ink); }
+
+/* An activity: its colour and ink, a lit top edge and a soft drop. */
+.dtl-act {
+  background: var(--k);
+  color: var(--k-ink);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.28), 0 6px 14px -10px rgb(0 0 0 / 0.55);
+}
+.dtl-act[data-kind='brief'] { box-shadow: inset 0 0 0 1.5px var(--act-brief-edge), 0 6px 14px -10px rgb(0 0 0 / 0.55); }
+button.dtl-act { transition: filter 150ms; }
+button.dtl-act:hover { filter: brightness(1.05); }
+
+.dtl-free {
+  justify-content: center;
+  border: 1.5px dashed var(--avail-edge);
+  background: var(--avail-fill);
+  color: var(--avail-ink);
+}
+button.dtl-free { transition: filter 150ms; }
+button.dtl-free:hover { filter: brightness(0.97); }
+/* Free time that has already passed: a quiet grey, so it reads as gone rather than empty. */
+.dtl-free-gone {
+  background: color-mix(in oklab, var(--color-ink-subtle) 16%, var(--color-surface-1));
+  border: 1px solid color-mix(in oklab, var(--color-ink-subtle) 24%, var(--color-surface-1));
+}
+
+.dtl-off { background: repeating-linear-gradient(135deg, var(--off-hatch) 0 2px, var(--off-fill) 2px 8px); }
+button.dtl-off { transition: box-shadow 150ms; }
+button.dtl-off:hover { box-shadow: inset 0 0 0 1.5px var(--dtl-line-strong); }
+
+.dtl-blocked {
+  border: 1.5px dashed var(--dtl-crit);
+  background: repeating-linear-gradient(135deg, var(--dtl-crit-bg) 0 6px, transparent 6px 10px);
+  color: var(--dtl-crit-fg);
+}
+
+/* What a bar says: icon, name, time — as much as fits. */
+.dtl-bar-in {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.dtl-icon { display: none; flex-shrink: 0; }
+.dtl-words { display: none; min-width: 0; flex-direction: column; }
+.dtl-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 16px; font-weight: 600; }
+.dtl-time { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 14px; }
+.dtl-time-long { display: none; }
+
+@container (min-width: 16px) {
+  .dtl-blocked .dtl-icon { display: block; }
+}
+@container (min-width: 18px) {
+  .dtl-act .dtl-icon,
+  .dtl-free .dtl-icon { display: block; }
+}
+@container (min-width: 58px) {
+  .dtl-act .dtl-bar-in { justify-content: flex-start; }
+  .dtl-act .dtl-words { display: flex; }
+}
+@container (min-width: 70px) {
+  .dtl-blocked .dtl-bar-in { justify-content: flex-start; }
+  .dtl-blocked .dtl-words { display: flex; }
+}
+@container (min-width: 104px) {
+  .dtl-time-short { display: none; }
+  .dtl-time-long { display: block; }
+}
+
+/* ── The hover card: what is at that minute, and what comes next ── */
+
+.dtl-card {
+  pointer-events: none;
+  position: absolute;
+  z-index: 30;
+  width: 280px;
+  border: 1px solid var(--dtl-line);
+  border-radius: 16px;
+  padding: 14px;
+  background: var(--dtl-card);
+  box-shadow: var(--dtl-shadow-pop);
+  font-size: 13px;
+}
+[data-theme='dark'] .dtl-card {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(70, 70, 76, 0.55);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.dtl-card p { margin: 0; }
+.dtl-card-time { font-size: 15px; font-weight: 600; color: var(--dtl-text); }
+.dtl-card .dtl-card-what { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
+.dtl-card-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 999px; }
+.dtl-card-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--dtl-text); }
+.dtl-card-name[data-free] { color: var(--dtl-norm-fg); }
+.dtl-card-aside { flex-shrink: 0; color: var(--dtl-text-2); }
+.dtl-card .dtl-card-next {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--dtl-line);
+  padding-top: 10px;
+  color: var(--dtl-text-2);
+}
+.dtl-card-next b { font-weight: 500; color: var(--dtl-text); }
+.dtl-card-next-what { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dtl-card-next-when { flex-shrink: 0; }
+
+/* ── The key, and the day in figures ── */
+
+.dtl-legend {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.dtl-key {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  border: 1px solid var(--dtl-line);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--dtl-text-2);
+}
+.dtl-key-item { display: inline-flex; align-items: center; gap: 7px; }
+.dtl-swatch { width: 13px; height: 13px; border-radius: 4px; background: var(--k); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.28); }
+.dtl-swatch[data-kind='brief'] { box-shadow: inset 0 0 0 1.5px var(--act-brief-edge); }
+.dtl-swatch-free {
+  display: inline-flex;
+  width: 22px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed var(--avail-edge);
+  border-radius: 4px;
+  background: var(--avail-fill);
+  color: var(--avail-ink);
+}
+.dtl-swatch-blocked {
+  width: 18px;
+  height: 13px;
+  border: 1px dashed var(--dtl-crit);
+  border-radius: 4px;
+  background: repeating-linear-gradient(135deg, var(--dtl-crit-bg) 0 6px, transparent 6px 10px);
+}
+.dtl-swatch-gone {
+  width: 18px;
+  height: 13px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--color-ink-subtle) 16%, var(--color-surface-1));
+  border: 1px solid color-mix(in oklab, var(--color-ink-subtle) 24%, var(--color-surface-1));
+}
+.dtl-swatch-off {
+  width: 18px;
+  height: 13px;
+  border-radius: 4px;
+  background: repeating-linear-gradient(135deg, var(--off-hatch) 0 2px, var(--off-fill) 2px 8px);
+}
+/* The shared key above a list of doctors: one quiet line, no box. */
+.dtl-key-flat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  font-size: 12.5px;
+  color: var(--dtl-text-2);
+}
+.dtl-totals { margin: 0 0 0 auto; font-size: 13px; color: var(--dtl-text-2); }
+.dtl-totals b { font-weight: 600; color: var(--dtl-text); }
+
+.dtl-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The blue Now on the doctor lists: solid, static, under the red cursor. */
+.dtl-now-stem { border-left-style: solid; }
+.dtl-now-pin {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+}
+.dtl-cursor-line { z-index: 3; }
+/* The red cursor's lane on the shared hours: its chip sits here, pointing down into the rows. */
+.dtl-cursor-lane { position: relative; height: 30px; }
+.dtl-cursor-lane .dtl-cursor-chip { bottom: 6px; }
+.dtl-now-stem { top: 36px; }

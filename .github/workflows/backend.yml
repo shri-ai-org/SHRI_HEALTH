@@ -160,7 +160,16 @@ jobs:
           stamp="$(docker run --rm shri-health/api:ci python -c \
             'from app.core.config import Settings; s = Settings(); print(s.build_version, s.build_commit_short)')"
           test "$stamp" = "$BUILD_VERSION ${BUILD_COMMIT:0:12}" || { echo "::error::stamp is '$stamp'"; exit 1; }
-          docker run -d --name api -p 127.0.0.1:8000:8000 shri-health/api:ci
+          # Production refuses to start without OpenBao Transit (#244): check that first, then
+          # start it with Transit settings. Nothing connects to them at startup, so a closed
+          # port and a placeholder token are enough for /health.
+          if docker run --rm shri-health/api:ci python -c \
+            'from fastapi.testclient import TestClient; from app.main import app; TestClient(app).__enter__()' 2>/dev/null; then
+            echo "::error::the image started in production without OpenBao Transit"; exit 1
+          fi
+          docker run -d --name api -p 127.0.0.1:8000:8000 \
+            -e OPENBAO_TRANSIT_ADDR=http://127.0.0.1:1 -e OPENBAO_TRANSIT_TOKEN=ci-placeholder-not-a-secret \
+            shri-health/api:ci
           for _ in $(seq 1 30); do
             body="$(curl -sf http://127.0.0.1:8000/health)" && break
             sleep 1

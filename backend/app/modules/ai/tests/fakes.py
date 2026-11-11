@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.enums import AIDecision, AIFeature
+from app.modules.ai.budget import Usage
 from app.modules.ai.model_client import ModelError, ModelReply
 from app.modules.ai.prompts import NOTE_DRAFT_V1
 from app.modules.ai.repository import (
@@ -72,6 +73,7 @@ class FakeAIRepository:
     targets: dict[UUID, UUID] = field(default_factory=dict)
     decisions: dict[UUID, AIDecision] = field(default_factory=dict)
     reads: int = 0
+    usage: list[Usage] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.prompts:
@@ -142,6 +144,9 @@ class FakeAIRepository:
     async def patient_context(self, db: AsyncSession, patient_id: UUID) -> str | None:
         return "41-year-old female"
 
+    async def month_usage(self, db: AsyncSession) -> list[Usage]:
+        return list(self.usage)
+
 
 @dataclass
 class StubModelClient:
@@ -149,10 +154,12 @@ class StubModelClient:
     replies: list[str | ModelError] = field(default_factory=lambda: [json.dumps(GOOD_REPLY)])
     model: str = "stub/qwen3-8b"
     sent: list[list[dict[str, str]]] = field(default_factory=list)
+    schemas: list[Mapping[str, Any] | None] = field(default_factory=list)
 
-    async def complete(self, messages: Sequence[Mapping[str, str]], *,
-                       max_tokens: int) -> ModelReply:
+    async def complete(self, messages: Sequence[Mapping[str, str]], *, max_tokens: int,
+                       schema: Mapping[str, Any] | None = None) -> ModelReply:
         self.sent.append([dict(m) for m in messages])
+        self.schemas.append(schema)
         reply = self.replies.pop(0) if len(self.replies) > 1 else self.replies[0]
         if isinstance(reply, ModelError):
             raise reply
