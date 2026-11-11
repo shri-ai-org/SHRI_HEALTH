@@ -5,6 +5,8 @@ import { defineConfig } from '@playwright/test'
 // stand in for real login. Start the backend first: the local stack (infra/compose), or the API
 // on 127.0.0.1:8000 as the frontend CI's e2e job does. Synthetic data only.
 const port = 5190
+/** The doctors' portal's dev server, signed in as the development physician. */
+export const doctorsPort = 5191
 
 export default defineConfig({
   testDir: 'e2e',
@@ -21,10 +23,20 @@ export default defineConfig({
     ...(process.env.CI || process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL ?? 'chrome' } : {}),
     trace: 'retain-on-failure',
   },
-  webServer: {
-    command: `npm run dev -- --port ${port} --strictPort`,
-    url: `http://localhost:${port}`,
-    reuseExistingServer: !process.env.CI,
-    env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'fd' },
-  },
+  webServer: [
+    {
+      command: `npm run dev -- --port ${port} --strictPort`,
+      url: `http://localhost:${port}`,
+      reuseExistingServer: !process.env.CI,
+      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'fd' },
+    },
+    {
+      // The doctors' portal as the development physician (md), for the doctor's screens
+      // (e2e/doctor*.e2e.ts reach it at DOCTORS_URL).
+      command: `npm run dev -w doctors-portal -- --port ${doctorsPort} --strictPort`,
+      url: `http://localhost:${doctorsPort}`,
+      reuseExistingServer: !process.env.CI,
+      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'md' },
+    },
+  ],
 })
