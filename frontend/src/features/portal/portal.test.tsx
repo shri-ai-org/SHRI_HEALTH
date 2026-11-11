@@ -216,7 +216,7 @@ describe('appointments (B8a)', () => {
     await user.selectOptions(await screen.findByLabelText(/Select a location/), 'Shri Health Springfield Clinic')
     await waitFor(() => expect(screen.getByLabelText(/Select appointment type/)).toBeEnabled())
     await user.selectOptions(screen.getByLabelText(/Select appointment type/), 'Office Visit (20 min)')
-    await user.selectOptions(screen.getByLabelText(/Select reason for visit/), 'Annual Physical')
+    await user.selectOptions(screen.getByLabelText(/Select reason for visit/), 'Follow-up visit')
     await waitFor(() => expect(screen.getByLabelText(/Your providers/)).toBeEnabled())
     await user.selectOptions(screen.getByLabelText(/Your providers/), 'Dr. Alvina56 Hettinger94, MD, Internal medicine')
     await user.type(screen.getByLabelText(/Appointment preferred date/), futureWeekday().us)
@@ -238,7 +238,7 @@ describe('appointments (B8a)', () => {
     await user.click(screen.getByRole('button', { name: 'Schedule' }))
     expect(await screen.findByText(/Appointment is scheduled successfully on/)).toBeInTheDocument()
     const [book] = server.to('POST', '/portal/me/appointments')
-    expect(book?.body).toEqual({ facilityId: IDS.facility, appointmentTypeId: IDS.officeVisit, providerId: IDS.provider, startAt: `${futureWeekday().iso}T15:00:00.000Z`, reasonForVisit: 'Annual Physical' })
+    expect(book?.body).toEqual({ facilityId: IDS.facility, appointmentTypeId: IDS.officeVisit, providerId: IDS.provider, startAt: `${futureWeekday().iso}T15:00:00.000Z`, reasonCode: 'follow-up' })
     expect(book?.headers.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/)
   })
 
