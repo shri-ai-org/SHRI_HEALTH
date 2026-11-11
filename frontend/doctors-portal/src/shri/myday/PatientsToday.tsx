@@ -35,6 +35,8 @@ const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 function filtered(rows: PatientListRow[], filter: PatientFilter | null): PatientListRow[] {
   if (!filter) return rows
   if (filter === 'icu') return rows.filter((r) => r.place.label === 'ICU')
+  // With the API the label names the step (gap 77), so the filter reads the row's step.
+  if (REAL_API) return rows.filter((r) => 'live' in r && r.live === (filter === 'waiting' ? 'Waiting' : filter === 'inroom' ? 'In room' : undefined))
   return rows.filter((r) => r.status?.label === FILTER_WORD[filter])
 }
 
@@ -147,7 +149,8 @@ export function PatientsToday({ className }: { className?: string }) {
         ) : (
           <ul className="flex flex-col gap-[2px] pb-[6px]">
             {rows.map((r) => (
-              <li key={r.patientId}>
+              // A patient can have two visits in a day: the key is the patient and the visit's time.
+              <li key={`${r.patientId}:${'due' in r && r.due instanceof Date ? r.due.getTime() : ''}`}>
                 <PatientRowItem row={r} showKind={!d.stroke && patientTab === 'opd'} />
               </li>
             ))}

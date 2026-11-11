@@ -59,7 +59,7 @@ const FOLLOW_UP: RowMark = { label: 'Follow-up', icon: 'History', tone: 'neutral
 const NEW_PATIENT: RowMark = { label: 'New patient', icon: 'UserPlus', tone: 'normal' }
 const OPD_PLACE = { icon: 'UserRound', label: 'OPD' }
 
-/** The visit status as the screen's status: roomed patients still wait for the doctor. */
+/** The visit status as the screen's status: roomed patients still wait for the doctor (the queue names the room, gap 77). */
 function liveOf(i: StatusBoardItem): LiveStatus | null {
   if (i.status === 'cancelled' || i.status === 'noshow') return null
   switch (i.visitStatus) {
@@ -76,9 +76,37 @@ function liveOf(i: StatusBoardItem): LiveStatus | null {
   }
 }
 
+/** A visit's step as the API states it (gap 77): the screen's statuses have no "roomed". */
+export interface VisitStep {
+  roomed: boolean
+  roomName?: string
+  /** When the visit entered its current step (`visitStatusAt`): the timer's start. */
+  since?: Date
+}
+const steps = new Map<string, VisitStep>()
+const stepKey = (patientId: string, due: Date) => `${patientId}|${due.getTime()}`
+
+/** The step of a queue row, from the staff board; undefined for a row the API didn't give. */
+export function visitStep(r: OpdRow): VisitStep | undefined {
+  return steps.get(stepKey(r.patientId, r.due))
+}
+
+/** The row's mark in Vimal's wording (gap 77): roomed names its room; the provider is "With doctor". */
+function markOf(live: LiveStatus, i: StatusBoardItem): RowMark {
+  if (live === 'Waiting' && i.visitStatus === 'roomed') return { label: i.roomName ? `Roomed · ${i.roomName}` : 'Roomed', icon: 'DoorOpen', tone: 'attention' }
+  if (live === 'In room') return { ...MARK['In room'], label: 'With doctor' }
+  if (live === 'Not arrived') return { ...MARK['Not arrived'], label: 'Booked' }
+  return MARK[live]
+}
+
 function toRow(i: StatusBoardItem): OpdRow | null {
   const live = liveOf(i)
   if (!live || !i.patient) return null
+  steps.set(stepKey(i.patient.id, clinicDate(i.startAt)), {
+    roomed: i.visitStatus === 'roomed',
+    roomName: i.roomName,
+    since: i.visitStatusAt ? clinicDate(i.visitStatusAt) : undefined,
+  })
   const clinic: ClinicRow = {
     // TODO(gap): there is no OPD token in US care; the column shows the appointment time, as the
     // screen does for a row without a token.
@@ -93,7 +121,7 @@ function toRow(i: StatusBoardItem): OpdRow | null {
     patientId: i.patient.id,
     place: OPD_PLACE,
     kind: code.includes('FU') ? FOLLOW_UP : code.includes('NEW') ? NEW_PATIENT : undefined,
-    status: MARK[live],
+    status: markOf(live, i),
     done: live === 'Seen',
     clinic,
     live,
