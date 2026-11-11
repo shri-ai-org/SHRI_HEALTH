@@ -73,6 +73,13 @@ class StubModel:
     async def complete(self, messages: Sequence[Mapping[str, str]], *, max_tokens: int,
                        schema: Mapping[str, Any] | None = None) -> ModelReply:
         system = "\n".join(m["content"] for m in messages if m["role"] == "system")
+        if schema is not None and "insufficientEvidence" in schema.get("required", ()):
+            user = "\n".join(m["content"] for m in messages if m["role"] == "user")
+            first = _LINE.search(user)                                      # chart Q&A
+            return ModelReply(content=json.dumps({
+                "statements": [{"text": f"{NOTICE} {first['kind'].strip()}: "
+                                        f"{first['text'].strip()}", "sources": [first["handle"]]}]
+                if first else [], "insufficientEvidence": True}), model=MODEL, latency_ms=0)
         if schema is not None and "missing" in schema.get("required", ()):    # AI-02
             user = "\n".join(m["content"] for m in messages if m["role"] == "user")
             return ModelReply(content=json.dumps(chart_summary(user)), model=MODEL,

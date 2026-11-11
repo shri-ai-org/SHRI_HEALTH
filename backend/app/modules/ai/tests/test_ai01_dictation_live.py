@@ -90,7 +90,7 @@ def test_a_dictation_becomes_a_draft_note_through_the_claude_api(
     assert sent["output_config"]["format"]["type"] == "json_schema"
     assert "- 10154-3: Chief complaint (required)" in sent["system"]
     assert 'exactly "Not discussed"' in sent["system"]
-    user = sent["messages"][0]["content"]
+    user = sent["messages"][0]["content"][0]["text"]
     assert "Allergies: Peanuts (high criticality)." in user
     assert "Current medications: Lisinopril 10 MG Oral Tablet, 1 tablet by mouth once daily." \
         in user

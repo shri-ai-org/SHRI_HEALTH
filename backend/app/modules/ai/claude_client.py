@@ -24,8 +24,10 @@ from typing import Any, Literal
 import anthropic
 from anthropic.types import (
     AssistantMessageParam,
+    CacheControlEphemeralParam,
     MessageParam,
     OutputConfigParam,
+    TextBlockParam,
     UserMessageParam,
 )
 
@@ -71,6 +73,34 @@ def wire_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
     return out
 
 
+#: A message carrying this key is sent with a cache breakpoint (``cache_control``), so the
+#: system prompt and everything up to that message are a reusable prefix (prompt caching).
+CACHE_KEY = "cache"
+
+
+def to_turns(messages: Sequence[Mapping[str, str]]) -> list[MessageParam]:
+    """The non-system messages as Messages API turns. Consecutive user messages become one turn
+    of text blocks; a message with ``CACHE_KEY`` gets the cache breakpoint on its block."""
+    turns: list[MessageParam] = []
+    blocks: list[TextBlockParam] = []
+    for m in messages:
+        if m["role"] == "system":
+            continue
+        if m["role"] == "assistant":
+            if blocks:
+                turns.append(UserMessageParam(role="user", content=blocks))
+                blocks = []
+            turns.append(AssistantMessageParam(role="assistant", content=m["content"]))
+            continue
+        block = TextBlockParam(type="text", text=m["content"])
+        if m.get(CACHE_KEY):
+            block["cache_control"] = CacheControlEphemeralParam(type="ephemeral")
+        blocks.append(block)
+    if blocks:
+        turns.append(UserMessageParam(role="user", content=blocks))
+    return turns
+
+
 @dataclass(frozen=True)
 class ClaudeClient:
     """``model`` on the Claude API (``claude-sonnet-5-5`` by default; a setting, config.py).
@@ -90,12 +120,7 @@ class ClaudeClient:
     async def complete(self, messages: Sequence[Mapping[str, str]], *, max_tokens: int,
                        schema: Mapping[str, Any] | None = None) -> ModelReply:
         system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
-        turns: list[MessageParam] = []
-        for m in messages:
-            if m["role"] == "assistant":
-                turns.append(AssistantMessageParam(role="assistant", content=m["content"]))
-            elif m["role"] != "system":
-                turns.append(UserMessageParam(role="user", content=m["content"]))
+        turns = to_turns(messages)
         output: OutputConfigParam = {"effort": self.effort}
         if schema is not None:
             output["format"] = {"type": "json_schema", "schema": wire_schema(schema)}
