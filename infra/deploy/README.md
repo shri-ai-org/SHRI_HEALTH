@@ -48,6 +48,87 @@ This writes a settings file with a fresh random value for every secret, mode 600
 - **`provided`:** a real certificate for the real domain, once we have one (Q3). The security group opens 443 only, so get it with an ACME **DNS** challenge (certbot's DNS plugin for the DNS provider, or `--manual --preferred-challenges dns`), and point `TLS_CERT_FILE` and `TLS_KEY_FILE` at it. Renew before expiry and run `deploy.sh up` again.
 - **`self-signed`:** deploy.sh makes one for `SHRI_HOSTNAME` in `SHRI_STATE_DIR/tls/` (`tls/make-self-signed.sh`). Browsers warn until `server.crt` is trusted on that machine. Never use it on a host on the internet.
 
+## Two ways to serve it on a shared host (dep.shri-ai.org or shri-ai.org/dep)
+
+On a host that already runs other sites behind its own Nginx (the EC2 server: five sites, Jitsi),
+our stack runs **behind that Nginx** and never takes its ports. One setting chooses how:
+
+| `SHRI_SITE_URL` | Mode | What changes |
+|---|---|---|
+| `https://dep.shri-ai.org` | **A host of its own (recommended)** | Nothing in the app; the host's Nginx gets a new server block and a certificate for the name |
+| `https://shri-ai.org/dep` | A path under the company's host | The screens are built for `/dep`, the cookies are scoped to it, and the host's existing `shri-ai.org` server block includes our locations |
+| empty | A host of our own (the laptop, a dedicated server) | As before: our edge on `SHRI_HTTPS_PORT`, `SHRI_HOSTNAME` |
+
+With `SHRI_SITE_URL` set, deploy.sh:
+- binds **every** port of ours to `127.0.0.1` (our edge on `SHRI_HTTPS_PORT`, e.g. `9443`; Keycloak's admin on `SHRI_KC_ADMIN_PORT`), and `check` fails if any isn't;
+- keeps our TLS on that local hop with its own self-signed certificate, which the host's Nginx verifies (`proxy_ssl_verify on`); the real certificate is the host's;
+- sends HSTS **without** `includeSubDomains` (the company's other names aren't ours) and trusts the client address only from the host's Nginx (via the Docker gateway), so rate limits see real clients;
+- points Keycloak (`KC_HOSTNAME`), the sign-in redirects, the post-login pages and the cookies at the public address, and sets the clients' redirect URIs on every `up` (`infra/keycloak/sync-client-urls.py`), so changing mode needs no manual Keycloak step.
+
+Also on a shared host:
+- `SHRI_PROJECT` is a unique compose project name (`shri-` prefix); every container, network and volume carries it, and deploy.sh never touches anything else.
+- `SHRI_NET_A` and `SHRI_NET_B` pick two free /24s for our two networks.
+- `up` refuses to start if one of our ports or subnets belongs to something else.
+- Every service has a memory limit (about 7 GiB in all, mostly ClamAV and Keycloak).
+
+### The one-time steps on the server (someone with sudo)
+
+The server's owner runs these once; after that, `thulasi` deploys without sudo.
+
+```bash
+sudo usermod -aG docker thulasi          # deploy.sh needs Docker; this group is root-equivalent
+```
+
+Then, as `thulasi`, with `SHRI_SITE_URL` and `SHRI_HTTPS_PORT=9443` in the settings file:
+
+```bash
+infra/deploy/deploy.sh up /etc/shri/deploy.env
+infra/deploy/deploy.sh host-nginx /etc/shri/deploy.env   # writes SHRI_STATE_DIR/host-nginx/
+```
+
+**A host of its own (`dep.shri-ai.org`):** first a DNS A record for `dep.shri-ai.org` pointing at the server. Then, with sudo:
+
+```bash
+sudo install -D -m 644 /etc/shri/shri-state/host-nginx/upstream.crt /etc/nginx/shri/shri-deploy-upstream.crt
+sudo certbot certonly --webroot -w /var/www/html -d dep.shri-ai.org   # or --nginx; the certificate
+sudo install -m 644 /etc/shri/shri-state/host-nginx/dep.shri-ai.org.conf /etc/nginx/sites-available/dep.shri-ai.org
+sudo ln -s /etc/nginx/sites-available/dep.shri-ai.org /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+If certbot needs the port-80 block first, install the site file, reload, run certbot, then reload again. **Nothing else on the server changes:** the other sites' files aren't touched.
+
+**A path (`shri-ai.org/dep`):**
+
+```bash
+sudo install -D -m 644 /etc/shri/shri-state/host-nginx/upstream.crt /etc/nginx/shri/shri-deploy-upstream.crt
+sudo install -D -m 644 /etc/shri/shri-state/host-nginx/shri-ai.org-dep.locations.conf /etc/nginx/shri/shri-ai.org-dep.locations.conf
+sudo nano /etc/nginx/sites-available/shri-ai.org
+#   inside the server block with "listen 443 ssl" (never the port 80 one), add:
+#       include /etc/nginx/shri/shri-ai.org-dep.locations.conf;
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Then `deploy.sh check` also checks the public address: TLS with the real certificate, `/health`, sign-in through to Keycloak's page, the headers and the refusal of `X-Dev-User`.
+
+### Why the subdomain is recommended: the limits of a path under the company's host
+
+Under `shri-ai.org/dep` we share an **origin** with the company website and everything else on `shri-ai.org`:
+- **Cookies:** a `__Host-` cookie must have `Path=/`, so it would be sent to every page of `shri-ai.org`. Under a path, core uses `__Secure-` cookies with `Path=/dep` instead (`core/cookies.py`). They are HttpOnly, Secure and SameSite, but a path is no security boundary: any script running on `shri-ai.org` (the company site, a widget, a compromised plugin) is the same origin as us, and can read our pages and call our API with the user's cookies.
+- **CSP:** `'self'` means all of `shri-ai.org`, so our policy also allows scripts and requests anywhere on the company's site.
+- **HSTS** is the host's, for all of `shri-ai.org`; we can't pin our part on its own.
+- **The screens' API calls must use the base path.** The shared API client (`frontend/src/api/client.ts`, `API_BASE = '/api/v1'`) calls the site root, so under `/dep` it would reach the company site. That needs a change in Minalini's code first (the base path from the build); until then, path mode serves the screens but they can't reach the API.
+
+`dep.shri-ai.org` is its own origin: `__Host-` cookies, our own CSP and HSTS, and no change in the screens. Use the path only if a subdomain is impossible.
+
+### The screens' paths (both modes)
+
+| Path (after the base path) | App |
+|---|---|
+| `/` | The front office (`frontend/front-office`, `BASE_PATH`) |
+| `/clinician/` | The doctors' portal (`frontend/doctors-portal`, `PORTAL_BASE`) |
+| `/api/v1/`, `/kc/`, `/health`, `/hooks/` | The API, Keycloak, health and partner callbacks, as before |
+
 ## Deploy
 
 ```bash

@@ -17,6 +17,7 @@
 
 services:
   keycloak-db:
+    mem_limit: 128m
     # One shot: Keycloak's own database and role (production mode needs a real database).
     build: ../compose/postgres  # the same image as postgres (built, never pulled)
     image: shri-health/postgres:18.6-pgvector0.8.2
@@ -35,6 +36,7 @@ services:
         condition: service_healthy
 
   keycloak:
+    mem_limit: 1536m
     networks: [default, backend]  # the API reaches it on backend (egress below)
     command: !override ["start", "--import-realm"]
     # The admin console and admin API are never on the public host (Nginx refuses /kc/admin/):
@@ -61,6 +63,7 @@ services:
         condition: service_completed_successfully
 
   openbao:
+    mem_limit: 256m
     networks: [default, backend]  # the API reaches it on backend (egress below)
     # A real server: integrated storage in a volume, sealed at every start until deploy.sh
     # unseals it. Its files live outside /openbao/config, which the image's entrypoint takes over.
@@ -83,19 +86,23 @@ services:
     profiles: ["development-only"]
 
   seaweedfs:
+    mem_limit: 512m
     networks: [default, backend]  # the API reaches it on backend (egress below)
     ports: !reset []
     restart: unless-stopped
 
   clamav:
+    mem_limit: 2560m
     networks: [default, backend]  # the API reaches it on backend (egress below)
     restart: unless-stopped
 
   postgres:
+    mem_limit: 1g
     networks: [default, backend]  # the API reaches it on backend (egress below)
     restart: unless-stopped
 
   api:
+    mem_limit: 1g
     # No route to the internet: backend only. Its one way out is the egress proxy below, and only
     # to api.anthropic.com (Vimal, 10 Nov). Nginx reaches it on backend, from a fixed address.
     networks: [backend]
@@ -106,7 +113,12 @@ services:
         BUILD_COMMIT: ${SHRI_RELEASE}
     environment:
       ENVIRONMENT: ${SHRI_ENVIRONMENT:-staging}
-      FORWARDED_ALLOW_IPS: 172.31.251.10  # Nginx's address on backend
+      FORWARDED_ALLOW_IPS: ${SHRI_NET_B:-172.31.251}.10  # Nginx's address on backend
+      # Under a shared host's path (SHRI_PUBLIC_URL=https://shri-ai.org/dep): the cookies' path
+      # (core/cookies.py) and where sign-in lands. "/" and "/" at a host of its own.
+      COOKIE_PATH: ${SHRI_COOKIE_PATH:-/}
+      AFTER_LOGIN_PATH: ${SHRI_BASE_PATH:-}/
+      PORTAL_AFTER_LOGIN_PATH: ${SHRI_BASE_PATH:-}/portal/
       AUTH_MODE: keycloak
       PATIENT_AUTH_MODE: keycloak
       # Real patient sign-in stays OFF on every server until #148's account-state bug is fixed:
@@ -143,6 +155,7 @@ services:
         condition: service_started
 
   integration-worker:
+    mem_limit: 512m
     # Backend only, like the API: the simulated partners need no internet. Real partners will be
     # added to the egress proxy's list when they are chosen (Q11-Q17).
     networks: [backend]
@@ -157,19 +170,29 @@ services:
     restart: unless-stopped
 
   nginx:
+    mem_limit: 256m
     networks:
+      default:
+        ipv4_address: ${SHRI_NET_A:-172.31.250}.10
       backend:
-        ipv4_address: 172.31.251.10  # the API trusts only this address (FORWARDED_ALLOW_IPS)
+        ipv4_address: ${SHRI_NET_B:-172.31.251}.10  # the API trusts only this address (FORWARDED_ALLOW_IPS)
     # The screens, built from this commit into the edge's image (nginx/Dockerfile).
     image: shri-health/web:${SHRI_RELEASE:?run through deploy.sh}
     build:
       context: ../../frontend
       dockerfile: ../infra/deploy/nginx/Dockerfile
+      args:
+        SHRI_BASE_PATH: ${SHRI_BASE_PATH:-}
+    # SHRI_BIND is 127.0.0.1 behind a shared host's Nginx (deploy.sh sets it from SHRI_PUBLIC_URL),
+    # so only that host reaches us; 0.0.0.0 on a host of our own.
     ports: !override
-      - "${SHRI_HTTPS_PORT:-443}:443"
+      - "${SHRI_BIND:-0.0.0.0}:${SHRI_HTTPS_PORT:-443}:443"
     environment:
       SHRI_HOSTNAME: ${SHRI_HOSTNAME:?}
       SHRI_HTTPS_PORT: ${SHRI_HTTPS_PORT:-443}
+      SHRI_PUBLIC_PORT: ${SHRI_PUBLIC_PORT:-443}
+      SHRI_HSTS: ${SHRI_HSTS:-max-age=31536000; includeSubDomains}
+      SHRI_REAL_IP: ${SHRI_REAL_IP:-}
     volumes: !override
       - ../deploy/nginx:/etc/nginx/templates:ro
       - ${TLS_CERT_FILE:?}:/etc/nginx/certs/server.crt:ro
@@ -177,6 +200,7 @@ services:
     restart: unless-stopped
 
   egress:
+    mem_limit: 64m
     # The API's only way out: api.anthropic.com over HTTPS, by name, never decrypted
     # (egress/nginx.conf). The same pinned Nginx image as the development edge.
     image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
@@ -191,6 +215,7 @@ services:
     restart: unless-stopped
 
   code-loader:
+    mem_limit: 1g
     # deploy.sh's code load (load_codes) downloads the ICD-10-CM and RxNorm releases, so it runs
     # here, with internet, rather than as the API, which has none. Run only by deploy.sh.
     image: shri-health/api:${SHRI_RELEASE:?run through deploy.sh}
@@ -201,9 +226,14 @@ volumes:
   openbao:
 
 networks:
+  # SHRI_NET_A: another /24 for the default network where this one is taken (a shared host).
+  default:
+    ipam:
+      config: !override
+        - subnet: ${SHRI_NET_A:-172.31.250}.0/24
   # Internal: no route to the internet. The API and the worker are on it alone.
   backend:
     internal: true
     ipam:
       config:
-        - subnet: 172.31.251.0/24
+        - subnet: ${SHRI_NET_B:-172.31.251}.0/24
