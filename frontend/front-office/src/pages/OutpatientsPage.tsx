@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '../components/layout/PageHeader'
 import { AppointmentIllustration } from '../components/ui/illustrations/AppointmentIllustration'
+import { Badge } from '../components/ui/Badge'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Alert } from '../components/ui/Alert'
@@ -176,6 +177,14 @@ export function OutpatientsPage() {
         // the server, gap 73); the medical assistant rooms it from this row (demo step 6).
         if (REAL_API && row.appointment && isServerAppointment(row.appointment.appointmentId)) {
           const appointmentId = row.appointment.appointmentId
+          // Roomed: waiting for the doctor in a room, so no undo and no second rooming (gap 78).
+          if (row.appointment.serverVisitStatus === 'roomed') {
+            return (
+              <Badge tone="teal" className="px-2">
+                Roomed
+              </Badge>
+            )
+          }
           return (
             <>
               <CheckInToggle appointment={row.appointment} patientName={name} />
