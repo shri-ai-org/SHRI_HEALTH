@@ -1,11 +1,11 @@
-import { IndianRupee, Printer, Receipt, X } from 'lucide-react'
+import { Printer, Receipt, X } from 'lucide-react'
 import { Card, CardHeader } from '../ui/Card'
 import { EmptyState } from '../ui/EmptyState'
 import { BillStatusBadge } from '../payment/BillStatusBadge'
 import { useStoreValue } from '../../hooks/useStore'
 import { getBillsForPatient } from '../../domain/selectors'
 import { todayKey } from '../../domain/time'
-import { billNumberFor, billServicesSummary, formatRupees } from '../../utils/billing'
+import { billNumberFor, billServicesSummary, CurrencyIcon, formatMoney } from '../../utils/billing'
 import { formatDateKey } from '../../utils/dates'
 import { printBill } from '../../utils/printBill'
 import { formatClock } from '../../utils/format'
@@ -27,7 +27,7 @@ export function PatientBillingCard({ patientId, due, onClose }: { patientId: str
   return (
     <Card accentTone="stable">
       <CardHeader
-        icon={IndianRupee}
+        icon={CurrencyIcon}
         iconTone="stable"
         title="Payment History"
         action={
@@ -41,11 +41,11 @@ export function PatientBillingCard({ patientId, due, onClose }: { patientId: str
       <div className="grid grid-cols-1 gap-3 border-b border-border-soft px-4 py-4 sm:grid-cols-3 sm:px-5">
         <div className={cn('rounded-xl border px-4 py-3', due > 0 ? 'border-critical-fg/30 bg-critical-bg' : 'border-success-fg/30 bg-success-bg')}>
           <p className="text-xs font-medium text-ink-muted">Pending amount</p>
-          <p className={cn('mt-0.5 text-2xl font-bold tabular-nums', due > 0 ? 'text-critical-fg' : 'text-success-fg')}>{formatRupees(due)}</p>
+          <p className={cn('mt-0.5 text-2xl font-bold tabular-nums', due > 0 ? 'text-critical-fg' : 'text-success-fg')}>{formatMoney(due)}</p>
         </div>
         <div className="rounded-xl border border-border bg-surface-2 px-4 py-3">
           <p className="text-xs font-medium text-ink-muted">Payment received</p>
-          <p className="mt-0.5 text-2xl font-bold tabular-nums text-ink">{formatRupees(paid)}</p>
+          <p className="mt-0.5 text-2xl font-bold tabular-nums text-ink">{formatMoney(paid)}</p>
         </div>
         <div className="rounded-xl border border-border bg-surface-2 px-4 py-3">
           <p className="text-xs font-medium text-ink-muted">Bills</p>
@@ -98,8 +98,8 @@ function BillRow({ bill }: { bill: Payment }) {
       </div>
       <div className="flex shrink-0 items-center gap-3">
         <div className="text-right">
-          <p className="text-sm font-semibold tabular-nums text-ink">{formatRupees(bill.totalAmount)}</p>
-          {pending ? <p className="text-xs font-semibold tabular-nums text-critical-fg">{formatRupees(bill.balance)} due</p> : null}
+          <p className="text-sm font-semibold tabular-nums text-ink">{formatMoney(bill.totalAmount)}</p>
+          {pending ? <p className="text-xs font-semibold tabular-nums text-critical-fg">{formatMoney(bill.balance)} due</p> : null}
         </div>
         <BillStatusBadge payment={bill} />
         {/* Print: solid blue for a bill still to pay, light for one already settled. */}

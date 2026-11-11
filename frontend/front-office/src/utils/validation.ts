@@ -1,6 +1,7 @@
 // The one set of rules for what a patient record may hold. Each check returns
 // the message to show, or null when the value is fine — the registration form,
 // the details card and the domain actions all ask the same questions.
+import { REAL_API } from '../../shri-health/client'
 import { MOBILE_ERROR, isValidMobile } from './phone'
 import type { Sex } from '../types/patient'
 
@@ -70,7 +71,7 @@ export function mobileError(value: string | null | undefined): string | null {
 /** A mobile that is already wrong while it is still being typed — it starts
  *  with 0–5 — so the field can say so at once instead of waiting for blur. */
 export function mobileEarlyError(value: string | null | undefined): string | null {
-  return /^[0-5]/.test((value ?? '').replace(/\D/g, '')) ? MOBILE_ERROR : null
+  return (REAL_API ? /^[01]/ : /^[0-5]/).test((value ?? '').replace(/\D/g, '')) ? MOBILE_ERROR : null
 }
 
 /** ABHA is optional; when given it is an address or a 14-digit number. */

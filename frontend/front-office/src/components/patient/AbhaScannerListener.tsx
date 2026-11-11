@@ -71,7 +71,7 @@ export function AbhaScannerListener() {
       const holder = (scan.abhaNumber ? findAbhaHolder(state, scan.abhaNumber) : null) ?? (scan.abhaAddress ? findAbhaHolder(state, scan.abhaAddress) : null)
       if (holder) {
         notify(`Opened ${holder.name}`, { detail: holder.uhid })
-        navigate(`/patients/${holder.uhid}`)
+        navigate(`/patients/${holder.patientId}`)
         return
       }
       let patient: Patient

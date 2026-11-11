@@ -5,7 +5,7 @@ import { ThemeProvider } from './contexts/ThemeProvider'
 import { ToastProvider } from './components/ui/ToastProvider'
 import { FrontOfficeHomePage } from './pages/FrontOfficeHomePage'
 import { PatientsPage } from './pages/PatientsPage'
-import { RegisterPatientPage } from './pages/RegisterPatientPage'
+import { RegisterFromPortalPage } from './pages/register/RegisterFromPortalPage'
 import { PatientProfilePage } from './pages/PatientProfilePage'
 import { DoctorDirectoryPage } from './pages/DoctorDirectoryPage'
 import { RegisterDoctorPage } from './pages/RegisterDoctorPage'
@@ -25,6 +25,8 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { todayKey } from './domain/time'
 import { useStoreValue } from './hooks/useStore'
 import { getAdmissionById } from './domain/admissionSelectors'
+// TEMPORARY — no source screen (frontend/docs/SCREEN_PORT.md): demo steps 3 and 6.
+import { TemporaryInsurance, TemporaryRooming } from '../shri-health/TemporaryRoutes'
 
 /**
  * Starts the page afresh when its query changes — Register opened from the
@@ -92,6 +94,9 @@ function App() {
         <Routes>
           <Route element={<AppLayout />}>
             <Route path="/" element={<FrontOfficeHomePage />} />
+            {/* TEMPORARY — no source screen: insurance (demo step 3) and rooming (step 6). */}
+            <Route path="/temporary/insurance/:patientId" element={<TemporaryInsurance />} />
+            <Route path="/temporary/rooming/:encounterId" element={<TemporaryRooming />} />
 
             {/* Patients — one list; finding a patient is the search in the app bar */}
             {/* Patients — one place, three views: everyone, outpatients, inpatients */}
@@ -104,7 +109,7 @@ function App() {
               path="/register/new"
               element={
                 <FreshOnQuery>
-                  <RegisterPatientPage />
+                  <RegisterFromPortalPage />
                 </FreshOnQuery>
               }
             />

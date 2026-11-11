@@ -542,7 +542,7 @@ export const getGetChartSummaryUrl = (chartSummaryId: Id,) => {
 }
 
 /**
- * The result of `POST /ai/chart-summaries` (inventory #112; AI-02; D70): statements by topic, each with a confidence band and links to the records behind it, or a `no-source` or `conflicting` marker; what could not be found; and the summary's suggestion, with its decision. Labeled as AI output on every screen (FRS §3.4). Still readable when AI is switched off. A restricted patient needs break-glass or care-team membership.
+ * The result of `POST /ai/chart-summaries` (inventory #112; AI-02; D70): statements by topic, each with a confidence band and links to the records behind it, or a `no-source` or `conflicting` marker; what could not be found; and the summary's suggestion, with its decision. Labeled as AI output on every screen (FRS §3.4). Readable by **its requester only**, who must still be able to read the chart (a restricted patient needs break-glass or care-team membership): the summary was built from the requester's own view of the chart (facilities and read permissions), so a colleague asks for their own. Still readable when AI is switched off.
  * @summary Get a chart summary
  */
 export const getChartSummary = async (chartSummaryId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getChartSummaryResponse> => {

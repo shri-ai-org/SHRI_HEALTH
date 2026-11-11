@@ -52,6 +52,7 @@ import { KIND_LABEL, duration, hourLine, isActivity, range12, span12, time12, ty
 import './dayTimeline.css'
 import { CURSOR_STEP, cursorMinute, minuteOfDay, setTimeCursor, useTimeCursor } from './timeCursor'
 import { useNow } from '../../hooks/useNow'
+import { REAL_API } from '../../../shri-health/client'
 
 /** The row's scale on every screen: twelve hours are about 1,330px, before the short stretches widen. */
 const PX_PER_MIN = 1.85
@@ -214,8 +215,9 @@ export function DayTimeline({
     const min = minuteAt(e.clientX)
     setHover({ min, x, top: r.bottom - wrap.top + 12, left: Math.min(Math.max(e.clientX - wrap.left - 140, 0), wrap.width - 280) })
     // Under a shared axis the red cursor is the pointer's line: it moves with the mouse on every row at once,
-    // to the minute a tap books, and stays where the mouse leaves it.
-    if (hideAxis) setTimeCursor(min)
+    // to the minute a tap books, and stays where the mouse leaves it. With the SHRI_HEALTH API it stays on the
+    // clinic clock instead (a left-behind cursor read as "now"; SCREEN_PORT gap 60): the hover card names the minute.
+    if (hideAxis && !REAL_API) setTimeCursor(min)
   }
 
   const under = (min: number) =>
@@ -235,7 +237,9 @@ export function DayTimeline({
   const nowOnRow = model.now !== null && model.now >= model.range[0] && model.now <= model.range[1] ? model.now : null
   const moved = useTimeCursor()
   const clock = minuteOfDay(useNow(15000))
-  const cursor = hideAxis ? cursorMinute(moved, model.now ?? clock, model.range) : null
+  // With the API, outside the clinic's hours (or on another day) the red cursor shows only once dragged,
+  // so it never stands at the first hour looking like the time now.
+  const cursor = hideAxis && (!REAL_API || moved !== null || nowOnRow !== null) ? cursorMinute(moved, model.now ?? clock, model.range) : null
 
   return (
     <div ref={wrapRef} className="dtl" data-compact={hideAxis ? '' : undefined}>
@@ -676,6 +680,7 @@ export function DayTimelineAxis({ range, now }: { range: Span; now: number | nul
             <Ticks marks={marks} scale={scale} />
             {/* The red cursor's own lane, just above the doctors' rows, so it never covers the blue Now. */}
             <div className="dtl-cursor-lane">
+              {REAL_API && moved === null && onAxis === null ? null : (
               <span
                 role="slider"
                 tabIndex={0}
@@ -692,6 +697,7 @@ export function DayTimelineAxis({ range, now }: { range: Span; now: number | nul
                 <ChevronsLeftRight size={13} strokeWidth={2.25} aria-hidden="true" />
                 {time12(cursor)}
               </span>
+              )}
             </div>
             {onAxis !== null ? <span aria-hidden="true" className="dtl-now-stem" style={{ left: at(scale, onAxis) }} /> : null}
           </div>

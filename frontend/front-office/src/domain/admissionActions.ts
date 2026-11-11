@@ -8,7 +8,7 @@ import { DomainError } from './errors'
 import { MOBILE_ERROR, isValidMobile } from '../utils/phone'
 import type { AppState } from '../types/store'
 import { computeAdmissionBilling, previewDischargeBill } from './admissionSelectors'
-import { admissionBillItems, formatRupees, sumItems } from '../utils/billing'
+import { admissionBillItems, formatMoney, sumItems } from '../utils/billing'
 import { DISCHARGE_TYPES } from '../types/admission'
 import type { Admission, Bed, CreateAdmissionInput, DischargeDetails } from '../types/admission'
 import type { Payment, PaymentItem } from '../types/payment'
@@ -223,7 +223,7 @@ export function dischargeAdmission(admissionId: string, details: DischargeDetail
   const now = Date.now()
   const preview = previewDischargeBill(state, admissionId, now)
   if (preview && preview.balance > 0) {
-    throw new DomainError('BALANCE_DUE', `${formatRupees(preview.balance)} on the bill is still to be paid at the billing counter.`)
+    throw new DomainError('BALANCE_DUE', `${formatMoney(preview.balance)} on the bill is still to be paid at the billing counter.`)
   }
   // The stored bill becomes the final bill.
   repriceAdmissionBill(admissionId, now)

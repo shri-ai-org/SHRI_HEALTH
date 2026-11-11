@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Building2, CalendarCheck2, CalendarClock, Video } from 'lucide-react'
 import { FlowSheet } from '../../components/flow/FlowSheet'
@@ -25,7 +25,9 @@ import {
   getToday,
 } from '../../domain/selectors'
 import { rescheduleAppointment } from '../../domain/actions'
-import { formatRupees } from '../../utils/billing'
+import { isServerAppointment, loadSchedule, rescheduleOnServer } from '../../../shri-health/scheduling'
+import { ApiError, REAL_API, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
+import { formatMoney } from '../../utils/billing'
 import { dayWithDate } from '../../utils/dates'
 import { appointmentStatusLabel, modesFor } from '../../utils/appointment'
 import { cn } from '../../utils/cn'
@@ -37,7 +39,7 @@ import { formatTime } from '../../domain/time'
 
 /** One line for a booking's place: doctor · day date · time · mode. */
 function placeLine(place: BookingPlace, doctorName: string, today: string): string {
-  return `${doctorName} · ${dayWithDate(place.date, today)} · ${formatTime(place.slot)}${place.mode === 'Teleconsult' ? ' · Teleconsult' : ''}`
+  return `${doctorName} · ${dayWithDate(place.date, today)}${REAL_API ? ',' : ' ·'} ${formatTime(place.slot)}${place.mode === 'Teleconsult' ? ' · Teleconsult' : ''}`
 }
 
 /**
@@ -70,6 +72,13 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<{ appointment: Appointment; differenceBill: Payment | null } | null>(null)
+  // SHRI_HEALTH: the server's doctors and free times (as Schedule Appointment loads them), and one
+  // Idempotency-Key per attempt to move a server booking.
+  const [moving, setMoving] = useState(false)
+  const attempt = useRef<{ key: string; pick: string } | null>(null)
+  useEffect(() => {
+    void loadSchedule(today, 14).catch((err: unknown) => setError(problemMessage(err)))
+  }, [today])
 
   const departments = useStoreValue(getDepartments)
   const suggestions = useStoreValue(getDoctorSuggestions, department, now)
@@ -105,16 +114,19 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
       >
         <p className="text-base font-semibold text-ink">{movedDoctor}</p>
         <p>
-          {dayWithDate(moved.date, today)} · {formatTime(moved.slot)}
+          {dayWithDate(moved.date, today)}{REAL_API ? ',' : ' ·'} {formatTime(moved.slot)}
         </p>
         <p className="inline-flex items-center gap-1.5">
           {moved.mode === 'Teleconsult' ? <Video className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" /> : <Building2 className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
           {moved.mode === 'Teleconsult' ? 'Teleconsult' : 'In person'}
         </p>
-        <p>
-          {moved.appointmentId.toUpperCase()}
-          {done.differenceBill ? null : ' · nothing to pay'}
-        </p>
+        {/* With the API the booking has no desk number (its ID is internal) and no counter fee. */}
+        {REAL_API ? null : (
+          <p>
+            {moved.appointmentId.toUpperCase()}
+            {done.differenceBill ? null : ' · nothing to pay'}
+          </p>
+        )}
         {done.differenceBill ? <BillAtCounter paymentId={done.differenceBill.paymentId} className="mt-1 w-full" /> : null}
       </AckCard>
         </div>
@@ -164,6 +176,7 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
   function move() {
     if (!providerId || !date || !slot || !by) return
     setError(null)
+    if (isServerAppointment(was!.appointmentId)) return void moveOnServer(providerId, date, slot, by)
     try {
       const result = rescheduleAppointment({ appointmentId: was!.appointmentId, providerId, date, slot, mode, by, note })
       // A fee difference is paid at the billing counter, not here: its bill is
@@ -179,13 +192,36 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
     }
   }
 
+  // A server booking moves on the API (D61): no fee difference, no bill.
+  async function moveOnServer(nextProvider: string, nextDate: string, nextSlot: string, who: UnavailableParty) {
+    if (moving) return
+    const id = `${nextProvider}|${nextDate}|${nextSlot}|${mode}|${who}`
+    if (attempt.current?.pick !== id) attempt.current = { key: newIdempotencyKey(), pick: id }
+    setMoving(true)
+    try {
+      const appointment = await rescheduleOnServer(was!.appointmentId, { providerId: nextProvider, date: nextDate, slot: nextSlot, mode, by: who, note }, attempt.current.key)
+      attempt.current = null
+      setDone({ appointment, differenceBill: null })
+    } catch (err) {
+      setError(problemMessage(err))
+      // A time taken a moment ago: refresh the times and reopen them.
+      if (err instanceof ApiError && err.status === 409) {
+        attempt.current = null
+        setSlot(null)
+        void loadSchedule(today, 14).catch(() => undefined)
+      }
+    } finally {
+      setMoving(false)
+    }
+  }
+
   function moneyLine(): string {
     if (!provider) return ''
-    if (difference < 0) return `${formatRupees(-difference)} less · not refunded`
+    if (difference < 0) return `${formatMoney(-difference)} less · not refunded`
     if (difference === 0) return 'Same fee · nothing to pay'
-    if (by === 'Doctor') return `${formatRupees(difference)} more · absorbed by the hospital`
-    if (by === 'Patient') return `${formatRupees(difference)} more · the patient pays the difference`
-    return `${formatRupees(difference)} more`
+    if (by === 'Doctor') return `${formatMoney(difference)} more · absorbed by the hospital`
+    if (by === 'Patient') return `${formatMoney(difference)} more · the patient pays the difference`
+    return `${formatMoney(difference)} more`
   }
 
   const confirmBar = (
@@ -228,10 +264,11 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
         />
         <Button size="lg" disabled={!ready} onClick={move}>
           <CalendarCheck2 className="h-4 w-4" strokeWidth={1.75} />
-          {charge > 0 ? `Reschedule & print ${formatRupees(charge)} bill` : 'Reschedule'}
+          {charge > 0 ? `Reschedule & print ${formatMoney(charge)} bill` : 'Reschedule'}
         </Button>
       </div>
-      {provider ? <p className={cn('text-xs', charge > 0 ? 'font-medium text-warning-fg' : 'text-ink-muted')}>{moneyLine()}</p> : null}
+      {/* The fee line is the counter's consultation fee (sample data): India-only, hidden with the API. */}
+      {provider && !REAL_API ? <p className={cn('text-xs', charge > 0 ? 'font-medium text-warning-fg' : 'text-ink-muted')}>{moneyLine()}</p> : null}
     </div>
   )
 
@@ -248,7 +285,7 @@ export function RescheduleFlow({ params, onClose }: FlowProps) {
             <span className="font-semibold">{wasProvider.name}</span>
             <span className="text-ink-muted">
               {' '}
-              · {dayWithDate(was.date, today)} · {formatTime(was.slot)} · {formatRupees(feePaid)} paid
+              · {dayWithDate(was.date, today)}{REAL_API ? ',' : ' ·'} {formatTime(was.slot)}{REAL_API ? null : ` · ${formatMoney(feePaid)} paid`}
             </span>
           </span>
         </div>

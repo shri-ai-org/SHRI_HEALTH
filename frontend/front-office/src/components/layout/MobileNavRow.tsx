@@ -9,6 +9,7 @@ import { TONE_HEX } from '../../utils/toneHex'
 import { LANGUAGES, setLanguage, useLanguage } from '../../hooks/useLanguage'
 import type { LanguageCode } from '../../hooks/useLanguage'
 import { NAV_ITEMS, isActivePath } from './navigation'
+import { REAL_API } from '../../../shri-health/client'
 
 /**
  * Phones (< 768px): every place in one compact row under the app bar that
@@ -89,6 +90,9 @@ export function MobileNavRow() {
             </li>
           )
         })}
+        {/* The language picker is India-only (Indian languages): hidden with the SHRI_HEALTH API. */}
+        {REAL_API ? null : (
+          <>
         {/* Language — a native picker, so it works inside the scrolling row. */}
         <li className="ml-1 shrink-0 snap-start border-l border-border-soft pl-2.5">
           <label className="relative flex h-9 items-center gap-1.5 rounded-full border border-border-soft bg-surface-1 pl-3 pr-2 text-xs font-semibold text-ink-muted shadow-card-sm focus-within:ring-2 focus-within:ring-focus/40">
@@ -108,6 +112,8 @@ export function MobileNavRow() {
             </select>
           </label>
         </li>
+          </>
+        )}
       </ul>
     </nav>
   )

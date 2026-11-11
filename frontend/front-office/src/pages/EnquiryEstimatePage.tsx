@@ -13,7 +13,7 @@ import { BillAtCounter } from '../components/payment/BillAtCounter'
 import { printBill } from '../utils/printBill'
 import { getTariffs, getDepartments, getActiveEstimateForPatient, getBillForEstimate, getPatientById } from '../domain/selectors'
 import { addEstimateItem, createPaymentBill, updateEstimateItemQuantity, removeEstimateItem } from '../domain/actions'
-import { billNumberFor, formatRupees } from '../utils/billing'
+import { billNumberFor, formatMoney } from '../utils/billing'
 import type { Tariff } from '../types/frontDesk'
 
 
@@ -83,7 +83,7 @@ export function EnquiryEstimatePage() {
         estimateId: estimate.estimateId,
       })
       printBill(bill.paymentId)
-      notify(`Bill printed for ${patient.name}`, { detail: `${billNumberFor(bill)} · ${formatRupees(bill.totalAmount)}` })
+      notify(`Bill printed for ${patient.name}`, { detail: `${billNumberFor(bill)} · ${formatMoney(bill.totalAmount)}` })
     } catch (err) {
       notify('Could not raise the bill', { tone: 'error', detail: err instanceof Error ? err.message : String(err) })
     }
@@ -166,7 +166,7 @@ export function EnquiryEstimatePage() {
                     mobile: 'aside',
                     className: 'whitespace-nowrap font-medium text-ink',
                     sortValue: (tariff) => tariff.rate,
-                    cell: (tariff) => formatRupees(tariff.rate),
+                    cell: (tariff) => formatMoney(tariff.rate),
                   },
                   {
                     key: 'actions',
@@ -214,7 +214,7 @@ export function EnquiryEstimatePage() {
                             <p className="truncate text-sm text-ink" title={item.name}>
                               {item.name}
                             </p>
-                            <p className="text-xs text-ink-muted">{formatRupees(item.rate)} each</p>
+                            <p className="text-xs text-ink-muted">{formatMoney(item.rate)} each</p>
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
                             <div className="flex items-center gap-1 rounded-lg border border-border px-1">
@@ -238,7 +238,7 @@ export function EnquiryEstimatePage() {
                               </button>
                             </div>
                             <span className="w-16 shrink-0 text-right text-sm font-medium tabular-nums text-ink">
-                              {formatRupees(item.rate * quantity)}
+                              {formatMoney(item.rate * quantity)}
                             </span>
                             <button
                               type="button"
@@ -258,7 +258,7 @@ export function EnquiryEstimatePage() {
                 {hasItems && estimate ? (
                   <div className="flex items-baseline justify-between border-t border-border-soft pt-3">
                     <span className="text-sm text-ink-muted">Estimated Total</span>
-                    <span className="text-xl font-semibold tabular-nums text-ink">{formatRupees(estimate.total)}</span>
+                    <span className="text-xl font-semibold tabular-nums text-ink">{formatMoney(estimate.total)}</span>
                   </div>
                 ) : null}
 
@@ -272,7 +272,7 @@ export function EnquiryEstimatePage() {
                         {canBill && estimate ? (
                           <Button size="sm" onClick={raiseAndPrintBill}>
                             <Printer className="h-3.5 w-3.5" strokeWidth={1.75} />
-                            Print bill · {formatRupees(estimate.total)}
+                            Print bill · {formatMoney(estimate.total)}
                           </Button>
                         ) : null}
                         {estimateBill ? <BillAtCounter paymentId={estimateBill.paymentId} className="w-full" /> : null}

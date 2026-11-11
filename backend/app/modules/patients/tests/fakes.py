@@ -71,6 +71,7 @@ class _Patient:
     identifiers: list[schemas.PatientIdentifier] = field(default_factory=list)
     merged_into_id: UUID | None = None
     general_practitioner_id: UUID | None = None
+    pharmacy_id: UUID | None = None  # the default patient_pharmacy row (D50)
 
 
 @dataclass
@@ -109,6 +110,7 @@ class World:
     payers: dict[UUID, tuple[str, bool]] = field(default_factory=dict)  # name, usable
     clean_files: set[UUID] = field(default_factory=set)
     providers: dict[UUID, set[UUID]] = field(default_factory=dict)  # clinic -> practitioners
+    pharmacies: dict[UUID, tuple[str, bool]] = field(default_factory=dict)  # name, active
 
     def clinic(self, db: Any) -> dict[UUID, _Patient]:
         return self.patients.setdefault(db.tenant_id, {})
@@ -182,6 +184,20 @@ class FakeStore:
         values = {k: v for k, v in vars(changes).items() if v is not UNSET}
         patient.data = replace(patient.data, **values)
         patient.version += 1
+        return Written(patient_id, patient.version, _NOW)
+
+    async def set_preferred_pharmacy(self, db: Any, patient_id: UUID, pharmacy_id: UUID, *,
+                                     if_version: int) -> Written:
+        patient = self.world.patient(db, patient_id)
+        if patient.version != if_version:
+            raise StaleVersion(patient.version)
+        if pharmacy_id not in self.world.pharmacies:
+            raise ResourceNotFound()
+        if not self.world.pharmacies[pharmacy_id][1]:
+            raise InvalidInput("the pharmacy no longer accepts prescriptions")
+        if patient.pharmacy_id != pharmacy_id:
+            patient.pharmacy_id = pharmacy_id
+            patient.version += 1
         return Written(patient_id, patient.version, _NOW)
 
     async def set_patient_security(self, db: Any, patient_id: UUID, labels: frozenset[str], *,
@@ -280,6 +296,18 @@ class FakeRepository:
 
     async def get_patient(self, db: Any, patient_id: UUID) -> Versioned[schemas.Patient]:
         return self._patient(db, patient_id)
+
+    async def preferred_pharmacy(self, db: Any, patient_id: UUID
+                                 ) -> schemas.PreferredPharmacy | None:
+        found = self.world.clinic(db).get(patient_id)
+        if found is None:
+            raise NotFound()
+        if found.pharmacy_id is None:
+            return None
+        name, _ = self.world.pharmacies[found.pharmacy_id]
+        return schemas.PreferredPharmacy(patient_id=patient_id, pharmacy_id=found.pharmacy_id,
+                                         name=name, ncpdp_id="0000012", city="Springfield",
+                                         state="IL", updated_at=_NOW)
 
     async def search(self, db: Any, criteria: schemas.SearchCriteria, *, limit: int, offset: int
                      ) -> list[schemas.PatientSummary]:

@@ -401,3 +401,50 @@ def test_search_treats_percent_and_underscore_as_letters(client: Any) -> None:
     prefix = client("fd").post("/api/v1/patients/search", json={"criteria": {
         "family": f"oxbrien{tag}"[:9], "birthDate": "1984-03-09"}}).json()["items"]
     assert brien.json()["id"] in [i["id"] for i in prefix]  # a real prefix still matches
+
+
+def _directory_pharmacy(name: str, *, active: bool = True) -> str:
+    """A pharmacy in the platform directory (synthetic; the directory has no clinic)."""
+    pharmacy = uuid.uuid4()
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    with admin.begin() as c:
+        c.execute(text("INSERT INTO admin.pharmacy (id, ncpdp_id, name, phone, city, state, "
+                       "is_mail_order, is_active) VALUES (:i, :n, :name, '+12175550190', "
+                       "'Springfield', 'IL', false, :a)"),
+                  {"i": pharmacy, "n": f"{pharmacy.int % 10**7:07d}", "name": name, "a": active})
+    admin.dispose()
+    return str(pharmacy)
+
+
+def test_preferred_pharmacy_against_the_real_helpers(client: Any) -> None:
+    created = client("fd").post("/api/v1/patients", json=_body(f"Rx{uuid.uuid4().hex[:6]}"))
+    path = f"/api/v1/patients/{created.json()['id']}"
+    first = _directory_pharmacy("First Pharmacy (synthetic)")
+    second = _directory_pharmacy("Second Pharmacy (synthetic)")
+    put = f"{path}/preferred-pharmacy"
+    done = client("fd").put(put, json={"pharmacyId": first},
+                            headers={"If-Match": created.headers["ETag"]})
+    assert done.status_code == 200, done.text
+    body = done.json()
+    assert (body["pharmacyId"], body["name"], body["city"], body["state"], body["phone"]) == (
+        first, "First Pharmacy (synthetic)", "Springfield", "IL", "+12175550190")
+    assert done.headers["ETag"] != created.headers["ETag"]  # the patient's version moved
+    assert client("ma").get(path).headers["ETag"] == done.headers["ETag"]
+    same = client("fd").put(put, json={"pharmacyId": first},
+                            headers={"If-Match": done.headers["ETag"]})
+    assert same.status_code == 200 and same.headers["ETag"] == done.headers["ETag"]
+    stale = client("fd").put(put, json={"pharmacyId": second},
+                             headers={"If-Match": created.headers["ETag"]})
+    assert stale.status_code == 412 and stale.headers["ETag"] == done.headers["ETag"]
+    switched = client("adm").put(put, json={"pharmacyId": second},
+                                 headers={"If-Match": done.headers["ETag"]})
+    assert switched.status_code == 200 and switched.json()["pharmacyId"] == second
+    tag = switched.headers["ETag"]
+    unknown = client("fd").put(put, json={"pharmacyId": str(uuid.uuid4())},
+                               headers={"If-Match": tag})
+    assert unknown.status_code == 404
+    closed = client("fd").put(put, json={"pharmacyId": _directory_pharmacy(
+        "Closed Pharmacy (synthetic)", active=False)}, headers={"If-Match": tag})
+    assert closed.status_code == 422 and closed.json()["code"] == "business-rule-violation"
+    assert client("md").put(put, json={"pharmacyId": first},
+                            headers={"If-Match": tag}).status_code == 403

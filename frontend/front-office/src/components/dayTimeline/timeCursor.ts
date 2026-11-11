@@ -5,6 +5,7 @@
 // now. The blue Now pin is separate and never moves.
 import { useSyncExternalStore } from 'react'
 import type { Span } from './dayModel'
+import { minutesOfDay } from '../../domain/time'
 
 let pinned: number | null = null
 const listeners = new Set<() => void>()
@@ -26,10 +27,9 @@ export function useTimeCursor(): number | null {
   return useSyncExternalStore(subscribe, () => pinned)
 }
 
-/** The minute of day of a timestamp. */
+/** The minute of the clinic's day at a timestamp. */
 export function minuteOfDay(timestamp: number): number {
-  const d = new Date(timestamp)
-  return d.getHours() * 60 + d.getMinutes()
+  return minutesOfDay(timestamp)
 }
 
 /** Where the cursor stands on a day's hours: as moved, else at `clock` — kept within the hours. */

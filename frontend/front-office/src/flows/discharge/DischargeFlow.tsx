@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, IdCard, IndianRupee, Loader2, LogOut, Printer, UserRound } from 'lucide-react'
+import { Check, IdCard, Loader2, LogOut, Printer, UserRound } from 'lucide-react'
 import { FlowSheet } from '../../components/flow/FlowSheet'
 import { AckCard } from '../../components/flow/AckCard'
 import { Quadrant } from '../../components/flow/Quadrant'
@@ -19,7 +19,7 @@ import { armAutoDischarge, isAutoDischargeArmed } from '../../domain/autoDischar
 import { getState } from '../../domain/store'
 import { printBill } from '../../utils/printBill'
 import { todayKey } from '../../domain/time'
-import { BILL_STATUS_LABEL, BILL_STATUS_TONE, billNumberFor, billServicesSummary, formatRupees } from '../../utils/billing'
+import { BILL_STATUS_LABEL, BILL_STATUS_TONE, billNumberFor, billServicesSummary, CurrencyIcon, formatMoney } from '../../utils/billing'
 import { formatClock } from '../../utils/format'
 import { formatDateKey } from '../../utils/dates'
 import { cn } from '../../utils/cn'
@@ -185,7 +185,7 @@ export function DischargeFlow({ params, onClose }: FlowProps) {
                 <p>
                   {finished.admissionNumber} · Day {leaving.days} · {TYPE_LABEL[finished.dischargeType ?? 'Normal Discharge']}
                 </p>
-                {finalBill ? <p>Bill {formatRupees(finalBill.totalAmount)} · paid</p> : null}
+                {finalBill ? <p>Bill {formatMoney(finalBill.totalAmount)} · paid</p> : null}
                 {leaving.passIds.length > 0 ? <p>Guest pass {leaving.passIds.join(', ')} returned</p> : null}
               </AckCard>
             </div>
@@ -269,7 +269,7 @@ export function DischargeFlow({ params, onClose }: FlowProps) {
             <Quadrant
               step={2}
               title="Bill"
-              icon={IndianRupee}
+              icon={CurrencyIcon}
               hue="green"
               done={nothingDue}
               scrollFrom="xl"
@@ -278,11 +278,11 @@ export function DischargeFlow({ params, onClose }: FlowProps) {
                 <div className="flex flex-col gap-4">
                   <div className="divide-y divide-border-soft rounded-xl border border-border">
                     {preview.items.map((item) => (
-                      <BillLine key={item.code} label={item.description} value={formatRupees(item.amount)} />
+                      <BillLine key={item.code} label={item.description} value={formatMoney(item.amount)} />
                     ))}
-                    <BillLine label="Total" value={formatRupees(preview.total)} strong />
-                    {preview.paid > 0 ? <BillLine label="Paid so far" value={`− ${formatRupees(preview.paid)}`} /> : null}
-                    <BillLine label={nothingDue ? 'Nothing due' : 'Still due'} value={formatRupees(preview.balance)} strong />
+                    <BillLine label="Total" value={formatMoney(preview.total)} strong />
+                    {preview.paid > 0 ? <BillLine label="Paid so far" value={`− ${formatMoney(preview.paid)}`} /> : null}
+                    <BillLine label={nothingDue ? 'Nothing due' : 'Still due'} value={formatMoney(preview.balance)} strong />
                   </div>
 
                   {nothingDue ? (
@@ -325,7 +325,7 @@ export function DischargeFlow({ params, onClose }: FlowProps) {
                             <span className="min-w-0 truncate text-ink">
                               {billNumberFor(bill)} · {billServicesSummary(bill)}
                             </span>
-                            <span className="shrink-0 tabular-nums text-ink">{formatRupees(bill.balance)}</span>
+                            <span className="shrink-0 tabular-nums text-ink">{formatMoney(bill.balance)}</span>
                           </li>
                         ))}
                       </ul>

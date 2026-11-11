@@ -1,17 +1,24 @@
 import type { CSSProperties, ElementType } from 'react'
 import { Link } from 'react-router-dom'
-import { BedDouble, CalendarClock, FileWarning, IdCard, IndianRupee, LogOut, Printer, Stethoscope, Ticket, UserPlus, Video, XCircle } from 'lucide-react'
+import { BedDouble, CalendarClock, FileWarning, IdCard, LogOut, Printer, Stethoscope, Ticket, UserPlus, Video, XCircle } from 'lucide-react'
 import { Card, CardHeader } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { CheckInToggle } from '../appointment/CheckInToggle'
 import { EmptyState } from '../ui/EmptyState'
-import { BILL_STATUS_LABEL, BILL_STATUS_TONE, formatRupees } from '../../utils/billing'
+import { BILL_STATUS_LABEL, BILL_STATUS_TONE, CurrencyIcon, formatMoney } from '../../utils/billing'
 import { appointmentStatusLabel } from '../../utils/appointment'
-import { relativeDayLabel, formatDateKey } from '../../utils/dates'
+import { relativeDayLabel } from '../../utils/dates'
 import { formatClock } from '../../utils/format'
 import { formatTime, todayKey } from '../../domain/time'
+
+/** A clinic date key (`2026-11-03`) as `Tue, Nov 3, 2026` (US display change, 2026-11-04/05). */
+function usDate(key: string): string {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(Date.UTC(y, m - 1, d))
+}
 import { printBill } from '../../utils/printBill'
+import { isServerAppointment, serverQueueStatus } from '../../../shri-health/scheduling'
 import type { PatientTimeline as Timeline, TimelineKind, UpcomingItem } from '../../domain/patientSelectors'
 import type { BillDisplayStatus } from '../../types/payment'
 
@@ -19,7 +26,7 @@ const KIND_ICON: Record<TimelineKind, ElementType> = {
   registered: UserPlus,
   encounter: Stethoscope,
   'walk-in': Ticket,
-  bill: IndianRupee,
+  bill: CurrencyIcon,
   admitted: BedDouble,
   discharged: LogOut,
   'admission-cancelled': XCircle,
@@ -112,7 +119,7 @@ export function PatientTimeline({
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     {badge}
                     <time className="text-2xs tabular-nums text-ink-subtle" dateTime={new Date(event.at).toISOString()}>
-                      {formatDateKey(todayKey(new Date(event.at)))} · {formatClock(event.at)}
+                      {usDate(todayKey(new Date(event.at)))}, {formatClock(event.at)}
                     </time>
                   </div>
                 </li>
@@ -154,6 +161,10 @@ function UpcomingRow({
   }
 
   const { appointment, bill, token } = item
+  // Checked in: where the patient is now. A server booking's comes from the server (gap 73).
+  const queueStatus = isServerAppointment(appointment.appointmentId) ? serverQueueStatus(appointment) : appointment.status === 'Checked-in' && token ? token.status : null
+  // A roomed visit waits in its room for the provider: say so, with In consultation's tone.
+  const queueLabel = isServerAppointment(appointment.appointmentId) && appointment.serverVisitStatus === 'roomed' ? 'Roomed' : queueStatus
   const isToday = appointment.date === today
   const unpaid = (appointment.status === 'Payment Pending' || appointment.status === 'Scheduled') && bill && bill.balance > 0
   const tele = appointment.mode === 'Teleconsult'
@@ -169,7 +180,8 @@ function UpcomingRow({
           <Stethoscope className="h-4 w-4 text-info-fg" strokeWidth={1.75} aria-hidden="true" />
         )}
       </span>
-      <div className="min-w-0 flex-1">
+      {/* On a phone the visit takes the first line, and its status and actions wrap below it. */}
+      <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-2.75rem)]">
         <p className="truncate text-sm font-semibold text-ink">
           {relativeDayLabel(appointment.date, today)} · {formatTime(appointment.slot)} · {appointment.provider?.name ?? 'Doctor'}
         </p>
@@ -179,13 +191,14 @@ function UpcomingRow({
         </p>
       </div>
       {/* Checked in: where the patient is in the queue — Waiting, Called, In consultation. */}
-      {appointment.status === 'Checked-in' && token ? (
-        <Badge status={token.status}>{token.status}</Badge>
+      {/* SHRI_HEALTH: a server booking's place comes from the server, so every desk and tab shows the same. */}
+      {queueStatus ? (
+        <Badge status={queueStatus}>{queueLabel}</Badge>
       ) : (
         <Badge status={appointment.status}>
           {appointmentStatusLabel(appointment.status)}
           {/* What is still owed for this visit, paid at the billing counter. */}
-          {unpaid ? <span className="tabular-nums"> · {formatRupees(bill.balance)} due</span> : null}
+          {unpaid ? <span className="tabular-nums"> · {formatMoney(bill.balance)} due</span> : null}
         </Badge>
       )}
       {/* The bill to take to the billing counter — the booking is confirmed once it is paid. */}

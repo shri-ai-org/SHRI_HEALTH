@@ -64,7 +64,7 @@ def test_a_summary_is_made_read_and_decided(client: Client, practice: Practice,
     patient = str(practice.patients["kaia"])
     claude_server.reply = "{}"
     first = client("md").post(SUMMARIES, json={"patientId": patient})   # learn the lines
-    sent = claude_server.requests[-1]["messages"][0]["content"]
+    sent = claude_server.requests[-1]["messages"][0]["content"][0]["text"]
     assert "Allergy: Peanuts (high criticality)" in sent
     assert "Medication: Lisinopril 10 MG Oral Tablet, 1 tablet by mouth once daily" in sent
     assert "Visit: " in sent and "Not available: results (not in this build)" in sent

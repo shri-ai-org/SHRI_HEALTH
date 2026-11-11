@@ -11,7 +11,7 @@ import { getProviderById, getToday } from '../../domain/selectors'
 import type { FreeSlot } from '../../domain/selectors'
 import { getDoctorDay, getDoctorNextPatient, getNextFreeSlotFrom } from '../../domain/doctorDaySelectors'
 import type { DoctorDay } from '../../domain/doctorDaySelectors'
-import { dayStartTimestamp, formatTime } from '../../domain/time'
+import { formatTime, calendarDate } from '../../domain/time'
 import { relativeDayLabel } from '../../utils/dates'
 
 /** What a tap on time that can't be booked says, and what it offers instead. */
@@ -26,7 +26,7 @@ interface Notice {
 
 /** "Wednesday 15 October". */
 function longDate(date: string): string {
-  return new Date(dayStartTimestamp(date)).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  return calendarDate(date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
 /** The free slot a tap at `at` books: the slot under it, or — where that one

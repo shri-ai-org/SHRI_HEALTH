@@ -9,7 +9,7 @@ import { useToast } from '../../hooks/useToast'
 import { useStoreValue } from '../../hooks/useStore'
 import { getAdmissionBilling } from '../../domain/admissionSelectors'
 import { cancelAdmission } from '../../domain/admissionActions'
-import { formatRupees, stayDays } from '../../utils/billing'
+import { formatMoney, stayDays } from '../../utils/billing'
 import { formatClock } from '../../utils/format'
 import { formatDateKey } from '../../utils/dates'
 import { todayKey } from '../../domain/time'
@@ -68,7 +68,7 @@ export function CurrentAdmissionCard({ admission, now }: { admission: Admission;
             <Fact
               label="Running bill"
               value={
-                billing.pending > 0 ? `${formatRupees(billing.pending)} due of ${formatRupees(billing.total)}` : `${formatRupees(billing.total)} paid`
+                billing.pending > 0 ? `${formatMoney(billing.pending)} due of ${formatMoney(billing.total)}` : `${formatMoney(billing.total)} paid`
               }
             />
           ) : null}
