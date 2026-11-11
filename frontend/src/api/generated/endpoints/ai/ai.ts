@@ -29,14 +29,20 @@ import type {
   ConflictResponse,
   CreateChartQuestionHeaders,
   CreateChartSummaryHeaders,
+  CreateDifferentialHeaders,
   CreateEncounterAudioHeaders,
+  CreateMorningBriefHeaders,
   CreateNoteDraftHeaders,
   CreateTranscriptionHeaders,
   DecideAiSuggestionHeaders,
+  Differential,
+  DifferentialCreate,
   ForbiddenResponse,
   Id,
   InternalErrorResponse,
   ListSuggestedQuestionsParams,
+  MorningBrief,
+  MorningBriefCreate,
   NotFoundResponse,
   NoteDraftCreate,
   Operation,
@@ -784,6 +790,323 @@ export const getListSuggestedQuestionsUrl = (params: ListSuggestedQuestionsParam
 export const listSuggestedQuestions = async (params: ListSuggestedQuestionsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listSuggestedQuestionsResponse> => {
 
   return apiFetch<listSuggestedQuestionsResponse>(getListSuggestedQuestionsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type createMorningBriefResponse202 = {
+  data: Operation
+  status: 202
+}
+
+export type createMorningBriefResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createMorningBriefResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createMorningBriefResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createMorningBriefResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createMorningBriefResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createMorningBriefResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createMorningBriefResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createMorningBriefResponseSuccess = (createMorningBriefResponse202) & {
+  headers: Headers;
+};
+export type createMorningBriefResponseError = (createMorningBriefResponse400 | createMorningBriefResponse401 | createMorningBriefResponse403 | createMorningBriefResponse409 | createMorningBriefResponse422 | createMorningBriefResponse429 | createMorningBriefResponse500) & {
+  headers: Headers;
+};
+
+export type createMorningBriefResponse = (createMorningBriefResponseSuccess | createMorningBriefResponseError)
+
+export const getCreateMorningBriefUrl = () => {
+
+
+
+
+  return `/ai/morning-briefs`
+}
+
+/**
+ * The morning brief (D116): for each of the signed-in clinician's own appointments on `date` (the provider the user is linked to; cancelled and no-show appointments left out; at most 30), a few statements about the patient's chart, each citing the records it rests on. Returns `202` and an operation of kind `ai.morning-brief`; its result is the brief (`GET /ai/morning-briefs/{morningBriefId}`). Each chart is read within the caller's own request, through each module's service, with the same permissions, facility scope and restricted-chart check as the caller's own reads, audited as `ai` naming every patient read. **A restricted chart the caller may not open is never read**: its item says `restricted` and carries no statements (D37). A user linked to no provider gets a brief with no items. A statement that cites no record it was given is dropped. The brief is AI output, never part of the chart, and readable by its requester only. Nothing of it is logged. Governed by the `chart-summary` switch: refused with `409 feature-disabled` while AI or `chart-summary` is off for the clinic. The operation fails with `ai-unavailable` (the model is down, declined, or the monthly AI budget is used up) or `ai-output-rejected`.
+ * @summary Brief the clinician on their day's patients
+ */
+export const createMorningBrief = async (morningBriefCreate: MorningBriefCreate,
+    headers?: CreateMorningBriefHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<createMorningBriefResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createMorningBriefResponse>(getCreateMorningBriefUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(morningBriefCreate)
+  }
+);}
+
+
+export type getMorningBriefResponse200 = {
+  data: MorningBrief
+  status: 200
+}
+
+export type getMorningBriefResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getMorningBriefResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getMorningBriefResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getMorningBriefResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getMorningBriefResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getMorningBriefResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getMorningBriefResponseSuccess = (getMorningBriefResponse200) & {
+  headers: Headers;
+};
+export type getMorningBriefResponseError = (getMorningBriefResponse401 | getMorningBriefResponse403 | getMorningBriefResponse404 | getMorningBriefResponse422 | getMorningBriefResponse429 | getMorningBriefResponse500) & {
+  headers: Headers;
+};
+
+export type getMorningBriefResponse = (getMorningBriefResponseSuccess | getMorningBriefResponseError)
+
+export const getGetMorningBriefUrl = (morningBriefId: Id,) => {
+
+
+
+
+  return `/ai/morning-briefs/${morningBriefId}`
+}
+
+/**
+ * The result of `POST /ai/morning-briefs` (D116): one item per appointment, in time order, each with its statements and their source links. Labelled as AI output (`aiGenerated`). Readable by **its requester only**; anyone else gets `404`. Each chart is checked again on every read: an item whose chart the requester may no longer open is returned as `restricted`, without statements (D37). Still readable when AI is switched off.
+ * @summary Get a morning brief
+ */
+export const getMorningBrief = async (morningBriefId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getMorningBriefResponse> => {
+
+  return apiFetch<getMorningBriefResponse>(getGetMorningBriefUrl(morningBriefId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type createDifferentialResponse202 = {
+  data: Operation
+  status: 202
+}
+
+export type createDifferentialResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createDifferentialResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createDifferentialResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createDifferentialResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createDifferentialResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createDifferentialResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createDifferentialResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createDifferentialResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createDifferentialResponseSuccess = (createDifferentialResponse202) & {
+  headers: Headers;
+};
+export type createDifferentialResponseError = (createDifferentialResponse400 | createDifferentialResponse401 | createDifferentialResponse403 | createDifferentialResponse404 | createDifferentialResponse409 | createDifferentialResponse422 | createDifferentialResponse429 | createDifferentialResponse500) & {
+  headers: Headers;
+};
+
+export type createDifferentialResponse = (createDifferentialResponseSuccess | createDifferentialResponseError)
+
+export const getCreateDifferentialUrl = () => {
+
+
+
+
+  return `/ai/differentials`
+}
+
+/**
+ * AI-03 decision support (FRS §3.4; D116): possible diagnoses for the visit, each with its reasoning and the chart records it rests on. Returns `202` and an operation of kind `ai.differential`; its result is the differential (`GET /ai/differentials/{differentialId}`). The model sees the visit (reason for visit, its diagnoses so far and its note's sections) and the chart (recent visits, allergies, medications), read within the caller's own request through each module's service with the caller's permissions and the restricted-chart check (D37), audited as `ai`. **Only clinicians who can diagnose ask for one**: a user without `encounters:update` gets `403 permission-denied`. Every candidate cites at least one record; one that cites none is dropped; confidence is `low` or `medium`, never `high`. It **suggests and never concludes**: nothing is added to the chart or the visit, and the clinician adds a diagnosis through the visit's own endpoint. Shown apart from rule-based alerts. Readable by its requester only; nothing of it is logged. Governed by the `chart-summary` switch: refused with `409 feature-disabled` while AI or `chart-summary` is off. The operation fails with `ai-unavailable` or `ai-output-rejected`.
+ * @summary Suggest a differential diagnosis for a visit
+ */
+export const createDifferential = async (differentialCreate: DifferentialCreate,
+    headers?: CreateDifferentialHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<createDifferentialResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createDifferentialResponse>(getCreateDifferentialUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(differentialCreate)
+  }
+);}
+
+
+export type getDifferentialResponse200 = {
+  data: Differential
+  status: 200
+}
+
+export type getDifferentialResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getDifferentialResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getDifferentialResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getDifferentialResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getDifferentialResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getDifferentialResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getDifferentialResponseSuccess = (getDifferentialResponse200) & {
+  headers: Headers;
+};
+export type getDifferentialResponseError = (getDifferentialResponse401 | getDifferentialResponse403 | getDifferentialResponse404 | getDifferentialResponse422 | getDifferentialResponse429 | getDifferentialResponse500) & {
+  headers: Headers;
+};
+
+export type getDifferentialResponse = (getDifferentialResponseSuccess | getDifferentialResponseError)
+
+export const getGetDifferentialUrl = (differentialId: Id,) => {
+
+
+
+
+  return `/ai/differentials/${differentialId}`
+}
+
+/**
+ * The result of `POST /ai/differentials` (D116): the candidates in order, each with its reasoning, confidence and source links, and `insufficientEvidence` when the visit holds too little to suggest anything. Labelled as AI output (`aiGenerated`). Readable by **its requester only**, who must still be able to read the chart (D37); anyone else gets `404`. Still readable when AI is switched off.
+ * @summary Get a differential
+ */
+export const getDifferential = async (differentialId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getDifferentialResponse> => {
+
+  return apiFetch<getDifferentialResponse>(getGetDifferentialUrl(differentialId),
   {
     ...options,
     method: 'GET'
