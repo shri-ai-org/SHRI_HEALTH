@@ -98,3 +98,29 @@ def test_a_dump_restores_with_the_same_rows(tmp_path: Path, admin_engine: Engine
         copy.dispose()
         with admin_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
             c.execute(text(f'DROP DATABASE IF EXISTS "{target}" WITH (FORCE)'))
+
+
+def test_the_user_is_the_option_s_and_nothing_is_hard_coded(tmp_path: Path) -> None:
+    calls = tmp_path / "calls"
+    dump = _stub(tmp_path, "pg_dump", f'echo "$*" >> {calls}; echo dump')
+    listing = _stub(tmp_path, "pg_restore", "cat >/dev/null; echo '1; TABLE'")
+    out = tmp_path / "with"
+    assert _run(BACKUP, "-U", "shri", "demo", str(out), PG_DUMP=dump,
+                PG_RESTORE=listing).returncode == 0
+    assert _run(BACKUP, "demo", str(tmp_path / "without"), PG_DUMP=dump,
+                PG_RESTORE=listing).returncode == 0
+    assert calls.read_text().splitlines() == ["-U shri -Fc demo", "-Fc demo"]
+
+
+def test_a_restore_passes_the_user_to_every_connection(tmp_path: Path) -> None:
+    calls = tmp_path / "calls"
+    # One line per call: the first two arguments (the user option), whatever the SQL after them.
+    psql = _stub(tmp_path, "psql", f'echo "psql $1 $2" >> {calls}; cat >/dev/null || true')
+    restore = _stub(tmp_path, "pg_restore", f'echo "pg_restore $1 $2" >> {calls}; cat >/dev/null')
+    dump = tmp_path / "x.dump"
+    dump.write_text("x")
+    done = _run(RESTORE, "-U", "shri", str(dump), "scratch", RESTORE_CONFIRM="scratch",
+                PSQL=psql, PG_RESTORE=restore)
+    assert done.returncode == 0, done.stderr
+    lines = calls.read_text().splitlines()
+    assert lines == ["psql -U shri", "pg_restore -U shri", "psql -U shri"]
