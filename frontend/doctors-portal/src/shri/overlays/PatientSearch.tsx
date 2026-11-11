@@ -91,7 +91,8 @@ function Palette() {
             aria-autocomplete="list"
             aria-label="Patient search"
             aria-describedby={`${listId}-hint`}
-            placeholder="R. Lakshmanan · ISH-0044051"
+            // SHRI_HEALTH: no sample patient as the hint with the API (U.S. market, synthetic data only).
+            placeholder={REAL_API ? 'Search patients' : 'R. Lakshmanan · ISH-0044051'}
             autoComplete="off"
             spellCheck={false}
             className="h-[52px] w-full rounded-full bg-sh-control pl-[48px] pr-[18px] text-[14px] text-sh-text placeholder:text-sh-muted"

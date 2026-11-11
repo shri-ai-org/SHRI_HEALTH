@@ -116,6 +116,10 @@ function Prescription({ enc }: { enc: Encounter }) {
   const signRule = REAL_API ? 'Only a physician (MD) or an advanced practice provider (APP) can sign prescriptions' : 'This persona may draft, not sign — controlled classes need a consultant'
   const mayOverride = can(persona, 'rx.override')
   const locked = record.status === 'signed' || forced === 'LOCKED'
+  // D110 (Vimal on #271): with the API only MD and APP draft or edit a prescription; anyone else
+  // sees it read-only, with no drug search, add or Remove (the server refuses their writes).
+  const viewOnly = REAL_API && !mayPrescribe
+  const readOnly = locked || viewOnly
 
   /** Recomputed from the rule on every render — never cached from the seed. */
   const basket = basketFor(proposedBasket(p.id), record, p.allergies)
@@ -158,7 +162,7 @@ function Prescription({ enc }: { enc: Encounter }) {
 
   // "`/` focuses search" — the formulary's, on this screen; an open dialog keeps the keyboard.
   useEffect(() => {
-    if (locked) return
+    if (readOnly) return
     function onKey(e: KeyboardEvent) {
       if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
       const t = e.target as HTMLElement | null
@@ -170,10 +174,10 @@ function Prescription({ enc }: { enc: Encounter }) {
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [locked])
+  }, [readOnly])
 
   function addDrug(drug: string) {
-    if (locked) return
+    if (readOnly) return
     const entry = FORMULARY.find((f) => f.drug === drug)
     const lineId = addRxLine(enc.id, newLine(drug))
     setSearch('')
@@ -350,7 +354,7 @@ function Prescription({ enc }: { enc: Encounter }) {
             icon={OctagonAlert}
             title={`${l.drug} is blocked for this patient`}
             action={
-              !locked && (
+              !readOnly && (
                 <Pill variant="crit" size="md" icon={OctagonAlert} onClick={() => setGateFor(l.id)}>
                   Resolve
                 </Pill>
@@ -380,6 +384,10 @@ function Prescription({ enc }: { enc: Encounter }) {
         {/* ARC-07 — the catalogue and the basket side by side once there is room for both. */}
         <div className="grid grid-cols-1 gap-[16px] xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] xl:items-start">
           <Card titleSize="sm" title="Formulary" headerClassName="mb-[4px]" id={`${enc.id}:formulary`}>
+            {viewOnly ? (
+              <p className="text-[13px] text-sh-text-2">Only a physician (MD) or an advanced practice provider (APP) can add or change drugs.</p>
+            ) : (
+              <>
             <p className="mb-[12px] text-[12px] text-sh-text-3">
               <kbd className="rounded-[6px] bg-sh-control px-[6px] py-[1px] font-sans text-[11px] font-semibold text-sh-text-2">/</kbd> focuses search · Enter adds to the
               basket
@@ -397,7 +405,7 @@ function Prescription({ enc }: { enc: Encounter }) {
               aria-label="Search the formulary"
               placeholder="Search the formulary…"
               autoComplete="off"
-              disabled={locked}
+              disabled={readOnly}
             />
             <ul className="mt-[10px] flex flex-col gap-[2px]" aria-label="Formulary matches">
               {matches.length === 0 && search.trim() !== '' && <li className="px-[12px] py-[10px] text-[13px] text-sh-text-3">No drug in the formulary matches “{search.trim()}”.</li>}
@@ -409,7 +417,7 @@ function Prescription({ enc }: { enc: Encounter }) {
                   <li key={f.drug}>
                     <button
                       type="button"
-                      disabled={locked}
+                      disabled={readOnly}
                       onClick={() => addDrug(f.drug)}
                       // The listing and ceiling live on hover (and for a screen reader); the toast repeats them on add.
                       title={listing || undefined}
@@ -440,6 +448,8 @@ function Prescription({ enc }: { enc: Encounter }) {
                 </p>
               </Why>
             )}
+              </>
+            )}
           </Card>
 
           {/* The basket and, under it, where it goes: one column, so the pharmacy stays with the prescription. */}
@@ -457,7 +467,8 @@ function Prescription({ enc }: { enc: Encounter }) {
                         line={line}
                         encounterId={enc.id}
                         weightKg={p.weightKg}
-                        locked={locked}
+                        locked={readOnly}
+                        viewOnly={viewOnly}
                         diagnoses={diagnosisChips}
                         onEdit={(patch) => editRxLine(enc.id, line.id, patch)}
                         onRemove={() => removeLine(line)}
@@ -474,7 +485,7 @@ function Prescription({ enc }: { enc: Encounter }) {
                 </>
               )}
             </Card>
-            {REAL_API && <PharmacyCard encounterId={enc.id} />}
+            {REAL_API && <PharmacyCard encounterId={enc.id} readOnly={viewOnly} />}
           </div>
         </div>
       </ScreenFrame>
@@ -570,6 +581,7 @@ function RxLineCard({
   diagnoses,
   onEdit,
   onRemove,
+  viewOnly = false,
 }: {
   line: BasketLine
   encounterId: string
@@ -579,6 +591,8 @@ function RxLineCard({
   diagnoses: IcdCode[]
   onEdit: (patch: RxLineEdit) => void
   onRemove: () => void
+  /** D110: a role that may not prescribe sees the line without Remove. */
+  viewOnly?: boolean
 }) {
   const base = `${encounterId}:${line.id}`
   const touchpointId = `${encounterId}:dose:${line.id}`
@@ -614,9 +628,11 @@ function RxLineCard({
           {line.indication && !line.indicationCode && <p className="mt-[2px] text-[13px] text-sh-text-3">for {line.indication}</p>}
         </div>
         {/* Resolve lives on the page alert above — one way in, not two. */}
-        <Pill variant="ghost" size="md" icon={Trash2} disabled={locked} aria-label={`Remove ${line.drug}`} className="disabled:opacity-40" onClick={onRemove}>
-          Remove
-        </Pill>
+        {!viewOnly && (
+          <Pill variant="ghost" size="md" icon={Trash2} disabled={locked} aria-label={`Remove ${line.drug}`} className="disabled:opacity-40" onClick={onRemove}>
+            Remove
+          </Pill>
+        )}
       </div>
 
       <Hairline className="my-[12px]" />
@@ -758,10 +774,11 @@ function RxLineCard({
 /**
  * SHRI_HEALTH: where the prescriptions go (the server refuses to sign without a pharmacy). Starts from
  * the patient's preferred pharmacy on their record; any other is found in the pharmacy directory
- * (listPharmacies) by name or ZIP. The choice is saved on this visit's prescriptions only: making it the
- * patient's preferred pharmacy needs setPreferredPharmacy, which isn't built yet (Vimal).
+ * (listPharmacies) by name or ZIP. The choice is saved on this visit's prescriptions only: the patient's
+ * preferred pharmacy is the front desk's (setPreferredPharmacy, #279, FD and ADM only). A role that may
+ * not prescribe (D110) sees the pharmacy and can't change it.
  */
-function PharmacyCard({ encounterId }: { encounterId: string }) {
+function PharmacyCard({ encounterId, readOnly = false }: { encounterId: string; readOnly?: boolean }) {
   const pharmacy = useClinical((s) => s.rxPharmacy[encounterId])
   const load = useClinical((s) => s.loadRxPharmacy)
   const choose = useClinical((s) => s.chooseRxPharmacy)
@@ -796,18 +813,20 @@ function PharmacyCard({ encounterId }: { encounterId: string }) {
     }
   }, [query])
 
-  const picking = changing || pharmacy === null
+  const picking = !readOnly && (changing || pharmacy === null)
   return (
     <Card titleSize="sm" title="Pharmacy" id={`${encounterId}:pharmacy`}>
       {pharmacy === undefined ? (
         <p role="status" className="text-[13px] text-sh-text-3">Reading the patient's pharmacy…</p>
+      ) : readOnly && !pharmacy ? (
+        <p className="text-[13px] text-sh-text-2">No pharmacy chosen yet.</p>
       ) : !picking && pharmacy ? (
         <div className="flex flex-wrap items-start justify-between gap-[8px]">
           <span className="min-w-0">
             <span className="block text-[14px] font-medium text-sh-text">{pharmacy.name}</span>
             {pharmacy.detail && <span className="block text-[12px] text-sh-text-3">{pharmacy.detail}</span>}
           </span>
-          {!signed && (
+          {!signed && !readOnly && (
             <Pill variant="control" size="sm" onClick={() => setChanging(true)}>
               Change
             </Pill>
