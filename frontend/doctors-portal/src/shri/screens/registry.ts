@@ -35,6 +35,7 @@ import { OrdersPage } from '../orders/OrdersPage'
 import { StewardshipPage } from '../orders/StewardshipPage'
 import { AppointmentsPage } from '../record/AppointmentsPage'
 import { ConditionPage } from '../record/ConditionPage'
+import { HistoryPage } from '../record/HistoryPage'
 import { NotesPage } from '../record/NotesPage'
 import { PrescriptionsPage } from '../record/PrescriptionsPage'
 import { RecordPage } from '../record/RecordPage'
@@ -86,6 +87,7 @@ export const SCREEN_COMPONENTS: Partial<Record<string, ComponentType>> = {
   'S-06-13': ResultsPartPage,
   'S-06-14': NotesPage,
   'S-06-15': ConditionPage,
+  'S-06-20': HistoryPage,
   'S-06-16': PrescriptionsPage,
   'S-06-17': AppointmentsPage,
   'S-05-03': OpdQueuePage,

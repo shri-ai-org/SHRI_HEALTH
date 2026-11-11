@@ -17,15 +17,18 @@ import type { Tone } from '../mocks/types'
 import { useAppointments } from './schedule'
 import { appointmentsOf, nextOf } from '../../../shri-health/record'
 import { usePatientProblems } from '../../../shri-health/history'
+import { formatTime as clinicTime } from '../../../shri-health/format'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+const US_DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
-export type RecordSection = 'record' | 'condition' | 'results' | 'reports' | 'notes' | 'prescriptions' | 'appointments'
+export type RecordSection = 'record' | 'condition' | 'history' | 'results' | 'reports' | 'notes' | 'prescriptions' | 'appointments'
 
 /** `label` titles a tile; `short` names the tab. Seven tabs; the row scrolls sideways where they do not fit. */
 export const SECTION_META: Record<RecordSection, { label: string; short: string; path: string; screenId: string }> = {
   record: { label: 'Overview', short: 'Overview', path: 'record', screenId: 'S-06-11' },
   condition: { label: 'Current condition', short: 'Condition', path: 'condition', screenId: 'S-06-15' },
+  history: { label: 'History', short: 'History', path: 'history', screenId: 'S-06-20' },
   results: { label: 'Test results', short: 'Test results', path: 'results', screenId: 'S-06-13' },
   reports: { label: 'Imaging reports', short: 'Imaging reports', path: 'reports', screenId: 'S-06-12' },
   notes: { label: 'Consultation notes', short: 'Consultation notes', path: 'notes', screenId: 'S-06-14' },
@@ -33,7 +36,10 @@ export const SECTION_META: Record<RecordSection, { label: string; short: string;
   appointments: { label: 'Appointments', short: 'Appointments', path: 'appointments', screenId: 'S-06-17' },
 }
 
-export const SECTION_ORDER: RecordSection[] = ['record', 'condition', 'results', 'reports', 'notes', 'prescriptions', 'appointments']
+// SHRI_HEALTH: the History tab (gap 86) reads the API only, so it isn't in the sample screens.
+export const SECTION_ORDER: RecordSection[] = REAL_API
+  ? ['record', 'condition', 'history', 'results', 'reports', 'notes', 'prescriptions', 'appointments']
+  : ['record', 'condition', 'results', 'reports', 'notes', 'prescriptions', 'appointments']
 
 /** A condition's status in this build's tones — stable is the quiet one, the clinical hues for the rest (`STATUS_TONE`). */
 export const STATUS_TONE: Record<ConditionStatus, Tone> = {
@@ -73,13 +79,15 @@ export function useProblemsFor(patientId: string): (Problem | AddedProblem)[] {
 }
 
 /** One count per part, for the tabs. */
-export function useSectionCounts(p: Patient): Record<Exclude<RecordSection, 'record'>, number> {
+export function useSectionCounts(p: Patient): Record<Exclude<RecordSection, 'record'>, number | undefined> {
   const book = useAppointments()
   const voice = useVoiceNotesFor(p.id)
   const session = useSessionNotesFor(p.id)
   const problems = useProblemsFor(p.id)
   return {
     condition: problems.length,
+    // No count on the History tab: it would read four lists on every record page.
+    history: undefined,
     results: resultsFor(p.id).length,
     reports: reportsFor(p.id).length,
     notes: pastNotesFor(p.id).length + voice.length + session.length,
@@ -93,8 +101,10 @@ export function useDefaultSubheading(p: Patient): string {
   const next = nextOf(useAppointments(), p.id)
   const condition = conditionFor(p.id)
   const bits = [`${p.age}/${p.sex}`, condition?.headline ?? p.scenario]
-  if (next) bits.push(`next: ${next.purpose.toLowerCase()} ${formatDate(next.at)} ${formatTime(next.at)}`)
-  return bits.join(' · ')
+  // SHRI_HEALTH: with the API the next visit reads in U.S. style, "Nov 11, 2026, 9:40 AM" (clinic time).
+  const when = (at: Date) => (REAL_API ? `${US_DATE.format(at)}, ${clinicTime(at)}` : `${formatDate(at)} ${formatTime(at)}`)
+  if (next) bits.push(`next: ${next.purpose.toLowerCase()} ${when(next.at)}`)
+  return bits.filter(Boolean).join(' · ')
 }
 
 /** Where "start the consultation" goes, by the kind of encounter the patient has. */
