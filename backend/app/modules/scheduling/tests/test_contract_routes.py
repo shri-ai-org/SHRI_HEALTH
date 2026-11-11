@@ -52,7 +52,7 @@ PORTAL_B8A = frozenset({
     "listPortalBookingProviders",
     "listPortalBookingSlots",
 })
-PORTAL_PENDING = PORTAL_B8A - {"listPortalAppointments", "getPortalAppointment"}
+PORTAL_PENDING: frozenset[str] = frozenset()  # all nine built (self-booking, the demo slice)
 
 
 def test_batch_1_and_portal_operations_are_built_or_pending() -> None:
