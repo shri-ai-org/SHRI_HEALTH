@@ -151,7 +151,15 @@ async def free_times(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
                      facility_id: UUID, day: date, provider_id: UUID | None,
                      appointment_type_id: UUID | None, now: datetime
                      ) -> tuple[FacilityRow, list[schemas.Slot]]:
-    fac = await facility(db, ref, user, facility_id)
+    return await free_times_at(db, ref, await facility(db, ref, user, facility_id), day,
+                               provider_id, appointment_type_id, now)
+
+
+async def free_times_at(db: AsyncSession, ref: PracticeSetupReads, fac: FacilityRow, day: date,
+                        provider_id: UUID | None, appointment_type_id: UUID | None,
+                        now: datetime) -> tuple[FacilityRow, list[schemas.Slot]]:
+    """Free times at a facility already resolved (staff: the user's facilities; the portal: the
+    practice's online booking facilities). ``now`` is the earliest start offered."""
     duration = None
     if appointment_type_id is not None:
         types = await ref.appointment_types(db, [appointment_type_id])
@@ -178,7 +186,20 @@ async def _validated(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
                      ) -> tuple[FacilityRow, AppointmentTypeRow, repo.NewAppointment]:
     """The booking rules (plan §2.2), shared by book and reschedule. ``rescheduling`` is the
     appointment being replaced: it doesn't count against the type's overbook limit."""
-    fac = await facility(db, ref, user, facility_id)
+    return await validated_at(
+        db, ref, await facility(db, ref, user, facility_id), patient_id=patient_id,
+        provider_id=provider_id, location_id=location_id, type_id=type_id, start=start,
+        minutes=minutes, overbook=overbook, same_day_add_on=same_day_add_on, now=now,
+        prefix=prefix, rescheduling=rescheduling)
+
+
+async def validated_at(db: AsyncSession, ref: PracticeSetupReads, fac: FacilityRow, *,
+                       patient_id: UUID, provider_id: UUID, location_id: UUID | None,
+                       type_id: UUID, start: datetime, minutes: int | None, overbook: bool,
+                       same_day_add_on: bool, now: datetime, prefix: str = "",
+                       rescheduling: UUID | None = None
+                       ) -> tuple[FacilityRow, AppointmentTypeRow, repo.NewAppointment]:
+    """The booking rules at a facility already resolved (staff and the portal)."""
     await repo.lock_patient(db, patient_id)  # no merge between this check and the insert
     person = (await repo.people(db, [patient_id])).get(patient_id)
     if person is None:
@@ -228,7 +249,7 @@ async def _validated(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
     return fac, kind, new
 
 
-async def _insert(db: AsyncSession, new: repo.NewAppointment) -> UUID:
+async def insert_new(db: AsyncSession, new: repo.NewAppointment) -> UUID:
     try:
         return await repo.insert(db, new)
     except IntegrityError as error:
@@ -252,7 +273,7 @@ async def book(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUser,
         if follow_up is None:
             raise business_rule("/followUpOfEncounterId", "invalid-reference")
     new = _with_text(new, body.reason_for_visit, body.comment, body.patient_instruction)
-    appointment_id = await _insert(db, new)
+    appointment_id = await insert_new(db, new)
     if follow_up is not None:
         await repo.book_follow_up(db, follow_up, appointment_id)  # D98, same transaction
     # D15: the 270 for the primary coverage, in this transaction; never refuses the booking.
@@ -295,7 +316,7 @@ async def reschedule(db: AsyncSession, ref: PracticeSetupReads, user: CurrentUse
     await repo.cancel(db, row, body.reason_code, body.reason_text)
     new = replace(_with_text(new, old.reason, old.comment, old.patient_instruction),
                   rescheduled_from_id=old.id)
-    new_id = await _insert(db, new)
+    new_id = await insert_new(db, new)
     await repo.move_follow_up(db, old.id, new_id)
     if slots.local_day(new.start, fac.time_zone) != slots.local_day(old.start, old.time_zone):
         # D15: a new day is a new service date; same day, the earlier check still answers.

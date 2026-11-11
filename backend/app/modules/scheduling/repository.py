@@ -215,6 +215,8 @@ WHERE s.active AND s.ext_facility_id = :facility
   AND coalesce(sa.practitioner_id, r.practitioner_id) = :provider
 ORDER BY s.created_at LIMIT 1
 """)
+#: Reasons for a visit booked online (PortalAppointmentCreate's ``reasonCode``).
+PORTAL_REASON_SYSTEM = "urn:shri:portal-visit-reason"
 _LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
 _LOCK_PATIENT = text("SELECT 1 FROM clinical.patient WHERE id = :id FOR SHARE")
 
@@ -361,6 +363,7 @@ class NewAppointment:
     same_day_add_on: bool
     overbook: bool
     rescheduled_from_id: UUID | None = None
+    reason_code: str | None = None  # the portal's fixed list (PortalAppointmentCreate)
 
 
 async def insert(db: AsyncSession, new: NewAppointment) -> UUID:
@@ -390,7 +393,12 @@ async def insert(db: AsyncSession, new: NewAppointment) -> UUID:
             appointment_id=appt.id, actor_location_id=new.location_id, required="required",
             status="accepted"))
     db.add_all(participants)
-    if new.reason:
+    if new.reason_code:  # the portal's fixed list, in the portal's local code system
+        db.add(M["appointment_reason"](appointment_id=appt.id,
+                                       reason_code_system=PORTAL_REASON_SYSTEM,
+                                       reason_code_code=new.reason_code,
+                                       reason_code_text=new.reason))
+    elif new.reason:
         db.add(M["appointment_reason"](appointment_id=appt.id, reason_code_text=new.reason))
     await db.flush()
     appointment_id: UUID = appt.id

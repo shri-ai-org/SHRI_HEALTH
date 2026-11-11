@@ -15,6 +15,7 @@ none.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
@@ -62,13 +63,26 @@ class PortalAppointmentRow:
     reason: str | None
     patient_instruction: str | None
     visit_summary_id: UUID | None
+    reason_code: str | None = None
 
 
 @dataclass(frozen=True)
 class OnlinePolicy:
-    """The practice's online cut-offs (``admin.online_booking_setting``)."""
+    """The practice's online booking rules (``admin.online_booking_setting``)."""
     cancel_cutoff_hours: int
     reschedule_cutoff_hours: int
+    enabled: bool = True
+    window_days: int = 60
+    min_notice_minutes: int = 1440
+
+
+@dataclass(frozen=True)
+class BookableTypeRow:
+    id: UUID
+    name: str
+    duration_minutes: int
+    telehealth: bool
+    facility_id: UUID
 
 
 class PortalAppointmentReads(Protocol):
@@ -80,6 +94,15 @@ class PortalAppointmentReads(Protocol):
 
     async def policy(self, db: Any) -> OnlinePolicy | None: ...
 
+    async def bookable_types(self, db: Any, facility_id: UUID | None
+                             ) -> Sequence[BookableTypeRow]: ...
+
+    async def upcoming_count(self, db: Any, patient_id: UUID, now: datetime,
+                             exclude: UUID | None = None) -> int: ...
+
+    async def addresses(self, db: Any, location_ids: Sequence[UUID | None]
+                        ) -> dict[UUID, PortalAddressRow]: ...
+
 
 _SELECT = f"""
 SELECT a.id, a.subject_patient_id, a.status, a.start, a."end", a.patient_instruction,
@@ -88,6 +111,9 @@ SELECT a.id, a.subject_patient_id, a.status, a.start, a."end", a.patient_instruc
        pp.actor_practitioner_id AS provider_id,
        (SELECT r.reason_code_text FROM clinical.appointment_reason r
          WHERE r.appointment_id = a.id ORDER BY r.created_at, r.id LIMIT 1) AS reason,
+       (SELECT r.reason_code_code FROM clinical.appointment_reason r
+         WHERE r.appointment_id = a.id AND r.reason_code_system = :reason_system
+         ORDER BY r.created_at, r.id LIMIT 1) AS reason_code,
        (SELECT d.id FROM clinical.encounter e
           JOIN clinical.document_reference d ON d.context_encounter_id = e.id
          WHERE e.appointment_id = a.id AND d.subject_patient_id = a.subject_patient_id
@@ -118,8 +144,22 @@ FROM clinical.address x
 WHERE x.location_id = ANY(:ids)
 ORDER BY x.location_id, (x.use = 'work') DESC, x.created_at
 """)
-_POLICY = text("SELECT cancel_cutoff_hours, reschedule_cutoff_hours "
-               "FROM admin.online_booking_setting LIMIT 1")
+_POLICY = text("SELECT cancel_cutoff_hours, reschedule_cutoff_hours, is_enabled, "
+               "booking_window_days, min_notice_minutes FROM admin.online_booking_setting LIMIT 1")
+#: Visit types bookable online at a facility (``admin.online_bookable_type``), active ones only.
+_BOOKABLE_TYPES = text("""
+SELECT t.id, t.name, t.default_duration_minutes, t.is_telehealth, o.facility_id
+FROM admin.online_bookable_type o
+JOIN admin.appointment_type t ON t.id = o.appointment_type_id
+WHERE t.is_active AND (CAST(:facility AS uuid) IS NULL OR o.facility_id = :facility)
+ORDER BY t.name, t.id
+""")
+#: The patient's booked appointments still ahead (the limit of upcoming online bookings).
+_UPCOMING_COUNT = text("""
+SELECT count(*) FROM clinical.appointment a
+WHERE a.subject_patient_id = :patient AND a.status = 'booked' AND a.start > :now
+  AND (CAST(:exclude AS uuid) IS NULL OR a.id <> :exclude)
+""")
 
 
 class SqlPortalAppointmentReads:
@@ -128,9 +168,10 @@ class SqlPortalAppointmentReads:
     async def _rows(self, db: AsyncSession, query: Any, params: dict[str, Any]
                     ) -> list[PortalAppointmentRow]:
         found = list((await db.execute(query, {
-            "statuses": list(PORTAL_STATUSES), "loinc": systems.LOINC, **params})).mappings())
+            "statuses": list(PORTAL_STATUSES), "loinc": systems.LOINC,
+            "reason_system": repository.PORTAL_REASON_SYSTEM, **params})).mappings())
         names = await repository.provider_names(db, [r["provider_id"] for r in found])
-        addresses = await self._addresses(db, [r["location_id"] for r in found])
+        addresses = await self.addresses(db, [r["location_id"] for r in found])
         return [PortalAppointmentRow(
             id=r["id"], patient_id=r["subject_patient_id"], status=r["status"],
             start=r["start"], end=r["end"], time_zone=r["timezone"],
@@ -139,10 +180,11 @@ class SqlPortalAppointmentReads:
             provider_id=r["provider_id"],
             provider_name=names.get(r["provider_id"], "Your provider"),
             type_id=r["type_id"], type_name=r["type_name"], telehealth=bool(r["is_telehealth"]),
-            reason=r["reason"], patient_instruction=r["patient_instruction"],
+            reason=r["reason"], reason_code=r["reason_code"],
+            patient_instruction=r["patient_instruction"],
             visit_summary_id=r["visit_summary_id"]) for r in found]
 
-    async def _addresses(self, db: AsyncSession, location_ids: list[UUID | None]
+    async def addresses(self, db: AsyncSession, location_ids: Sequence[UUID | None]
                          ) -> dict[UUID, PortalAddressRow]:
         ids = [i for i in dict.fromkeys(location_ids) if i is not None]
         if not ids:
@@ -166,5 +208,19 @@ class SqlPortalAppointmentReads:
 
     async def policy(self, db: AsyncSession) -> OnlinePolicy | None:
         r = (await db.execute(_POLICY)).mappings().first()
-        return None if r is None else OnlinePolicy(r["cancel_cutoff_hours"],
-                                                   r["reschedule_cutoff_hours"])
+        return None if r is None else OnlinePolicy(
+            r["cancel_cutoff_hours"], r["reschedule_cutoff_hours"], bool(r["is_enabled"]),
+            r["booking_window_days"], r["min_notice_minutes"])
+
+    async def bookable_types(self, db: AsyncSession, facility_id: UUID | None
+                             ) -> Sequence[BookableTypeRow]:
+        return [BookableTypeRow(r["id"], r["name"], r["default_duration_minutes"],
+                                bool(r["is_telehealth"]), r["facility_id"])
+                for r in (await db.execute(_BOOKABLE_TYPES, {"facility": facility_id})
+                          ).mappings()]
+
+    async def upcoming_count(self, db: AsyncSession, patient_id: UUID, now: datetime,
+                             exclude: UUID | None = None) -> int:
+        found: int = (await db.execute(_UPCOMING_COUNT, {
+            "patient": patient_id, "now": now, "exclude": exclude})).scalar_one()
+        return found
