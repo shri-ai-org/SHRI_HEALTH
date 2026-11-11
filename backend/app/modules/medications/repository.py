@@ -192,6 +192,10 @@ class MedicationRepository(Protocol):
     async def medication(self, db: AsyncSession, medication_id: UUID) -> MedicationRow | None: ...
     async def prescription(self, db: AsyncSession, prescription_id: UUID
                            ) -> PrescriptionRow | None: ...
+    async def encounter_prescriptions(self, db: AsyncSession, encounter_id: UUID, *,
+                                      limit: int, offset: int) -> list[UUID]:
+        """The visit's prescriptions (not entered in error), oldest first, by ID."""
+        ...
     async def alert_prescription(self, db: AsyncSession, alert_id: UUID) -> UUID | None: ...
     async def safety_facts(self, db: AsyncSession, row: PrescriptionRow) -> SafetyFacts: ...
 
@@ -296,6 +300,13 @@ SELECT m.id, m.subject_patient_id, m.encounter_id, e.ext_facility_id AS facility
 FROM clinical.medication_request m
 LEFT JOIN clinical.encounter e ON e.id = m.encounter_id
 WHERE m.id = :id AND m.intent = 'order'
+""")
+#: A visit's prescriptions, drafts included, oldest first (listEncounterPrescriptions, gap 82).
+_ENCOUNTER_PRESCRIPTIONS = text("""
+SELECT m.id FROM clinical.medication_request m
+WHERE m.encounter_id = :encounter AND m.intent = 'order' AND m.status <> 'entered-in-error'
+ORDER BY m.created_at, m.id
+LIMIT :limit OFFSET :offset
 """)
 # A prescription's alerts: its latest check's live DetectedIssues, by ID (as
 # fhir_store.prescription_alert_ids orders them, and SignRefused's /alerts/{i} counts them).
@@ -555,6 +566,11 @@ class SqlMedicationRepository:
             updated_at=r.updated_at, alerts=alerts,
             transmission=TransmissionRow(t.status, t.updated_at, t.error_message)
             if t is not None else None)
+
+    async def encounter_prescriptions(self, db: AsyncSession, encounter_id: UUID, *,
+                                      limit: int, offset: int) -> list[UUID]:
+        return list((await db.execute(_ENCOUNTER_PRESCRIPTIONS, {
+            "encounter": encounter_id, "limit": limit, "offset": offset})).scalars())
 
     async def alert_prescription(self, db: AsyncSession, alert_id: UUID) -> UUID | None:
         found: UUID | None = (await db.execute(_ALERT_PRESCRIPTION, {"id": alert_id})

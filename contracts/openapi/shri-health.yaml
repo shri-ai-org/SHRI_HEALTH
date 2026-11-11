@@ -378,6 +378,8 @@ paths:
     $ref: 'modules/medications.yaml#/paths/~1pharmacies'
   /patients/{patientId}/medications:
     $ref: 'modules/medications.yaml#/paths/~1patients~1{patientId}~1medications'
+  /encounters/{encounterId}/prescriptions:
+    $ref: 'modules/medications.yaml#/paths/~1encounters~1{encounterId}~1prescriptions'
   /prescriptions:
     $ref: 'modules/medications.yaml#/paths/~1prescriptions'
   /prescriptions/{prescriptionId}:
