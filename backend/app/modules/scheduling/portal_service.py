@@ -228,6 +228,7 @@ async def _checked_start(db: Any, reads: Reads, patient: PortalPatient, policy: 
     earliest, latest = _window(policy, now)
     if not earliest <= start <= latest:
         raise _rule("/startAt", "out-of-range")
+    await repository.lock_patient_bookings(db, patient.patient_id)  # held until commit
     if await reads.upcoming_count(db, patient.patient_id, now, exclude) >= MAX_UPCOMING:
         raise _rule("/startAt", "out-of-range")
 

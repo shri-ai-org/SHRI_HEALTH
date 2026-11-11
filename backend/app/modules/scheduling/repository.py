@@ -329,6 +329,12 @@ async def lock_provider_day(db: AsyncSession, provider_id: UUID, day: str) -> No
     await db.execute(_LOCK, {"key": f"appointment:{provider_id}:{day}"})
 
 
+async def lock_patient_bookings(db: AsyncSession, patient_id: UUID) -> None:
+    """Serializes one patient's online bookings, so two at once can't both pass the limit of
+    upcoming appointments (the count and the insert run under this lock, one transaction)."""
+    await db.execute(_LOCK, {"key": f"portal-book:{patient_id}"})
+
+
 async def lock_patient(db: AsyncSession, patient_id: UUID) -> None:
     """Holds the patient row while booking, so a merge (D103), which updates it, can't commit
     between the merged check and the insert."""
