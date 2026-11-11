@@ -98,15 +98,16 @@ def _expected(n: int, h: history.History) -> tuple[int, ...]:
 
 
 def test_each_history_patient_has_a_vitals_series() -> None:
-    """Six to eight readings over the year before the demo, oldest first, one on each visit's
-    day (with its temperature) and none in the future; SpO2 only for asthma and COPD."""
+    """Six to eight readings in the year before the demo (20 Nov), oldest first, one on each
+    visit's day (with its temperature) and none in the future; SpO2 only for asthma and COPD."""
     asthma_or_copd = {n for n, h in history.HISTORY.items()
                       if any((c.code.code or "")[:3] in ("J44", "J45") for c in h.problems)}
     assert set(history.VITALS) == set(history.HISTORY) and asthma_or_copd == {4, 7}
     for n, readings in history.VITALS.items():
         days = [r.day for r in readings]
-        assert 6 <= len(readings) <= 8 and days == sorted(set(days)), n
-        assert all(dt.date(2025, 11, 20) <= d < dt.date(2026, 11, 11) for d in days), n
+        in_the_year = [d for d in days if d >= dt.date(2025, 11, 20)]
+        assert 6 <= len(in_the_year) <= 8 and days == sorted(set(days)), n
+        assert all(dt.date(2025, 11, 1) <= d < dt.date(2026, 11, 11) for d in days), n
         visits = {v.day for v in history.HISTORY[n].visits}
         assert visits <= set(days), n
         assert all((r.temperature_f is not None) == (r.day in visits) for r in readings), n

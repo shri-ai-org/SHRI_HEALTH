@@ -237,13 +237,13 @@ def r(day: str, bp: str, heart_rate: int, weight: str, spo2: int | None = None,
                    Decimal(weight), spo2, Decimal(temperature) if temperature else None)
 
 
-#: Six to eight readings a year for each history patient, oldest first, so the trend screens
-#: have a line to draw. Synthetic, fitted to each condition for the clinical review to adjust:
-#: Robert Miller's blood pressure falls to goal and his weight with it; Linda Thompson's weight
-#: drifts down; James Wilson's oxygen saturation rises on his controller; Patricia Davis's
+#: Six to eight readings in the year before the demo for each history patient, oldest first, so the
+#: trend screens have a line to draw. Synthetic, fitted to each condition for the clinical review to
+#: adjust: Robert Miller's blood pressure falls to goal and his weight with it; Linda Thompson's
+#: weight drifts down; James Wilson's oxygen saturation rises on his controller; Patricia Davis's
 #: weight creeps up on anastrozole; David Nguyen's heart rate and blood pressure fall on
-#: propranolol; Maria Gonzalez's saturation dips with her February exacerbation and recovers
-#: after rehabilitation. A visit's day must have a reading (a test checks).
+#: propranolol; Maria Gonzalez's saturation dips with her February exacerbation and recovers after
+#: rehabilitation. A visit's day must have a reading (a test checks).
 VITALS: dict[int, tuple[Reading, ...]] = {
     2: (r("2025-12-09", "148/90", 78, "212", temperature="98.4"),
         r("2026-01-20", "144/88", 77, "211"),
@@ -258,6 +258,7 @@ VITALS: dict[int, tuple[Reading, ...]] = {
         r("2026-02-24", "124/78", 72, "174", temperature="98.2"),
         r("2026-04-07", "123/78", 71, "173"),
         r("2026-06-02", "122/78", 70, "172", temperature="98.5"),
+        r("2026-07-21", "124/79", 71, "171"),
         r("2026-09-29", "128/82", 76, "171", temperature="98.4")),
     4: (r("2025-12-02", "122/78", 76, "186", spo2=95, temperature="98.6"),
         r("2026-01-13", "120/76", 74, "186", spo2=97),
@@ -903,14 +904,15 @@ async def _visit(store: fs.SqlFhirStore, db: AsyncSession, patient_id: uuid.UUID
 
 async def _nurse_visit(store: fs.SqlFhirStore, db: AsyncSession, patient_id: uuid.UUID,
                        reading: Reading) -> None:
-    """A walk-in nurse check at the main office, as the MA records it: a short unscheduled
-    visit (D16) with its vitals, no booking and no note. Vitals are listed through a visit at
-    the user's facilities, so a reading always has one."""
+    """A walk-in nurse check at the main office, as the MA records it under the demo doctor's
+    supervision: a short unscheduled visit (D16) with its vitals, no booking and no note.
+    Vitals are listed through a visit at the user's facilities, so a reading always has one."""
     await _as_user(db, MA_USER)
     start = _at(reading.day)
     checks = "blood pressure, pulse, weight" + (" and oxygen saturation" if reading.spo2 else "")
     written = await store.create_encounter(db, fs.EncounterIn(
         patient_id=patient_id, facility_id=FACILITY_A, status="arrived", started_at=start,
+        participants=(fs.ParticipantIn(practitioner_id=DOCTOR),),   # supervising (incident-to)
         reasons=(fs.Coded(text=f"Nurse visit: {checks} check"),)))
     await store.set_encounter_status(db, written.id, "in-progress",
                                      at=start + dt.timedelta(minutes=5))
