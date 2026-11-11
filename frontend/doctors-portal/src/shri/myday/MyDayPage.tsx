@@ -20,8 +20,9 @@
  * toast, the moment the device is back online.
  */
 
-import { BellRing } from 'lucide-react'
+import { BellRing, Sunrise } from 'lucide-react'
 import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { NOW } from '@/data/format'
 import { patient } from '../../../shri-health/kit'
@@ -29,9 +30,11 @@ import { useClinical } from '@/store/clinical'
 import { useUI } from '@/store/ui'
 
 import { cn } from '../lib/cn'
-import { useForcedState } from '../state/ai'
+import { useAiFeatureUp } from '../../../shri-health/aiStatus'
+import { AI_MORNING_BRIEF_ON } from '../logic/assistant'
+import { useAiActive, useForcedState } from '../state/ai'
 import { useShri } from '../state/store'
-import { Card, RoundButton, Skeleton } from '../ui/primitives'
+import { Card, Pill, RoundButton, Skeleton } from '../ui/primitives'
 import { AiOffLine, ErrorFrame, OfflineStrip, StaleChip } from '../ui/states'
 
 import { Greeting } from './Greeting'
@@ -47,6 +50,19 @@ import { useMyDay } from './useMyDay'
 const LOWER_H = 'xl:h-(--myday-h)'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/** With the API: the way into the AI morning brief (D116), behind its flag and while the AI works. */
+function BriefButton() {
+  const navigate = useNavigate()
+  const aiActive = useAiActive()
+  const up = useAiFeatureUp('morning-brief')
+  if (!AI_MORNING_BRIEF_ON || !aiActive || !up) return null
+  return (
+    <Pill variant="accent" size="md" icon={Sunrise} onClick={() => navigate('/brief')}>
+      Morning brief
+    </Pill>
+  )
+}
 
 export function MyDayPage() {
   const forcedState = useForcedState()
@@ -71,6 +87,7 @@ export function MyDayPage() {
         <Greeting />
         {/* A demo control, DEV-only and desktop-only, as in the old build. */}
         {import.meta.env.DEV && !REAL_API && <SimulateCritical />}
+        {REAL_API && <BriefButton />}
       </div>
 
       {forcedState === 'OFFLINE' && <OfflineStrip className="mt-[14px]" />}

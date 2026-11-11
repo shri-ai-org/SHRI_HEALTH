@@ -221,3 +221,54 @@ test('with AI off for the clinic, the summary card leaves the record and the rec
   await expect(page.getByRole('button', { name: 'Summarize the chart' })).toHaveCount(0)
   await expect(page.getByText('AI chart summary')).toHaveCount(0)
 })
+
+test('the differential rail suggests possibilities with their sources and adds nothing to the visit', async ({ page, request }) => {
+  const { encounterId, patientId } = await checkedInVisit(request)
+  const ddxId = randomUUID()
+  let asked = 0
+  await page.route('**/api/v1/ai/differentials', (route) => {
+    asked++
+    expect((route.request().postDataJSON() as { encounterId: string }).encounterId).toBe(encounterId)
+    return json(route, 202, operation('ai.differential', 'differential', ddxId))
+  })
+  await page.route(`**/api/v1/ai/differentials/${ddxId}`, (route) => json(route, 200, {
+    id: ddxId, patientId, encounterId, insufficientEvidence: false, aiGenerated: true, createdAt: NOW,
+    generatedBy: { modelName: 'Claude (stub)', pipelineVersion: 'test' },
+    candidates: [{ sequence: 1, condition: 'Tension-type headache', rationale: 'Follow-up on headaches.', confidence: 'medium',
+                   sources: [{ resourceType: 'Encounter', resourceId: encounterId, label: 'Reason for visit' }] }],
+  }))
+
+  await page.goto(`${DOCTORS_URL}/encounter/${encounterId}/note`)
+  await page.getByRole('complementary', { name: 'Differential' }).getByRole('button', { name: 'Differential' }).click()
+  await page.getByRole('button', { name: 'Suggest a differential' }).click()
+  const panel = page.getByRole('region', { name: 'AI differential' })
+  await expect(panel.getByText('Tension-type headache')).toBeVisible()
+  await expect(panel.getByText('AI-generated · Claude (stub)')).toBeVisible()
+  await expect(panel.getByRole('button', { name: 'Source: Reason for visit' })).toBeVisible()
+  expect(asked).toBe(1)
+})
+
+test('the morning brief lists the day with sourced lines, and a restricted chart unread', async ({ page, request }) => {
+  const { patientId } = await checkedInVisit(request)
+  const briefId = randomUUID()
+  const conditionId = randomUUID()
+  await page.route('**/api/v1/ai/morning-briefs', (route) => json(route, 202, operation('ai.morning-brief', 'morning-brief', briefId)))
+  await page.route(`**/api/v1/ai/morning-briefs/${briefId}`, (route) => json(route, 200, {
+    id: briefId, date: NOW.slice(0, 10), aiGenerated: true, createdAt: NOW,
+    generatedBy: { modelName: 'Claude (stub)', pipelineVersion: 'test' },
+    appointments: [
+      { appointmentId: randomUUID(), patientId, startAt: NOW, chartStatus: 'summarized',
+        statements: [{ sequence: 1, text: 'Essential hypertension, diagnosed last year.',
+                       sources: [{ resourceType: 'Condition', resourceId: conditionId, label: 'Visit diagnosis' }] }] },
+      { appointmentId: randomUUID(), patientId: randomUUID(), startAt: NOW, chartStatus: 'restricted', statements: [] },
+    ],
+  }))
+
+  await page.goto(`${DOCTORS_URL}/`)
+  await page.getByRole('button', { name: 'Morning brief' }).click()
+  await expect(page).toHaveURL(/\/brief$/)
+  await expect(page.getByText('Essential hypertension, diagnosed last year.')).toBeVisible()
+  await expect(page.getByText('Restricted chart: not read for the brief.')).toBeVisible()
+  await page.getByRole('button', { name: 'Source: Visit diagnosis' }).click()
+  await expect(page).toHaveURL(new RegExp(`/patient/${patientId}/condition$`))
+})
