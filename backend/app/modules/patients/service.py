@@ -396,6 +396,30 @@ async def update_patient(db: AsyncSession, repo: PatientRepository, store: FhirS
     return await repo.get_patient(db, current.id)
 
 
+async def set_preferred_pharmacy(db: AsyncSession, repo: PatientRepository, store: FhirStore,
+                                 patient: schemas.Patient, body: schemas.PreferredPharmacySet,
+                                 if_match: str | None) -> Versioned[schemas.PreferredPharmacy]:
+    """D50: the default ``patient_pharmacy`` row and the patient's version change in one
+    transaction (the helper does both). 404 for a pharmacy not in the directory, 422 for an
+    inactive one; the same pharmacy again is a no-op that keeps the version."""
+    version = if_match_version(if_match)
+    writable(patient)
+    try:
+        written = await store.set_preferred_pharmacy(db, patient.id, body.pharmacy_id,
+                                                     if_version=version)
+    except StaleVersion as changed:
+        raise stale(changed) from changed
+    except ResourceNotFound as gone:
+        raise NotFound() from gone
+    except InvalidInput as refused:
+        raise business_rule("body", "/pharmacyId", "invalid-reference") from refused
+    await db.commit()
+    chosen = await repo.preferred_pharmacy(db, patient.id)
+    if chosen is None:  # the helper just set it; only a concurrent change could clear it
+        raise NotFound()
+    return Versioned(chosen, written.version)
+
+
 async def summaries(db: AsyncSession, repo: PatientRepository, patient_ids: list[UUID]
                     ) -> list[schemas.PatientSummary]:
     """D54: one minimum-necessary summary per ID found, in request order. Missing IDs, and

@@ -303,6 +303,13 @@ class FhirStore(Protocol):
         """Restrict (R or V) or unrestrict (empty): replaces the confidentiality labels only."""
         ...
 
+    async def set_preferred_pharmacy(self, db: AsyncSession, patient_id: uuid.UUID,
+                                     pharmacy_id: uuid.UUID, *, if_version: int) -> Written:
+        """Makes the pharmacy the patient's default (D50, one per patient) and returns the
+        patient's new version. ResourceNotFound for a pharmacy not in the directory, InvalidInput
+        for an inactive one; the same pharmacy again changes nothing."""
+        ...
+
     # RelatedPerson (related_person, related_person_relationship, human_name, contact_point,
     # address, admin.employer)
     async def create_related_person(self, db: AsyncSession, data: RelatedPersonIn) -> Written: ...
