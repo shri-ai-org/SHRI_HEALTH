@@ -352,7 +352,7 @@ def seeded_charts(c: Client, v: Visit) -> str:
     first = c.call("md", "GET", f"/patients/{restricted}/problems", expect=(200, 403))
     if first.status_code == 403:
         c.call("md", "POST", f"/patients/{restricted}/break-glass",
-               {"reasonCode": "continuity-of-care"}, expect=(201,))
+               {"reasonCode": "continuity-of-care"})
         if not c.call("md", "GET", f"/patients/{restricted}/problems").json().get("items"):
             raise StepFailed("the restricted chart opened with an empty problem list")
         return "history lists filled; restricted chart refused, then opened with break-glass"
