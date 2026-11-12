@@ -16,6 +16,16 @@
 # (at least 12 characters, not the username or email).
 # The patient realm is skipped, with a note, until it exists (#148).
 #
+# DEMO_SKIP_AUTH_CODE=1 (deploy.sh, SHRI_DEMO_SKIP_AUTH_CODE, demo servers only): sign-in is the
+# username and password alone. The one-time code step of both realms' browser flows is set to
+# DISABLED and the demo users are asked for no authenticator. Without it, the step is set back
+# to REQUIRED, so taking the setting out restores multi-factor at the next up or reset. The realm
+# files (and so every other environment) always require the code.
+# While the code is skipped, every sign-in must leave a record: both realms store their sign-in
+# events (LOGIN, LOGIN_ERROR; the realm files have them on, and this turns them back on if they
+# were switched off in the console), and DEMO_EVENTS_CHECK_ONLY=1 (deploy.sh check) only verifies
+# that, failing otherwise. Keycloak's events name the user, client and IP, never a token.
+#
 # Needs curl and sed only. No secret is ever printed or put on a command line (where `ps` would
 # show it): the admin password and the admin token reach curl through stdin or a private
 # temporary file (mode 600, removed on exit), and DEMO_PASSWORD through the request body.
@@ -67,10 +77,64 @@ chmod 600 "$auth"
 printf 'header = "Authorization: Bearer %s"\n' "$token" > "$auth"
 unset token
 
+if [ "${DEMO_SKIP_AUTH_CODE:-}" = 1 ]; then ACTIONS='' CODE=DISABLED; else ACTIONS='"CONFIGURE_TOTP"' CODE=REQUIRED; fi
+
+# realm flow-alias: the browser flow's one-time code step, REQUIRED or DISABLED as above.
+code_step() {
+    flow=$(printf '%s' "$2" | sed 's/ /%20/g')
+    steps=$($CURL -K "$auth" "$KC_URL/admin/realms/$1/authentication/flows/$flow/executions" \
+        | sed 's/},{/}\n{/g; s/^\[//; s/\]$//')
+    step=$(printf '%s\n' "$steps" | grep '"providerId":"auth-otp-form"' | head -1)
+    password=$(printf '%s\n' "$steps" | grep '"providerId":"auth-username-password-form"' \
+        | sed -n 's/.*"priority":\([0-9]*\).*/\1/p' | head -1)
+    [ -n "$step" ] && [ -n "$password" ] \
+        || { echo "$1: no password and one-time code steps in '$2'" >&2; exit 1; }
+    # The whole step goes back with its requirement set and its place right after the password
+    # form: Keycloak takes a PUT as the whole step, so a partial one would reset its priority to
+    # 0 and ask for the code before the username, which breaks the sign-in page (400).
+    step=$(printf '%s' "$step" | sed "s/\"requirement\":\"[A-Z]*\"/\"requirement\":\"$CODE\"/; \
+        s/\"priority\":[0-9]*/\"priority\":$((password + 10))/")
+    $CURL -o /dev/null -K "$auth" -X PUT -H "Content-Type: application/json" --data-binary @- \
+        "$KC_URL/admin/realms/$1/authentication/flows/$flow/executions" <<EOF
+$step
+EOF
+    echo "$1: the one-time code is $CODE"
+}
+
+# realm: sign-in events stored (eventsEnabled, with LOGIN among the event types or all of them).
+events_ok() {
+    $CURL -K "$auth" "$KC_URL/admin/realms/$1/events/config" | tr -d ' \n' \
+        | grep '"eventsEnabled":true' | grep -q '"enabledEventTypes":\[\]\|"LOGIN"'
+}
+
+# realm: make sure sign-in events are stored, without touching the rest of its event settings.
+login_events() {
+    if ! events_ok "$1"; then
+        config=$($CURL -K "$auth" "$KC_URL/admin/realms/$1/events/config" | tr -d '\n' \
+            | sed 's/"eventsEnabled":false/"eventsEnabled":true/')
+        printf '%s' "$config" | grep -q '"enabledEventTypes":\[\]\|"LOGIN"' \
+            || config=$(printf '%s' "$config" \
+                | sed 's/"enabledEventTypes":\[/"enabledEventTypes":["LOGIN","LOGIN_ERROR",/; s/,\]/]/')
+        $CURL -o /dev/null -K "$auth" -X PUT -H "Content-Type: application/json" --data-binary @- \
+            "$KC_URL/admin/realms/$1/events/config" <<EOF
+$config
+EOF
+    fi
+    events_ok "$1" || { echo "$1: sign-in events are not stored" >&2; exit 1; }
+    echo "$1: sign-in events are stored (every sign-in without the code is recorded)"
+}
+
+if [ "${DEMO_EVENTS_CHECK_ONLY:-}" = 1 ]; then
+    for realm in shri-staff shri-patients; do
+        events_ok "$realm" || { echo "$realm: sign-in events are not stored" >&2; exit 1; }
+    done
+    exit 0
+fi
+
 # user ID username email first last
 user() {
     printf '{"id":"%s","username":"%s","email":"%s","emailVerified":true,"enabled":true,' "$1" "$2" "$3"
-    printf '"firstName":"%s","lastName":"%s","requiredActions":["CONFIGURE_TOTP"],' "$4" "$5"
+    printf '"firstName":"%s","lastName":"%s","requiredActions":[%s],' "$4" "$5" "$ACTIONS"
     printf '"credentials":[{"type":"password","value":"%s","temporary":false}]}' "$DEMO_PASSWORD"
 }
 
@@ -86,9 +150,13 @@ EOF
 
 enable() {  # realm user-id...: a skipped user may have been disabled in the console (D101)
     realm=$1; shift
+    # Skipping the code also clears a pending authenticator setup; otherwise a user's required
+    # actions stay as they are (one who set up the authenticator isn't asked again).
+    body='{"enabled":true}'
+    [ "${DEMO_SKIP_AUTH_CODE:-}" = 1 ] && body='{"enabled":true,"requiredActions":[]}'
     for id in "$@"; do
         $CURL -o /dev/null -K "$auth" -X PUT -H "Content-Type: application/json" \
-            -d '{"enabled":true}' "$KC_URL/admin/realms/$realm/users/$id"
+            -d "$body" "$KC_URL/admin/realms/$realm/users/$id"
     done
 }
 
@@ -97,6 +165,8 @@ $(user "$MA_ID" demo.ma demo.ma@example.com Tobias289 Lindqvist45),\
 $(user "$MD_ID" demo.doctor demo.doctor@example.com Rowan318 Halvorsen64),\
 $(user "$ADM_ID" demo.admin demo.admin@example.com Sasha627 Brennan52)"
 enable shri-staff "$FD_ID" "$MA_ID" "$MD_ID" "$ADM_ID"
+code_step shri-staff "shri browser forms"
+if [ "${DEMO_SKIP_AUTH_CODE:-}" = 1 ]; then login_events shri-staff; fi
 echo "shri-staff: demo.frontdesk ($FD_ID), demo.ma ($MA_ID), demo.doctor ($MD_ID), demo.admin ($ADM_ID)"
 
 if $CURL -o /dev/null -K "$auth" "$KC_URL/admin/realms/shri-patients" 2>/dev/null; then
@@ -106,6 +176,8 @@ $(user "$LINDA_ID" linda.thompson@example.com linda.thompson@example.com Linda T
 $(user "$JAMES_ID" james.wilson@example.com james.wilson@example.com James Wilson),\
 $(user "$MARIA_ID" maria.gonzalez@example.com maria.gonzalez@example.com Maria Gonzalez)"
     enable shri-patients "$PATIENT_ID" "$LINDA_ID" "$JAMES_ID" "$MARIA_ID"
+    code_step shri-patients "shri patient browser forms"
+    if [ "${DEMO_SKIP_AUTH_CODE:-}" = 1 ]; then login_events shri-patients; fi
     echo "shri-patients: demo.patient@example.com ($PATIENT_ID), linda.thompson@example.com ($LINDA_ID),"
     echo "  james.wilson@example.com ($JAMES_ID), maria.gonzalez@example.com ($MARIA_ID)"
 else

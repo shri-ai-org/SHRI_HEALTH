@@ -78,3 +78,27 @@ async def test_a_part_the_user_may_not_read_is_never_read() -> None:
     read = chart_reader(check)
     context = await read(cast(AsyncSession, object()), nobody, uuid4(), uuid4())
     assert context == ChartContext() and calls == []
+
+
+def test_problem_and_medication_lines_carry_their_dates() -> None:
+    """Problems with code, status and onset (entered-in-error never); medications with the day
+    they went on the list."""
+    from datetime import UTC, datetime
+    from types import SimpleNamespace as NS
+    from uuid import uuid4
+
+    from app.modules.ai import chart_context as cc
+    code = NS(text="Essential hypertension",
+              codings=[NS(code="I10", display="Essential hypertension")])
+    live = NS(id=uuid4(), code=code, clinical_status="active", verification_status="confirmed",
+              onset_date="2019-04", abatement_date=None)
+    wrong = NS(id=uuid4(), code=code, clinical_status="active",
+               verification_status="entered-in-error", onset_date=None, abatement_date=None)
+    lines, sources = cc.problem_lines([live, wrong])
+    assert lines == ["Essential hypertension (I10), active, onset 2019-04"]
+    assert sources[0].resource_id == live.id
+    med = NS(id=uuid4(), medication=NS(text="Lisinopril 10 MG Oral Tablet", codings=[]),
+             status="active", dosage_text="1 tablet daily",
+             recorded_at=datetime(2026, 3, 10, 15, 0, tzinfo=UTC))
+    assert cc.medication_lines([med])[0] == [
+        "Lisinopril 10 MG Oral Tablet, 1 tablet daily, on the list since 2026-03-10"]
