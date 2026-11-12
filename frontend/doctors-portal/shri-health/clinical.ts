@@ -600,6 +600,9 @@ export const useClinical = create<NoteState>()((set, get) => {
         onLine(line.id, async () => {
           const res = await updatePrescription(line.id, { pharmacyId: pharmacy.id }, { 'If-Match': get().rxServer[line.id]?.etag ?? '' })
           set({ rxServer: { ...get().rxServer, [line.id]: { ...get().rxServer[line.id], etag: etagOf(res) ?? undefined } } })
+          // Any change makes the last safety check stale, and Sign is refused with
+          // safety-check-stale; check again on the version just saved, as a line edit does.
+          await check(line.id)
         }).catch((error: unknown) => toastProblem(error, `${line.drug}: the pharmacy was not saved`))
       }
     },
