@@ -25,6 +25,7 @@ import datetime as dt
 import random
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select, text
@@ -42,6 +43,11 @@ PHARMACY, CONSENT_REQUIREMENT, PATIENT, P_NAME, P_TELECOM, P_ADDRESS, P_MRN, P_L
     COVERAGE, C_PAYOR, C_MEMBER, C_GROUP, APPOINTMENT, A_PATIENT, A_PROVIDER, \
     P_PHARMACY, A_LOCATION, DEMO_USER, DEMO_USER_ROLE, PORTAL_ACCOUNT, ALL_DAY_RULE, \
     ERX_ENDPOINT, CLEARINGHOUSE_ENDPOINT = range(21, 44)
+P_EMAIL, P_RACE, P_ETHNICITY, P_EMPLOYER, P_PCP, C_PLAN, C_COPAY, BOOKING_SETTING, \
+    BOOKABLE_TYPE = range(44, 53)
+#: The history's past visits (app.db.seed.history), n = patient n * 10 + the visit's number.
+PAST_APPOINTMENT, PA_PATIENT, PA_PROVIDER, PA_LOCATION, PA_STEP, PA_ROOM, PA_FOLLOW_UP, \
+    PA_REASON, A_REASON = range(53, 62)
 
 #: The demo day, Friday 20 November 2026, at the main office (America/Chicago, UTC-6 then).
 DEMO_DAY = dt.date(2026, 11, 20)
@@ -52,6 +58,11 @@ PHARMACY_ID = sid(PHARMACY, 1)
 #: (n, name, payer type). Payer 1 is the starter layer's.
 PAYERS = ((2, "Example Medicare Advantage Plan (synthetic)", "medicare-advantage"),
           (3, "Example State Medicaid (synthetic)", "medicaid"))
+#: Each payer's plan on the card, and its office-visit copay in USD (D40): the plan copay
+#: (Coverage.costToBeneficiary). The front desk's copay on screen is the eligibility answer's.
+PLANS = {1: ("Test Health Plan PPO Gold (synthetic)", Decimal("30.00")),
+         2: ("Example Medicare Advantage HMO (synthetic)", Decimal("20.00")),
+         3: ("Example Medicaid Managed Care (synthetic)", Decimal("4.00"))}
 
 #: (kind, title, required). Policy version 2026-10, effective 1 Oct 2026.
 CONSENTS = (
@@ -61,6 +72,22 @@ CONSENTS = (
     ("telehealth", "Telehealth consent", False),
     ("ambient-recording", "Recording of the visit for note drafting", False),
 )
+
+
+@dataclass(frozen=True)
+class EmergencyContact:
+    given: str
+    family: str
+    relationship: str                   # v3 RoleCode of the family relationship (WIFE, DAU, ...)
+    relationship_display: str
+    phone: str
+    gender: str
+    birth_date: dt.date
+    street: str | None = None           # None: lives with the patient
+
+    @property
+    def email(self) -> str:
+        return f"{self.given}.{self.family}@example.com".lower()
 
 
 @dataclass(frozen=True)
@@ -75,20 +102,110 @@ class DemoPatient:
     payer: int | None                   # PAYER n, or self-pay
     #: (time at the main office, visit type, provider index), or None for no appointment
     visit: tuple[dt.time, str, int] | None
+    # The registration fields the demo screens show (Vimal's order, 11 Nov). Empty for the
+    # demo visit's new patient and the 500, whom the front desk completes live.
+    email: str | None = None
+    marital_status: str | None = None   # v3 MaritalStatus
+    race: tuple[str, str] | None = None         # (OMB category code, text)
+    ethnicity: tuple[str, str] | None = None    # (OMB category code, text)
+    occupation: str | None = None
+    industry: str | None = None
+    employer: str | None = None
+    pcp: int | None = None              # the primary care provider's index
+    emergency: EmergencyContact | None = None
+    history: bool = False               # past visits and history (app.db.seed.history)
+    restricted: bool = False            # a restricted chart (D37), with its Provenance
 
 
+WHITE, BLACK, ASIAN = ("2106-3", "White"), ("2054-5", "Black or African American"), \
+    ("2028-9", "Asian")
+HISPANIC, NOT_HISPANIC = ("2135-2", "Hispanic or Latino"), ("2186-5", "Not Hispanic or Latino")
+
+
+def _shown(n: int, given: str, family: str, born: dt.date, gender: str, payer: int,
+           visit: tuple[dt.time, str, int] | None, marital: str, race: tuple[str, str],
+           ethnicity: tuple[str, str], occupation: str, industry: str, employer: str,
+           emergency: EmergencyContact, *, history: bool = False,
+           restricted: bool = False) -> DemoPatient:
+    return DemoPatient(
+        n, given, family, born, gender, f"+1217555{100 + n:04d}", f"{n}{n} Sample Avenue",
+        payer, visit, f"{given}.{family}@example.com".lower(), marital, race, ethnicity,
+        occupation, industry, employer, 3, emergency, history, restricted)
+
+
+#: The demo patients (Vimal's direct messages, 11 Nov: realistic names; D112's amendment is
+#: his). Patient 1 is the demo visit's new patient, named as Keycloak's demo.patient. Patients 2
+#: to 7 have a year of history; 6 is restricted. Patients 8 to 12 have complete registration and
+#: insurance and no clinical history, by design. Every person, address, phone and employer is
+#: fictional; the birth dates give the ages Vimal asked for on the demo day.
 PATIENTS = (
     DemoPatient(1, "Kaia401", "Lindgren118", dt.date(1990, 3, 14), "female", "+12175550142",
                 "42 Sample Avenue", 1, (dt.time(9, 0), "NEW", 3)),
-    DemoPatient(2, "Marcus217", "Okafor904", dt.date(1958, 7, 2), "male", "+12175550117",
-                "17 Sample Avenue", 2, (dt.time(9, 40), "FU", 3)),
-    DemoPatient(3, "Elena88", "Vasquez512", dt.date(1976, 11, 23), "female", "+12175550163",
-                "63 Sample Avenue", 3, (dt.time(10, 0), "FU", 2)),
-    DemoPatient(4, "Theo343", "Brandt27", dt.date(2001, 1, 9), "male", "+12175550188",
-                "88 Sample Avenue", None, (dt.time(10, 20), "ANNUAL", 3)),
-    DemoPatient(5, "Priya765", "Raman431", dt.date(1983, 5, 30), "female", "+12175550129",
-                "29 Sample Avenue", 1, None),
+    _shown(2, "Robert", "Miller", dt.date(1958, 7, 2), "male", 2, (dt.time(9, 40), "FU", 3),
+           "M", WHITE, NOT_HISPANIC, "Hardware store sales associate (part time)",
+           "Retail trade", "Example Hardware Co. (synthetic)",
+           EmergencyContact("Susan", "Miller", "WIFE", "wife", "+12175550152", "female",
+                            dt.date(1960, 2, 19)), history=True),
+    _shown(3, "Linda", "Thompson", dt.date(1969, 3, 18), "female", 1,
+           (dt.time(10, 0), "FU", 2), "D", BLACK, NOT_HISPANIC, "Warehouse supervisor",
+           "Transportation and warehousing", "Example Logistics Inc. (synthetic)",
+           EmergencyContact("Karen", "Thompson", "SIS", "sister", "+12175550153", "female",
+                            dt.date(1972, 8, 4), "53 Example Court"),
+           history=True),
+    _shown(4, "James", "Wilson", dt.date(1981, 8, 9), "male", 1,
+           (dt.time(10, 20), "ANNUAL", 3), "M", WHITE, NOT_HISPANIC, "High school teacher",
+           "Educational services", "Example Unified School District (synthetic)",
+           EmergencyContact("Megan", "Wilson", "WIFE", "wife", "+12175550154", "female",
+                            dt.date(1983, 1, 27)), history=True),
+    _shown(5, "Patricia", "Davis", dt.date(1965, 2, 11), "female", 1, None, "W", WHITE,
+           NOT_HISPANIC, "Accountant", "Finance and insurance",
+           "Example Accounting Partners (synthetic)",
+           EmergencyContact("Emily", "Davis", "DAU", "daughter", "+12175550155", "female",
+                            dt.date(1991, 5, 6), "55 Example Court"), history=True),
+    _shown(6, "David", "Nguyen", dt.date(1987, 5, 27), "male", 3, None, "S", ASIAN,
+           NOT_HISPANIC, "Software developer", "Information",
+           "Example Software Studio (synthetic)",
+           EmergencyContact("Linh", "Nguyen", "MTH", "mother", "+12175550156", "female",
+                            dt.date(1962, 11, 12), "56 Example Court"), history=True,
+           restricted=True),
+    _shown(7, "Maria", "Gonzalez", dt.date(1954, 10, 3), "female", 2, None, "W", WHITE,
+           HISPANIC, "Library aide (part time, retired teacher)", "Information",
+           "Example Community Library (synthetic)",
+           EmergencyContact("Carlos", "Gonzalez", "SON", "son", "+12175550157", "male",
+                            dt.date(1979, 7, 15), "57 Example Court"), history=True),
+    _shown(8, "Emily", "Carter", dt.date(1992, 6, 14), "female", 1, None, "M", WHITE,
+           NOT_HISPANIC, "Registered nurse", "Health care and social assistance",
+           "Example Regional Hospital (synthetic)",
+           EmergencyContact("Ryan", "Carter", "HUSB", "husband", "+12175550158", "male",
+                            dt.date(1990, 10, 2))),
+    _shown(9, "Daniel", "Brooks", dt.date(1974, 1, 22), "male", 1, None, "M", BLACK,
+           NOT_HISPANIC, "Electrician", "Construction", "Example Electric LLC (synthetic)",
+           EmergencyContact("Angela", "Brooks", "WIFE", "wife", "+12175550159", "female",
+                            dt.date(1976, 4, 23))),
+    _shown(10, "Sofia", "Ramirez", dt.date(1985, 9, 30), "female", 3, None, "S", WHITE,
+           HISPANIC, "Restaurant manager", "Accommodation and food services",
+           "Example Family Restaurant (synthetic)",
+           EmergencyContact("Rosa", "Ramirez", "MTH", "mother", "+12175550160", "female",
+                            dt.date(1961, 3, 8), "60 Example Court")),
+    _shown(11, "Michael", "Chen", dt.date(1963, 4, 5), "male", 1, None, "M", ASIAN,
+           NOT_HISPANIC, "Civil engineer", "Professional, scientific and technical services",
+           "Example Engineering Group (synthetic)",
+           EmergencyContact("Grace", "Chen", "WIFE", "wife", "+12175550161", "female",
+                            dt.date(1965, 9, 14))),
+    _shown(12, "Aisha", "Johnson", dt.date(1997, 3, 19), "female", 3, None, "S", BLACK,
+           NOT_HISPANIC, "Graduate student", "Educational services",
+           "Example State University (synthetic)",
+           EmergencyContact("Denise", "Johnson", "MTH", "mother", "+12175550162", "female",
+                            dt.date(1970, 12, 1), "62 Example Court")),
 )
+#: The reason for visit on the demo day's bookings of the history patients (the booking's note,
+#: which rooming shows and the MA can change).
+DEMO_DAY_REASONS = {2: "Diabetes and blood pressure follow-up",
+                    3: "Back pain follow-up",
+                    4: "Annual physical; asthma check"}
+#: The patients the demo screens show (the completeness check's list): every patient above but
+#: the demo visit's new patient, whom the front desk and rooming complete live.
+SHOWN_PATIENTS = tuple(p for p in PATIENTS if p.emergency is not None)
 
 
 #: The rest of the practice's synthetic patients (Vimal's order, 10 Nov): enough for a realistic
@@ -167,12 +284,36 @@ def _patient(db: Session, p: DemoPatient) -> Any:
                                use="official")]
     pt.telecom = [M["contact_point"](id=sid(P_TELECOM, p.n), system="phone", value=p.phone,
                                      use="mobile", rank=1)]
+    if p.email:
+        pt.telecom.append(M["contact_point"](id=sid(P_EMAIL, p.n), system="email",
+                                             value=p.email, use="home", rank=2))
+    if p.marital_status:
+        pt.marital_status_system, pt.marital_status_code = systems.MARITAL_STATUS, \
+            p.marital_status
+    pt.ext_race_text = p.race[1] if p.race else None
+    pt.ext_ethnicity_text = p.ethnicity[1] if p.ethnicity else None
+    pt.ext_occupation_text, pt.ext_industry_text = p.occupation, p.industry
     pt.address = [M["address"](id=sid(P_ADDRESS, p.n), line=[p.street], city="Springfield",
                                state="IL", postal_code="62704", country="US", use="home")]
     pt.communication = [M["patient_communication"](id=sid(P_LANGUAGE, p.n),
                                                    language_system=systems.LANGUAGE,
                                                    language_code="en-US", preferred=True)]
     db.add(pt)
+    db.flush()
+    for kind, value, n in (("race", p.race, P_RACE), ("ethnicity", p.ethnicity, P_ETHNICITY)):
+        if value:
+            db.add(M["patient_race_ethnicity"](id=sid(n, p.n), patient_id=pt.id, kind=kind,
+                                               level="ombCategory", code=value[0]))
+    if p.employer:
+        db.add(M["employer"](id=sid(P_EMPLOYER, p.n), patient_id=pt.id, name=p.employer,
+                             phone=f"+1217555{170 + p.n:04d}",
+                             address_lines=[f"{p.n * 100} Example Business Park"],
+                             address_city="Springfield", address_state="IL",
+                             address_postal_code="62703", address_country="US"))
+    if p.pcp:
+        db.add(M["patient_general_practitioner"](
+            id=sid(P_PCP, p.n), patient_id=pt.id,
+            practitioner_id=starter.sid(starter.PRACTITIONER, p.pcp)))
     db.flush()
     return pt
 
@@ -193,6 +334,17 @@ def _coverage(db: Session, p: DemoPatient) -> None:
                         type_code="MB", value=f"TEST-MEMBER-{p.n:03d}"),
         M["coverage_class"](id=sid(C_GROUP, p.n), coverage_id=cov.id, type="group",
                             value=f"TEST-GRP-{p.payer}", name="Demo employer group")])
+    if p.emergency is not None:         # a shown patient: the card's plan, and its copay
+        plan, copay = PLANS[p.payer]
+        cov.subscriber_id = f"TEST-MEMBER-{p.n:03d}"   # the patient is the subscriber
+        db.add_all([
+            M["coverage_class"](id=sid(C_PLAN, p.n), coverage_id=cov.id, type="plan",
+                                value=plan, name=plan),
+            M["coverage_cost_to_beneficiary"](
+                id=sid(C_COPAY, p.n), coverage_id=cov.id,
+                type_system=systems.COVERAGE_COPAY_TYPE, type_code="gpvisit",
+                type_display="GP Office Visit", value_money_value=copay,
+                value_money_currency="USD")])
     db.flush()
 
 
@@ -209,6 +361,14 @@ DEMO_USERS = (
 #: The patient realm's demo account, and the demo patient whose chart it opens (the visit).
 DEMO_PATIENT_SUBJECT = "8e477695-3ea5-4082-8765-2b8edee9123c"
 DEMO_PORTAL_PATIENT = 1
+#: Three more portal accounts, active with no invitation (Vimal, 11 Nov): (account n, patient n,
+#: patient realm username, Keycloak user ID). The IDs are fixed and fictional, UUIDv5 of the
+#: username under PORTAL_NAMESPACE, posted on #85 for the realm script.
+PORTAL_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL,
+                              "https://company-domain.invalid/shri-health/demo/portal")
+PORTAL_USERS = ((2, 3, "linda.thompson", "0c68d15e-31b0-5304-a9cd-45249750cd9f"),
+                (3, 4, "james.wilson", "feaa8ff7-9d2e-5daf-b8e3-f3cc17cf4884"),
+                (4, 7, "maria.gonzalez", "34cc0a76-1f26-52fd-b018-999c7099a876"))
 
 
 def _demo_users(db: Session) -> None:
@@ -225,6 +385,30 @@ def _demo_users(db: Session) -> None:
             keycloak_user_id=DEMO_PATIENT_SUBJECT,
             patient_id=sid(PATIENT, DEMO_PORTAL_PATIENT), status="active",
             enrolled_at=dt.datetime(2026, 10, 29, tzinfo=dt.UTC))
+    for n, patient, _username, subject in PORTAL_USERS:
+        _ensure(db, "portal_account", sid(PORTAL_ACCOUNT, n), tenant_id=CLINIC_A,
+                keycloak_user_id=subject, patient_id=sid(PATIENT, patient), status="active",
+                enrolled_at=dt.datetime(2026, 11, 11, tzinfo=dt.UTC))
+
+
+#: Online booking (A50 (3)) for the portal's booking rehearsal (Vimal on #85, 11 Nov): on, at
+#: least 24 hours' notice, up to 60 days ahead, cancel and reschedule up to 24 hours before, and
+#: the follow-up visit types bookable at the main office.
+MIN_NOTICE_MINUTES = 24 * 60
+BOOKING_WINDOW_DAYS = 60
+CUTOFF_HOURS = 24
+ONLINE_TYPES = ("FU", "TELE-FU")
+
+
+def _online_booking(db: Session, visits: dict[str, uuid.UUID]) -> None:
+    starter._set_clinic(db, CLINIC_A)
+    _ensure(db, "online_booking_setting", sid(BOOKING_SETTING, 1), tenant_id=CLINIC_A,
+            is_enabled=True, min_notice_minutes=MIN_NOTICE_MINUTES,
+            booking_window_days=BOOKING_WINDOW_DAYS, cancel_cutoff_hours=CUTOFF_HOURS,
+            reschedule_cutoff_hours=CUTOFF_HOURS)
+    for i, code in enumerate(ONLINE_TYPES, start=1):
+        _ensure(db, "online_bookable_type", sid(BOOKABLE_TYPE, i), tenant_id=CLINIC_A,
+                facility_id=FACILITY_A, appointment_type_id=visits[code])
 
 
 def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> None:
@@ -250,6 +434,9 @@ def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> N
                                      required="required", status="accepted"),
         M["appointment_participant"](id=sid(A_LOCATION, p.n), actor_location_id=sid(SITE, 11),
                                      required="required", status="accepted")]
+    if p.n in DEMO_DAY_REASONS:
+        appt.reason = [M["appointment_reason"](id=sid(A_REASON, p.n),
+                                               reason_code_text=DEMO_DAY_REASONS[p.n])]
     db.add(appt)
     db.flush()
 
@@ -308,5 +495,6 @@ def load_demo(db: Session) -> None:
                 patient_id=sid(PATIENT, p.n), pharmacy_id=PHARMACY_ID, is_default=True)
         _appointment(db, p, visits)
     _demo_users(db)
+    _online_booking(db, visits)
     _all_day_schedules(db, visits)
     db.flush()

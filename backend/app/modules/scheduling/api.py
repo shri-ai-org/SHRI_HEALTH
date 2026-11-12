@@ -334,3 +334,8 @@ def mount_pending_routes(target: APIRouter, exclude: frozenset[str] = frozenset(
 
 #: The waiting routes this process serves: none until core has T50's permission.
 MOUNTED_PENDING = mount_pending_routes(router)
+
+# ------------------------------------------------------- patient portal: own appointments (B8a)
+from .portal_api import router as _portal_router  # noqa: E402 (after this module's routes)
+
+router.include_router(_portal_router)

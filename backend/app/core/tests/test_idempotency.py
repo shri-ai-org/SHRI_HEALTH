@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
 
-from app.core.deps import portal_session, public_db, require, tenant_db
+from app.core.deps import portal_db, portal_session, public_db, require, tenant_db
 from app.core.errors import ValidationFailed
 from app.core.idempotency import fingerprint, parse_key
 from app.core.operations import OPERATIONS_PATH_ENV, operations_file, route_problems
@@ -96,8 +96,6 @@ def test_an_idempotent_operation_needs_tenant_db(use_ops: Callable[[dict[str, An
 
 @pytest.mark.parametrize(("permission", "audit", "dependencies"), [
     ("public", {"action": "C", "category": "phi-write", "actor": "anonymous"}, [public_db]),
-    ("public", {"action": "C", "category": "phi-write", "patient": "session", "actor": "patient"},
-     [portal_session]),
     ("public", {"action": "C", "category": "security", "actor": "patient"}, []),
     ("partner-signed", {"action": "C", "category": "none", "actor": "partner"}, []),
 ])
@@ -107,7 +105,19 @@ def test_idempotency_outside_staff_sessions_is_refused_until_core_builds_it(
     use_ops(_op(permission, audit))
     problems = route_problems(_app("testRetry", "/test-retries",
                                    [Depends(d) for d in dependencies]))
-    assert any("core handles only for staff sessions so far" in p for p in problems), problems
+    assert any("core handles only for staff and patient sessions so far" in p
+               for p in problems), problems
+
+
+def test_a_patients_portal_write_needs_portal_db_which_claims_the_key(
+        use_ops: Callable[[dict[str, Any]], None]) -> None:
+    """Migration 0020: portal_db claims a portal write's key for the session's patient."""
+    use_ops(_op("public", {"action": "C", "category": "phi-write", "patient": "session",
+                           "actor": "patient"}))
+    without = route_problems(_app("testRetry", "/test-retries", [Depends(portal_session)]))
+    assert any("needs Depends(portal_db), which claims the key" in p for p in without), without
+    with_db = route_problems(_app("testRetry", "/test-retries", [Depends(portal_db)]))
+    assert not any("x-idempotency" in p for p in with_db), with_db
 
 
 def test_the_contracts_idempotent_staff_operations_are_all_post() -> None:

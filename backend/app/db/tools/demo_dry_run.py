@@ -1,5 +1,6 @@
-"""The demo visit's dry run (D108): its 7 steps through the API, each reported as pass or fail
-with the reason. Synthetic data only: it registers one new synthetic patient each run.
+"""The demo visit's dry run (D108): its 7 steps through the API, then the seeded charts (step
+8), each reported as pass or fail with the reason. Synthetic data only: it registers one new
+synthetic patient each run.
 
     python -m app.db.tools.demo_dry_run --base-url http://127.0.0.1:8000
 
@@ -19,6 +20,10 @@ all-day rules make 00:00 the first free time, which reads as a midnight visit). 
 booked exactly 14 days after the visit, at the first free time from 09:00, in the facility's
 time zone, with the same provider; it fails, and says
 so, if that day has no free time (the demo seed's weekly all-day rules have no end date).
+
+**Step 8, the seeded charts.** It reads the demo seed's own patients, so it needs the demo
+layer and its history (a reset does both). It opens the restricted chart with a break-glass
+grant as ``md`` (reason continuity of care), which is audited like any other.
 
 **The local difference: encryption.** The after-visit summary is stored encrypted and
 idempotent replies are kept encrypted, both through core's OpenBao Transit. The test server
@@ -53,7 +58,8 @@ REVISIT_DAYS = 14
 DAY_STARTS = dt.time(9)   # the earliest time booked, in the facility's time zone
 STEPS = {1: "register the patient", 2: "book", 3: "check in", 4: "room",
          5: "doctor: diagnosis and signed note", 6: "prescribe and send",
-         7: "check-out: follow-up, summary, revisit"}
+         7: "check-out: follow-up, summary, revisit",
+         8: "seeded charts: history, restricted"}
 
 
 class StepFailed(Exception):
@@ -326,8 +332,35 @@ def check_out(c: Client, v: Visit) -> str:
     return f"follow-up asked, summary printed, revisit booked at {start}, checked out"
 
 
+#: Step 8 opens two seeded charts by the seed's fixed IDs: patient 2 (Robert Miller), a history
+#: patient, and patient 6 (David Nguyen), the restricted chart (D37).
+HISTORY_LISTS = ("problems", "medications", "allergies", "encounters", "vitals")
+
+
+def seeded_charts(c: Client, v: Visit) -> str:
+    """What the doctor reads before the demo visit: a history patient's lists aren't empty, and
+    the restricted chart refuses until a break-glass grant (D37, D53), then opens. A grant from
+    an earlier run (4 hours) opens it at once."""
+    from app.db.seed.demo import PATIENT
+    from app.db.seed.starter import sid
+
+    history = sid(PATIENT, 2)
+    for name in HISTORY_LISTS:
+        if not c.call("md", "GET", f"/patients/{history}/{name}").json().get("items"):
+            raise StepFailed(f"the history patient's {name} list is empty (reset the seed)")
+    restricted = sid(PATIENT, 6)
+    first = c.call("md", "GET", f"/patients/{restricted}/problems", expect=(200, 403))
+    if first.status_code == 403:
+        c.call("md", "POST", f"/patients/{restricted}/break-glass",
+               {"reasonCode": "continuity-of-care"})
+        if not c.call("md", "GET", f"/patients/{restricted}/problems").json().get("items"):
+            raise StepFailed("the restricted chart opened with an empty problem list")
+        return "history lists filled; restricted chart refused, then opened with break-glass"
+    return "history lists filled; restricted chart opened (an earlier break-glass grant)"
+
+
 ORDER: tuple[Callable[[Client, Visit], str], ...] = (
-    register, book, check_in, room, doctor, prescribe, check_out)
+    register, book, check_in, room, doctor, prescribe, check_out, seeded_charts)
 
 
 def run(base_url: str, transport: httpx.BaseTransport | None = None

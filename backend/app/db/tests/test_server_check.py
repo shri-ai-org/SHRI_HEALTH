@@ -10,6 +10,12 @@ from app.db.tools import server_check as sc
 pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
 
 
+def test_the_default_patient_count_is_the_demo_seeds() -> None:
+    from app.db.seed import demo
+
+    assert sc.PATIENTS == len(demo.PATIENTS) + demo.POPULATION_SIZE
+
+
 def test_a_migrated_database_passes_and_a_wrong_count_fails(admin_engine: Engine) -> None:
     with admin_engine.connect() as conn:
         patients = conn.execute(text("SELECT count(*) FROM clinical.patient")).scalar_one()
