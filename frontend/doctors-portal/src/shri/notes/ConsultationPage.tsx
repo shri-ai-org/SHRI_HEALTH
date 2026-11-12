@@ -86,7 +86,8 @@ function Consultation({ encounterId }: { encounterId: string }) {
   const draftUp = useAiFeatureUp('note-draft')
   const ddxUp = useAiFeatureUp('differential')
   const aiActive = useAiActive()
-  const realDdx = AI_DIFFERENTIAL_ON && ddxUp && aiActive
+  // MD and APP only (D116): the differential needs chart-summaries:create and diagnoses:create.
+  const realDdx = AI_DIFFERENTIAL_ON && ddxUp && aiActive && hasPermission('chart-summaries:create') && hasPermission('diagnoses:create')
 
   const enc = maybeEncounter(encounterId)!
   const p = patient(enc.patientId)

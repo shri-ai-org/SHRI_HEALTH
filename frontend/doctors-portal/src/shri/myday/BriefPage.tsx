@@ -43,6 +43,8 @@ import { iconFor } from '../ui/icons'
 import { Card, Chip, ConfidenceMark, Diamond, Icon, Pill } from '../ui/primitives'
 import { AiOffLine } from '../ui/states'
 
+import { hasPermission } from '../../../shri-health/opd'
+
 import { RealBriefPage } from './RealBriefPage'
 import { useMyDay } from './useMyDay'
 
@@ -95,7 +97,7 @@ export function BriefPage() {
 
   // With the API: the AI brief (D116) behind its flag; without the flag, My Day instead (never a
   // "not built yet" page).
-  if (REAL_API) return AI_MORNING_BRIEF_ON ? <RealBriefPage /> : <Navigate to="/" replace />
+  if (REAL_API) return AI_MORNING_BRIEF_ON && hasPermission('chart-summaries:create') ? <RealBriefPage /> : <Navigate to="/" replace />
 
   return (
     <ScreenFrame

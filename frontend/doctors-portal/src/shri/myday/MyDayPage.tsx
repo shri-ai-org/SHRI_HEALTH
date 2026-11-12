@@ -31,6 +31,7 @@ import { useUI } from '@/store/ui'
 
 import { cn } from '../lib/cn'
 import { useAiFeatureUp } from '../../../shri-health/aiStatus'
+import { hasPermission } from '../../../shri-health/opd'
 import { AI_MORNING_BRIEF_ON } from '../logic/assistant'
 import { useAiActive, useForcedState } from '../state/ai'
 import { useShri } from '../state/store'
@@ -56,7 +57,8 @@ function BriefButton() {
   const navigate = useNavigate()
   const aiActive = useAiActive()
   const up = useAiFeatureUp('morning-brief')
-  if (!AI_MORNING_BRIEF_ON || !aiActive || !up) return null
+  // MD and APP only (D116): a role without chart-summaries:create never sees it.
+  if (!AI_MORNING_BRIEF_ON || !aiActive || !up || !hasPermission('chart-summaries:create')) return null
   return (
     <Pill variant="accent" size="md" icon={Sunrise} onClick={() => navigate('/brief')}>
       Morning brief
