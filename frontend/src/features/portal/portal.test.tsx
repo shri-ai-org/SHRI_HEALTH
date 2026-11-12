@@ -21,9 +21,9 @@ afterEach(() => {
   setCsrfToken(null)
 })
 
-/** A sign-in from this tab a moment ago that came back still signed out (failed or refused). */
-function cameBackStillSignedOut() {
-  window.sessionStorage.setItem('shri.portal.autoSignInAt', String(Date.now() - 5_000))
+/** This tab's trips to the sign-in form a moment ago, each back still signed out (failed or refused). */
+function cameBackStillSignedOut(trips: number) {
+  window.sessionStorage.setItem('shri.portal.signInTries', `${trips}:${Date.now() - 5_000}`)
 }
 
 function setup(path = '/portal', options: FakeOptions = {}) {
@@ -61,20 +61,38 @@ describe('sign-in', () => {
     expect(screen.queryByRole('heading', { level: 1, name: 'Sign in' })).toBeNull()
   })
 
-  it('shows the Sign in page instead of redirecting again when sign-in came back still signed out', async () => {
-    cameBackStillSignedOut()
+  it('redirects again when sign-in came back still signed out once', async () => {
+    cameBackStillSignedOut(1)
+    const { startSignIn } = setup('/portal', { signedIn: false })
+    await waitFor(() => expect(startSignIn).toHaveBeenCalledOnce())
+    expect(window.sessionStorage.getItem('shri.portal.signInTries')).toMatch(/^2:/)
+  })
+
+  it('stops after two returns in a row: one line, never the Sign in page, and its link starts again', async () => {
+    cameBackStillSignedOut(2)
     const { user, startSignIn } = setup('/portal', { signedIn: false })
-    expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
+    expect(await screen.findByText(/Sign-in didn’t complete\./)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1, name: 'Sign in' })).toBeNull()
     expect(startSignIn).not.toHaveBeenCalled()
-    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    await user.click(screen.getByRole('link', { name: 'Try again' }))
     expect(startSignIn).toHaveBeenCalledOnce()
-    // The click is noted, so another failed sign-in brings this page back, not a redirect.
-    expect(Number(window.sessionStorage.getItem('shri.portal.autoSignInAt'))).toBeGreaterThan(0)
+    // The link starts a new count: one trip.
+    expect(window.sessionStorage.getItem('shri.portal.signInTries')).toMatch(/^1:/)
+  })
+
+  it('keeps redirecting in a browser without sessionStorage (each trip stops at the realm’s form)', async () => {
+    const blocked = () => {
+      throw new DOMException('blocked', 'SecurityError')
+    }
+    vi.stubGlobal('sessionStorage', { getItem: blocked, setItem: blocked, removeItem: blocked, clear: blocked })
+    const { startSignIn } = setup('/portal', { signedIn: false })
+    await waitFor(() => expect(startSignIn).toHaveBeenCalledOnce())
+    expect(screen.queryByText(/Sign-in didn’t complete/)).toBeNull()
   })
 
   it('starts sign-in at the patient realm: no password, registration or recovery here (D85)', async () => {
-    cameBackStillSignedOut()
-    const { user, startSignIn } = setup('/portal', { signedIn: false })
+    // The Sign in page now shows only with a reason, here a session the server ended.
+    const { user, startSignIn } = setup('/portal/demographics', { unauthorized: ['/portal/me'] })
     expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
     expect(screen.queryByLabelText(/Password|Username/)).toBeNull()
     expect(screen.queryByRole('link', { name: /Registration|Forgot/ })).toBeNull()
@@ -501,9 +519,9 @@ describe('accessibility of every page', () => {
     expect(await axeViolations()).toEqual([])
   })
 
-  it.each([['/portal/sign-in', 'Sign in']])('signed-out page %s has no axe violations', async (path, heading) => {
-    cameBackStillSignedOut() // the page shows only when an automatic sign-in came back signed out
-    setup(path, { signedIn: false })
+  it.each([['/portal/sign-in', 'Sign in']])('signed-out page %s has no axe violations', async (_path, heading) => {
+    // The Sign in page shows only with a reason, here a session the server ended.
+    setup('/portal/demographics', { unauthorized: ['/portal/me'] })
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
     await loaded()
     expect(await axeViolations()).toEqual([])
