@@ -408,6 +408,14 @@ check() {
             printf '%s' "$headers" | tr -d '\r' | grep -qi "^$h" || die "$1 is missing the header: $h"
         done
     done
+    # Without the authenticator code (SHRI_DEMO_SKIP_AUTH_CODE), every sign-in must leave a record:
+    # both realms store their sign-in events.
+    if [ "${SHRI_DEMO_SKIP_AUTH_CODE:-false}" = true ]; then
+        KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
+            KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" DEMO_PASSWORD="$DEMO_PASSWORD" \
+            DEMO_EVENTS_CHECK_ONLY=1 sh "$REPO/infra/keycloak/reset-demo-users.sh" \
+            || die "the authenticator code is skipped, but sign-in events aren't stored in both realms"
+    fi
     # Nothing of ours listens beyond 127.0.0.1, except our edge on a host of our own.
     local mapping
     while read -r mapping; do

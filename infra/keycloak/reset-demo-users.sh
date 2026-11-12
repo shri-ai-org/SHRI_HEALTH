@@ -21,6 +21,10 @@
 # DISABLED and the demo users are asked for no authenticator. Without it, the step is set back
 # to REQUIRED, so taking the setting out restores multi-factor at the next up or reset. The realm
 # files (and so every other environment) always require the code.
+# While the code is skipped, every sign-in must leave a record: both realms store their sign-in
+# events (LOGIN, LOGIN_ERROR; the realm files have them on, and this turns them back on if they
+# were switched off in the console), and DEMO_EVENTS_CHECK_ONLY=1 (deploy.sh check) only verifies
+# that, failing otherwise. Keycloak's events name the user, client and IP, never a token.
 #
 # Needs curl and sed only. No secret is ever printed or put on a command line (where `ps` would
 # show it): the admin password and the admin token reach curl through stdin or a private
@@ -91,6 +95,36 @@ EOF
     echo "$1: the one-time code is $CODE"
 }
 
+# realm: sign-in events stored (eventsEnabled, with LOGIN among the event types or all of them).
+events_ok() {
+    $CURL -K "$auth" "$KC_URL/admin/realms/$1/events/config" | tr -d ' \n' \
+        | grep '"eventsEnabled":true' | grep -q '"enabledEventTypes":\[\]\|"LOGIN"'
+}
+
+# realm: make sure sign-in events are stored, without touching the rest of its event settings.
+login_events() {
+    if ! events_ok "$1"; then
+        config=$($CURL -K "$auth" "$KC_URL/admin/realms/$1/events/config" | tr -d '\n' \
+            | sed 's/"eventsEnabled":false/"eventsEnabled":true/')
+        printf '%s' "$config" | grep -q '"enabledEventTypes":\[\]\|"LOGIN"' \
+            || config=$(printf '%s' "$config" \
+                | sed 's/"enabledEventTypes":\[/"enabledEventTypes":["LOGIN","LOGIN_ERROR",/; s/,\]/]/')
+        $CURL -o /dev/null -K "$auth" -X PUT -H "Content-Type: application/json" --data-binary @- \
+            "$KC_URL/admin/realms/$1/events/config" <<EOF
+$config
+EOF
+    fi
+    events_ok "$1" || { echo "$1: sign-in events are not stored" >&2; exit 1; }
+    echo "$1: sign-in events are stored (every sign-in without the code is recorded)"
+}
+
+if [ "${DEMO_EVENTS_CHECK_ONLY:-}" = 1 ]; then
+    for realm in shri-staff shri-patients; do
+        events_ok "$realm" || { echo "$realm: sign-in events are not stored" >&2; exit 1; }
+    done
+    exit 0
+fi
+
 # user ID username email first last
 user() {
     printf '{"id":"%s","username":"%s","email":"%s","emailVerified":true,"enabled":true,' "$1" "$2" "$3"
@@ -126,6 +160,7 @@ $(user "$MD_ID" demo.doctor demo.doctor@example.com Rowan318 Halvorsen64),\
 $(user "$ADM_ID" demo.admin demo.admin@example.com Sasha627 Brennan52)"
 enable shri-staff "$FD_ID" "$MA_ID" "$MD_ID" "$ADM_ID"
 code_step shri-staff "shri browser forms"
+if [ "${DEMO_SKIP_AUTH_CODE:-}" = 1 ]; then login_events shri-staff; fi
 echo "shri-staff: demo.frontdesk ($FD_ID), demo.ma ($MA_ID), demo.doctor ($MD_ID), demo.admin ($ADM_ID)"
 
 if $CURL -o /dev/null -K "$auth" "$KC_URL/admin/realms/shri-patients" 2>/dev/null; then
@@ -133,6 +168,7 @@ if $CURL -o /dev/null -K "$auth" "$KC_URL/admin/realms/shri-patients" 2>/dev/nul
     import shri-patients "$(user "$PATIENT_ID" demo.patient@example.com demo.patient@example.com Kaia401 Lindgren118)"
     enable shri-patients "$PATIENT_ID"
     code_step shri-patients "shri patient browser forms"
+    if [ "${DEMO_SKIP_AUTH_CODE:-}" = 1 ]; then login_events shri-patients; fi
     echo "shri-patients: demo.patient@example.com ($PATIENT_ID)"
 else
     echo "shri-patients: the realm doesn't exist yet (#148); skipped"
