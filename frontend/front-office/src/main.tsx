@@ -5,6 +5,7 @@ import { MotionConfig } from 'framer-motion'
 import './index.css'
 import App from './App.tsx'
 import { SessionProvider } from '../../src/api/session'
+import { FrontOfficeLanding } from '../../src/api/landing'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { REAL_API } from '../shri-health/client'
 import { loadClinic } from '../shri-health/scheduling'
@@ -24,9 +25,12 @@ void ready.then(() => createRoot(document.getElementById('root')!).render(
     <MotionConfig reducedMotion="user">
       <ErrorBoundary scope="root">
         <SessionProvider>
-          <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-            <App />
-          </BrowserRouter>
+          {/* MD, APP and RN land in the doctors' portal, before the front office renders. */}
+          <FrontOfficeLanding>
+            <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+              <App />
+            </BrowserRouter>
+          </FrontOfficeLanding>
         </SessionProvider>
       </ErrorBoundary>
     </MotionConfig>

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-portal/
 coverage/
 *.tsbuildinfo
 # Playwright (npm run e2e)

@@ -12,7 +12,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && npm run build -w doctors-portal -w front-office",
+    "build": "tsc -b && vite build && npm run build:portal && npm run build -w doctors-portal -w front-office",
+    "build:portal": "vite build --config vite.portal.config.ts",
     "preview": "vite preview",
     "typecheck": "tsc -b && npm run typecheck -w front-office && tsc -b doctors-portal",
     "lint": "eslint .",
