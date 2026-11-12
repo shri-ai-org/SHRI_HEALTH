@@ -55,6 +55,18 @@ const TOKEN_STAGE: Record<QueueTokenStatus, OutpatientStage> = {
   'No-show': 'done',
 }
 
+/** A booking checked in at another desk (on the server) has no token here: its stage is the
+ *  server's visit status (`visitStatus`, not the appointment's `status`). */
+const SERVER_VISIT_STAGE: Record<string, OutpatientStage> = {
+  arrived: 'waiting',
+  'checked-in': 'waiting',
+  // Roomed still waits for the doctor: care-entry's cards have no roomed stage, so it counts under
+  // Waiting, never under With doctor (gap 78, Vimal on #274).
+  roomed: 'waiting',
+  'with-provider': 'in-room',
+  'checked-out': 'done',
+}
+
 function inFilter(row: OutpatientRow, filter: OutpatientFilter): boolean {
   switch (filter) {
     case 'today':
@@ -88,9 +100,11 @@ function outpatientRows(state: AppState, now: number): OutpatientRow[] {
       ? 'upcoming'
       : token
         ? TOKEN_STAGE[token.status]
-        : LIVE_BOOKING.includes(appointment.status)
-          ? 'to-check-in'
-          : 'done'
+        : appointment.status === 'Checked-in'
+          ? (SERVER_VISIT_STAGE[appointment.serverVisitStatus ?? 'checked-in'] ?? 'waiting')
+          : LIVE_BOOKING.includes(appointment.status)
+            ? 'to-check-in'
+            : 'done'
     const at = slotToTimestamp(appointment.date, appointment.slot)
     const late = stage === 'to-check-in' && now > at ? minutesBetween(now, at) : 0
     rows.push({

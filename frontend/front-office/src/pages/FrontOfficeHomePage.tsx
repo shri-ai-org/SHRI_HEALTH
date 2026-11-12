@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { CSSProperties, ElementType } from 'react'
 import {
   AlertTriangle,
@@ -5,7 +6,6 @@ import {
   CalendarClock,
   CircleAlert,
   CircleDot,
-  IndianRupee,
   Info,
   Undo2,
   UserCheck,
@@ -35,9 +35,13 @@ import type { NeedsAttentionItem } from '../domain/selectors'
 import { getInpatientRows } from '../domain/admissionSelectors'
 import { returnGuestPass } from '../domain/actions'
 import { CheckInToggle } from '../components/appointment/CheckInToggle'
-import { formatRupees } from '../utils/billing'
+import { CurrencyIcon, formatMoney } from '../utils/billing'
 import { appointmentStatusLabel } from '../utils/appointment'
 import { TONE_VAR } from '../utils/tone'
+import { Alert } from '../components/ui/Alert'
+import { loadAppointments } from '../../shri-health/scheduling'
+import { problemMessage } from '../../shri-health/client'
+import { REAL_API } from '../../shri-health/client'
 
 const ATTENTION_ICON: Record<NeedsAttentionItem['tone'], ElementType> = {
   critical: CircleAlert,
@@ -72,6 +76,18 @@ export function FrontOfficeHomePage() {
   const today = todayKey(new Date(now))
   const registeredToday = patientRows.filter((row) => todayKey(new Date(row.patient.createdAt)) === today).length
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // Today's SHRI_HEALTH bookings, read again on each tick of the clock (15 s), as the outpatient list does.
+  useEffect(() => {
+    let live = true
+    loadAppointments(today, 1)
+      .then(() => live && setLoadError(null))
+      .catch((err: unknown) => live && setLoadError(problemMessage(err)))
+    return () => {
+      live = false
+    }
+  }, [today, now])
+
   const booked = appointments.filter((a) => a.status !== 'Cancelled')
   const toCheckIn = appointments.filter((a) => a.status === 'Confirmed')
   // Display order only: what is still to happen first (stable sort keeps time order).
@@ -94,11 +110,13 @@ export function FrontOfficeHomePage() {
       case 'bill':
         return (
           <Button size="sm" variant="secondary" onClick={() => navigate(`/payments/${action.paymentId}`)}>
-            <IndianRupee className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <CurrencyIcon className="h-3.5 w-3.5" strokeWidth={1.75} />
             View bill
           </Button>
         )
       case 'admit':
+        // Admit (India's inpatient flow): hidden with the SHRI_HEALTH API (US display change, 2026-11-04).
+        if (REAL_API) return null
         return (
           <Button size="sm" onClick={() => openFlow('admit', { uhid: action.patientId })}>
             <BedDouble className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -128,7 +146,8 @@ export function FrontOfficeHomePage() {
         pinActions
         actions={
           <>
-          <AbhaScanButton />
+          {/* ABHA (India, ABDM): hidden with the SHRI_HEALTH API (US display change, 2026-11-04). */}
+          {REAL_API ? null : <AbhaScanButton />}
           <Button onClick={() => navigate('/register/new')}>
             <UserPlus className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
             {/* "Register" alone fits beside the title on a phone. */}
@@ -140,8 +159,9 @@ export function FrontOfficeHomePage() {
       />
 
       <div className="flex flex-col gap-4 sm:gap-5 mt-4 sm:mt-5">
+        {loadError ? <Alert tone="warning">{`Today's bookings could not be read from the server: ${loadError}`}</Alert> : null}
         {/* Five figures, one purpose each — each card opens the place that holds it. */}
-        <section aria-label="Today at a glance" className={figureRowClass('sm:grid-cols-3 xl:grid-cols-5')}>
+        <section aria-label="Today at a glance" className={figureRowClass(REAL_API ? 'sm:grid-cols-3' : 'sm:grid-cols-3 xl:grid-cols-5')}>
           <StatCard
             hue="blue"
             icon={CalendarClock}
@@ -154,30 +174,37 @@ export function FrontOfficeHomePage() {
           <StatCard
             hue="orange"
             icon={UserCheck}
-            value={queue.waiting.length}
+            // SHRI_HEALTH: the outpatient list's count, which knows a check-in made at another desk (gap 44).
+            value={REAL_API ? outpatients.counts.waiting : queue.waiting.length}
             label="Waiting for consultation"
             trend={trends.PATIENT_CHECKED_IN}
             to="/patients/outpatients?filter=waiting"
             title="Show who is waiting for consultation"
           />
-          <StatCard
-            hue="violet"
-            icon={BedDouble}
-            value={inpatients.length}
-            label="Inpatients"
-            trend={trends.PATIENT_ADMITTED}
-            to="/patients/inpatients"
-            title="Show who is admitted, and the beds"
-          />
-          <StatCard
-            hue="red"
-            icon={IndianRupee}
-            value={formatRupees(billing.dueAmount)}
-            label="Payment pending today"
-            trend={trends.PAYMENT_COMPLETED}
-            to="/billing?filter=due"
-            title="Bills raised today still to pay at the billing counter — opens every bill with payment pending"
-          />
+          {/* Inpatients are India's: hidden with the SHRI_HEALTH API (2026-11-05). */}
+          {REAL_API ? null : (
+            <StatCard
+              hue="violet"
+              icon={BedDouble}
+              value={inpatients.length}
+              label="Inpatients"
+              trend={trends.PATIENT_ADMITTED}
+              to="/patients/inpatients"
+              title="Show who is admitted, and the beds"
+            />
+          )}
+          {/* SHRI_HEALTH: bills at the counter are India-only. */}
+          {REAL_API ? null : (
+            <StatCard
+              hue="red"
+              icon={CurrencyIcon}
+              value={formatMoney(billing.dueAmount)}
+              label="Payment pending today"
+              trend={trends.PAYMENT_COMPLETED}
+              to="/billing?filter=due"
+              title="Bills raised today still to pay at the billing counter — opens every bill with payment pending"
+            />
+          )}
           <StatCard
             hue="teal"
             icon={UserPlus}

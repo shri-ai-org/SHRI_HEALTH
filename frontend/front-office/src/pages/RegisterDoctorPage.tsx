@@ -20,6 +20,7 @@ import { cn } from '../utils/cn'
 import type { ConsultationType, DoctorRole, Gender, Provider, ProviderStatus } from '../types/doctor'
 import { inputClass } from '../utils/formClasses'
 import { formatTimeRange } from '../domain/time'
+import { CURRENCY_SYMBOL, formatMoney } from '../utils/billing'
 
 const DAYS = [
   { value: 1, label: 'Mon' },
@@ -322,7 +323,7 @@ export function RegisterDoctorPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Consultation fee (₹)">
+                <Field label={`Consultation fee (${CURRENCY_SYMBOL})`}>
                   <input
                     value={form.consultationFee}
                     onChange={(e) => update('consultationFee', e.target.value.replace(/[^0-9]/g, ''))}
@@ -445,7 +446,7 @@ export function RegisterDoctorPage() {
                   <Row label="Working days" value={form.workingDays.length ? `${form.workingDays.length} ${form.workingDays.length === 1 ? 'day' : 'days'}/week` : '—'} />
                   <Row label="Session" value={form.startTime && form.endTime ? formatTimeRange(form.startTime, form.endTime) : '—'} />
                   <Row label="Slot length" value={`${form.slotMinutes} min`} />
-                  <Row label="Fee" value={form.consultationFee ? `₹${form.consultationFee}` : '—'} />
+                  <Row label="Fee" value={form.consultationFee ? formatMoney(Number(form.consultationFee)) : '—'} />
                   <Row label="Status" value={form.status} />
                 </dl>
 

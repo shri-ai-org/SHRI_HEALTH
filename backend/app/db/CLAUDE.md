@@ -315,6 +315,13 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     admin.delete_unusable_files(:ids)`, which deletes only rows still unusable and old and
     skips a row another table still references; the job deletes those rows' objects before it
     commits. The 24 hours are fixed in the functions. Every update of a file sets `updated_at`.
+- **Idempotency-Key for portal writes (migration 0020):** `admin.idempotency_record` names
+  exactly one owner, a staff `user_id` or, for the patient portal's writes, the session's
+  `patient_id` (`ck_idempotency_record_one_owner`; the patient keeps the clinic-carrying key).
+  Staff keys keep `uq_..._tenant_id_user_id_method_path_key`; patient keys have the partial
+  unique index `uq_idempotency_record_patient_key`. Core claims a staff key as `shri_app` and a
+  patient's as `shri_portal` (D93), whose RESTRICTIVE policy `portal_own_key` shows it the
+  session patient's keys only (`gen_db_rules.portal_idempotency_sql`).
 - **Pre-registration (D96, A51, migration 0009):** the public form calls
   `SELECT admin.submit_pre_registration(:practice_code, :idempotency_key, :request_hash,
   :details, :contact_consent, :source_ip, :user_agent, :request_id)` as `shri_public`, with no
@@ -373,6 +380,14 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     held.
   - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
     provider's busy times without anyone's appointment.
+  - **Self-booking (migration 0021, Vimal's list on #85):** the portal inserts its own
+    patient's `appointment.booked`, `.cancelled` and `.rescheduled` rows in `admin.event_log`
+    and nothing else there (`portal_own_event`). `SELECT admin.portal_chart_open()` locks the
+    session patient FOR SHARE and answers whether the chart is active and not merged. A booked
+    revisit (an appointment a follow-up request points at, D98) can't change status as
+    `shri_portal` (`P0001`, constraint `portal_revisit_locked`): the clinic moves it. The
+    portal's cancel sets the status, the cancellation reason and `ext_cancelled_at` only,
+    never the staff columns (`updated_by_user_id`, `ext_cancelled_by_user_id`).
   - **A note's co-signature return** (`ext_cosign_return_comment`, `ext_cosign_returned_at`)
     is never readable: its SELECT on `composition` is column-limited
     (`PORTAL_HIDDEN_COLUMNS`, migration 0013), so select the columns it needs, never `*`.
@@ -428,6 +443,37 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     `later-merge` (a later merge involving either patient still stands), or NULL when it can
     be undone. The database refuses an undo the rule doesn't allow, and any other change to a
     merge.
+  - **The helpers:**
+    - `merge_patients(db, duplicate_id, surviving_patient_id, reason)` writes all of the
+      above and sets the pair to `merged`. It locks both patients in ID order. It refuses a
+      pair that isn't open (`InvalidTransition`), a surviving patient outside the pair
+      (`InvalidInput` at `survivingPatientId`) and a patient already merged away
+      (`PatientMerged`).
+    - **Security labels (Thulasi's #277 review):** in the same transaction, both charts take
+      `merged_labels()` of the two: the strictest confidentiality of either (`V` over `R` over
+      `N` over `M` over `L`) and every sensitivity label of either (`PSY`, `SUD`, ...). Each
+      chart whose labels change gets a Provenance (`UPDATE`, naming the merge). So reading the
+      surviving chart, which follows the links into the merged one, needs break-glass whenever
+      either chart did (D37), and `/fhir` serves neither chart, nor a link to one, when either
+      was restricted (D22). Charts with the same labels don't change.
+    - `undo_patient_merge(db, merge_id, reason)` raises `InvalidTransition(already-undone |
+      later-merge)` and makes the merged patient active again. No column holds the undo's
+      reason, so it goes in core's audit row. **Both charts keep the labels the merge gave
+      them** until an ADM or CO lifts one (`set_patient_security`): an undo never makes a
+      chart less protected on its own.
+    - `set_patient_security(..., reason=Reason(...))` also writes the change's Provenance
+      (`UPDATE`, with the reason), as a merge does; without a reason (the API's restriction,
+      which core audits) it writes none. The demo seed restricts its chart this way.
+    - `dismiss_duplicate(db, duplicate_id, reason)` is D46's `not-duplicate`, with the reason in
+      `review_note`.
+    - The reads: `merged_into()` (`mergedIntoId`), `chart_patient_ids()` (the surviving patient
+      and everyone merged into it, through earlier merges too, for reads that present one
+      chart) and `patient_merges()` (D51).
+  - **`409 patient-merged` lives in the helpers, not the database (a deliberate MVP choice,
+    10 Nov 2026).** Every helper that names a patient refuses a merged one with
+    `PatientMerged(surviving_patient_id)`, an `InvalidTransition`. A write that bypasses the
+    helpers, or that names only a record of the merged patient (an encounter, say), isn't
+    refused. Enforcing it in the database would need a trigger on every clinical table.
 
 ## Terminology (`app.db.terminology`)
 
@@ -453,21 +499,97 @@ pin in `terminology/fetch.py`, in a reviewed PR.
 
 ## Server tools (`app/db/tools`, the self-managed demo and test servers)
 
-- `python -m app.db.tools.server_check --patients 505` runs, as the master user, read-only, the
+- `python -m app.db.tools.server_check --patients 512` runs, as the master user, read-only, the
   six database checks of server day: Alembic head, pgvector `0.8.2` (D31), row security on
   and forced on every clinic table (those with a `tenant_id`), collation C.UTF-8, no service role
   bypassing row security or a superuser, and the patient count. Each prints PASS or FAIL, and the exit status is 1 if any fails. The URL is
   `SERVER_CHECK_DATABASE_URL`, never printed. A laptop built with another pgvector fails that
   line by design.
-- `backup_db.sh <database> <dir>`: `pg_dump -Fc` as the master user, checked with
-  `pg_restore --list`, mode 600, keeping the newest `KEEP` (14). `restore_db.sh <dump>
-  <target>` recreates the target with the deploy kit's `recreate-database.sql` and restores it.
+- `backup_db.sh [-U <user>] <database> <dir>`: `pg_dump -Fc` as the master user, checked with
+  `pg_restore --list`, mode 600, keeping the newest `KEEP` (14). The user is `-U`'s, else
+  libpq's `PGUSER`; none is hard-coded (on the demo server it's the deploy kit's
+  `POSTGRES_USER`, `shri`). `restore_db.sh [-U <user>] <dump> <target>` recreates the target with the deploy kit's `recreate-database.sql` and restores it.
   It needs `RESTORE_CONFIRM=<target>` and refuses `postgres`, `template0`, `template1` and
   `keycloak`. On a Docker host, `PG_DUMP`, `PG_RESTORE` and `PSQL` run the tools in the database
   container. Scheduling them, and copying the dumps off the server encrypted, is infra's job
   (Thulasi). RDS has its own backups (D30).
 - `demo_dry_run` books from 09:00 facility time, since the all-day demo schedules make 00:00
   the first free time.
+
+## The demo seed's fixed IDs (`app/db/seed`)
+
+Every seed row has a fixed ID, `sid(kind, n)` = `5eed<kind>-0000-4000-8000-<n>`, so a rerun
+finds it and changes nothing. **A kind number belongs to one kind of row.** A new kind takes the
+next free number after the highest one below, in the module it belongs to, and is added to this
+table in the same PR. `tests/test_seed_demo.py::test_no_two_seed_kinds_share_a_number` fails on a
+number used twice. The one exception is 21, which the starter's `USER_ROLE` and the demo's
+`PHARMACY` already share on every database. Renumbering either would change live IDs, so it
+stays, as the test's only allowed overlap.
+
+| Kind | Name (module) | Keys | From |
+|---|---|---|---|
+| 1 | `ORG` (starter) | organization | main (starter layer) |
+| 2 | `SITE` (starter) | site location | main (starter layer) |
+| 3 | `ROOM` (starter) | exam-room location | main (starter layer) |
+| 4 | `FACILITY` (starter) | facility | main (starter layer) |
+| 5 | `PRACTITIONER` (starter) | practitioner | main (starter layer) |
+| 6 | `ROLE` (starter) | practitioner role | main (starter layer) |
+| 7 | `SCHEDULE` (starter) | schedule | main (starter layer) |
+| 8 | `RULE` (starter) | office-hours availability rule | main (starter layer) |
+| 9 | `VISIT` (starter) | appointment type | main (starter layer) |
+| 10 | `PAYER` (starter) | payer (directory) | main (starter layer) |
+| 11 | `PRACTICE_PAYER` (starter) | practice payer | main (starter layer) |
+| 12 | `TEMPLATE` (starter) | note template | main (starter layer) |
+| 13 | `SECTION` (starter) | note template section | main (starter layer) |
+| 14 | `COUNTER` (starter) | MRN counter | main (starter layer) |
+| 15 | `USER` (starter) | reserved, unused | main (starter layer) |
+| 16 | `NAME` (starter) | practitioner name | main (starter layer) |
+| 17 | `IDENT` (starter) | practitioner identifier | main (starter layer) |
+| 18 | `ROLE_LOCATION` (starter) | practitioner role location | main (starter layer) |
+| 19 | `ACTOR` (starter) | schedule actor | main (starter layer) |
+| 20 | `ADDRESS` (starter) | address | main (starter layer) |
+| 21 | `USER_ROLE` (starter) | user role (dev users) | main (starter layer) |
+| 21 | `PHARMACY` (demo) | pharmacy | main (demo layer) |
+| 22 | `CONSENT_REQUIREMENT` (demo) | consent requirement | main (demo layer) |
+| 23 | `PATIENT` (demo) | patient | main (demo layer) |
+| 24 | `P_NAME` (demo) | patient name | main (demo layer) |
+| 25 | `P_TELECOM` (demo) | patient phone | main (demo layer) |
+| 26 | `P_ADDRESS` (demo) | patient address | main (demo layer) |
+| 27 | `P_MRN` (demo) | patient MRN identifier | main (demo layer) |
+| 28 | `P_LANGUAGE` (demo) | patient language | main (demo layer) |
+| 29 | `COVERAGE` (demo) | coverage | main (demo layer) |
+| 30 | `C_PAYOR` (demo) | coverage payor | main (demo layer) |
+| 31 | `C_MEMBER` (demo) | coverage member ID | main (demo layer) |
+| 32 | `C_GROUP` (demo) | coverage group class | main (demo layer) |
+| 33 | `APPOINTMENT` (demo) | demo-day appointment | main (demo layer) |
+| 34 | `A_PATIENT` (demo) | its patient participant | main (demo layer) |
+| 35 | `A_PROVIDER` (demo) | its provider participant | main (demo layer) |
+| 36 | `P_PHARMACY` (demo) | patient's preferred pharmacy | main (demo layer) |
+| 37 | `A_LOCATION` (demo) | its location participant | main (demo layer) |
+| 38 | `DEMO_USER` (demo) | demo staff user | main (demo layer) |
+| 39 | `DEMO_USER_ROLE` (demo) | demo staff user's role | main (demo layer) |
+| 40 | `PORTAL_ACCOUNT` (demo) | portal account | main (demo layer) |
+| 41 | `ALL_DAY_RULE` (demo) | all-day availability rule | main (demo layer) |
+| 42 | `ERX_ENDPOINT` (demo) | simulated pharmacy connection | main (demo layer) |
+| 43 | `CLEARINGHOUSE_ENDPOINT` (demo) | simulated clearinghouse connection | main (#287) |
+| 44 | `P_EMAIL` (demo) | patient email | #293 (registration, booking) |
+| 45 | `P_RACE` (demo) | patient race (OMB) | #293 (registration, booking) |
+| 46 | `P_ETHNICITY` (demo) | patient ethnicity (OMB) | #293 (registration, booking) |
+| 47 | `P_EMPLOYER` (demo) | patient employer | #293 (registration, booking) |
+| 48 | `P_PCP` (demo) | patient primary care provider | #293 (registration, booking) |
+| 49 | `C_PLAN` (demo) | coverage plan class | #293 (registration, booking) |
+| 50 | `C_COPAY` (demo) | coverage copay | #293 (registration, booking) |
+| 51 | `BOOKING_SETTING` (demo) | online booking setting | #293 (registration, booking) |
+| 52 | `BOOKABLE_TYPE` (demo) | online-bookable visit type | #293 (registration, booking) |
+| 53 | `PAST_APPOINTMENT` (demo) | past visit's booking | #293 (past visits) |
+| 54 | `PA_PATIENT` (demo) | its patient participant | #293 (past visits) |
+| 55 | `PA_PROVIDER` (demo) | its provider participant | #293 (past visits) |
+| 56 | `PA_LOCATION` (demo) | its location participant | #293 (past visits) |
+| 57 | `PA_STEP` (demo) | past visit's step | #293 (past visits) |
+| 58 | `PA_ROOM` (demo) | past visit's exam room | #293 (past visits) |
+| 59 | `PA_FOLLOW_UP` (demo) | past visit's follow-up request | #293 (past visits) |
+| 60 | `PA_REASON` (demo) | past visit's reason | #293 (past visits) |
+| 61 | `A_REASON` (demo) | demo-day appointment's reason | #293 (past visits) |
 
 ## Rules that never bend
 

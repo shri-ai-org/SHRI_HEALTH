@@ -29,16 +29,22 @@ const MARK_TONE: Record<RowMark['tone'], Tone> = { critical: 'crit', attention: 
 
 const FILTER_WORD: Record<PatientFilter, string> = { waiting: 'Waiting', inroom: 'In room', admissions: 'Admitted today', icu: 'ICU' }
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 /** A KPI card's filter, applied to the tab it belongs to. */
 function filtered(rows: PatientListRow[], filter: PatientFilter | null): PatientListRow[] {
   if (!filter) return rows
   if (filter === 'icu') return rows.filter((r) => r.place.label === 'ICU')
+  // With the API the label names the step (gap 77), so the filter reads the row's step.
+  if (REAL_API) return rows.filter((r) => 'live' in r && r.live === (filter === 'waiting' ? 'Waiting' : filter === 'inroom' ? 'In room' : undefined))
   return rows.filter((r) => r.status?.label === FILTER_WORD[filter])
 }
 
 export function PatientsToday({ className }: { className?: string }) {
   const d = useMyDay()
-  const patientTab = useShri((st) => st.patientTab)
+  const storedTab = useShri((st) => st.patientTab)
+  // With the API only the OPD list: inpatients are the sample hospital's (gap 63).
+  const patientTab = REAL_API ? 'opd' : storedTab
   const setPatientTab = useShri((st) => st.setPatientTab)
   const patientFilter = useShri((st) => st.patientFilter)
   const clearFilter = useShri((st) => st.clearFilter)
@@ -116,7 +122,7 @@ export function PatientsToday({ className }: { className?: string }) {
             )}
             <div role="tablist" aria-label="Patients Today" className="flex items-center gap-[4px]">
               <Tab active={patientTab === 'opd'} icon={UserRound} label="OPD" count={d.opd.length} onClick={() => setPatientTab('opd')} />
-              <Tab active={patientTab === 'ip'} icon={BedDouble} label="Inpatients" count={d.inpatients.length} onClick={() => setPatientTab('ip')} />
+              {!REAL_API && <Tab active={patientTab === 'ip'} icon={BedDouble} label="Inpatients" count={d.inpatients.length} onClick={() => setPatientTab('ip')} />}
             </div>
           </>
         )
@@ -143,7 +149,8 @@ export function PatientsToday({ className }: { className?: string }) {
         ) : (
           <ul className="flex flex-col gap-[2px] pb-[6px]">
             {rows.map((r) => (
-              <li key={r.patientId}>
+              // A patient can have two visits in a day: the key is the patient and the visit's time.
+              <li key={`${r.patientId}:${'due' in r && r.due instanceof Date ? r.due.getTime() : ''}`}>
                 <PatientRowItem row={r} showKind={!d.stroke && patientTab === 'opd'} />
               </li>
             ))}
@@ -180,7 +187,7 @@ function PatientRowItem({ row, showKind }: { row: PatientListRow; showKind: bool
   const followUp = row.kind?.label === 'Follow-up'
   return (
     <Link
-      to={P.record(p.uhid)}
+      to={P.record(p.id)}
       className={cn(
         'grid items-center gap-[12px] rounded-[14px] px-[6px] py-[7px] text-sh-text transition-colors duration-150 hover:bg-sh-hover',
         // The status column is sized to the widest pill ("Admission in progress" wraps to its icon and word).

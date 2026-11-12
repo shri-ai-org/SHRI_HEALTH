@@ -9,7 +9,7 @@ import { formatClock } from '../../utils/format'
 import { formatDateKey } from '../../utils/dates'
 import { todayKey } from '../../domain/time'
 import { cn } from '../../utils/cn'
-import { billNumberFor, formatRupees } from '../../utils/billing'
+import { billNumberFor, formatMoney } from '../../utils/billing'
 import type { Payment } from '../../types/payment'
 import { PatientStatusIcons } from '../patient/PatientStatusIcons'
 import { ResponsiveTable } from '../ui/ResponsiveTable'
@@ -119,7 +119,7 @@ export function PaymentsTable({
       numeric: true,
       className: 'whitespace-nowrap font-medium text-ink',
       sortValue: (payment) => payment.totalAmount,
-      cell: (payment) => formatRupees(payment.totalAmount),
+      cell: (payment) => formatMoney(payment.totalAmount),
     },
     ...(showBalance
       ? [
@@ -130,7 +130,7 @@ export function PaymentsTable({
             className: 'whitespace-nowrap font-medium',
             sortValue: (payment: Payment) => payment.balance,
             cell: (payment: Payment) => (
-              <span className={cn(payment.balance > 0 ? 'text-warning-fg' : 'text-ink-subtle')}>{formatRupees(payment.balance)}</span>
+              <span className={cn(payment.balance > 0 ? 'text-warning-fg' : 'text-ink-subtle')}>{formatMoney(payment.balance)}</span>
             ),
           } satisfies Column<Payment>,
         ]

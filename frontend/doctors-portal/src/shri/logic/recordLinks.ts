@@ -19,7 +19,7 @@ export interface RecordLink {
 }
 
 export function recordLinksFor(p: Patient): RecordLink[] {
-  const base = `/patient/${p.uhid}`
+  const base = `/patient/${p.id}`
   const links: RecordLink[] = [{ key: 'record', label: 'Patient record', to: base }]
   if (resultsFor(p.id).length > 0) links.push({ key: 'results', label: 'Test results', to: `${base}/results` })
   if (reportsFor(p.id).length > 0) links.push({ key: 'reports', label: 'Imaging reports', to: `${base}/reports` })

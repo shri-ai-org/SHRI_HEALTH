@@ -1,4 +1,5 @@
-import { todayKey } from '../domain/time'
+import { addDaysToKey, calendarDate, todayKey } from '../domain/time'
+import { REAL_API } from '../../shri-health/client'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -18,12 +19,13 @@ export function buildDateOptions(count: number = 7, from: Date = new Date()): Da
   // week navigator), and a paged-away window must never mislabel some
   // other day as "Today".
   const realToday = todayKey()
-  const realTomorrow = todayKey(new Date(new Date().setDate(new Date().getDate() + 1)))
+  const realTomorrow = addDaysToKey(realToday, 1)
 
   const options: DateOption[] = []
+  const first = todayKey(from)
   for (let i = 0; i < count; i += 1) {
-    const date = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i)
-    const value = todayKey(date)
+    const value = addDaysToKey(first, i)
+    const date = calendarDate(value)
     let label: string
     if (value === realToday) label = 'Today'
     else if (value === realTomorrow) label = 'Tomorrow'
@@ -53,6 +55,8 @@ export function shortDayLabel(dateKey: string): string {
 /** "Today · Fri 02-Oct-2026", "Tomorrow · Sat 03-Oct-2026", else just
  *  "Sun 04-Oct-2026" — a confirmation's day, never said twice. */
 export function dayWithDate(dateKey: string, today: string = todayKey()): string {
+  // SHRI_HEALTH: the US date alone ("Wed, Nov 4, 2026"; US display change, 2026-11-05).
+  if (REAL_API) return formatDateKey(dateKey)
   const label = relativeDayLabel(dateKey, today)
   return label === 'Today' || label === 'Tomorrow' ? `${label} · ${formatDateKey(dateKey)}` : formatDateKey(dateKey)
 }
@@ -61,5 +65,7 @@ export function formatDateKey(value: string | null | undefined): string {
   if (!value) return '—'
   const [year, month, day] = value.split('-').map(Number)
   const date = new Date(year, month - 1, day)
+  // SHRI_HEALTH: "Wed, Nov 4, 2026" (US display change, 2026-11-05).
+  if (REAL_API) return `${WEEKDAYS[date.getDay()]}, ${MONTHS[month - 1]} ${day}, ${year}`
   return `${WEEKDAYS[date.getDay()]} ${String(day).padStart(2, '0')}-${MONTHS[month - 1]}-${year}`
 }

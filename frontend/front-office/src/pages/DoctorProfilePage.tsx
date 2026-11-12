@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { CalendarCheck, Stethoscope } from 'lucide-react'
@@ -26,6 +26,9 @@ import { DoctorLeaveCard } from '../components/doctor/DoctorLeaveCard'
 import { initialsOf } from '../utils/format'
 import { useFlow } from '../flows/useFlow'
 import { formatTimeRange } from '../domain/time'
+import { formatMoney } from '../utils/billing'
+import { problemMessage, REAL_API } from '../../shri-health/client'
+import { loadSchedule } from '../../shri-health/scheduling'
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -43,6 +46,12 @@ export function DoctorProfilePage() {
   const appointments = useStoreValue(getAppointmentsForProvider, id)
 
   const [error, setError] = useState<string | null>(null)
+
+  // SHRI_HEALTH: today's free times and bookings for the doctors (listSlots, listAppointments), as booking reads them.
+  useEffect(() => {
+    if (!REAL_API || !today) return
+    void loadSchedule(today, 1).catch((err: unknown) => setError(problemMessage(err)))
+  }, [today])
 
   if (!row) {
     return (
@@ -119,37 +128,40 @@ export function DoctorProfilePage() {
                   <Row label="Department" value={provider.department} />
                   <Row label="Speciality" value={provider.specialty} />
                   <Row label="Registration no." value={provider.registrationNumber} />
-                  <Row label="Experience" value={`${provider.experienceYears} yrs`} />
+                  <Row label="Experience" value={REAL_API && !provider.experienceYears ? '—' : `${provider.experienceYears} yrs`} />
                   <Row label="Consultation" value={provider.consultationType} />
-                  <Row label="Fee" value={provider.consultationFee ? `₹${provider.consultationFee}` : '—'} />
+                  <Row label="Fee" value={provider.consultationFee ? formatMoney(provider.consultationFee) : '—'} />
                   <Row label="Room" value={provider.room ?? '—'} />
                   <Row label="Mobile" value={provider.mobile} />
                   <Row label="Email" value={provider.email ?? '—'} />
                   <Row label="Role" value={provider.role} />
                 </dl>
 
-                <div className="border-t border-border-soft pt-3">
-                  {provider.status === 'Active' ? (
-                    <Button
-                      variant="secondary"
-                      className="w-full"
-                      onClick={() => run(() => setDoctorStatus(id, 'Inactive'), 'Doctor deactivated')}
-                    >
-                      Deactivate account
-                    </Button>
-                  ) : (
-                    <Button
-                      className="w-full"
-                      onClick={() => run(() => setDoctorStatus(id, 'Active'), 'Doctor activated')}
-                    >
-                      Activate account
-                    </Button>
+                {/* SHRI_HEALTH: activating a doctor and recording leave have no service yet, so not with SHRI_API=real. */}
+                {REAL_API ? null : (
+                  <div className="border-t border-border-soft pt-3">
+                    {provider.status === 'Active' ? (
+                      <Button
+                        variant="secondary"
+                        className="w-full"
+                        onClick={() => run(() => setDoctorStatus(id, 'Inactive'), 'Doctor deactivated')}
+                      >
+                        Deactivate account
+                      </Button>
+                    ) : (
+                      <Button
+                        className="w-full"
+                        onClick={() => run(() => setDoctorStatus(id, 'Active'), 'Doctor activated')}
+                      >
+                        Activate account
+                      </Button>
                   )}
                 </div>
+                )}
               </CardBody>
             </Card>
 
-            <DoctorLeaveCard providerId={id} providerName={provider.name} />
+            {REAL_API ? null : <DoctorLeaveCard providerId={id} providerName={provider.name} />}
           </div>
 
           {/* Schedule + appointments */}
@@ -160,7 +172,9 @@ export function DoctorProfilePage() {
                 iconTone="info"
                 title="Today's schedule"
                 subtitle={
-                  schedule
+                  REAL_API
+                    ? `Today's open and booked times from the schedule`
+                    : schedule
                     ? `${formatTimeRange(schedule.sessionStart, schedule.sessionEnd)} · ${schedule.slotMinutes}-minute slots · ${provider.schedule.workingDays.map((d) => DAY_LABELS[d]).join(', ')}`
                     : 'No session configured for today'
                 }

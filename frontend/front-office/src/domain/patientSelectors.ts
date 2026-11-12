@@ -3,6 +3,7 @@
 // "risk" here is built only from facts this desk owns: where the patient is
 // admitted and whether a medico-legal case is open.
 import type { AppState } from '../types/store'
+import { REAL_API } from '../../shri-health/client'
 import type { Admission } from '../types/admission'
 import type { Payment } from '../types/payment'
 import type { ConsultMode, PatientAppointmentRow } from '../types/appointment'
@@ -155,6 +156,13 @@ export interface PatientTimeline {
 function visitOutcome(status: string): { status: string; statusLabel: string } {
   if (status === 'Completed') return { status: 'Completed', statusLabel: 'Completed' }
   if (status === 'Cancelled') return { status: 'Cancelled', statusLabel: 'Cancelled' }
+  // SHRI_HEALTH: U.S. wording for a past visit that didn't finish (the tone stays Incomplete's):
+  // booked and never checked in is Missed; a recorded no-show is No-show; checked in but never
+  // checked out is Not checked out.
+  if (REAL_API) {
+    const label = status === 'Confirmed' ? 'Missed' : status === 'No-show' ? 'No-show' : status === 'Checked-in' ? 'Not checked out' : 'Incomplete'
+    return { status: 'Incomplete', statusLabel: label }
+  }
   return { status: 'Incomplete', statusLabel: 'Incomplete' }
 }
 
@@ -188,7 +196,7 @@ export function getPatientTimeline(state: AppState, patientId: string): PatientT
       at: appointment.slotTimestamp,
       kind: 'encounter',
       title: `Doctor visit · ${doctor}`,
-      detail: `${appointment.department} · ${formatDateKey(appointment.date)} ${formatTime(appointment.slot)}`,
+      detail: `${appointment.department} · ${formatDateKey(appointment.date)}${REAL_API ? ',' : ''} ${formatTime(appointment.slot)}`,
       ...visitOutcome(appointment.status),
     })
   }

@@ -64,7 +64,7 @@ def test_a_summary_is_made_read_and_decided(client: Client, practice: Practice,
     patient = str(practice.patients["kaia"])
     claude_server.reply = "{}"
     first = client("md").post(SUMMARIES, json={"patientId": patient})   # learn the lines
-    sent = claude_server.requests[-1]["messages"][0]["content"]
+    sent = claude_server.requests[-1]["messages"][0]["content"][0]["text"]
     assert "Allergy: Peanuts (high criticality)" in sent
     assert "Medication: Lisinopril 10 MG Oral Tablet, 1 tablet by mouth once daily" in sent
     assert "Visit: " in sent and "Not available: results (not in this build)" in sent
@@ -171,3 +171,23 @@ def test_the_budget_stops_a_summary(client: Client, practice: Practice,
     assert "budget" in blocked.json()["error"]["detail"]
     assert claude_server.requests == []
 
+
+
+def test_the_summary_reads_the_problem_list(client: Client, practice: Practice,
+                                            users: dict[str, CurrentUser],
+                                            claude_server: StubClaudeServer) -> None:
+    """The problem list (#280) goes to the model with its code, status and onset; an
+    entered-in-error problem never does; medications carry the day they went on the list."""
+    from app.modules.history.tests.history_seed import seed_history
+    _summary_on(client)
+    _chart(client, practice)
+    seed_history(practice.clinic, users["md"].id, practice.patients["kaia"])
+    claude_server.reply = "{}"
+    client("md").post(SUMMARIES, json={"patientId": str(practice.patients["kaia"])})
+    sent = claude_server.requests[-1]["messages"][0]["content"][0]["text"]
+    problem = next(line for line in sent.splitlines() if ": Problem list: " in line)
+    assert "Essential (primary) hypertension (I10), active, onset 2019-04" in problem
+    assert "asthma" not in sent.lower()                 # entered in error: never sent
+    assert "problem list" not in sent.split("Not available:")[-1]
+    medication = next(line for line in sent.splitlines() if ": Medication: " in line)
+    assert ", on the list since " in medication

@@ -19,11 +19,11 @@ import { useShri } from '../state/store'
 import { Icon, RoundButton } from '../ui/primitives'
 
 import { Logo } from './Logo'
-import indostatesLogoDark from './indostates-logo-dark.webp'
-import indostatesLogo from './indostates-logo.webp'
 import { NotificationsMenu } from './menus/NotificationsMenu'
 import { useNotices } from './menus/useNotices'
 import { UserMenu } from './menus/UserMenu'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export function AppBar() {
   const toggleRail = useShri((s) => s.toggleRail)
@@ -67,6 +67,9 @@ export function AppBar() {
         className="max-sm:size-[44px] max-[360px]:hidden"
       />
 
+      {/* SHRI_HEALTH: the notifications are sample data and the languages are India's: hidden with the API. */}
+      {REAL_API ? null : (
+        <>
       <div className="relative">
         <RoundButton
           icon={Bell}
@@ -108,6 +111,8 @@ export function AppBar() {
         </select>
         <Icon icon={ChevronDown} size={16} className="pointer-events-none absolute right-[12px] top-1/2 -translate-y-1/2 text-sh-chev" />
       </label>
+        </>
+      )}
 
       <div className="relative">
         <button
@@ -126,16 +131,6 @@ export function AppBar() {
         </button>
         <UserMenu />
       </div>
-
-      {/* The hospital's own mark, far right, linking to its site. Two copies: the dark theme's lifts the grey lettering. Under 420px the row has no room for it. */}
-      <a
-        href="https://indostates.com"
-        title="Indostates Health — indostates.com"
-        className="flex h-[48px] shrink-0 items-center rounded-full px-[8px] transition-colors duration-150 hover:bg-sh-hover max-sm:h-[44px] max-sm:px-[4px] max-[420px]:hidden"
-      >
-        <img src={indostatesLogo} width={175} height={36} alt="Indostates Health — go to indostates.com" decoding="async" className="h-[36px] w-auto shdark:hidden max-sm:h-[26px]" />
-        <img src={indostatesLogoDark} width={175} height={36} alt="Indostates Health — go to indostates.com" decoding="async" className="hidden h-[36px] w-auto shdark:block max-sm:h-[26px]" />
-      </a>
     </header>
   )
 }

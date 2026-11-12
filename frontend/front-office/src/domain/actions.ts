@@ -21,6 +21,7 @@ import {
 } from './selectors'
 import { dayStartTimestamp, formatTime, slotToTimestamp, todayKey } from './time'
 import { DomainError } from './errors'
+import { isServerAppointment } from '../../shri-health/scheduling'
 import { MOBILE_ERROR, formatMobile, isValidMobile } from '../utils/phone'
 import {
   abhaError,
@@ -34,7 +35,7 @@ import {
   normalizeName,
   sexError,
 } from '../utils/validation'
-import { formatRupees } from '../utils/billing'
+import { formatMoney } from '../utils/billing'
 import { formatDateKey } from '../utils/dates'
 import { NO_SHOW_GRACE_MINUTES, appointmentStatusLabel, modesFor } from '../utils/appointment'
 import type { AppState } from '../types/store'
@@ -493,6 +494,10 @@ export function rescheduleAppointment({ appointmentId, providerId, date, slot, m
   const state = getState()
   const now = Date.now()
   const appointment = requireAppointment(state, appointmentId)
+  // A SHRI_HEALTH booking moves on the API (shri-health/scheduling.ts rescheduleOnServer), not here.
+  if (isServerAppointment(appointmentId)) {
+    throw new DomainError('INVALID_TRANSITION', 'This booking is on the server and cannot be moved here yet — cancel it and book the new time.')
+  }
   if (appointment.status !== 'Confirmed') {
     throw new DomainError('INVALID_TRANSITION', `Only a confirmed booking can be moved — this one is ${appointmentStatusLabel(appointment.status).toLowerCase()}.`)
   }
@@ -1293,7 +1298,7 @@ export function saveEstimate(estimateId: string): Estimate {
   let saved!: Estimate
   setState((current) => {
     const { activityLog, activitySeq } = withActivity(current, [
-      { text: 'Estimate saved', meta: `${estimateId} · ${formatRupees(estimate.total)} · ${estimate.patientName}` },
+      { text: 'Estimate saved', meta: `${estimateId} · ${formatMoney(estimate.total)} · ${estimate.patientName}` },
     ])
     const estimates = current.estimates.map((e) => {
       if (e.estimateId !== estimateId) return e
@@ -1432,7 +1437,7 @@ function applyNewBill(
   }
   const next = logged(
     { ...state, payments: [...state.payments, payment], nextIds: { ...state.nextIds, payment: seq + 1 } },
-    [{ text: 'Payment bill created', meta: `${patient.name} · ${formatRupees(total)}` }],
+    [{ text: 'Payment bill created', meta: `${patient.name} · ${formatMoney(total)}` }],
   )
   return { state: next, value: payment }
 }
@@ -1446,7 +1451,7 @@ function applyCollection(state: AppState, { paymentId, amount, method }: Collect
   }
   if (!(amount > 0)) throw new DomainError('VALIDATION', 'Enter an amount greater than zero.')
   if (amount > payment.balance) {
-    throw new DomainError('VALIDATION', `That is more than the ${formatRupees(payment.balance)} balance due.`)
+    throw new DomainError('VALIDATION', `That is more than the ${formatMoney(payment.balance)} balance due.`)
   }
   // Only a stay billed to an insurer, TPA or company is settled by that payer.
   if (method === 'Insurance/TPA') {
@@ -1490,8 +1495,8 @@ function applyCollection(state: AppState, { paymentId, amount, method }: Collect
         text: status === 'Paid' ? 'Payment received at the billing counter' : 'Part payment received at the billing counter',
         meta:
           status === 'Paid'
-            ? `${payment.patientName} · ${formatRupees(amount)} · ${method}`
-            : `${payment.patientName} · ${formatRupees(paidAmount)} of ${formatRupees(payment.totalAmount)}`,
+            ? `${payment.patientName} · ${formatMoney(amount)} · ${method}`
+            : `${payment.patientName} · ${formatMoney(paidAmount)} of ${formatMoney(payment.totalAmount)}`,
       },
       ...(confirms ? [{ text: 'Appointment confirmed', meta: `${payment.patientName} · payment received` }] : []),
     ],
@@ -1522,7 +1527,7 @@ function applyFullRefund(state: AppState, paymentId: string, reason: string, now
   const next = logged({ ...state, payments: state.payments.map((p) => (p.paymentId === paymentId ? updated : p)) }, [
     {
       text: 'Payment refunded',
-      meta: `${payment.patientName} · ${payment.receiptNo} · ${formatRupees(payment.paidAmount)} · ${methods.join(' + ')}`,
+      meta: `${payment.patientName} · ${payment.receiptNo} · ${formatMoney(payment.paidAmount)} · ${methods.join(' + ')}`,
     },
   ])
   return { state: next, value: updated }
@@ -1568,7 +1573,7 @@ export function recordFailedPayment({ paymentId, amount, method, reason }: Recor
   }
   if (!(payment.balance > 0)) throw new DomainError('INVALID_TRANSITION', 'Nothing is due on this bill.')
   if (!(amount > 0) || amount > payment.balance) {
-    throw new DomainError('VALIDATION', `Enter an amount up to the ${formatRupees(payment.balance)} due.`)
+    throw new DomainError('VALIDATION', `Enter an amount up to the ${formatMoney(payment.balance)} due.`)
   }
 
   const now = Date.now()
@@ -1584,7 +1589,7 @@ export function recordFailedPayment({ paymentId, amount, method, reason }: Recor
 
   setState((current) => {
     const { activityLog, activitySeq } = withActivity(current, [
-      { text: 'Payment attempt failed', meta: `${payment.patientName} · ${formatRupees(amount)} · ${method} · ${updated.failedAttempts[updated.failedAttempts.length - 1].reason}` },
+      { text: 'Payment attempt failed', meta: `${payment.patientName} · ${formatMoney(amount)} · ${method} · ${updated.failedAttempts[updated.failedAttempts.length - 1].reason}` },
     ])
     return {
       ...current,

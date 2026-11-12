@@ -21,6 +21,7 @@ import { BriefPage } from '../myday/BriefPage'
 import { MyDayPage } from '../myday/MyDayPage'
 import { CoSignPage } from '../notes/CoSignPage'
 import { ConsultationPage } from '../notes/ConsultationPage'
+import { FollowUpPage } from '../notes/FollowUpPage'
 import { InstructionsPage } from '../notes/InstructionsPage'
 import { PrescriptionPage } from '../notes/PrescriptionPage'
 import { ProblemsPage } from '../notes/ProblemsPage'
@@ -34,6 +35,7 @@ import { OrdersPage } from '../orders/OrdersPage'
 import { StewardshipPage } from '../orders/StewardshipPage'
 import { AppointmentsPage } from '../record/AppointmentsPage'
 import { ConditionPage } from '../record/ConditionPage'
+import { HistoryPage } from '../record/HistoryPage'
 import { NotesPage } from '../record/NotesPage'
 import { PrescriptionsPage } from '../record/PrescriptionsPage'
 import { RecordPage } from '../record/RecordPage'
@@ -77,6 +79,7 @@ export const SCREEN_COMPONENTS: Partial<Record<string, ComponentType>> = {
   'S-06-06': TimelinePage,
   'S-06-07': PrescriptionPage,
   'S-06-08': InstructionsPage,
+  'S-06-19': FollowUpPage,
   'S-06-09': CoSignPage,
   'S-06-10': TemplatesPage,
   'S-06-11': RecordPage,
@@ -84,6 +87,7 @@ export const SCREEN_COMPONENTS: Partial<Record<string, ComponentType>> = {
   'S-06-13': ResultsPartPage,
   'S-06-14': NotesPage,
   'S-06-15': ConditionPage,
+  'S-06-20': HistoryPage,
   'S-06-16': PrescriptionsPage,
   'S-06-17': AppointmentsPage,
   'S-05-03': OpdQueuePage,
@@ -141,4 +145,4 @@ export const SCREEN_COMPONENTS: Partial<Record<string, ComponentType>> = {
  * banner, as the old frame did (`src/shell/Screen.tsx:182-290`). Any other
  * drawn screen gets ERROR from the route wrapper, whole.
  */
-export const OWN_STATES = new Set(['S-06-01', 'S-06-03', 'S-06-05', 'S-06-06', 'S-06-07', 'S-06-08', 'S-06-09', 'S-06-10', 'S-06-11', 'S-06-12', 'S-06-13', 'S-06-14', 'S-06-15', 'S-06-16', 'S-06-17', 'S-06-18', 'S-08-03', 'S-08-04', 'S-08-07', 'S-09-01', 'S-09-02', 'S-09-03', 'S-09-04', 'S-09-05', 'S-09-08', 'S-13-01', 'S-13-02', 'S-13-03', 'S-13-06', 'S-15-01', 'S-15-04', 'S-18-11', 'S-18-12', 'S-18-13', 'S-18-14', 'S-18-15', 'S-18-16', 'S-18-17', 'S-18-18', 'S-18-19', 'S-18-20', 'S-18-21'])
+export const OWN_STATES = new Set(['S-06-01', 'S-06-03', 'S-06-05', 'S-06-06', 'S-06-07', 'S-06-08', 'S-06-09', 'S-06-10', 'S-06-11', 'S-06-12', 'S-06-13', 'S-06-14', 'S-06-15', 'S-06-16', 'S-06-17', 'S-06-18', 'S-06-19', 'S-08-03', 'S-08-04', 'S-08-07', 'S-09-01', 'S-09-02', 'S-09-03', 'S-09-04', 'S-09-05', 'S-09-08', 'S-13-01', 'S-13-02', 'S-13-03', 'S-13-06', 'S-15-01', 'S-15-04', 'S-18-11', 'S-18-12', 'S-18-13', 'S-18-14', 'S-18-15', 'S-18-16', 'S-18-17', 'S-18-18', 'S-18-19', 'S-18-20', 'S-18-21'])

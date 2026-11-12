@@ -1,14 +1,15 @@
+import { REAL_API } from '../../../shri-health/client'
 import type { LucideIcon } from 'lucide-react'
 import {
   ChartNoAxesCombined,
   FileWarning,
   IdCard,
-  IndianRupee,
   LayoutGrid,
   Receipt,
   Users,
 } from 'lucide-react'
 import type { IconTone } from '../../utils/toneHex'
+import { CurrencyIcon } from '../../utils/billing'
 
 // The shell never hard-codes menus (DESIGN_SYSTEM §8.4): the sidebar, the
 // tablet rail and the phone's scrolling nav row all render from this one
@@ -40,18 +41,22 @@ export const NAV_GROUPS: NavGroup[] = [
       // One place for patients — everyone, outpatients and inpatients are its
       // tabs, and a patient's profile lives under it too.
       { label: 'Patients', path: '/patients', icon: Users, hue: 'teal', description: 'Everyone, outpatients and inpatients' },
-      { label: 'Payments', path: '/billing', icon: IndianRupee, hue: 'amber', description: 'Whether each patient’s bill is pending or paid at the billing counter' },
-      { label: 'Activity & Analytics', path: '/activity-analytics', icon: ChartNoAxesCombined, hue: 'violet', description: 'Desk activity, trends and performance' },
+      // SHRI_HEALTH: the billing counter is India-only, and Activity & Analytics reads sample data only.
+      ...(REAL_API ? [] : ([
+        { label: 'Payments', path: '/billing', icon: CurrencyIcon, hue: 'amber', description: 'Whether each patient’s bill is pending or paid at the billing counter' },
+        { label: 'Activity & Analytics', path: '/activity-analytics', icon: ChartNoAxesCombined, hue: 'violet', description: 'Desk activity, trends and performance' },
+      ] as const)),
     ],
   },
-  {
+  // Guest Pass, Enquiry & Estimate and MLC are India's: hidden with the SHRI_HEALTH API (2026-11-05).
+  ...(REAL_API ? [] : ([{
     label: 'Services',
     items: [
       { label: 'Guest Pass', path: '/services/guest-pass', icon: IdCard, hue: 'pink', description: 'Passes for visitors and attendants' },
       { label: 'Enquiry & Estimate', path: '/services/enquiry', icon: Receipt, hue: 'orange', description: 'Service rates and cost estimates' },
       { label: 'MLC', path: '/services/mlc', icon: FileWarning, hue: 'red', description: 'Medico-legal case records' },
     ],
-  },
+  }] as NavGroup[])),
 ]
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items)

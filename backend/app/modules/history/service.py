@@ -53,7 +53,7 @@ from app.db.models import systems
 
 from ..encounters.schemas import CodeableConcept
 from . import schemas
-from .repository import AllergyRepository, AllergyRow
+from .repository import AllergyRepository, AllergyRow, HistoryRepository, ProblemRow
 
 ChartCheck = Callable[[AsyncSession, CurrentUser, UUID], Awaitable[object]]
 WritablePatient = Callable[[AsyncSession, UUID], Awaitable[None]]
@@ -166,6 +166,27 @@ async def get_allergy(db: AsyncSession, repo: AllergyRepository, check: ChartChe
                       user: CurrentUser, patient_id: UUID, allergy_id: UUID) -> AllergyRow:
     await check(db, user, patient_id)
     return await repo.get(db, patient_id, allergy_id)
+
+
+# ------------------------------------------------------- problems and history (reads; #90, #98...)
+async def page[T](db: AsyncSession, check: ChartCheck, user: CurrentUser, patient_id: UUID,
+                  read: Callable[..., Awaitable[list[T]]], *, include_entered_in_error: bool,
+                  limit: int, cursor: str | None) -> tuple[list[T], str | None]:
+    """One page of a patient's records, newest first, after the restricted-chart check (D37):
+    404 for a patient the clinic can't see, 403 break-glass-required for a restricted chart."""
+    offset = decode_cursor(cursor)
+    await check(db, user, patient_id)
+    found = await read(db, patient_id, include_entered_in_error=include_entered_in_error,
+                       limit=limit + 1, offset=offset)
+    if len(found) > limit:
+        return found[:limit], encode_cursor(offset + limit)
+    return found, None
+
+
+async def get_problem(db: AsyncSession, repo: HistoryRepository, check: ChartCheck,
+                      user: CurrentUser, patient_id: UUID, problem_id: UUID) -> ProblemRow:
+    await check(db, user, patient_id)
+    return await repo.problem(db, patient_id, problem_id)
 
 
 # ------------------------------------------------------------------------------------- writes

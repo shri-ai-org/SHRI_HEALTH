@@ -6,6 +6,7 @@
 #   infra/deploy/deploy.sh check    /etc/shri/deploy.env   # the health check only
 #   infra/deploy/deploy.sh reset    /etc/shri/deploy.env   # demo only: erase the database, back to the demo data
 #   infra/deploy/deploy.sh down     /etc/shri/deploy.env   # stop (volumes, and so the data, stay)
+#   infra/deploy/deploy.sh host-nginx /etc/shri/deploy.env # behind a shared host's Nginx: its site file
 #
 # The settings file holds every secret: it must be mode 600 and outside the repository. Secrets
 # never go on a command line (where `ps` shows them) and are never printed: they reach compose
@@ -15,6 +16,8 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 DEPLOY="$REPO/infra/deploy"
+# The compose project (SHRI_PROJECT, default shri-deploy): every container, network and volume
+# deploy.sh touches carries it, so on a shared host nothing else is ever stopped or changed.
 PROJECT=shri-deploy
 
 die() { echo "deploy: $*" >&2; exit 1; }
@@ -38,10 +41,29 @@ init_env() {
 # The host as browsers reach it, and its public HTTPS port.
 SHRI_HOSTNAME=shri.localhost
 SHRI_HTTPS_PORT=443
+# Behind a shared host's own Nginx (README "Two ways to serve it"), set the one public address
+# instead, a host of its own or a path: https://dep.shri-ai.org or https://shri-ai.org/dep.
+# Then SHRI_HOSTNAME comes from it, SHRI_HTTPS_PORT is our local port on 127.0.0.1 (e.g. 9443),
+# and every port is bound to 127.0.0.1. Leave it empty on a host of our own.
+SHRI_SITE_URL=
+# A unique compose project name, and two free /24s for its networks (first three numbers).
+SHRI_PROJECT=shri-deploy
+SHRI_NET_A=172.31.250
+SHRI_NET_B=172.31.251
 # staging for the test server. production is refused with SHRI_DEMO=true.
 SHRI_ENVIRONMENT=staging
 # true: the simulated payer and pharmacy, the demo accounts and the demo data (D95).
 SHRI_DEMO=false
+# true: real patient sign-in (the patient realm) on this server. Only with SHRI_DEMO=true, so only
+# fictional patients, until the pilot gates are done (Q33's bot check and the shared rate limiter).
+SHRI_PATIENT_SIGN_IN=false
+# true: demo sign-in is the username and password alone, no authenticator code (both realms, on
+# this server only). Only with SHRI_DEMO=true; every other environment requires the code (D85).
+SHRI_DEMO_SKIP_AUTH_CODE=false
+# true: the screens are built with the AI features shown (Draft with AI, chart summary, assistant,
+# morning brief, differentials; the VITE_FEATURE_AI_* flags, read at build time). Only with
+# SHRI_DEMO=true. Each feature still needs its per-clinic switch and the Claude key (D116, D12).
+SHRI_DEMO_AI_SCREENS=false
 # self-signed (a local hostname) or provided (TLS_CERT_FILE and TLS_KEY_FILE, the real certificate).
 TLS_MODE=self-signed
 TLS_CERT_FILE=
@@ -102,9 +124,62 @@ load_env() {
     if [ "${SHRI_ENVIRONMENT:-staging}" = production ] && [ "${SHRI_DEMO:-false}" = true ]; then
         die "the demo (simulated partners, synthetic seed) is never deployed to production"
     fi
+    # Patient sign-in: the API gets the patient realm's client secrets only when it is on;
+    # without them its sign-in and enrolment routes answer 503. Keycloak always has them.
+    case "${SHRI_PATIENT_SIGN_IN:-false}" in
+        true) [ "${SHRI_DEMO:-false}" = true ] \
+                  || die "SHRI_PATIENT_SIGN_IN=true needs SHRI_DEMO=true (fictional patients only, until the pilot gates)"
+              : "${SHRI_PORTAL_CLIENT_SECRET:?}" "${SHRI_PORTAL_ADMIN_CLIENT_SECRET:?}"
+              export SHRI_API_PORTAL_CLIENT_SECRET="$SHRI_PORTAL_CLIENT_SECRET"
+              export SHRI_API_PORTAL_ADMIN_CLIENT_SECRET="$SHRI_PORTAL_ADMIN_CLIENT_SECRET" ;;
+        false) export SHRI_API_PORTAL_CLIENT_SECRET="" SHRI_API_PORTAL_ADMIN_CLIENT_SECRET="" ;;
+        *) die "SHRI_PATIENT_SIGN_IN is true or false" ;;
+    esac
+    case "${SHRI_DEMO_SKIP_AUTH_CODE:-false}" in
+        true) [ "${SHRI_DEMO:-false}" = true ] \
+                  || die "SHRI_DEMO_SKIP_AUTH_CODE=true needs SHRI_DEMO=true (fictional data only; D85 elsewhere)"
+              DEMO_SKIP_AUTH_CODE=1 ;;
+        false) DEMO_SKIP_AUTH_CODE= ;;
+        *) die "SHRI_DEMO_SKIP_AUTH_CODE is true or false" ;;
+    esac
+    case "${SHRI_DEMO_AI_SCREENS:-false}" in
+        true) [ "${SHRI_DEMO:-false}" = true ] \
+                  || die "SHRI_DEMO_AI_SCREENS=true needs SHRI_DEMO=true (fictional data only until a BAA, D12)"
+              export SHRI_WEB_AI=on ;;
+        false) export SHRI_WEB_AI=off ;;
+        *) die "SHRI_DEMO_AI_SCREENS is true or false" ;;
+    esac
+    PROJECT="${SHRI_PROJECT:-shri-deploy}"
+    [[ "$PROJECT" =~ ^shri-[a-z0-9-]+$ ]] || die "SHRI_PROJECT must start with shri- (lower case, digits, -)"
+    SHRI_NET_A="${SHRI_NET_A:-172.31.250}" SHRI_NET_B="${SHRI_NET_B:-172.31.251}"
+    for net in "$SHRI_NET_A" "$SHRI_NET_B"; do
+        [[ "$net" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || die "SHRI_NET_A and SHRI_NET_B are the first three numbers of a /24"
+    done
+    [ "$SHRI_NET_A" != "$SHRI_NET_B" ] || die "SHRI_NET_A and SHRI_NET_B must differ"
     SHRI_HTTPS_PORT="${SHRI_HTTPS_PORT:-443}"
-    if [ "$SHRI_HTTPS_PORT" = 443 ]; then SHRI_PUBLIC_URL="https://$SHRI_HOSTNAME"
-    else SHRI_PUBLIC_URL="https://$SHRI_HOSTNAME:$SHRI_HTTPS_PORT"; fi
+    if [ -n "${SHRI_SITE_URL:-}" ]; then
+        # Behind a shared host's Nginx: one public address decides the mode.
+        [[ "$SHRI_SITE_URL" =~ ^https://([a-z0-9.-]+)(:([0-9]+))?(/[a-z0-9-]+)?$ ]] \
+            || die "SHRI_SITE_URL is https://host or https://host/path (lower case, no trailing /)"
+        SHRI_HOSTNAME="${BASH_REMATCH[1]}" SHRI_PUBLIC_PORT="${BASH_REMATCH[3]:-443}"
+        SHRI_BASE_PATH="${BASH_REMATCH[4]}"
+        SHRI_PUBLIC_URL="$SHRI_SITE_URL" SHRI_BIND=127.0.0.1
+        [ "${TLS_MODE:-self-signed}" = self-signed ] \
+            || die "behind a host's Nginx the real certificate is the host's: TLS_MODE=self-signed (our local hop)"
+        [ "$SHRI_HTTPS_PORT" != "$SHRI_PUBLIC_PORT" ] || die "SHRI_HTTPS_PORT is our local port, not the public $SHRI_PUBLIC_PORT"
+        # Not includeSubDomains: the host's other names (the company's) aren't ours to pin.
+        SHRI_HSTS="max-age=31536000"
+        # The client address comes from the host's Nginx (it reaches us through the Docker gateway).
+        SHRI_REAL_IP="set_real_ip_from $SHRI_NET_A.1; real_ip_header X-Forwarded-For; real_ip_recursive off;"
+    else
+        SHRI_PUBLIC_PORT="$SHRI_HTTPS_PORT" SHRI_BASE_PATH="" SHRI_BIND=0.0.0.0
+        SHRI_HSTS="max-age=31536000; includeSubDomains" SHRI_REAL_IP=""
+        if [ "$SHRI_HTTPS_PORT" = 443 ]; then SHRI_PUBLIC_URL="https://$SHRI_HOSTNAME"
+        else SHRI_PUBLIC_URL="https://$SHRI_HOSTNAME:$SHRI_HTTPS_PORT"; fi
+    fi
+    SHRI_COOKIE_PATH="${SHRI_BASE_PATH:-/}"
+    # Our edge as this host reaches it (127.0.0.1), with the paths it serves (no base path).
+    EDGE_URL="https://$SHRI_HOSTNAME:$SHRI_HTTPS_PORT"
     SHRI_RELEASE="$(git -C "$REPO" rev-parse --short=12 HEAD)"
     SHRI_BUILD_VERSION="$(sed -n 's/^version *= *"\(.*\)"/\1/p' "$REPO/backend/pyproject.toml" | head -1)"
     mkdir -p "$SHRI_STATE_DIR" && chmod 700 "$SHRI_STATE_DIR"
@@ -118,7 +193,9 @@ load_env() {
             CURL_TLS=() ;;
         *) die "TLS_MODE is self-signed or provided" ;;
     esac
-    export SHRI_HTTPS_PORT SHRI_PUBLIC_URL SHRI_RELEASE SHRI_BUILD_VERSION TLS_CERT_FILE TLS_KEY_FILE
+    export SHRI_HTTPS_PORT SHRI_PUBLIC_URL SHRI_RELEASE SHRI_BUILD_VERSION TLS_CERT_FILE TLS_KEY_FILE \
+        SHRI_HOSTNAME SHRI_PUBLIC_PORT SHRI_BASE_PATH SHRI_BIND SHRI_HSTS SHRI_REAL_IP \
+        SHRI_COOKIE_PATH SHRI_NET_A SHRI_NET_B
     DC="$(compose_cmd) --env-file $ENV_FILE -p $PROJECT -f $REPO/infra/compose/docker-compose.yml -f $DEPLOY/docker-compose.deploy.yml"
 }
 
@@ -156,7 +233,7 @@ demo_reset() {
     say "Demo accounts (Keycloak, fixed IDs)"
     KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
         KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" DEMO_PASSWORD="$DEMO_PASSWORD" \
-        sh "$REPO/infra/keycloak/reset-demo-users.sh"
+        DEMO_SKIP_AUTH_CODE="$DEMO_SKIP_AUTH_CODE" sh "$REPO/infra/keycloak/reset-demo-users.sh"
     say "Demo data (python -m app.db.seed demo, as shri_migrator)"
     # The seed refuses staging unless SEED_ALLOW_STAGING=1 (its guard against real data, #159).
     # This host holds synthetic data only, and the demo never runs in production (checked above).
@@ -172,10 +249,10 @@ load_codes() {
     # the API image runs as uid 10001, so the volume is handed to it first (the only root step).
     # It runs as the code-loader service: the API has no internet (egress/nginx.conf).
     say "Diagnosis and drug codes (python -m app.db.terminology all, as shri_migrator)"
-    $DC run --rm --no-deps -T -u 0 -v shri-terminology:/terminology --entrypoint chown code-loader 10001 /terminology
+    $DC run --rm --no-deps -T -u 0 -v "$PROJECT-terminology":/terminology --entrypoint chown code-loader 10001 /terminology
     MIGRATION_DATABASE_URL="postgresql+psycopg://shri_migrator:${SHRI_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB}" \
         $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SHRI_TERMINOLOGY_CACHE=/terminology \
-        -v shri-terminology:/terminology --entrypoint python code-loader -m app.db.terminology all
+        -v "$PROJECT-terminology":/terminology --entrypoint python code-loader -m app.db.terminology all
 }
 
 reset() {
@@ -217,7 +294,7 @@ reset() {
     say "Demo accounts (Keycloak, fixed IDs)"
     KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
         KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" DEMO_PASSWORD="$DEMO_PASSWORD" \
-        sh "$REPO/infra/keycloak/reset-demo-users.sh"
+        DEMO_SKIP_AUTH_CODE="$DEMO_SKIP_AUTH_CODE" sh "$REPO/infra/keycloak/reset-demo-users.sh"
     say "Starting the API and the worker"
     $DC up -d api integration-worker
     # Nginx resolves the API's address only when it starts, and a restarted API can come back on
@@ -226,7 +303,7 @@ reset() {
     check
 }
 
-wait_for() {  # url, what
+wait_for() {  # url on our edge, what
     for _ in $(seq 1 90); do
         curl -fsS "${CURL_TLS[@]}" --resolve "$SHRI_HOSTNAME:$SHRI_HTTPS_PORT:127.0.0.1" -o /dev/null "$1" 2>/dev/null && return 0
         sleep 2
@@ -234,49 +311,286 @@ wait_for() {  # url, what
     die "$2 did not answer at $1"
 }
 
+behind_host() { [ -n "${SHRI_SITE_URL:-}" ]; }
+
+# Refuses to start if a port or a network we need belongs to something else on this host (a
+# shared host runs other apps): never stops, moves or reuses what isn't this project's.
+guard_ours() {
+    local port net name subnets
+    for port in "$SHRI_HTTPS_PORT" "${SHRI_KC_ADMIN_PORT:-8081}"; do
+        if ss -Htln "sport = :$port" | grep -q .; then
+            docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Ports}}' \
+                | grep -q ":$port->" || die "port $port is in use by something that isn't $PROJECT: choose another"
+        fi
+    done
+    while read -r name subnets; do
+        case "$name" in "${PROJECT}_"*) continue ;; esac
+        for net in "$SHRI_NET_A" "$SHRI_NET_B"; do
+            case " $subnets " in *" $net.0/24 "*)
+                die "$net.0/24 is the Docker network $name's, not $PROJECT's: set SHRI_NET_A/B to free ones" ;; esac
+        done
+    done < <(docker network ls -q | xargs -r docker network inspect --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{end}}')
+}
+
+sync_clients() {
+    say "Keycloak sign-in addresses: $SHRI_PUBLIC_URL"
+    wait_for "$EDGE_URL/kc/realms/shri-staff/.well-known/openid-configuration" "Keycloak"
+    KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
+        KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" PUBLIC_URL="$SHRI_PUBLIC_URL" \
+        python3 -I "$REPO/infra/keycloak/sync-client-urls.py"
+}
+
 check() {
+    # Our edge, as this host reaches it (127.0.0.1, the paths without the base path), and what it
+    # must say about the public address. Behind a host's Nginx, the public address is checked
+    # too once that host's site is in place.
     local curl=(curl -fsS "${CURL_TLS[@]}" --resolve "$SHRI_HOSTNAME:$SHRI_HTTPS_PORT:127.0.0.1")
-    say "Health check ($SHRI_PUBLIC_URL)"
-    wait_for "$SHRI_PUBLIC_URL/health" "the API"
-    [ "$("${curl[@]}" "$SHRI_PUBLIC_URL/health")" = '{"status":"ok"}' ] || die "/health is not ok"
+    local E="$EDGE_URL" P="$SHRI_PUBLIC_URL" B="$SHRI_BASE_PATH"
+    say "Health check: our edge $E, public address $P"
+    wait_for "$E/health" "the API"
+    [ "$("${curl[@]}" "$E/health")" = '{"status":"ok"}' ] || die "/health is not ok"
     $DC exec -T api python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=5)" \
         || die "/ready failed (database, OpenBao or the operations map)"
-    wait_for "$SHRI_PUBLIC_URL/kc/realms/shri-staff/.well-known/openid-configuration" "Keycloak"
+    wait_for "$E/kc/realms/shri-staff/.well-known/openid-configuration" "Keycloak"
     for realm in shri-staff shri-patients; do
-        "${curl[@]}" "$SHRI_PUBLIC_URL/kc/realms/$realm/.well-known/openid-configuration" \
-            | grep -q "\"issuer\":\"$SHRI_PUBLIC_URL/kc/realms/$realm\"" || die "$realm's issuer is not $SHRI_PUBLIC_URL"
+        "${curl[@]}" "$E/kc/realms/$realm/.well-known/openid-configuration" \
+            | grep -q "\"issuer\":\"$P/kc/realms/$realm\"" || die "$realm's issuer is not $P"
     done
-    local location
-    location="$("${curl[@]}" -o /dev/null -w '%{redirect_url}' "$SHRI_PUBLIC_URL/api/v1/auth/login")"
-    case "$location" in "$SHRI_PUBLIC_URL/kc/realms/shri-staff/protocol/openid-connect/auth?"*) ;;
-        *) die "staff sign-in does not start at Keycloak" ;; esac
-    [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' "$SHRI_PUBLIC_URL/kc/admin/" 2>/dev/null || true)" = 404 ] \
+    # Sign-in: starts at Keycloak's public address, comes back to ours, and Keycloak shows its
+    # sign-in page for it (so the client's redirect URI is the public one); the login cookie
+    # carries this mode's name and path (core/cookies.py).
+    local headers location cookie
+    headers="$("${curl[@]}" -o /dev/null -D - "$E/api/v1/auth/login")"
+    location="$(printf '%s' "$headers" | tr -d '\r' | sed -n 's/^[Ll]ocation: *//p')"
+    case "$location" in "$P/kc/realms/shri-staff/protocol/openid-connect/auth?"*) ;;
+        *) die "staff sign-in does not start at $P/kc" ;; esac
+    case "$location" in *"redirect_uri=$(printf '%s' "$P/api/v1/auth/callback" | sed 's/:/%3A/g; s|/|%2F|g')"*) ;;
+        *) die "staff sign-in does not come back to $P/api/v1/auth/callback" ;; esac
+    if [ "$SHRI_COOKIE_PATH" = / ]; then cookie="__Host-shri_login="; else cookie="__Secure-shri_login="; fi
+    printf '%s' "$headers" | tr -d '\r' | grep -i "^set-cookie: $cookie" | grep -qi "path=$SHRI_COOKIE_PATH\(;\|$\)" \
+        || die "the login cookie is not ${cookie%=} with Path=$SHRI_COOKIE_PATH"
+    "${curl[@]}" "$E${location#"$P"}" | grep -q 'id="kc-form-login"' \
+        || die "Keycloak does not show its sign-in page for $P (the client's redirect URI?)"
+    [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' "$E/kc/admin/" 2>/dev/null || true)" = 404 ] \
         || die "the Keycloak admin console is reachable on the public host"
     # The development sign-in is never reachable from outside: the header is stripped and refused.
-    [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' -H 'X-Dev-User: md' "$SHRI_PUBLIC_URL/api/v1/me" 2>/dev/null || true)" = 401 ] \
+    [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' -H 'X-Dev-User: md' "$E/api/v1/me" 2>/dev/null || true)" = 401 ] \
         || die "a request with X-Dev-User was not refused"
-    # Real patient sign-in is off on servers for now (#148's account-state bug).
-    [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' "$SHRI_PUBLIC_URL/api/v1/portal/auth/login" 2>/dev/null || true)" = 503 ] \
-        || die "patient sign-in is on; it stays off until #148's account-state bug is fixed"
+    # Patient sign-in: off (503) unless SHRI_PATIENT_SIGN_IN=true; when on, it starts at the
+    # patient realm's public address, comes back to the portal callback, and Keycloak shows its
+    # sign-in page for it.
+    if [ "${SHRI_PATIENT_SIGN_IN:-false}" = true ]; then
+        headers="$("${curl[@]}" -o /dev/null -D - "$E/api/v1/portal/auth/login")"
+        location="$(printf '%s' "$headers" | tr -d '\r' | sed -n 's/^[Ll]ocation: *//p')"
+        case "$location" in "$P/kc/realms/shri-patients/protocol/openid-connect/auth?"*) ;;
+            *) die "patient sign-in does not start at $P/kc/realms/shri-patients" ;; esac
+        case "$location" in *"redirect_uri=$(printf '%s' "$P/api/v1/portal/auth/callback" | sed 's/:/%3A/g; s|/|%2F|g')"*) ;;
+            *) die "patient sign-in does not come back to $P/api/v1/portal/auth/callback" ;; esac
+        printf '%s' "$headers" | tr -d '\r' | grep -i "^set-cookie: ${cookie%shri_login=}shri_portal_login=" \
+            | grep -qi "path=$SHRI_COOKIE_PATH\(;\|$\)" \
+            || die "the patient login cookie is not ${cookie%shri_login=}shri_portal_login with Path=$SHRI_COOKIE_PATH"
+        "${curl[@]}" "$E${location#"$P"}" | grep -q 'id="kc-form-login"' \
+            || die "Keycloak does not show the patient sign-in page for $P (the client's redirect URI?)"
+    else
+        [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' "$E/api/v1/portal/auth/login" 2>/dev/null || true)" = 503 ] \
+            || die "patient sign-in answers although SHRI_PATIENT_SIGN_IN is not true"
+    fi
     # No query string, so no download token, ever reaches Nginx's log (D105).
     local probe
     probe="deploycheck$(openssl rand -hex 16)"
-    "${curl[@]}" -o /dev/null "$SHRI_PUBLIC_URL/api/v1/files/00000000-0000-4000-8000-000000000000/content?token=$probe" 2>/dev/null || true
+    "${curl[@]}" -o /dev/null "$E/api/v1/files/00000000-0000-4000-8000-000000000000/content?token=$probe" 2>/dev/null || true
     sleep 1
     if $DC logs --no-log-prefix --since 2m nginx 2>&1 | grep -q "$probe"; then
         die "a query string reached Nginx's access log"
     fi
-    # The screens: the app's page at /, a screen route falls back to it, and the security
-    # headers apply there too (an add_header in a location replaces the server's).
-    local page headers
-    page="$("${curl[@]}" "$SHRI_PUBLIC_URL/")"
-    case "$page" in *'<div id="root"'*) ;; *) die "/ does not serve the screens" ;; esac
-    [ "$("${curl[@]}" "$SHRI_PUBLIC_URL/patients")" = "$page" ] || die "a screen route does not get index.html"
-    headers="$("${curl[@]}" -o /dev/null -D - "$SHRI_PUBLIC_URL/")"
-    for h in "content-security-policy: default-src 'self'" "x-frame-options: DENY" "strict-transport-security:" "cache-control: no-store"; do
-        printf '%s' "$headers" | grep -qi "^$h" || die "/ is missing the header: $h"
+    # The screens: each app's page with its assets under the base path, a screen route falls back
+    # to it, and the security headers apply there too (an add_header in a location replaces the
+    # server's).
+    local page app path
+    for app in "/ /patients $B/assets/" "/clinician/ /clinician/op-queue $B/clinician/assets/"; do
+        set -- $app
+        page="$("${curl[@]}" "$E$1")"
+        case "$page" in *'<div id="root"'*) ;; *) die "$1 does not serve its screens" ;; esac
+        case "$page" in *"\"$3"*) ;; *) die "$1's assets are not under $3" ;; esac
+        [ "$("${curl[@]}" "$E$2")" = "$page" ] || die "the screen route $2 does not get $1's index.html"
+        headers="$("${curl[@]}" -o /dev/null -D - "$E$1")"
+        for h in "content-security-policy: default-src 'self'" "x-frame-options: DENY" \
+                 "strict-transport-security: $SHRI_HSTS" "cache-control: no-store"; do
+            printf '%s' "$headers" | tr -d '\r' | grep -qi "^$h" || die "$1 is missing the header: $h"
+        done
+        # Inline scripts are allowed on Keycloak's pages only, never on ours.
+        ! printf '%s' "$headers" | tr -d '\r' | grep -i "^content-security-policy:" | grep -qi "script-src" \
+            || die "$1's Content-Security-Policy has a script-src: only Keycloak's pages may run inline scripts"
     done
-    say "All checks passed: $SHRI_PUBLIC_URL (release $SHRI_RELEASE, ${SHRI_ENVIRONMENT:-staging}, demo ${SHRI_DEMO:-false})"
+    # Keycloak's sign-in page keeps the security headers, with its own policy (nginx /kc/).
+    headers="$("${curl[@]}" -o /dev/null -D - "$E/kc/realms/shri-staff/account")" || true
+    for h in "content-security-policy: default-src 'self'; script-src 'self' 'unsafe-inline'" \
+             "x-frame-options: DENY" "strict-transport-security: $SHRI_HSTS"; do
+        printf '%s' "$headers" | tr -d '\r' | grep -qi "^$h" || die "Keycloak's pages are missing the header: $h"
+    done
+    printf '%s' "$headers" | tr -d '\r' | grep -i "^content-security-policy:" | grep -q "frame-ancestors 'none'" \
+        || die "Keycloak's pages may be framed (frame-ancestors)"
+    # Without the authenticator code (SHRI_DEMO_SKIP_AUTH_CODE), every sign-in must leave a record:
+    # both realms store their sign-in events.
+    if [ "${SHRI_DEMO_SKIP_AUTH_CODE:-false}" = true ]; then
+        KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
+            KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" DEMO_PASSWORD="$DEMO_PASSWORD" \
+            DEMO_EVENTS_CHECK_ONLY=1 sh "$REPO/infra/keycloak/reset-demo-users.sh" \
+            || die "the authenticator code is skipped, but sign-in events aren't stored in both realms"
+    fi
+    # Nothing of ours listens beyond 127.0.0.1, except our edge on a host of our own.
+    local mapping
+    while read -r mapping; do
+        [ -n "$mapping" ] || continue
+        case "$mapping" in 127.0.0.1:*) continue ;; esac
+        if ! behind_host; then
+            case "$mapping" in "0.0.0.0:$SHRI_HTTPS_PORT->443/tcp"|"[::]:$SHRI_HTTPS_PORT->443/tcp") continue ;; esac
+        fi
+        die "a port of ours is open beyond 127.0.0.1: $mapping"
+    done < <(docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Ports}}' \
+        | tr ',' '\n' | sed 's/^ *//' | grep -- '->' || true)
+    if behind_host; then
+        # The public address, through the host's Nginx and its real certificate (the system's
+        # trust store; CHECK_PUBLIC_CACERT for a test host's own).
+        local pub=(curl -fsS ${CHECK_PUBLIC_CACERT:+--cacert "$CHECK_PUBLIC_CACERT"})
+        if "${pub[@]}" -o /dev/null "$P/health" 2>/dev/null; then
+            [ "$("${pub[@]}" "$P/health")" = '{"status":"ok"}' ] || die "$P/health is not ok"
+            [ "$("${pub[@]}" -o /dev/null -w '%{http_code}' -H 'X-Dev-User: md' "$P/api/v1/me" 2>/dev/null || true)" = 401 ] \
+                || die "a request with X-Dev-User was not refused at $P"
+            "${pub[@]}" "$P/" | grep -q "\"$B/assets/" || die "$P/ does not serve the front office"
+            location="$("${pub[@]}" -o /dev/null -w '%{redirect_url}' "$P/api/v1/auth/login")"
+            "${pub[@]}" "$location" | grep -q 'id="kc-form-login"' || die "sign-in at $P does not reach Keycloak's page"
+            headers="$("${pub[@]}" -o /dev/null -D - "$P/")"
+            for h in "strict-transport-security: max-age=" "content-security-policy: default-src 'self'" "x-frame-options: DENY"; do
+                printf '%s' "$headers" | tr -d '\r' | grep -qi "^$h" || die "$P/ is missing the header: $h"
+            done
+            ! printf '%s' "$headers" | tr -d '\r' | grep -i "^content-security-policy:" | grep -qi "script-src" \
+                || die "$P/ allows inline scripts: only Keycloak's pages may"
+            # Keycloak's page through the host: its own policy, still never framed (host-nginx /kc/).
+            headers="$("${pub[@]}" -o /dev/null -D - "$location")"
+            printf '%s' "$headers" | tr -d '\r' | grep -i "^content-security-policy:" \
+                | grep "script-src 'self' 'unsafe-inline'" | grep -q "frame-ancestors 'none'" \
+                || die "Keycloak's page at $P doesn't get its policy: rerun deploy.sh host-nginx and install the file (README)"
+            printf '%s' "$headers" | tr -d '\r' | grep -qi "^x-frame-options: DENY" \
+                || die "Keycloak's page at $P is missing X-Frame-Options"
+            say "Public address $P: TLS, health, sign-in, headers and the dev header refusal checked"
+        else
+            say "Public address $P not reachable yet: the host's Nginx site isn't in place (deploy.sh host-nginx, README)"
+        fi
+    fi
+    say "All checks passed: $P (release $SHRI_RELEASE, ${SHRI_ENVIRONMENT:-staging}, demo ${SHRI_DEMO:-false})"
+}
+
+# Behind a shared host's Nginx: writes the site file for it into SHRI_STATE_DIR/host-nginx/, with
+# our edge's certificate for the local hop. Someone with sudo installs them once (README).
+host_nginx() {
+    behind_host || die "host-nginx is for SHRI_SITE_URL (behind a shared host's Nginx)"
+    local dir="$SHRI_STATE_DIR/host-nginx" cert key file listen=""
+    mkdir -p "$dir"
+    cp "$TLS_CERT_FILE" "$dir/upstream.crt"
+    cert="${HOST_TLS_CERT:-/etc/letsencrypt/live/$SHRI_HOSTNAME/fullchain.pem}"
+    key="${HOST_TLS_KEY:-/etc/letsencrypt/live/$SHRI_HOSTNAME/privkey.pem}"
+    local proxy
+    proxy="$(cat <<EOF
+        # Shri Health ($PROJECT, release $SHRI_RELEASE): written by deploy.sh host-nginx.
+        proxy_pass https://127.0.0.1:$SHRI_HTTPS_PORT/;
+        proxy_redirect off;               # ours are relative or already public
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;         # our edge's own certificate, checked on this local hop
+        proxy_ssl_name $SHRI_HOSTNAME;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/nginx/shri/$PROJECT-upstream.crt;
+        proxy_set_header Host $SHRI_HOSTNAME;
+        proxy_set_header X-Forwarded-For \$remote_addr;   # replaced, never appended: no spoofing
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Connection "";
+        proxy_set_header X-Dev-User "";               # never from outside (our edge strips them too)
+        proxy_set_header X-Dev-Patient "";
+        proxy_set_header X-Dev-Patient-Clinic "";
+        proxy_buffering off;                          # live updates (Server-Sent Events)
+        proxy_read_timeout 1h;
+        client_max_body_size 25m;
+        # The headers browsers get are this host's, the same as our edge's: HSTS without
+        # includeSubDomains (the host's other names aren't ours), our CSP and the rest.
+        proxy_hide_header Strict-Transport-Security;
+        proxy_hide_header Content-Security-Policy;
+        proxy_hide_header X-Frame-Options;
+        proxy_hide_header X-Content-Type-Options;
+        proxy_hide_header Referrer-Policy;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+EOF
+)"
+    # Keycloak's pages (/kc/) get Keycloak's policy, as our edge gives them (nginx/shri.conf.template:
+    # its inline scripts carry per-request values, so 'unsafe-inline' for them only); the full
+    # path goes through unchanged.
+    local kc_proxy
+    kc_proxy="$(printf '%s\n' "$proxy" \
+        | sed "s|proxy_pass https://127.0.0.1:$SHRI_HTTPS_PORT/;|proxy_pass https://127.0.0.1:$SHRI_HTTPS_PORT/kc/;|; \
+               s|add_header Content-Security-Policy \"default-src 'self'; img-src|add_header Content-Security-Policy \"default-src 'self'; script-src 'self' 'unsafe-inline'; img-src|; \
+               s|frame-ancestors 'none'; base-uri 'self'; form-action 'self'\" always;|frame-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'\" always;|")"
+    printf '%s' "$kc_proxy" | grep -q "proxy_pass https://127.0.0.1:$SHRI_HTTPS_PORT/kc/;" \
+        && printf '%s' "$kc_proxy" | grep -q "script-src 'self' 'unsafe-inline'" \
+        || die "host-nginx: could not build the /kc/ block"
+    [ "$SHRI_PUBLIC_PORT" = 443 ] || listen="$SHRI_PUBLIC_PORT"
+    if [ -z "$SHRI_BASE_PATH" ]; then
+        file="$dir/$SHRI_HOSTNAME.conf"
+        {
+            echo "# $SHRI_HOSTNAME -> Shri Health on 127.0.0.1:$SHRI_HTTPS_PORT (a host of its own; README)."
+            echo "# Install: /etc/nginx/sites-available/$SHRI_HOSTNAME, linked from sites-enabled."
+            [ -n "$listen" ] || cat <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $SHRI_HOSTNAME;
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://\$host\$request_uri; }
+}
+
+EOF
+        } >"$file"
+        cat >>"$file" <<EOF
+server {
+    listen ${listen:-443} ssl http2;
+    listen [::]:${listen:-443} ssl http2;
+    server_name $SHRI_HOSTNAME;
+    ssl_certificate     $cert;
+    ssl_certificate_key $key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    server_tokens off;
+
+    location ^~ /kc/ {
+$kc_proxy
+    }
+
+    location / {
+$proxy
+    }
+}
+EOF
+    else
+        file="$dir/$SHRI_HOSTNAME$(printf '%s' "$SHRI_BASE_PATH" | tr / -).locations.conf"
+        cat >"$file" <<EOF
+# https://$SHRI_HOSTNAME$SHRI_BASE_PATH/ -> Shri Health on 127.0.0.1:$SHRI_HTTPS_PORT (a path under
+# a shared host; README "Two ways to serve it": read its security notes). Install: include this
+# file INSIDE the existing "listen 443 ssl" server block of $SHRI_HOSTNAME, never the port 80 one.
+location = $SHRI_BASE_PATH {
+    return 301 $SHRI_BASE_PATH/;
+}
+
+location ^~ $SHRI_BASE_PATH/kc/ {
+$kc_proxy
+}
+
+location ^~ $SHRI_BASE_PATH/ {
+$proxy
+}
+EOF
+    fi
+    say "Wrote $file and $dir/upstream.crt (README: the one-time sudo commands)"
 }
 
 up() {
@@ -284,6 +598,7 @@ up() {
     if [ -n "$(git -C "$REPO" status --porcelain --untracked-files=no)" ]; then
         die "the checkout has uncommitted changes: deploy a commit"
     fi
+    guard_ours
     say "Images: third-party ones pinned by digest, ours built from this commit"
     $DC pull --quiet --ignore-buildable
     $DC build --quiet postgres keycloak api nginx
@@ -304,19 +619,20 @@ up() {
     $DC up -d --no-deps --force-recreate nginx
     say "Migrations (shri_migrator)"
     migrate
+    sync_clients
     if [ "${SHRI_DEMO:-false}" = true ]; then
-        wait_for "$SHRI_PUBLIC_URL/kc/realms/shri-staff/.well-known/openid-configuration" "Keycloak"
         demo_reset
     fi
     check
 }
 
-[ $# -eq 2 ] || die "usage: deploy.sh {init-env|up|check|reset|down} SETTINGS_FILE"
+[ $# -eq 2 ] || die "usage: deploy.sh {init-env|up|check|reset|down|host-nginx} SETTINGS_FILE"
 case "$1" in
     init-env) init_env "$2" ;;
     up) load_env "$2"; up ;;
     check) load_env "$2"; check ;;
     reset) load_env "$2"; reset ;;
     down) load_env "$2"; $DC down ;;
-    *) die "usage: deploy.sh {init-env|up|check|reset|down} SETTINGS_FILE" ;;
+    host-nginx) load_env "$2"; host_nginx ;;
+    *) die "usage: deploy.sh {init-env|up|check|reset|down|host-nginx} SETTINGS_FILE" ;;
 esac

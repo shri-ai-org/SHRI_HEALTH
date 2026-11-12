@@ -15,7 +15,7 @@ import { motion } from 'framer-motion'
 import { BedDouble, Check, Clock, HeartPulse, OctagonAlert, Stethoscope, Users, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { patient } from '@/data/kit'
+import { patient } from '../../../shri-health/kit'
 
 import { cn } from '../lib/cn'
 import { EASE } from '../lib/motion'
@@ -50,12 +50,16 @@ interface KpiValue {
   sub: string
 }
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 const surname = (id: string) => patient(id).name.split(' ').slice(-1)[0]
 
 function kpis(d: MyDay): KpiValue[] {
   const status = (r: { status?: { label: string } }) => r.status?.label
-  const waiting = d.opd.filter((r) => status(r) === 'Waiting')
-  const inroom = d.opd.filter((r) => status(r) === 'In room')
+  // SHRI_HEALTH (gap 77): with the API a row's label names its step ("Roomed · Exam 2", "With
+  // doctor"), so the cards count by the step; roomed still waits for the doctor.
+  const waiting = REAL_API ? d.opd.filter((r) => r.live === 'Waiting') : d.opd.filter((r) => status(r) === 'Waiting')
+  const inroom = REAL_API ? d.opd.filter((r) => r.live === 'In room') : d.opd.filter((r) => status(r) === 'In room')
   const admitting = d.opd.filter((r) => status(r) === 'Admission in progress')
   const admittedToday = d.inpatients.filter((r) => status(r) === 'Admitted today')
   const icu = d.inpatients.filter((r) => r.place.label === 'ICU')
@@ -63,8 +67,8 @@ function kpis(d: MyDay): KpiValue[] {
   const top = d.criticalResults[0]
   return [
     { id: 'today', label: 'Patients Today', icon: Users, value: d.opd.length, sub: `${d.opd.filter((r) => r.kind?.label === 'New patient').length} new` },
-    { id: 'waiting', label: 'Waiting', icon: Clock, value: waiting.length, sub: waiting[0] ? `${surname(waiting[0].patientId)} next` : 'No one waiting' },
-    { id: 'inroom', label: 'In Room', icon: Stethoscope, value: inroom.length, sub: inroom[0] ? surname(inroom[0].patientId) : 'Room free' },
+    { id: 'waiting', label: REAL_API ? 'Waiting or roomed' : 'Waiting', icon: Clock, value: waiting.length, sub: waiting[0] ? `${surname(waiting[0].patientId)} next` : 'No one waiting' },
+    { id: 'inroom', label: REAL_API ? 'With doctor' : 'In Room', icon: Stethoscope, value: inroom.length, sub: inroom[0] ? surname(inroom[0].patientId) : 'Room free' },
     { id: 'admissions', label: 'Admissions', icon: BedDouble, value: admitting.length + admittedToday.length, sub: `${admitting.length} in progress` },
     { id: 'icu', label: 'ICU', icon: HeartPulse, value: icu.length, sub: icu.length > 0 ? icu.map((r) => r.detail).filter(Boolean).join(' · ') : 'No ICU patients' },
     {
@@ -83,7 +87,8 @@ export function KpiStrip() {
   const patientFilter = useShri((st) => st.patientFilter)
   const applyKpiFilter = useShri((st) => st.applyKpiFilter)
   const openQuickPanel = useShri((st) => st.openQuickPanel)
-  const cards = kpis(d)
+  // With the API only the clinic's own counts: admissions, ICU and critical results are hospital-only (gap 63).
+  const cards = REAL_API ? kpis(d).filter((k) => k.id === 'today' || k.id === 'waiting' || k.id === 'inroom') : kpis(d)
   const row = useRef<HTMLDivElement>(null)
   const [edges, setEdges] = useState({ left: false, right: false })
 

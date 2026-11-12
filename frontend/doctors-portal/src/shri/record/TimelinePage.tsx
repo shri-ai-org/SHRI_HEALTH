@@ -18,9 +18,11 @@ import { useParams } from 'react-router-dom'
 
 import { screen } from '@/atlas/registry'
 import type { TimelineEvent } from '@/data/clinical'
-import { NOW, formatDate, formatDateTime, formatTime } from '@/data/format'
-import { patientByAnyId } from '@/data/kit'
+import { NOW as SAMPLE_NOW, formatDate, formatDateTime } from '@/data/format'
 import { recordTimelineFor } from '@/data/timeline'
+import { NOW as CLINIC_NOW, formatTime } from '../../../shri-health/format'
+import { patientByAnyId } from '../../../shri-health/kit'
+import { timelineFor } from '../../../shri-health/timeline'
 
 import { ScreenFrame } from '../app/ScreenFrame'
 import { ScreenHeader } from '../app/ScreenHeader'
@@ -79,14 +81,18 @@ export function TimelinePage() {
   return <Timeline patientId={p.id} />
 }
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 function Timeline({ patientId }: { patientId: string }) {
+  // SHRI_HEALTH: with the API, the patient's notes, vitals and medications (shri-health/timeline.ts) on the clinic's clock.
+  const NOW = REAL_API ? CLINIC_NOW : SAMPLE_NOW
   const p = patientByAnyId(patientId)!
   const aiActive = useAiActive()
   const [kind, setKind] = useScope<Kind>(KIND_KEYS, 'all', 'kind')
   const [summaryOpen, setSummaryOpen] = useState(false)
   const summary = SUMMARIES[p.id]
 
-  const events = recordTimelineFor(p.id)
+  const events = REAL_API ? timelineFor(p.id) : recordTimelineFor(p.id)
   const filtered = kind === 'all' ? events : events.filter((e) => e.kind === kind)
   const today = formatDate(NOW)
   const todayCount = events.filter((e) => formatDate(e.at) === today).length

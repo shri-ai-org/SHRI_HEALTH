@@ -13,10 +13,12 @@ dir="${2:?output folder, outside the repository}"
 case "$host" in *[!A-Za-z0-9.-]*|'') echo "not a hostname: $host" >&2; exit 1 ;; esac
 mkdir -p "$dir"
 chmod 700 "$dir"
-if [ -f "$dir/server.crt" ] && [ -f "$dir/server.key" ]; then
+if [ -f "$dir/server.crt" ] && [ -f "$dir/server.key" ] \
+    && openssl x509 -in "$dir/server.crt" -noout -checkhost "$host" 2>/dev/null | grep -q "does match"; then
     echo "Certificate already exists in $dir"
     exit 0
 fi
+# None yet, or one for another hostname (the public address changed): a new one for this name.
 umask 077
 openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 397 \
     -subj "/CN=$host" \

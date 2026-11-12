@@ -4,7 +4,13 @@
 # are left alone. HTTPS only: port 80 is not published.
 #   /api/     -> FastAPI          /hooks/ -> FastAPI (partner callbacks, signed)
 #   /health   -> FastAPI          /kc/    -> Keycloak
-#   /         -> the screens (built into the image; any other path gets index.html)
+#   /         -> the front office    /clinician/ -> the doctors' portal (both built into the
+#                image; any other path under each gets that app's index.html)
+# Behind a shared host's Nginx (deploy.sh, SHRI_PUBLIC_URL) the paths here are the same: the host
+# strips its base path (/dep) before it proxies, and the screens are built for it. Then
+# SHRI_PUBLIC_PORT is the public one (443), SHRI_HSTS leaves out includeSubDomains (the host's
+# other names aren't ours) and SHRI_REAL_IP trusts the client address the host's Nginx gives,
+# from the Docker gateway only.
 # /ready and /hooks/keycloak/ are never exposed here.
 
 server_tokens off;
@@ -32,6 +38,8 @@ server {
     server_name ${SHRI_HOSTNAME};
 
     access_log /dev/stdout no_query;
+    absolute_redirect off;  # a redirect stays relative, so the host's base path is kept
+    ${SHRI_REAL_IP}
 
     ssl_certificate     /etc/nginx/certs/server.crt;
     ssl_certificate_key /etc/nginx/certs/server.key;
@@ -39,7 +47,7 @@ server {
     ssl_prefer_server_ciphers off;
     ssl_session_cache shared:SSL:10m;
 
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Strict-Transport-Security "${SHRI_HSTS}" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer" always;
     add_header X-Frame-Options "DENY" always;
@@ -52,12 +60,12 @@ server {
 
     # All proxy headers at server level (never inside a location: nginx would drop these there).
     proxy_http_version 1.1;
-    proxy_set_header Host              $host:${SHRI_HTTPS_PORT};
+    proxy_set_header Host              $host:${SHRI_PUBLIC_PORT};
     proxy_set_header X-Real-IP         $remote_addr;
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header X-Forwarded-Host  $host:${SHRI_HTTPS_PORT};
-    proxy_set_header X-Forwarded-Port  ${SHRI_HTTPS_PORT};
+    proxy_set_header X-Forwarded-Host  $host:${SHRI_PUBLIC_PORT};
+    proxy_set_header X-Forwarded-Port  ${SHRI_PUBLIC_PORT};
     proxy_set_header Upgrade           $http_upgrade;
     proxy_set_header Connection        $connection_upgrade;
     # The development sign-in headers never reach the API from outside (the API refuses them
@@ -124,6 +132,21 @@ server {
     location ^~ /kc/realms/shri-patients/ {
         limit_req zone=portal_sign_in burst=10 nodelay;
         proxy_pass http://keycloak:8080;
+        # Keycloak's own sign-in pages run inline scripts: the light/dark switch (without it a
+        # dark-mode browser shows light labels on the white card), the double-click guard on the
+        # sign-in button and the session check. So script-src allows 'unsafe-inline' here, for
+        # Keycloak's pages only; the app keeps the strict policy above.
+        # Why not hashes: two of those scripts change on every request. login.ftl's
+        # startSessionPolling(...) carries the per-login restart URL (tab_id, client_data), and
+        # checkAuthSession(...) a per-session value, so their sha256 differs each time. Keycloak's
+        # login theme offers no nonce for them. Revisit if a Keycloak upgrade adds one.
+        # A location with its own add_header inherits none of the server's, so the whole set is
+        # repeated.
+        add_header Strict-Transport-Security "${SHRI_HSTS}" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         proxy_buffer_size 128k;
         proxy_buffers 4 256k;
     }
@@ -135,17 +158,59 @@ server {
 
     location /kc/ {
         proxy_pass http://keycloak:8080;
+        # Keycloak's own sign-in pages run inline scripts: the light/dark switch (without it a
+        # dark-mode browser shows light labels on the white card), the double-click guard on the
+        # sign-in button and the session check. So script-src allows 'unsafe-inline' here, for
+        # Keycloak's pages only; the app keeps the strict policy above.
+        # Why not hashes: two of those scripts change on every request. login.ftl's
+        # startSessionPolling(...) carries the per-login restart URL (tab_id, client_data), and
+        # checkAuthSession(...) a per-session value, so their sha256 differs each time. Keycloak's
+        # login theme offers no nonce for them. Revisit if a Keycloak upgrade adds one.
+        # A location with its own add_header inherits none of the server's, so the whole set is
+        # repeated.
+        add_header Strict-Transport-Security "${SHRI_HSTS}" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         proxy_buffer_size 128k;
         proxy_buffers 4 256k;
     }
 
-    # The screens (built into this image, nginx/Dockerfile). Hashed assets are cached for good;
-    # index.html never is, so a new release reaches the browser on the next load. Any other path
-    # is a screen route and gets index.html (the app's router decides).
-    location ^~ /assets/ {
-        root /srv/shri-web;
+    # The screens (built into this image, nginx/Dockerfile): the front office at /, the doctors'
+    # portal at /clinician/. Hashed assets are cached for good; index.html never is, so a new
+    # release reaches the browser on the next load. Any other path under an app is one of its
+    # screen routes and gets that app's index.html (its router decides).
+    location ^~ /clinician/assets/ {
+        alias /srv/shri-web/clinician/assets/;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
-        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Strict-Transport-Security "${SHRI_HSTS}" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        try_files $uri =404;
+    }
+
+    location = /clinician {
+        return 301 clinician/;
+    }
+
+    location ^~ /clinician/ {
+        alias /srv/shri-web/clinician/;
+        add_header Cache-Control "no-store" always;
+        add_header Strict-Transport-Security "${SHRI_HSTS}" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        try_files $uri /clinician/index.html;
+    }
+
+    location ^~ /assets/ {
+        root /srv/shri-web/front-office;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header Strict-Transport-Security "${SHRI_HSTS}" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header X-Frame-Options "DENY" always;
@@ -154,9 +219,9 @@ server {
     }
 
     location / {
-        root /srv/shri-web;
+        root /srv/shri-web/front-office;
         add_header Cache-Control "no-store" always;
-        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Strict-Transport-Security "${SHRI_HSTS}" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header X-Frame-Options "DENY" always;

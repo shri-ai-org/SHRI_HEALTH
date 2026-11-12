@@ -7,7 +7,9 @@ import { useStoreValue } from '../../hooks/useStore'
 import { useToast } from '../../hooks/useToast'
 import { getAppointmentById, getBillsForAppointment, getPatientById, getProviderById, getToday } from '../../domain/selectors'
 import { cancelAppointment } from '../../domain/actions'
-import { billNumberFor, formatRupees } from '../../utils/billing'
+import { cancelOnServer, isServerAppointment } from '../../../shri-health/scheduling'
+import { problemMessage } from '../../../shri-health/client'
+import { billNumberFor, formatMoney } from '../../utils/billing'
 import { dayWithDate } from '../../utils/dates'
 import { cn } from '../../utils/cn'
 import type { UnavailableParty } from '../../types/appointment'
@@ -46,6 +48,7 @@ export function BookingDialog({
   const [by, setBy] = useState<UnavailableParty | null>(presetBy)
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   if (!appointmentId || !appointment) return null
 
@@ -54,17 +57,22 @@ export function BookingDialog({
   const billNumbers = bills.filter((bill) => bill.paidAmount > 0).map(billNumberFor).join(', ')
   const when = `${dayWithDate(appointment.date, today)} · ${formatTime(appointment.slot)}`
 
-  function confirmCancel() {
-    if (!by) return
+  async function confirmCancel() {
+    if (!by || busy) return
     setError(null)
+    setBusy(true)
     try {
-      cancelAppointment({ appointmentId: appointment!.appointmentId, by, note })
+      // A SHRI_HEALTH booking is cancelled on the server, which has no bill to refund.
+      if (isServerAppointment(appointment!.appointmentId)) await cancelOnServer(appointment!.appointmentId, by, note)
+      else cancelAppointment({ appointmentId: appointment!.appointmentId, by, note })
       notify('Booking cancelled', {
-        detail: by === 'Doctor' && paid > 0 ? `${formatRupees(paid)} refunded to ${methods}` : paid > 0 ? 'Fee kept — the patient cancelled' : undefined,
+        detail: by === 'Doctor' && paid > 0 ? `${formatMoney(paid)} refunded to ${methods}` : paid > 0 ? 'Fee kept — the patient cancelled' : undefined,
       })
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(problemMessage(err))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -122,15 +130,15 @@ export function BookingDialog({
               {paid === 0
                 ? 'Nothing was paid on this booking.'
                 : by === 'Doctor'
-                  ? `The billing counter refunds the ${formatRupees(paid)} paid by ${methods} in full (${billNumbers}).`
-                  : `The patient cancelled — the ${formatRupees(paid)} fee is kept.`}
+                  ? `The billing counter refunds the ${formatMoney(paid)} paid by ${methods} in full (${billNumbers}).`
+                  : `The patient cancelled — the ${formatMoney(paid)} fee is kept.`}
             </p>
           ) : null}
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="secondary" onClick={onClose}>
               Keep booking
             </Button>
-            <Button variant="danger" disabled={!by} onClick={confirmCancel}>
+            <Button variant="danger" disabled={!by || busy} onClick={() => void confirmCancel()}>
               Cancel booking
             </Button>
           </div>

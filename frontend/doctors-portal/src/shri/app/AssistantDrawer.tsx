@@ -26,6 +26,11 @@ import { useShri } from '../state/store'
 import { useIsPhone } from '../ui/frames'
 import { useFocusTrap } from '../ui/hooks'
 import { AssistantIcon } from '../ui/AssistantIcon'
+import { RealAssistantBody } from '../assistant/RealAssistant'
+import { useAiFeatureUp } from '../../../shri-health/aiStatus'
+
+/** With the SHRI_HEALTH API the panel asks the chart (RealAssistant), never the sample's answers. */
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 import { Icon, RoundButton } from '../ui/primitives'
 
 interface Turn {
@@ -39,7 +44,8 @@ export function AssistantDrawer() {
   const aiOn = useAiActive()
   const { pathname } = useLocation()
   // Moving onto a screen that is not offered the assistant (a wall, a modal, an assistant screen) puts the panel away.
-  const open = useShri((s) => s.assistantOpen) && aiOn && assistantOfferedAt(pathname)
+  const qaUp = useAiFeatureUp('chart-qa')
+  const open = useShri((s) => s.assistantOpen) && aiOn && (!REAL_API || qaUp) && assistantOfferedAt(pathname)
   const close = useShri((s) => s.closeAssistant)
   return (
     <AnimatePresence>
@@ -99,11 +105,15 @@ function Panel({ onClose }: { onClose: () => void }) {
         <span className="min-w-0 flex-1">
           <span className="block text-[15px] font-medium text-sh-text">Assistant</span>
           {/* The scope of every answer: the Z3 patient and the calling screen. */}
-          <span className="block truncate text-[12px] text-sh-text-3">{p ? `${p.name} · ${context.spec?.name ?? 'this screen'}` : (context.spec?.name ?? 'This screen')}</span>
+          <span className="block truncate text-[12px] text-sh-text-3">{REAL_API ? 'Answers from this patient’s chart, with sources' : p ? `${p.name} · ${context.spec?.name ?? 'this screen'}` : (context.spec?.name ?? 'This screen')}</span>
         </span>
         <RoundButton icon={X} label="Close assistant" size={38} onClick={onClose} />
       </header>
 
+      {REAL_API ? (
+        <RealAssistantBody onSourceOpened={phone ? onClose : undefined} />
+      ) : (
+      <>
       <div className="sh-scrollbar min-h-0 flex-1 overflow-y-auto px-[18px] pb-[12px]">
         {/* "A blank chat box on a clinical screen gets no use" — suggestions for starting, and only for starting. */}
         {turns.length === 0 && suggestions.length > 0 && (
@@ -165,6 +175,8 @@ function Panel({ onClose }: { onClose: () => void }) {
           <RoundButton icon={ArrowUp} label="Ask" variant="primary" size={36} iconSize={16} strokeWidth={2.2} type="submit" disabled={text.trim().length < 3} />
         </div>
       </form>
+      </>
+      )}
     </motion.div>
   )
 }

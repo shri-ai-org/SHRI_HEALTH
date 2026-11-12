@@ -15,6 +15,7 @@ import { useId, useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { PATIENTS, type Patient } from '@/data/kit'
+import { usePatientMatches } from '../../../shri-health/search'
 
 import { P } from '../app/paths'
 import { cn } from '../lib/cn'
@@ -24,15 +25,11 @@ import { useModalFrame } from '../ui/frames'
 import { useFocusTrap } from '../ui/hooks'
 import { Avatar, Icon } from '../ui/primitives'
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 export function PatientSearch() {
   const open = useShri((s) => s.searchOpen)
   return <AnimatePresence>{open && <Palette key="search" />}</AnimatePresence>
-}
-
-function matches(q: string): Patient[] {
-  const needle = q.trim().toLowerCase()
-  if (!needle) return PATIENTS.slice(0, 6)
-  return PATIENTS.filter((p) => p.name.toLowerCase().includes(needle) || p.uhid.toLowerCase().includes(needle)).slice(0, 8)
 }
 
 function Palette() {
@@ -45,12 +42,12 @@ function Palette() {
   const [active, setActive] = useState(0)
 
   const typed = q.trim() !== ''
-  const rows = matches(q)
+  const rows = usePatientMatches(q)
   const hi = Math.min(active, Math.max(rows.length - 1, 0))
 
   function open(p: Patient) {
     close()
-    navigate(P.record(p.uhid))
+    navigate(P.record(p.id))
   }
   function onKey(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'ArrowDown') {
@@ -94,7 +91,8 @@ function Palette() {
             aria-autocomplete="list"
             aria-label="Patient search"
             aria-describedby={`${listId}-hint`}
-            placeholder="R. Lakshmanan · ISH-0044051"
+            // SHRI_HEALTH: no sample patient as the hint with the API (U.S. market, synthetic data only).
+            placeholder={REAL_API ? 'Search patients' : 'R. Lakshmanan · ISH-0044051'}
             autoComplete="off"
             spellCheck={false}
             className="h-[52px] w-full rounded-full bg-sh-control pl-[48px] pr-[18px] text-[14px] text-sh-text placeholder:text-sh-muted"
@@ -102,20 +100,24 @@ function Palette() {
         </div>
 
         <p id={`${listId}-hint`} className="mt-[10px] px-[12px] text-[12px] text-sh-text-3">
-          Name or UHID · type / from anywhere
+          {REAL_API ? 'Name, MRN, phone or date of birth' : 'Name or UHID'} · type / from anywhere
         </p>
-        <p className="mt-[10px] px-[12px] text-[11px] font-semibold uppercase tracking-[0.08em] text-sh-text-3">{typed ? 'Results' : 'Patients'}</p>
+        <p className="mt-[10px] px-[12px] text-[11px] font-semibold uppercase tracking-[0.08em] text-sh-text-3">{typed ? 'Results' : REAL_API ? 'Today and recent' : 'Patients'}</p>
 
         {rows.length === 0 ? (
           <p className="px-[12px] pb-[8px] pt-[10px] text-[13px] text-sh-text-2">
-            Nothing matched. Only the {PATIENTS.length} patients in the sample-data kit exist here — the atlas forbids inventing another.
+            {REAL_API
+              ? typed
+                ? 'Nothing matched. Try the full last name with the first name, or the MRN, phone or date of birth.'
+                : 'No patients today or in the last 31 days. Search by name, MRN, phone or date of birth.'
+              : `Nothing matched. Only the ${PATIENTS.length} patients in the sample-data kit exist here — the atlas forbids inventing another.`}
           </p>
         ) : (
           <ul id={listId} role="listbox" aria-label={typed ? 'Results' : 'Patients'} className="mt-[6px] flex flex-col gap-[2px]">
             {rows.map((p, i) => (
               <li key={p.id} id={`${listId}-${i}`} role="option" aria-selected={i === hi}>
                 <Link
-                  to={P.record(p.uhid)}
+                  to={P.record(p.id)}
                   onClick={close}
                   onMouseEnter={() => setActive(i)}
                   className={cn(

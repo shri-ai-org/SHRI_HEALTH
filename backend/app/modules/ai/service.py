@@ -82,7 +82,7 @@ RATIONALE = ("Drafted by AI from the visit transcript. Review, edit or reject ev
 DICTATION_RATIONALE = ("Drafted by AI from the clinician's dictation. Review, edit or reject "
                        "every section before signing.")
 #: The prompt the gateway uses until a clinic publishes its own: no prompt_template row.
-DEFAULT_PROMPT = PromptRef(id=None, code=NOTE_DRAFT_PROMPT, version=2,
+DEFAULT_PROMPT = PromptRef(id=None, code=NOTE_DRAFT_PROMPT, version=3,
                            feature=AIFeature.AMBIENT_DOCUMENTATION, template=NOTE_DRAFT_V2,
                            output_schema=None)
 NO_SOURCE_RATIONALE = ("Drafted by AI, but no transcript segment shares its words: check it "
@@ -173,7 +173,10 @@ def keep_draft(raw: Any, schema: dict[str, Any], request: NoteDraftRequest
             dropped.append(f"/sections/{i}")
             continue
         seen.add(s["code"])
-        sections.append({"code": s["code"], "text": s["text"].strip()})
+        # A section the visit gave nothing for stays blank: an older prompt's "Not discussed"
+        # (or a model that writes it anyway) is not drafted text.
+        text = s["text"].strip()
+        sections.append({"code": s["code"], "text": text if _said(text) else ""})
     if not any(s["text"] for s in sections):
         return None, dropped
     return {"sections": sections, "unknowns": list(kept.get("unknowns", []))}, dropped

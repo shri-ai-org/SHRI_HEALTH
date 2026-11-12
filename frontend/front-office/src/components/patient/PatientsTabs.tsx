@@ -1,4 +1,8 @@
+import { REAL_API } from '../../../shri-health/client'
+import { useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
+import { loadAppointments, loadRecentPatients } from '../../../shri-health/scheduling'
+import { todayKey } from '../../domain/time'
 import type { LucideIcon } from 'lucide-react'
 import { BedDouble, CalendarClock, Users } from 'lucide-react'
 import { useStoreValue } from '../../hooks/useStore'
@@ -17,12 +21,26 @@ export function PatientsTabs() {
   const now = useNow(60000)
   const all = useStoreValue(getPatientRows).length
   const outpatients = useStoreValue(getOutpatients, now, 'today', false, '').counts.today
+  // SHRI_HEALTH: today's bookings on every Patients tab, as the Dashboard and Outpatients read them,
+  // so the counts are right on a fresh open (the tabs counted only what another page had loaded).
+  const today = todayKey(new Date(now))
+  useEffect(() => {
+    if (REAL_API) {
+      void loadAppointments(today, 1).catch(() => undefined)
+      // Recent patients: booked here in the last 31 days (D65 allows the schedule views).
+      void loadRecentPatients().catch(() => undefined)
+    }
+  }, [today])
   const inpatients = useStoreValue(getInpatientRows, now).length
 
   const tabs: { to: string; label: string; icon: LucideIcon; count: number; end?: boolean; title: string }[] = [
-    { to: '/patients', label: 'All patients', icon: Users, count: all, end: true, title: 'Every registered patient' },
+    // SHRI_HEALTH: there is no all-patients list (D65); the tab holds the patients this session has
+    // read (today's bookings, searches, registrations), and Inpatients is India's (2026-11-05).
+    REAL_API
+      ? { to: '/patients', label: 'Recent patients', icon: Users, count: all, end: true, title: 'Booked here in the last 31 days, or opened in this session (no all-patients list, D65)' }
+      : { to: '/patients', label: 'All patients', icon: Users, count: all, end: true, title: 'Every registered patient' },
     { to: '/patients/outpatients', label: 'Outpatients', icon: CalendarClock, count: outpatients, title: 'Booked for today' },
-    { to: '/patients/inpatients', label: 'Inpatients', icon: BedDouble, count: inpatients, title: 'Admitted now' },
+    ...(REAL_API ? [] : [{ to: '/patients/inpatients', label: 'Inpatients', icon: BedDouble, count: inpatients, title: 'Admitted now' }]),
   ]
 
   return (

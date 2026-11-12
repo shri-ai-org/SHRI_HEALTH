@@ -8,7 +8,7 @@
  * surface, the low-confidence ones folded, the rationale behind a Why.
  */
 
-import { BedDouble, ClipboardList, Pill as PillIcon, SearchX } from 'lucide-react'
+import { BedDouble, CalendarPlus, ClipboardList, Pill as PillIcon, SearchX, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -16,15 +16,17 @@ import { screen } from '@/atlas/registry'
 import { canAdmit } from '@/data/admissions'
 import { noteSeedsFor } from '@/data/clinical'
 import { NOW, formatTime } from '@/data/format'
-import { patient } from '@/data/kit'
+import { patient } from '../../../shri-health/kit'
 import { useAdmissions } from '@/store/admissions'
-import { useClinical } from '@/store/clinical'
+import { useClinical } from '../../../shri-health/clinical'
+import { aiDownReason, useAiFeatureUp, useAiStatus } from '../../../shri-health/aiStatus'
 import { useUI } from '@/store/ui'
 
 import { useMayOpenPath } from '../app/landing'
 import { ScreenHeader } from '../app/ScreenHeader'
 import { differentialsFor, type Differential } from '../logic/differentials'
-import { maybeEncounter } from '../logic/encounter'
+import { maybeEncounter } from '../../../shri-health/encounter'
+import { hasPermission } from '../../../shri-health/opd'
 import { RecordDoors } from '../record/RecordDoors'
 import { useOpd } from '../state/opd'
 import { useShri } from '../state/store'
@@ -35,6 +37,14 @@ import { Card, Pill } from '../ui/primitives'
 
 import { AmbientScribe } from './AmbientScribe'
 import { NoteAuthoring } from './NoteAuthoring'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/**
+ * "Draft with AI" and the ambient scribe: on only with VITE_FEATURE_AI_NOTE_DRAFT=on.
+ * Off until the AI endpoint is ready; the four SOAP boxes keep the browser's own dictation.
+ */
+const AI_NOTE_DRAFT_ON = import.meta.env.VITE_FEATURE_AI_NOTE_DRAFT === 'on'
 
 export function ConsultationPage() {
   const { id } = useParams()
@@ -50,7 +60,10 @@ export function NoSuchEncounter({ id, screenId }: { id?: string; screenId: strin
     <div data-screen-id={spec.id} className="flex flex-col gap-[16px] pb-[8px]">
       <ScreenHeader spec={spec} sub="No encounter at this address." />
       <Card className="max-w-[640px]">
-        <EmptyState icon={SearchX} why={`There is no encounter with the id “${id ?? ''}” in this sample record. Open the patient's record, or search with /.`} />
+        <EmptyState
+          icon={SearchX}
+          why={REAL_API ? 'There is no visit with this ID. Open the patient’s record, or search with /.' : `There is no encounter with the id “${id ?? ''}” in this sample record. Open the patient's record, or search with /.`}
+        />
       </Card>
     </div>
   )
@@ -64,6 +77,10 @@ function Consultation({ encounterId }: { encounterId: string }) {
   const admissions = useAdmissions((s) => s.admissions)
   const openAdmit = useShri((s) => s.openAdmit)
   const [scribeOpen, setScribeOpen] = useState(false)
+  /** With the API: an AI draft queued or running on the server; the page says so until it lands. */
+  const [drafting, setDrafting] = useState(false)
+  /** With the API: false once AI drafting was refused (AI off, unavailable, over budget). */
+  const draftUp = useAiFeatureUp('note-draft')
 
   const enc = maybeEncounter(encounterId)!
   const p = patient(enc.patientId)
@@ -76,6 +93,8 @@ function Consultation({ encounterId }: { encounterId: string }) {
   const differentials = differentialsFor(p.id)
   const rx = `/encounter/${enc.id}/rx`
   const order = `/encounter/${enc.id}/orders/new`
+  // Vimal's follow-up request screen (#272, S-06-19); shown once that route exists.
+  const followUp = `/encounter/${enc.id}/follow-up`
 
   return (
     <>
@@ -86,7 +105,7 @@ function Consultation({ encounterId }: { encounterId: string }) {
         seeds={seeds}
         scribeModel="scribe v5.1.2"
         onSigned={() => navigate('/')}
-        onDraftAll={() => setScribeOpen(true)}
+        onDraftAll={AI_NOTE_DRAFT_ON && !drafting && (!REAL_API || (draftUp && hasPermission('note-drafts:create'))) ? () => setScribeOpen(true) : undefined}
         headerActions={
           <>
             {may(rx) && (
@@ -94,12 +113,18 @@ function Consultation({ encounterId }: { encounterId: string }) {
                 Prescribe
               </Pill>
             )}
-            {may(order) && (
+            {may(followUp) && (
+              <Pill variant="card" size="xl" icon={CalendarPlus} iconSize={17} onClick={() => navigate(followUp)}>
+                Follow-up
+              </Pill>
+            )}
+            {/* SHRI_HEALTH: orders and admissions have no service yet (orders/results B5, inpatients), so not with SHRI_API=real. */}
+            {!REAL_API && may(order) && (
               <Pill variant="card" size="xl" icon={ClipboardList} iconSize={17} onClick={() => navigate(order)}>
                 Order
               </Pill>
             )}
-            {canAdmit(p, admissions) && (
+            {!REAL_API && canAdmit(p, admissions) && (
               <Pill variant="card" size="xl" icon={BedDouble} iconSize={17} onClick={() => openAdmit(p.id)}>
                 Admit
               </Pill>
@@ -107,36 +132,75 @@ function Consultation({ encounterId }: { encounterId: string }) {
           </>
         }
         // Last time's results, reports and scans sit one tap from the consultation.
-        banner={<RecordDoors patient={p} />}
-        rail={<DifferentialRail encounterId={enc.id} patientId={p.id} />}
+        banner={
+          <>
+            {drafting && (
+              <p role="status" className="mb-[10px] flex items-center gap-[8px] text-[14px] font-medium text-sh-ai">
+                <Sparkles size={15} aria-hidden />
+                Drafting… the AI is writing the note from your dictation.
+              </p>
+            )}
+            <RecordDoors patient={p} />
+          </>
+        }
+        // SHRI_HEALTH: the Differential panel is the sample's suggestions, with no service behind it: hidden with SHRI_API=real.
+        rail={REAL_API ? undefined : <DifferentialRail encounterId={enc.id} patientId={p.id} />}
         railTitle="Differential"
-        railBadge={differentials.length || undefined}
+        railBadge={REAL_API ? undefined : differentials.length || undefined}
       />
 
-      {/* S-06-04, as the overlay it is specified to be. */}
-      <AmbientScribe
-        open={scribeOpen}
-        patientId={p.id}
-        patientName={p.name}
-        sections={seeds}
-        onClose={() => setScribeOpen(false)}
-        onFinish={(keys, drafts) => {
-          setScribeOpen(false)
-          const drafted = applyScribeDraft(enc.id, keys, drafts)
-          const kept = keys.length - drafted.length
-          toast({
-            tone: 'info',
-            title:
-              drafted.length === 0
-                ? 'Nothing to draft — every section already has your words'
-                : `${drafted.length === 4 ? 'Four' : drafted.length} ${drafted.length === 1 ? 'section' : 'sections'} drafted`,
-            detail:
-              drafted.length === 0
-                ? 'The scribe never overwrites what you dictated or typed.'
-                : `Each one needs Accept, Edit or Reject before Sign will enable.${kept > 0 ? ` ${kept} you had already written ${kept === 1 ? 'was' : 'were'} left as yours.` : ''}`,
-          })
-        }}
-      />
+      {/* S-06-04, as the overlay it is specified to be; behind AI_NOTE_DRAFT_ON. */}
+      {AI_NOTE_DRAFT_ON && (
+        <AmbientScribe
+          open={scribeOpen}
+          patientId={p.id}
+          patientName={p.name}
+          sections={seeds}
+          onClose={() => setScribeOpen(false)}
+          onFinish={(keys, drafts, transcript) => {
+            setScribeOpen(false)
+            if (REAL_API) {
+              // AI-01 on the server: the draft lands in the note, each section to Accept, Edit or Reject.
+              // A queued or running draft is polled until it finishes (never shown as unavailable).
+              setDrafting(true)
+              useClinical
+                .getState()
+                .draftWithAi(enc.id, transcript)
+                .then((done) =>
+                  toast({
+                    tone: 'info',
+                    title: done.length === 0 ? 'The AI drafted nothing to review' : `${done.length === 4 ? 'Four' : done.length} ${done.length === 1 ? 'section' : 'sections'} drafted by AI`,
+                    detail: 'Each AI-generated section needs Accept, Edit or Reject before Sign will enable. Nothing is signed for you.',
+                  }),
+                )
+                .catch((error: unknown) => {
+                  const down = aiDownReason(error)
+                  if (down) useAiStatus.getState().markDown('note-draft', down)
+                  toast({
+                    tone: 'caution',
+                    title: down ? 'AI drafting is unavailable' : 'The AI draft did not arrive',
+                    detail: `${down ?? (error instanceof Error ? error.message : '')} Dictate or type each section instead.`.trim(),
+                  })
+                })
+                .finally(() => setDrafting(false))
+              return
+            }
+            const drafted = applyScribeDraft(enc.id, keys, drafts)
+            const kept = keys.length - drafted.length
+            toast({
+              tone: 'info',
+              title:
+                drafted.length === 0
+                  ? 'Nothing to draft — every section already has your words'
+                  : `${drafted.length === 4 ? 'Four' : drafted.length} ${drafted.length === 1 ? 'section' : 'sections'} drafted`,
+              detail:
+                drafted.length === 0
+                  ? 'The scribe never overwrites what you dictated or typed.'
+                  : `Each one needs Accept, Edit or Reject before Sign will enable.${kept > 0 ? ` ${kept} you had already written ${kept === 1 ? 'was' : 'were'} left as yours.` : ''}`,
+            })
+          }}
+        />
+      )}
     </>
   )
 }

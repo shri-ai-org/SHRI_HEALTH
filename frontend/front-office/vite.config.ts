@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, type Plugin } from 'vite'
 
+import { realApiProxy, realApiSettings, sessionStub } from '../dev/realApi.ts'
+
 // ─── Care Entry = Front Office + Patient Self-Registration, ONE app ──────────
 // The patient self-registration portal keeps its own source in the sibling
 // `patient-self-registration/` workspace and is NOT copied here. It is served
@@ -62,19 +64,26 @@ function buildCommit(): string {
   }
 }
 
+// SHRI_HEALTH: `SHRI_API=real npm run dev` sends /api/v1 to the local stack, signed in as
+// SHRI_DEV_USER through X-Dev-User (../dev/realApi.ts, #109).
+const realApi = realApiSettings(process.env)
+
 // https://vite.dev/config/
 export default defineConfig({
   // Deployment sub-path, e.g. BASE_PATH=/dev/care-entry/ (defaults to the site root)
   base: process.env.BASE_PATH ?? '/',
-  plugins: [react(), tailwindcss(), portalRoute()],
+  plugins: [react(), tailwindcss(), portalRoute(), ...(realApi?.stubSessions ? [sessionStub(realApi)] : [])],
   // SHRI_HEALTH: the screens import react-router-dom 7; SHRI_HEALTH ships react-router 8.
   resolve: { alias: { 'react-router-dom': 'react-router' } },
   define: {
     __BUILD_STAMP__: JSON.stringify(buildStamp(new Date())),
     __BUILD_COMMIT__: JSON.stringify(buildCommit()),
+    // SHRI_API=real: the screens show only what the SHRI_HEALTH API holds (no sample data), in the
+    // clinic's time zone and currency (shri-health/client.ts REAL_API).
+    __SHRI_REAL_API__: JSON.stringify(Boolean(realApi)),
   },
   // Listen on all network interfaces so colleagues on the same LAN can open the app
-  server: { host: true },
+  server: { host: true, ...(realApi ? { proxy: { '/api/v1': realApiProxy(realApi) } } : {}) },
   preview: { host: true },
   build: {
     // Fonts are never inlined as data: URLs, so a strict CSP `font-src 'self'`

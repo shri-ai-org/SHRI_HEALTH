@@ -13,7 +13,8 @@ import { UserX } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { screen, type ScreenSpec } from '@/atlas/registry'
-import { patientByAnyId, type Patient } from '@/data/kit'
+import type { Patient } from '@/data/kit'
+import { patientByAnyId } from '../../../shri-health/kit'
 
 import { SECTION_META, useDefaultSubheading, type RecordSection } from '../logic/record'
 import { useForcedState } from '../state/ai'

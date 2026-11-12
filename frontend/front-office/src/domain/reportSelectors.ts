@@ -7,7 +7,7 @@
 // event feed — everything below works on ActivityEvent only.
 import type { AppState } from '../types/store'
 import { isBillDue } from '../utils/billing'
-import { dayStartTimestamp, formatHour, slotToTimestamp, todayKey } from './time'
+import { dayStartTimestamp, formatHour, slotToTimestamp, todayKey, calendarDate, minutesOfDay } from './time'
 import { addDaysToKey as addDaysKey } from './selectors'
 import type { IconTone } from '../utils/toneHex'
 
@@ -371,10 +371,10 @@ export function activityTrend<T extends { timestamp: number }>(
   weight: (event: T) => number = () => 1,
 ): TrendPoint[] {
   if (scale === 'hour') {
-    const hours = events.map((e) => new Date(e.timestamp).getHours())
+    const hours = events.map((e) => Math.floor(minutesOfDay(e.timestamp) / 60))
     const first = Math.min(8, ...hours)
     const isToday = range.from === todayKey(new Date(now))
-    const last = isToday ? Math.max(first, new Date(now).getHours(), ...hours) : Math.max(20, ...hours)
+    const last = isToday ? Math.max(first, Math.floor(minutesOfDay(now) / 60), ...hours) : Math.max(20, ...hours)
     const points: TrendPoint[] = []
     for (let h = first; h <= last; h += 1) {
       points.push({ key: String(h), label: formatHour(h), value: events.reduce((sum, e, i) => (hours[i] === h ? sum + weight(e) : sum), 0) })
@@ -390,7 +390,7 @@ export function activityTrend<T extends { timestamp: number }>(
   const points: TrendPoint[] = []
   for (let i = 0; i < total; i += 1) {
     const key = addDaysKey(range.from, i)
-    const date = new Date(dayStartTimestamp(key))
+    const date = calendarDate(key)
     const label = weekdayLabels ? WEEKDAY[date.getDay()] : `${MONTH[date.getMonth()]} ${date.getDate()}`
     points.push({ key, label, value: byDay.get(key) ?? 0 })
   }

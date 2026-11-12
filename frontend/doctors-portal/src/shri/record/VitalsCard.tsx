@@ -13,6 +13,8 @@ import { VITALS } from '@/data/clinical'
 import { formatTime } from '@/data/format'
 import type { Patient } from '@/data/kit'
 import { vitalsHistoryFor } from '@/data/vitals-history'
+import { clinicNow, formatTime as clinicTime } from '../../../shri-health/format'
+import { vitalsFor } from '../../../shri-health/vitals'
 
 import { cn } from '../lib/cn'
 import { EmptyState } from '../ui/EmptyState'
@@ -27,14 +29,23 @@ function split(value: string): { number: string; rest: string } {
   return m ? { number: m[1], rest: m[2] } : { number: value, rest: '' }
 }
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/** "2:25 PM" today, else "Nov 3, 2:25 PM", on the clinic's clock. */
+function usCharted(at: Date): string {
+  const today = at.toDateString() === clinicNow().toDateString()
+  return today ? clinicTime(at) : `${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(at)}, ${clinicTime(at)}`
+}
+
 export function VitalsCard({ patient: p, className }: { patient: Patient; className?: string }) {
-  const rows = VITALS[p.id] ?? []
-  const history = vitalsHistoryFor(p.id)
+  // SHRI_HEALTH: with the API, the patient's recorded vitals (GET /patients/{id}/vitals); no sample readings.
+  const { rows, history } = REAL_API ? vitalsFor(p.id) : { rows: VITALS[p.id] ?? [], history: vitalsHistoryFor(p.id) }
+  const charted = rows.reduce<Date | undefined>((latest, r) => (!latest || r.at > latest ? r.at : latest), undefined)
   return (
     <Card
       titleSize="sm"
       title="Vitals"
-      right={rows[0] && <span className="text-[12px] tabular-nums text-sh-text-3">charted {formatTime(rows[0].at)}</span>}
+      right={charted && <span className="text-[12px] tabular-nums text-sh-text-3">charted {REAL_API ? usCharted(charted) : formatTime(charted)}</span>}
       className={className}
     >
       {rows.length === 0 ? (

@@ -63,6 +63,15 @@ def _payer(p: Practice) -> str:
     return str(payer)
 
 
+def _pharmacy(p: Practice) -> str:
+    """A pharmacy in the platform directory (synthetic; the directory has no clinic)."""
+    pharmacy = uuid.uuid4()
+    _sql(p, "INSERT INTO admin.pharmacy (id, ncpdp_id, name, is_mail_order, is_active) "
+         "VALUES (:i, :n, 'Scope Pharmacy (synthetic)', false, true)", i=pharmacy,
+         n=f"{pharmacy.int % 10**7:07d}")
+    return str(pharmacy)
+
+
 def _pre_registration(p: Practice) -> str:
     """A pending request in clinic A's queue, as the public form leaves it (details are opaque
     here: nothing below decrypts them)."""
@@ -124,6 +133,8 @@ def _rows(client: Any, p: Practice,  # noqa: F811
         Row("getPatient", "fd-b", "GET", pat, 404),
         Row("updatePatient", "fd-b", "PATCH", pat, 404, json={"preferredName": "Kai"},
             headers={"If-Match": patient_tag, **MERGE}),
+        Row("setPreferredPharmacy", "fd-b", "PUT", f"{pat}/preferred-pharmacy", 404,
+            json={"pharmacyId": _pharmacy(p)}, headers={"If-Match": patient_tag}),
         Row("getPatientSummaries", "fd-b", "POST", f"{API}/patients/summaries", 200,
             json={"patientIds": [kaia, marcus]}, hidden=(kaia, marcus),
             note="another clinic's IDs are left out (D54)"),

@@ -314,6 +314,12 @@ paths:
     $ref: 'modules/ai.yaml#/paths/~1ai~1chart-summaries'
   /ai/chart-summaries/{chartSummaryId}:
     $ref: 'modules/ai.yaml#/paths/~1ai~1chart-summaries~1{chartSummaryId}'
+  /ai/chart-questions:
+    $ref: 'modules/ai.yaml#/paths/~1ai~1chart-questions'
+  /ai/chart-answers/{chartAnswerId}:
+    $ref: 'modules/ai.yaml#/paths/~1ai~1chart-answers~1{chartAnswerId}'
+  /ai/suggested-questions:
+    $ref: 'modules/ai.yaml#/paths/~1ai~1suggested-questions'
   /ai/suggestions/{suggestionId}/decision:
     $ref: 'modules/ai.yaml#/paths/~1ai~1suggestions~1{suggestionId}~1decision'
   /ai-settings:
@@ -372,6 +378,8 @@ paths:
     $ref: 'modules/medications.yaml#/paths/~1pharmacies'
   /patients/{patientId}/medications:
     $ref: 'modules/medications.yaml#/paths/~1patients~1{patientId}~1medications'
+  /encounters/{encounterId}/prescriptions:
+    $ref: 'modules/medications.yaml#/paths/~1encounters~1{encounterId}~1prescriptions'
   /prescriptions:
     $ref: 'modules/medications.yaml#/paths/~1prescriptions'
   /prescriptions/{prescriptionId}:

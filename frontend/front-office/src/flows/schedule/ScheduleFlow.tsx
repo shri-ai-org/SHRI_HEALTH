@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Building2, CalendarPlus, Video } from 'lucide-react'
 import { FlowSheet } from '../../components/flow/FlowSheet'
 import { PatientSearch } from '../../components/patient/PatientSearch'
@@ -21,7 +21,9 @@ import {
   getToday,
 } from '../../domain/selectors'
 import { bookAppointment, rebookUnpaidAppointment } from '../../domain/actions'
-import { formatRupees, sumItems } from '../../utils/billing'
+import { bookOnServer, isServerProvider, loadSchedule } from '../../../shri-health/scheduling'
+import { ApiError, REAL_API, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
+import { formatMoney, sumItems } from '../../utils/billing'
 import { dayWithDate, relativeDayLabel } from '../../utils/dates'
 import { modesFor } from '../../utils/appointment'
 import { cn } from '../../utils/cn'
@@ -34,6 +36,10 @@ import type { AppState } from '../../types/store'
 import { inputClass } from '../../utils/formClasses'
 import { dayStartTimestamp, formatTime } from '../../domain/time'
 import { getDepartmentDateStrip, getDepartmentDayRange } from '../../domain/doctorDaySelectors'
+import { addDaysToKey, calendarDate } from '../../domain/time'
+
+/** Whole days from one date key to a later one. */
+const daysBetween = (from: string, to: string) => Math.round((calendarDate(to).getTime() - calendarDate(from).getTime()) / 86400000)
 
 /** A doctor and a time, chosen together. */
 interface Pick {
@@ -41,6 +47,11 @@ interface Pick {
   date: string
   slot: string
 }
+
+/** How many days of SHRI_HEALTH free times to load: a month, so the date field reaches a follow-up
+ *  "in 2 weeks" and beyond (gap 54); a follow-up further out is read up to its own day. */
+const SERVER_DAYS = 31
+const MAX_SERVER_DAYS = 100
 
 /**
  * Schedule — booking an appointment: patient → department → Doctor
@@ -124,13 +135,14 @@ function startFrom(params: FlowProps['params'], now: number): Start {
   }
 }
 
-function AppointmentFlow({ params, onClose }: FlowProps) {
+function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, followUpDate }: FlowProps) {
   const now = useNow(15000)
   const today = useStoreValue(getToday)
 
   const [patientId, setPatientId] = useState(params.uhid ?? '')
   const patient = useStoreValue(getPatientById, patientId)
-  const [start] = useState(() => startFrom(params, now))
+  // A revisit opens on its follow-up day with no time chosen, so the desk never books today by mistake.
+  const [start] = useState(() => (followUpDate ? { ...startFrom(params, now), date: null, slot: null, smart: false } : startFrom(params, now)))
   const [department, setDepartment] = useState(start.department)
   const [providerId, setProviderId] = useState(start.providerId)
   const [date, setDate] = useState(start.date)
@@ -143,12 +155,26 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
   // Opened on a time already chosen on a doctor's chart: only the patient is left to choose.
   const [patientOnly, setPatientOnly] = useState(() => Boolean(params.doctor && !params.uhid && start.providerId && start.slot && !start.smart))
   // The day every doctor's row shows — one date for the whole list.
-  const [dayChoice, setDayChoice] = useState<string | null>(null)
+  const [dayChoice, setDayChoice] = useState<string | null>(followUpDate ?? null)
   // The smart choice on show — cleared the moment the desk picks another.
   const [smart, setSmart] = useState<Pick | null>(() => (start.smart && start.providerId && start.date && start.slot ? { providerId: start.providerId, date: start.date, slot: start.slot } : null))
   const navigate = useNavigate()
   const location = useLocation()
 
+  const serverDays = followUpDate && followUpDate > today ? Math.min(MAX_SERVER_DAYS, Math.max(SERVER_DAYS, daysBetween(today, followUpDate) + 1)) : SERVER_DAYS
+  const lastDay = REAL_API ? addDaysToKey(today, serverDays - 1) : undefined
+  // The SHRI_HEALTH doctors, their free times for the days the page shows, and the bookings.
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [booking, setBooking] = useState(false)
+  // One Idempotency-Key per booking attempt; a new one once the time or the patient changes.
+  const attempt = useRef<{ key: string; pick: string } | null>(null)
+  useEffect(() => {
+    let live = true
+    loadSchedule(today, serverDays).catch((err: unknown) => live && setServerError(problemMessage(err)))
+    return () => {
+      live = false
+    }
+  }, [today, serverDays])
   const departments = useStoreValue(getDepartmentSummaries, now)
   const provider = useStoreValue(getProviderById, providerId ?? '')
   const suggestions = useStoreValue(getDoctorSuggestions, department ?? '', now)
@@ -157,6 +183,8 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
   const listRange = useStoreValue(getDepartmentDayRange, department ?? '', now, listDay)
   const billItems = useStoreValue(getConsultationBillItems, patientId, providerId ?? '')
   const total = sumItems(billItems)
+  // A SHRI_HEALTH doctor: no bill is raised and the server sends no fee, so no total is shown.
+  const serverDoctor = useStoreValue((state: AppState, id: string) => Boolean(state.serverSlots?.[id]), providerId ?? '')
   const modes = provider ? modesFor(provider) : (['In person'] as ConsultMode[])
 
   const ready = Boolean(patient && department && provider && date && slot) && billItems.length > 0
@@ -254,15 +282,24 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
     const doctor = getProviderById(getState(), pick.providerId)
     if (!doctor) return
     setError(null)
+    const mode = pick.providerId === providerId ? consultMode : (modesFor(doctor)[0] ?? 'In person')
+    if (isServerProvider(doctor.providerId)) return void bookOnServerPick(who, pick, mode)
     try {
-      const mode = pick.providerId === providerId ? consultMode : (modesFor(doctor)[0] ?? 'In person')
       const booking = { providerId: doctor.providerId, date: pick.date, slot: pick.slot, mode, reason: reason.trim() || undefined }
       // Rescheduling an unpaid booking from the timeline: the old booking and its bill are removed, not
       // cancelled, so only the new time is seen anywhere. One save — if the new time can't be booked, nothing changes.
       if (params.appointment) rebookUnpaidAppointment({ appointmentId: params.appointment, ...booking })
-      else bookAppointment({ patientId: who.patientId, ...booking })
+      else {
+        const { appointment } = bookAppointment({ patientId: who.patientId, ...booking })
+        // The revisit, booked from check-out: back to check-out instead of the profile.
+        // A sample-data doctor books in the store; a server doctor books on the API with followUpOfEncounterId (bookOnServerPick).
+        if (onBooked) {
+          onBooked(appointment.appointmentId)
+          return
+        }
+      }
       // Booked: straight to the patient's profile, where the timeline shows the booking and prints its bill.
-      const profile = `/patients/${who.uhid}`
+      const profile = `/patients/${who.patientId}`
       if (location.pathname === profile) onClose()
       else navigate(profile, { replace: true })
     } catch (err) {
@@ -270,6 +307,37 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
       setError(message)
       // A slot taken a moment ago: reopen the times so another can be picked.
       if (/slot/i.test(message)) setSlot(null)
+    }
+  }
+
+  // A SHRI_HEALTH doctor is booked on the server: no bill is raised (the contract takes no payment
+  // before a visit), so the booking is confirmed at once. Rebooking an unpaid booking does not apply.
+  async function bookOnServerPick(who: Patient, pick: Pick, mode: ConsultMode) {
+    if (booking) return
+    const id = `${who.patientId}|${pick.providerId}|${pick.date}|${pick.slot}|${mode}`
+    if (attempt.current?.pick !== id) attempt.current = { key: newIdempotencyKey(), pick: id }
+    setBooking(true)
+    try {
+      const booked = await bookOnServer({ patientId: who.patientId, ...pick, mode, reason: reason.trim() || undefined, followUpOfEncounterId }, attempt.current.key)
+      attempt.current = null
+      // The revisit, booked from check-out: back to check-out instead of the profile.
+      if (onBooked) {
+        onBooked(booked.appointmentId)
+        return
+      }
+      const profile = `/patients/${who.patientId}`
+      if (location.pathname === profile) onClose()
+      else navigate(profile, { replace: true })
+    } catch (err) {
+      setError(problemMessage(err))
+      // A time taken a moment ago: refresh the times and reopen them so another can be picked.
+      if (err instanceof ApiError && err.status === 409) {
+        attempt.current = null
+        setSlot(null)
+        void loadSchedule(today, SERVER_DAYS).catch(() => undefined)
+      }
+    } finally {
+      setBooking(false)
     }
   }
 
@@ -295,6 +363,7 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
   const confirmBar = (
     <div className="flex flex-col gap-2.5">
       {error ? <Alert tone="critical" live>{error}</Alert> : null}
+      {serverError ? <Alert tone="critical" live>{`The server's doctors and times could not be loaded: ${serverError}`}</Alert> : null}
       <div className="grid grid-cols-1 items-center gap-3 xl:grid-cols-[minmax(0,1fr)_15rem_auto]">
         {/* Review — the booking as one sentence, or the next thing to do. */}
         <div className="min-w-0" aria-live="polite">
@@ -343,11 +412,11 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
           <span className="hidden xl:block" aria-hidden="true" />
         )}
         <div className="flex items-center justify-between gap-3 xl:justify-end">
-          <div className="min-w-0 flex-1 text-left xl:flex-none xl:text-right">
-            <p className="hidden max-w-[16rem] truncate text-xs text-ink-muted sm:block" title={billItems.map((i) => `${i.description} ${formatRupees(i.amount)}`).join(' + ')}>
+          <div className={cn('min-w-0 flex-1 text-left xl:flex-none xl:text-right', (serverDoctor || REAL_API) && 'invisible')} aria-hidden={serverDoctor || REAL_API || undefined}>
+            <p className="hidden max-w-[16rem] truncate text-xs text-ink-muted sm:block" title={billItems.map((i) => `${i.description} ${formatMoney(i.amount)}`).join(' + ')}>
               {billItems.length ? billItems.map((i) => i.description).join(' + ') : 'Bill total'}
             </p>
-            <p className="text-lg font-bold tabular-nums tracking-tight text-ink">{formatRupees(total)}</p>
+            <p className="text-lg font-bold tabular-nums tracking-tight text-ink">{formatMoney(total)}</p>
           </div>
         </div>
       </div>
@@ -362,7 +431,7 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
           <AppointmentWhen provider={provider} date={date} slot={slot} mode={consultMode} today={today} />
           <div className="flex items-center justify-between gap-3 px-1 text-sm">
             <span className="min-w-0 truncate text-ink">
-              <span className="font-semibold">{provider.name}</span> · {provider.department} · {formatRupees(total)}
+              <span className="font-semibold">{provider.name}</span> · {provider.department} · {formatMoney(total)}
             </span>
             <button type="button" onClick={() => setPatientOnly(false)} className="focus-ring shrink-0 rounded text-xs font-semibold text-primary-text hover:underline">
               Change doctor or time
@@ -370,7 +439,7 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
           </div>
           <section aria-label="Patient" className="flex flex-col gap-2 rounded-2xl border border-border-soft bg-surface-1 p-4 shadow-card-sm">
             <h3 className="text-sm font-semibold text-ink">Patient</h3>
-            <PatientSearch mode="pick" inline onPick={choosePatient} autoFocus placeholder="Search for the patient by name, mobile, UHID or ABHA" />
+            <PatientSearch mode="pick" inline onPick={choosePatient} autoFocus placeholder={REAL_API ? 'Search for the patient by name, phone, MRN or date of birth' : 'Search for the patient by name, mobile, UHID or ABHA'} />
           </section>
           {error ? <Alert tone="critical" live>{error}</Alert> : null}
         </div>
@@ -416,7 +485,7 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
         <Quadrant id="book-patient" step={1} title="Patient" done={Boolean(patient)} current={currentIndex === 0} scrollFrom="xl" className="lg:col-span-2 lg:row-start-1">
           {showPatientSearch ? (
             <div className="flex flex-col gap-2">
-              <PatientSearch mode="pick" inline onPick={choosePatient} autoFocus placeholder="Search for the patient by name, mobile, UHID or ABHA" />
+              <PatientSearch mode="pick" inline onPick={choosePatient} autoFocus placeholder={REAL_API ? 'Search for the patient by name, phone, MRN or date of birth' : 'Search for the patient by name, mobile, UHID or ABHA'} />
               {patient ? (
                 <button type="button" onClick={() => setChangingPatient(false)} className="self-start text-xs font-semibold text-primary-text hover:underline">
                   Keep {patient.name}
@@ -431,13 +500,13 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
                 </p>
               </div>
               <dl className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
-                <dt className="text-ink-subtle">UHID</dt>
+                <dt className="text-ink-subtle">{REAL_API ? 'MRN' : 'UHID'}</dt>
                 <dd className="truncate font-medium tabular-nums text-ink">{patient.uhid}</dd>
                 <dt className="text-ink-subtle">Age · sex</dt>
                 <dd className="truncate text-ink">{patient.age ? `${patient.age} · ${patient.sex}` : patient.sex}</dd>
                 {patient.mobile ? (
                   <>
-                    <dt className="text-ink-subtle">Mobile</dt>
+                    <dt className="text-ink-subtle">{REAL_API ? 'Phone' : 'Mobile'}</dt>
                     <dd className="truncate tabular-nums text-ink">{patient.mobile}</dd>
                   </>
                 ) : null}
@@ -465,7 +534,7 @@ function AppointmentFlow({ params, onClose }: FlowProps) {
             <div className="flex flex-col gap-3">
               {/* One date and one time axis for every doctor, pinned while the doctors scroll under it. */}
               {suggestions.length > 0 ? (
-                <SharedDayHeader days={departmentDays} day={listDay} onDay={setDayChoice} range={listRange} today={today} now={now} />
+                <SharedDayHeader days={departmentDays} day={listDay} onDay={setDayChoice} range={listRange} today={today} now={now} lastDay={lastDay} />
               ) : null}
               {suggestions.length === 0 ? (
                 <p className="text-sm text-ink-muted">No doctors in this department.</p>

@@ -23,7 +23,7 @@
 
 import { ChevronRight, Sunrise, TriangleAlert } from 'lucide-react'
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 
 import { RESULTS, type ResultRow } from '@/data/clinical'
 import { patient } from '@/data/kit'
@@ -50,6 +50,8 @@ const RESULTS_SHOWN = 4
 /** How much a result should worry: critical, then outside range, then the rest. */
 const weight = (r: ResultRow) => (r.critical ? 100 : r.flag !== 'Normal' ? 10 : 1)
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export function BriefPage() {
   const d = useMyDay()
@@ -88,6 +90,9 @@ export function BriefPage() {
     deteriorating ? `${plural(deteriorating, 'inpatient')} ${deteriorating === 1 ? 'is' : 'are'} deteriorating` : 'None of your inpatients is deteriorating',
     `Today you have ${plural(clinic, 'patient')} in OPD, ${plural(tele, 'teleconsult')} and ${plural(d.inpatients.length, 'inpatient')} on the ward round`,
   ].join('. ')
+
+  // With the API: hidden until the AI brief is built (never a "not built yet" page): My Day instead.
+  if (REAL_API) return <Navigate to="/" replace />
 
   return (
     <ScreenFrame

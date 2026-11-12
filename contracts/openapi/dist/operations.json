@@ -330,6 +330,17 @@
    "path": "/api/v1/payments/card-session",
    "permission": "payments:card-session"
   },
+  "createChartQuestion": {
+   "audit": {
+    "action": "C",
+    "category": "ai",
+    "patient": "body:/patientId"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/chart-questions",
+   "permission": "chart-questions:create"
+  },
   "createChartSummary": {
    "audit": {
     "action": "C",
@@ -700,6 +711,17 @@
    "method": "GET",
    "path": "/api/v1/portal/bot-challenge",
    "permission": "public"
+  },
+  "getChartAnswer": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/ai/chart-answers/{chartAnswerId}",
+   "permission": "chart-questions:create"
   },
   "getChartSummary": {
    "audit": {
@@ -1286,6 +1308,17 @@
    "path": "/api/v1/encounters/{encounterId}/notes",
    "permission": "notes:read"
   },
+  "listEncounterPrescriptions": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/encounters/{encounterId}/prescriptions",
+   "permission": "prescriptions:read"
+  },
   "listFacilitys": {
    "audit": {
     "action": "R",
@@ -1675,6 +1708,16 @@
    "method": "GET",
    "path": "/api/v1/patients/{patientId}/social-history",
    "permission": "social-history:read"
+  },
+  "listSuggestedQuestions": {
+   "audit": {
+    "action": "R",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/ai/suggested-questions",
+   "permission": "chart-questions:create"
   },
   "listSurgicalHistory": {
    "audit": {

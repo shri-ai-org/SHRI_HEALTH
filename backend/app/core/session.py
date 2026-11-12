@@ -49,7 +49,7 @@ from fastapi import FastAPI, Request
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from app.core import audit
+from app.core import audit, cookies
 from app.core.config import Settings
 from app.core.crypto import decrypt_field, encrypt_field
 from app.core.db import Database
@@ -393,7 +393,7 @@ async def session_from_cookie(request: Request) -> StaffSession:
     """The live session the cookie names; 401 otherwise. Moves the idle timer for user-initiated
     requests only, and on any request refreshes Keycloak's tokens when they are older than the
     backstop allows (a refresh never moves the idle timer)."""
-    token = request.cookies.get(SESSION_COOKIE)
+    token = cookies.read(request, SESSION_COOKIE)
     if not token or len(token) > 100:
         raise Unauthorized("Not signed in")
     db: Database | None = request.app.state.db
@@ -501,14 +501,12 @@ async def user_facts(db: Database, session: StaffSession) -> UserFacts:
                      clinic or "", user.practitioner_id)
 
 
-def set_session_cookie(response: Any, token: str) -> None:
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, secure=True, samesite="strict",
-                        path="/")
+def set_session_cookie(response: Any, settings: Settings, token: str) -> None:
+    cookies.put(response, settings, SESSION_COOKIE, token, samesite="strict")
 
 
-def clear_session_cookie(response: Any) -> None:
-    response.delete_cookie(SESSION_COOKIE, httponly=True, secure=True, samesite="strict",
-                           path="/")
+def clear_session_cookie(response: Any, settings: Settings) -> None:
+    cookies.remove(response, settings, SESSION_COOKIE, samesite="strict")
 
 
 def register(app: FastAPI, settings: Settings) -> None:

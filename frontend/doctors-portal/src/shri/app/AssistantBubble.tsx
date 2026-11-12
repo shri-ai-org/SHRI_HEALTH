@@ -4,6 +4,9 @@ import { useLocation } from 'react-router-dom'
 import { EASE } from '../lib/motion'
 import { assistantOfferedAt } from '../logic/assistant'
 import { useAiActive } from '../state/ai'
+import { useAiFeatureUp } from '../../../shri-health/aiStatus'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 import { useShri } from '../state/store'
 import { AssistantIcon } from '../ui/AssistantIcon'
 import { useIsPhone } from '../ui/frames'
@@ -23,6 +26,7 @@ import { useIsPhone } from '../ui/frames'
  */
 export function AssistantBubble() {
   const aiOn = useAiActive()
+  const qaUp = useAiFeatureUp('chart-qa')
   const open = useShri((s) => s.assistantOpen)
   const nudge = useShri((s) => s.assistantNudge)
   const toastLift = useShri((s) => s.toastLift)
@@ -33,7 +37,7 @@ export function AssistantBubble() {
   const reduced = useReducedMotion()
   const phone = useIsPhone()
   const { pathname } = useLocation()
-  if (!aiOn || (phone && open) || !assistantOfferedAt(pathname)) return null
+  if (!aiOn || (REAL_API && !qaUp) || (phone && open) || !assistantOfferedAt(pathname)) return null
   return (
     <motion.button
       type="button"

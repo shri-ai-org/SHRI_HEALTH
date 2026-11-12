@@ -185,7 +185,7 @@ export function fakePortalServer({ signedIn = true, bookingConflict = false, una
         conflictLeft = false
         return problem(409, 'booking-conflict')
       }
-      const a = appointment({ id: id(5000 + appointments.length), startAt: String(body.startAt), reasonForVisit: String(body.reasonForVisit ?? '') })
+      const a = appointment({ id: id(5000 + appointments.length), startAt: String(body.startAt), ...(body.reasonCode ? { reasonCode: body.reasonCode as NonNullable<PortalAppointment['reasonCode']> } : {}) })
       appointments.push(a)
       return json(201, a)
     }

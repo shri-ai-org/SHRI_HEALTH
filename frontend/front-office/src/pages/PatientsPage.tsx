@@ -16,8 +16,9 @@ import { useNow } from '../hooks/useNow'
 import { getPatientRows } from '../domain/patientSelectors'
 import type { PatientListRow } from '../domain/patientSelectors'
 import { todayKey } from '../domain/time'
-import { formatRupees } from '../utils/billing'
+import { formatMoney } from '../utils/billing'
 import { initialsOf } from '../utils/format'
+import { REAL_API } from '../../shri-health/client'
 import { PatientsTabs } from '../components/patient/PatientsTabs'
 import { PatientStatusIcons } from '../components/patient/PatientStatusIcons'
 import { usePatientCareStatus } from '../hooks/useCareStatus'
@@ -32,7 +33,7 @@ function readFilter(search: string): PatientFilter {
 }
 
 const EMPTY_TITLE: Record<PatientFilter, string> = {
-  all: 'No patients yet',
+  all: REAL_API ? 'No patients booked in the last 31 days' : 'No patients yet',
   today: 'Nobody registered yet today',
   duplicates: 'No possible duplicates',
 }
@@ -67,12 +68,13 @@ export function PatientsPage() {
   }
 
   const items: StatFilterItem<PatientFilter>[] = [
-    { key: 'all', label: 'All patients', value: rows.length, tone: 'info', icon: Users },
+    { key: 'all', label: REAL_API ? 'Recent patients' : 'All patients', value: rows.length, tone: 'info', icon: Users },
     { key: 'today', label: 'Registered today', value: lists.today.length, tone: 'teal', icon: UserPlus },
     { key: 'duplicates', label: 'Possible duplicates', value: lists.duplicates.length, tone: 'warning', icon: Copy },
   ]
 
-  const openPatient = (uhid: string) => navigate(`/patients/${uhid}`)
+  // The profile's address is the patient's ID, never the MRN (D13).
+  const openPatient = (patientId: string) => navigate(`/patients/${patientId}`)
 
   const columns: Column<PatientListRow>[] = [
     {
@@ -102,9 +104,10 @@ export function PatientsPage() {
       sortValue: (row) => row.patient.age ?? -1,
       cell: ({ patient }) => `${patient.age ?? '—'} · ${patient.sex}`,
     },
-    { key: 'uhid', header: 'UHID', className: 'whitespace-nowrap tabular-nums text-ink-muted', sortValue: (row) => row.patient.uhid, cell: ({ patient }) => patient.uhid },
-    { key: 'mobile', header: 'Mobile', className: 'whitespace-nowrap tabular-nums text-ink-muted', cell: ({ patient }) => patient.mobile },
-    {
+    // With the SHRI_HEALTH API: the practice's MRN (D41), the US phone, and no ABHA column (US display change, 2026-11-04).
+    { key: 'uhid', header: REAL_API ? 'MRN' : 'UHID', className: 'whitespace-nowrap tabular-nums text-ink-muted', sortValue: (row) => row.patient.uhid, cell: ({ patient }) => patient.uhid },
+    { key: 'mobile', header: REAL_API ? 'Phone' : 'Mobile', className: 'whitespace-nowrap tabular-nums text-ink-muted', cell: ({ patient }) => patient.mobile },
+    ...(REAL_API ? [] : ([{
       key: 'abha',
       header: 'ABHA',
       className: 'text-ink-muted',
@@ -113,7 +116,7 @@ export function PatientsPage() {
           {patient.abhaId ?? '—'}
         </span>
       ),
-    },
+    }] as Column<PatientListRow>[])),
     {
       key: 'now',
       header: 'Now',
@@ -123,7 +126,7 @@ export function PatientsPage() {
           {isToday(row) ? <Badge tone="stable">Registered today</Badge> : null}
           {row.due > 0 ? (
             <Badge tone={row.failed ? 'critical' : 'warning'}>
-              {row.failed ? 'Payment failed' : 'Payment pending'} · {formatRupees(row.due)}
+              {row.failed ? 'Payment failed' : 'Payment pending'} · {formatMoney(row.due)}
             </Badge>
           ) : null}
           {row.duplicate ? <Badge tone="warning">Possible duplicate</Badge> : null}
@@ -160,7 +163,7 @@ export function PatientsPage() {
               rows={shown}
               columns={columns}
               rowKey={(row) => row.patient.patientId}
-              onRowClick={(row) => openPatient(row.patient.uhid)}
+              onRowClick={(row) => openPatient(row.patient.patientId)}
               rowLabel={(row) => `Open ${row.patient.name}`}
               caption="Patients"
             />

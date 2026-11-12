@@ -18,7 +18,8 @@
 import { DISCHARGE_BOARD, DISCHARGE_DRAFT_SD_P_03, ENCOUNTERS, encounterForPatient, type DischargeRow } from '@/data/clinical'
 import { inpatientRows, type Admissions } from '@/data/admissions'
 import { NOW } from '@/data/format'
-import { LANGUAGES, patient } from '@/data/kit'
+import { LANGUAGES } from '@/data/kit'
+import { patient } from '../../../shri-health/kit'
 import { conditionFor } from '@/data/record'
 import { useAudit } from '@/store/audit'
 import { useClinical, type DischargeRecord } from '@/store/clinical'
@@ -113,7 +114,7 @@ export function useDischarge() {
         kind: 'discharge',
         title: `Transfer — ${p.name}`,
         detail: `To ${extra.transfer.facility} · accepting ${extra.transfer.clinician} · ${extra.transfer.transport}, ${extra.transfer.escort} escort`,
-        to: `/patient/${p.uhid}`,
+        to: `/patient/${p.id}`,
         recipient: 'colleague',
       })
     }

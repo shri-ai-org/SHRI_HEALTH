@@ -19,6 +19,7 @@ import { useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
 import { ScreenFrame } from '../app/ScreenFrame'
+import { RealAssistantBody } from './RealAssistant'
 import { useLiveContext, useOpenSource } from '../logic/assistant'
 import { useAiActive } from '../state/ai'
 import { Why } from '../ui/Disclosure'
@@ -236,7 +237,18 @@ function AssistantScreen({ screenId, title, covers, patientId }: { screenId: str
   )
 }
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 export function ClinicianAssistantPage() {
+  // With the API: the chart's questions and answers (RealAssistant), never the sample's help desk.
+  if (REAL_API)
+    return (
+      <ScreenFrame screenId="S-28-02" sub="Questions about the chart in view, answered with links to the records.">
+        <div className="flex min-h-[420px] flex-col rounded-sh-card bg-sh-card">
+          <RealAssistantBody />
+        </div>
+      </ScreenFrame>
+    )
   return (
     <AssistantScreen
       screenId="S-28-02"
