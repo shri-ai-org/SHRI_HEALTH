@@ -22,13 +22,16 @@ import { EmptyState } from '../ui/EmptyState'
 import { Card, ConfidenceMark, Diamond, PillTag } from '../ui/primitives'
 
 import { TextLink } from './bits'
+import { AI_CHART_SUMMARY_ON } from '../logic/assistant'
+
 import { ChartSummaryCard } from './ChartSummaryCard'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export function InsightsCard({ patient: p, className }: { patient: Patient; className?: string }) {
   // With the API: AI-02's chart summary, never the sample's readings.
-  if (REAL_API) return <ChartSummaryCard key={p.id} patientId={p.id} className={className} />
+  // With the API: AI-02's summary, only with VITE_FEATURE_AI_CHART_SUMMARY=on (hidden otherwise).
+  if (REAL_API) return AI_CHART_SUMMARY_ON ? <ChartSummaryCard key={p.id} patientId={p.id} className={className} /> : null
   return <SampleInsights patient={p} className={className} />
 }
 

@@ -23,7 +23,7 @@ const POLL_LIMIT = 60
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** The finished operation's result ID, or AiFeatureDown with the operation's own words. */
-async function finished(op: Operation, what: string): Promise<string> {
+export async function finished(op: Operation, what: string): Promise<string> {
   let current = op
   for (let i = 0; i < POLL_LIMIT && (current.status === 'queued' || current.status === 'running'); i++) {
     await sleep(POLL_MS)

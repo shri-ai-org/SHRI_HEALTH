@@ -14,6 +14,7 @@ import type { AiConfidence, ChartSummary, ChartSummaryTopic } from '../../../../
 import { summarizeChart } from '../../../shri-health/aiChart'
 import { aiSourceLabel, routeForAiSource } from '../../../shri-health/aiSources'
 import { aiDownReason, useAiFeatureUp, useAiStatus } from '../../../shri-health/aiStatus'
+import { hasPermission } from '../../../shri-health/opd'
 import { cn } from '../lib/cn'
 import { useAiActive } from '../state/ai'
 import { Card, ConfidenceMark, Diamond, Pill, PillTag } from '../ui/primitives'
@@ -39,7 +40,8 @@ export function ChartSummaryCard({ patientId, className }: { patientId: string; 
   const navigate = useNavigate()
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
 
-  if (!aiActive || !up) return null
+  // A role that can't ask for a summary (MA, RN, the desk) never sees the card.
+  if (!aiActive || !up || !hasPermission('chart-summaries:create')) return null
 
   const run = () => {
     setPhase({ kind: 'loading' })

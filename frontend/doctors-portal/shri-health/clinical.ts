@@ -41,6 +41,7 @@ import { problemCopy } from '../../src/design-system/problem/problem'
 import { rxNormProduct } from './formulary'
 import { maybeEncounter } from './encounter'
 import { read } from './resource'
+import { finished } from './aiChart'
 import { AiFeatureDown } from './aiStatus'
 
 import type { RxLineEdit as ScreenRxLineEdit } from '@/store/clinical'
@@ -754,8 +755,8 @@ export const useClinical = create<NoteState>()((set, get) => {
         if (error instanceof ApiError && (error.code === 'feature-disabled' || error.status === 503)) throw new AiFeatureDown(problemCopy(error.problem).message)
         throw error
       }
-      if (op.status !== 'succeeded' || !op.result) throw new AiFeatureDown(op.error?.detail ?? 'AI drafting is unavailable right now.')
-      const res = await getNote(op.result.id)
+      // A queued or running draft is waited for (as the chart AI does); a failed one is AiFeatureDown.
+      const res = await getNote(await finished(op, 'AI draft'))
       const n = res.data as Note
       const keys = publishAi(encounterId, n)
       for (const k of keys) useAI.getState().clearDisposition(`${encounterId}:${k}`)

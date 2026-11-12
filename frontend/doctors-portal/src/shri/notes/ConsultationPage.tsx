@@ -26,6 +26,7 @@ import { useMayOpenPath } from '../app/landing'
 import { ScreenHeader } from '../app/ScreenHeader'
 import { differentialsFor, type Differential } from '../logic/differentials'
 import { maybeEncounter } from '../../../shri-health/encounter'
+import { hasPermission } from '../../../shri-health/opd'
 import { RecordDoors } from '../record/RecordDoors'
 import { useOpd } from '../state/opd'
 import { useShri } from '../state/store'
@@ -102,7 +103,7 @@ function Consultation({ encounterId }: { encounterId: string }) {
         seeds={seeds}
         scribeModel="scribe v5.1.2"
         onSigned={() => navigate('/')}
-        onDraftAll={AI_NOTE_DRAFT_ON && (!REAL_API || draftUp) ? () => setScribeOpen(true) : undefined}
+        onDraftAll={AI_NOTE_DRAFT_ON && (!REAL_API || (draftUp && hasPermission('note-drafts:create'))) ? () => setScribeOpen(true) : undefined}
         headerActions={
           <>
             {may(rx) && (

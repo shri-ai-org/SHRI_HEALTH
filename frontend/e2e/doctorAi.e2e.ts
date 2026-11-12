@@ -119,6 +119,9 @@ test('"Draft with AI" sends the dictation and shows four AI sections to accept, 
   await expect(page.getByRole('region', { name: /Assessment — AI draft/ })).toHaveText('Likely viral bronchitis.')
   await expect(page.getByRole('region', { name: /Plan — AI draft/ })).toHaveText('Fluids and rest; return if fever.')
   await expect(page.getByRole('button', { name: /Accept/ }).first()).toBeVisible()
+  // Edit opens the draft in the section's own field, with the cursor in it.
+  await page.getByRole('button', { name: 'Edit', exact: true }).first().click()
+  await expect(page.locator('textarea:focus')).toHaveValue('Three days of cough, no fever.')
 })
 
 test('the chart summary links each statement to its record', async ({ page, request }) => {
