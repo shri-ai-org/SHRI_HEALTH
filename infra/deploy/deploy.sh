@@ -407,7 +407,10 @@ check() {
     # to it, and the security headers apply there too (an add_header in a location replaces the
     # server's).
     local page app path
-    for app in "/ /patients $B/assets/" "/clinician/ /clinician/op-queue $B/clinician/assets/"; do
+    # The patient portal's base is fixed at /portal/ (frontend/vite.portal.config.ts), so it is
+    # served on a host of its own only; under a base path its assets would point outside.
+    for app in "/ /patients $B/assets/" "/clinician/ /clinician/op-queue $B/clinician/assets/" \
+               "/portal/ /portal/appointments /portal/assets/"; do
         set -- $app
         page="$("${curl[@]}" "$E$1")"
         case "$page" in *'<div id="root"'*) ;; *) die "$1 does not serve its screens" ;; esac

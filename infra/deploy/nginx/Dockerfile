@@ -27,11 +27,15 @@ COPY src ./src
 COPY dev ./dev
 COPY front-office ./front-office
 COPY doctors-portal ./doctors-portal
+# The patient portal is the root app's own build (vite.portal.config.ts: base /portal/).
+COPY portal.html vite.portal.config.ts ./
 RUN rm -rf front-office/node_modules doctors-portal/node_modules \
  && npm ci --ignore-scripts --no-audit --no-fund
 RUN BASE_PATH="${SHRI_BASE_PATH}/" npm run build -w front-office \
- && PORTAL_BASE="${SHRI_BASE_PATH}/clinician/" npm run build -w doctors-portal
+ && PORTAL_BASE="${SHRI_BASE_PATH}/clinician/" npm run build -w doctors-portal \
+ && npm run build:portal
 
 FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
 COPY --from=build /web/front-office/dist /srv/shri-web/front-office
 COPY --from=build /web/doctors-portal/dist /srv/shri-web/clinician
+COPY --from=build /web/dist-portal /srv/shri-web/portal
