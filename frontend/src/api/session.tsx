@@ -5,9 +5,16 @@
  *
  * The server decides when the session ends. Before this tab warns or ends the session, it re-reads
  * `GET /auth/session` (which never counts as activity), so work in another tab keeps it alive.
- * When the session has ended, the tab shows a sign-in prompt and starts a new login only when the
- * user asks: an automatic redirect could sign the same user back in through Keycloak on a shared
- * workstation, which would defeat the automatic sign-out.
+ * Nobody signed in (`not-signed-in`, the first read of a fresh visit): the tab goes straight to the
+ * sign-in form, with no page of its own before it (Thulasi on #85, 12 Nov). A session that ended
+ * here (`expired`, `signed-out`) keeps its prompt and starts a new login only when the user asks, so
+ * the user sees why, and a sign-out never looks as if it failed. A signed-in tab whose session
+ * disappears on a re-read counts as `expired`, never as `not-signed-in`.
+ *
+ * The automatic redirect happens once: the tab notes the time in `sessionStorage` (no patient or
+ * user data), and a browser that comes back still signed out within a minute (a failed or refused
+ * login) gets the prompt instead of being sent round again. The prompt's Sign in button notes the
+ * time too, so each click is one trip to the sign-in form.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button, IdleTimeoutWarning } from '../design-system'
@@ -35,9 +42,54 @@ interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null)
 
-/** Full-page navigation: the server sends the browser to Keycloak (`GET /auth/login`). Only on a user's click. */
+/** Full-page navigation: the server sends the browser to Keycloak (`GET /auth/login`). */
 export function goToSignIn(): void {
   window.location.assign(`${API_BASE}/auth/login`)
+}
+
+/** When this tab last went to sign in on its own (ms since the epoch); only a time is kept. */
+const AUTO_SIGN_IN_KEY = 'shri.session.autoSignInAt'
+/** A browser back here still signed out within this long gets the prompt, not another redirect. */
+const AUTO_SIGN_IN_GUARD_MS = 60_000
+
+/** True, and the time noted, when this tab may go to sign in on its own now. */
+function mayAutoSignIn(): boolean {
+  try {
+    const last = Number(window.sessionStorage.getItem(AUTO_SIGN_IN_KEY))
+    if (last > 0 && Date.now() - last < AUTO_SIGN_IN_GUARD_MS) {
+      window.sessionStorage.removeItem(AUTO_SIGN_IN_KEY)
+      return false
+    }
+    noteSignInAttempt()
+    return true
+  } catch {
+    return false // no storage (private window, blocked): the prompt, never a possible loop
+  }
+}
+
+/** Notes that this tab is going to sign in now (the redirect, or the prompt's Sign in button). */
+function noteSignInAttempt(): void {
+  try {
+    window.sessionStorage.setItem(AUTO_SIGN_IN_KEY, String(Date.now()))
+  } catch {
+    // no storage: the next page load decides again
+  }
+}
+
+/** This page load's answer from `mayAutoSignIn`, once asked. */
+let autoSignInDecision: boolean | undefined
+
+/** For tests: forget this page load's answer, as a new page load would. */
+export function resetAutoSignInForTests(): void {
+  autoSignInDecision = undefined
+}
+
+function forgetAutoSignIn(): void {
+  try {
+    window.sessionStorage.removeItem(AUTO_SIGN_IN_KEY)
+  } catch {
+    // nothing to forget
+  }
 }
 
 /** The idle warning shows this long before `idleExpiresAt` (13 of 15 minutes; SECURITY_MODEL §2.1). */
@@ -64,6 +116,7 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
   const statusRef = useRef<SessionState['status']>('loading')
 
   const signedIn = useCallback((read: SessionRead) => {
+    forgetAutoSignIn()
     setCsrfToken(read.session.csrfToken)
     if (read.clockOffsetMs !== null) setClockOffsetMs(read.clockOffsetMs)
     statusRef.current = 'signed-in'
@@ -86,8 +139,12 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
 
   const reload = useCallback(async () => {
     const result = await readSession()
-    if (result === null) end('not-signed-in')
-    else if (result !== 'unchanged') signedIn(result)
+    // A session that ended under a signed-in tab is `expired`, and a tab already showing why it
+    // was signed out keeps showing it: neither ever turns into the automatic redirect.
+    if (result === null) {
+      if (statusRef.current === 'signed-in') end('expired')
+      else if (statusRef.current !== 'signed-out') end('not-signed-in')
+    } else if (result !== 'unchanged') signedIn(result)
   }, [end, signedIn])
 
   // The first read decides what the page shows. A failed one shows "can't reach the server", not
@@ -214,7 +271,8 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
           />
         </>
       ) : state.status === 'signed-out' ? (
-        (signedOut?.(state.reason) ?? <SignInPrompt reason={state.reason} />)
+        (signedOut?.(state.reason) ??
+        (state.reason === 'not-signed-in' ? <AutoSignIn /> : <SignInPrompt reason={state.reason} />))
       ) : state.status === 'unreachable' ? (
         <UnreachablePrompt onRetry={retryFirstRead} />
       ) : null}
@@ -267,8 +325,33 @@ function SignInPrompt({ reason }: { reason: SignedOutReason }) {
       <h1 className="text-xl font-semibold text-ink">{title}</h1>
       <p className="mt-2 text-ink-muted">{text}</p>
       <div className="mt-6">
-        <Button onClick={goToSignIn}>Sign in</Button>
+        <Button
+          onClick={() => {
+            noteSignInAttempt() // back here still signed out: this prompt again, not a redirect
+            goToSignIn()
+          }}
+        >
+          Sign in
+        </Button>
       </div>
+    </main>
+  )
+}
+
+/** Nobody signed in: straight to the sign-in form, once (see the guard above); else the prompt. */
+function AutoSignIn() {
+  // Decided once per page load: React's development double render must not count as a return.
+  autoSignInDecision ??= mayAutoSignIn()
+  const leaving = autoSignInDecision
+  useEffect(() => {
+    if (leaving) goToSignIn()
+  }, [leaving])
+  if (!leaving) return <SignInPrompt reason="not-signed-in" />
+  return (
+    <main className="mx-auto mt-24 max-w-md px-4 text-center">
+      <p role="status" className="text-ink-muted">
+        Taking you to sign in…
+      </p>
     </main>
   )
 }

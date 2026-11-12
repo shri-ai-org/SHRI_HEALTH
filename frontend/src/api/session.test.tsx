@@ -3,7 +3,7 @@ import { useLayoutEffect } from 'react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch, setCsrfToken } from './client'
-import { SessionProvider, useSession } from './session'
+import { SessionProvider, resetAutoSignInForTests, useSession } from './session'
 
 const minutes = (n: number) => new Date(Date.now() + n * 60_000).toISOString()
 
@@ -54,6 +54,8 @@ function Who() {
 let assign: ReturnType<typeof vi.fn>
 beforeEach(() => {
   setCsrfToken(null)
+  window.sessionStorage.clear()
+  resetAutoSignInForTests()
   assign = vi.fn()
   vi.stubGlobal('location', { ...window.location, assign })
 })
@@ -70,8 +72,19 @@ describe('SessionProvider', () => {
     expect(server.calls()).toEqual(['GET /api/v1/auth/session'])
   })
 
-  it('starts a login only when the user asks for it', async () => {
+  it('goes straight to the sign-in form when nobody is signed in, with no prompt of its own', async () => {
     serve({ 'GET /api/v1/auth/session': [() => problem(401, 'unauthenticated')] })
+    render(<SessionProvider><Who /></SessionProvider>)
+    expect(await screen.findByRole('status')).toHaveTextContent('Taking you to sign in…')
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/api/v1/auth/login'))
+    expect(assign).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('heading', { name: 'Sign in to Shri Health' })).not.toBeInTheDocument()
+  })
+
+  it('shows the prompt instead of redirecting again when the browser comes back still signed out', async () => {
+    serve({ 'GET /api/v1/auth/session': [() => problem(401, 'unauthenticated')] })
+    // A redirect from this tab a moment ago: the login failed or was refused.
+    window.sessionStorage.setItem('shri.session.autoSignInAt', String(Date.now() - 5_000))
     render(<SessionProvider><Who /></SessionProvider>)
     expect(await screen.findByRole('heading', { name: 'Sign in to Shri Health' })).toBeInTheDocument()
     expect(assign).not.toHaveBeenCalled()
@@ -90,7 +103,7 @@ describe('SessionProvider', () => {
     expect(assign).not.toHaveBeenCalled()
   })
 
-  it('offers a retry after a network error, says so when it fails again, and never signs in on its own', async () => {
+  it('offers a retry after a network error, says so when it fails again, and never redirects while the server is unreachable', async () => {
     serve({
       'GET /api/v1/auth/session': [
         () => {
@@ -105,9 +118,11 @@ describe('SessionProvider', () => {
     render(<SessionProvider><Who /></SessionProvider>)
     await userEvent.click(await screen.findByRole('button', { name: 'Try again' }))
     expect(await screen.findByText(/Still no answer/)).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
-    expect(await screen.findByRole('heading', { name: 'Sign in to Shri Health' })).toBeInTheDocument()
     expect(assign).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    // The server answered: nobody is signed in, so the tab goes to the sign-in form.
+    expect(await screen.findByRole('status')).toHaveTextContent('Taking you to sign in…')
+    await waitFor(() => expect(assign).toHaveBeenCalledTimes(1))
   })
 
   it('re-reads the session before warning, then "Stay signed in" calls POST /auth/refresh', async () => {
