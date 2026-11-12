@@ -1246,10 +1246,11 @@ async def _db_now(db: AsyncSession) -> datetime:
     return now
 
 
-async def _record_medication(db: AsyncSession, data: MedicationIn, at: datetime) -> Written:
+async def _record_medication(db: AsyncSession, data: MedicationIn, at: datetime, *,
+                             status_reason: str | None = None) -> Written:
     """``record_medication``, recorded at ``at``: the helper's own ``now()``, or, for the demo
     seed's import only (``seed/history.py``), the start of the visit the medication is linked
-    to. The API's helper offers no other time."""
+    to, with a stopped entry's ``status_reason``. The API's helper offers neither."""
     _check_medication(data.medication)
     if data.status not in _LIST_STATUSES:
         raise InvalidInput(f"a medication on the list is one of {sorted(_LIST_STATUSES)}")
@@ -1263,6 +1264,7 @@ async def _record_medication(db: AsyncSession, data: MedicationIn, at: datetime)
                            subject_patient_id=data.patient_id,
                            requester_patient_id=data.patient_id,
                            encounter_id=data.encounter_id, authored_on=at,
+                           status_reason_text=status_reason,
                            recorder_practitioner_id=user.practitioner_id)
     _apply_prescription(mr, PrescriptionChanges(medication=data.medication))
     db.add(await _new(db, mr))
