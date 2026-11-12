@@ -85,7 +85,8 @@ def _counts(admin: Engine, n: int) -> tuple[int, ...]:
 def _observations(n: int, h: history.History) -> int:
     """Each reading's vitals (a visit's adds height), and the two social history answers."""
     days = {v.day for v in h.visits}
-    return 2 + sum(3 + (r.spo2 is not None) + (r.temperature_f is not None) + (r.day in days)
+    return 2 + sum(3 + (r.spo2 is not None) + (r.temperature_f is not None)
+                   + (r.respiratory_rate is not None) + (r.day in days)
                    for r in history.VITALS[n])
 
 
@@ -111,6 +112,7 @@ def test_each_history_patient_has_a_vitals_series() -> None:
         visits = {v.day for v in history.HISTORY[n].visits}
         assert visits <= set(days), n
         assert all((r.temperature_f is not None) == (r.day in visits) for r in readings), n
+        assert all((r.respiratory_rate is not None) == (r.day in visits) for r in readings), n
         assert all((r.spo2 is not None) == (n in asthma_or_copd) for r in readings), n
 
 
@@ -219,6 +221,6 @@ def test_the_doctor_reads_it_through_the_api(seeded: None, admin_engine: Engine)
         return {c["code"] for c in concept.get("codings") or []}
 
     assert set().union(*(codes(m["medication"]) for m in meds.json()["items"])) >= {
-        "314076", "861007", "617310"}
-    assert [codes(a["code"]) for a in allergies.json()["items"]] == [{"7980"}]
+        "314076", "861007", "617311"}
+    assert [codes(a["code"]) for a in allergies.json()["items"]] == [{"723"}]
     assert vitals.json()["items"]

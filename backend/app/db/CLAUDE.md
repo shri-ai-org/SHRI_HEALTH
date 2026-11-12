@@ -501,6 +501,81 @@ pin in `terminology/fetch.py`, in a reviewed PR.
 - `demo_dry_run` books from 09:00 facility time, since the all-day demo schedules make 00:00
   the first free time.
 
+## The demo seed's fixed IDs (`app/db/seed`)
+
+Every seed row has a fixed ID, `sid(kind, n)` = `5eed<kind>-0000-4000-8000-<n>`, so a rerun
+finds it and changes nothing. **A kind number belongs to one kind of row.** A new kind takes the
+next free number after the highest one below, in the module it belongs to, and is added to this
+table in the same PR. `tests/test_seed_demo.py::test_no_two_seed_kinds_share_a_number` fails on a
+number used twice. The one exception is 21, which the starter's `USER_ROLE` and the demo's
+`PHARMACY` already share on every database. Renumbering either would change live IDs, so it
+stays, as the test's only allowed overlap.
+
+| Kind | Name (module) | Keys | From |
+|---|---|---|---|
+| 1 | `ORG` (starter) | organization | main (starter layer) |
+| 2 | `SITE` (starter) | site location | main (starter layer) |
+| 3 | `ROOM` (starter) | exam-room location | main (starter layer) |
+| 4 | `FACILITY` (starter) | facility | main (starter layer) |
+| 5 | `PRACTITIONER` (starter) | practitioner | main (starter layer) |
+| 6 | `ROLE` (starter) | practitioner role | main (starter layer) |
+| 7 | `SCHEDULE` (starter) | schedule | main (starter layer) |
+| 8 | `RULE` (starter) | office-hours availability rule | main (starter layer) |
+| 9 | `VISIT` (starter) | appointment type | main (starter layer) |
+| 10 | `PAYER` (starter) | payer (directory) | main (starter layer) |
+| 11 | `PRACTICE_PAYER` (starter) | practice payer | main (starter layer) |
+| 12 | `TEMPLATE` (starter) | note template | main (starter layer) |
+| 13 | `SECTION` (starter) | note template section | main (starter layer) |
+| 14 | `COUNTER` (starter) | MRN counter | main (starter layer) |
+| 15 | `USER` (starter) | reserved, unused | main (starter layer) |
+| 16 | `NAME` (starter) | practitioner name | main (starter layer) |
+| 17 | `IDENT` (starter) | practitioner identifier | main (starter layer) |
+| 18 | `ROLE_LOCATION` (starter) | practitioner role location | main (starter layer) |
+| 19 | `ACTOR` (starter) | schedule actor | main (starter layer) |
+| 20 | `ADDRESS` (starter) | address | main (starter layer) |
+| 21 | `USER_ROLE` (starter) | user role (dev users) | main (starter layer) |
+| 21 | `PHARMACY` (demo) | pharmacy | main (demo layer) |
+| 22 | `CONSENT_REQUIREMENT` (demo) | consent requirement | main (demo layer) |
+| 23 | `PATIENT` (demo) | patient | main (demo layer) |
+| 24 | `P_NAME` (demo) | patient name | main (demo layer) |
+| 25 | `P_TELECOM` (demo) | patient phone | main (demo layer) |
+| 26 | `P_ADDRESS` (demo) | patient address | main (demo layer) |
+| 27 | `P_MRN` (demo) | patient MRN identifier | main (demo layer) |
+| 28 | `P_LANGUAGE` (demo) | patient language | main (demo layer) |
+| 29 | `COVERAGE` (demo) | coverage | main (demo layer) |
+| 30 | `C_PAYOR` (demo) | coverage payor | main (demo layer) |
+| 31 | `C_MEMBER` (demo) | coverage member ID | main (demo layer) |
+| 32 | `C_GROUP` (demo) | coverage group class | main (demo layer) |
+| 33 | `APPOINTMENT` (demo) | demo-day appointment | main (demo layer) |
+| 34 | `A_PATIENT` (demo) | its patient participant | main (demo layer) |
+| 35 | `A_PROVIDER` (demo) | its provider participant | main (demo layer) |
+| 36 | `P_PHARMACY` (demo) | patient's preferred pharmacy | main (demo layer) |
+| 37 | `A_LOCATION` (demo) | its location participant | main (demo layer) |
+| 38 | `DEMO_USER` (demo) | demo staff user | main (demo layer) |
+| 39 | `DEMO_USER_ROLE` (demo) | demo staff user's role | main (demo layer) |
+| 40 | `PORTAL_ACCOUNT` (demo) | portal account | main (demo layer) |
+| 41 | `ALL_DAY_RULE` (demo) | all-day availability rule | main (demo layer) |
+| 42 | `ERX_ENDPOINT` (demo) | simulated pharmacy connection | main (demo layer) |
+| 43 | `CLEARINGHOUSE_ENDPOINT` (demo) | simulated clearinghouse connection | main (#287) |
+| 44 | `P_EMAIL` (demo) | patient email | #293 (registration, booking) |
+| 45 | `P_RACE` (demo) | patient race (OMB) | #293 (registration, booking) |
+| 46 | `P_ETHNICITY` (demo) | patient ethnicity (OMB) | #293 (registration, booking) |
+| 47 | `P_EMPLOYER` (demo) | patient employer | #293 (registration, booking) |
+| 48 | `P_PCP` (demo) | patient primary care provider | #293 (registration, booking) |
+| 49 | `C_PLAN` (demo) | coverage plan class | #293 (registration, booking) |
+| 50 | `C_COPAY` (demo) | coverage copay | #293 (registration, booking) |
+| 51 | `BOOKING_SETTING` (demo) | online booking setting | #293 (registration, booking) |
+| 52 | `BOOKABLE_TYPE` (demo) | online-bookable visit type | #293 (registration, booking) |
+| 53 | `PAST_APPOINTMENT` (demo) | past visit's booking | #293 (past visits) |
+| 54 | `PA_PATIENT` (demo) | its patient participant | #293 (past visits) |
+| 55 | `PA_PROVIDER` (demo) | its provider participant | #293 (past visits) |
+| 56 | `PA_LOCATION` (demo) | its location participant | #293 (past visits) |
+| 57 | `PA_STEP` (demo) | past visit's step | #293 (past visits) |
+| 58 | `PA_ROOM` (demo) | past visit's exam room | #293 (past visits) |
+| 59 | `PA_FOLLOW_UP` (demo) | past visit's follow-up request | #293 (past visits) |
+| 60 | `PA_REASON` (demo) | past visit's reason | #293 (past visits) |
+| 61 | `A_REASON` (demo) | demo-day appointment's reason | #293 (past visits) |
+
 ## Rules that never bend
 
 - Every computed column is `STORED` (`persisted=True` on `Computed(...)`); a schema test

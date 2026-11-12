@@ -230,7 +230,7 @@ def test_each_history_patients_conditions() -> None:
 
     problems = {n: {c.code.code for c in h.problems} for n, h in history.HISTORY.items()}
     assert problems == {2: {"I10", "E11.9", "E78.5", "Z87.891"}, 3: {"M54.50", "G89.29"},
-                        4: {"J45.40", "J30.2"}, 5: {"Z85.3", "Z92.3", "Z79.811"},
+                        4: {"J45.40", "J30.2"}, 5: {"C50.912", "Z92.3", "Z79.811"},
                         6: {"G43.009"}, 7: {"J44.9", "M17.0", "Z87.891"}}
     for h in history.HISTORY.values():
         assert 3 <= len(h.visits) <= 4 and h.allergies and h.medications
@@ -435,3 +435,24 @@ def test_eligibility_has_one_connection_to_send_through(
         conn = db.bind
         db.close()
         conn.close()  # type: ignore[union-attr]
+
+
+def test_no_two_seed_kinds_share_a_number() -> None:
+    """sid(kind, n) puts the kind in the ID, so two kinds on one number would give two rows
+    the same ID (db/CLAUDE.md, "The demo seed's fixed IDs"). 21 is the one known overlap
+    (starter USER_ROLE, demo PHARMACY), kept because renumbering would change live IDs."""
+    import ast
+
+    used: dict[int, list[str]] = {}
+    for module in (starter, demo):
+        source = Path(module.__file__ or "").read_text()
+        for node in ast.parse(source).body:
+            if (isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Tuple)
+                    and isinstance(node.value, ast.Call)
+                    and getattr(node.value.func, "id", "") == "range"):
+                numbers = range(*(a.value for a in node.value.args  # type: ignore[attr-defined]
+                                  ))
+                for name, number in zip(node.targets[0].elts, numbers, strict=True):
+                    used.setdefault(number, []).append(name.id)  # type: ignore[attr-defined]
+    shared = {n: names for n, names in used.items() if len(names) > 1}
+    assert shared == {21: ["USER_ROLE", "PHARMACY"]}
