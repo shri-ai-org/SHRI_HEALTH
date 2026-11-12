@@ -17,8 +17,10 @@ function buildStamp(at: Date): string {
   const dd = part({ day: '2-digit' })
   const mm = part({ month: '2-digit' })
   const yyyy = part({ year: 'numeric' })
-  let count = 0
-  try {
+  // A build without git (the deploy image) is given the day's version and commit by the deploy
+  // kit: SHRI_BUILD_DAY_VERSION and SHRI_BUILD_COMMIT, worked out from the checkout it deploys.
+  let count = Number(process.env.SHRI_BUILD_DAY_VERSION) || 0
+  if (!count) try {
     count = Number(execSync(`git rev-list --count --since="${yyyy}-${mm}-${dd}T00:00:00+05:30" HEAD`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()) || 0
   } catch {
     /* not a git checkout */
@@ -27,6 +29,7 @@ function buildStamp(at: Date): string {
 }
 
 function buildCommit(): string {
+  if (process.env.SHRI_BUILD_COMMIT) return process.env.SHRI_BUILD_COMMIT.slice(0, 12)
   try {
     return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
   } catch {
@@ -38,7 +41,12 @@ function buildCommit(): string {
 // SHRI_DEV_USER through X-Dev-User (../dev/realApi.ts, #109).
 const realApi = realApiSettings(process.env)
 
-export default defineConfig({
+// A production build talks to the real API unless SHRI_API=mock asks for the sample data (a
+// mock-up site), so a missing setting can never put sample data on a real server. The dev server
+// keeps its own switch (SHRI_API=real).
+const realApiBuild = process.env.SHRI_API !== 'mock'
+
+export default defineConfig(({ command }) => ({
   /**
    * Where the built app is mounted. The dev server and the harness run at `/`;
    * a hosted copy under a path (shri-ai.org/dev/clinician) is built with
@@ -51,7 +59,7 @@ export default defineConfig({
     __BUILD_STAMP__: JSON.stringify(buildStamp(new Date())),
     __BUILD_COMMIT__: JSON.stringify(buildCommit()),
     // SHRI_API=real: read the clinic's time zone before the first screen (shri-health/format.ts).
-    __SHRI_REAL_API__: JSON.stringify(Boolean(realApi)),
+    __SHRI_REAL_API__: JSON.stringify(Boolean(realApi) || (command === 'build' && realApiBuild)),
   },
   resolve: {
     alias: {
@@ -71,4 +79,4 @@ export default defineConfig({
     host: true,
     ...(realApi ? { proxy: { '/api/v1': realApiProxy(realApi) } } : {}),
   },
-})
+}))

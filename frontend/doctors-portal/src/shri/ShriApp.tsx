@@ -38,9 +38,24 @@ import { ErrorFrame } from './ui/states'
 
 /** Screens whose old address now makes one hop to a new one. */
 const MOVED = new Set(['S-06-01', 'S-06-11'])
+/**
+ * SHRI_HEALTH: with the API, screens with no service behind them yet are not routed at all, so
+ * no address opens sample data (they answer "not found"): inpatients (S-08), orders and results
+ * (S-09, Thulasi's), discharge (S-13), imaging (S-15), pharmacy (S-16), stroke (S-18), video
+ * visits (S-27) and the stroke assistant, and in the clinic screens co-sign, reports, results,
+ * cohorts, session templates, blocks and referrals. The rail already leaves them out (NavRail).
+ */
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+const NO_SERVICE_PREFIXES = ['S-08-', 'S-09-', 'S-13-', 'S-15-', 'S-16-', 'S-18-', 'S-27-']
+const NO_SERVICE = new Set(['S-28-09', 'S-06-09', 'S-06-12', 'S-06-13', 'S-05-04', 'S-05-05', 'S-05-06', 'S-05-10'])
+/** False for a screen that would show sample data with the API. */
+function routedWithApi(id: string): boolean {
+  return !NO_SERVICE.has(id) && !NO_SERVICE_PREFIXES.some((p) => id.startsWith(p))
+}
+const ROUTED = REAL_API ? ROUTED_SCREENS.filter((s) => routedWithApi(s.id)) : ROUTED_SCREENS
 /** The command wall draws no shell (`isBare`). Sign-in is bare too, and the one public route. */
-const BARE = ROUTED_SCREENS.filter((s) => isBare(s) && s.permission !== 'public')
-const SHELLED = ROUTED_SCREENS.filter((s) => !isBare(s) && !MOVED.has(s.id))
+const BARE = ROUTED.filter((s) => isBare(s) && s.permission !== 'public')
+const SHELLED = ROUTED.filter((s) => !isBare(s) && !MOVED.has(s.id))
 const MY_DAY = screen('S-06-01')
 const RECORD = screen('S-06-11')
 
@@ -132,7 +147,7 @@ export default function ShriApp() {
               <Route path="/clinician" element={<Moved />} />
               <Route path="/patient/:id/record" element={<Moved />} />
               {/* The patient portal's stand-in, for demonstrations: outside the doctor's shell. */}
-              <Route path="/demo/patient" element={<PatientDemoPage />} />
+              {REAL_API ? null : <Route path="/demo/patient" element={<PatientDemoPage />} />}
               <Route element={<AppShell />}>
                 <Route index element={<Home />} />
                 <Route path="/patient/:id" element={<Screen spec={RECORD} element={<RecordPage />} />} />
