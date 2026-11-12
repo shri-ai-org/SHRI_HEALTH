@@ -22,6 +22,7 @@ import type {
   ForbiddenResponse,
   Id,
   InternalErrorResponse,
+  ListEncounterPrescriptionsParams,
   ListMedicationsParams,
   ListPharmaciesParams,
   Medication,
@@ -34,6 +35,7 @@ import type {
   Prescription,
   PrescriptionCreate,
   PrescriptionEnteredInError,
+  PrescriptionList,
   PrescriptionPatch,
   Problem,
   RecordMedicationHeaders,
@@ -295,6 +297,88 @@ return apiFetch<recordMedicationResponse>(getRecordMedicationUrl(patientId),
     method: 'POST',
     headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(medicationCreate)
+  }
+);}
+
+
+export type listEncounterPrescriptionsResponse200 = {
+  data: PrescriptionList
+  status: 200
+}
+
+export type listEncounterPrescriptionsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listEncounterPrescriptionsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listEncounterPrescriptionsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listEncounterPrescriptionsResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listEncounterPrescriptionsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listEncounterPrescriptionsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listEncounterPrescriptionsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listEncounterPrescriptionsResponseSuccess = (listEncounterPrescriptionsResponse200) & {
+  headers: Headers;
+};
+export type listEncounterPrescriptionsResponseError = (listEncounterPrescriptionsResponse400 | listEncounterPrescriptionsResponse401 | listEncounterPrescriptionsResponse403 | listEncounterPrescriptionsResponse404 | listEncounterPrescriptionsResponse422 | listEncounterPrescriptionsResponse429 | listEncounterPrescriptionsResponse500) & {
+  headers: Headers;
+};
+
+export type listEncounterPrescriptionsResponse = (listEncounterPrescriptionsResponseSuccess | listEncounterPrescriptionsResponseError)
+
+export const getListEncounterPrescriptionsUrl = (encounterId: Id,
+    params?: ListEncounterPrescriptionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/encounters/${encounterId}/prescriptions?${stringifiedParams}` : `/encounters/${encounterId}/prescriptions`
+}
+
+/**
+ * The prescriptions written in one visit, drafts included, oldest first, so another tab or browser shows the same lines (gap 82). Entered-in-error prescriptions are left out. Each item is the prescription as `getPrescription` returns it; read one with `getPrescription` for its `ETag` before changing it.
+ * @summary List a visit's prescriptions
+ */
+export const listEncounterPrescriptions = async (encounterId: Id,
+    params?: ListEncounterPrescriptionsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listEncounterPrescriptionsResponse> => {
+
+  return apiFetch<listEncounterPrescriptionsResponse>(getListEncounterPrescriptionsUrl(encounterId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 
