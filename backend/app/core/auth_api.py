@@ -7,6 +7,7 @@ back-channel logout (D94, POST /hooks/keycloak/backchannel-logout) is backchanne
 """
 
 import hmac
+import logging
 from datetime import UTC
 from typing import Annotated, Any
 
@@ -19,6 +20,8 @@ from app.core.config import Settings
 from app.core.deps import CurrentUser, require
 from app.core.errors import ServiceUnavailable, ValidationFailed, field_error
 from app.core.routing import API_PREFIX
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["platform"])
 Signed = Annotated[CurrentUser, Depends(require("authenticated"))]
@@ -51,6 +54,19 @@ def _bad_login(name: str) -> ValidationFailed:
                             errors=[field_error("query", name, "invalid-format")])
 
 
+def _start_again(request: Request, cookie: str) -> RedirectResponse:
+    """A callback with no matching login (no login cookie, an unknown, used or expired key, or
+    another state): 303 back to the sign-in start, never a JSON error, so the browser lands on
+    Keycloak's form again. The Location is relative ("login", next to "callback"), so it holds
+    under a base path the API never sees. Nothing is signed in, so a forged or replayed callback
+    gains nothing; Keycloak's form (prompt=login) waits for the user, so it can't loop on its
+    own. The login cookie is cleared; nothing from the request is logged."""
+    log.info("Sign-in callback without a matching login; sent back to the sign-in start")
+    response = RedirectResponse("login", status_code=303)
+    cookies.remove(response, request.app.state.settings, cookie, samesite="lax")
+    return response
+
+
 @router.get("/auth/callback", operation_id="finishLogin", status_code=302)
 async def finish_login(
     request: Request,
@@ -60,9 +76,9 @@ async def finish_login(
     keycloak = _keycloak(request)
     login = _login_states(request).take(cookies.read(request, sessions.LOGIN_COOKIE))
     if login is None:  # no login cookie, an unknown or used key, or older than 10 minutes
-        raise _bad_login("state")
+        return _start_again(request, sessions.LOGIN_COOKIE)
     if not hmac.compare_digest(state.encode(), login.state.encode()):
-        raise _bad_login("state")
+        return _start_again(request, sessions.LOGIN_COOKIE)
     try:
         tokens = await keycloak.exchange(code, login.verifier)
     except sessions.KeycloakRefused:

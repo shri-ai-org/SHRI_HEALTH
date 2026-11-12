@@ -447,6 +447,24 @@ async def _signed_in(app: Any, client: TestClient, realm: FakeRealm, chart: dict
     return callback
 
 
+def test_a_callback_with_no_matching_login_starts_again_instead_of_an_error(
+        client: TestClient) -> None:
+    """Expired, used or another state: 303 back to the portal's sign-in start, the login cookie
+    cleared, nothing signed in; following it reaches the patient realm's form."""
+    stale = client.get("/api/v1/portal/auth/callback?code=c&state=s", follow_redirects=False)
+    assert stale.status_code == 303 and stale.headers["location"] == "login"
+    client.get("/api/v1/portal/auth/login", follow_redirects=False)  # sets the login cookie
+    wrong = client.get("/api/v1/portal/auth/callback?code=c&state=not-the-state",
+                       follow_redirects=False)
+    assert wrong.status_code == 303 and wrong.headers["location"] == "login"
+    cleared = [c for c in wrong.headers.get_list("set-cookie")
+               if c.startswith(f"{portal.PORTAL_LOGIN_COOKIE}=")]
+    assert cleared and "max-age=0" in cleared[0].lower()
+    restart = client.get("/api/v1/portal/auth/login", follow_redirects=False)
+    assert "/realms/shri-patients/protocol/openid-connect/auth?" in restart.headers["location"]
+    assert portal.PORTAL_COOKIE not in client.cookies  # nothing signed in
+
+
 async def test_sign_in_activates_the_account_and_opens_a_portal_session(
         app: Any, client: TestClient, realm: FakeRealm, chart: dict[str, Any],
         admin_engine: Engine) -> None:  # noqa: F811

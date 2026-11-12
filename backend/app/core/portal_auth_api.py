@@ -9,6 +9,7 @@ actor once known, and a clinic-less `access-denied` row for a refused enrolment 
 import hashlib
 import hmac
 import json
+import logging
 from datetime import UTC, date
 from typing import Annotated, Any
 
@@ -24,6 +25,8 @@ from app.core.errors import ServiceUnavailable, ValidationFailed, field_error
 from app.core.public_form import require_portal_origin
 from app.core.routing import API_PREFIX
 from app.core.session import KeycloakRefused
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["portal"])
 Patient = Annotated[PortalPatient, Depends(require_patient("authenticated"))]
@@ -51,6 +54,19 @@ def _bad_login(name: str) -> ValidationFailed:
                             errors=[field_error("query", name, "invalid-format")])
 
 
+def _start_again(request: Request, cookie: str) -> RedirectResponse:
+    """A callback with no matching login (no login cookie, an unknown, used or expired key, or
+    another state): 303 back to the sign-in start, never a JSON error, so the browser lands on
+    Keycloak's form again. The Location is relative ("login", next to "callback"), so it holds
+    under a base path the API never sees. Nothing is signed in, so a forged or replayed callback
+    gains nothing; Keycloak's form (prompt=login) waits for the user, so it can't loop on its
+    own. The login cookie is cleared; nothing from the request is logged."""
+    log.info("Sign-in callback without a matching login; sent back to the sign-in start")
+    response = RedirectResponse("login", status_code=303)
+    cookies.remove(response, request.app.state.settings, cookie, samesite="lax")
+    return response
+
+
 @router.get("/portal/auth/callback", operation_id="completePortalLogin", status_code=302)
 async def complete_portal_login(
     request: Request,
@@ -61,7 +77,7 @@ async def complete_portal_login(
     login = request.app.state.portal_login_states.take(
         cookies.read(request, portal.PORTAL_LOGIN_COOKIE))
     if login is None or not hmac.compare_digest(state.encode(), login.state.encode()):
-        raise _bad_login("state")
+        return _start_again(request, portal.PORTAL_LOGIN_COOKIE)
     try:
         tokens = await keycloak.exchange(code, login.verifier)
     except KeycloakRefused:

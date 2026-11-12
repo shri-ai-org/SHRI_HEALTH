@@ -244,16 +244,32 @@ def test_a_callback_without_code_and_state_is_422(query: str) -> None:
     assert client.get(f"/api/v1/auth/callback{query}", follow_redirects=False).status_code == 422
 
 
-def test_a_callback_without_its_login_cookie_or_with_another_state_is_422() -> None:
+def _sent_back_to_start(response: Any) -> None:
+    """303 to the sign-in start next to the callback, the login cookie cleared, no body."""
+    assert response.status_code == 303 and response.headers["location"] == "login"
+    cleared = [c for c in response.headers.get_list("set-cookie")
+               if c.startswith(f"{sessions.LOGIN_COOKIE}=")]
+    assert cleared and "max-age=0" in cleared[0].lower()
+    assert response.content == b""
+
+
+def test_a_callback_without_its_login_cookie_or_with_another_state_starts_again() -> None:
+    """No JSON error page: a browser with no matching login goes back to the sign-in start, and
+    following it reaches Keycloak's form. Nothing is signed in."""
     from app.main import create_app
 
     client = TestClient(create_app(_settings()), base_url="https://testserver")
-    assert client.get("/api/v1/auth/callback?code=c&state=s",
-                      follow_redirects=False).status_code == 422
+    _sent_back_to_start(client.get("/api/v1/auth/callback?code=c&state=s",
+                                   follow_redirects=False))
     client.get("/api/v1/auth/login", follow_redirects=False)  # sets the login cookie
     wrong = client.get("/api/v1/auth/callback?code=c&state=not-the-state",
                        follow_redirects=False)
-    assert wrong.status_code == 422 and wrong.json()["code"] == "validation-failed"
+    _sent_back_to_start(wrong)
+    restart = client.get(f"https://testserver/api/v1/auth/{wrong.headers['location']}",
+                         follow_redirects=False)
+    assert restart.status_code == 302
+    assert "/realms/shri-staff/protocol/openid-connect/auth?" in restart.headers["location"]
+    assert sessions.SESSION_COOKIE not in client.cookies  # nothing signed in
 
 
 def test_without_a_session_cookie_staff_routes_are_401() -> None:
