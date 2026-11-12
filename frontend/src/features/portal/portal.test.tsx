@@ -6,15 +6,25 @@ import { axeViolations } from '../../test/axe'
 import { createHttpPortalApi } from './api/httpPortalApi'
 import { createMockPortalApi, uid } from './api/mockPortalApi'
 import type { PortalApi } from './api/portalApi'
-import { PortalApp } from './PortalApp'
+import { PortalApp, resetAutoSignInForTests } from './PortalApp'
 import { BIRTH_DATE, fakePortalServer, IDS, INVITATION_CODE, type FakeOptions } from './test/fakePortalServer'
 
 // Synthetic data only (fakePortalServer for B8a, mockPortalApi for the later screens).
+
+beforeEach(() => {
+  window.sessionStorage.clear()
+  resetAutoSignInForTests()
+})
 
 afterEach(() => {
   vi.unstubAllGlobals()
   setCsrfToken(null)
 })
+
+/** This tab's trips to the sign-in form a moment ago, each back still signed out (failed or refused). */
+function cameBackStillSignedOut(trips: number) {
+  window.sessionStorage.setItem('shri.portal.signInTries', `${trips}:${Date.now() - 5_000}`)
+}
 
 function setup(path = '/portal', options: FakeOptions = {}) {
   const server = fakePortalServer(options)
@@ -44,8 +54,45 @@ function futureWeekday() {
 }
 
 describe('sign-in', () => {
-  it('starts sign-in at the patient realm: no password, registration or recovery here (D85)', async () => {
+  it('goes straight to the patient realm when nobody is signed in, with no page of its own', async () => {
+    const { startSignIn } = setup('/portal', { signedIn: false })
+    expect(await screen.findByText('Taking you to sign in…')).toBeInTheDocument()
+    await waitFor(() => expect(startSignIn).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('heading', { level: 1, name: 'Sign in' })).toBeNull()
+  })
+
+  it('redirects again when sign-in came back still signed out once', async () => {
+    cameBackStillSignedOut(1)
+    const { startSignIn } = setup('/portal', { signedIn: false })
+    await waitFor(() => expect(startSignIn).toHaveBeenCalledOnce())
+    expect(window.sessionStorage.getItem('shri.portal.signInTries')).toMatch(/^2:/)
+  })
+
+  it('stops after two returns in a row: one line, never the Sign in page, and its link starts again', async () => {
+    cameBackStillSignedOut(2)
     const { user, startSignIn } = setup('/portal', { signedIn: false })
+    expect(await screen.findByText(/Sign-in didn’t complete\./)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1, name: 'Sign in' })).toBeNull()
+    expect(startSignIn).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('link', { name: 'Try again' }))
+    expect(startSignIn).toHaveBeenCalledOnce()
+    // The link starts a new count: one trip.
+    expect(window.sessionStorage.getItem('shri.portal.signInTries')).toMatch(/^1:/)
+  })
+
+  it('keeps redirecting in a browser without sessionStorage (each trip stops at the realm’s form)', async () => {
+    const blocked = () => {
+      throw new DOMException('blocked', 'SecurityError')
+    }
+    vi.stubGlobal('sessionStorage', { getItem: blocked, setItem: blocked, removeItem: blocked, clear: blocked })
+    const { startSignIn } = setup('/portal', { signedIn: false })
+    await waitFor(() => expect(startSignIn).toHaveBeenCalledOnce())
+    expect(screen.queryByText(/Sign-in didn’t complete/)).toBeNull()
+  })
+
+  it('starts sign-in at the patient realm: no password, registration or recovery here (D85)', async () => {
+    // The Sign in page now shows only with a reason, here a session the server ended.
+    const { user, startSignIn } = setup('/portal/demographics', { unauthorized: ['/portal/me'] })
     expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
     expect(screen.queryByLabelText(/Password|Username/)).toBeNull()
     expect(screen.queryByRole('link', { name: /Registration|Forgot/ })).toBeNull()
@@ -59,8 +106,10 @@ describe('sign-in', () => {
 
   it('sends the old registration and recovery addresses to sign-in', async () => {
     for (const path of ['/portal/register', '/portal/forgot-username', '/portal/forgot-password']) {
-      setup(path, { signedIn: false })
-      expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
+      window.sessionStorage.clear()
+      resetAutoSignInForTests()
+      const { startSignIn } = setup(path, { signedIn: false })
+      await waitFor(() => expect(startSignIn).toHaveBeenCalledOnce())
       document.body.innerHTML = ''
     }
   })
@@ -368,11 +417,13 @@ describe('documents', () => {
 })
 
 describe('set up your account, before any sign-in (D85, ADR-0013 §3)', () => {
+  // The invitation gives the patient this address (PortalAccountPanel): signed out, it opens set-up,
+  // never the automatic sign-in.
   async function toSetUp() {
-    const s = setup('/portal', { signedIn: false })
-    await s.user.click(await screen.findByRole('link', { name: 'Set up your account' }))
+    const s = setup('/portal/set-up-account', { signedIn: false })
     expect(await screen.findByRole('heading', { level: 1, name: 'Set up your account' })).toBeInTheDocument()
     expect(window.location.pathname).toBe('/portal/set-up-account')
+    expect(s.startSignIn).not.toHaveBeenCalled()
     return s
   }
 
@@ -404,7 +455,7 @@ describe('set up your account, before any sign-in (D85, ADR-0013 §3)', () => {
   })
 
   it('sends the patient to their email, then to sign-in', async () => {
-    const { server, user } = await toSetUp()
+    const { server, user, startSignIn } = await toSetUp()
     await fill(user, INVITATION_CODE.toLowerCase(), '07/19/1984')
     expect(await screen.findByRole('heading', { level: 1, name: 'Check your email' })).toBeInTheDocument()
     const [enroll] = server.to('POST', '/portal/enrollments')
@@ -413,8 +464,9 @@ describe('set up your account, before any sign-in (D85, ADR-0013 §3)', () => {
     expect(screen.getByText(/within 12 hours/)).toBeInTheDocument()
     // The email typed is not shown back.
     expect(screen.queryByText(/ramona980@example\.com/)).toBeNull()
+    // "Go to sign in" goes straight to the patient realm's form, like any signed-out visit.
     await user.click(screen.getByRole('link', { name: 'Go to sign in' }))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
+    await waitFor(() => expect(startSignIn).toHaveBeenCalledOnce())
   })
 })
 
@@ -467,8 +519,9 @@ describe('accessibility of every page', () => {
     expect(await axeViolations()).toEqual([])
   })
 
-  it.each([['/portal/sign-in', 'Sign in']])('signed-out page %s has no axe violations', async (path, heading) => {
-    setup(path, { signedIn: false })
+  it.each([['/portal/sign-in', 'Sign in']])('signed-out page %s has no axe violations', async (_path, heading) => {
+    // The Sign in page shows only with a reason, here a session the server ended.
+    setup('/portal/demographics', { unauthorized: ['/portal/me'] })
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
     await loaded()
     expect(await axeViolations()).toEqual([])

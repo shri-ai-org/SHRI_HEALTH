@@ -11,10 +11,18 @@ import {
 } from '../../api/generated/endpoints/patients/patients'
 import type { PortalAccountStatus, PortalAccountStatusStatus, PortalInvitation } from '../../api/generated/model'
 import { Badge, Button, ConfirmDialog, Field, formatDateTime, isOverLimit, Modal, ProblemAlert, Spinner, Textarea, useToast, type BadgeTone, type Problem } from '../../design-system'
+import { PORTAL_BASE } from '../portal/router'
 
 /** Staff times have no facility here; they show in the workstation's zone. */
 const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 const REASON_LIMIT = 500
+
+/**
+ * Where the patient sets up their account: the portal's own set-up page, on this host. The portal
+ * opens it for a signed-out patient instead of going to sign-in, so the invitation names it directly
+ * (no patient data in it). The portal is served from the same host as the staff screens.
+ */
+const setUpAccountUrl = () => new URL(`${PORTAL_BASE}/set-up-account`, window.location.origin).href
 
 const STATUS: Record<PortalAccountStatusStatus, { label: string; tone: BadgeTone; text: string }> = {
   none: { label: 'No account', tone: 'neutral', text: 'The patient has no portal account. Issue an invitation after checking their photo ID.' },
@@ -385,6 +393,7 @@ function ReasonDialog({ patientId, kind, onClose, onDone, onStale }: { patientId
  */
 function InvitationDialog({ invitation, onClose }: { invitation: PortalInvitation; onClose: () => void }) {
   const expires = formatDateTime(invitation.expiresAt, LOCAL_TZ)
+  const setUpUrl = setUpAccountUrl()
   return (
     <Modal
       open
@@ -395,7 +404,7 @@ function InvitationDialog({ invitation, onClose }: { invitation: PortalInvitatio
           <Button variant="outline" onClick={onClose}>
             Done
           </Button>
-          <Button icon={<Printer aria-hidden="true" size={16} />} onClick={() => printInvitation(invitation.code, expires)}>
+          <Button icon={<Printer aria-hidden="true" size={16} />} onClick={() => printInvitation(invitation.code, expires, setUpUrl)}>
             Print invitation
           </Button>
         </>
@@ -406,14 +415,16 @@ function InvitationDialog({ invitation, onClose }: { invitation: PortalInvitatio
         <p className="rounded-lg bg-surface-2 py-4 text-center font-mono text-2xl font-semibold tracking-widest text-ink" aria-label={`Invitation code ${invitation.code.split('').join(' ')}`}>
           {invitation.code}
         </p>
-        <p className="text-sm text-ink-muted">The patient goes to the portal, chooses "Set up your account" and enters the code, their date of birth and their email.</p>
+        <p className="text-sm text-ink-muted">
+          The patient opens <span className="font-medium break-all text-ink">{setUpUrl}</span> and enters the code, their date of birth and their email.
+        </p>
       </div>
     </Modal>
   )
 }
 
 /** A plain page with only the code and the steps (no patient data), printed from its own window. */
-function printInvitation(code: string, expires: string) {
+function printInvitation(code: string, expires: string, setUpUrl: string) {
   const w = window.open('', '_blank', 'width=640,height=520')
   if (!w) return
   const doc = w.document
@@ -429,7 +440,9 @@ function printInvitation(code: string, expires: string) {
   add('p', 'Your invitation code:')
   add('p', code, 'font-family: monospace; font-size: 2rem; letter-spacing: 0.2em; font-weight: 600')
   add('p', `It works once, until ${expires}.`)
-  add('p', 'Go to the patient portal, choose "Set up your account", and enter this code, your date of birth and your email address. We then email you a link to choose a password and set up an authenticator app.')
+  add('p', 'Go to this address and enter this code, your date of birth and your email address:')
+  add('p', setUpUrl, 'font-family: monospace; font-size: 1.1rem; word-break: break-all')
+  add('p', 'We then email you a link to choose a password and set up an authenticator app.')
   add('p', 'Keep this paper private. If you lose it, ask the front desk for a new code.')
   w.focus()
   w.print()

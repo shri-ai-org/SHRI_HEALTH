@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { onUnauthenticated, setCsrfSessionPath, setCsrfToken } from '../../api/client'
+import { API_BASE, onUnauthenticated, setCsrfSessionPath, setCsrfToken } from '../../api/client'
 import type { PortalSession } from '../../api/generated/model'
 import { IdleTimeoutWarning, Spinner } from '../../design-system'
 import { PortalApiContext, type PortalApi } from './api/portalApi'
@@ -71,6 +71,93 @@ const ROUTES: Route[] = [
 
 const SIGNED_OUT_PATHS = ['/sign-in', '/set-up-account']
 
+// Nobody signed in: the portal goes straight to the patient realm's sign-in form, as the staff
+// apps do (#304, same rule). A guard against a redirect loop: the tab counts its trips to the form
+// in sessionStorage (a count and a time only, no patient data). A browser back here still signed
+// out twice in a row, each within a minute, stops being redirected and sees one line, "Sign-in
+// didn't complete. Try again.", whose link starts the sign-in again. Normally nobody sees it.
+// Without sessionStorage the portal just keeps redirecting: the realm always shows its form
+// (prompt=login), so each trip stops there. The portal's own Sign in page never shows for this.
+const SIGN_IN_TRIES_KEY = 'shri.portal.signInTries'
+/** A return later than this after the last trip starts a new count. */
+const SIGN_IN_TRY_WINDOW_MS = 60_000
+/** Back still signed out after this many trips in a row: stop redirecting. */
+const SIGN_IN_MAX_TRIES = 2
+
+/** This page load's answer, once asked, and whether it has left already: React's development
+ *  double render and double effect must not count or send the browser twice. */
+let autoSignInDecision: boolean | undefined
+let autoSignInLeft = false
+
+/** For tests: forget this page load's answer, as a new page load would. */
+export function resetAutoSignInForTests(): void {
+  autoSignInDecision = undefined
+  autoSignInLeft = false
+}
+
+function forgetAutoSignIn(): void {
+  try {
+    window.sessionStorage.removeItem(SIGN_IN_TRIES_KEY)
+  } catch {
+    // nothing to forget
+  }
+}
+
+/** True, and the trip counted, when the portal may go to sign in on its own now. */
+function mayAutoSignIn(): boolean {
+  try {
+    const [count = 0, at = 0] = (window.sessionStorage.getItem(SIGN_IN_TRIES_KEY) ?? '').split(':').map(Number)
+    const tries = at > 0 && Date.now() - at < SIGN_IN_TRY_WINDOW_MS ? count : 0
+    if (tries >= SIGN_IN_MAX_TRIES) return false
+    window.sessionStorage.setItem(SIGN_IN_TRIES_KEY, `${tries + 1}:${Date.now()}`)
+    return true
+  } catch {
+    return true // no storage: keep redirecting; the realm's form stops each trip (prompt=login)
+  }
+}
+
+function AutoSignIn({ api }: { api: PortalApi }) {
+  autoSignInDecision ??= mayAutoSignIn()
+  const leaving = autoSignInDecision
+  useEffect(() => {
+    if (leaving && !autoSignInLeft) {
+      autoSignInLeft = true
+      api.startSignIn()
+    }
+  }, [leaving, api])
+  if (!leaving) {
+    return (
+      <main className="mx-auto mt-24 max-w-md px-4 text-center">
+        <p className="text-ink">
+          Sign-in didn’t complete.{' '}
+          <a
+            href={`${API_BASE}/portal/auth/login`}
+            onClick={(e) => {
+              e.preventDefault()
+              // A sign-in the patient asked for: a new count of one trip.
+              try {
+                window.sessionStorage.setItem(SIGN_IN_TRIES_KEY, `1:${Date.now()}`)
+              } catch {
+                // no storage: nothing to count
+              }
+              api.startSignIn()
+            }}
+            className="font-semibold text-primary-700 underline underline-offset-2"
+          >
+            Try again
+          </a>
+          .
+        </p>
+      </main>
+    )
+  }
+  return (
+    <div className="flex min-h-dvh items-center justify-center">
+      <Spinner label="Taking you to sign in" />
+    </div>
+  )
+}
+
 export function PortalApp({ api }: { api: PortalApi }) {
   return (
     <PortalApiContext.Provider value={api}>
@@ -90,6 +177,7 @@ function Gate({ api }: { api: PortalApi }) {
   const signedInRef = useRef(false)
 
   const signedIn = useCallback((session: PortalSession) => {
+    forgetAutoSignIn()
     setCsrfToken(session.csrfToken)
     signedInRef.current = true
     setState({ kind: 'signed-in', session })
@@ -168,8 +256,10 @@ function Gate({ api }: { api: PortalApi }) {
     // Enrolment comes before any sign-in: the realm account doesn't exist until the code is used.
     if (path === '/set-up-account') return <SetUpAccountPage />
     // Sign-in leaves for the realm and comes back through `/portal/auth/callback`, which sets the
-    // cookie and returns to the portal.
-    return <SignInPage {...(state.kind === 'signed-out' && state.reason ? { reason: state.reason } : {})} />
+    // cookie and returns to the portal. Nobody signed in: straight there (AutoSignIn). Signed out,
+    // timed out or ended: the page says why and waits for the patient's click.
+    if (!state.reason) return <AutoSignIn api={api} />
+    return <SignInPage reason={state.reason} />
   }
 
   if (SIGNED_OUT_PATHS.includes(path)) {
