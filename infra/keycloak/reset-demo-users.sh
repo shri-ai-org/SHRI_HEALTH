@@ -72,13 +72,22 @@ if [ "${DEMO_SKIP_AUTH_CODE:-}" = 1 ]; then ACTIONS='' CODE=DISABLED; else ACTIO
 # realm flow-alias: the browser flow's one-time code step, REQUIRED or DISABLED as above.
 code_step() {
     flow=$(printf '%s' "$2" | sed 's/ /%20/g')
-    id=$($CURL -K "$auth" "$KC_URL/admin/realms/$1/authentication/flows/$flow/executions" \
-        | sed 's/},{/}\n{/g' | grep '"providerId":"auth-otp-form"' \
-        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
-    [ -n "$id" ] || { echo "$1: no one-time code step in '$2'" >&2; exit 1; }
-    $CURL -o /dev/null -K "$auth" -X PUT -H "Content-Type: application/json" \
-        -d "{\"id\":\"$id\",\"requirement\":\"$CODE\"}" \
-        "$KC_URL/admin/realms/$1/authentication/flows/$flow/executions"
+    steps=$($CURL -K "$auth" "$KC_URL/admin/realms/$1/authentication/flows/$flow/executions" \
+        | sed 's/},{/}\n{/g; s/^\[//; s/\]$//')
+    step=$(printf '%s\n' "$steps" | grep '"providerId":"auth-otp-form"' | head -1)
+    password=$(printf '%s\n' "$steps" | grep '"providerId":"auth-username-password-form"' \
+        | sed -n 's/.*"priority":\([0-9]*\).*/\1/p' | head -1)
+    [ -n "$step" ] && [ -n "$password" ] \
+        || { echo "$1: no password and one-time code steps in '$2'" >&2; exit 1; }
+    # The whole step goes back with its requirement set and its place right after the password
+    # form: Keycloak takes a PUT as the whole step, so a partial one would reset its priority to
+    # 0 and ask for the code before the username, which breaks the sign-in page (400).
+    step=$(printf '%s' "$step" | sed "s/\"requirement\":\"[A-Z]*\"/\"requirement\":\"$CODE\"/; \
+        s/\"priority\":[0-9]*/\"priority\":$((password + 10))/")
+    $CURL -o /dev/null -K "$auth" -X PUT -H "Content-Type: application/json" --data-binary @- \
+        "$KC_URL/admin/realms/$1/authentication/flows/$flow/executions" <<EOF
+$step
+EOF
     echo "$1: the one-time code is $CODE"
 }
 
