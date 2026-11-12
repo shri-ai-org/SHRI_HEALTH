@@ -27,7 +27,7 @@ def test_a_refused_step_names_the_call_and_stops_the_rest() -> None:
             "errors": [{"pointer": "/startAt", "code": "out-of-range"}]})
 
     results = dr.run("http://api.test", httpx.MockTransport(api))
-    assert [(n, ok) for n, ok, _ in results] == [(1, True)] + [(n, False) for n in range(2, 8)]
+    assert [(n, ok) for n, ok, _ in results] == [(1, True)] + [(n, False) for n in range(2, 9)]
     assert results[1][2] == ("GET /booking/facilities answered 422 business-rule-violation "
                              "/startAt:out-of-range")
     assert all(reason == "not run: needs step 2" for _, _, reason in results[2:])
