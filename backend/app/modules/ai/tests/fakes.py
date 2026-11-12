@@ -144,6 +144,12 @@ class FakeAIRepository:
     async def patient_context(self, db: AsyncSession, patient_id: UUID) -> str | None:
         return "41-year-old female"
 
+    async def practitioner_of_user(self, db: AsyncSession, user_id: UUID) -> UUID | None:
+        return None
+
+    async def generation(self, db: AsyncSession, suggestion_id: UUID) -> Any:
+        return None
+
     async def month_usage(self, db: AsyncSession) -> list[Usage]:
         return list(self.usage)
 

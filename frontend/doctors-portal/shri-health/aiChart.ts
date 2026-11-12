@@ -1,6 +1,6 @@
-// SHRI_HEALTH data layer for the chart AI (D70): AI-02's chart summary (createChartSummary, then
-// getChartSummary) and the assistant's chart questions (listSuggestedQuestions, createChartQuestion,
-// then getChartAnswer). Each create answers 202 with its operation; the AI gateway usually runs it in
+// SHRI_HEALTH data layer for the chart AI (D70, D116): AI-02's chart summary (createChartSummary,
+// then getChartSummary), the assistant's chart questions (listSuggestedQuestions,
+// createChartQuestion, then getChartAnswer), the morning brief and AI-03's differential. Each create answers 202 with its operation; the AI gateway usually runs it in
 // the request, so the operation is already finished, and it is polled only when it isn't. A refused
 // or failed operation (AI off, unavailable, over budget, output rejected) becomes AiFeatureDown, so
 // the screen hides the feature instead of showing a broken one.
@@ -8,12 +8,16 @@ import { ApiError, newIdempotencyKey } from '../../src/api/client'
 import {
   createChartQuestion,
   createChartSummary,
+  createDifferential,
+  createMorningBrief,
   getChartAnswer,
   getChartSummary,
+  getDifferential,
+  getMorningBrief,
   listSuggestedQuestions,
 } from '../../src/api/generated/endpoints/ai/ai'
 import { getOperation } from '../../src/api/generated/endpoints/platform/platform'
-import type { ChartAnswer, ChartQuestionPageType, ChartSummary, Operation, SuggestedQuestionList } from '../../src/api/generated/model'
+import type { ChartAnswer, ChartQuestionPageType, ChartSummary, Differential, MorningBrief, Operation, SuggestedQuestionList } from '../../src/api/generated/model'
 import { problemCopy } from '../../src/design-system/problem/problem'
 import { AiFeatureDown } from './aiStatus'
 
@@ -68,6 +72,28 @@ export async function askChart(question: string, pageType: ChartQuestionPageType
     )
     const id = await finished(res.data as Operation, 'chart answer')
     return (await getChartAnswer(id)).data as ChartAnswer
+  } catch (error) {
+    throw asDown(error)
+  }
+}
+
+/** The morning brief (D116): the signed-in clinician's appointments on a day, a few sourced lines per chart. */
+export async function morningBrief(date: string): Promise<MorningBrief> {
+  try {
+    const res = await createMorningBrief({ date }, { 'Idempotency-Key': newIdempotencyKey() })
+    const id = await finished(res.data as Operation, 'morning brief')
+    return (await getMorningBrief(id)).data as MorningBrief
+  } catch (error) {
+    throw asDown(error)
+  }
+}
+
+/** AI-03 (D116): possible diagnoses for a visit, each citing its records; it suggests, never concludes. */
+export async function differentialFor(encounterId: string): Promise<Differential> {
+  try {
+    const res = await createDifferential({ encounterId }, { 'Idempotency-Key': newIdempotencyKey() })
+    const id = await finished(res.data as Operation, 'differential')
+    return (await getDifferential(id)).data as Differential
   } catch (error) {
     throw asDown(error)
   }

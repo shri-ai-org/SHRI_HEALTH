@@ -8,7 +8,7 @@ import { create } from 'zustand'
 import { ApiError } from '../../src/api/client'
 import { problemCopy } from '../../src/design-system/problem/problem'
 
-export type AiFeature = 'note-draft' | 'chart-summary' | 'chart-qa'
+export type AiFeature = 'note-draft' | 'chart-summary' | 'chart-qa' | 'morning-brief' | 'differential'
 
 interface AiStatus {
   /** Why each feature is down, in plain words; absent while it works. */
