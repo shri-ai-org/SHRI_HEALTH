@@ -242,3 +242,30 @@ def test_past_notes_are_signed_at_the_visits_end_as_a_synthetic_import(
             {"ps": [sid(demo.PATIENT, n) for n in history.HISTORY]}).all()
     assert len(rows) == sum(len(h.visits) for h in history.HISTORY.values())
     assert {tuple(r) for r in rows} == {(True, history.IMPORT_REASON, True)}
+
+
+def test_each_medication_starts_at_a_visit_or_before_the_history() -> None:
+    """A medication is linked to the visit it started at, or to the first visit when it predates
+    the history, so the date it is recorded at is never a guess."""
+    for h in history.HISTORY.values():
+        days = {v.day for v in h.visits}
+        for m in h.medications:
+            assert m.started in days or m.started < h.visits[0].day, m.product.display
+
+
+def test_each_medication_is_recorded_at_its_visits_start_as_a_synthetic_import(
+        seeded: None, admin_engine: Engine) -> None:
+    """Vimal on #305: a medication's recordedAt is the start of the visit it is linked to, never
+    a later time or the load time, and its Provenance says "synthetic demo import"."""
+    with admin_engine.connect() as c:
+        rows = c.execute(text(
+            "SELECT m.authored_on = e.period_start AS at_the_visit, "
+            "m.authored_on < m.created_at AS before_the_load, pv.reason_text "
+            "FROM clinical.medication_request m "
+            "JOIN clinical.encounter e ON e.id = m.encounter_id "
+            "JOIN clinical.provenance pv ON pv.target_id = m.id "
+            "AND pv.activity_code = 'CREATE' "
+            "WHERE m.subject_patient_id = ANY(:ps)"),
+            {"ps": [sid(demo.PATIENT, n) for n in history.HISTORY]}).all()
+    assert len(rows) == sum(len(h.medications) for h in history.HISTORY.values())
+    assert {tuple(r) for r in rows} == {(True, True, history.IMPORT_REASON)}

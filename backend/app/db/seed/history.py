@@ -16,6 +16,8 @@ front desk and the doctor's screens read before the visit.
   demo admin.
 - Each past note is signed at its visit's end, with a Provenance whose reason is "synthetic demo
   import" (``_sign_as_imported``; the store's helpers can't sign at another time).
+- Each medication on the list is recorded at the start of the visit it started at (the first
+  visit for one that predates the history), with the same reason (``_record_as_imported``).
 
 The clinical content is synthetic and needs a clinician's review before it is shown as
 realistic; it lives in the tables below so that review can change it in one place.
@@ -967,6 +969,19 @@ async def _sign_as_imported(db: AsyncSession, note_id: uuid.UUID, version: int,
                          signature=(signature_type, await fs._note_digest(db, note)))
 
 
+async def _record_as_imported(db: AsyncSession, data: fs.MedicationIn, at: dt.datetime) -> None:
+    """A medication on the list, recorded at the start of the visit it is linked to (Vimal, #305),
+    so its ``recordedAt`` is that visit's, not the load time. The seed's own, as
+    ``_sign_as_imported`` is: the store's record_medication always records at the database's
+    now(), and a list entry's ``authored_on`` can't change once written
+    (``shri_medication_request_guard``), so it is set at the insert. A Provenance, recorded at
+    the real load time, says "synthetic demo import"."""
+    written = await fs._record_medication(db, data, at)
+    await fs._provenance(db, "MedicationRequest", written,
+                         (systems.V3_DATA_OPERATION, "CREATE", None),
+                         reason=fs.Reason(IMPORT_REASON))
+
+
 def _months(after: dt.date, until: dt.date) -> int:
     return max(1, round((until - after).days / 30.4))
 
@@ -1004,11 +1019,12 @@ async def _patient_history(store: fs.SqlFhirStore, db: AsyncSession, p: DemoPati
             note=a.note,
             reactions=(fs.ReactionIn(manifestations=(a.manifestation,), severity=a.severity,
                                      description=a.description, onset=_noon(a.onset)),)))
-    started_at = {v.day: e for v, e in zip(h.visits, visits, strict=True)}
+    started_at = {v.day: (e, v.start) for v, e in zip(h.visits, visits, strict=True)}
     for m in h.medications:         # at the visit it started at, or where the list was taken
-        await store.record_medication(db, fs.MedicationIn(
+        encounter, at = started_at.get(m.started, (first, h.visits[0].start))
+        await _record_as_imported(db, fs.MedicationIn(
             patient_id=patient_id, medication=m.product, dosage_text=m.sig, note=m.note,
-            encounter_id=started_at.get(m.started, first)))
+            encounter_id=encounter), at)
     for r in h.family:
         await store.create_family_history(db, fs.FamilyHistoryIn(
             patient_id=patient_id, relationship=r.relationship, sex=r.sex,
