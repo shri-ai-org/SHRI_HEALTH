@@ -275,6 +275,30 @@ async def list_medications(db: AsyncSession, repo: MedicationRepository, check: 
                                   if len(rows) > size else None)
 
 
+async def list_encounter_prescriptions(db: AsyncSession, repo: MedicationRepository,
+                                      check: ChartCheck, user: CurrentUser, encounter_id: UUID,
+                                      *, limit: int, cursor: str | None
+                                      ) -> tuple[schemas.PrescriptionList, UUID]:
+    """A visit's prescriptions, drafts included, oldest first (gap 82). 404 for a visit the clinic
+    can't see or at a facility not the user's; 403 for a restricted chart without a grant or
+    care-team membership (D37). Returns the visit's patient too, for the audit row."""
+    offset = decode_cursor(cursor)
+    encounter = await repo.encounter(db, encounter_id)
+    if encounter is None:
+        raise NotFound()
+    if encounter.facility_id is not None:
+        require_facility(user, encounter.facility_id)
+    await check(db, user, encounter.patient_id)
+    size = min(limit, PAGE_MAX)
+    ids = await repo.encounter_prescriptions(db, encounter_id, limit=size + 1, offset=offset)
+    rows = [row for row in [await repo.prescription(db, i) for i in ids[:size]]
+            if row is not None]
+    return (schemas.PrescriptionList(items=[to_prescription(r) for r in rows],
+                                     next_cursor=encode_cursor(offset + size)
+                                     if len(ids) > size else None),
+            encounter.patient_id)
+
+
 async def list_pharmacies(db: AsyncSession, repo: MedicationRepository, *, name: str | None,
                           postal_code: str | None, mail_order: bool | None, limit: int,
                           cursor: str | None) -> schemas.PharmacyList:

@@ -290,3 +290,21 @@ def test_the_500_are_the_same_people_every_run_and_obviously_fictional(
     assert min(ages) >= 6 and max(ages) <= 86
     assert {p.payer for p in first} == {1, 2, 3, None} and {p.gender for p in first} == {
         "female", "male"}
+
+
+def test_eligibility_has_one_connection_to_send_through(
+        migrator_engine: Engine, front_desk: Session, app_engine: Engine) -> None:
+    """Eligibility's 270 goes through the outbox to partner clearinghouse (demo step 3): one
+    active connection, the simulated payer, or the check is 503."""
+    _seed(migrator_engine)
+    payer = ("SELECT adapter, environment, name FROM admin.integration_endpoint "
+             "WHERE kind = 'clearinghouse' AND is_active")
+    assert [tuple(r) for r in front_desk.execute(text(payer))] == [
+        ("simulated-clearinghouse", "test", "Simulated payer (demo)")]
+    db = open_session(app_engine, CLINIC_B)
+    try:
+        assert list(db.execute(text(payer))) == []      # the other clinic has none of its own
+    finally:
+        conn = db.bind
+        db.close()
+        conn.close()  # type: ignore[union-attr]

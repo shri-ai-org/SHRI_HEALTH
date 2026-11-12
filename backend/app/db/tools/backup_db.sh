@@ -7,9 +7,10 @@
 # connection settings come from libpq's environment (PGHOST, PGPASSWORD, PGPASSFILE ...), never
 # the command line. On the demo server the master user is the deploy kit's POSTGRES_USER, shri,
 # and the tools run inside the database container (its password reaches it through the
-# environment, never a command line):
-#   set -a; . /etc/shri/deploy.env; set +a; export PGPASSWORD="$POSTGRES_PASSWORD"
-#   DC="docker compose --env-file /etc/shri/deploy.env -p shri-deploy -f infra/compose/docker-compose.yml -f infra/deploy/docker-compose.deploy.yml"
+# environment, never a command line). The settings file there is ~/shri-deploy/deploy.env and
+# the compose project its SHRI_PROJECT (shri-deploy):
+#   set -a; . ~/shri-deploy/deploy.env; set +a; export PGPASSWORD="$POSTGRES_PASSWORD"
+#   DC="docker compose --env-file ~/shri-deploy/deploy.env -p $SHRI_PROJECT -f infra/compose/docker-compose.yml -f infra/deploy/docker-compose.deploy.yml"
 #   PG_DUMP="$DC exec -T -e PGPASSWORD postgres pg_dump" PG_RESTORE="$DC exec -T postgres pg_restore" \
 #     backup_db.sh -U "$POSTGRES_USER" "$POSTGRES_DB" /var/backups/shri
 #

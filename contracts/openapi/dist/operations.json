@@ -1308,6 +1308,17 @@
    "path": "/api/v1/encounters/{encounterId}/notes",
    "permission": "notes:read"
   },
+  "listEncounterPrescriptions": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/encounters/{encounterId}/prescriptions",
+   "permission": "prescriptions:read"
+  },
   "listFacilitys": {
    "audit": {
     "action": "R",

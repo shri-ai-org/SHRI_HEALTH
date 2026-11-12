@@ -112,6 +112,19 @@ async def list_medications(
                                           limit=limit, cursor=cursor)
 
 
+@router.get("/encounters/{encounterId}/prescriptions", operation_id="listEncounterPrescriptions",
+            response_model=schemas.PrescriptionList, response_model_exclude_none=True)
+async def list_encounter_prescriptions(
+    user: Annotated[CurrentUser, Depends(require("prescriptions:read"))],
+    encounter_id: Annotated[UUID, Path(alias="encounterId")], request: Request, db: DB,
+    repo: Repo, check: Check, audit: Audit, limit: Limit = 25, cursor: Cursor = None,
+) -> schemas.PrescriptionList:
+    found, patient_id = await service.list_encounter_prescriptions(
+        db, repo, check, user, encounter_id, limit=limit, cursor=cursor)
+    audit(request, [patient_id])  # x-audit patient "result"
+    return found
+
+
 @router.post("/patients/{patientId}/medications", operation_id="recordMedication",
              status_code=status.HTTP_201_CREATED, response_model=schemas.Medication,
              response_model_exclude_none=True)

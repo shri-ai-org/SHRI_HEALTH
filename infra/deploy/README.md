@@ -9,7 +9,7 @@ The development stack (`infra/compose/docker-compose.yml`) with the overlay `doc
 | Service | On the test host |
 |---|---|
 | Nginx and the screens | The only public port: HTTPS on `SHRI_HTTPS_PORT` (443), for `SHRI_HOSTNAME` only. Its image (`nginx/Dockerfile`) carries the screens, built from the checked-out commit and tagged with it, as CI builds them; `/` serves them, and any screen route gets `index.html`. Staff sign in through Keycloak from the screens (`/api/v1/auth/login`). Keycloak's admin console (`/kc/admin/`), `/ready` and `/hooks/keycloak/` are not served |
-| API, outbox worker | Built from the checked-out commit and tagged with it; `ENVIRONMENT=staging`; staff sign-in through Keycloak. **Patient sign-in is off** on every server until #148's account-state bug is fixed (its routes answer 503). The `X-Dev-*` development sign-in is refused outside development and test, and Nginx strips its headers |
+| API, outbox worker | Built from the checked-out commit and tagged with it; `ENVIRONMENT=staging`; staff sign-in through Keycloak. **Patient sign-in is off** unless `SHRI_PATIENT_SIGN_IN=true`, which `deploy.sh` accepts only with `SHRI_DEMO=true` (fictional patients only, until the pilot gates: Q33's bot check and the shared rate limiter); while off, its routes answer 503. The `X-Dev-*` development sign-in is refused outside development and test, and Nginx strips its headers |
 | Keycloak | Production mode (`start`), its own `keycloak` database and role; the admin console only on `127.0.0.1:SHRI_KC_ADMIN_PORT` |
 | OpenBao | A real server (integrated storage), sealed at every start; `deploy.sh` unseals it and sets up Transit |
 | PostgreSQL, SeaweedFS, ClamAV | As in development; no port published |
@@ -156,7 +156,8 @@ Run by `up` and `check`. It passes only if all of these hold:
 - both realms publish their issuer at the public URL;
 - staff sign-in starts at Keycloak;
 - the admin console is **not** reachable on the public host;
-- a request with `X-Dev-User` is refused (401), and patient sign-in answers 503;
+- a request with `X-Dev-User` is refused (401);
+- patient sign-in answers 503 when `SHRI_PATIENT_SIGN_IN` is not `true`; when it is, sign-in starts at the patient realm's public address, comes back to the portal callback with the patient login cookie on this mode's path, and Keycloak shows its sign-in page;
 - a download URL's token never reaches Nginx's log (a probe request, then the last two minutes of the log).
 - `/` serves the screens, a screen route gets the same page, and the page carries the security headers (CSP, frame denial, HSTS, `no-store`).
 

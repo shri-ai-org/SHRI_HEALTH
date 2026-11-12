@@ -423,3 +423,41 @@ def test_override_refuses(client: Any, practice: Practice, rx: Rx) -> None:
     # A new check cancels the old alerts: the old one can't be overridden any more.
     client("md").post(f"{API}/prescriptions/{draft['id']}/safety-check")
     assert client("md").post(url, json={"reason": "Old alert."}).status_code == 404
+
+
+# ------------------------------- a visit's prescriptions (gap 82, listEncounterPrescriptions)
+def test_a_visits_prescriptions_list_drafts_for_another_tab(client: Any, practice: Practice,
+                                                           rx: Rx) -> None:
+    first = _draft(client, practice, rx).json()
+    second = _draft(client, practice, rx).json()
+    wrong = _draft(client, practice, rx).json()
+    assert client("md").post(f"{API}/prescriptions/{wrong['id']}/entered-in-error",
+                             json={"reason": "Wrong drug."}).status_code == 200
+    url = f"{API}/encounters/{rx.encounter}/prescriptions"
+    listed = client("md").get(url)
+    assert listed.status_code == 200, listed.text
+    items = listed.json()["items"]
+    assert [p["id"] for p in items] == [first["id"], second["id"]]  # oldest first, no EIE
+    assert items[0] == client("md").get(f"{API}/prescriptions/{first['id']}").json()
+    assert "nextCursor" not in listed.json()
+    page = client("ma").get(url, params={"limit": 1}).json()  # MA reads, never writes (D110)
+    assert [p["id"] for p in page["items"]] == [first["id"]] and page["nextCursor"]
+    rest = client("ma").get(url, params={"limit": 1, "cursor": page["nextCursor"]}).json()
+    assert [p["id"] for p in rest["items"]] == [second["id"]] and "nextCursor" not in rest
+    assert _audited(practice, "phi-read")  # read with the visit's patient named
+
+
+def test_a_visits_prescriptions_refuse(client: Any, practice: Practice, rx: Rx) -> None:
+    _draft(client, practice, rx)
+    url = f"{API}/encounters/{rx.encounter}/prescriptions"
+    denied = client("fd").get(url)
+    assert denied.status_code == 403 and denied.json()["code"] == "permission-denied"
+    assert client("md").get(f"{API}/encounters/{uuid.uuid4()}/prescriptions").status_code == 404
+    assert client("md-b").get(url).status_code == 404  # another clinic (RLS)
+    assert client("md").get(url, params={"limit": 0}).status_code == 422
+    bad = client("md").get(url, params={"cursor": "bm90LWEtY3Vyc29y"})
+    assert bad.status_code == 400 and bad.json()["code"] == "invalid-cursor"
+    _sql(practice, "UPDATE clinical.patient SET meta_security = ARRAY['R'] WHERE id = :i",
+         i=practice.patients["kaia"])
+    sealed = client("ma").get(url)
+    assert sealed.status_code == 403 and sealed.json()["code"] == "break-glass-required"
