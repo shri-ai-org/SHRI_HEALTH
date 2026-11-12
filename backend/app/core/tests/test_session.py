@@ -244,25 +244,40 @@ def test_a_callback_without_code_and_state_is_422(query: str) -> None:
     assert client.get(f"/api/v1/auth/callback{query}", follow_redirects=False).status_code == 422
 
 
+BROWSER = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+
+
 def _sent_back_to_start(response: Any) -> None:
     """303 to the sign-in start next to the callback, the login cookie cleared, no body."""
     assert response.status_code == 303 and response.headers["location"] == "login"
+    assert response.headers["cache-control"] == "no-store"
     cleared = [c for c in response.headers.get_list("set-cookie")
                if c.startswith(f"{sessions.LOGIN_COOKIE}=")]
     assert cleared and "max-age=0" in cleared[0].lower()
     assert response.content == b""
 
 
-def test_a_callback_without_its_login_cookie_or_with_another_state_starts_again() -> None:
-    """No JSON error page: a browser with no matching login goes back to the sign-in start, and
-    following it reaches Keycloak's form. Nothing is signed in."""
+@pytest.mark.parametrize("query", ["", "?error=access_denied&state=s", "?code=c", "?state=s"])
+def test_a_browser_whose_callback_lacks_code_or_state_starts_again(query: str) -> None:
+    """Keycloak sends the browser back with an error (access_denied, an expired login) and no
+    code: a new sign-in, not a JSON page (contract #309)."""
     from app.main import create_app
 
     client = TestClient(create_app(_settings()), base_url="https://testserver")
-    _sent_back_to_start(client.get("/api/v1/auth/callback?code=c&state=s",
+    _sent_back_to_start(client.get(f"/api/v1/auth/callback{query}", headers=BROWSER,
+                                   follow_redirects=False))
+
+
+def test_a_browser_without_its_login_cookie_or_with_another_state_starts_again() -> None:
+    """Expired, used or another state: back to the sign-in start, which reaches Keycloak's
+    form. Nothing is signed in."""
+    from app.main import create_app
+
+    client = TestClient(create_app(_settings()), base_url="https://testserver")
+    _sent_back_to_start(client.get("/api/v1/auth/callback?code=c&state=s", headers=BROWSER,
                                    follow_redirects=False))
     client.get("/api/v1/auth/login", follow_redirects=False)  # sets the login cookie
-    wrong = client.get("/api/v1/auth/callback?code=c&state=not-the-state",
+    wrong = client.get("/api/v1/auth/callback?code=c&state=not-the-state", headers=BROWSER,
                        follow_redirects=False)
     _sent_back_to_start(wrong)
     restart = client.get(f"https://testserver/api/v1/auth/{wrong.headers['location']}",
@@ -270,6 +285,23 @@ def test_a_callback_without_its_login_cookie_or_with_another_state_starts_again(
     assert restart.status_code == 302
     assert "/realms/shri-staff/protocol/openid-connect/auth?" in restart.headers["location"]
     assert sessions.SESSION_COOKIE not in client.cookies  # nothing signed in
+
+
+@pytest.mark.parametrize("accept", [None, "application/json", "application/problem+json",
+                                    "*/*", "text/html;q=0.5, application/json"])
+def test_an_api_client_keeps_the_422(accept: str | None) -> None:
+    """Not a browser navigation (no Accept, JSON first, or wildcards only): the problem response."""
+    from app.main import create_app
+
+    client = TestClient(create_app(_settings()), base_url="https://testserver")
+    headers = {"Accept": accept} if accept else {}
+    stale = client.get("/api/v1/auth/callback?code=c&state=s", headers=headers,
+                       follow_redirects=False)
+    assert stale.status_code == 422 and stale.json()["code"] == "validation-failed"
+    missing = client.get("/api/v1/auth/callback", headers=headers, follow_redirects=False)
+    assert missing.status_code == 422
+    assert {e["name"] for e in missing.json()["errors"]} == {"code", "state"}
+    assert missing.json()["detail"] == "2 fields are invalid."
 
 
 def test_without_a_session_cookie_staff_routes_are_401() -> None:

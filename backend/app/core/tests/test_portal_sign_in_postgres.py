@@ -447,22 +447,31 @@ async def _signed_in(app: Any, client: TestClient, realm: FakeRealm, chart: dict
     return callback
 
 
-def test_a_callback_with_no_matching_login_starts_again_instead_of_an_error(
-        client: TestClient) -> None:
-    """Expired, used or another state: 303 back to the portal's sign-in start, the login cookie
-    cleared, nothing signed in; following it reaches the patient realm's form."""
-    stale = client.get("/api/v1/portal/auth/callback?code=c&state=s", follow_redirects=False)
-    assert stale.status_code == 303 and stale.headers["location"] == "login"
+BROWSER = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+
+
+@pytest.mark.parametrize("query", ["?code=c&state=s", "?error=access_denied&state=s", ""])
+def test_a_browser_whose_portal_callback_has_no_matching_login_starts_again(
+        client: TestClient, query: str) -> None:
+    """Expired, used, another state, or Keycloak's error with no code (contract #309): 303 back
+    to the portal's sign-in start, the login cookie cleared, nothing signed in."""
     client.get("/api/v1/portal/auth/login", follow_redirects=False)  # sets the login cookie
-    wrong = client.get("/api/v1/portal/auth/callback?code=c&state=not-the-state",
+    stale = client.get(f"/api/v1/portal/auth/callback{query}", headers=BROWSER,
                        follow_redirects=False)
-    assert wrong.status_code == 303 and wrong.headers["location"] == "login"
-    cleared = [c for c in wrong.headers.get_list("set-cookie")
+    assert stale.status_code == 303 and stale.headers["location"] == "login"
+    cleared = [c for c in stale.headers.get_list("set-cookie")
                if c.startswith(f"{portal.PORTAL_LOGIN_COOKIE}=")]
     assert cleared and "max-age=0" in cleared[0].lower()
-    restart = client.get("/api/v1/portal/auth/login", follow_redirects=False)
+    restart = client.get(f"/api/v1/portal/auth/{stale.headers['location']}",
+                         follow_redirects=False)
     assert "/realms/shri-patients/protocol/openid-connect/auth?" in restart.headers["location"]
     assert portal.PORTAL_COOKIE not in client.cookies  # nothing signed in
+
+
+def test_an_api_client_keeps_the_portal_callbacks_422(client: TestClient) -> None:
+    stale = client.get("/api/v1/portal/auth/callback?code=c&state=s",
+                       headers={"Accept": "application/json"}, follow_redirects=False)
+    assert stale.status_code == 422 and stale.json()["code"] == "validation-failed"
 
 
 async def test_sign_in_activates_the_account_and_opens_a_portal_session(
