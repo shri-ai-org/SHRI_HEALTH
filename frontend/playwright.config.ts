@@ -41,7 +41,10 @@ export default defineConfig({
       command: `npm run dev -w doctors-portal -- --port ${doctorsPort} --strictPort`,
       url: `http://localhost:${doctorsPort}`,
       reuseExistingServer: !process.env.CI,
-      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'md' },
+      // The AI features on (their API calls are stubbed in e2e/doctorAi.e2e.ts: no model, no cost).
+      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'md',
+             VITE_FEATURE_AI_NOTE_DRAFT: 'on', VITE_FEATURE_AI_ASSISTANT: 'on',
+             VITE_FEATURE_AI_CHART_SUMMARY: 'on' },
     },
     {
       // The front office as the development front desk (fd), for the desk's screens

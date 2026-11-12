@@ -28,6 +28,9 @@ import { useUI } from '@/store/ui'
  */
 export const AI_ASSISTANT_ON = import.meta.env.VITE_FEATURE_AI_ASSISTANT === 'on'
 
+/** The record's AI chart summary (AI-02) with the API: on only with VITE_FEATURE_AI_CHART_SUMMARY=on. */
+export const AI_CHART_SUMMARY_ON = import.meta.env.VITE_FEATURE_AI_CHART_SUMMARY === 'on'
+
 import { canonical } from '../app/paths'
 
 /** The screen at an address — with this build's two moved addresses, My Day at `/` and the record at `/patient/:id`. */

@@ -20,7 +20,7 @@
  */
 
 import { Ban, Check, ChevronDown, Clock, Pencil, Signature, TriangleAlert, Undo2, X } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { capability } from '@/atlas/capabilities'
 import { BAND_SPECS, acceptanceBlocked, type ConfidenceBand } from '@/atlas/confidence'
@@ -41,6 +41,13 @@ import { Dialog } from './Dialog'
 import { CheckboxRow, TextArea } from './forms'
 import { Card, ConfidenceMark, Diamond, Icon, Pill, PillTag } from './primitives'
 
+/**
+ * SHRI_HEALTH: with the API, an AI affordance shows only where an AI service stands behind it (the
+ * consultation note's AI-01 sections). The sample's other bars, chips, suggestion cards and Why?
+ * links have no service, so they hide rather than pretend; the screens work without them.
+ */
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 /** The gate, legible on the screen: its id and name, its treatment on hover. */
 export function GateBadge({ gate, className }: { gate: Gate; className?: string }) {
   const spec = GATE_SPECS[gate]
@@ -55,6 +62,7 @@ export function GateBadge({ gate, className }: { gate: Gate; className?: string 
 /** The Why? link — mandatory wherever explainability is. */
 export function WhyLink({ target, className }: { target: ExplainTarget; className?: string }) {
   const openExplain = useUI((s) => s.openExplain)
+  if (REAL_API) return null
   return (
     <button
       type="button"
@@ -95,6 +103,7 @@ export function AIActionBar({
   subject,
   attestation = 'here',
   className,
+  served = false,
 }: {
   touchpointId: string
   capabilityId: string
@@ -102,6 +111,8 @@ export function AIActionBar({
   band: ConfidenceBand
   score?: number
   explain: ExplainTarget
+  /** True where an AI service stands behind it with the API (the note's AI-01 sections). */
+  served?: boolean
   onAccept?: () => void
   onEdit?: () => void
   onReject?: (reason: RejectionReason, text?: string) => void
@@ -129,6 +140,7 @@ export function AIActionBar({
   const disposition = useAI((s) => s.dispositions[touchpointId])
   const toast = useUI((s) => s.toast)
   const audit = useAudit((s) => s.record)
+  if (REAL_API && !served) return null
 
   const g3 = gate === 'G3' && attestation === 'here'
   const blocked = acceptanceBlocked(band, expanded) || locked
@@ -166,7 +178,8 @@ export function AIActionBar({
         </PillTag>
         {disposition.reason && <span className="text-[12px] text-sh-text-3">{disposition.reason}</span>}
         <span className="text-[12px] text-sh-text-3">
-          by {disposition.by} · {spec.id}
+          by {disposition.by}
+          {REAL_API ? '' : ` · ${spec.id}`}
         </span>
         {/* G3's signature block: who attested, under which number, when. */}
         {attested && (
@@ -202,7 +215,7 @@ export function AIActionBar({
       <div className={cn('flex flex-wrap items-center gap-x-[10px] gap-y-[10px]', className)}>
         {/* A real button group, never an overflow menu — so it wraps rather than collapsing in a narrow rail.
             Wrapped rows sit 10px apart, so each 34px button keeps a 44px target of its own on a phone. */}
-        <div role="group" aria-label={`Disposition for ${spec.name}`} className="flex flex-wrap items-center gap-x-[6px] gap-y-[10px]">
+        <div role="group" aria-label={`Disposition for ${REAL_API ? 'the AI draft from the dictation' : spec.name}`} className="flex flex-wrap items-center gap-x-[6px] gap-y-[10px]">
           <Pill
             variant="accent"
             size="md"
@@ -234,7 +247,7 @@ export function AIActionBar({
           <Pill variant="ghost" size="md" icon={X} disabled={locked} title={lockedTitle} className="disabled:opacity-40" onClick={() => setRejecting(true)}>
             Reject
           </Pill>
-          {gate === 'G2' && (
+          {gate === 'G2' && !REAL_API && (
             <Pill
               variant="ghost"
               size="md"
@@ -249,7 +262,7 @@ export function AIActionBar({
           )}
         </div>
         {gateShowsConfidence(gate) && <ConfidenceMark band={band} score={score} />}
-        <GateBadge gate={gate} />
+        {!REAL_API && <GateBadge gate={gate} />}
         <WhyLink target={explain} className="ml-auto" />
       </div>
 
@@ -262,7 +275,7 @@ export function AIActionBar({
 
       <RejectDialog
         open={rejecting}
-        capabilityName={spec.name}
+        capabilityName={REAL_API ? 'Note section drafted by AI from the dictation' : spec.name}
         onCancel={() => setRejecting(false)}
         onConfirm={(reason, text) => {
           apply('Rejected', reason, text)
@@ -383,6 +396,19 @@ export function GhostSection({
   const expandedMap = useAI((s) => s.expanded)
   const expand = useAI((s) => s.expand)
   const disposition = useAI((s) => s.dispositions[touchpointId])
+  // Edit opens the draft in the section's own field, with the cursor in it.
+  const fieldRef = useRef<HTMLDivElement>(null)
+  const [focusEdit, setFocusEdit] = useState(false)
+  useEffect(() => {
+    if (!focusEdit) return
+    // The section's field carries the touchpoint's ID (NoteAuthoring's VoiceField).
+    const byId = document.getElementById(touchpointId)
+    const target = byId?.matches('textarea, input') ? byId : fieldRef.current?.querySelector<HTMLElement>('textarea, input')
+    if (target) {
+      target.focus()
+      setFocusEdit(false)
+    }
+  })
 
   const isExpanded = expandedMap[touchpointId] ?? defaultExpanded ?? band !== 'LOW'
 
@@ -423,7 +449,7 @@ export function GhostSection({
           </div>
         </>
       ) : (
-        field
+        <div ref={fieldRef}>{field}</div>
       )}
 
       {/* C-41 beneath, never beside. */}
@@ -435,10 +461,14 @@ export function GhostSection({
         band={band}
         score={score}
         explain={explain}
+        served
         expanded={isExpanded}
         locked={locked}
         onAccept={onAccept}
-        onEdit={onEdit}
+        onEdit={() => {
+          onEdit()
+          setFocusEdit(true)
+        }}
         onReject={onReject}
         onUndo={onUndo}
         attestation={attestation}
@@ -479,7 +509,7 @@ export function FieldChip({
   const record = useAI((s) => s.record)
   const disposition = useAI((s) => s.dispositions[touchpointId])
 
-  if (!aiActive) return null
+  if (!aiActive || REAL_API) return null
 
   if (disposition) {
     return (
@@ -581,7 +611,7 @@ export function SuggestionCard({
   const aiActive = useAiActive()
   const expandedMap = useAI((s) => s.expanded)
   const expand = useAI((s) => s.expand)
-  if (!aiActive) return null
+  if (!aiActive || REAL_API) return null
   const isExpanded = expandedMap[touchpointId] ?? band !== 'LOW'
 
   return (

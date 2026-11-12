@@ -7,6 +7,9 @@ import { create } from 'zustand'
 import type { RxLine } from '@/data/clinical'
 import type { AddedProblem, NoteRecord, NoteStatus, RxOverride, RxRecord, SectionProvenance } from '@/store/clinical'
 import { useUI } from '@/store/ui'
+import { useAI } from '@/store/ai'
+import { useScribeDrafts } from '@/data/scribe'
+import type { ConfidenceBand } from '@/atlas/confidence'
 
 import { ApiError, etagOf, newIdempotencyKey } from '../../src/api/client'
 import {
@@ -30,13 +33,16 @@ import {
   updatePrescription,
 } from '../../src/api/generated/endpoints/medications/medications'
 import { listNoteTemplates } from '../../src/api/generated/endpoints/practice-setup/practice-setup'
+import { createNoteDraft, decideAiSuggestion } from '../../src/api/generated/endpoints/ai/ai'
 import { getPatient } from '../../src/api/generated/endpoints/patients/patients'
-import type { Encounter, EncounterDiagnosis, Note, NoteList, NoteTemplateList, Prescription, SafetyAlert, SafetyCheckResult } from '../../src/api/generated/model'
+import type { AiSuggestionDecision, Encounter, EncounterDiagnosis, Note, NoteList, NoteTemplateList, Operation, Prescription, SafetyAlert, SafetyCheckResult } from '../../src/api/generated/model'
 import { problemCopy } from '../../src/design-system/problem/problem'
 
 import { rxNormProduct } from './formulary'
 import { maybeEncounter } from './encounter'
 import { read } from './resource'
+import { finished } from './aiChart'
+import { AiFeatureDown } from './aiStatus'
 
 import type { RxLineEdit as ScreenRxLineEdit } from '@/store/clinical'
 
@@ -61,7 +67,69 @@ interface Server {
   saved: Record<string, string>
   /** Saves run one after another, so Sign never sends an old ETag. */
   queue: Promise<void>
+  /**
+   * AI-01's sections (createNoteDraft), by key: the suggestion to decide, the AI's text, and
+   * whether it is decided. The server refuses Sign until each is (decideAiSuggestion).
+   */
+  ai?: Record<string, AiSection>
 }
+
+interface AiSection {
+  suggestionId: string
+  text: string
+  decided: boolean
+}
+
+/** A section the AI drafted and nobody decided yet: shown as the ghost draft, never as typed text. */
+function pendingAi(n: Note): Record<string, AiSection> {
+  const out: Record<string, AiSection> = {}
+  for (const sec of n.sections) {
+    const key = KEY_BY_CODE[sec.code]
+    if (!key || !sec.aiSuggestionId) continue
+    const decided = sec.aiDecision !== undefined && sec.aiDecision !== 'pending'
+    out[key] = { suggestionId: sec.aiSuggestionId, text: sec.aiSuggestion?.suggestedText ?? sec.text, decided }
+  }
+  return out
+}
+
+const BAND: Record<string, ConfidenceBand> = { low: 'LOW', medium: 'MED', high: 'HIGH' }
+
+/** The AI suggestion each section's local decision belongs to, as last published (`encounterId:key`). */
+const publishedSuggestion = new Map<string, string>()
+
+/** Puts the undecided AI sections in the scribe's draft store, where the note shows them as ghosts.
+ *  A local decision counts only for the suggestion it was made on: when a section's suggestion is
+ *  new (a fresh draft, or the first load in this tab), any earlier decision for it is cleared. */
+function publishAi(encounterId: string, n: Note): string[] {
+  const pending = Object.entries(pendingAi(n)).filter(([, a]) => !a.decided)
+  for (const [k, a] of pending) {
+    const slot = `${encounterId}:${k}`
+    if (publishedSuggestion.get(slot) !== a.suggestionId) {
+      useAI.getState().clearDisposition(slot)
+      publishedSuggestion.set(slot, a.suggestionId)
+    }
+  }
+  if (pending.length === 0) return []
+  const first = n.sections.find((sec) => sec.aiSuggestion)?.aiSuggestion
+  useScribeDrafts.setState((st) => ({
+    drafts: {
+      ...st.drafts,
+      [encounterId]: {
+        patientId: n.patientId,
+        sections: Object.fromEntries(pending.map(([k, a]) => [k, a.text])),
+        transcript: '',
+        model: 'Claude (AI-01, AI-generated)',
+        band: BAND[first?.confidence ?? 'medium'] ?? 'MED',
+        confidence: 0,
+        scored: false,
+        at: n.updatedAt,
+      },
+    },
+  }))
+  return pending.map(([k]) => k)
+}
+
+
 
 interface NoteState {
   notes: Record<string, NoteRecord>
@@ -69,6 +137,8 @@ interface NoteState {
   note: (encounterId: string) => NoteRecord
   setSectionText: (encounterId: string, key: string, text: string, provenance?: SectionProvenance) => void
   applyScribeDraft: (encounterId: string, keys: string[], drafts?: Partial<Record<string, string>>) => string[]
+  /** "Draft with AI" (AI-01): the dictated text to createNoteDraft; resolves with the drafted section keys. */
+  draftWithAi: (encounterId: string, transcript: string) => Promise<string[]>
   setNoteCode: (encounterId: string, code: string | undefined) => void
   saveDraft: (encounterId: string, how?: 'manual' | 'auto') => void
   /** Resolves to the status the server gives the note, or null when it refused to sign it. */
@@ -198,10 +268,17 @@ function fromNote(encounterId: string, n: Note, local?: NoteRecord): NoteRecord 
   const text: Record<string, string> = {}
   for (const s of n.sections) if (KEY_BY_CODE[s.code]) text[KEY_BY_CODE[s.code]] = s.text
   const signed = n.status === 'final' || n.status === 'amended'
+  // An undecided AI section is the ghost draft (publishAi), never the clinician's text.
+  const undecided = signed ? [] : Object.entries(pendingAi(n)).filter(([, a]) => !a.decided).map(([k]) => k)
+  for (const k of undecided) text[k] = local?.text[k] ?? ''
+  const provenance: Record<string, SectionProvenance> = local?.provenance
+    ? { ...local.provenance }
+    : Object.fromEntries(Object.entries(text).filter(([, t]) => t).map(([k]) => [k, 'typed' as const]))
+  for (const k of undecided) if (!local?.provenance[k] || local.provenance[k] === 'scribe') provenance[k] = 'scribe'
   return {
     encounterId,
     text,
-    provenance: local?.provenance ?? Object.fromEntries(Object.entries(text).filter(([, t]) => t).map(([k]) => [k, 'typed' as const])),
+    provenance,
     status: n.cosignStatus === 'pending' ? 'cosign-pending' : signed ? 'signed' : 'draft',
     signedBy: n.signedBy?.displayName,
     // TODO(gap): no registration number in the US; the NPI is not on ClinicianRef.
@@ -228,7 +305,7 @@ function serverFrom(n: Note, etag: string | null): Server {
       saved[key] = s.text
     }
   }
-  return { noteId: n.id, etag: etag ?? undefined, sectionIds, saved, queue: Promise.resolve() }
+  return { noteId: n.id, etag: etag ?? undefined, sectionIds, saved, queue: Promise.resolve(), ai: pendingAi(n) }
 }
 
 function toastProblem(error: unknown, title: string) {
@@ -382,6 +459,7 @@ export const useClinical = create<NoteState>()((set, get) => {
     }
     const res = await getNote(current.id)
     const n = res.data as Note
+    publishAi(encounterId, n)
     set({ notes: { ...get().notes, [encounterId]: fromNote(encounterId, n) }, server: { ...get().server, [encounterId]: serverFrom(n, etagOf(res)) } })
   }
 
@@ -391,8 +469,33 @@ export const useClinical = create<NoteState>()((set, get) => {
     if (!noteId) return
     const res = await getNote(noteId)
     const n = res.data as Note
+    publishAi(encounterId, n)
     set({ notes: { ...get().notes, [encounterId]: fromNote(encounterId, n, get().notes[encounterId]) } })
     setServer(encounterId, serverFrom(n, etagOf(res)))
+  }
+
+  /**
+   * Each AI section's decision, from what the clinician did (the note's Accept, Edit or Reject)
+   * and the saved text: the server's rules (accepted = the AI text kept; edited = changed;
+   * rejected = the AI text gone, with a reason). Undecided sections stop Sign: never decided
+   * for the clinician.
+   */
+  async function decideAi(encounterId: string): Promise<void> {
+    const server = get().server[encounterId]
+    const ai = { ...(server?.ai ?? {}) }
+    for (const [key, section] of Object.entries(ai)) {
+      if (section.decided) continue
+      const d = useAI.getState().dispositions[`${encounterId}:${key}`]
+      if (!d) throw new Error('Accept, edit or reject each AI-drafted section before signing.')
+      const text = (get().notes[encounterId]?.text[key] ?? '').trim()
+      let body: AiSuggestionDecision
+      if (d.disposition === 'Rejected' || text === '') body = { decision: 'rejected', reason: (d.reasonText || d.reason || 'Rejected by the clinician').slice(0, 500) }
+      else if (text === section.text.trim()) body = { decision: 'accepted' }
+      else body = { decision: 'edited' }
+      await decideAiSuggestion(section.suggestionId, body, { 'Idempotency-Key': newIdempotencyKey() })
+      ai[key] = { ...section, decided: true }
+      setServer(encounterId, { ai })
+    }
   }
 
   async function ensureNote(encounterId: string): Promise<void> {
@@ -636,8 +739,30 @@ export const useClinical = create<NoteState>()((set, get) => {
       patch(encounterId, { text: { ...current.text, [key]: text }, provenance: { ...current.provenance, [key]: provenance } })
     },
 
-    // TODO(gap): AI drafting is not in the demo; nothing is drafted.
+    // The local scribe's routing is the sample's; with the API, drafting is draftWithAi.
     applyScribeDraft: () => [],
+
+    draftWithAi: async (encounterId, transcript) => {
+      if (get().note(encounterId).status !== 'draft') return []
+      const templates = (await listNoteTemplates({ limit: 100 })).data as NoteTemplateList
+      const soap = templates.items.find((t) => t.code === SOAP_TEMPLATE_CODE)
+      if (!soap) throw new Error('The practice has no SOAP note template (see SCREEN_PORT.md, gap 2).')
+      let op: Operation
+      try {
+        const res = await createNoteDraft({ encounterId, dictation: transcript, templateId: soap.id }, { 'Idempotency-Key': newIdempotencyKey() })
+        op = res.data as Operation
+      } catch (error) {
+        if (error instanceof ApiError && (error.code === 'feature-disabled' || error.status === 503)) throw new AiFeatureDown(problemCopy(error.problem).message)
+        throw error
+      }
+      // A queued or running draft is waited for (as the chart AI does); a failed one is AiFeatureDown.
+      const res = await getNote(await finished(op, 'AI draft'))
+      const n = res.data as Note
+      const keys = publishAi(encounterId, n)
+      for (const k of keys) useAI.getState().clearDisposition(`${encounterId}:${k}`)
+      set({ notes: { ...get().notes, [encounterId]: fromNote(encounterId, n) }, server: { ...get().server, [encounterId]: serverFrom(n, etagOf(res)) } })
+      return keys
+    },
 
     setNoteCode: (encounterId, code) => patch(encounterId, { code }),
 
@@ -657,6 +782,7 @@ export const useClinical = create<NoteState>()((set, get) => {
       let signed: NoteStatus = 'draft'
       return enqueue(encounterId, async () => {
         await flush(encounterId)
+        await decideAi(encounterId)
         const server = get().server[encounterId]
         const res = await signNoteApi(server.noteId!, { 'If-Match': server.etag ?? '' })
         const n = res.data as Note
