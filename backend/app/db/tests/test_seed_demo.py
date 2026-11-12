@@ -279,7 +279,8 @@ def test_the_seed_uses_the_keycloak_accounts_ids_and_names() -> None:
         r'user "\$(\w+)_ID" (\S+) \S+ (\w+) (\w+)\)', script)}
     staff = {username: (subject, name)
              for _, username, subject, name, _, _ in demo.DEMO_USERS}
-    assert staff == {u: a for u, a in accounts.items() if not u.startswith("demo.patient")}
+    # Patient realm users sign in with their email as the username (#300); staff never do.
+    assert staff == {u: a for u, a in accounts.items() if "@" not in u}
     subject, name = accounts["demo.patient@example.com"]
     assert subject == demo.DEMO_PATIENT_SUBJECT
     patient = next(p for p in demo.PATIENTS if p.n == demo.DEMO_PORTAL_PATIENT)
