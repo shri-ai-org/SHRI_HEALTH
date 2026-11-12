@@ -63,8 +63,9 @@ paths:
         this callback under any base path (behind a shared host''s path the API never sees the prefix), so it starts a new
         sign-in and lands on Keycloak''s form. The login-state cookie is cleared. Such a failure is logged as a security warning
         (no request values); it has no audit row, since no clinic or user is known yet. A failure after the login matches
-        (a refused code, a bad ID token) is audited as before. A nonce mismatch, or a request from an API client (any other
-        `Accept`), keeps the `422` problem response.'
+        (a refused code, a bad ID token) keeps the 422; it''s recorded in Keycloak''s own event log (CODE_TO_TOKEN_ERROR),
+        with no audit row in ours. A nonce mismatch, or a request from an API client (any other `Accept`), keeps the `422`
+        problem response.'
       tags:
       - platform
       x-owner: thulasi
