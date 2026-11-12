@@ -78,8 +78,33 @@ def medication_lines(found: Sequence[Any]) -> tuple[list[str], list[SourceRef]]:
         name = label(m.medication)
         if m.status != "active" or name is None:
             continue
-        lines.append(f"{name}, {m.dosage_text}" if m.dosage_text else name)
+        # The medication list has no start date: the day it went on the list is the closest,
+        # so a "what changed" question can tell a new medication from an old one.
+        recorded = getattr(m, "recorded_at", None)
+        since = f", on the list since {recorded.date().isoformat()}" if recorded else ""
+        lines.append(f"{name}, {m.dosage_text}{since}" if m.dosage_text else f"{name}{since}")
         sources.append(SourceRef("MedicationRequest", m.id))
+    return lines, sources
+
+
+def problem_lines(found: Sequence[Any]) -> tuple[list[str], list[SourceRef]]:
+    """The problem list (#280): each problem with its code, status and onset; entered-in-error
+    ones never."""
+    lines, sources = [], []
+    for p in found:
+        if p.verification_status == "entered-in-error":
+            continue
+        name = label(p.code)
+        if name is None:
+            continue
+        coded = next((c.code for c in p.code.codings or [] if c.code), None)
+        parts = [f"{name} ({coded})" if coded and coded not in name else name, p.clinical_status]
+        if p.onset_date:
+            parts.append(f"onset {p.onset_date}")
+        if p.abatement_date:
+            parts.append(f"resolved {p.abatement_date}")
+        lines.append(", ".join(parts))
+        sources.append(SourceRef("Condition", p.id))
     return lines, sources
 
 

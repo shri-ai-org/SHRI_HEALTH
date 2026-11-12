@@ -37,7 +37,7 @@ from app.modules.encounters.service import readable
 from app.modules.files.crypto import FileCrypto, file_crypto
 from app.modules.files.storage import FileStore, file_store
 from app.modules.history import service as history_service
-from app.modules.history.repository import SqlAllergyRepository
+from app.modules.history.repository import SqlAllergyRepository, SqlHistoryRepository
 from app.modules.medications import service as medications_service
 from app.modules.medications.repository import SqlMedicationRepository
 from app.modules.practice_setup.repository import SqlSetupRepository
@@ -185,11 +185,20 @@ def summary_reader(check: Annotated[rules.ChartCheck, Depends(chart_check)]
                    ) -> summaries.SummaryReader:
     """The chart a summary may use, read as the clinician through each module's own service
     (summary.py): the recent visits and their diagnoses, active allergies and medications,
-    each only with its read permission. Results and the problem list have no service yet."""
+    each only with its read permission, and the problem list (#280). Results have no service yet."""
     async def read(db: AsyncSession, user: CurrentUser, patient_id: UUID
                    ) -> summary_lines.SummaryChart:
         lines: list[summary_lines.ChartLine] = []
-        unavailable = ["results (not in this build)", "the problem list (not in this build)"]
+        unavailable = ["results (not in this build)"]
+        if user.can("problems:read"):
+            problems, _ = await history_service.page(
+                db, check, user, patient_id, SqlHistoryRepository().problems,
+                include_entered_in_error=False, limit=chart_lines.LIMIT, cursor=None)
+            names, sources = chart_lines.problem_lines(problems)
+            lines += [summary_lines.ChartLine(f"Problem list: {name}", source, "Problem list entry")
+                      for name, source in zip(names, sources, strict=True)]
+        else:
+            unavailable.append("the problem list (no permission)")
         if user.can("encounters:read"):
             visits, _ = await encounters_service.list_for_patient(
                 db, SqlEncounterRepository(), check, user, patient_id, status=None,

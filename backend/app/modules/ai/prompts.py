@@ -22,9 +22,9 @@ NOTE_DRAFT_V1 = "\n".join((
     "$sections",
 ))
 
-#: V2: a transcript or the clinician's own dictation, the chart lines the clinician may read,
-#: and "Not discussed" for a section the visit gave nothing for (the screen shows the reader it
-#: was considered, not skipped).
+#: V2 (gateway version 3): a transcript or the clinician's own dictation and the chart lines
+#: the clinician may read. A section the visit gave nothing for is left empty: the clinician
+#: fills it or leaves it, and no AI suggestion stands in for it.
 NOTE_DRAFT_V2 = "\n".join((
     "You draft a clinical note from what was said at a visit, for the clinician to review, "
     "edit and sign. The visit is either a transcript or the clinician's own dictation.",
@@ -38,7 +38,7 @@ NOTE_DRAFT_V2 = "\n".join((
     "- The chart lines are background. Mention a chart item only when the visit refers to it; "
     "never copy the chart into the note on its own.",
     "- When someone corrects an earlier statement, use the correction.",
-    '- When the visit gives nothing for a section, its text is exactly "Not discussed".',
+    '- When the visit gives nothing for a section, leave its text empty ("").',
     '- Put anything a complete note would need but the visit did not say in "unknowns".',
     "- Plain clinical English; no Markdown.",
     "Sections:",
