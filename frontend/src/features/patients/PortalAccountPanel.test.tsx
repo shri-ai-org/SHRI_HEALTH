@@ -53,6 +53,18 @@ describe('PortalAccountPanel', () => {
     expect(within(shown).getByText('ABCD-1234-EFGH')).toBeInTheDocument()
     expect(server.bodies(`POST ${BASE}/portal-invitations`)[0]?.body).toEqual({ idChecked: true })
     expect(await screen.findByText('Invited')).toBeInTheDocument()
+    // The invitation names the portal's set-up page directly (the portal skips its own sign-in page).
+    const setUpUrl = `${window.location.origin}/portal/set-up-account`
+    expect(within(shown).getByText(setUpUrl)).toBeInTheDocument()
+
+    // The printed letter carries the code and the same address, nothing about the patient.
+    const printed = document.implementation.createHTMLDocument('')
+    vi.stubGlobal('open', vi.fn(() => ({ document: printed, focus: vi.fn(), print: vi.fn() })))
+    await user.click(within(shown).getByRole('button', { name: 'Print invitation' }))
+    expect(printed.body.textContent).toContain('ABCD-1234-EFGH')
+    expect(printed.body.textContent).toContain(setUpUrl)
+    expect(printed.body.textContent).not.toContain('Set up your account')
+    vi.unstubAllGlobals()
 
     await user.click(within(shown).getByRole('button', { name: 'Done' }))
     // Closing the dialog drops the code; the panel never shows it again.

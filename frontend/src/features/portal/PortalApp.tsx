@@ -71,6 +71,75 @@ const ROUTES: Route[] = [
 
 const SIGNED_OUT_PATHS = ['/sign-in', '/set-up-account']
 
+// Nobody signed in: the portal goes straight to the patient realm's sign-in form, as the staff
+// apps do (#304). Once per page load, and once a minute: the tab notes the time in sessionStorage
+// (a timestamp only, no patient data), and a browser back here still signed out within a minute
+// (a failed or refused sign-in) gets the Sign in page instead of being sent round again. The
+// page's Sign in button notes the time too, so each click is one trip to the form.
+const AUTO_SIGN_IN_KEY = 'shri.portal.autoSignInAt'
+const AUTO_SIGN_IN_GUARD_MS = 60_000
+
+/** This page load's answer, once asked: React's development double render must not count twice. */
+let autoSignInDecision: boolean | undefined
+
+/** For tests: forget this page load's answer, as a new page load would. */
+export function resetAutoSignInForTests(): void {
+  autoSignInDecision = undefined
+}
+
+function noteSignInAttempt(): void {
+  try {
+    window.sessionStorage.setItem(AUTO_SIGN_IN_KEY, String(Date.now()))
+  } catch {
+    // no storage: the next page load decides again
+  }
+}
+
+function forgetAutoSignIn(): void {
+  try {
+    window.sessionStorage.removeItem(AUTO_SIGN_IN_KEY)
+  } catch {
+    // nothing to forget
+  }
+}
+
+/** True, and the time noted, when the portal may go to sign in on its own now. */
+function mayAutoSignIn(): boolean {
+  try {
+    const last = Number(window.sessionStorage.getItem(AUTO_SIGN_IN_KEY))
+    if (last > 0 && Date.now() - last < AUTO_SIGN_IN_GUARD_MS) {
+      window.sessionStorage.removeItem(AUTO_SIGN_IN_KEY)
+      return false
+    }
+    noteSignInAttempt()
+    return true
+  } catch {
+    return false // no storage (private window, blocked): the Sign in page, never a possible loop
+  }
+}
+
+function AutoSignIn({ api }: { api: PortalApi }) {
+  autoSignInDecision ??= mayAutoSignIn()
+  const leaving = autoSignInDecision
+  useEffect(() => {
+    if (leaving) api.startSignIn()
+  }, [leaving, api])
+  // The fallback's Sign in button notes the time first, so a failed sign-in brings this page back.
+  const noted = useMemo<PortalApi>(() => ({ ...api, startSignIn: () => (noteSignInAttempt(), api.startSignIn()) }), [api])
+  if (!leaving) {
+    return (
+      <PortalApiContext.Provider value={noted}>
+        <SignInPage />
+      </PortalApiContext.Provider>
+    )
+  }
+  return (
+    <div className="flex min-h-dvh items-center justify-center">
+      <Spinner label="Taking you to sign in" />
+    </div>
+  )
+}
+
 export function PortalApp({ api }: { api: PortalApi }) {
   return (
     <PortalApiContext.Provider value={api}>
@@ -90,6 +159,7 @@ function Gate({ api }: { api: PortalApi }) {
   const signedInRef = useRef(false)
 
   const signedIn = useCallback((session: PortalSession) => {
+    forgetAutoSignIn()
     setCsrfToken(session.csrfToken)
     signedInRef.current = true
     setState({ kind: 'signed-in', session })
@@ -168,8 +238,10 @@ function Gate({ api }: { api: PortalApi }) {
     // Enrolment comes before any sign-in: the realm account doesn't exist until the code is used.
     if (path === '/set-up-account') return <SetUpAccountPage />
     // Sign-in leaves for the realm and comes back through `/portal/auth/callback`, which sets the
-    // cookie and returns to the portal.
-    return <SignInPage {...(state.kind === 'signed-out' && state.reason ? { reason: state.reason } : {})} />
+    // cookie and returns to the portal. Nobody signed in: straight there (AutoSignIn). Signed out,
+    // timed out or ended: the page says why and waits for the patient's click.
+    if (!state.reason) return <AutoSignIn api={api} />
+    return <SignInPage reason={state.reason} />
   }
 
   if (SIGNED_OUT_PATHS.includes(path)) {
