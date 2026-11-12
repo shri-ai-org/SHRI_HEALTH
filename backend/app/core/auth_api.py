@@ -15,6 +15,7 @@ from fastapi.responses import RedirectResponse
 
 from app.core import cookies
 from app.core import session as sessions
+from app.core import sign_in_restart as restart
 from app.core.config import Settings
 from app.core.deps import CurrentUser, require
 from app.core.errors import ServiceUnavailable, ValidationFailed, field_error
@@ -54,14 +55,24 @@ def _bad_login(name: str) -> ValidationFailed:
 @router.get("/auth/callback", operation_id="finishLogin", status_code=302)
 async def finish_login(
     request: Request,
-    code: Annotated[str, Query(min_length=1, max_length=2048)],
-    state: Annotated[str, Query(min_length=1, max_length=256)],
-) -> RedirectResponse:
+    code: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
+    state: Annotated[str | None, Query(min_length=1, max_length=256)] = None,
+) -> Response:
     keycloak = _keycloak(request)
+    # No matching login: a browser starts again (303, contract #309), an API client gets 422.
+    browser = restart.browser_navigation(request)
+    if code is None or state is None:  # Keycloak sent an error (access_denied, expired login)
+        if browser:
+            return restart.start_again(request, sessions.LOGIN_COOKIE, "Staff")
+        missing = [field_error("query", name, "required")
+                   for name, value in (("code", code), ("state", state)) if value is None]
+        raise ValidationFailed("1 field is invalid." if len(missing) == 1
+                               else f"{len(missing)} fields are invalid.", errors=missing)
     login = _login_states(request).take(cookies.read(request, sessions.LOGIN_COOKIE))
-    if login is None:  # no login cookie, an unknown or used key, or older than 10 minutes
-        raise _bad_login("state")
-    if not hmac.compare_digest(state.encode(), login.state.encode()):
+    if login is None or not hmac.compare_digest(state.encode(), login.state.encode()):
+        # no login cookie, an unknown or used key, older than 10 minutes, or another state
+        if browser:
+            return restart.start_again(request, sessions.LOGIN_COOKIE, "Staff")
         raise _bad_login("state")
     try:
         tokens = await keycloak.exchange(code, login.verifier)

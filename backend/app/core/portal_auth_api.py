@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core import audit, cookies
 from app.core import portal_sign_in as portal
+from app.core import sign_in_restart as restart
 from app.core.config import Settings
 from app.core.deps import PortalPatient, require_patient
 from app.core.errors import ServiceUnavailable, ValidationFailed, field_error
@@ -54,13 +55,24 @@ def _bad_login(name: str) -> ValidationFailed:
 @router.get("/portal/auth/callback", operation_id="completePortalLogin", status_code=302)
 async def complete_portal_login(
     request: Request,
-    code: Annotated[str, Query(min_length=1, max_length=2048)],
-    state: Annotated[str, Query(min_length=1, max_length=256)],
-) -> RedirectResponse:
+    code: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
+    state: Annotated[str | None, Query(min_length=1, max_length=256)] = None,
+) -> Response:
     keycloak = _keycloak(request)
+    # No matching login: a browser starts again (303, contract #309), an API client gets 422.
+    browser = restart.browser_navigation(request)
+    if code is None or state is None:  # Keycloak sent an error (access_denied, expired login)
+        if browser:
+            return restart.start_again(request, portal.PORTAL_LOGIN_COOKIE, "Portal")
+        missing = [field_error("query", name, "required")
+                   for name, value in (("code", code), ("state", state)) if value is None]
+        raise ValidationFailed("1 field is invalid." if len(missing) == 1
+                               else f"{len(missing)} fields are invalid.", errors=missing)
     login = request.app.state.portal_login_states.take(
         cookies.read(request, portal.PORTAL_LOGIN_COOKIE))
     if login is None or not hmac.compare_digest(state.encode(), login.state.encode()):
+        if browser:
+            return restart.start_again(request, portal.PORTAL_LOGIN_COOKIE, "Portal")
         raise _bad_login("state")
     try:
         tokens = await keycloak.exchange(code, login.verifier)
