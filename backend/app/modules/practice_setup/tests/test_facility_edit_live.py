@@ -18,6 +18,7 @@ from sqlalchemy.pool import NullPool
 from app.core.config import Settings
 from app.core.deps import DEV_USER_HEADER, CurrentUser, current_user
 from app.db.tests import builders as b
+from app.db.tests.audit_coverage import audit_problems
 from app.db.tests.conftest import (
     TEST_DATABASE_URL,
     make_tenant,
@@ -200,3 +201,14 @@ def test_who_may_read_and_change_which_facility(client: Any, clinics: dict[str, 
     assert client("adm-elsewhere").get(url).status_code == 404    # not one of the user's
     assert client("adm-b").get(url).status_code == 404            # another clinic's (RLS)
     assert _patch(client, "adm-b", url, {"name": "X"}, etag).status_code == 404
+
+
+def test_a_facility_change_is_audited_as_a_config_change(client: Any, clinics: dict[str, Any],
+                                                         engines: tuple[Engine, Engine]) -> None:
+    a = clinics["a"]
+    etag = client("adm").get(_url(a)).headers["ETag"]
+    changed = _patch(client, "adm", _url(a), {"name": "Main office (audited)"}, etag)
+
+    assert changed.status_code == 200, changed.text
+    assert audit_problems(engines[0], changed, "updateFacility", tenant=a["tenant"],
+                          entity=a["facility"]) == []

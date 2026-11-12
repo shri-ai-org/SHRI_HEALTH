@@ -20,6 +20,7 @@ from sqlalchemy.pool import NullPool
 from app.core.config import Settings
 from app.core.deps import DEV_USER_HEADER, CurrentUser, current_user
 from app.db.tests import builders as b
+from app.db.tests.audit_coverage import audit_problems, audit_rows
 from app.db.tests.conftest import (
     TEST_DATABASE_URL,
     make_tenant,
@@ -195,3 +196,15 @@ def test_each_clinic_has_its_own_settings(client: Any) -> None:
 def test_a_practice_without_an_mrn_counter_is_a_server_error(client: Any) -> None:
     """Onboarding creates the counter with the practice (D41); without one, nothing is shown."""
     assert client("adm-none").get(URL).status_code == 500
+
+
+def test_a_settings_change_is_audited_as_a_config_change(client: Any, clinics: dict[str, Any],
+                                                         engines: tuple[Engine, Engine]) -> None:
+    changed = client("adm").patch(URL, json=SHOW, headers={**PATCH, "If-Match": '"0"'})
+    stale = client("adm").patch(URL, json=SHOW, headers={**PATCH, "If-Match": '"0"'})
+
+    assert changed.status_code == 200, changed.text
+    assert stale.status_code == 412, stale.text
+    assert audit_problems(engines[0], changed, "updatePracticeSettings",
+                          tenant=clinics["a"]["tenant"]) == []
+    assert audit_rows(engines[0], stale) == []                  # a refusal writes no change row

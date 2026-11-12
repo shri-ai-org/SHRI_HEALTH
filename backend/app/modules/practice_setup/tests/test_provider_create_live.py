@@ -25,6 +25,7 @@ from app.core.deps import DEV_USER_HEADER, CurrentUser, current_user
 from app.core.errors import ValidationFailed
 from app.db.models import systems
 from app.db.tests import builders as b
+from app.db.tests.audit_coverage import audit_problems, audit_rows, phi_in
 from app.db.tests.conftest import (
     TEST_DATABASE_URL,
     make_tenant,
@@ -418,3 +419,30 @@ def test_two_overlapping_schedules_at_once_create_one(app: FastAPI, client: Any,
             "ON sa.schedule_id = s.id JOIN clinical.practitioner_role r "
             "ON r.id = sa.practitioner_role_id WHERE r.practitioner_id = :p"),
             {"p": provider}).scalar_one() == 1
+
+
+def test_a_provider_and_a_schedule_are_audited_as_config_changes(
+        client: Any, clinics: dict[str, Any], engines: tuple[Engine, Engine]) -> None:
+    """Each write's audit row is the contract's (admin, the clinic, no patient), and the
+    refusal of time off over a booked visit names no patient, in its body or any audit row."""
+    a, admin = clinics["a"], engines[0]
+    made = client("adm").post("/api/v1/providers", json=_provider(a))
+    assert made.status_code == 201, made.text
+    provider = made.json()["id"]
+    schedule = client("fd").post("/api/v1/provider-schedules",
+                                 json=_schedule(a, provider, [_rule()]))
+    assert schedule.status_code == 201, schedule.text
+
+    # Core names the record from the path, so a create's row has none (Thulasi's note on #85).
+    assert audit_problems(admin, made, "createProvider", tenant=a["tenant"]) == []
+    assert audit_problems(admin, schedule, "createProviderSchedule", tenant=a["tenant"]) == []
+    _booked(engines, a, provider, datetime(2026, 12, 7, 15, 0, tzinfo=UTC))
+    refused = client("fd").post("/api/v1/provider-schedules", json=_schedule(
+        a, provider, [_rule("tue")], exceptions=[{
+            "startAt": "2026-12-07T14:00:00Z", "endAt": "2026-12-07T18:00:00Z",
+            "available": False}]))
+    assert refused.status_code == 422, refused.text
+    reasons = [r.reason for x in (made, schedule, refused) for r in audit_rows(admin, x)]
+    # b.patient's synthetic patient: names, birth date, phone and street.
+    assert phi_in([refused.text, *reasons],
+                  ["Nguyen", "Mai", "1984-03-09", "010-2000", "12 Elm St"]) == []
