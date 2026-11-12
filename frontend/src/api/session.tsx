@@ -6,10 +6,14 @@
  * The server decides when the session ends. Before this tab warns or ends the session, it re-reads
  * `GET /auth/session` (which never counts as activity), so work in another tab keeps it alive.
  * Nobody signed in (`not-signed-in`, the first read of a fresh visit): the tab goes straight to the
- * sign-in form, with no page of its own before it (Thulasi on #85, 12 Nov). A session that ended
- * here (`expired`, `signed-out`) keeps its prompt and starts a new login only when the user asks, so
- * the user sees why, and a sign-out never looks as if it failed. A signed-in tab whose session
- * disappears on a re-read counts as `expired`, never as `not-signed-in`.
+ * sign-in form, with no page of its own before it (Thulasi on #85, 12 Nov). **Sign out** (the user
+ * menu, or the idle warning's button) ends our session and, through it, the Keycloak session
+ * (`POST /auth/logout`; core ends it at Keycloak with the session's refresh token), then goes
+ * straight to the sign-in form, so the next person can sign in at once (Vimal, demo run check,
+ * 12 Nov). If the logout call fails, the tab shows "You have signed out" and starts nothing. A
+ * session that expired keeps its prompt and starts a new login only when the user asks, so the
+ * user sees why. A signed-in tab whose session disappears on a re-read counts as `expired`, never
+ * as `not-signed-in`.
  *
  * A guard against a redirect loop (Vimal on #304): the tab counts its trips to the sign-in form in
  * `sessionStorage` (a count and a time only, no patient or user data). A browser that comes back
@@ -249,12 +253,17 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
   }, [signedIn])
 
   const signOut = useCallback(async () => {
+    let ended = false
     try {
       await logout()
+      ended = true
     } catch {
       // The server session may already be gone; this tab signs out either way.
     }
     end('signed-out')
+    // Both sessions are over: the sign-in form, for this user or the next (Keycloak always asks,
+    // prompt=login). Not a trip the redirect-loop guard counts.
+    if (ended) goToSignIn()
   }, [end])
 
   const value = useMemo(() => ({ state, reload, signOut }), [state, reload, signOut])

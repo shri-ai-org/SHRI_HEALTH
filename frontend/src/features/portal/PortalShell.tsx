@@ -13,7 +13,7 @@ import { SourceCodeLink } from './sourceCode'
  * The old portal's menus, with text labels (the old desktop menu was icons with tooltips only):
  * Test Results, a Health Summary dropdown, Appointments, Messages, Prescriptions, Billing, Video
  * Consult and Patient Education; the name menu has Demographics, E-Signature, Password and security
- * (the patient realm's account page, D85) and Log out. On phones, a hamburger opens the old side panel with Medical Records and Messages groups.
+ * (the patient realm's account page, D85) and Sign out. On phones, a hamburger opens the old side panel with Medical Records and Messages groups.
  */
 
 const HEALTH_SUMMARY = [
@@ -154,7 +154,7 @@ export function PortalShell({ children }: { children: ReactNode }) {
                 ))}
                 <SecurityLink href={api.accountSecurityUrl} />
                 <button type="button" onClick={() => signOut('signed-out')} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm text-ink hover:bg-surface-2">
-                  <LogOut aria-hidden="true" size={16} /> Log out
+                  <LogOut aria-hidden="true" size={16} /> Sign out
                 </button>
               </DropMenu>
             ) : null}
@@ -318,7 +318,7 @@ function MobileNav({ path, unread, onClose, onSignOut }: { path: string; unread:
             ))}
             <SecurityLink href={api.accountSecurityUrl} />
             <button type="button" onClick={onSignOut} className={cn(row, 'text-ink hover:bg-surface-2')}>
-              <LogOut aria-hidden="true" size={20} /> Log out
+              <LogOut aria-hidden="true" size={20} /> Sign out
             </button>
           </li>
         </ul>
