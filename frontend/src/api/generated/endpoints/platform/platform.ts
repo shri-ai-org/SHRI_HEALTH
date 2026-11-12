@@ -94,6 +94,11 @@ export type finishLoginResponse302 = {
   status: 302
 }
 
+export type finishLoginResponse303 = {
+  data: void
+  status: 303
+}
+
 export type finishLoginResponse422 = {
   data: UnprocessableContentResponse
   status: 422
@@ -115,7 +120,7 @@ export type finishLoginResponse503 = {
 }
 
 ;
-export type finishLoginResponseError = (finishLoginResponse302 | finishLoginResponse422 | finishLoginResponse429 | finishLoginResponse500 | finishLoginResponse503) & {
+export type finishLoginResponseError = (finishLoginResponse302 | finishLoginResponse303 | finishLoginResponse422 | finishLoginResponse429 | finishLoginResponse500 | finishLoginResponse503) & {
   headers: Headers;
 };
 
@@ -137,7 +142,7 @@ export const getFinishLoginUrl = (params: FinishLoginParams,) => {
 }
 
 /**
- * Keycloak returns here (inventory #2; SECURITY_MODEL §2.1). The server checks `state` and `nonce`, exchanges the code, keeps Keycloak's tokens server-side, creates a new session ID (never reusing one), sets the session cookie and sends the browser back to the app. Public: no session yet. Audited as a login.
+ * Keycloak returns here (inventory #2; SECURITY_MODEL §2.1). The server checks `state` and `nonce`, exchanges the code, keeps Keycloak's tokens server-side, creates a new session ID (never reusing one), sets the session cookie and sends the browser back to the app. Public: no session yet. Audited as a login. **A browser never lands on an error page here:** when the request is a browser navigation (its `Accept` header prefers `text/html` to `application/json` and `application/problem+json`) and the sign-in can't finish because `code` or `state` is missing (Keycloak returned an `error` such as `access_denied` or an expired login), `state` doesn't match the login-state cookie, or the login state has expired, the answer is `303` to `/api/v1/auth/login`, which starts a new sign-in and lands on Keycloak's form. The failure is still audited, and the login-state cookie is cleared. A nonce mismatch, or a request from an API client (any other `Accept`), keeps the `422` problem response.
  * @summary Finish sign-in
  */
 export const finishLogin = async (params: FinishLoginParams, options?: Parameters<typeof apiFetch>[1]): Promise<finishLoginResponse> => {
