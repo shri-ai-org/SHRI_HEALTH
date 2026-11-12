@@ -18,6 +18,7 @@ import type { Id } from './id';
 import type { PortalAppointmentAppointmentType } from './portalAppointmentAppointmentType';
 import type { PortalAppointmentFacility } from './portalAppointmentFacility';
 import type { PortalAppointmentProvider } from './portalAppointmentProvider';
+import type { PortalAppointmentReasonCode } from './portalAppointmentReasonCode';
 import type { PortalAppointmentStatus } from './portalAppointmentStatus';
 import type { Timestamp } from './timestamp';
 
@@ -46,6 +47,8 @@ export interface PortalAppointment {
   appointmentType: PortalAppointmentAppointmentType;
   /** A video visit. */
   telehealth?: boolean;
+  /** The reason chosen when booking online, from the portal's fixed list. Absent for a visit booked by the practice. */
+  reasonCode?: PortalAppointmentReasonCode;
   /**
      * The reason given when booking.
      * @maxLength 1000
