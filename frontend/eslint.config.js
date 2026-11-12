@@ -7,7 +7,7 @@ import tseslint from 'typescript-eslint'
 export default tseslint.config(
   {
     // The copied apps keep their own code style; they are built and type-checked, not linted here.
-    ignores: ['dist', 'node_modules', 'src/api/generated', 'front-office', 'doctors-portal', 'patient-self-registration', 'shared'],
+    ignores: ['dist', 'dist-portal', 'node_modules', 'src/api/generated', 'front-office', 'doctors-portal', 'patient-self-registration', 'shared'],
   },
   {
     files: ['**/*.{ts,tsx}'],
