@@ -511,3 +511,27 @@ def test_a_record_has_exactly_one_owner(admin_engine: Engine, people: dict[str, 
             "state, expires_at) VALUES (gen_random_uuid(), :t, 'POST', '/x', :k, :h, "
             "'in-progress', now())"),
             {"t": people["tenant"], "k": str(uuid4()), "h": "0" * 64})
+
+
+def test_a_patients_key_in_another_clinic_is_its_own_claim(
+        portal: TestClient, stand: Stand, people: dict[str, Any], admin_engine: Engine,  # noqa: F811
+        app_engine: Engine) -> None:  # noqa: F811
+    """The same Idempotency-Key from a patient of another clinic gets its own claim, never a
+    replay (Thulasi's review): each clinic sees only its own records (RLS)."""
+    clinic = people["tenant"]
+    other_clinic = make_tenant(admin_engine)
+    other_db = open_session(app_engine, other_clinic)
+    try:
+        theirs_id = b.patient(other_db).id
+        other_db.commit()
+    finally:
+        other_db.close()
+    mine = _book(portal, clinic, people["patient"])
+    assert mine.status_code == 201, mine.text
+    theirs = _book(portal, other_clinic, theirs_id)   # the same key
+    assert theirs.status_code == 201, theirs.text
+    assert "Idempotent-Replayed" not in theirs.headers
+    assert theirs.json()["patient"] == str(theirs_id) != mine.json()["patient"]
+    assert stand.calls == 2
+    assert [r.patient_id for r in _owners(admin_engine, clinic)] == [people["patient"]]
+    assert [r.patient_id for r in _owners(admin_engine, other_clinic)] == [theirs_id]
