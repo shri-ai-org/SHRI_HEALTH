@@ -81,15 +81,44 @@ describe('SessionProvider', () => {
     expect(screen.queryByRole('heading', { name: 'Sign in to Shri Health' })).not.toBeInTheDocument()
   })
 
-  it('shows the prompt instead of redirecting again when the browser comes back still signed out', async () => {
+  it('redirects again when the browser comes back still signed out once', async () => {
     serve({ 'GET /api/v1/auth/session': [() => problem(401, 'unauthenticated')] })
-    // A redirect from this tab a moment ago: the login failed or was refused.
-    window.sessionStorage.setItem('shri.session.autoSignInAt', String(Date.now() - 5_000))
+    // One trip from this tab a moment ago, back still signed out.
+    window.sessionStorage.setItem('shri.session.signInTries', `1:${Date.now() - 5_000}`)
     render(<SessionProvider><Who /></SessionProvider>)
-    expect(await screen.findByRole('heading', { name: 'Sign in to Shri Health' })).toBeInTheDocument()
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/api/v1/auth/login'))
+    expect(window.sessionStorage.getItem('shri.session.signInTries')).toMatch(/^2:/)
+  })
+
+  it('stops redirecting after two returns in a row and shows one line whose link starts again', async () => {
+    serve({ 'GET /api/v1/auth/session': [() => problem(401, 'unauthenticated')] })
+    window.sessionStorage.setItem('shri.session.signInTries', `2:${Date.now() - 5_000}`)
+    render(<SessionProvider><Who /></SessionProvider>)
+    expect(await screen.findByText(/Sign-in didn’t complete\./)).toBeInTheDocument()
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument()
     expect(assign).not.toHaveBeenCalled()
-    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await userEvent.click(screen.getByRole('link', { name: 'Try again' }))
     expect(assign).toHaveBeenCalledWith('/api/v1/auth/login')
+    // The link starts a new count: one trip.
+    expect(window.sessionStorage.getItem('shri.session.signInTries')).toMatch(/^1:/)
+  })
+
+  it('starts a new count when the last trip was more than a minute ago', async () => {
+    serve({ 'GET /api/v1/auth/session': [() => problem(401, 'unauthenticated')] })
+    window.sessionStorage.setItem('shri.session.signInTries', `2:${Date.now() - 120_000}`)
+    render(<SessionProvider><Who /></SessionProvider>)
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/api/v1/auth/login'))
+  })
+
+  it('keeps redirecting in a browser without sessionStorage (each trip stops at the sign-in form)', async () => {
+    serve({ 'GET /api/v1/auth/session': [() => problem(401, 'unauthenticated')] })
+    const blocked = () => {
+      throw new DOMException('blocked', 'SecurityError')
+    }
+    vi.stubGlobal('sessionStorage', { getItem: blocked, setItem: blocked, removeItem: blocked, clear: blocked })
+    render(<SessionProvider><Who /></SessionProvider>)
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/api/v1/auth/login'))
+    expect(screen.queryByText(/Sign-in didn’t complete/)).not.toBeInTheDocument()
   })
 
   it('offers a retry when the first read fails with a server error, then signs in when it answers', async () => {

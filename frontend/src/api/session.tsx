@@ -11,10 +11,12 @@
  * the user sees why, and a sign-out never looks as if it failed. A signed-in tab whose session
  * disappears on a re-read counts as `expired`, never as `not-signed-in`.
  *
- * The automatic redirect happens once: the tab notes the time in `sessionStorage` (no patient or
- * user data), and a browser that comes back still signed out within a minute (a failed or refused
- * login) gets the prompt instead of being sent round again. The prompt's Sign in button notes the
- * time too, so each click is one trip to the sign-in form.
+ * A guard against a redirect loop (Vimal on #304): the tab counts its trips to the sign-in form in
+ * `sessionStorage` (a count and a time only, no patient or user data). A browser that comes back
+ * still signed out twice in a row, each within a minute, stops being redirected and sees one line,
+ * "Sign-in didn't complete. Try again.", whose link starts the sign-in again. Normally nobody sees
+ * it. Without `sessionStorage` the tab just keeps redirecting: Keycloak always shows its form
+ * (`prompt=login`), so each trip stops there. The "not signed in" page itself never shows.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button, IdleTimeoutWarning } from '../design-system'
@@ -47,46 +49,49 @@ export function goToSignIn(): void {
   window.location.assign(`${API_BASE}/auth/login`)
 }
 
-/** When this tab last went to sign in on its own (ms since the epoch); only a time is kept. */
-const AUTO_SIGN_IN_KEY = 'shri.session.autoSignInAt'
-/** A browser back here still signed out within this long gets the prompt, not another redirect. */
-const AUTO_SIGN_IN_GUARD_MS = 60_000
+/** This tab's recent trips to the sign-in form: `count:time` (ms since the epoch), nothing else. */
+const SIGN_IN_TRIES_KEY = 'shri.session.signInTries'
+/** A return later than this after the last trip starts a new count. */
+const SIGN_IN_TRY_WINDOW_MS = 60_000
+/** Back still signed out after this many trips in a row: stop redirecting. */
+const SIGN_IN_MAX_TRIES = 2
 
-/** True, and the time noted, when this tab may go to sign in on its own now. */
+/** True, and the trip counted, when this tab may go to sign in on its own now. */
 function mayAutoSignIn(): boolean {
   try {
-    const last = Number(window.sessionStorage.getItem(AUTO_SIGN_IN_KEY))
-    if (last > 0 && Date.now() - last < AUTO_SIGN_IN_GUARD_MS) {
-      window.sessionStorage.removeItem(AUTO_SIGN_IN_KEY)
-      return false
-    }
-    noteSignInAttempt()
+    const [count = 0, at = 0] = (window.sessionStorage.getItem(SIGN_IN_TRIES_KEY) ?? '').split(':').map(Number)
+    const tries = at > 0 && Date.now() - at < SIGN_IN_TRY_WINDOW_MS ? count : 0
+    if (tries >= SIGN_IN_MAX_TRIES) return false
+    window.sessionStorage.setItem(SIGN_IN_TRIES_KEY, `${tries + 1}:${Date.now()}`)
     return true
   } catch {
-    return false // no storage (private window, blocked): the prompt, never a possible loop
+    return true // no storage: keep redirecting; Keycloak's form stops each trip (prompt=login)
   }
 }
 
-/** Notes that this tab is going to sign in now (the redirect, or the prompt's Sign in button). */
-function noteSignInAttempt(): void {
+/** A sign-in the user asked for (a link or button): a new count of one trip, then the form. */
+function signInAgain(): void {
   try {
-    window.sessionStorage.setItem(AUTO_SIGN_IN_KEY, String(Date.now()))
+    window.sessionStorage.setItem(SIGN_IN_TRIES_KEY, `1:${Date.now()}`)
   } catch {
-    // no storage: the next page load decides again
+    // no storage: nothing to count
   }
+  goToSignIn()
 }
 
-/** This page load's answer from `mayAutoSignIn`, once asked. */
+/** This page load's answer from `mayAutoSignIn`, once asked, and whether it has left already. */
 let autoSignInDecision: boolean | undefined
+let autoSignInLeft = false
 
 /** For tests: forget this page load's answer, as a new page load would. */
 export function resetAutoSignInForTests(): void {
   autoSignInDecision = undefined
+  autoSignInLeft = false
 }
 
 function forgetAutoSignIn(): void {
   try {
-    window.sessionStorage.removeItem(AUTO_SIGN_IN_KEY)
+    window.sessionStorage.removeItem(SIGN_IN_TRIES_KEY)
   } catch {
     // nothing to forget
   }
@@ -309,8 +314,10 @@ function offsetFrom(headers: Headers): number | null {
   return Math.abs(offset) < 2000 ? 0 : offset
 }
 
-const PROMPT: Record<SignedOutReason, { title: string; text: string }> = {
-  'not-signed-in': { title: 'Sign in to Shri Health', text: "You're not signed in." },
+/** A session that ended here: why, and a sign-in on the user's click. Nobody signed in has no page. */
+type EndedReason = Exclude<SignedOutReason, 'not-signed-in'>
+
+const PROMPT: Record<EndedReason, { title: string; text: string }> = {
   expired: {
     title: 'You were signed out',
     text: 'For patient privacy, you were signed out after a period of inactivity or at the end of your session.',
@@ -318,21 +325,14 @@ const PROMPT: Record<SignedOutReason, { title: string; text: string }> = {
   'signed-out': { title: 'You have signed out', text: 'Sign in again to continue.' },
 }
 
-function SignInPrompt({ reason }: { reason: SignedOutReason }) {
+function SignInPrompt({ reason }: { reason: EndedReason }) {
   const { title, text } = PROMPT[reason]
   return (
     <main className="mx-auto mt-24 max-w-md px-4 text-center">
       <h1 className="text-xl font-semibold text-ink">{title}</h1>
       <p className="mt-2 text-ink-muted">{text}</p>
       <div className="mt-6">
-        <Button
-          onClick={() => {
-            noteSignInAttempt() // back here still signed out: this prompt again, not a redirect
-            goToSignIn()
-          }}
-        >
-          Sign in
-        </Button>
+        <Button onClick={signInAgain}>Sign in</Button>
       </div>
     </main>
   )
@@ -344,13 +344,39 @@ function AutoSignIn() {
   autoSignInDecision ??= mayAutoSignIn()
   const leaving = autoSignInDecision
   useEffect(() => {
-    if (leaving) goToSignIn()
+    // Once per page load: React's development double effect must not send the browser twice.
+    if (leaving && !autoSignInLeft) {
+      autoSignInLeft = true
+      goToSignIn()
+    }
   }, [leaving])
-  if (!leaving) return <SignInPrompt reason="not-signed-in" />
+  if (!leaving) return <SignInDidNotComplete />
   return (
     <main className="mx-auto mt-24 max-w-md px-4 text-center">
       <p role="status" className="text-ink-muted">
         Taking you to sign in…
+      </p>
+    </main>
+  )
+}
+
+/** Back still signed out twice in a row: one line, and a link that starts the sign-in again. */
+function SignInDidNotComplete() {
+  return (
+    <main className="mx-auto mt-24 max-w-md px-4 text-center">
+      <p className="text-ink">
+        Sign-in didn’t complete.{' '}
+        <a
+          href={`${API_BASE}/auth/login`}
+          onClick={(e) => {
+            e.preventDefault()
+            signInAgain()
+          }}
+          className="font-semibold text-primary-700 underline underline-offset-2"
+        >
+          Try again
+        </a>
+        .
       </p>
     </main>
   )
