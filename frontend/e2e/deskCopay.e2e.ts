@@ -1,6 +1,8 @@
 import { randomInt, randomUUID } from 'node:crypto'
 import { expect, test, type APIRequestContext } from '@playwright/test'
 
+import { nextSlotToday } from './nextSlot'
+
 // Demo step 11's copay against the real API, on the front office's check-out sheet: the desk
 // records the copay (cash, or check with its number), and the receipt PDF made in the same step
 // opens from a one-time link (D104, D105). Setup through the root app's dev server, as the front
@@ -21,15 +23,11 @@ async function checkedInAppointment(desk: APIRequestContext): Promise<string> {
     data: { name: { family: surname(), given: ['Jordan'] }, birthDate: `19${randomInt(50, 99)}-0${randomInt(1, 9)}-1${randomInt(0, 9)}` },
   }), 201)
   const facility = (await ok<{ items: { id: string; timeZone: string }[] }>(await desk.get('/api/v1/booking/facilities'))).items[0]
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: facility.timeZone }).format(new Date())
   const typeId = (await ok<{ items: { id: string }[] }>(await desk.get('/api/v1/booking/appointment-types'))).items[0].id
-  const slots = await ok<{ items: { providerId: string; startAt: string; overbook?: boolean }[] }>(
-    await desk.get(`/api/v1/slots?date=${today}&facilityId=${facility.id}&appointmentTypeId=${typeId}&limit=100`))
-  const slot = slots.items.find((s) => !s.overbook && new Date(s.startAt) > new Date())
-  expect(slot, 'a free slot later today').toBeTruthy()
+  const slot = await nextSlotToday(desk, facility, typeId)
   const appointment = await ok<{ id: string }>(await desk.post('/api/v1/appointments', {
     headers: { 'Idempotency-Key': randomUUID() },
-    data: { patientId: patient.id, providerId: slot!.providerId, facilityId: facility.id, appointmentTypeId: typeId, startAt: slot!.startAt },
+    data: { patientId: patient.id, providerId: slot.providerId, facilityId: facility.id, appointmentTypeId: typeId, startAt: slot.startAt, ...(slot.overbook ? { overbook: true } : {}) },
   }), 201)
   await ok(await desk.post(`/api/v1/appointments/${appointment.id}/check-in`,
                            { headers: { 'Idempotency-Key': randomUUID() }, data: { selfPay: true } }))

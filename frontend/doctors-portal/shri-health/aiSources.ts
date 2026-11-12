@@ -14,8 +14,8 @@ const PAGE_BY_TYPE: Record<string, string> = {
   DiagnosticReport: 'results',
   Observation: 'record',
   AllergyIntolerance: 'record',
-  FamilyMemberHistory: 'record',
-  Procedure: 'record',
+  FamilyMemberHistory: 'history',
+  Procedure: 'history',
 }
 
 /** The record page for one source, for the patient the statement is about. */

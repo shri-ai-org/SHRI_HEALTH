@@ -1,6 +1,8 @@
 import { randomInt, randomUUID } from 'node:crypto'
 import { expect, request as apiRequest, test, type APIRequestContext } from '@playwright/test'
 
+import { nextSlotToday } from './nextSlot'
+
 // Demo step 10 against the real API: the doctor asks for a revisit on a checked-in visit, changes
 // it, and withdraws it, on the doctors' portal (S-06-19, /encounter/:id/follow-up). The front desk
 // (the root app's dev server, `request`) registers, books and checks in a synthetic patient first;
@@ -24,17 +26,13 @@ async function checkedInVisit(desk: APIRequestContext): Promise<string> {
   }), 201)
   const facilities = await ok<{ items: { id: string; timeZone: string }[] }>(await desk.get('/api/v1/booking/facilities'))
   const facility = facilities.items[0]
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: facility.timeZone }).format(new Date())
   const types = await ok<{ items: { id: string }[] }>(await desk.get('/api/v1/booking/appointment-types'))
   const appointmentTypeId = types.items[0].id
-  const slots = await ok<{ items: { providerId: string; startAt: string; overbook?: boolean }[] }>(
-    await desk.get(`/api/v1/slots?date=${today}&facilityId=${facility.id}&appointmentTypeId=${appointmentTypeId}&limit=100`))
-  const slot = slots.items.find((s) => !s.overbook && new Date(s.startAt) > new Date())
-  expect(slot, 'a free slot later today').toBeTruthy()
+  const slot = await nextSlotToday(desk, facility, appointmentTypeId)
   const appointment = await ok<{ id: string }>(await desk.post('/api/v1/appointments', {
     headers: { 'Idempotency-Key': randomUUID() },
-    data: { patientId: patient.id, providerId: slot!.providerId, facilityId: facility.id,
-            appointmentTypeId, startAt: slot!.startAt },
+    data: { patientId: patient.id, providerId: slot.providerId, facilityId: facility.id,
+            appointmentTypeId, startAt: slot.startAt, ...(slot.overbook ? { overbook: true } : {}) },
   }), 201)
   const checkIn = await ok<{ encounterId: string }>(await desk.post(
     `/api/v1/appointments/${appointment.id}/check-in`,
