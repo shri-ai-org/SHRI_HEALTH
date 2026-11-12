@@ -453,6 +453,15 @@ check() {
             for h in "strict-transport-security: max-age=" "content-security-policy: default-src 'self'" "x-frame-options: DENY"; do
                 printf '%s' "$headers" | tr -d '\r' | grep -qi "^$h" || die "$P/ is missing the header: $h"
             done
+            ! printf '%s' "$headers" | tr -d '\r' | grep -i "^content-security-policy:" | grep -qi "script-src" \
+                || die "$P/ allows inline scripts: only Keycloak's pages may"
+            # Keycloak's page through the host: its own policy, still never framed (host-nginx /kc/).
+            headers="$("${pub[@]}" -o /dev/null -D - "$location")"
+            printf '%s' "$headers" | tr -d '\r' | grep -i "^content-security-policy:" \
+                | grep "script-src 'self' 'unsafe-inline'" | grep -q "frame-ancestors 'none'" \
+                || die "Keycloak's page at $P doesn't get its policy: rerun deploy.sh host-nginx and install the file (README)"
+            printf '%s' "$headers" | tr -d '\r' | grep -qi "^x-frame-options: DENY" \
+                || die "Keycloak's page at $P is missing X-Frame-Options"
             say "Public address $P: TLS, health, sign-in, headers and the dev header refusal checked"
         else
             say "Public address $P not reachable yet: the host's Nginx site isn't in place (deploy.sh host-nginx, README)"
@@ -504,6 +513,17 @@ host_nginx() {
         add_header Referrer-Policy "no-referrer" always;
 EOF
 )"
+    # Keycloak's pages (/kc/) get Keycloak's policy, as our edge gives them (nginx/shri.conf.template:
+    # its inline scripts carry per-request values, so 'unsafe-inline' for them only); the full
+    # path goes through unchanged.
+    local kc_proxy
+    kc_proxy="$(printf '%s\n' "$proxy" \
+        | sed "s|proxy_pass https://127.0.0.1:$SHRI_HTTPS_PORT/;|proxy_pass https://127.0.0.1:$SHRI_HTTPS_PORT/kc/;|; \
+               s|add_header Content-Security-Policy \"default-src 'self'; img-src|add_header Content-Security-Policy \"default-src 'self'; script-src 'self' 'unsafe-inline'; img-src|; \
+               s|frame-ancestors 'none'; base-uri 'self'; form-action 'self'\" always;|frame-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'\" always;|")"
+    printf '%s' "$kc_proxy" | grep -q "proxy_pass https://127.0.0.1:$SHRI_HTTPS_PORT/kc/;" \
+        && printf '%s' "$kc_proxy" | grep -q "script-src 'self' 'unsafe-inline'" \
+        || die "host-nginx: could not build the /kc/ block"
     [ "$SHRI_PUBLIC_PORT" = 443 ] || listen="$SHRI_PUBLIC_PORT"
     if [ -z "$SHRI_BASE_PATH" ]; then
         file="$dir/$SHRI_HOSTNAME.conf"
@@ -531,6 +551,10 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     server_tokens off;
 
+    location ^~ /kc/ {
+$kc_proxy
+    }
+
     location / {
 $proxy
     }
@@ -544,6 +568,10 @@ EOF
 # file INSIDE the existing "listen 443 ssl" server block of $SHRI_HOSTNAME, never the port 80 one.
 location = $SHRI_BASE_PATH {
     return 301 $SHRI_BASE_PATH/;
+}
+
+location ^~ $SHRI_BASE_PATH/kc/ {
+$kc_proxy
 }
 
 location ^~ $SHRI_BASE_PATH/ {
