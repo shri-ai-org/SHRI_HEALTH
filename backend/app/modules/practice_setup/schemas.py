@@ -15,7 +15,7 @@ from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PlainSerializer
 from pydantic.alias_generators import to_camel
 
 
@@ -317,3 +317,82 @@ class FacilityPatch(In):
     place_of_service_code: Annotated[str, Field(pattern=r"^\d{2}$")] | None = None
     billing_location: bool | None = None
     active: bool | None = None
+
+
+# ------------------------------------------------------------------------- creates
+class Create(In):
+    """A create body: unknown fields refused, as for `In`, but not strict, so dates, times and
+    IDs arrive as the JSON strings the contract defines."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid",
+                              strict=False)  # explicit: a subclass merges In's strict=True
+
+
+Text = Annotated[str, Field(max_length=100)]
+
+
+class HumanNameIn(Create):
+    family: Annotated[str, Field(max_length=100)]
+    given: Annotated[list[Text], Field(max_length=5)] = []
+    prefix: Annotated[str, Field(max_length=20)] | None = None
+    suffix: Annotated[str, Field(max_length=20)] | None = None
+
+
+class SetupCodingIn(Create):
+    system: Annotated[str, Field(max_length=300, pattern=r"^[A-Za-z][A-Za-z0-9+.-]*:\S+$")]
+    code: Annotated[str, Field(max_length=64)]
+    display: Annotated[str, Field(max_length=500)] | None = None
+
+
+class ProviderQualificationIn(Create):
+    code: SetupCodingIn
+    license_number: Annotated[str, Field(max_length=200)] | None = None
+    state: Annotated[str, Field(pattern=r"^[A-Z]{2}$")] | None = None
+    issuer: Annotated[str, Field(max_length=300)] | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+
+
+class ProviderCreate(Create):
+    name: HumanNameIn
+    npi: Annotated[str, Field(pattern=r"^\d{10}$")]
+    gender: Gender | None = None
+    qualifications: Annotated[list[ProviderQualificationIn], Field(max_length=20)] = []
+    specialties: Annotated[list[SetupCodingIn], Field(max_length=10)] = []
+    facility_ids: Annotated[list[UUID], Field(max_length=50)]
+    phone: Annotated[str, Field(pattern=r"^\+[1-9]\d{6,14}$")] | None = None
+    email: Annotated[str, Field(max_length=254, pattern=r"^[^@\s]+@[^@\s]+$")] | None = None
+
+
+HhMm = Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+
+
+class AvailabilityRuleIn(Create):
+    """A rule as the contract's AvailabilityRule; an `id` sent with it is ignored, since the
+    server assigns every new rule's ID."""
+
+    id: UUID | None = None
+    day_of_week: DayOfWeek
+    start_time: HhMm
+    end_time: HhMm
+    slot_minutes: Annotated[int, Field(ge=5, le=240)]
+    location_id: UUID | None = None
+    appointment_type_ids: Annotated[list[UUID], Field(max_length=50)] = []
+    start_date: date
+    end_date: date | None = None
+
+
+class ScheduleExceptionIn(Create):
+    id: UUID | None = None
+    start_at: AwareDatetime  # RFC 3339 needs an offset; any offset, stored as UTC
+    end_at: AwareDatetime
+    available: bool
+    reason: Annotated[str, Field(max_length=200)] | None = None
+
+
+class ProviderScheduleCreate(Create):
+    provider_id: UUID
+    facility_id: UUID
+    availability_rules: Annotated[list[AvailabilityRuleIn], Field(max_length=100)] = []
+    exceptions: Annotated[list[ScheduleExceptionIn], Field(max_length=500)] = []
+    comment: Annotated[str, Field(max_length=1000)] | None = None

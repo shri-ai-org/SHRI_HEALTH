@@ -1,6 +1,7 @@
 """Practice setup API (contracts/openapi/modules/practice-setup.yaml): the six list reads, the
-note-template reads, the practice settings (read and JSON Merge Patch, A49), and one
-facility's read and JSON Merge Patch.
+note-template reads, the practice settings (read and JSON Merge Patch, A49), one facility's
+read and JSON Merge Patch, and creating a provider or a provider schedule (201, with
+`Location`).
 
 Each route's operation_id is the contract's operationId, with require() on its x-permission
 (`payers:read` for the payer directory, `note-templates:read` for the note templates (D73, A54),
@@ -15,7 +16,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Path, Query, Response
+from fastapi import APIRouter, Depends, Header, Path, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser, require, tenant_db
@@ -23,9 +24,11 @@ from app.core.deps import CurrentUser, require, tenant_db
 from . import schemas, service
 from .repository import (
     FacilityRepository,
+    ProviderRepository,
     SettingsRepository,
     SetupRepository,
     SqlFacilityRepository,
+    SqlProviderRepository,
     SqlSettingsRepository,
     SqlSetupRepository,
 )
@@ -45,12 +48,19 @@ def facility_repository() -> FacilityRepository:
     return SqlFacilityRepository()
 
 
+def provider_repository() -> ProviderRepository:
+    return SqlProviderRepository()
+
+
 Repo = Annotated[SetupRepository, Depends(repository)]
 FacilityRepo = Annotated[FacilityRepository, Depends(facility_repository)]
 SettingsRepo = Annotated[SettingsRepository, Depends(settings_repository)]
+ProviderRepo = Annotated[ProviderRepository, Depends(provider_repository)]
 DB = Annotated[AsyncSession, Depends(tenant_db)]
 SetupRead = Annotated[CurrentUser, Depends(require("practice-setup:read"))]
 SetupUpdate = Annotated[CurrentUser, Depends(require("practice-setup:update"))]
+SetupCreate = Annotated[CurrentUser, Depends(require("practice-setup:create"))]
+SchedulesCreate = Annotated[CurrentUser, Depends(require("provider-schedules:create"))]
 IfMatch = Annotated[str | None, Header(alias="If-Match")]
 FacilityPathId = Annotated[UUID, Path(alias="facilityId")]
 PayersRead = Annotated[CurrentUser, Depends(require("payers:read"))]
@@ -184,3 +194,27 @@ async def update_facility(user: SetupUpdate, facility_id: FacilityPathId,
     await db.commit()
     response.headers["ETag"] = service.etag(version)
     return updated
+
+
+@router.post("/providers", operation_id="createProvider", status_code=status.HTTP_201_CREATED,
+             response_model=schemas.Provider, response_model_exclude_none=True)
+async def create_provider(user: SetupCreate, body: schemas.ProviderCreate, response: Response,
+                          db: DB, repo: ProviderRepo) -> schemas.Provider:
+    created, version = await service.create_provider(db, repo, user, body)
+    await db.commit()
+    response.headers["Location"] = service.location("providers", created.id)
+    response.headers["ETag"] = service.etag(version)
+    return created
+
+
+@router.post("/provider-schedules", operation_id="createProviderSchedule",
+             status_code=status.HTTP_201_CREATED, response_model=schemas.ProviderSchedule,
+             response_model_exclude_none=True)
+async def create_provider_schedule(user: SchedulesCreate, body: schemas.ProviderScheduleCreate,
+                                   response: Response, db: DB, repo: ProviderRepo
+                                   ) -> schemas.ProviderSchedule:
+    created, version = await service.create_provider_schedule(db, repo, user, body)
+    await db.commit()
+    response.headers["Location"] = service.location("provider-schedules", created.id)
+    response.headers["ETag"] = service.etag(version)
+    return created
