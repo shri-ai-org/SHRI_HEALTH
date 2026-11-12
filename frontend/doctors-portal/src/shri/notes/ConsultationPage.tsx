@@ -8,7 +8,7 @@
  * surface, the low-confidence ones folded, the rationale behind a Why.
  */
 
-import { BedDouble, CalendarPlus, ClipboardList, Pill as PillIcon, SearchX } from 'lucide-react'
+import { BedDouble, CalendarPlus, ClipboardList, Pill as PillIcon, SearchX, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -77,6 +77,8 @@ function Consultation({ encounterId }: { encounterId: string }) {
   const admissions = useAdmissions((s) => s.admissions)
   const openAdmit = useShri((s) => s.openAdmit)
   const [scribeOpen, setScribeOpen] = useState(false)
+  /** With the API: an AI draft queued or running on the server; the page says so until it lands. */
+  const [drafting, setDrafting] = useState(false)
   /** With the API: false once AI drafting was refused (AI off, unavailable, over budget). */
   const draftUp = useAiFeatureUp('note-draft')
 
@@ -103,7 +105,7 @@ function Consultation({ encounterId }: { encounterId: string }) {
         seeds={seeds}
         scribeModel="scribe v5.1.2"
         onSigned={() => navigate('/')}
-        onDraftAll={AI_NOTE_DRAFT_ON && (!REAL_API || (draftUp && hasPermission('note-drafts:create'))) ? () => setScribeOpen(true) : undefined}
+        onDraftAll={AI_NOTE_DRAFT_ON && !drafting && (!REAL_API || (draftUp && hasPermission('note-drafts:create'))) ? () => setScribeOpen(true) : undefined}
         headerActions={
           <>
             {may(rx) && (
@@ -130,7 +132,17 @@ function Consultation({ encounterId }: { encounterId: string }) {
           </>
         }
         // Last time's results, reports and scans sit one tap from the consultation.
-        banner={<RecordDoors patient={p} />}
+        banner={
+          <>
+            {drafting && (
+              <p role="status" className="mb-[10px] flex items-center gap-[8px] text-[14px] font-medium text-sh-ai">
+                <Sparkles size={15} aria-hidden />
+                Drafting… the AI is writing the note from your dictation.
+              </p>
+            )}
+            <RecordDoors patient={p} />
+          </>
+        }
         // SHRI_HEALTH: the Differential panel is the sample's suggestions, with no service behind it: hidden with SHRI_API=real.
         rail={REAL_API ? undefined : <DifferentialRail encounterId={enc.id} patientId={p.id} />}
         railTitle="Differential"
@@ -149,6 +161,8 @@ function Consultation({ encounterId }: { encounterId: string }) {
             setScribeOpen(false)
             if (REAL_API) {
               // AI-01 on the server: the draft lands in the note, each section to Accept, Edit or Reject.
+              // A queued or running draft is polled until it finishes (never shown as unavailable).
+              setDrafting(true)
               useClinical
                 .getState()
                 .draftWithAi(enc.id, transcript)
@@ -168,6 +182,7 @@ function Consultation({ encounterId }: { encounterId: string }) {
                     detail: `${down ?? (error instanceof Error ? error.message : '')} Dictate or type each section instead.`.trim(),
                   })
                 })
+                .finally(() => setDrafting(false))
               return
             }
             const drafted = applyScribeDraft(enc.id, keys, drafts)

@@ -124,6 +124,43 @@ test('"Draft with AI" sends the dictation and shows four AI sections to accept, 
   await expect(page.locator('textarea:focus')).toHaveValue('Three days of cough, no fever.')
 })
 
+test('a queued AI draft shows "Drafting…" and is polled until it finishes, never "unavailable"', async ({ page, request }) => {
+  const { encounterId, patientId } = await checkedInVisit(request)
+  const noteId = randomUUID()
+  const opId = randomUUID()
+  let polls = 0
+  await page.route('**/api/v1/ai/note-drafts', (route) =>
+    json(route, 202, { id: opId, kind: 'ai.note-draft', status: 'queued', createdAt: NOW, updatedAt: NOW }, { Location: `/api/v1/operations/${opId}` }))
+  await page.route(`**/api/v1/operations/${opId}`, (route) => {
+    polls++
+    return polls < 3
+      ? json(route, 200, { id: opId, kind: 'ai.note-draft', status: 'running', createdAt: NOW, updatedAt: NOW })
+      : json(route, 200, operation('ai.note-draft', 'note', noteId))
+  })
+  await page.route(`**/api/v1/notes/${noteId}`, (route) => json(route, 200, {
+    id: noteId, encounterId, patientId, noteType: { codings: [], text: 'Progress note' }, title: 'SOAP', status: 'preliminary',
+    cosignStatus: 'not-required', author: { id: randomUUID(), displayName: 'Rowan Test' }, aiAssisted: true, addenda: [], createdAt: NOW, updatedAt: NOW,
+    sections: SECTIONS.map((s, i) => {
+      const suggestion = randomUUID()
+      return { id: randomUUID(), code: s.code, title: s.title, sequence: i + 1, required: true, text: s.text, entrySource: 'ai-generated',
+               aiSuggestionId: suggestion, aiDecision: 'pending',
+               aiSuggestion: { id: suggestion, feature: 'ambient-documentation', targetType: 'note-section', targetId: noteId, noteId, patientId,
+                               confidence: 'medium', rationale: 'From the dictation.', suggestedText: s.text, decision: 'pending' } }
+    }),
+  }, { ETag: '"1"' }))
+  await hearing(page, DICTATION)
+
+  await page.goto(`${DOCTORS_URL}/encounter/${encounterId}/note`)
+  await page.getByRole('button', { name: 'Draft with AI' }).first().click()
+  await expect(page.getByText(DICTATION.split('.')[0], { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Draft with AI' }).last().click()
+  await expect(page.getByRole('status').filter({ hasText: 'Drafting…' })).toBeVisible()
+  await expect(page.getByText('Four sections drafted by AI')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('AI drafting is unavailable')).toHaveCount(0)
+  await expect(page.getByRole('status').filter({ hasText: 'Drafting…' })).toHaveCount(0)
+  expect(polls).toBeGreaterThanOrEqual(3)
+})
+
 test('the chart summary links each statement to its record', async ({ page, request }) => {
   const { patientId } = await checkedInVisit(request)
   const summaryId = randomUUID()
