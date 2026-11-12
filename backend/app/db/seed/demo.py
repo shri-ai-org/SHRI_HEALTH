@@ -42,12 +42,12 @@ M = MAPPERS
 PHARMACY, CONSENT_REQUIREMENT, PATIENT, P_NAME, P_TELECOM, P_ADDRESS, P_MRN, P_LANGUAGE, \
     COVERAGE, C_PAYOR, C_MEMBER, C_GROUP, APPOINTMENT, A_PATIENT, A_PROVIDER, \
     P_PHARMACY, A_LOCATION, DEMO_USER, DEMO_USER_ROLE, PORTAL_ACCOUNT, ALL_DAY_RULE, \
-    ERX_ENDPOINT = range(21, 43)
+    ERX_ENDPOINT, CLEARINGHOUSE_ENDPOINT = range(21, 44)
 P_EMAIL, P_RACE, P_ETHNICITY, P_EMPLOYER, P_PCP, C_PLAN, C_COPAY, BOOKING_SETTING, \
-    BOOKABLE_TYPE = range(43, 52)
+    BOOKABLE_TYPE = range(44, 53)
 #: The history's past visits (app.db.seed.history), n = patient n * 10 + the visit's number.
 PAST_APPOINTMENT, PA_PATIENT, PA_PROVIDER, PA_LOCATION, PA_STEP, PA_ROOM, PA_FOLLOW_UP, \
-    PA_REASON, A_REASON = range(52, 61)
+    PA_REASON, A_REASON = range(53, 62)
 
 #: The demo day, Friday 20 November 2026, at the main office (America/Chicago, UTC-6 then).
 DEMO_DAY = dt.date(2026, 11, 20)
@@ -255,6 +255,13 @@ def _payers(db: Session) -> None:
     _ensure(db, "integration_endpoint", sid(ERX_ENDPOINT, 1), tenant_id=CLINIC_A, kind="erx",
             adapter="simulated-erx", name="Simulated pharmacy (demo)", environment="test",
             baa_on_file=False, is_active=True)
+    # And the one eligibility's 270 goes through (demo step 3, Thulasi on #85): the simulated
+    # payer, on the same terms. Member IDs with NOTFOUND, INACTIVE or ERROR give those answers;
+    # any other an active plan with a $25.00 copay.
+    _ensure(db, "integration_endpoint", sid(CLEARINGHOUSE_ENDPOINT, 1), tenant_id=CLINIC_A,
+            kind="clearinghouse", adapter="simulated-clearinghouse",
+            name="Simulated payer (demo)", environment="test", baa_on_file=False,
+            is_active=True)
 
 
 def _consent_requirements(db: Session) -> None:
