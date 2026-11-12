@@ -4,6 +4,7 @@ through the API as the demo clinic's doctor. Synthetic data only."""
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 from collections.abc import Iterator
 from typing import Any
 
@@ -81,19 +82,56 @@ def _counts(admin: Engine, n: int) -> tuple[int, ...]:
         return tuple(c.execute(text(COUNTS), {"p": sid(demo.PATIENT, n)}).one())
 
 
-def _expected(h: history.History) -> tuple[int, ...]:
-    """problems and visit diagnoses, allergies, meds, past visits, observations (5 vitals a
-    visit and two social history answers), family, surgery, signed notes."""
-    visits = len(h.visits)
+def _observations(n: int, h: history.History) -> int:
+    """Each reading's vitals (a visit's adds height), and the two social history answers."""
+    days = {v.day for v in h.visits}
+    return 2 + sum(3 + (r.spo2 is not None) + (r.temperature_f is not None) + (r.day in days)
+                   for r in history.VITALS[n])
+
+
+def _expected(n: int, h: history.History) -> tuple[int, ...]:
+    """problems and visit diagnoses, allergies, meds, finished visits (the doctor's, and a
+    nurse visit for every other reading), observations, family, surgery, signed notes."""
     return (len(h.problems) + sum(len(v.diagnoses) for v in h.visits), len(h.allergies),
-            len(h.medications), visits, 5 * visits + 2, len(h.family), len(h.surgeries),
-            visits)
+            len(h.medications), len(history.VITALS[n]), _observations(n, h), len(h.family),
+            len(h.surgeries), len(h.visits))
+
+
+def test_each_history_patient_has_a_vitals_series() -> None:
+    """Six to eight readings in the year before the demo (20 Nov), oldest first, one on each
+    visit's day (with its temperature) and none in the future; SpO2 only for asthma and COPD."""
+    asthma_or_copd = {n for n, h in history.HISTORY.items()
+                      if any((c.code.code or "")[:3] in ("J44", "J45") for c in h.problems)}
+    assert set(history.VITALS) == set(history.HISTORY) and asthma_or_copd == {4, 7}
+    for n, readings in history.VITALS.items():
+        days = [r.day for r in readings]
+        in_the_year = [d for d in days if d >= dt.date(2025, 11, 20)]
+        assert 6 <= len(in_the_year) <= 8 and days == sorted(set(days)), n
+        assert all(dt.date(2025, 11, 1) <= d < dt.date(2026, 11, 11) for d in days), n
+        visits = {v.day for v in history.HISTORY[n].visits}
+        assert visits <= set(days), n
+        assert all((r.temperature_f is not None) == (r.day in visits) for r in readings), n
+        assert all((r.spo2 is not None) == (n in asthma_or_copd) for r in readings), n
+
+
+def test_the_trends_fit_the_conditions() -> None:
+    def first_last(n: int, value: Any) -> tuple[Any, Any]:
+        return value(history.VITALS[n][0]), value(history.VITALS[n][-1])
+
+    systolic = first_last(2, lambda r: r.bp[0])
+    assert systolic[0] >= 140 > 130 >= systolic[1]                   # to goal on treatment
+    assert first_last(2, lambda r: r.weight_lb)[1] < first_last(2, lambda r: r.weight_lb)[0]
+    assert first_last(4, lambda r: r.spo2) == (95, 98)                 # the controller
+    rates = first_last(6, lambda r: r.heart_rate)
+    assert rates[1] <= rates[0] - 10                                   # propranolol
+    lowest = min(history.VITALS[7], key=lambda r: r.spo2 or 100)
+    assert lowest.day == dt.date(2026, 2, 17) and lowest.spo2 == 89   # the exacerbation
 
 
 def test_each_demo_patient_gets_their_history_once(seeded: None,
                                                    admin_engine: Engine) -> None:
     nothing = (0,) * 8
-    expected = {p.n: _expected(history.HISTORY[p.n]) if p.history else nothing
+    expected = {p.n: _expected(p.n, history.HISTORY[p.n]) if p.history else nothing
                 for p in demo.PATIENTS}           # 1, the demo visit's patient, and 8 to 12
     assert {n: _counts(admin_engine, n) for n in expected} == expected
     assert _load() == 0                                 # a second run changes nothing
@@ -176,7 +214,7 @@ def test_the_doctor_reads_it_through_the_api(seeded: None, admin_engine: Engine)
         assert response.status_code == 200, response.text
     assert contacts.json()["items"]
     finished = [v for v in visits.json()["items"] if v["status"] == "finished"]
-    assert len(finished) == len(history.HISTORY[2].visits)
+    assert len(finished) == len(history.VITALS[2])     # the doctor's visits and nurse visits
     def codes(concept: dict[str, Any]) -> set[str]:
         return {c["code"] for c in concept.get("codings") or []}
 
