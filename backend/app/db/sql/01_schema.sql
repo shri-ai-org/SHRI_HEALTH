@@ -528,41 +528,6 @@ CREATE INDEX ix_app_session_tenant_id ON admin.app_session (tenant_id);
 
 CREATE INDEX ix_app_session_user ON admin.app_session (tenant_id, user_id);
 
-CREATE TABLE admin.idempotency_record (
-	user_id UUID NOT NULL, 
-	method VARCHAR(10) NOT NULL, 
-	path VARCHAR(500) NOT NULL, 
-	key VARCHAR(255) NOT NULL, 
-	request_hash VARCHAR(64) NOT NULL, 
-	state VARCHAR(40) NOT NULL, 
-	response_status SMALLINT, 
-	response_headers JSONB, 
-	response_body_enc TEXT, 
-	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
-	id UUID NOT NULL, 
-	tenant_id UUID NOT NULL, 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	created_by_user_id UUID, 
-	updated_by_user_id UUID, 
-	CONSTRAINT pk_idempotency_record PRIMARY KEY (id), 
-	CONSTRAINT uq_idempotency_record_tenant_id_user_id_method_path_key UNIQUE (tenant_id, user_id, method, path, key), 
-	CONSTRAINT ck_idempotency_record_request_hash_format CHECK (request_hash ~ '^[0-9a-f]{64}$'), 
-	CONSTRAINT ck_idempotency_record_unsafe_method CHECK (method IN ('POST', 'PUT', 'PATCH')), 
-	CONSTRAINT ck_idempotency_record_done_has_response CHECK (state <> 'done' OR response_status IS NOT NULL), 
-	CONSTRAINT ck_idempotency_record_stored_status CHECK (response_status IS NULL OR (response_status BETWEEN 200 AND 499 AND response_status <> 429)), 
-	CONSTRAINT ck_idempotency_record_response_body_encrypted CHECK (response_body_enc IS NULL OR response_body_enc ~ '^vault:v[0-9]+:'), 
-	CONSTRAINT fk_idempotency_record_user_id_app_user FOREIGN KEY(user_id) REFERENCES admin.app_user (id), 
-	CONSTRAINT fk_idempotency_record_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
-	CONSTRAINT fk_idempotency_record_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
-	CONSTRAINT fk_idempotency_record_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
-	CONSTRAINT ck_idempotency_record_state_codes CHECK (state IN ('in-progress', 'done'))
-);
-
-CREATE INDEX ix_idempotency_record_expires ON admin.idempotency_record (expires_at);
-
-CREATE INDEX ix_idempotency_record_tenant_id ON admin.idempotency_record (tenant_id);
-
 CREATE TABLE admin.operation (
 	created_by_user_id UUID NOT NULL, 
 	kind VARCHAR(64) NOT NULL, 
@@ -1750,6 +1715,46 @@ CREATE TABLE admin.duplicate_candidate (
 );
 
 CREATE INDEX ix_duplicate_candidate_tenant_id ON admin.duplicate_candidate (tenant_id);
+
+CREATE TABLE admin.idempotency_record (
+	user_id UUID, 
+	patient_id UUID, 
+	method VARCHAR(10) NOT NULL, 
+	path VARCHAR(500) NOT NULL, 
+	key VARCHAR(255) NOT NULL, 
+	request_hash VARCHAR(64) NOT NULL, 
+	state VARCHAR(40) NOT NULL, 
+	response_status SMALLINT, 
+	response_headers JSONB, 
+	response_body_enc TEXT, 
+	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_idempotency_record PRIMARY KEY (id), 
+	CONSTRAINT uq_idempotency_record_tenant_id_user_id_method_path_key UNIQUE (tenant_id, user_id, method, path, key), 
+	CONSTRAINT ck_idempotency_record_one_owner CHECK ((user_id IS NULL) <> (patient_id IS NULL)), 
+	CONSTRAINT ck_idempotency_record_request_hash_format CHECK (request_hash ~ '^[0-9a-f]{64}$'), 
+	CONSTRAINT ck_idempotency_record_unsafe_method CHECK (method IN ('POST', 'PUT', 'PATCH')), 
+	CONSTRAINT ck_idempotency_record_done_has_response CHECK (state <> 'done' OR response_status IS NOT NULL), 
+	CONSTRAINT ck_idempotency_record_stored_status CHECK (response_status IS NULL OR (response_status BETWEEN 200 AND 499 AND response_status <> 429)), 
+	CONSTRAINT ck_idempotency_record_response_body_encrypted CHECK (response_body_enc IS NULL OR response_body_enc ~ '^vault:v[0-9]+:'), 
+	CONSTRAINT fk_idempotency_record_user_id_app_user FOREIGN KEY(user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_idempotency_record_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
+	CONSTRAINT fk_idempotency_record_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_idempotency_record_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_idempotency_record_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_idempotency_record_state_codes CHECK (state IN ('in-progress', 'done'))
+);
+
+CREATE INDEX ix_idempotency_record_expires ON admin.idempotency_record (expires_at);
+
+CREATE INDEX ix_idempotency_record_tenant_id ON admin.idempotency_record (tenant_id);
+
+CREATE UNIQUE INDEX uq_idempotency_record_patient_key ON admin.idempotency_record (tenant_id, patient_id, method, path, key) WHERE patient_id IS NOT NULL;
 
 CREATE TABLE admin.portal_invitation (
 	patient_id UUID NOT NULL, 
@@ -8243,6 +8248,8 @@ ALTER TABLE admin.fax_transmission ADD CONSTRAINT fk_fax_transmission_document_r
 ALTER TABLE admin.fax_transmission ADD CONSTRAINT fk_fax_transmission_integration_message_id_tenant FOREIGN KEY(tenant_id, integration_message_id) REFERENCES admin.integration_message (tenant_id, id);
 
 ALTER TABLE admin.fee_schedule_item ADD CONSTRAINT fk_fee_schedule_item_fee_schedule_id_tenant FOREIGN KEY(tenant_id, fee_schedule_id) REFERENCES admin.fee_schedule (tenant_id, id);
+
+ALTER TABLE admin.idempotency_record ADD CONSTRAINT fk_idempotency_record_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.integration_endpoint_setting ADD CONSTRAINT fk_integration_endpoint_setting_endpoint_id_tenant FOREIGN KEY(tenant_id, endpoint_id) REFERENCES admin.integration_endpoint (tenant_id, id);
 
