@@ -37,7 +37,9 @@ jobs:
     # Skipped on a draft PR (it runs when the PR is marked ready for review); always on main.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # The suite takes 11-14 minutes (#311 was cancelled at 15 while still running); 30 leaves
+    # room without letting a hung job burn the month's minutes (D106 rule 8).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
