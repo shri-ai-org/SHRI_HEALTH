@@ -60,6 +60,10 @@ SHRI_PATIENT_SIGN_IN=false
 # true: demo sign-in is the username and password alone, no authenticator code (both realms, on
 # this server only). Only with SHRI_DEMO=true; every other environment requires the code (D85).
 SHRI_DEMO_SKIP_AUTH_CODE=false
+# true: the screens are built with the AI features shown (Draft with AI, chart summary, assistant,
+# morning brief, differentials; the VITE_FEATURE_AI_* flags, read at build time). Only with
+# SHRI_DEMO=true. Each feature still needs its per-clinic switch and the Claude key (D116, D12).
+SHRI_DEMO_AI_SCREENS=false
 # self-signed (a local hostname) or provided (TLS_CERT_FILE and TLS_KEY_FILE, the real certificate).
 TLS_MODE=self-signed
 TLS_CERT_FILE=
@@ -137,6 +141,13 @@ load_env() {
               DEMO_SKIP_AUTH_CODE=1 ;;
         false) DEMO_SKIP_AUTH_CODE= ;;
         *) die "SHRI_DEMO_SKIP_AUTH_CODE is true or false" ;;
+    esac
+    case "${SHRI_DEMO_AI_SCREENS:-false}" in
+        true) [ "${SHRI_DEMO:-false}" = true ] \
+                  || die "SHRI_DEMO_AI_SCREENS=true needs SHRI_DEMO=true (fictional data only until a BAA, D12)"
+              export SHRI_WEB_AI=on ;;
+        false) export SHRI_WEB_AI=off ;;
+        *) die "SHRI_DEMO_AI_SCREENS is true or false" ;;
     esac
     PROJECT="${SHRI_PROJECT:-shri-deploy}"
     [[ "$PROJECT" =~ ^shri-[a-z0-9-]+$ ]] || die "SHRI_PROJECT must start with shri- (lower case, digits, -)"
