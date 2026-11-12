@@ -123,12 +123,13 @@ services:
       PORTAL_AFTER_LOGIN_PATH: ${SHRI_BASE_PATH:-}/portal/
       AUTH_MODE: keycloak
       PATIENT_AUTH_MODE: keycloak
-      # Real patient sign-in stays OFF on every server until #148's account-state bug is fixed:
-      # without these secrets the portal's sign-in and enrolment routes answer 503. The
+      # Real patient sign-in is OFF unless SHRI_PATIENT_SIGN_IN=true, which deploy.sh allows only
+      # with SHRI_DEMO=true (fictional patients): it sets these to the patient realm's secrets,
+      # and otherwise to "", so the portal's sign-in and enrolment routes answer 503. The
       # development sign-in (X-Dev-*) is refused outside development and test, and Nginx strips
-      # its headers, so no patient sign-in of any kind is reachable here.
-      PORTAL_CLIENT_SECRET: ""
-      PORTAL_ADMIN_CLIENT_SECRET: ""
+      # its headers.
+      PORTAL_CLIENT_SECRET: ${SHRI_API_PORTAL_CLIENT_SECRET:-}
+      PORTAL_ADMIN_CLIENT_SECRET: ${SHRI_API_PORTAL_ADMIN_CLIENT_SECRET:-}
       KEYCLOAK_PUBLIC_URL: ${SHRI_PUBLIC_URL}/kc
       KEYCLOAK_REDIRECT_URI: ${SHRI_PUBLIC_URL}/api/v1/auth/callback
       ALLOWED_ORIGINS: '["${SHRI_PUBLIC_URL}"]'

@@ -106,6 +106,73 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /encounters/{encounterId}/prescriptions:
+    parameters:
+    - name: encounterId
+      in: path
+      required: true
+      description: Encounter ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: listEncounterPrescriptions
+      summary: List a visit's prescriptions
+      description: 'The prescriptions written in one visit, drafts included, oldest first, so another tab or browser shows
+        the same lines (gap 82). Entered-in-error prescriptions are left out. Each item is the prescription as `getPrescription`
+        returns it; read one with `getPrescription` for its `ETag` before changing it.'
+      tags:
+      - medications
+      x-owner: thulasi
+      x-permission: prescriptions:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page of the visit's prescriptions.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrescriptionList'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `prescriptions:read`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
   /patients/{patientId}/medications:
     parameters:
     - name: patientId
@@ -1224,6 +1291,23 @@ components:
         active:
           type: boolean
           description: False when the pharmacy no longer accepts prescriptions.
+          x-phi: none
+    PrescriptionList:
+      description: One page of a visit's prescriptions, oldest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Prescription'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
           x-phi: none
     PharmacyList:
       description: One page of pharmacies, by name.

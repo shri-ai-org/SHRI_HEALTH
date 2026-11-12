@@ -315,6 +315,13 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     admin.delete_unusable_files(:ids)`, which deletes only rows still unusable and old and
     skips a row another table still references; the job deletes those rows' objects before it
     commits. The 24 hours are fixed in the functions. Every update of a file sets `updated_at`.
+- **Idempotency-Key for portal writes (migration 0020):** `admin.idempotency_record` names
+  exactly one owner, a staff `user_id` or, for the patient portal's writes, the session's
+  `patient_id` (`ck_idempotency_record_one_owner`; the patient keeps the clinic-carrying key).
+  Staff keys keep `uq_..._tenant_id_user_id_method_path_key`; patient keys have the partial
+  unique index `uq_idempotency_record_patient_key`. Core claims a staff key as `shri_app` and a
+  patient's as `shri_portal` (D93), whose RESTRICTIVE policy `portal_own_key` shows it the
+  session patient's keys only (`gen_db_rules.portal_idempotency_sql`).
 - **Pre-registration (D96, A51, migration 0009):** the public form calls
   `SELECT admin.submit_pre_registration(:practice_code, :idempotency_key, :request_hash,
   :details, :contact_consent, :source_ip, :user_agent, :request_id)` as `shri_public`, with no
@@ -373,6 +380,14 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     held.
   - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
     provider's busy times without anyone's appointment.
+  - **Self-booking (migration 0021, Vimal's list on #85):** the portal inserts its own
+    patient's `appointment.booked`, `.cancelled` and `.rescheduled` rows in `admin.event_log`
+    and nothing else there (`portal_own_event`). `SELECT admin.portal_chart_open()` locks the
+    session patient FOR SHARE and answers whether the chart is active and not merged. A booked
+    revisit (an appointment a follow-up request points at, D98) can't change status as
+    `shri_portal` (`P0001`, constraint `portal_revisit_locked`): the clinic moves it. The
+    portal's cancel sets the status, the cancellation reason and `ext_cancelled_at` only,
+    never the staff columns (`updated_by_user_id`, `ext_cancelled_by_user_id`).
   - **A note's co-signature return** (`ext_cosign_return_comment`, `ext_cosign_returned_at`)
     is never readable: its SELECT on `composition` is column-limited
     (`PORTAL_HIDDEN_COLUMNS`, migration 0013), so select the columns it needs, never `*`.

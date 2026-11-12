@@ -29,9 +29,14 @@ UNIQUE_FAILED = "23505"
 # shri_integration's column-level grants on admin.operation are tested separately.
 NEW_TABLES = {
     "admin.app_session": {"shri_app": {"SELECT", "INSERT", "UPDATE"}},
-    "admin.idempotency_record": {"shri_app": {"SELECT", "INSERT", "UPDATE"}},
+    # shri_portal: its own patient's keys (migration 0020; UPDATE on the claim's columns only,
+    # which has_table_privilege doesn't count).
+    "admin.idempotency_record": {"shri_app": {"SELECT", "INSERT", "UPDATE"},
+                                 "shri_portal": {"SELECT", "INSERT"}},
     "admin.operation": {"shri_app": {"SELECT", "INSERT", "UPDATE"}},
-    "admin.event_log": {"shri_app": {"SELECT", "INSERT"}, "shri_integration": {"INSERT"}},
+    # shri_portal: its own patient's schedule events only (migration 0021, portal_own_event).
+    "admin.event_log": {"shri_app": {"SELECT", "INSERT"}, "shri_integration": {"INSERT"},
+                        "shri_portal": {"INSERT"}},
 }
 PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 

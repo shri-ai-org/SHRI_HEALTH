@@ -578,8 +578,12 @@ paths:
     post:
       operationId: bookPortalAppointment
       summary: Book a visit
-      description: Books a free time (`GET /portal/me/slots`) under the same rules as staff booking (no double booking, the
-        provider's day locked while booking); the length comes from the appointment type. Queues eligibility (D15).
+      description: 'Books a free time (`GET /portal/me/slots`) under the same rules as staff booking (no double booking, the
+        provider''s day locked while booking); the length comes from the appointment type. Online booking rules (the practice''s
+        `online_booking_setting`): only the visit types it lets patients book online; at least its minimum notice ahead and
+        within its booking window; at most 2 upcoming appointments per patient; booked at once. `reasonCode` is required here
+        (from its fixed list); `reasonForVisit` is an optional short note. Neither ever appears in a reminder or any message
+        outside the app (D81). Queues eligibility (D15): a failed check never blocks the booking; the front desk sees it.'
       tags:
       - portal
       x-owner: vimal
@@ -635,7 +639,7 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: '403. `permission-denied` (the session lacks `portal-appointments:create`: not a patient session, or
-            the account is not enrolled); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+            the account is not enrolled; or the chart is inactive); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
         '409':
           $ref: ../components/responses/Conflict.yaml
           description: '409. `booking-conflict` (the time was just taken: read the free times again); `idempotency-request-in-progress`
@@ -643,8 +647,9 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a field is invalid); `business-rule-violation` (the type is not bookable
-            online, or the time is outside the online booking window); `idempotency-key-reused` (the Idempotency-Key was used
-            with a different body).
+            online, or the time is outside the online booking window; `errors` names `/reasonCode` `required` when it is missing,
+            and `/startAt` `out-of-range` when the patient already has 2 upcoming appointments); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
         '429': *id003
         '500': *id004
   /portal/me/appointments/{appointmentId}:
@@ -853,7 +858,8 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: '403. `permission-denied` (the session lacks `portal-appointments:reschedule`: not a patient session,
-            or the account is not enrolled); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+            or the account is not enrolled; or the chart is inactive); `csrf-check-failed` (missing or wrong CSRF header or
+            Origin).'
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (no such appointment of the signed-in patient; another patient's record gives the
@@ -2322,6 +2328,18 @@ components:
           type: boolean
           description: A video visit.
           x-phi: none
+        reasonCode:
+          type: string
+          enum:
+          - follow-up
+          - blood-pressure-check
+          - medication-review
+          - results-review
+          - ongoing-condition
+          - other
+          description: The reason chosen when booking online, from the portal's fixed list. Absent for a visit booked by the
+            practice.
+          x-phi: clinical
         reasonForVisit:
           type: string
           maxLength: 1000
@@ -2388,10 +2406,22 @@ components:
           $ref: ../components/schemas/Timestamp.yaml
           description: Start (UTC), as the slot gave it.
           x-phi: identifier
+        reasonCode:
+          type: string
+          enum:
+          - follow-up
+          - blood-pressure-check
+          - medication-review
+          - results-review
+          - ongoing-condition
+          - other
+          description: 'Why the visit is needed, from the portal''s fixed list. Required to book (`business-rule-violation`
+            `/reasonCode` `required` when missing).'
+          x-phi: clinical
         reasonForVisit:
           type: string
           maxLength: 1000
-          description: Why the visit is needed.
+          description: Optional short note about the reason (the portal offers 200 characters).
           x-phi: clinical
     PortalCancelRequest:
       description: Body to cancel an appointment; the reason is required, as for staff cancellations.

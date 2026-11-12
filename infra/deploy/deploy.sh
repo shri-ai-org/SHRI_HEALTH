@@ -54,6 +54,9 @@ SHRI_NET_B=172.31.251
 SHRI_ENVIRONMENT=staging
 # true: the simulated payer and pharmacy, the demo accounts and the demo data (D95).
 SHRI_DEMO=false
+# true: real patient sign-in (the patient realm) on this server. Only with SHRI_DEMO=true, so only
+# fictional patients, until the pilot gates are done (Q33's bot check and the shared rate limiter).
+SHRI_PATIENT_SIGN_IN=false
 # self-signed (a local hostname) or provided (TLS_CERT_FILE and TLS_KEY_FILE, the real certificate).
 TLS_MODE=self-signed
 TLS_CERT_FILE=
@@ -114,6 +117,17 @@ load_env() {
     if [ "${SHRI_ENVIRONMENT:-staging}" = production ] && [ "${SHRI_DEMO:-false}" = true ]; then
         die "the demo (simulated partners, synthetic seed) is never deployed to production"
     fi
+    # Patient sign-in: the API gets the patient realm's client secrets only when it is on;
+    # without them its sign-in and enrolment routes answer 503. Keycloak always has them.
+    case "${SHRI_PATIENT_SIGN_IN:-false}" in
+        true) [ "${SHRI_DEMO:-false}" = true ] \
+                  || die "SHRI_PATIENT_SIGN_IN=true needs SHRI_DEMO=true (fictional patients only, until the pilot gates)"
+              : "${SHRI_PORTAL_CLIENT_SECRET:?}" "${SHRI_PORTAL_ADMIN_CLIENT_SECRET:?}"
+              export SHRI_API_PORTAL_CLIENT_SECRET="$SHRI_PORTAL_CLIENT_SECRET"
+              export SHRI_API_PORTAL_ADMIN_CLIENT_SECRET="$SHRI_PORTAL_ADMIN_CLIENT_SECRET" ;;
+        false) export SHRI_API_PORTAL_CLIENT_SECRET="" SHRI_API_PORTAL_ADMIN_CLIENT_SECRET="" ;;
+        *) die "SHRI_PATIENT_SIGN_IN is true or false" ;;
+    esac
     PROJECT="${SHRI_PROJECT:-shri-deploy}"
     [[ "$PROJECT" =~ ^shri-[a-z0-9-]+$ ]] || die "SHRI_PROJECT must start with shri- (lower case, digits, -)"
     SHRI_NET_A="${SHRI_NET_A:-172.31.250}" SHRI_NET_B="${SHRI_NET_B:-172.31.251}"
@@ -341,9 +355,25 @@ check() {
     # The development sign-in is never reachable from outside: the header is stripped and refused.
     [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' -H 'X-Dev-User: md' "$E/api/v1/me" 2>/dev/null || true)" = 401 ] \
         || die "a request with X-Dev-User was not refused"
-    # Real patient sign-in is off on servers for now (#148's account-state bug).
-    [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' "$E/api/v1/portal/auth/login" 2>/dev/null || true)" = 503 ] \
-        || die "patient sign-in is on; it stays off until #148's account-state bug is fixed"
+    # Patient sign-in: off (503) unless SHRI_PATIENT_SIGN_IN=true; when on, it starts at the
+    # patient realm's public address, comes back to the portal callback, and Keycloak shows its
+    # sign-in page for it.
+    if [ "${SHRI_PATIENT_SIGN_IN:-false}" = true ]; then
+        headers="$("${curl[@]}" -o /dev/null -D - "$E/api/v1/portal/auth/login")"
+        location="$(printf '%s' "$headers" | tr -d '\r' | sed -n 's/^[Ll]ocation: *//p')"
+        case "$location" in "$P/kc/realms/shri-patients/protocol/openid-connect/auth?"*) ;;
+            *) die "patient sign-in does not start at $P/kc/realms/shri-patients" ;; esac
+        case "$location" in *"redirect_uri=$(printf '%s' "$P/api/v1/portal/auth/callback" | sed 's/:/%3A/g; s|/|%2F|g')"*) ;;
+            *) die "patient sign-in does not come back to $P/api/v1/portal/auth/callback" ;; esac
+        printf '%s' "$headers" | tr -d '\r' | grep -i "^set-cookie: ${cookie%shri_login=}shri_portal_login=" \
+            | grep -qi "path=$SHRI_COOKIE_PATH\(;\|$\)" \
+            || die "the patient login cookie is not ${cookie%shri_login=}shri_portal_login with Path=$SHRI_COOKIE_PATH"
+        "${curl[@]}" "$E${location#"$P"}" | grep -q 'id="kc-form-login"' \
+            || die "Keycloak does not show the patient sign-in page for $P (the client's redirect URI?)"
+    else
+        [ "$("${curl[@]}" -o /dev/null -w '%{http_code}' "$E/api/v1/portal/auth/login" 2>/dev/null || true)" = 503 ] \
+            || die "patient sign-in answers although SHRI_PATIENT_SIGN_IN is not true"
+    fi
     # No query string, so no download token, ever reaches Nginx's log (D105).
     local probe
     probe="deploycheck$(openssl rand -hex 16)"
