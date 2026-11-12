@@ -2,7 +2,7 @@
 each, pass or fail, after ``deploy.sh up`` or ``reset``.
 
     SERVER_CHECK_DATABASE_URL=postgresql+psycopg://postgres:…@host:5432/shri \\
-        python -m app.db.tools.server_check --patients 505
+        python -m app.db.tools.server_check --patients 512
 
 It connects as the master user, read-only: the patient count needs a role that row security
 doesn't hide rows from, and nothing here writes. The URL comes from the environment and is
@@ -18,7 +18,9 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, create_engine, text
 
-HEAD = "0019"
+HEAD = "0021"
+#: The demo seed's patients: app.db.seed.demo's PATIENTS and its 500 (a test checks it).
+PATIENTS = 512
 PGVECTOR = "0.8.2"   # RDS's version (D31); the server image pins it
 
 
@@ -71,8 +73,8 @@ def run(conn: Connection, todo: Sequence[Check]) -> list[tuple[Check, str | None
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.db.tools.server_check",
                                      description=__doc__.splitlines()[0])
-    parser.add_argument("--patients", type=int, default=505,
-                        help="patients the demo seed loads (default 505)")
+    parser.add_argument("--patients", type=int, default=PATIENTS,
+                        help=f"patients the demo seed loads (default {PATIENTS})")
     parser.add_argument("--head", default=HEAD, help=f"Alembic head (default {HEAD})")
     parser.add_argument("--pgvector", default=PGVECTOR,
                         help=f"pgvector version (default {PGVECTOR})")

@@ -1,6 +1,6 @@
 #!/bin/sh
-# The demo accounts (D95, demo on 20 Nov): four staff users in shri-staff and one patient in
-# shri-patients, each with a FIXED Keycloak user ID, so Anand's seed (#85) can link them to
+# The demo accounts (D95, demo on 20 Nov): four staff users in shri-staff and four patients in
+# shri-patients (the demo visit's patient, and three portal accounts for self-booking, D108), each with a FIXED Keycloak user ID, so Anand's seed (#85) can link them to
 # app_user, user_role and portal_account rows that never change. Synthetic people only.
 #
 #   KC_URL=https://localhost:8443/kc KC_ADMIN=admin KC_ADMIN_PASSWORD=... DEMO_PASSWORD=... \
@@ -41,6 +41,12 @@ MA_ID=8474b553-c2bb-4a7b-a098-cc4bfdf5f4ac
 MD_ID=490ef6d1-2e36-40ed-88eb-132538695ad9
 ADM_ID=9a805285-df36-4ce9-abcc-3844ab784dfa
 PATIENT_ID=8e477695-3ea5-4082-8765-2b8edee9123c
+# The portal accounts for self-booking (D108 as amended, D112 as amended: realistic invented
+# names). The IDs are the seed's (backend/app/db/seed/demo.py PORTAL_USERS, #293), which links
+# them to portal_account rows; the emails are the seed patients' own.
+LINDA_ID=0c68d15e-31b0-5304-a9cd-45249750cd9f
+JAMES_ID=feaa8ff7-9d2e-5daf-b8e3-f3cc17cf4884
+MARIA_ID=34cc0a76-1f26-52fd-b018-999c7099a876
 
 CURL="curl -sS --fail-with-body"
 [ "${KC_INSECURE:-}" = 1 ] && CURL="$CURL -k"  # the local self-signed certificate only
@@ -95,9 +101,13 @@ echo "shri-staff: demo.frontdesk ($FD_ID), demo.ma ($MA_ID), demo.doctor ($MD_ID
 
 if $CURL -o /dev/null -K "$auth" "$KC_URL/admin/realms/shri-patients" 2>/dev/null; then
     # The patient signs in with the email as username (the realm's rule).
-    import shri-patients "$(user "$PATIENT_ID" demo.patient@example.com demo.patient@example.com Kaia401 Lindgren118)"
-    enable shri-patients "$PATIENT_ID"
-    echo "shri-patients: demo.patient@example.com ($PATIENT_ID)"
+    import shri-patients "$(user "$PATIENT_ID" demo.patient@example.com demo.patient@example.com Kaia401 Lindgren118),\
+$(user "$LINDA_ID" linda.thompson@example.com linda.thompson@example.com Linda Thompson),\
+$(user "$JAMES_ID" james.wilson@example.com james.wilson@example.com James Wilson),\
+$(user "$MARIA_ID" maria.gonzalez@example.com maria.gonzalez@example.com Maria Gonzalez)"
+    enable shri-patients "$PATIENT_ID" "$LINDA_ID" "$JAMES_ID" "$MARIA_ID"
+    echo "shri-patients: demo.patient@example.com ($PATIENT_ID), linda.thompson@example.com ($LINDA_ID),"
+    echo "  james.wilson@example.com ($JAMES_ID), maria.gonzalez@example.com ($MARIA_ID)"
 else
     echo "shri-patients: the realm doesn't exist yet (#148); skipped"
 fi

@@ -9,6 +9,9 @@ const port = 5190
 export const doctorsPort = 5191
 /** The front office's dev server, signed in as the development front desk. */
 export const frontOfficePort = 5192
+/** The patient portal's dev server, signed in as SHRI_E2E_PORTAL_PATIENT (when it is set). */
+export const portalPort = 5193
+const portalPatient = process.env.SHRI_E2E_PORTAL_PATIENT
 
 export default defineConfig({
   testDir: 'e2e',
@@ -52,5 +55,23 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'fd' },
     },
+    // The patient portal as a synthetic patient whose clinic books online (e2e/portalBooking.e2e.ts),
+    // only when SHRI_E2E_PORTAL_PATIENT names one; without it the portal tests skip.
+    ...(portalPatient
+      ? [
+          {
+            command: `npm run dev -- --port ${portalPort} --strictPort`,
+            url: `http://localhost:${portalPort}`,
+            reuseExistingServer: !process.env.CI,
+            env: {
+              SHRI_API: 'real',
+              SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443',
+              SHRI_DEV_USER: 'fd',
+              SHRI_DEV_PATIENT: portalPatient,
+              ...(process.env.SHRI_E2E_PORTAL_CLINIC ? { SHRI_DEV_PATIENT_CLINIC: process.env.SHRI_E2E_PORTAL_CLINIC } : {}),
+            },
+          },
+        ]
+      : []),
   ],
 })

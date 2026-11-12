@@ -15,7 +15,7 @@ without ``encounters:read``, with the encounter's version, which a decline sends
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -200,6 +200,7 @@ FROM clinical.appointment_participant x
 WHERE x.ext_blocking AND x.actor_practitioner_id = ANY(:providers)
   AND x.period_start < :end AND x.period_end > :start
 """)
+_PORTAL_BUSY = text("SELECT start_at, end_at FROM admin.portal_busy_times(:provider, :start, :end)")
 _OVERBOOKED = text("""
 SELECT count(*) FROM clinical.appointment a
 JOIN clinical.appointment_participant x ON x.appointment_id = a.id
@@ -215,6 +216,9 @@ WHERE s.active AND s.ext_facility_id = :facility
   AND coalesce(sa.practitioner_id, r.practitioner_id) = :provider
 ORDER BY s.created_at LIMIT 1
 """)
+#: Reasons for a visit booked online (PortalAppointmentCreate's ``reasonCode``): the practice's
+#: local picklist system, which code_system holds (the reason's code system is a foreign key).
+PORTAL_REASON_SYSTEM = systems.SHRI_LOCAL
 _LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
 _LOCK_PATIENT = text("SELECT 1 FROM clinical.patient WHERE id = :id FOR SHARE")
 
@@ -304,6 +308,22 @@ async def busy(db: AsyncSession, provider_ids: Iterable[UUID], start: datetime, 
     return [Busy(r[0], r[1], r[2]) for r in rows]
 
 
+BusyReader = Callable[[AsyncSession, Iterable[UUID], datetime, datetime], Awaitable[list[Busy]]]
+
+
+async def portal_busy(db: AsyncSession, provider_ids: Iterable[UUID], start: datetime,
+                      end: datetime) -> list[Busy]:
+    """The providers' booked periods for the portal: shri_portal sees only its own patient's
+    appointments, so it asks admin.portal_busy_times (Anand's, migration 0011), which returns a
+    provider's blocking periods in the session's clinic and nothing about whose they are."""
+    found: list[Busy] = []
+    for provider in dict.fromkeys(provider_ids):
+        rows = (await db.execute(_PORTAL_BUSY, {"provider": provider, "start": start,
+                                                "end": end})).all()
+        found += [Busy(provider, r[0], r[1]) for r in rows]
+    return found
+
+
 async def overbooked(db: AsyncSession, provider_id: UUID, start: datetime, end: datetime,
                      exclude_id: UUID | None = None) -> int:
     """Overbooks of the provider overlapping the time, leaving out ``exclude_id`` (the
@@ -325,6 +345,12 @@ async def lock_provider_day(db: AsyncSession, provider_id: UUID, day: str) -> No
     """Serializes bookings of one provider's local day (plan §2.2); the exclusion constraint
     is the last word."""
     await db.execute(_LOCK, {"key": f"appointment:{provider_id}:{day}"})
+
+
+async def lock_patient_bookings(db: AsyncSession, patient_id: UUID) -> None:
+    """Serializes one patient's online bookings, so two at once can't both pass the limit of
+    upcoming appointments (the count and the insert run under this lock, one transaction)."""
+    await db.execute(_LOCK, {"key": f"portal-book:{patient_id}"})
 
 
 async def lock_patient(db: AsyncSession, patient_id: UUID) -> None:
@@ -361,6 +387,7 @@ class NewAppointment:
     same_day_add_on: bool
     overbook: bool
     rescheduled_from_id: UUID | None = None
+    reason_code: str | None = None  # the portal's fixed list (PortalAppointmentCreate)
 
 
 async def insert(db: AsyncSession, new: NewAppointment) -> UUID:
@@ -390,7 +417,12 @@ async def insert(db: AsyncSession, new: NewAppointment) -> UUID:
             appointment_id=appt.id, actor_location_id=new.location_id, required="required",
             status="accepted"))
     db.add_all(participants)
-    if new.reason:
+    if new.reason_code:  # the portal's fixed list, in the portal's local code system
+        db.add(M["appointment_reason"](appointment_id=appt.id,
+                                       reason_code_system=PORTAL_REASON_SYSTEM,
+                                       reason_code_code=new.reason_code,
+                                       reason_code_text=new.reason))
+    elif new.reason:
         db.add(M["appointment_reason"](appointment_id=appt.id, reason_code_text=new.reason))
     await db.flush()
     appointment_id: UUID = appt.id
@@ -436,8 +468,12 @@ _CLEAR_LOCATION = text("DELETE FROM clinical.appointment_participant WHERE appoi
 _CLEAR_REASON = text("DELETE FROM clinical.appointment_reason WHERE appointment_id = :id")
 
 
-async def cancel(db: AsyncSession, row: Any, reason_code: str, reason_text: str | None) -> None:
-    user_id = await _user_id(db)
+async def cancel(db: AsyncSession, row: Any, reason_code: str, reason_text: str | None, *,
+                 staff: bool = True) -> None:
+    """``staff=False`` for the portal: there is no user, and shri_portal may not write the staff
+    columns (``updated_by_user_id``, ``ext_cancelled_by_user_id``), so they are left as they are;
+    the history row records the patient as the author (``recorded_by_patient_id``)."""
+    user_id = await _user_id(db) if staff else None
     now = await db_now(db)  # before any change: a query would autoflush a half-cancelled row
     row.status = "cancelled"
     # The contract's reasonCode is the practice's own code (a picklist), not HL7's
@@ -446,8 +482,9 @@ async def cancel(db: AsyncSession, row: Any, reason_code: str, reason_text: str 
     row.cancelation_reason_code = reason_code
     row.cancelation_reason_text = reason_text
     row.ext_cancelled_at = now
-    row.ext_cancelled_by_user_id = user_id
-    row.updated_by_user_id = user_id
+    if staff:
+        row.ext_cancelled_by_user_id = user_id
+        row.updated_by_user_id = user_id
     await db.flush()
 
 

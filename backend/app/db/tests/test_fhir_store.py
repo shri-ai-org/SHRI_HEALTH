@@ -289,6 +289,27 @@ async def test_restricting_a_chart_replaces_only_its_confidentiality(
                  p=w.id)[0].meta_security == ["PSY"]
 
 
+async def test_a_restriction_with_a_reason_writes_its_provenance(
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
+    """The seed restricts a chart with a reason (Provenance UPDATE); the API's restriction
+    passes none and writes none (core audits it)."""
+    w = await _create(database, clinic)
+    provenance = ("SELECT activity_code, reason_text FROM clinical.provenance "
+                  "WHERE target_id = :p ORDER BY recorded")
+    async with session(database, clinic) as s:
+        await STORE.set_patient_security(s, w.id, frozenset({"R"}))
+        await s.commit()
+    assert _rows(admin_engine, provenance, p=w.id) == []
+    async with session(database, clinic) as s:
+        await STORE.set_patient_security(s, w.id, frozenset({"V"}),
+                                          reason=fs.Reason("  At the patient's request  "))
+        await s.commit()
+        with pytest.raises(fs.InvalidInput):
+            await STORE.set_patient_security(s, w.id, frozenset(), reason=fs.Reason(" "))
+    assert [tuple(r) for r in _rows(admin_engine, provenance, p=w.id)] == [
+        ("UPDATE", "At the patient's request")]
+
+
 # ====================================================================== RelatedPerson
 async def test_a_related_person_with_relationships_and_employer(
         database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
