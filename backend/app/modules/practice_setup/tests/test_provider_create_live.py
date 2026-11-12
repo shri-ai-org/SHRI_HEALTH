@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -336,6 +337,59 @@ def test_a_schedule_is_refused_for_bad_times_or_references(client: Any,
     elsewhere = {**_schedule(a, provider, [_rule()]), "facilityId": str(uuid.uuid4())}
     assert _errors(client("fd").post("/api/v1/provider-schedules", json=elsewhere)) == {
         ("/facilityId", "invalid-reference")}
+
+
+def _booked(engines: tuple[Engine, Engine], clinic: dict[str, Any], provider_id: str,
+            start: datetime, status: str = "booked") -> None:
+    """An appointment of the provider at the clinic's facility, written as the API would."""
+    db = open_session(engines[1], clinic["tenant"])
+    pt = b.patient(db)
+    appt = M["appointment"](status=status, start=start, end=start + timedelta(minutes=20),
+                            minutes_duration=20, subject_patient_id=pt.id,
+                            ext_appointment_type_id=clinic["visit"],
+                            ext_facility_id=clinic["facility"])
+    appt.participant = [M["appointment_participant"](actor_patient_id=pt.id, status="accepted"),
+                        M["appointment_participant"](actor_practitioner_id=provider_id,
+                                                     status="accepted")]
+    db.add(appt)
+    db.commit()
+    conn = db.bind
+    db.close()
+    conn.close()  # type: ignore[union-attr]
+
+
+def test_time_off_may_not_cover_a_booked_visit(client: Any, clinics: dict[str, Any],
+                                               engines: tuple[Engine, Engine]) -> None:
+    """Vimal's #276 review: an exception that isn't available is refused when it covers the
+    provider's booked, arrived or checked-in appointment at the facility, and the problem gives
+    only how many; a no-show, extra hours or another day don't count."""
+    a = clinics["a"]
+    provider = _new_provider(client, a)
+    first = client("fd").post("/api/v1/provider-schedules", json=_schedule(a, provider, [_rule()]))
+    assert first.status_code == 201, first.text
+    visit = datetime(2026, 12, 7, 15, 0, tzinfo=UTC)
+    _booked(engines, a, provider, visit)
+    _booked(engines, a, provider, visit + timedelta(hours=1), status="arrived")
+    _booked(engines, a, provider, visit + timedelta(hours=2), status="noshow")
+    off = [{"startAt": "2026-12-07T14:00:00Z", "endAt": "2026-12-07T18:00:00Z",
+            "available": False},
+           {"startAt": "2026-12-08T14:00:00Z", "endAt": "2026-12-08T18:00:00Z",
+            "available": False},
+           {"startAt": "2026-12-07T14:00:00Z", "endAt": "2026-12-07T18:00:00Z",
+            "available": True}]
+    refused = client("fd").post("/api/v1/provider-schedules",
+                                json=_schedule(a, provider, [_rule("tue")], exceptions=off))
+    assert _errors(refused) == {("/exceptions/0", "conflicting-fields")}
+    assert "covers 2 booked appointments" in refused.json()["detail"]
+    assert "Nguyen" not in refused.text and "Mai" not in refused.text   # no patient data
+    with engines[0].connect() as c:
+        schedules = c.execute(text(
+            "SELECT count(*) FROM clinical.schedule WHERE tenant_id = :t"),
+            {"t": a["tenant"]}).scalar_one()
+    assert schedules == 1                                                # nothing written
+    made = client("fd").post("/api/v1/provider-schedules",
+                             json=_schedule(a, provider, [_rule("tue")], exceptions=off[1:]))
+    assert made.status_code == 201, made.text
 
 
 def test_another_clinics_provider_is_not_found(client: Any, clinics: dict[str, Any]) -> None:

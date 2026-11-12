@@ -842,6 +842,9 @@ class ProviderRepository(Protocol):
     async def rules_at(self, db: AsyncSession, provider_id: UUID, facility_id: UUID
                        ) -> list[ExistingRule]: ...
 
+    async def booked_in(self, db: AsyncSession, provider_id: UUID, facility_id: UUID,
+                        start: datetime, end: datetime) -> int: ...
+
     async def create_schedule(self, db: AsyncSession, body: schemas.ProviderScheduleCreate,
                               role_id: UUID) -> UUID: ...
 
@@ -884,6 +887,16 @@ JOIN clinical.schedule_actor a ON a.schedule_id = s.id
 LEFT JOIN clinical.practitioner_role pr ON pr.id = a.practitioner_role_id
 WHERE s.active AND s.ext_facility_id = :facility_id
   AND COALESCE(a.practitioner_id, pr.practitioner_id) = :provider_id
+""")
+
+#: The provider's appointments at the facility that time off must not cover: booked, arrived or
+#: checked in (not fulfilled, cancelled or no-show).
+HELD_STATUSES = ["booked", "arrived", "checked-in"]
+_BOOKED_IN = text("""
+SELECT count(DISTINCT a.id) FROM clinical.appointment a
+JOIN clinical.appointment_participant x ON x.appointment_id = a.id
+WHERE a.ext_facility_id = :facility_id AND x.actor_practitioner_id = :provider_id
+  AND a.status = ANY(:held) AND a.start < :end AND a."end" > :start
 """)
 
 
@@ -979,6 +992,13 @@ class SqlProviderRepository:
                                              "facility_id": facility_id})).all()
         return [ExistingRule(r.day_of_week, r.start_time, r.end_time, r.effective_from,
                              r.effective_to) for r in rows]
+
+    async def booked_in(self, db: AsyncSession, provider_id: UUID, facility_id: UUID,
+                        start: datetime, end: datetime) -> int:
+        count: int = (await db.execute(_BOOKED_IN, {
+            "provider_id": provider_id, "facility_id": facility_id, "held": HELD_STATUSES,
+            "start": start, "end": end})).scalar_one()
+        return count
 
     async def create_schedule(self, db: AsyncSession, body: schemas.ProviderScheduleCreate,
                               role_id: UUID) -> UUID:

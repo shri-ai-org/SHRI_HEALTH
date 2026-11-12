@@ -224,8 +224,11 @@ async def update_facility(db: AsyncSession, repo: FacilityRepository, user: Curr
 
 
 # ------------------------------------------------------------------------- provider writes
-def _rule(errors: list[dict[str, str]]) -> ValidationFailed:
+def _rule(errors: list[dict[str, str]], booked: int = 0) -> ValidationFailed:
     detail = "1 rule is not met." if len(errors) == 1 else f"{len(errors)} rules are not met."
+    if booked:  # a count only, never which appointments or whose
+        detail += (" The time off covers 1 booked appointment." if booked == 1 else
+                   f" The time off covers {booked} booked appointments.")
     return ValidationFailed(detail, code="business-rule-violation", errors=errors)
 
 
@@ -284,7 +287,9 @@ async def create_provider_schedule(db: AsyncSession, repo: ProviderRepository,
     """A schedule for a provider at one of the user's facilities, where the provider has an
     active role. No two of the provider's active rules at the facility may overlap (this
     schedule's or another's), checked under a lock on the provider and facility, so two
-    requests can't both add overlapping rules."""
+    requests can't both add overlapping rules. Time off (an exception that isn't available)
+    must not cover the provider's booked, arrived or checked-in appointments there (Vimal's
+    #276 review); the problem gives their number only."""
     rules = body.availability_rules
     errors = []
     if body.facility_id not in user.facility_ids:
@@ -318,8 +323,15 @@ async def create_provider_schedule(db: AsyncSession, repo: ProviderRepository,
     errors += [field_error("body", f"/availabilityRules/{i}", "conflicting-fields")
                for i, r in enumerate(rules)
                if any(_overlaps(r, other) for other in [*rules[:i], *rules[i + 1:], *existing])]
+    booked = 0
+    for i, e in enumerate(body.exceptions):     # time off must not cover a booked visit
+        if not e.available and (n := await repo.booked_in(db, body.provider_id,
+                                                           body.facility_id, e.start_at,
+                                                           e.end_at)):
+            errors.append(field_error("body", f"/exceptions/{i}", "conflicting-fields"))
+            booked += n
     if errors or role_id is None:  # a missing role is always among the errors
-        raise _rule(errors)
+        raise _rule(errors, booked)
     schedule_id = await repo.create_schedule(db, body, role_id)
     created = await repo.get_schedule(db, schedule_id)
     if created is None:
