@@ -181,10 +181,18 @@ class Medication:
     started: dt.date
     prescriber: str
     why: str
+    ended: dt.date | None = None              # stopped at that visit, for stop_reason
+    stop_reason: str | None = None
+
+    @property
+    def status(self) -> str:
+        return "stopped" if self.ended else "active"
 
     @property
     def note(self) -> str:
-        return f"Started {self.started.isoformat()}. Prescriber: {self.prescriber}. {self.why}"
+        stopped = f" Stopped {self.ended.isoformat()}: {self.stop_reason}" if self.ended else ""
+        return (f"Started {self.started.isoformat()}. Prescriber: {self.prescriber}. "
+                f"{self.why}{stopped}")
 
 
 @dataclass(frozen=True)
@@ -369,11 +377,17 @@ HISTORY: dict[int, History] = {
                        dt.date(2015, 9, 3), DR_LINDQVIST,
                        "For hypertension; increased to 20 mg on 2026-03-10 by "
                        f"{DR_HALVORSEN}."),
+            Medication(rx("617310", "atorvastatin calcium 20 MG Oral Tablet"),
+                       "20 mg (1 tablet) by mouth at bedtime",
+                       dt.date(2016, 11, 8), DR_LINDQVIST, "For hyperlipidemia.",
+                       ended=dt.date(2026, 6, 16),
+                       stop_reason=f"increased to 40 mg by {DR_HALVORSEN} (LDL 92; goal under "
+                                   "70 with diabetes)."),
             Medication(rx("617311", "atorvastatin calcium 40 MG Oral Tablet"),
                        "40 mg (1 tablet) by mouth at bedtime",
-                       dt.date(2016, 11, 8), DR_LINDQVIST,
-                       "For hyperlipidemia; increased from 20 mg to 40 mg on 2026-06-16 by "
-                       f"{DR_HALVORSEN} (LDL goal under 70 with diabetes)."),
+                       dt.date(2026, 6, 16), DR_HALVORSEN,
+                       "For hyperlipidemia; increased from 20 mg (LDL goal under 70 with "
+                       "diabetes)."),
         ),
         family=(
             Relative(role("FTH", "father"), "male",
@@ -969,14 +983,16 @@ async def _sign_as_imported(db: AsyncSession, note_id: uuid.UUID, version: int,
                          signature=(signature_type, await fs._note_digest(db, note)))
 
 
-async def _record_as_imported(db: AsyncSession, data: fs.MedicationIn, at: dt.datetime) -> None:
+async def _record_as_imported(db: AsyncSession, data: fs.MedicationIn, at: dt.datetime,
+                              stop_reason: str | None = None) -> None:
     """A medication on the list, recorded at the start of the visit it is linked to (Vimal, #305),
     so its ``recordedAt`` is that visit's, not the load time. The seed's own, as
     ``_sign_as_imported`` is: the store's record_medication always records at the database's
     now(), and a list entry's ``authored_on`` can't change once written
     (``shri_medication_request_guard``), so it is set at the insert. A Provenance, recorded at
-    the real load time, says "synthetic demo import"."""
-    written = await fs._record_medication(db, data, at)
+    the real load time, says "synthetic demo import". A stopped one (a dose change) carries why
+    it stopped in its status reason; the list has no end-date field, so its note says when."""
+    written = await fs._record_medication(db, data, at, status_reason=stop_reason)
     await fs._provenance(db, "MedicationRequest", written,
                          (systems.V3_DATA_OPERATION, "CREATE", None),
                          reason=fs.Reason(IMPORT_REASON))
@@ -1023,8 +1039,8 @@ async def _patient_history(store: fs.SqlFhirStore, db: AsyncSession, p: DemoPati
     for m in h.medications:         # at the visit it started at, or where the list was taken
         encounter, at = started_at.get(m.started, (first, h.visits[0].start))
         await _record_as_imported(db, fs.MedicationIn(
-            patient_id=patient_id, medication=m.product, dosage_text=m.sig, note=m.note,
-            encounter_id=encounter), at)
+            patient_id=patient_id, medication=m.product, dosage_text=m.sig, status=m.status,
+            note=m.note, encounter_id=encounter), at, m.stop_reason)
     for r in h.family:
         await store.create_family_history(db, fs.FamilyHistoryIn(
             patient_id=patient_id, relationship=r.relationship, sex=r.sex,

@@ -251,6 +251,9 @@ def test_each_medication_starts_at_a_visit_or_before_the_history() -> None:
         days = {v.day for v in h.visits}
         for m in h.medications:
             assert m.started in days or m.started < h.visits[0].day, m.product.display
+            if m.ended is not None:     # stopped at a visit, after it started, with the reason
+                assert m.started < m.ended and m.ended in days and m.stop_reason, \
+                    m.product.display
 
 
 def test_each_medication_is_recorded_at_its_visits_start_as_a_synthetic_import(
@@ -260,6 +263,7 @@ def test_each_medication_is_recorded_at_its_visits_start_as_a_synthetic_import(
     with admin_engine.connect() as c:
         rows = c.execute(text(
             "SELECT m.authored_on = e.period_start AS at_the_visit, "
+            "(m.status = 'stopped') = (m.status_reason_text IS NOT NULL) AS reason_if_stopped, "
             "m.authored_on < m.created_at AS before_the_load, pv.reason_text "
             "FROM clinical.medication_request m "
             "JOIN clinical.encounter e ON e.id = m.encounter_id "
@@ -268,4 +272,4 @@ def test_each_medication_is_recorded_at_its_visits_start_as_a_synthetic_import(
             "WHERE m.subject_patient_id = ANY(:ps)"),
             {"ps": [sid(demo.PATIENT, n) for n in history.HISTORY]}).all()
     assert len(rows) == sum(len(h.medications) for h in history.HISTORY.values())
-    assert {tuple(r) for r in rows} == {(True, True, history.IMPORT_REASON)}
+    assert {tuple(r) for r in rows} == {(True, True, True, history.IMPORT_REASON)}
