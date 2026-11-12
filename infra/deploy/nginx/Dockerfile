@@ -11,6 +11,14 @@ FROM node:24.22.0-slim@sha256:91acba91b842bec0bf7ea6f5e09c644c7ccad72c4996ed9616
 # shared host's path (deploy.sh, README "Two ways to serve it"); each app reads its own base
 # setting (front-office: BASE_PATH, doctors-portal: PORTAL_BASE), so no app file changes.
 ARG SHRI_BASE_PATH=""
+# The AI features the screens show (Vite reads VITE_* from the environment at build time; an
+# ARG is in the environment of the RUN steps below). "on" shows a feature, anything else hides it;
+# deploy.sh passes "on" only for SHRI_DEMO_AI_SCREENS=true on a demo host.
+ARG VITE_FEATURE_AI_NOTE_DRAFT=off
+ARG VITE_FEATURE_AI_CHART_SUMMARY=off
+ARG VITE_FEATURE_AI_ASSISTANT=off
+ARG VITE_FEATURE_AI_MORNING_BRIEF=off
+ARG VITE_FEATURE_AI_DIFFERENTIAL=off
 WORKDIR /web
 COPY package.json package-lock.json .npmrc tsconfig.json tsconfig.app.json tsconfig.node.json ./
 # The apps import the shared session code (src/api) and the dev proxy's types (dev/).

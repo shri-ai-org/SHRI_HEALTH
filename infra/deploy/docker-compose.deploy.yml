@@ -186,6 +186,13 @@ services:
       dockerfile: ../infra/deploy/nginx/Dockerfile
       args:
         SHRI_BASE_PATH: ${SHRI_BASE_PATH:-}
+        # The AI features the screens show, fixed at build time: "on" only with
+        # SHRI_DEMO_AI_SCREENS=true on a demo host (deploy.sh), "off" otherwise.
+        VITE_FEATURE_AI_NOTE_DRAFT: ${SHRI_WEB_AI:-off}
+        VITE_FEATURE_AI_CHART_SUMMARY: ${SHRI_WEB_AI:-off}
+        VITE_FEATURE_AI_ASSISTANT: ${SHRI_WEB_AI:-off}
+        VITE_FEATURE_AI_MORNING_BRIEF: ${SHRI_WEB_AI:-off}
+        VITE_FEATURE_AI_DIFFERENTIAL: ${SHRI_WEB_AI:-off}
     # SHRI_BIND is 127.0.0.1 behind a shared host's Nginx (deploy.sh sets it from SHRI_PUBLIC_URL),
     # so only that host reaches us; 0.0.0.0 on a host of our own.
     ports: !override

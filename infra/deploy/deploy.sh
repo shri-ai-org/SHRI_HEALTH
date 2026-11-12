@@ -57,6 +57,10 @@ SHRI_DEMO=false
 # true: real patient sign-in (the patient realm) on this server. Only with SHRI_DEMO=true, so only
 # fictional patients, until the pilot gates are done (Q33's bot check and the shared rate limiter).
 SHRI_PATIENT_SIGN_IN=false
+# true: the screens are built with the AI features shown (Draft with AI, chart summary, assistant,
+# morning brief, differentials; the VITE_FEATURE_AI_* flags, read at build time). Only with
+# SHRI_DEMO=true. Each feature still needs its per-clinic switch and the Claude key (D116, D12).
+SHRI_DEMO_AI_SCREENS=false
 # self-signed (a local hostname) or provided (TLS_CERT_FILE and TLS_KEY_FILE, the real certificate).
 TLS_MODE=self-signed
 TLS_CERT_FILE=
@@ -127,6 +131,13 @@ load_env() {
               export SHRI_API_PORTAL_ADMIN_CLIENT_SECRET="$SHRI_PORTAL_ADMIN_CLIENT_SECRET" ;;
         false) export SHRI_API_PORTAL_CLIENT_SECRET="" SHRI_API_PORTAL_ADMIN_CLIENT_SECRET="" ;;
         *) die "SHRI_PATIENT_SIGN_IN is true or false" ;;
+    esac
+    case "${SHRI_DEMO_AI_SCREENS:-false}" in
+        true) [ "${SHRI_DEMO:-false}" = true ] \
+                  || die "SHRI_DEMO_AI_SCREENS=true needs SHRI_DEMO=true (fictional data only until a BAA, D12)"
+              export SHRI_WEB_AI=on ;;
+        false) export SHRI_WEB_AI=off ;;
+        *) die "SHRI_DEMO_AI_SCREENS is true or false" ;;
     esac
     PROJECT="${SHRI_PROJECT:-shri-deploy}"
     [[ "$PROJECT" =~ ^shri-[a-z0-9-]+$ ]] || die "SHRI_PROJECT must start with shri- (lower case, digits, -)"
