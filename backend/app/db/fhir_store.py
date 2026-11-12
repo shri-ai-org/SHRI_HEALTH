@@ -741,9 +741,11 @@ class FhirStore(Protocol):
         ...
 
     async def set_patient_security(self, db: AsyncSession, patient_id: uuid.UUID,
-                                   labels: frozenset[str], *, if_version: int | None = None
-                                   ) -> Written:
-        """Restrict (R or V) or unrestrict (empty): replaces the confidentiality labels only."""
+                                   labels: frozenset[str], *, if_version: int | None = None,
+                                   reason: Reason | None = None) -> Written:
+        """Restrict (R or V) or unrestrict (empty): replaces the confidentiality labels only.
+        With a ``reason``, also writes the change's Provenance (``UPDATE``), as a merge does for
+        the labels it changes; without one, none (the API's restriction is audited by core)."""
         ...
 
     async def set_preferred_pharmacy(self, db: AsyncSession, patient_id: uuid.UUID,
@@ -1387,15 +1389,20 @@ class SqlFhirStore:
         return ChildWritten(row.id, written)
 
     async def set_patient_security(self, db: AsyncSession, patient_id: uuid.UUID,
-                                   labels: frozenset[str], *, if_version: int | None = None
-                                   ) -> Written:
+                                   labels: frozenset[str], *, if_version: int | None = None,
+                                   reason: Reason | None = None) -> Written:
         await _not_merged(db, patient_id)
         if not labels <= _RESTRICTED:
             raise InvalidInput("a chart is restricted with R or V, or unrestricted with none")
+        reason = _require_reason(reason) if reason is not None else None
         pt = await _locked(db, Patient, patient_id, if_version)
         pt.meta_security = ([label for label in pt.meta_security
                              if label not in _CONFIDENTIALITY] + sorted(labels))
-        return await _written(db, pt)
+        written = await _written(db, pt)
+        if reason is not None:
+            await _provenance(db, "Patient", written, (systems.V3_DATA_OPERATION, "UPDATE", None),
+                              reason=reason)
+        return written
 
     async def set_preferred_pharmacy(self, db: AsyncSession, patient_id: uuid.UUID,
                                      pharmacy_id: uuid.UUID, *, if_version: int) -> Written:

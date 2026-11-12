@@ -145,6 +145,15 @@ function todayIn(timeZone: string): string {
 }
 
 let signedIn: SessionUser | undefined
+/** The signed-in user's effective permissions (GET /me); absent until loaded or where /me isn't built. */
+let permissions: readonly string[] | undefined
+
+/** Whether the signed-in user holds a permission, for hiding what their role can't use (the server
+ *  checks every action regardless). Without the real API every sample feature shows. */
+export function hasPermission(permission: string): boolean {
+  if (typeof __SHRI_REAL_API__ === 'undefined' || !__SHRI_REAL_API__) return true
+  return permissions?.includes(permission) ?? false
+}
 
 /** The signed-in user (roles, practitioner), known once loadClinic() has run. */
 export const signedInUser = (): SessionUser | undefined => signedIn
@@ -152,7 +161,10 @@ export const signedInUser = (): SessionUser | undefined => signedIn
 /** The user's facility (GET /me, or the session where /me isn't built yet) and its time zone. */
 export async function userFacility(): Promise<BookableFacility | undefined> {
   const user = await getMe()
-    .then((res) => (res.data as Me).user)
+    .then((res) => {
+      permissions = (res.data as Me).permissions
+      return (res.data as Me).user
+    })
     .catch(async () => ((await getSession()).data as Session).user)
   signedIn = user
   const facilities = ((await listBookableFacilities({ limit: 100 })).data as { items: BookableFacility[] }).items

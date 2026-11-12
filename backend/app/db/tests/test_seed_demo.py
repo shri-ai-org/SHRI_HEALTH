@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
-from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS
+from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS, FACILITY_A
 from app.db.seed import demo, starter
 from app.db.seed.starter import sid
 from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, open_session
@@ -26,7 +26,12 @@ COUNTED = ("admin.pharmacy", "admin.payer", "admin.practice_payer", "admin.conse
            "clinical.patient", "clinical.coverage", "clinical.appointment",
            "clinical.appointment_participant", "admin.patient_pharmacy", "clinical.identifier",
            "admin.mrn_counter", "admin.schedule_availability_rule",
-           "admin.availability_rule_appointment_type", "admin.integration_endpoint")
+           "admin.availability_rule_appointment_type", "admin.integration_endpoint",
+           "clinical.patient_race_ethnicity", "admin.employer",
+           "clinical.patient_general_practitioner", "clinical.coverage_class",
+           "clinical.coverage_cost_to_beneficiary", "admin.portal_account",
+           "admin.online_booking_setting", "admin.online_bookable_type",
+           "clinical.appointment_reason")
 
 
 @pytest.fixture(autouse=True)
@@ -140,6 +145,128 @@ def test_the_demo_accounts_sign_in_with_their_roles(migrator_engine: Engine,
                                  {"k": demo.DEMO_PATIENT_SUBJECT}).one()
     assert (account.tenant_id, account.patient_id, account.status) == (
         CLINIC_A, sid(demo.PATIENT, demo.DEMO_PORTAL_PATIENT), "active")
+    for _n, patient, _username, subject in demo.PORTAL_USERS:   # active, no invitation
+        account = front_desk.execute(text("SELECT * FROM admin.lookup_portal_account(:k)"),
+                                     {"k": subject}).one()
+        assert (account.tenant_id, account.patient_id, account.status) == (
+            CLINIC_A, sid(demo.PATIENT, patient), "active")
+    assert front_desk.execute(text("SELECT count(*) FROM admin.portal_invitation")
+                              ).scalar_one() == 0
+
+
+def test_online_booking_takes_a_follow_up_with_a_days_notice(migrator_engine: Engine,
+                                                             front_desk: Session) -> None:
+    _seed(migrator_engine)
+    setting = front_desk.execute(text(
+        "SELECT is_enabled, min_notice_minutes, booking_window_days, cancel_cutoff_hours, "
+        "reschedule_cutoff_hours FROM admin.online_booking_setting")).one()
+    assert tuple(setting) == (True, 24 * 60, 60, 24, 24)
+    bookable = front_desk.execute(text(
+        "SELECT b.facility_id, t.code FROM admin.online_bookable_type b "
+        "JOIN admin.appointment_type t ON t.id = b.appointment_type_id ORDER BY t.code")).all()
+    assert [tuple(r) for r in bookable] == [(FACILITY_A, "FU"), (FACILITY_A, "TELE-FU")]
+
+
+def test_a_shown_patient_has_every_registration_field(migrator_engine: Engine,
+                                                      front_desk: Session) -> None:
+    """What the registration and insurance screens show (the rest is history.py's)."""
+    _seed(migrator_engine)
+    for p in demo.SHOWN_PATIENTS:
+        pid = sid(demo.PATIENT, p.n)
+        row = front_desk.execute(text(
+            "SELECT p.marital_status_code, p.ext_race_text, p.ext_ethnicity_text, "
+            "p.ext_occupation_text, p.ext_industry_text, "
+            "(SELECT count(*) FROM clinical.contact_point c WHERE c.patient_id = p.id) AS tel, "
+            "(SELECT count(*) FROM clinical.patient_race_ethnicity r "
+            " WHERE r.patient_id = p.id) AS omb, "
+            "(SELECT count(*) FROM admin.employer e WHERE e.patient_id = p.id "
+            " AND e.phone IS NOT NULL) AS employer, "
+            "(SELECT count(*) FROM clinical.patient_general_practitioner g "
+            " WHERE g.patient_id = p.id) AS pcp "
+            "FROM clinical.patient p WHERE p.id = :p"), {"p": pid}).one()
+        assert all(v for v in row[:5]) and tuple(row[5:]) == (2, 2, 1, 1), p.family
+        cover = front_desk.execute(text(
+            "SELECT c.subscriber_id, "
+            "(SELECT k.value FROM clinical.coverage_class k WHERE k.coverage_id = c.id "
+            " AND k.type = 'plan') AS plan, "
+            "(SELECT m.value_money_value FROM clinical.coverage_cost_to_beneficiary m "
+            " WHERE m.coverage_id = c.id) AS copay "
+            "FROM clinical.coverage c WHERE c.beneficiary_patient_id = :p"), {"p": pid}).one()
+        assert cover.subscriber_id and cover.plan and cover.copay is not None, p.family
+
+
+# ============================================================== the shown patients, no database
+ON_THE_DEMO_DAY = dt.date(2026, 11, 20)
+
+
+def _age(born: dt.date) -> int:
+    d = ON_THE_DEMO_DAY
+    return d.year - born.year - ((d.month, d.day) < (born.month, born.day))
+
+
+def test_the_shown_patients_are_vimals_list() -> None:
+    """Names, ages on the demo day, history and the restricted chart (Vimal, 11 Nov)."""
+    from app.db.seed import history
+
+    shown = {f"{p.given} {p.family}": (_age(p.birth_date), p.history, p.restricted)
+             for p in demo.SHOWN_PATIENTS}
+    assert shown == {
+        "Robert Miller": (68, True, False), "Linda Thompson": (57, True, False),
+        "James Wilson": (45, True, False), "Patricia Davis": (61, True, False),
+        "David Nguyen": (39, True, True), "Maria Gonzalez": (72, True, False),
+        "Emily Carter": (34, False, False), "Daniel Brooks": (52, False, False),
+        "Sofia Ramirez": (41, False, False), "Michael Chen": (63, False, False),
+        "Aisha Johnson": (29, False, False)}
+    every = [(p.given, p.family) for p in demo.PATIENTS + demo.population()]
+    assert len(every) == len(set(every))                    # every name is unique
+    assert {p.n for p in demo.SHOWN_PATIENTS if p.history} == set(history.HISTORY)
+    assert all(p.payer and p.email and p.emergency for p in demo.SHOWN_PATIENTS)
+    # The bulk patients keep their generated names, with digits (D112 as amended).
+    assert all(any(ch.isdigit() for ch in p.given) for p in demo.population())
+
+
+def test_each_history_patients_conditions() -> None:
+    from app.db.seed import history
+
+    problems = {n: {c.code.code for c in h.problems} for n, h in history.HISTORY.items()}
+    assert problems == {2: {"I10", "E11.9", "E78.5", "Z87.891"}, 3: {"M54.50", "G89.29"},
+                        4: {"J45.40", "J30.2"}, 5: {"C50.912", "Z92.3", "Z79.811"},
+                        6: {"G43.009"}, 7: {"J44.9", "M17.0", "Z87.891"}}
+    for h in history.HISTORY.values():
+        assert 3 <= len(h.visits) <= 4 and h.allergies and h.medications
+        assert h.family and h.surgeries
+        assert len({v.day for v in h.visits}) == len(h.visits)
+        assert all(dt.date(2025, 11, 11) <= v.day < ON_THE_DEMO_DAY for v in h.visits)
+
+
+def test_the_portal_accounts_have_their_posted_ids() -> None:
+    """The Keycloak IDs posted on #85: UUIDv5 of the username, for the three patients."""
+    import uuid
+
+    names = {p.n: f"{p.given}.{p.family}".lower() for p in demo.SHOWN_PATIENTS}
+    for _n, patient, username, subject in demo.PORTAL_USERS:
+        assert username == names[patient]
+        assert subject == str(uuid.uuid5(demo.PORTAL_NAMESPACE, username))
+    assert [patient for _, patient, _, _ in demo.PORTAL_USERS] == [3, 4, 7]
+
+
+def test_the_portal_accounts_match_the_realm_script_where_it_has_them() -> None:
+    """Drift against Thulasi's realm script (D112): once it creates a portal user, its ID and
+    display name must be the seed's. Skips until the script has any of them."""
+    script = (Path(__file__).resolve().parents[4] / "infra" / "keycloak"
+              / "reset-demo-users.sh").read_text()
+    ids = dict(re.findall(r"^(\w+)_ID=([0-9a-f-]{36})$", script, re.MULTILINE))
+    accounts = {m[1]: (ids.get(m[0]), f"{m[2]} {m[3]}") for m in re.findall(
+        r'user "\$(\w+)_ID" (\S+) \S+ (\w+) (\w+)\)', script)}
+    shown = {p.n: f"{p.given} {p.family}" for p in demo.SHOWN_PATIENTS}
+    found = 0
+    for _n, patient, username, subject in demo.PORTAL_USERS:
+        account = next((a for u, a in accounts.items() if u.split("@")[0] == username), None)
+        if account is not None:
+            assert account == (subject, shown[patient]), username
+            found += 1
+    if not found:
+        pytest.skip("the realm script has none of the seeded portal users yet")
 
 
 def test_the_seed_uses_the_keycloak_accounts_ids_and_names() -> None:
@@ -152,7 +279,8 @@ def test_the_seed_uses_the_keycloak_accounts_ids_and_names() -> None:
         r'user "\$(\w+)_ID" (\S+) \S+ (\w+) (\w+)\)', script)}
     staff = {username: (subject, name)
              for _, username, subject, name, _, _ in demo.DEMO_USERS}
-    assert staff == {u: a for u, a in accounts.items() if not u.startswith("demo.patient")}
+    # Patient realm users sign in with their email as the username (#300); staff never do.
+    assert staff == {u: a for u, a in accounts.items() if "@" not in u}
     subject, name = accounts["demo.patient@example.com"]
     assert subject == demo.DEMO_PATIENT_SUBJECT
     patient = next(p for p in demo.PATIENTS if p.n == demo.DEMO_PORTAL_PATIENT)
@@ -308,3 +436,24 @@ def test_eligibility_has_one_connection_to_send_through(
         conn = db.bind
         db.close()
         conn.close()  # type: ignore[union-attr]
+
+
+def test_no_two_seed_kinds_share_a_number() -> None:
+    """sid(kind, n) puts the kind in the ID, so two kinds on one number would give two rows
+    the same ID (db/CLAUDE.md, "The demo seed's fixed IDs"). 21 is the one known overlap
+    (starter USER_ROLE, demo PHARMACY), kept because renumbering would change live IDs."""
+    import ast
+
+    used: dict[int, list[str]] = {}
+    for module in (starter, demo):
+        source = Path(module.__file__ or "").read_text()
+        for node in ast.parse(source).body:
+            if (isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Tuple)
+                    and isinstance(node.value, ast.Call)
+                    and getattr(node.value.func, "id", "") == "range"):
+                numbers = range(*(a.value for a in node.value.args  # type: ignore[attr-defined]
+                                  ))
+                for name, number in zip(node.targets[0].elts, numbers, strict=True):
+                    used.setdefault(number, []).append(name.id)  # type: ignore[attr-defined]
+    shared = {n: names for n, names in used.items() if len(names) > 1}
+    assert shared == {21: ["USER_ROLE", "PHARMACY"]}

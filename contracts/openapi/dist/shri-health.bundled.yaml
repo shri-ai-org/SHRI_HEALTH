@@ -21019,7 +21019,7 @@ paths:
           description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: '403. `permission-denied` (the session lacks `portal-appointments:create`: not a patient session, or the account is not enrolled); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+          description: '403. `permission-denied` (the session lacks `portal-appointments:create`: not a patient session, or the account is not enrolled; or the chart is inactive); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
         '409':
           $ref: '#/components/responses/Conflict'
           description: '409. `booking-conflict` (the time was just taken: read the free times again); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
@@ -21328,7 +21328,7 @@ paths:
           description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: '403. `permission-denied` (the session lacks `portal-appointments:reschedule`: not a patient session, or the account is not enrolled); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+          description: '403. `permission-denied` (the session lacks `portal-appointments:reschedule`: not a patient session, or the account is not enrolled; or the chart is inactive); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
         '404':
           $ref: '#/components/responses/NotFound'
           description: 404. `not-found` (no such appointment of the signed-in patient; another patient's record gives the same answer, D84).

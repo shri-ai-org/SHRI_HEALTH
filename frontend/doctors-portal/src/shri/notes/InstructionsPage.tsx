@@ -47,6 +47,8 @@ import { VoiceField } from '../ui/VoiceField'
 
 import { NoSuchEncounter } from './ConsultationPage'
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 const CHANNELS: { key: InstructionChannel; label: string }[] = [
   { key: 'print', label: 'Printed, Letter size' },
   { key: 'app', label: 'Patient portal, in their language' },
@@ -65,7 +67,8 @@ function Instructions({ enc }: { enc: Encounter }) {
   const toast = useUI((s) => s.toast)
   const audit = useAudit((s) => s.record)
   const send = useNotifications((s) => s.send)
-  const aiActive = useAiActive()
+  // With the SHRI_HEALTH API the plain-language rewrite has no AI service yet: its paths hide.
+  const aiActive = useAiActive() && !REAL_API
   const forced = useForcedState()
   const p = patient(enc.patientId)
 

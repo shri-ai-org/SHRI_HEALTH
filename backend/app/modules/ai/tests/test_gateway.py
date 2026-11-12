@@ -213,10 +213,10 @@ async def test_without_a_published_prompt_the_built_in_default_is_used() -> None
     repo.prompts.clear()
     gateway, _, model, _ = _gateway(repo)
     result = await gateway.draft_note(DB, request())
-    assert "Not discussed" in model.sent[0][0]["content"]
+    assert 'leave its text empty ("")' in model.sent[0][0]["content"]
     assert repo.requests[0].prompt_template_id is None
     assert (result.provenance.prompt_code, result.provenance.prompt_version) == (
-        NOTE_DRAFT_PROMPT, 2)
+        NOTE_DRAFT_PROMPT, 3)
 
 
 # ==================================================================================== logging
@@ -307,7 +307,9 @@ async def test_a_dictation_is_sent_as_such_with_the_chart_lines_and_the_schema()
     assert result.note.note_id in drafts.drafts
 
 
-async def test_not_discussed_counts_as_empty_for_the_confidence_band() -> None:
+async def test_a_section_the_visit_gave_nothing_for_stays_blank() -> None:
+    """An older prompt's (or a stray) "Not discussed" is not drafted text: the section stays
+    blank with no AI suggestion, and a blank required section lowers the band."""
     reply = {"sections": [{"code": c, "text": t} for c, t in (
         ("10154-3", CHIEF), ("10164-2", HISTORY), ("29545-1", "Not discussed."),
         ("51847-2", "Continue topiramate."), ("69730-0", "Not discussed"))]}
@@ -316,8 +318,8 @@ async def test_not_discussed_counts_as_empty_for_the_confidence_band() -> None:
     assert result.confidence == "low"           # a required section was not discussed
     [draft] = drafts.drafts.values()
     texts = {s.code: s.text for s in draft.sections}
-    assert texts["69730-0"] == "Not discussed"  # kept for the clinician to see and decide
-    assert len(draft.suggestions) == 5
+    assert texts["69730-0"] == "" and texts["29545-1"] == ""
+    assert len(draft.suggestions) == 3          # only the sections the visit gave text for
 
 
 # =================================================================================== budget

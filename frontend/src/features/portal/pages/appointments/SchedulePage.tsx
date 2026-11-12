@@ -1,7 +1,7 @@
 import { Clock } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { newIdempotencyKey } from '../../../../api/client'
-import type { PortalAppointment, PortalBookingFacility, PortalSlot } from '../../../../api/generated/model'
+import type { PortalAppointment, PortalAppointmentCreateReasonCode, PortalBookingFacility, PortalSlot } from '../../../../api/generated/model'
 import { Alert, Button, DateInput, EmptyState, Field, formatDate, formatTime, Modal, problemCopy, Select, Spinner, todayIn } from '../../../../design-system'
 import { cn } from '../../../../design-system/lib/cn'
 import { usePortalApi } from '../../api/portalApi'
@@ -16,7 +16,15 @@ import { AsyncPanel, ErrorSummary, formatLongDay, PageHeader } from '../../ui'
  * times again. Rescheduling keeps the location and visit type and moves the time (and provider).
  */
 
-const REASONS = ['New Medical Problem Visit', 'Medical Problem Followup Visit', 'Annual Physical', 'Well child checkup', 'Others']
+/** The contract's fixed reasons (`reasonCode`), with the words the clinic sees for each. */
+const REASONS: { code: PortalAppointmentCreateReasonCode; label: string }[] = [
+  { code: 'follow-up', label: 'Follow-up visit' },
+  { code: 'blood-pressure-check', label: 'Blood pressure check' },
+  { code: 'medication-review', label: 'Medication review' },
+  { code: 'results-review', label: 'Review of test results' },
+  { code: 'ongoing-condition', label: 'Ongoing condition' },
+  { code: 'other', label: 'Other' },
+]
 
 /** The bookable window: today plus 30 days. */
 const WINDOW_DAYS = 30
@@ -52,7 +60,7 @@ function ScheduleForm({ facilities, existing }: { facilities: PortalBookingFacil
   const [f, setF] = useState<Form>(() => ({
     facilityId: existing?.facility.id ?? '',
     appointmentTypeId: existing?.appointmentType.id ?? '',
-    reason: existing?.reasonForVisit ?? '',
+    reason: existing?.reasonCode ?? '',
     providerId: existing?.provider.id ?? '',
     date: existing ? todayIn(existing.timeZone, new Date(existing.startAt)) : '',
     slot: null,
@@ -111,7 +119,7 @@ function ScheduleForm({ facilities, existing }: { facilities: PortalBookingFacil
         existing
           ? await api.rescheduleAppointment(existing.id, { startAt: f.slot.startAt, ...(f.providerId !== existing.provider.id ? { providerId: f.providerId } : {}) }, key)
           : await api.bookAppointment(
-              { facilityId: f.facilityId, appointmentTypeId: f.appointmentTypeId, providerId: f.providerId, startAt: f.slot.startAt, reasonForVisit: f.reason },
+              { facilityId: f.facilityId, appointmentTypeId: f.appointmentTypeId, providerId: f.providerId, startAt: f.slot.startAt, reasonCode: f.reason as PortalAppointmentCreateReasonCode },
               key,
             ),
       )
@@ -180,8 +188,10 @@ function ScheduleForm({ facilities, existing }: { facilities: PortalBookingFacil
           {(p) => (
             <Select {...p} disabled={Boolean(existing)} value={f.reason} onChange={(e) => set({ reason: e.target.value })}>
               <option value="">Select an option</option>
-              {[...REASONS, ...(f.reason && !REASONS.includes(f.reason) ? [f.reason] : [])].map((r) => (
-                <option key={r}>{r}</option>
+              {REASONS.map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.label}
+                </option>
               ))}
             </Select>
           )}

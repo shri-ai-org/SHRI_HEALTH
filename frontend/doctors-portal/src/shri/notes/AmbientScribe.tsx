@@ -27,6 +27,9 @@ import { useSession } from '@/store/session'
 
 import { cn } from '../lib/cn'
 import { useDictation } from '../logic/dictation'
+
+/** With the SHRI_HEALTH API, the transcript goes to the AI draft service (AI-01, createNoteDraft); the sample's local routing is not shown as a draft. */
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 import { Dialog } from '../ui/Dialog'
 import { Why } from '../ui/Disclosure'
 import { ConfidenceMark, Icon, Pill, PillTag, Toggle } from '../ui/primitives'
@@ -54,7 +57,7 @@ export function AmbientScribe({
   open: boolean
   onClose: () => void
   /** Hands back the keys it drafted and, for each, the text it heard. The text is also written to the note that aimed the scribe. */
-  onFinish: (keys: SectionKey[], drafts: ScribeSections) => void
+  onFinish: (keys: SectionKey[], drafts: ScribeSections, transcript: string) => void
   patientId: string
   patientName: string
   /** The note's sections, for their labels. */
@@ -75,7 +78,7 @@ export function AmbientScribe({
 }
 
 /** Mounted only while the overlay is open, so closing it closes the microphone. */
-function Session({ onClose, onFinish, patientId, sections }: { onClose: () => void; onFinish: (keys: SectionKey[], drafts: ScribeSections) => void; patientId: string; sections: NoteSectionSeed[] }) {
+function Session({ onClose, onFinish, patientId, sections }: { onClose: () => void; onFinish: (keys: SectionKey[], drafts: ScribeSections, transcript: string) => void; patientId: string; sections: NoteSectionSeed[] }) {
   const language = useSession((s) => s.language)
   const clearDisposition = useAI((s) => s.clearDisposition)
   const d = useDictation({ arbiterId: 'ambient-scribe' })
@@ -113,6 +116,13 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
   const cannotListen = d.supportNotice !== null
 
   function adoptDraft() {
+    if (REAL_API) {
+      // The AI drafts the four sections on the server; the dictated words go as they were heard.
+      if (transcript.trim() === '') return
+      d.stop()
+      onFinish([], {}, transcript)
+      return
+    }
     if (drafted.length === 0) return
     d.stop()
     const encounterId = useScribeDrafts.getState().publish({
@@ -130,7 +140,7 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
       const note = useClinical.getState().note(encounterId)
       for (const k of drafted) if ((note.text[k] ?? '').trim() === '') clearDisposition(`${encounterId}:${k}`)
     }
-    onFinish(drafted, drafts)
+    onFinish(drafted, drafts, transcript)
   }
 
   const status = recording ? 'Listening' : requesting ? 'Waiting for the microphone' : unavailable ? 'Not listening' : d.phase === 'review' ? 'Paused' : 'Starting'
@@ -159,8 +169,8 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
             </p>
           ) : (
             <p className="flex flex-wrap items-center gap-x-[8px] text-[13px] tabular-nums text-sh-text-3">
-              {drafted.length} of {SCRIBE_SECTION_KEYS.length} sections drafted
-              {drafted.length > 0 && (
+              {REAL_API ? 'The AI drafts the note from this transcript' : `${drafted.length} of ${SCRIBE_SECTION_KEYS.length} sections drafted`}
+              {!REAL_API && drafted.length > 0 && (
                 <>
                   <span aria-hidden="true">·</span>
                   <ConfidenceMark band={d.band} score={d.scored ? d.confidence : undefined} />
@@ -209,7 +219,7 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
             const newSection = line.feeds !== lines[i - 1]?.feeds
             return (
               <div key={line.key}>
-                {newSection && <p className={cn('text-[11px] font-semibold uppercase tracking-[0.08em] text-sh-text-3', i > 0 && 'mt-[12px]')}>{labelFor(line.feeds)}</p>}
+                {newSection && !REAL_API && <p className={cn('text-[11px] font-semibold uppercase tracking-[0.08em] text-sh-text-3', i > 0 && 'mt-[12px]')}>{labelFor(line.feeds)}</p>}
                 <div className="flex gap-[12px]">
                   <span className="w-[40px] shrink-0 pt-[2px] text-[12px] tabular-nums text-sh-text-3">{formatClock(line.atSec)}</span>
                   <span className={cn('min-w-0 flex-1 text-[14px] text-sh-text', showRaw && 'font-mono text-[13px] text-sh-text-2')}>{showRaw ? line.raw : line.cleaned}</span>
@@ -226,20 +236,28 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
           )}
           <div ref={endRef} />
         </div>
-        {drafted.length === 0 && (
+        {(REAL_API ? transcript.trim() === '' : drafted.length === 0) && (
           <p className="mt-[8px] flex items-start gap-[8px] px-[4px] text-[12px] text-sh-text-3">
             <Icon icon={Info} size={13} className="mt-[2px] shrink-0" />
-            {cannotListen || unavailable ? 'Nothing to draft without speech. Close this and dictate or type each section instead.' : 'Use this draft turns on once something has been heard.'}
+            {cannotListen || unavailable ? 'Nothing to draft without speech. Close this and dictate or type each section instead.' : REAL_API ? 'Draft with AI turns on once something has been heard.' : 'Use this draft turns on once something has been heard.'}
           </p>
         )}
       </div>
 
       <Why label="What is kept, and what happens if the speech service drops">
-        <p>
-          The raw transcript is kept with the draft. Every drafted sentence is one that was said — the scribe places sentences in a section by the words
-          used, and does not reword, add or infer. It cannot tell who is speaking. If the speech service drops, what was already heard is kept, and
-          typing is always available.
-        </p>
+        {REAL_API ? (
+          <p>
+            The transcript goes to the clinic&rsquo;s AI service, which drafts the four sections. Every drafted section is marked AI-generated and needs
+            your Accept, Edit or Reject before the note can be signed; nothing is signed for you. If the AI is off or unavailable, close this and dictate or
+            type each section instead.
+          </p>
+        ) : (
+          <p>
+            The raw transcript is kept with the draft. Every drafted sentence is one that was said — the scribe places sentences in a section by the words
+            used, and does not reword, add or infer. It cannot tell who is speaking. If the speech service drops, what was already heard is kept, and
+            typing is always available.
+          </p>
+        )}
       </Why>
 
       <footer className="flex flex-wrap items-center gap-[10px] border-t border-sh-line pt-[14px]">
@@ -254,12 +272,12 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
           variant="accent"
           size="lg"
           icon={Check}
-          disabled={drafted.length === 0}
-          title={drafted.length === 0 ? 'Nothing has been heard yet, so there is nothing to draft' : undefined}
+          disabled={REAL_API ? transcript.trim() === '' : drafted.length === 0}
+          title={(REAL_API ? transcript.trim() === '' : drafted.length === 0) ? 'Nothing has been heard yet, so there is nothing to draft' : undefined}
           className="disabled:opacity-40"
           onClick={adoptDraft}
         >
-          Use this draft
+          {REAL_API ? 'Draft with AI' : 'Use this draft'}
         </Pill>
       </footer>
     </div>

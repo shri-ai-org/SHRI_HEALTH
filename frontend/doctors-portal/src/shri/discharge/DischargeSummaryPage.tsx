@@ -65,6 +65,8 @@ import { PrintPreview } from '../ui/PrintPreview'
 import { LockedBanner, ValidationSummary } from '../ui/states'
 import { VoiceField } from '../ui/VoiceField'
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 const MODEL = 'discharge-draft v3.1.0'
 
 export function DischargeSummaryPage() {
@@ -293,7 +295,7 @@ function DischargeSummary({ enc }: { enc: Encounter }) {
         actions={
           <>
             {/* The one AI path — only where there is a draft of this patient's admission to offer. */}
-            {!locked && aiActive && drafts && (
+            {!REAL_API && !locked && aiActive && drafts && (
               <Pill variant="accent" size="xl" icon={Sparkles} iconSize={17} onClick={draftAll}>
                 Draft with AI
               </Pill>

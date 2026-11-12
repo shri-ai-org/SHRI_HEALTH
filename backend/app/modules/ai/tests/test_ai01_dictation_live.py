@@ -89,20 +89,20 @@ def test_a_dictation_becomes_a_draft_note_through_the_claude_api(
     assert sent["model"] == "claude-sonnet-5-5" and sent["output_config"]["effort"] == "low"
     assert sent["output_config"]["format"]["type"] == "json_schema"
     assert "- 10154-3: Chief complaint (required)" in sent["system"]
-    assert 'exactly "Not discussed"' in sent["system"]
+    assert 'leave its text empty ("")' in sent["system"]
     user = sent["messages"][0]["content"][0]["text"]
     assert "Allergies: Peanuts (high criticality)." in user
-    assert "Current medications: Lisinopril 10 MG Oral Tablet, 1 tablet by mouth once daily." \
-        in user
+    assert ("Current medications: Lisinopril 10 MG Oral Tablet, 1 tablet by mouth once daily, "
+            "on the list since ") in user
     assert user.endswith(f"Dictation:\n{DICTATION}")
     assert str(practice.patients["kaia"]) not in json.dumps(sent)   # names only, never IDs
     # The draft: unsigned, every filled section AI-generated, pending and no-source.
     note = client("md").get(f"{API}/notes/{note_id}")
     assert note.status_code == 200, note.text
     sections = {s["code"]: s for s in note.json()["sections"]}
-    assert sections["29545-1"]["text"] == "Not discussed"
+    assert sections["29545-1"]["text"] == "" and "aiSuggestion" not in sections["29545-1"]
     assert all(s["entrySource"] == "ai-generated" and s["aiDecision"] == "pending"
-               for s in sections.values())
+               for s in sections.values() if s["text"])
     suggestion = sections["10164-2"]["aiSuggestion"]
     assert suggestion["sourceStatus"] == "no-source" and suggestion["sources"] == []
     assert "clinician's dictation" in suggestion["rationale"]
@@ -125,8 +125,11 @@ def test_a_dictation_becomes_a_draft_note_through_the_claude_api(
     signed = client("md").post(f"{API}/notes/{note_id}/sign",
                                headers={"If-Match": note.headers["ETag"]})
     assert signed.status_code == 422, signed.text
+    # The three drafted sections wait for a decision; the blank required one (the examination,
+    # not dictated) for the clinician's text; the blank optional one for nothing.
     assert {(e["pointer"], e["code"]) for e in signed.json()["errors"]} == {
-        (f"/sections/{i}/aiDecision", "required") for i in range(5)}
+        *((f"/sections/{i}/aiDecision", "required") for i in (0, 1, 3)),
+        ("/sections/2/text", "required")}
 
 
 def test_the_budget_stops_the_model_and_a_refusal_or_error_fails_the_operation(
