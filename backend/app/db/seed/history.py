@@ -9,6 +9,8 @@ front desk and the doctor's screens read before the visit.
   doctor record it live. Patients 8 to 12 have no clinical history, by design.
 - Patient 6's chart is restricted at the end (D37), with the change's Provenance, as the
   demo admin.
+- Each past note is signed at its visit's end, with a Provenance whose reason is "synthetic demo
+  import" (``_sign_as_imported``; the store's helpers can't sign at another time).
 
 The clinical content is synthetic and needs a clinician's review before it is shown as
 realistic; it lives in the tables below so that review can change it in one place.
@@ -19,7 +21,7 @@ shri_migrator with the demo clinic and the demo doctor (demo.doctor) as the curr
 one transaction. Fictional data only, the same every run: a patient whose emergency contact, or
 whose first past visit (at its fixed start time), already exists is skipped, so a second run
 changes nothing; a reset starts from an empty database. New rows get the helpers' own IDs; no
-existing ID changes. Notes are signed when the seed runs, so their signed time is the load time.
+existing ID changes.
 
 ICD-10-CM (FY2026) and RxNorm (2 Nov 2026) codes are the pinned releases' and were checked
 against them; the helpers don't look them up, so this runs before the code load. SNOMED CT isn't
@@ -43,6 +45,7 @@ from app.core.deps import CLINIC_A, FACILITY_A
 from app.db import fhir_store as fs
 from app.db.models import MAPPERS as M
 from app.db.models import systems
+from app.db.models.fhir.documents import Composition
 from app.db.seed.demo import (
     APPOINTMENT,
     DEMO_USER,
@@ -804,7 +807,7 @@ async def _visit(store: fs.SqlFhirStore, db: AsyncSession, patient_id: uuid.UUID
                   fs.SectionIn(code="18776-5", title="Plan", text=visit.plan),
                   fs.SectionIn(code="69730-0", title="Patient instructions",
                                text=visit.instructions))))
-    await store.sign_note(db, note.id, if_version=note.version)
+    await _sign_as_imported(db, note.id, note.version, start + dt.timedelta(minutes=40))
     months, booked, declined = follow_up
     db.add(M["encounter_follow_up"](
         id=sid(PA_FOLLOW_UP, n), encounter_id=encounter, patient_id=patient_id,
@@ -824,6 +827,26 @@ async def _visit(store: fs.SqlFhirStore, db: AsyncSession, patient_id: uuid.UUID
 
 def _noon(day: dt.date) -> dt.datetime:
     return dt.datetime.combine(day, dt.time(12, 0), tzinfo=dt.UTC)
+
+
+IMPORT_REASON = "synthetic demo import"
+
+
+async def _sign_as_imported(db: AsyncSession, note_id: uuid.UUID, version: int,
+                            signed_at: dt.datetime) -> None:
+    """A past visit's note, signed at the visit's end (Anand's decision, 12 Nov). The seed's own
+    signing, as the migrator behind the seed's environment guard: the store's sign_note always
+    signs at the database's now() and offers no other time to any caller. The attester carries
+    the content's digest as sign_note's does, and the Provenance is recorded at the real load
+    time with the reason "synthetic demo import", so the record says where the time came from."""
+    note = await fs._locked(db, Composition, note_id, version)
+    signer = await fs._practitioner(db)
+    note.status, note.date = "final", signed_at
+    written = await fs._attest(db, note, signer, "legal", signed_at)
+    activity, agent_type, signature_type = fs._SIGNED
+    await fs._provenance(db, "Composition", written, activity, agent_type=agent_type,
+                         reason=fs.Reason(IMPORT_REASON),
+                         signature=(signature_type, await fs._note_digest(db, note)))
 
 
 def _months(after: dt.date, until: dt.date) -> int:
