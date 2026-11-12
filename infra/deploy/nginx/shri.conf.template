@@ -178,7 +178,7 @@ server {
     }
 
     # The screens (built into this image, nginx/Dockerfile): the front office at /, the doctors'
-    # portal at /clinician/. Hashed assets are cached for good; index.html never is, so a new
+    # portal at /clinician/, the patient portal at /portal/. Hashed assets are cached for good; index.html never is, so a new
     # release reaches the browser on the next load. Any other path under an app is one of its
     # screen routes and gets that app's index.html (its router decides).
     location ^~ /clinician/assets/ {
@@ -205,6 +205,34 @@ server {
         add_header X-Frame-Options "DENY" always;
         add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         try_files $uri /clinician/index.html;
+    }
+
+    # The patient portal at /portal/ (frontend/vite.portal.config.ts: base /portal/, entry
+    # portal.html). Its API stays /api/v1/portal/ above; a screen route gets portal.html.
+    location ^~ /portal/assets/ {
+        alias /srv/shri-web/portal/assets/;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header Strict-Transport-Security "${SHRI_HSTS}" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        try_files $uri =404;
+    }
+
+    location = /portal {
+        return 301 portal/;
+    }
+
+    location ^~ /portal/ {
+        alias /srv/shri-web/portal/;
+        add_header Cache-Control "no-store" always;
+        add_header Strict-Transport-Security "${SHRI_HSTS}" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        try_files $uri /portal/portal.html;
     }
 
     location ^~ /assets/ {

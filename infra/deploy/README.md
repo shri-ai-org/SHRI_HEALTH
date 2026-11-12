@@ -127,6 +127,7 @@ Under `shri-ai.org/dep` we share an **origin** with the company website and ever
 |---|---|
 | `/` | The front office (`frontend/front-office`, `BASE_PATH`) |
 | `/clinician/` | The doctors' portal (`frontend/doctors-portal`, `PORTAL_BASE`) |
+| `/portal/` | The patient portal (the root app's `npm run build:portal`, `vite.portal.config.ts`; base fixed at `/portal/`, so on a host of its own only) |
 | `/api/v1/`, `/kc/`, `/health`, `/hooks/` | The API, Keycloak, health and partner callbacks, as before |
 
 ## Deploy
