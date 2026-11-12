@@ -1246,6 +1246,33 @@ async def _db_now(db: AsyncSession) -> datetime:
     return now
 
 
+async def _record_medication(db: AsyncSession, data: MedicationIn, at: datetime) -> Written:
+    """``record_medication``, recorded at ``at``: the helper's own ``now()``, or, for the demo
+    seed's import only (``seed/history.py``), the start of the visit the medication is linked
+    to. The API's helper offers no other time."""
+    _check_medication(data.medication)
+    if data.status not in _LIST_STATUSES:
+        raise InvalidInput(f"a medication on the list is one of {sorted(_LIST_STATUSES)}")
+    await _patient_seen(db, data.patient_id)
+    if data.encounter_id is not None:
+        await _live_visit_of(db, data.encounter_id, data.patient_id)
+    user = await _current_user(db)
+    # The patient says they take it: reportedBoolean, never signed or sent. FHIR needs a
+    # requester; the prescriber isn't known, so it is the patient, who reported it.
+    mr = MedicationRequest(status=data.status, intent="plan", reported_boolean=True,
+                           subject_patient_id=data.patient_id,
+                           requester_patient_id=data.patient_id,
+                           encounter_id=data.encounter_id, authored_on=at,
+                           recorder_practitioner_id=user.practitioner_id)
+    _apply_prescription(mr, PrescriptionChanges(medication=data.medication))
+    db.add(await _new(db, mr))
+    await db.flush()
+    await _replace_dosage(db, mr.id, data.dosage_text)
+    if data.note and data.note.strip():
+        db.add(Annotation(medication_request_id=mr.id, text=data.note, time=at))
+    return await _written(db, mr)
+
+
 async def _current_user(db: AsyncSession) -> AppUser:
     user_id = (await db.execute(text(
         "SELECT NULLIF(current_setting('app.current_user_id', true), '')"))).scalar_one()
@@ -1995,28 +2022,7 @@ class SqlFhirStore:
 
     # ------------------------------------------------------------------------- Medication list
     async def record_medication(self, db: AsyncSession, data: MedicationIn) -> Written:
-        _check_medication(data.medication)
-        if data.status not in _LIST_STATUSES:
-            raise InvalidInput(f"a medication on the list is one of {sorted(_LIST_STATUSES)}")
-        await _patient_seen(db, data.patient_id)
-        if data.encounter_id is not None:
-            await _live_visit_of(db, data.encounter_id, data.patient_id)
-        user = await _current_user(db)
-        now = await _db_now(db)
-        # The patient says they take it: reportedBoolean, never signed or sent. FHIR needs a
-        # requester; the prescriber isn't known, so it is the patient, who reported it.
-        mr = MedicationRequest(status=data.status, intent="plan", reported_boolean=True,
-                               subject_patient_id=data.patient_id,
-                               requester_patient_id=data.patient_id,
-                               encounter_id=data.encounter_id, authored_on=now,
-                               recorder_practitioner_id=user.practitioner_id)
-        _apply_prescription(mr, PrescriptionChanges(medication=data.medication))
-        db.add(await _new(db, mr))
-        await db.flush()
-        await _replace_dosage(db, mr.id, data.dosage_text)
-        if data.note and data.note.strip():
-            db.add(Annotation(medication_request_id=mr.id, text=data.note, time=now))
-        return await _written(db, mr)
+        return await _record_medication(db, data, await _db_now(db))
 
     # ------------------------------------------------------------------------- Prescriptions
     async def create_prescription(self, db: AsyncSession, data: PrescriptionIn) -> Written:
