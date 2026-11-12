@@ -224,3 +224,21 @@ def test_the_doctor_reads_it_through_the_api(seeded: None, admin_engine: Engine)
         "314076", "861007", "617311"}
     assert [codes(a["code"]) for a in allergies.json()["items"]] == [{"723"}]
     assert vitals.json()["items"]
+
+
+def test_past_notes_are_signed_at_the_visits_end_as_a_synthetic_import(
+        seeded: None, admin_engine: Engine) -> None:
+    """Anand's decision (12 Nov): the seed signs each past note at its visit's end, and the
+    signature's Provenance, recorded at the real load time, says "synthetic demo import"."""
+    with admin_engine.connect() as c:
+        rows = c.execute(text(
+            "SELECT a.time = e.period_end AS at_the_end, pv.reason_text, "
+            "pv.recorded > e.period_end AS recorded_at_load "
+            "FROM clinical.composition n JOIN clinical.encounter e ON e.id = n.encounter_id "
+            "JOIN clinical.composition_attester a ON a.composition_id = n.id "
+            "AND a.mode = 'legal' "
+            "JOIN clinical.provenance pv ON pv.target_id = n.id "
+            "WHERE n.subject_patient_id = ANY(:ps)"),
+            {"ps": [sid(demo.PATIENT, n) for n in history.HISTORY]}).all()
+    assert len(rows) == sum(len(h.visits) for h in history.HISTORY.values())
+    assert {tuple(r) for r in rows} == {(True, history.IMPORT_REASON, True)}
