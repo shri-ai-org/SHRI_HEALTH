@@ -90,6 +90,12 @@ class MedicationList(Out):
     next_cursor: str | None = None
 
 
+class PrescriptionList(Out):
+    """One page of a visit's prescriptions (listEncounterPrescriptions, gap 82)."""
+    items: list[Prescription]
+    next_cursor: str | None = None
+
+
 # --------------------------------------------------------------- the pharmacy directory
 class PharmacyDirectoryAddress(Out):
     line: str | None = None

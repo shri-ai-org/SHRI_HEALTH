@@ -15,6 +15,7 @@
  * OpenAPI spec version: 1.0.0-draft.1
  */
 import type { Id } from './id';
+import type { PortalAppointmentCreateReasonCode } from './portalAppointmentCreateReasonCode';
 import type { Timestamp } from './timestamp';
 
 /**
@@ -29,8 +30,10 @@ export interface PortalAppointmentCreate {
   providerId: Id;
   /** Start (UTC), as the slot gave it. */
   startAt: Timestamp;
+  /** Why the visit is needed, from the portal's fixed list. Required to book (`business-rule-violation` `/reasonCode` `required` when missing). */
+  reasonCode?: PortalAppointmentCreateReasonCode;
   /**
-     * Why the visit is needed.
+     * Optional short note about the reason (the portal offers 200 characters).
      * @maxLength 1000
      */
   reasonForVisit?: string;
