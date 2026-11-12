@@ -41,7 +41,17 @@ OTHER_CLINIC = UUID("0a000000-0000-4000-8000-0000000000c2")
 ANA = UUID("0c000000-0000-4000-8000-0000000000a1")  # patient A
 BEN = UUID("0c000000-0000-4000-8000-0000000000b1")  # patient B, same clinic
 URL = "/api/v1/portal/me/appointments"
-NOW = datetime.now(UTC).replace(microsecond=0)
+#: The frozen "now" every test runs at (the ``frozen_clock`` fixture sets it and the API's own
+#: clock), so nothing depends on the wall clock or on how long the suite takes. Each test runs at
+#: each of these: a clinic morning, the clinic day's last hour and midnight in Chicago (UTC-6 in
+#: November), and just after midnight.
+FROZEN_TIMES = (
+    datetime(2026, 11, 20, 16, 0, tzinfo=UTC),    # 10:00 Chicago
+    datetime(2026, 11, 21, 5, 30, tzinfo=UTC),    # 23:30 Chicago, the clinic day's last hour
+    datetime(2026, 11, 21, 6, 0, tzinfo=UTC),     # 00:00 Chicago, midnight
+    datetime(2026, 11, 21, 6, 10, tzinfo=UTC),    # 00:10 Chicago
+)
+NOW = FROZEN_TIMES[0]
 
 
 @dataclass
@@ -98,6 +108,16 @@ def appointment(patient: UUID, *, hours: float, status: str = "booked",
         provider_id=uuid4(), provider_name="Dr. Avery401 Lindqvist58", type_id=uuid4(),
         type_name="Follow-up visit", telehealth=False, reason="Headache follow-up",
         patient_instruction="Please arrive 15 minutes early.", visit_summary_id=summary)
+
+
+@pytest.fixture(autouse=True, params=FROZEN_TIMES, ids=lambda t: t.strftime("%H%MZ"))
+def frozen_clock(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> datetime:
+    """One fixed "now" for the rows and for the API (portal_api._now), per test run."""
+    global NOW
+    frozen: datetime = request.param
+    NOW = frozen
+    monkeypatch.setattr(portal_api, "_now", lambda: frozen)
+    return frozen
 
 
 @pytest.fixture
