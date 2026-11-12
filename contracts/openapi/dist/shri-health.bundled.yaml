@@ -18,7 +18,10 @@ servers:
     description: Versioned API, same relative path in every environment (local, staging, production). Every path uses this server unless its path item overrides `servers`.
     x-internal: false
   - url: /
-    description: 'Routes outside `/api/v1`, same in every environment (local, staging, production): `/health` and `/hooks/{partner}`, public through Nginx (API_STANDARDS §2). Only path items that override `servers` with this entry use it. `/ready` is internal and not in the contract.'
+    description: |-
+      Routes outside `/api/v1`, same in every environment (local, staging, production): `/health` and `/hooks/{partner}`, public
+        through Nginx (API_STANDARDS §2). Only path items that override `servers` with this entry use it. `/ready` is internal
+        and not in the contract.
     x-internal: false
 security:
   - sessionCookie: []
@@ -13411,6 +13414,349 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
           description: 403. `permission-denied` (the role lacks `chart-questions:create`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai/morning-briefs:
+    post:
+      operationId: createMorningBrief
+      summary: Brief the clinician on their day's patients
+      description: 'The morning brief (D116): for each of the signed-in clinician''s own appointments on `date` (the provider the user is linked to; cancelled and no-show appointments left out; at most 30), a few statements about the patient''s chart, each citing the records it rests on. Returns `202` and an operation of kind `ai.morning-brief`; its result is the brief (`GET /ai/morning-briefs/{morningBriefId}`). Each chart is read within the caller''s own request, through each module''s service, with the same permissions, facility scope and restricted-chart check as the caller''s own reads, audited as `ai` naming every patient read. **A restricted chart the caller may not open is never read**: its item says `restricted` and carries no statements (D37). A user linked to no provider gets a brief with no items. A statement that cites no record it was given is dropped. The brief is AI output, never part of the chart, and readable by its requester only. Nothing of it is logged. Governed by the `chart-summary` switch: refused with `409 feature-disabled` while AI or `chart-summary` is off for the clinic. The operation fails with `ai-unavailable` (the model is down, declined, or the monthly AI budget is used up) or `ai-output-rejected`.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: chart-summaries:create
+      x-audit:
+        action: C
+        category: ai
+        patient: result
+      x-idempotency: supported
+      x-async: true
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MorningBriefCreate'
+            examples:
+              today:
+                summary: Today's brief
+                value:
+                  date: '2026-11-20'
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed` on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+              examples:
+                queued:
+                  summary: Brief queued
+                  value:
+                    id: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                    kind: ai.morning-brief
+                    status: queued
+                    createdAt: '2026-11-20T13:00:00Z'
+                    updatedAt: '2026-11-20T13:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `chart-summaries:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `feature-disabled` (AI or `chart-summary` is off for the clinic; the problem carries `feature`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai/morning-briefs/{morningBriefId}:
+    parameters:
+      - name: morningBriefId
+        in: path
+        required: true
+        description: Morning brief ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getMorningBrief
+      summary: Get a morning brief
+      description: 'The result of `POST /ai/morning-briefs` (D116): one item per appointment, in time order, each with its statements and their source links. Labelled as AI output (`aiGenerated`). Readable by **its requester only**; anyone else gets `404`. Each chart is checked again on every read: an item whose chart the requester may no longer open is returned as `restricted`, without statements (D37). Still readable when AI is switched off.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: chart-summaries:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The morning brief.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MorningBrief'
+              examples:
+                brief:
+                  summary: Two appointments, one restricted
+                  value:
+                    id: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e
+                    date: '2026-11-20'
+                    appointments:
+                      - appointmentId: 3c4d5e6f-7a8b-4c9d-8e0f-2a3b4c5d6e7f
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        startAt: '2026-11-20T14:00:00Z'
+                        chartStatus: summarized
+                        statements:
+                          - sequence: 1
+                            text: Essential hypertension, diagnosed at the visit of 2026-09-02.
+                            sources:
+                              - resourceType: Condition
+                                resourceId: 3e4f5a6b-7c8d-4e9f-8a0b-1c2d3e4f5a6b
+                                label: Visit diagnosis
+                      - appointmentId: 4d5e6f7a-8b9c-4d0e-9f1a-3b4c5d6e7f8a
+                        patientId: 8b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e
+                        startAt: '2026-11-20T14:30:00Z'
+                        chartStatus: restricted
+                        statements: []
+                    aiGenerated: true
+                    generatedBy:
+                      modelName: claude-sonnet-5-5
+                      promptCode: morning-brief
+                      promptVersion: 1
+                      pipelineVersion: gateway/2
+                    createdAt: '2026-11-20T13:00:09Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `chart-summaries:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such brief in this clinic, or another user's brief).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai/differentials:
+    post:
+      operationId: createDifferential
+      summary: Suggest a differential diagnosis for a visit
+      description: 'AI-03 decision support (FRS §3.4; D116): possible diagnoses for the visit, each with its reasoning and the chart records it rests on. Returns `202` and an operation of kind `ai.differential`; its result is the differential (`GET /ai/differentials/{differentialId}`). The model sees the visit (reason for visit, its diagnoses so far and its note''s sections) and the chart (recent visits, allergies, medications), read within the caller''s own request through each module''s service with the caller''s permissions and the restricted-chart check (D37), audited as `ai`. **Only clinicians who can diagnose ask for one**: a user without `diagnoses:create` gets `403 permission-denied`. Every candidate cites at least one record; one that cites none is dropped; confidence is `low` or `medium`, never `high`. It **suggests and never concludes**: nothing is added to the chart or the visit, and the clinician adds a diagnosis through the visit''s own endpoint. Shown apart from rule-based alerts. Readable by its requester only; nothing of it is logged. Governed by the `chart-summary` switch: refused with `409 feature-disabled` while AI or `chart-summary` is off. The operation fails with `ai-unavailable` or `ai-output-rejected`.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: chart-summaries:create
+      x-audit:
+        action: C
+        category: ai
+        patient: result
+      x-idempotency: supported
+      x-async: true
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DifferentialCreate'
+            examples:
+              visit:
+                summary: Today's visit
+                value:
+                  encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed` on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+              examples:
+                queued:
+                  summary: Differential queued
+                  value:
+                    id: 5e6f7a8b-9c0d-4e1f-8a2b-4c5d6e7f8a9b
+                    kind: ai.differential
+                    status: queued
+                    createdAt: '2026-11-20T15:12:00Z'
+                    updatedAt: '2026-11-20T15:12:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `chart-summaries:create` or `diagnoses:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `feature-disabled` (AI or `chart-summary` is off for the clinic; the problem carries `feature`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /ai/differentials/{differentialId}:
+    parameters:
+      - name: differentialId
+        in: path
+        required: true
+        description: Differential ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getDifferential
+      summary: Get a differential
+      description: 'The result of `POST /ai/differentials` (D116): the candidates in order, each with its reasoning, confidence and source links, and `insufficientEvidence` when the visit holds too little to suggest anything. Labelled as AI output (`aiGenerated`). Readable by **its requester only**, who must still be able to read the chart (D37); anyone else gets `404`. Still readable when AI is switched off.'
+      tags:
+        - ai
+      x-owner: vimal
+      x-permission: chart-summaries:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The differential.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Differential'
+              examples:
+                differential:
+                  summary: Two candidates
+                  value:
+                    id: 6f7a8b9c-0d1e-4f2a-9b3c-5d6e7f8a9b0c
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    candidates:
+                      - sequence: 1
+                        condition: Acute viral bronchitis
+                        rationale: Three days of cough without fever, with clear lungs on examination.
+                        confidence: medium
+                        sources:
+                          - resourceType: Composition
+                            resourceId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                            label: Progress note, Subjective
+                      - sequence: 2
+                        condition: Cough from an ACE inhibitor
+                        rationale: Lisinopril is on the medication list.
+                        confidence: low
+                        sources:
+                          - resourceType: MedicationRequest
+                            resourceId: 4f5a6b7c-8d9e-4f0a-9b1c-2d3e4f5a6b7c
+                            label: Medication list
+                    insufficientEvidence: false
+                    aiGenerated: true
+                    generatedBy:
+                      modelName: claude-sonnet-5-5
+                      promptCode: differential
+                      promptVersion: 1
+                      pipelineVersion: gateway/2
+                    createdAt: '2026-11-20T15:12:07Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `chart-summaries:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such differential in this clinic, or another user's differential).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
@@ -30247,6 +30593,195 @@ components:
             type: string
             maxLength: 200
           description: The questions, in order.
+          x-phi: none
+    MorningBriefCreate:
+      description: The day to brief on.
+      type: object
+      additionalProperties: false
+      required:
+        - date
+      properties:
+        date:
+          $ref: '#/components/schemas/Date'
+          description: The day of the appointments, in each facility's time zone.
+          x-phi: none
+    MorningBriefChartStatus:
+      description: '`summarized`: the chart was read and the statements are about it; `nothing-recorded`: the chart holds nothing to brief on; `restricted`: a restricted chart the requester may not open (D37), never read.'
+      type: string
+      enum:
+        - summarized
+        - nothing-recorded
+        - restricted
+    MorningBriefItem:
+      description: One appointment of the day and what the chart says about its patient.
+      type: object
+      required:
+        - appointmentId
+        - patientId
+        - startAt
+        - chartStatus
+        - statements
+      properties:
+        appointmentId:
+          $ref: '#/components/schemas/Id'
+          description: The appointment.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        startAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the appointment starts.
+          x-phi: none
+        chartStatus:
+          $ref: '#/components/schemas/MorningBriefChartStatus'
+          description: Whether the chart was read.
+          x-phi: none
+        statements:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/ChartAnswerStatement'
+          description: What to know before the visit, each with its sources. Empty unless `summarized`.
+          x-phi: clinical
+    MorningBrief:
+      description: An AI morning brief. Read-only, never part of the chart; readable by its requester only.
+      type: object
+      required:
+        - id
+        - date
+        - appointments
+        - aiGenerated
+        - generatedBy
+        - createdAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Morning brief ID.
+          x-phi: internal-id
+        date:
+          $ref: '#/components/schemas/Date'
+          description: The day briefed on.
+          x-phi: none
+        appointments:
+          type: array
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/MorningBriefItem'
+          description: The appointments, in time order.
+          x-phi: clinical
+        aiGenerated:
+          type: boolean
+          const: true
+          description: 'Always true: label the brief as AI output.'
+          x-phi: none
+        generatedBy:
+          $ref: '#/components/schemas/AiGeneratedBy'
+          description: Model, prompt and pipeline versions.
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was made.
+          x-phi: none
+    DifferentialCreate:
+      description: The visit to suggest a differential for.
+      type: object
+      additionalProperties: false
+      required:
+        - encounterId
+      properties:
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit.
+          x-phi: internal-id
+    DifferentialCandidate:
+      description: One possible diagnosis, with why and the records it rests on (at least one).
+      type: object
+      required:
+        - sequence
+        - condition
+        - rationale
+        - confidence
+        - sources
+      properties:
+        sequence:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 10
+          description: Order, from the most likely.
+          x-phi: none
+        condition:
+          type: string
+          maxLength: 200
+          description: The possible diagnosis, in words. No code; the clinician picks one through code search.
+          x-phi: clinical
+        rationale:
+          type: string
+          maxLength: 1000
+          description: Why, from the cited records.
+          x-phi: clinical
+        confidence:
+          $ref: '#/components/schemas/AiConfidence'
+          description: '`low` or `medium`; never `high`.'
+          x-phi: none
+        sources:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/AiSourceLink'
+          description: The records behind it.
+          x-phi: clinical
+    Differential:
+      description: An AI differential for a visit (AI-03). It suggests and never concludes; read-only, never part of the chart; readable by its requester only.
+      type: object
+      required:
+        - id
+        - patientId
+        - encounterId
+        - candidates
+        - insufficientEvidence
+        - aiGenerated
+        - generatedBy
+        - createdAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Differential ID.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit.
+          x-phi: internal-id
+        candidates:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/DifferentialCandidate'
+          description: The candidates, most likely first. Empty when the visit holds too little.
+          x-phi: clinical
+        insufficientEvidence:
+          type: boolean
+          description: True when the visit's records are too few to suggest a differential.
+          x-phi: none
+        aiGenerated:
+          type: boolean
+          const: true
+          description: 'Always true: label the differential as AI output.'
+          x-phi: none
+        generatedBy:
+          $ref: '#/components/schemas/AiGeneratedBy'
+          description: Model, prompt and pipeline versions.
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was made.
           x-phi: none
     AiSuggestionDecision:
       description: 'Body to decide a suggestion (inventory #113). The edited text is never sent here: it is the note section''s text, saved through `PATCH /notes/{noteId}`.'

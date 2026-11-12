@@ -24,10 +24,12 @@ import { useUI } from '@/store/ui'
 
 import { useMayOpenPath } from '../app/landing'
 import { ScreenHeader } from '../app/ScreenHeader'
+import { AI_DIFFERENTIAL_ON } from '../logic/assistant'
 import { differentialsFor, type Differential } from '../logic/differentials'
 import { maybeEncounter } from '../../../shri-health/encounter'
 import { hasPermission } from '../../../shri-health/opd'
 import { RecordDoors } from '../record/RecordDoors'
+import { useAiActive } from '../state/ai'
 import { useOpd } from '../state/opd'
 import { useShri } from '../state/store'
 import { SuggestionCard } from '../ui/ai'
@@ -37,6 +39,7 @@ import { Card, Pill } from '../ui/primitives'
 
 import { AmbientScribe } from './AmbientScribe'
 import { NoteAuthoring } from './NoteAuthoring'
+import { RealDifferentialRail } from './RealDifferentialRail'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
@@ -81,6 +84,10 @@ function Consultation({ encounterId }: { encounterId: string }) {
   const [drafting, setDrafting] = useState(false)
   /** With the API: false once AI drafting was refused (AI off, unavailable, over budget). */
   const draftUp = useAiFeatureUp('note-draft')
+  const ddxUp = useAiFeatureUp('differential')
+  const aiActive = useAiActive()
+  // MD and APP only (D116): the differential needs chart-summaries:create and diagnoses:create.
+  const realDdx = AI_DIFFERENTIAL_ON && ddxUp && aiActive && hasPermission('chart-summaries:create') && hasPermission('diagnoses:create')
 
   const enc = maybeEncounter(encounterId)!
   const p = patient(enc.patientId)
@@ -143,8 +150,9 @@ function Consultation({ encounterId }: { encounterId: string }) {
             <RecordDoors patient={p} />
           </>
         }
-        // SHRI_HEALTH: the Differential panel is the sample's suggestions, with no service behind it: hidden with SHRI_API=real.
-        rail={REAL_API ? undefined : <DifferentialRail encounterId={enc.id} patientId={p.id} />}
+        // SHRI_HEALTH: with SHRI_API=real, the Differential panel is AI-03 on the API (D116), behind its
+        // flag and only while the AI works here; otherwise it is the sample's suggestions.
+        rail={REAL_API ? (realDdx ? <RealDifferentialRail key={enc.id} encounterId={enc.id} patientId={p.id} /> : undefined) : <DifferentialRail encounterId={enc.id} patientId={p.id} />}
         railTitle="Differential"
         railBadge={REAL_API ? undefined : differentials.length || undefined}
       />

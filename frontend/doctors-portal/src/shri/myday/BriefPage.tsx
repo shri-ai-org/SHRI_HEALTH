@@ -33,6 +33,7 @@ import { ScreenFrame } from '../app/ScreenFrame'
 import { canonical } from '../app/paths'
 import { fmtTime12 } from '../lib/clock'
 import { cn } from '../lib/cn'
+import { AI_MORNING_BRIEF_ON } from '../logic/assistant'
 import { recordPath } from '../logic/record'
 import { ClinicalFlag } from '../record/bits'
 import { useShri } from '../state/store'
@@ -42,6 +43,9 @@ import { iconFor } from '../ui/icons'
 import { Card, Chip, ConfidenceMark, Diamond, Icon, Pill } from '../ui/primitives'
 import { AiOffLine } from '../ui/states'
 
+import { hasPermission } from '../../../shri-health/opd'
+
+import { RealBriefPage } from './RealBriefPage'
 import { useMyDay } from './useMyDay'
 
 const PATIENTS_SHOWN = 6
@@ -91,8 +95,9 @@ export function BriefPage() {
     `Today you have ${plural(clinic, 'patient')} in OPD, ${plural(tele, 'teleconsult')} and ${plural(d.inpatients.length, 'inpatient')} on the ward round`,
   ].join('. ')
 
-  // With the API: hidden until the AI brief is built (never a "not built yet" page): My Day instead.
-  if (REAL_API) return <Navigate to="/" replace />
+  // With the API: the AI brief (D116) behind its flag; without the flag, My Day instead (never a
+  // "not built yet" page).
+  if (REAL_API) return AI_MORNING_BRIEF_ON && hasPermission('chart-summaries:create') ? <RealBriefPage /> : <Navigate to="/" replace />
 
   return (
     <ScreenFrame

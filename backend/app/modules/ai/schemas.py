@@ -6,6 +6,7 @@ AiSettingsUpdate."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date as Date
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -360,3 +361,51 @@ class ChartAnswer(Out):
 class SuggestedQuestionList(Out):
     page_type: PageType
     questions: list[str]
+
+
+# ----------------------------------------------------------- morning brief, differential (D116)
+class MorningBriefCreate(Closed):
+    date: Date
+
+
+MorningBriefChartStatus = Literal["summarized", "nothing-recorded", "restricted"]
+
+
+class MorningBriefItem(Out):
+    appointment_id: UUID
+    patient_id: UUID
+    start_at: datetime
+    chart_status: MorningBriefChartStatus
+    statements: list[ChartAnswerStatement]
+
+
+class MorningBrief(Out):
+    id: UUID
+    date: Date
+    appointments: list[MorningBriefItem]
+    ai_generated: Literal[True] = True
+    generated_by: AiGeneratedBy
+    created_at: datetime
+
+
+class DifferentialCreate(Closed):
+    encounter_id: UUID
+
+
+class DifferentialCandidate(Out):
+    sequence: int
+    condition: str
+    rationale: str
+    confidence: Literal["low", "medium"]
+    sources: list[AiSourceLink]
+
+
+class Differential(Out):
+    id: UUID
+    patient_id: UUID
+    encounter_id: UUID
+    candidates: list[DifferentialCandidate]
+    insufficient_evidence: bool
+    ai_generated: Literal[True] = True
+    generated_by: AiGeneratedBy
+    created_at: datetime

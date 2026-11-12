@@ -19,6 +19,7 @@ and the note template (practice setup's repository, Anand's).
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -30,8 +31,10 @@ from app.core import access as core_access
 from app.core import audit as core_audit
 from app.core.deps import CurrentUser, require, tenant_db
 from app.core.long_running import accepted
+from app.modules.encounters import notes_service
 from app.modules.encounters import service as encounters_service
 from app.modules.encounters.ai_drafts import EncounterNoteDrafts
+from app.modules.encounters.notes_repository import SqlNoteRepository
 from app.modules.encounters.repository import EncounterHead, SqlEncounterRepository
 from app.modules.encounters.service import readable
 from app.modules.files.crypto import FileCrypto, file_crypto
@@ -47,7 +50,9 @@ from app.modules.scheduling.reference import reference as scheduling_reference
 from . import chart_answers as answers
 from . import chart_context as chart_lines
 from . import chart_summaries as summaries
+from . import differentials as ddx
 from . import drafts as rules
+from . import morning_briefs as briefs
 from . import settings as ai_settings
 from . import summary as summary_lines
 from .config import configured_model
@@ -62,6 +67,10 @@ from .schemas import (
     ChartQuestionCreate,
     ChartSummary,
     ChartSummaryCreate,
+    Differential,
+    DifferentialCreate,
+    MorningBrief,
+    MorningBriefCreate,
     NoteDraftCreate,
     PageType,
     SourceRef,
@@ -242,6 +251,85 @@ def summary_reader(check: Annotated[rules.ChartCheck, Depends(chart_check)]
     return read
 
 
+def day_reader(repo: Annotated[AIRepository, Depends(repository)]) -> briefs.DayReader:
+    """The signed-in user's own appointments on a day, through the scheduling service (their
+    facility scope): the provider their account is linked to; none without one."""
+    async def read(db: AsyncSession, user: CurrentUser, day: date) -> list[briefs.Visit]:
+        if not user.can("appointments:read"):
+            return []
+        provider = await repo.practitioner_of_user(db, user.id)
+        if provider is None:
+            return []
+        found, _, _ = await scheduling_service.list_view(
+            db, scheduling_reference(), user, days=(day, day), facility_id=None,
+            provider_id=provider, patient_id=None, statuses=briefs.STATUSES,
+            limit=briefs.MAX_APPOINTMENTS, offset=0)
+        return sorted((briefs.Visit(a.id, a.patient.id, a.start_at, a.appointment_type.name)
+                       for a in found), key=lambda v: v.start_at)
+
+    return read
+
+
+def _vital(v: Any) -> str | None:
+    if v.blood_pressure is not None:
+        bp = v.blood_pressure
+        return f"{bp.systolic.value:g}/{bp.diastolic.value:g} {bp.systolic.unit}"
+    if v.value is not None:
+        return f"{v.value.value:g} {v.value.unit}"
+    return None
+
+
+def differential_reader(check: Annotated[rules.ChartCheck, Depends(chart_check)],
+                        chart: Annotated[summaries.SummaryReader, Depends(summary_reader)]
+                        ) -> ddx.VisitReader:
+    """The visit a differential may use, read as the clinician (differentials.py): its reasons,
+    diagnoses, vital signs and reviewed note sections, each only with its read permission; then
+    the chart lines a summary uses. An AI section nobody reviewed yet is left out."""
+    async def read(db: AsyncSession, user: CurrentUser, encounter_id: UUID) -> ddx.VisitChart:
+        found = await encounters_service.get(db, SqlEncounterRepository(), check, user,
+                                             encounter_id)
+        visit = found.value
+        here = SourceRef("Encounter", visit.id)
+        lines = [summary_lines.ChartLine(f"Reason for visit: {r}", here, "Reason for visit")
+                 for r in (chart_lines.label(c) for c in visit.reasons or []) if r]
+        names, sources = chart_lines.diagnosis_lines(visit.diagnoses)
+        lines += [summary_lines.ChartLine(f"Diagnosis at this visit: {name}", source,
+                                          "Visit diagnosis")
+                  for name, source in zip(names, sources, strict=True)]
+        if user.can("vitals:read"):
+            vitals, _ = await encounters_service.list_vitals(
+                db, SqlEncounterRepository(), check, user, visit.patient_id, vital_type=None,
+                date_from=None, date_to=None, include_entered_in_error=False, limit=50,
+                cursor=None)
+            for v in vitals:
+                shown = _vital(v)
+                if v.encounter_id == visit.id and shown:
+                    lines.append(summary_lines.ChartLine(
+                        f"Vital sign at this visit: {v.type} {shown}",
+                        SourceRef("Observation", v.id), "Vital sign"))
+        if user.can("notes:read"):
+            _, notes, _ = await notes_service.list_for_encounter(
+                db, SqlEncounterRepository(), SqlNoteRepository(), check, user, visit.id,
+                status=None, limit=3, cursor=None)
+            for summary in notes:
+                if summary.status == "entered-in-error":
+                    continue
+                note = (await notes_service.get(db, SqlEncounterRepository(),
+                                                SqlNoteRepository(), check, user,
+                                                summary.id)).value
+                for section in note.sections:
+                    text = " ".join(section.text.split())
+                    if not text or section.ai_decision == "pending":
+                        continue
+                    lines.append(summary_lines.ChartLine(
+                        f"Note, {section.title}: {text[:1500]}",
+                        SourceRef("Composition", note.id), f"{note.title}, {section.title}"))
+        return ddx.VisitChart(patient_id=visit.patient_id, visit=tuple(lines),
+                              chart=await chart(db, user, visit.patient_id))
+
+    return read
+
+
 def visit_of(check: Annotated[rules.ChartCheck, Depends(chart_check)]) -> summaries.VisitOf:
     """The encounter's patient and reason for visit, as the user may read it (facility, D37)."""
     async def read(db: AsyncSession, user: CurrentUser, encounter_id: UUID
@@ -283,6 +371,8 @@ ScheduleReader = Annotated[summaries.SummaryReader, Depends(schedule_reader)]
 VisitPatient = Annotated[Any, Depends(visit_patient)]
 VisitReader = Annotated[summaries.VisitOf, Depends(visit_of)]
 IfMatch = Annotated[str | None, Header(alias="If-Match", max_length=128)]
+DayReader = Annotated[briefs.DayReader, Depends(day_reader)]
+DifferentialReader = Annotated[ddx.VisitReader, Depends(differential_reader)]
 
 
 def _named(request: Request, audit: Any) -> rules.NamePatient:
@@ -370,6 +460,55 @@ async def list_suggested_questions(
 ) -> SuggestedQuestionList:
     """A fixed rule table (chart_answers.SUGGESTED): no model call, no patient data."""
     return answers.suggested(user, page_type)
+
+
+@router.post("/ai/morning-briefs", operation_id="createMorningBrief", status_code=202,
+             responses={202: {"description": "The operation (core's Operation)."}})
+async def create_morning_brief(
+    user: Annotated[CurrentUser, Depends(require("chart-summaries:create"))],
+    body: MorningBriefCreate, request: Request, db: DB, repo: Repo, ai_model: Model,
+    check: Check, audit: Audit, day: DayReader, chart: SummaryChartReader,
+) -> JSONResponse:
+    """Every chart read is audited; a restricted one the user may not open is never read."""
+    operation = await briefs.create(db, repo, ai_model, check, day, chart, user, body,
+                                    lambda ids: _audit(request, audit, ids))
+    return accepted(operation)
+
+
+@router.get("/ai/morning-briefs/{morningBriefId}", operation_id="getMorningBrief",
+            response_model=MorningBrief, response_model_exclude_none=True)
+async def get_morning_brief(
+    user: Annotated[CurrentUser, Depends(require("chart-summaries:read"))],
+    brief_id: Annotated[UUID, Path(alias="morningBriefId")], request: Request, db: DB,
+    repo: Repo, check: Check, audit: Audit,
+) -> MorningBrief:
+    found = await briefs.get(db, repo, check, user, brief_id)
+    _audit(request, audit, briefs.readable_patients(found))
+    return found
+
+
+@router.post("/ai/differentials", operation_id="createDifferential", status_code=202,
+             responses={202: {"description": "The operation (core's Operation)."}})
+async def create_differential(
+    user: Annotated[CurrentUser, Depends(require("chart-summaries:create"))],
+    body: DifferentialCreate, request: Request, db: DB, repo: Repo, ai_model: Model,
+    audit: Audit, visit: DifferentialReader,
+) -> JSONResponse:
+    operation = await ddx.create(db, repo, ai_model, visit, user, body,
+                                 lambda ids: _audit(request, audit, ids))
+    return accepted(operation)
+
+
+@router.get("/ai/differentials/{differentialId}", operation_id="getDifferential",
+            response_model=Differential, response_model_exclude_none=True)
+async def get_differential(
+    user: Annotated[CurrentUser, Depends(require("chart-summaries:read"))],
+    differential_id: Annotated[UUID, Path(alias="differentialId")], request: Request,
+    db: DB, repo: Repo, check: Check, audit: Audit,
+) -> Differential:
+    found = await ddx.get(db, repo, check, user, differential_id)
+    _audit(request, audit, [found.patient_id])
+    return found
 
 
 @router.post("/ai/suggestions/{suggestionId}/decision", operation_id="decideAiSuggestion",
