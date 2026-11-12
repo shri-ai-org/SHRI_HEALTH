@@ -34,7 +34,9 @@ NEW_TABLES = {
     "admin.idempotency_record": {"shri_app": {"SELECT", "INSERT", "UPDATE"},
                                  "shri_portal": {"SELECT", "INSERT"}},
     "admin.operation": {"shri_app": {"SELECT", "INSERT", "UPDATE"}},
-    "admin.event_log": {"shri_app": {"SELECT", "INSERT"}, "shri_integration": {"INSERT"}},
+    # shri_portal: its own patient's schedule events only (migration 0021, portal_own_event).
+    "admin.event_log": {"shri_app": {"SELECT", "INSERT"}, "shri_integration": {"INSERT"},
+                        "shri_portal": {"INSERT"}},
 }
 PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 

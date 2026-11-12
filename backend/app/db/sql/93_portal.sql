@@ -229,3 +229,6 @@ GRANT INSERT ON audit.audit_event TO shri_portal;
 
 GRANT SELECT, INSERT, UPDATE (request_hash, state, response_status, response_headers, response_body_enc, expires_at, updated_at) ON admin.idempotency_record TO shri_portal;
 CREATE POLICY portal_own_key ON admin.idempotency_record AS RESTRICTIVE FOR ALL TO shri_portal USING (patient_id = NULLIF(current_setting('app.current_patient_id', true), '')::uuid) WITH CHECK (patient_id = NULLIF(current_setting('app.current_patient_id', true), '')::uuid);
+
+GRANT INSERT ON admin.event_log TO shri_portal;
+CREATE POLICY portal_own_event ON admin.event_log AS RESTRICTIVE FOR INSERT TO shri_portal WITH CHECK (patient_id = NULLIF(current_setting('app.current_patient_id', true), '')::uuid AND type IN ('appointment.booked', 'appointment.cancelled', 'appointment.rescheduled'));

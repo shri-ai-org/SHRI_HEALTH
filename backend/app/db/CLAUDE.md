@@ -380,6 +380,14 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     held.
   - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
     provider's busy times without anyone's appointment.
+  - **Self-booking (migration 0021, Vimal's list on #85):** the portal inserts its own
+    patient's `appointment.booked`, `.cancelled` and `.rescheduled` rows in `admin.event_log`
+    and nothing else there (`portal_own_event`). `SELECT admin.portal_chart_open()` locks the
+    session patient FOR SHARE and answers whether the chart is active and not merged. A booked
+    revisit (an appointment a follow-up request points at, D98) can't change status as
+    `shri_portal` (`P0001`, constraint `portal_revisit_locked`): the clinic moves it. The
+    portal's cancel sets the status, the cancellation reason and `ext_cancelled_at` only,
+    never the staff columns (`updated_by_user_id`, `ext_cancelled_by_user_id`).
   - **A note's co-signature return** (`ext_cosign_return_comment`, `ext_cosign_returned_at`)
     is never readable: its SELECT on `composition` is column-limited
     (`PORTAL_HIDDEN_COLUMNS`, migration 0013), so select the columns it needs, never `*`.
