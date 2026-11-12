@@ -127,6 +127,11 @@ export type completePortalLoginResponse302 = {
   status: 302
 }
 
+export type completePortalLoginResponse303 = {
+  data: void
+  status: 303
+}
+
 export type completePortalLoginResponse422 = {
   data: UnprocessableContentResponse
   status: 422
@@ -148,7 +153,7 @@ export type completePortalLoginResponse503 = {
 }
 
 ;
-export type completePortalLoginResponseError = (completePortalLoginResponse302 | completePortalLoginResponse422 | completePortalLoginResponse429 | completePortalLoginResponse500 | completePortalLoginResponse503) & {
+export type completePortalLoginResponseError = (completePortalLoginResponse302 | completePortalLoginResponse303 | completePortalLoginResponse422 | completePortalLoginResponse429 | completePortalLoginResponse500 | completePortalLoginResponse503) & {
   headers: Headers;
 };
 
@@ -163,7 +168,7 @@ export const getCompletePortalLoginUrl = () => {
 }
 
 /**
- * Checks `state` and `nonce`, exchanges the code, keeps the realm's tokens server-side, creates a new portal session (`__Host-shri_portal`) and sends the browser to the portal (ADR-0013 §5). An account that has not finished its realm setup (password, second factor) cannot reach this. Public.
+ * Checks `state` and `nonce`, exchanges the code, keeps the realm's tokens server-side, creates a new portal session (`__Host-shri_portal`) and sends the browser to the portal (ADR-0013 §5). An account that has not finished its realm setup (password, second factor) cannot reach this. Public. **A browser never lands on an error page here:** for a browser navigation (its `Accept` header prefers `text/html` to `application/json` and `application/problem+json`) whose sign-in can't finish because `code` or `state` is missing (the realm returned an `error`, or the login expired), `state` doesn't match the login-state cookie, or the login state has expired, the answer is `303` with the relative `Location: login` (the portal's `auth/login` next to this callback, under any base path), a new patient sign-in on the realm's form. The login-state cookie is cleared; the failure is logged as a security warning (no request values), with no audit row, since no clinic or patient is known yet. A nonce mismatch, or an API client, keeps the `422`.
  * @summary Finish patient sign-in
  */
 export const completePortalLogin = async ( options?: Parameters<typeof apiFetch>[1]): Promise<completePortalLoginResponse> => {
