@@ -51,9 +51,15 @@ paths:
     get:
       operationId: completePortalLogin
       summary: Finish patient sign-in
-      description: Checks `state` and `nonce`, exchanges the code, keeps the realm's tokens server-side, creates a new portal
+      description: 'Checks `state` and `nonce`, exchanges the code, keeps the realm''s tokens server-side, creates a new portal
         session (`__Host-shri_portal`) and sends the browser to the portal (ADR-0013 §5). An account that has not finished
-        its realm setup (password, second factor) cannot reach this. Public.
+        its realm setup (password, second factor) cannot reach this. Public. **A browser never lands on an error page here:**
+        for a browser navigation (its `Accept` header prefers `text/html` to `application/json` and `application/problem+json`)
+        whose sign-in can''t finish because `code` or `state` is missing (the realm returned an `error`, or the login expired),
+        `state` doesn''t match the login-state cookie, or the login state has expired, the answer is `303` with the relative
+        `Location: login` (the portal''s `auth/login` next to this callback, under any base path), a new patient sign-in on
+        the realm''s form. The login-state cookie is cleared; the failure is logged as a security warning (no request values),
+        with no audit row, since no clinic or patient is known yet. A nonce mismatch, or an API client, keeps the `422`.'
       tags:
       - portal
       x-owner: thulasi
@@ -71,9 +77,17 @@ paths:
           headers:
             Location: *id001
             Cache-Control: *id002
+        '303':
+          description: '303. A browser whose patient sign-in couldn''t finish (`code` or `state` missing, `state` not matching
+            the login-state cookie, or the login state expired): `Location` is the relative `login`, a new sign-in. Clears
+            the login-state cookie; no session is created; logged as a security warning, no audit row.'
+          headers:
+            Location: *id001
+            Cache-Control: *id002
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (`state`, `nonce` or the code is missing or wrong).
+          description: '422. `validation-failed`, for an API client (not a browser navigation, see `303`), or any caller when
+            the nonce did not match: `state`, `nonce` or the code missing or wrong.'
         '429': *id003
         '500': *id004
         '503': *id005

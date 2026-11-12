@@ -132,7 +132,7 @@ paths:
     get:
       operationId: finishLogin
       summary: Finish sign-in
-      description: 'Keycloak returns here (inventory #2; SECURITY_MODEL §2.1). The server checks `state` and `nonce`, exchanges the code, keeps Keycloak''s tokens server-side, creates a new session ID (never reusing one), sets the session cookie and sends the browser back to the app. Public: no session yet. Audited as a login. **A browser never lands on an error page here:** when the request is a browser navigation (its `Accept` header prefers `text/html` to `application/json` and `application/problem+json`) and the sign-in can''t finish because `code` or `state` is missing (Keycloak returned an `error` such as `access_denied` or an expired login), `state` doesn''t match the login-state cookie, or the login state has expired, the answer is `303` to `/api/v1/auth/login`, which starts a new sign-in and lands on Keycloak''s form. The failure is still audited, and the login-state cookie is cleared. A nonce mismatch, or a request from an API client (any other `Accept`), keeps the `422` problem response.'
+      description: 'Keycloak returns here (inventory #2; SECURITY_MODEL §2.1). The server checks `state` and `nonce`, exchanges the code, keeps Keycloak''s tokens server-side, creates a new session ID (never reusing one), sets the session cookie and sends the browser back to the app. Public: no session yet. Audited as a login. **A browser never lands on an error page here:** when the request is a browser navigation (its `Accept` header prefers `text/html` to `application/json` and `application/problem+json`) and the sign-in can''t finish because `code` or `state` is missing (Keycloak returned an `error` such as `access_denied` or an expired login), `state` doesn''t match the login-state cookie, or the login state has expired, the answer is `303` with the relative `Location: login`, which resolves to `auth/login` next to this callback under any base path (behind a shared host''s path the API never sees the prefix), so it starts a new sign-in and lands on Keycloak''s form. The login-state cookie is cleared. Such a failure is logged as a security warning (no request values); it has no audit row, since no clinic or user is known yet. A failure after the login matches (a refused code, a bad ID token) is audited as before. A nonce mismatch, or a request from an API client (any other `Accept`), keeps the `422` problem response.'
       tags:
         - platform
       x-owner: thulasi
@@ -176,7 +176,7 @@ paths:
             Cache-Control:
               $ref: '#/components/headers/CacheControl'
         '303':
-          description: '303. A browser whose sign-in couldn''t finish (`code` or `state` missing, `state` not matching the login-state cookie, or the login state expired): `Location` is `/api/v1/auth/login`, a new sign-in. Clears the login-state cookie; no session is created.'
+          description: '303. A browser whose sign-in couldn''t finish (`code` or `state` missing, `state` not matching the login-state cookie, or the login state expired): `Location` is the relative `login` (`auth/login` next to this callback, under any base path), a new sign-in. Clears the login-state cookie; no session is created; logged as a security warning, no audit row.'
           headers:
             Location:
               description: Where the browser is sent next.
@@ -20304,7 +20304,7 @@ paths:
     get:
       operationId: completePortalLogin
       summary: Finish patient sign-in
-      description: Checks `state` and `nonce`, exchanges the code, keeps the realm's tokens server-side, creates a new portal session (`__Host-shri_portal`) and sends the browser to the portal (ADR-0013 §5). An account that has not finished its realm setup (password, second factor) cannot reach this. Public.
+      description: 'Checks `state` and `nonce`, exchanges the code, keeps the realm''s tokens server-side, creates a new portal session (`__Host-shri_portal`) and sends the browser to the portal (ADR-0013 §5). An account that has not finished its realm setup (password, second factor) cannot reach this. Public. **A browser never lands on an error page here:** for a browser navigation (its `Accept` header prefers `text/html` to `application/json` and `application/problem+json`) whose sign-in can''t finish because `code` or `state` is missing (the realm returned an `error`, or the login expired), `state` doesn''t match the login-state cookie, or the login state has expired, the answer is `303` with the relative `Location: login` (the portal''s `auth/login` next to this callback, under any base path), a new patient sign-in on the realm''s form. The login-state cookie is cleared; the failure is logged as a security warning (no request values), with no audit row, since no clinic or patient is known yet. A nonce mismatch, or an API client, keeps the `422`.'
       tags:
         - portal
       x-owner: thulasi
@@ -20328,9 +20328,20 @@ paths:
                 maxLength: 2000
             Cache-Control:
               $ref: '#/components/headers/CacheControl'
+        '303':
+          description: '303. A browser whose patient sign-in couldn''t finish (`code` or `state` missing, `state` not matching the login-state cookie, or the login state expired): `Location` is the relative `login`, a new sign-in. Clears the login-state cookie; no session is created; logged as a security warning, no audit row.'
+          headers:
+            Location:
+              description: Where the browser is sent next.
+              schema:
+                type: string
+                format: uri
+                maxLength: 2000
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (`state`, `nonce` or the code is missing or wrong).
+          description: '422. `validation-failed`, for an API client (not a browser navigation, see `303`), or any caller when the nonce did not match: `state`, `nonce` or the code missing or wrong.'
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
