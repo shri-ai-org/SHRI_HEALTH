@@ -397,7 +397,18 @@ check() {
                  "strict-transport-security: $SHRI_HSTS" "cache-control: no-store"; do
             printf '%s' "$headers" | tr -d '\r' | grep -qi "^$h" || die "$1 is missing the header: $h"
         done
+        # Inline scripts are allowed on Keycloak's pages only, never on ours.
+        ! printf '%s' "$headers" | tr -d '\r' | grep -i "^content-security-policy:" | grep -qi "script-src" \
+            || die "$1's Content-Security-Policy has a script-src: only Keycloak's pages may run inline scripts"
     done
+    # Keycloak's sign-in page keeps the security headers, with its own policy (nginx /kc/).
+    headers="$("${curl[@]}" -o /dev/null -D - "$E/kc/realms/shri-staff/account")" || true
+    for h in "content-security-policy: default-src 'self'; script-src 'self' 'unsafe-inline'" \
+             "x-frame-options: DENY" "strict-transport-security: $SHRI_HSTS"; do
+        printf '%s' "$headers" | tr -d '\r' | grep -qi "^$h" || die "Keycloak's pages are missing the header: $h"
+    done
+    printf '%s' "$headers" | tr -d '\r' | grep -i "^content-security-policy:" | grep -q "frame-ancestors 'none'" \
+        || die "Keycloak's pages may be framed (frame-ancestors)"
     # Nothing of ours listens beyond 127.0.0.1, except our edge on a host of our own.
     local mapping
     while read -r mapping; do

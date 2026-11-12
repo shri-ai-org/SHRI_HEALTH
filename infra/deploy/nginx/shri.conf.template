@@ -132,6 +132,21 @@ server {
     location ^~ /kc/realms/shri-patients/ {
         limit_req zone=portal_sign_in burst=10 nodelay;
         proxy_pass http://keycloak:8080;
+        # Keycloak's own sign-in pages run inline scripts: the light/dark switch (without it a
+        # dark-mode browser shows light labels on the white card), the double-click guard on the
+        # sign-in button and the session check. So script-src allows 'unsafe-inline' here, for
+        # Keycloak's pages only; the app keeps the strict policy above.
+        # Why not hashes: two of those scripts change on every request. login.ftl's
+        # startSessionPolling(...) carries the per-login restart URL (tab_id, client_data), and
+        # checkAuthSession(...) a per-session value, so their sha256 differs each time. Keycloak's
+        # login theme offers no nonce for them. Revisit if a Keycloak upgrade adds one.
+        # A location with its own add_header inherits none of the server's, so the whole set is
+        # repeated.
+        add_header Strict-Transport-Security "${SHRI_HSTS}" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         proxy_buffer_size 128k;
         proxy_buffers 4 256k;
     }
@@ -143,6 +158,21 @@ server {
 
     location /kc/ {
         proxy_pass http://keycloak:8080;
+        # Keycloak's own sign-in pages run inline scripts: the light/dark switch (without it a
+        # dark-mode browser shows light labels on the white card), the double-click guard on the
+        # sign-in button and the session check. So script-src allows 'unsafe-inline' here, for
+        # Keycloak's pages only; the app keeps the strict policy above.
+        # Why not hashes: two of those scripts change on every request. login.ftl's
+        # startSessionPolling(...) carries the per-login restart URL (tab_id, client_data), and
+        # checkAuthSession(...) a per-session value, so their sha256 differs each time. Keycloak's
+        # login theme offers no nonce for them. Revisit if a Keycloak upgrade adds one.
+        # A location with its own add_header inherits none of the server's, so the whole set is
+        # repeated.
+        add_header Strict-Transport-Security "${SHRI_HSTS}" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         proxy_buffer_size 128k;
         proxy_buffers 4 256k;
     }
